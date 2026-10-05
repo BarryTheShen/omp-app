@@ -599,4 +599,17 @@ describe("OmpRuntimeStore", () => {
     unsubscribe();
     expect(notifications).toBeGreaterThan(0);
   });
+
+  test("resumes after a refetch where the stream really is, including on a fresh store", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    // A new viewer joins a stream that is already past seq 1041: the first event is a gap.
+    ingest(store, { kind: "process", status: "ready" }, 1042);
+    expect(store.getSnapshot().needsRefetch).toBe(true);
+    // Events keep arriving while history loads: dropped, but their seq is remembered.
+    ingest(store, { kind: "process", status: "running" }, 1043);
+    store.resetSequence();
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 1043, needsRefetch: false });
+    ingest(store, { kind: "process", status: "running" }, 1044);
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 1044, needsRefetch: false });
+  });
 });

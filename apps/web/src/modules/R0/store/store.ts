@@ -569,6 +569,8 @@ export class OmpRuntimeStore {
   private readonly notificationSubscriptions = new Set<NotificationSubscription>();
   private readonly streamKeys = new Map<string, ProvisionalMessageKey>();
   private generatedMessageNumber = 0;
+  /** The highest seq ever passed to `ingest`, including events dropped during a gap. */
+  private latestSeenSeq = 0;
 
   public constructor(options: OmpRuntimeStoreOptions);
   public constructor(threadId: ThreadId, options?: Omit<OmpRuntimeStoreOptions, "threadId">);
@@ -612,11 +614,13 @@ export class OmpRuntimeStore {
   /**
    * Apply exactly one contiguous A0 envelope event. Replays are ignored. A gap is not applied: the
    * caller must refetch history and call `resetSequence` before the next event can change state.
+   * Every seq is remembered (`latestSeenSeq`) so the refetch resumes where the stream really is.
    */
   public ingest(event: RpcSessionEvent, seq: number): void {
     if (!Number.isSafeInteger(seq) || seq < 1) {
       throw new RangeError("event seq must be a positive safe integer");
     }
+    if (seq > this.latestSeenSeq) this.latestSeenSeq = seq;
     if (seq <= this.snapshot.lastSeq || this.snapshot.needsRefetch) return;
     if (seq !== this.snapshot.lastSeq + 1) {
       const next = mutableSnapshot(this.snapshot);
@@ -666,8 +670,13 @@ export class OmpRuntimeStore {
     }
   }
 
-  /** Clear a sequence gap after R0.2 has refetched state/history. */
-  public resetSequence(lastSeq = 0): void {
+  /**
+   * Clear a sequence gap after R0.2 has refetched state and history. By default the cursor moves to
+   * the highest seq seen so far: the refetched history already reflects those events, and the next
+   * live event then applies contiguously. (Resetting to 0 would turn the next event into a new gap,
+   * so a streaming turn would refetch forever.)
+   */
+  public resetSequence(lastSeq = this.latestSeenSeq): void {
     if (!Number.isSafeInteger(lastSeq) || lastSeq < 0) {
       throw new RangeError("lastSeq must be a non-negative safe integer");
     }
@@ -675,11 +684,6 @@ export class OmpRuntimeStore {
     next.lastSeq = lastSeq;
     next.needsRefetch = false;
     this.commit(next);
-  }
-
-  /** Set the contiguous cursor after a history replacement without changing the live state. */
-  public markRefetched(lastSeq: number): void {
-    this.resetSequence(lastSeq);
   }
 
   /** Add history entries and pair every waiting `message_end` by C0's identity rule. */
