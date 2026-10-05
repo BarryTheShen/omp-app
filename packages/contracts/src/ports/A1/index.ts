@@ -12,4 +12,5 @@ export * from "./rule-store";
 export * from "./session-file-store";
 export * from "./session-pin-store";
 export * from "./shared";
+export * from "./url-catalog";
 export * from "./workspace-state";

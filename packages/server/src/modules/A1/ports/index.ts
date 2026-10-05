@@ -11,6 +11,7 @@ import { createPlanDocumentRegistration } from "./plan-documents";
 import { createProviderAccountStoreRegistration } from "./provider-accounts";
 import { createSessionFileStoreRegistration } from "./session-file-store";
 import { createSessionPinStoreRegistration } from "./session-pin-store";
+import { createUrlCatalogRegistration } from "./url-catalog";
 import { createGitStateRegistration, createWorkspaceStateRegistration } from "./workspace-state";
 
 /** All A1 registrations currently backed by merged stores. Main composes this into PORT_REGISTRY. */
@@ -29,6 +30,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createFileSearchRegistration(context),
     createHostMetadataRegistration(context),
     createPlanDocumentRegistration(context),
+    createUrlCatalogRegistration(context),
   ];
 }
 
