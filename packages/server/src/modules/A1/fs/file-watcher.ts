@@ -54,6 +54,18 @@ function nearestExistingDirectory(directory: string): string {
 }
 
 /**
+ * Whether a directory event may concern the watched file. Bun's fs.watch can report no filename
+ * (`undefined`, as well as `null`); the change might then be ours, so it counts (the content hash
+ * decides afterwards whether anything really changed).
+ */
+export function mayConcernFile(
+  changedFilename: string | Buffer | null | undefined,
+  filename: string,
+): boolean {
+  return changedFilename == null || String(changedFilename) === filename;
+}
+
+/**
  * Watches the containing directory so atomic rename-over-target writes are observed reliably.
  * Changes are read back by SHA-256, debounced, and emitted only when the content hash changes.
  * The watcher is read-only: missing parent directories are never created by this function.
@@ -117,14 +129,20 @@ export function watchFile(
     watchedDirectory = nextDirectory;
     try {
       watcher = watch(nextDirectory, { persistent: false }, (eventType, changedFilename) => {
-        if (disposed) return;
-        if (directory !== watchedDirectory || eventType === "rename") {
-          armWatcher();
+        // An exception here would escape the event loop and take the whole server down, so every
+        // failure goes to onError (A1.2's contract).
+        try {
+          if (disposed) return;
+          if (directory !== watchedDirectory || eventType === "rename") {
+            armWatcher();
+            schedule();
+            return;
+          }
+          if (!mayConcernFile(changedFilename, filename)) return;
           schedule();
-          return;
+        } catch (error) {
+          reportError(error, options.onError);
         }
-        if (changedFilename !== null && changedFilename.toString() !== filename) return;
-        schedule();
       });
       watcher.on("error", (error) => reportError(error, options.onError));
     } catch (error) {
