@@ -1,6 +1,7 @@
 export * from "./checkpoint-store";
 export * from "./config-store";
 export * from "./draft-store";
+export * from "./extension-catalog";
 export * from "./file-search";
 export * from "./host-metadata";
 export * from "./omp-command-gateway";
