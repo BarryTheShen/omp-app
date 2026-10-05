@@ -1,0 +1,185 @@
+import type { ThreadId, UiRequestId } from "@omp-app/contracts";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, test } from "vitest";
+import type { AskDialogRequest, DialogRequest, DialogResponse } from "../contract";
+import { toWireExtensionUiResponse } from "../contract/responses";
+import type { DialogRenderContext } from "../host";
+import { AskResultCard } from "./ask-result";
+import { renderDialogRequest } from "./renderer";
+
+afterEach(cleanup);
+
+const threadId = "dialog-test-thread" as ThreadId;
+
+function renderRequest(request: DialogRequest) {
+  const answers: DialogResponse[] = [];
+  let cancellations = 0;
+  const context: DialogRenderContext = {
+    request,
+    threadId,
+    signal: new AbortController().signal,
+    answer: async (response) => {
+      answers.push(response);
+    },
+    cancel: async () => {
+      cancellations += 1;
+    },
+  };
+  render(renderDialogRequest(request, context));
+  return {
+    answers,
+    get cancellations() {
+      return cancellations;
+    },
+  };
+}
+
+describe("select dialog", () => {
+  test("filters long lists, supports keyboard selection and emits exact labels", async () => {
+    const request: DialogRequest = {
+      kind: "select",
+      id: "select-1" as UiRequestId,
+      title: "Choose a color",
+      options: ["Azure", "Beryl", "Crimson"],
+      optionDetails: [{ description: "blue" }, { description: "green" }, { description: "red" }],
+    };
+    const result = renderRequest(request);
+    const filter = screen.getByRole("textbox", { name: "Filter options" });
+    filter.focus();
+    fireEvent.change(filter, { target: { value: "green" } });
+    expect(screen.queryByRole("option", { name: /Azure/ })).toBeNull();
+    const beryl = screen.getByRole("option", { name: /Beryl/ });
+    fireEvent.keyDown(filter, { key: "ArrowDown" });
+    fireEvent.keyDown(filter, { key: "Enter" });
+    expect(beryl.getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(result.answers).toEqual([{ kind: "select", value: "Beryl" }]);
+    const selectedResponse = result.answers[0];
+    if (!selectedResponse) throw new Error("The selected response was not recorded.");
+    expect(
+      toWireExtensionUiResponse(request.id, { outcome: "answered", response: selectedResponse }),
+    ).toEqual({
+      type: "extension_ui_response",
+      id: request.id,
+      value: "Beryl",
+    });
+  });
+
+  test("cancel has no value and does not answer", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-cancel" as UiRequestId,
+      title: "Choose",
+      options: ["A"],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(result.answers).toEqual([]);
+    expect(result.cancellations).toBe(1);
+  });
+});
+
+describe("confirm dialog", () => {
+  test("focuses deny by default for the destructive-safe confirm", async () => {
+    const result = renderRequest({
+      kind: "confirm",
+      id: "confirm-1" as UiRequestId,
+      title: "Delete workspace?",
+      message: "This cannot be undone.",
+    });
+    const deny = screen.getByRole("button", { name: "Deny" });
+    await waitFor(() => expect(document.activeElement).toBe(deny));
+    expect(deny.getAttribute("data-confirmation-default")).toBe("deny");
+    fireEvent.click(deny);
+    expect(result.answers).toEqual([{ kind: "confirm", confirmed: false }]);
+  });
+
+  test("renders untrusted text as text, never executable markup", () => {
+    renderRequest({
+      kind: "confirm",
+      id: "confirm-xss" as UiRequestId,
+      title: "<img src=x onerror=alert(1)>",
+      message: "<a href='javascript:alert(1)'>unsafe</a>",
+    });
+    expect(screen.getByRole("heading").textContent).toContain("<img");
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(document.querySelector("a")).toBeNull();
+  });
+});
+
+describe("input and editor dialogs", () => {
+  test("validates blank input and masks secret input without echoing it", () => {
+    const request = {
+      kind: "input" as const,
+      id: "input-secret" as UiRequestId,
+      title: "API key",
+      placeholder: "Paste key",
+      secret: true,
+    } as DialogRequest;
+    const result = renderRequest(request);
+    const input = screen.getByLabelText("API key");
+    expect(input.getAttribute("type")).toBe("password");
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByRole("alert").textContent).toContain("Enter a value");
+    fireEvent.change(input, { target: { value: "private-value" } });
+    expect(screen.queryByText("private-value")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(result.answers).toEqual([{ kind: "input", value: "private-value" }]);
+  });
+
+  test("editor submits multiline text on Ctrl/Cmd+Enter", () => {
+    const result = renderRequest({
+      kind: "editor",
+      id: "editor-1" as UiRequestId,
+      title: "Notes",
+      prefill: "one",
+    });
+    const editor = screen.getByRole("textbox", { name: "Notes" });
+    fireEvent.change(editor, { target: { value: "one\ntwo" } });
+    fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+    expect(result.answers).toEqual([{ kind: "editor", value: "one\ntwo" }]);
+  });
+});
+
+describe("rich Ask dialog and result card", () => {
+  const askRequest: AskDialogRequest = {
+    kind: "ask",
+    id: "ask-1" as UiRequestId,
+    questions: [
+      {
+        id: "q1",
+        question: "Pick a mode",
+        header: "Mode",
+        options: [
+          { label: "Fast", description: "Lower latency" },
+          { label: "Thorough", description: "More analysis" },
+        ],
+      },
+    ],
+  };
+
+  test("supports option descriptions, Other free text, review and exact ask answers", () => {
+    const result = renderRequest(askRequest);
+    expect(screen.getByText("Lower latency")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Other" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Other answer" }), {
+      target: { value: "Custom mode" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(screen.getByTestId("ask-review").textContent).toContain("Custom mode");
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(result.answers).toEqual([
+      { kind: "ask", answers: [{ id: "q1", selectedOptions: [], customInput: "Custom mode" }] },
+    ]);
+  });
+
+  test("the result card uses text-only rendering for normalized answers", () => {
+    render(
+      <AskResultCard
+        request={askRequest}
+        answers={[{ id: "q1", selectedOptions: ["Thorough"] }]}
+      />,
+    );
+    expect(screen.getByTestId("ask-result-card").textContent).toContain("Thorough");
+    expect(screen.getByRole("definition").textContent).toBe("Thorough");
+  });
+});

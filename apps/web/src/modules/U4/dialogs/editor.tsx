@@ -1,0 +1,58 @@
+import { useState } from "react";
+import type { EditorDialogRequest } from "../contract";
+import type { DialogRenderContext } from "../host";
+import { CancelButton, DialogFrame, SubmitButton, Textarea } from "./common";
+
+export function EditorDialog({
+  request,
+  context,
+}: {
+  readonly request: EditorDialogRequest;
+  readonly context: DialogRenderContext;
+}) {
+  const [value, setValue] = useState(request.prefill ?? "");
+
+  const submit = async () => {
+    await context.answer({ kind: "editor", value });
+  };
+
+  return (
+    <DialogFrame
+      title={request.title}
+      actions={
+        <>
+          <CancelButton onCancel={context.cancel} />
+          <SubmitButton onClick={() => void submit()}>Save</SubmitButton>
+        </>
+      }
+    >
+      <Textarea
+        autoFocus
+        value={value}
+        aria-label={request.title}
+        className="min-h-40 resize-y"
+        onChange={(event) => setValue(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (
+            request.promptStyle &&
+            event.key === "Enter" &&
+            !event.shiftKey &&
+            !event.ctrlKey &&
+            !event.metaKey
+          ) {
+            event.preventDefault();
+            void submit();
+          } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+            event.preventDefault();
+            void submit();
+          }
+        }}
+      />
+      <p className="mt-2 text-xs text-muted-foreground">
+        {request.promptStyle
+          ? "Enter submits; use Shift+Enter for a new line."
+          : "Ctrl/Cmd+Enter saves."}
+      </p>
+    </DialogFrame>
+  );
+}
