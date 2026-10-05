@@ -190,6 +190,36 @@ describe("validateRegistry", () => {
     expect(kindsWith(bash, skill)).toEqual([]);
   });
 
+  test("gives each composer trigger and each composer mode one owner", () => {
+    const slash = {
+      ...base,
+      id: "D2.slashTrigger",
+      owner: "D2",
+      kind: "composer",
+      feature: { slot: "trigger", trigger: "/" },
+    };
+    expect(kindsWith(slash)).toEqual([]);
+    expect(kindsWith(slash, { ...slash, id: "U2.slashTrigger", owner: "U2" })).toEqual([
+      "double-claim",
+    ]);
+    const bash = {
+      ...base,
+      id: "U2.bashMode",
+      owner: "U2",
+      kind: "composer",
+      feature: { slot: "mode", mode: "bash" },
+    };
+    expect(kindsWith(bash, { ...bash, id: "U2.bashModeAgain" })).toEqual(["double-claim"]);
+    const paste = {
+      ...base,
+      id: "U2.paste",
+      owner: "U2",
+      kind: "composer",
+      feature: { slot: "attachment" },
+    };
+    expect(kindsWith(slash, bash, paste, { ...paste, id: "U2.paste2" })).toEqual([]);
+  });
+
   test("rejects the same chord twice in one scope, in any spelling", () => {
     const again = {
       ...base,

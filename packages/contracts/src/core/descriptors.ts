@@ -138,6 +138,25 @@ export const MessageDescriptor = DescriptorBase.extend({
 });
 export type MessageDescriptor = z.infer<typeof MessageDescriptor>;
 
+/**
+ * What a composer descriptor adds to the composer (contract change 2026-10-05): an autocomplete
+ * trigger (`/`, `@`, `#`, `:`, `scheme://`), an input mode (`bash`, `python`), or editor, attachment,
+ * submission, history or gesture behavior. Across a registry each trigger and each mode has one owner.
+ */
+export const ComposerFeature = z.discriminatedUnion("slot", [
+  z.object({ slot: z.literal("trigger"), trigger: z.string().min(1) }),
+  z.object({ slot: z.literal("mode"), mode: z.string().min(1) }),
+  z.object({ slot: z.enum(["editor", "attachment", "submission", "history", "gesture"]) }),
+]);
+export type ComposerFeature = z.infer<typeof ComposerFeature>;
+
+/** A composer capability registered by the module that owns it (U2's core, D2's triggers, P6's queue keys, I5's dictation, P1's gesture). */
+export const ComposerDescriptor = DescriptorBase.extend({
+  kind: z.literal("composer"),
+  feature: ComposerFeature,
+});
+export type ComposerDescriptor = z.infer<typeof ComposerDescriptor>;
+
 export const Descriptor = z.discriminatedUnion("kind", [
   ToolDescriptor,
   DialogDescriptor,
@@ -148,6 +167,7 @@ export const Descriptor = z.discriminatedUnion("kind", [
   StatusDescriptor,
   NoticeDescriptor,
   MessageDescriptor,
+  ComposerDescriptor,
 ]);
 export type Descriptor = z.infer<typeof Descriptor>;
 
@@ -213,6 +233,11 @@ function claimKeys(descriptor: Descriptor): string[] {
       return descriptor.match.by === "role"
         ? [`message role ${descriptor.match.role}`]
         : [`message customType ${descriptor.match.customType}`];
+    case "composer":
+      if (descriptor.feature.slot === "trigger") {
+        return [`composer trigger ${descriptor.feature.trigger}`];
+      }
+      return descriptor.feature.slot === "mode" ? [`composer mode ${descriptor.feature.mode}`] : [];
     default:
       return [];
   }
