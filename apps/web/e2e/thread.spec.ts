@@ -49,6 +49,38 @@ function buildPlaygroundPage(): void {
 `,
   );
 }
+function buildRowsPlaygroundPage(): void {
+  execFileSync(
+    "bun",
+    [
+      "build",
+      "src/modules/U1/rows/rows-playground.tsx",
+      "--outdir",
+      "dist/u1-rows-playground",
+      "--target=browser",
+    ],
+    { cwd: APP_ROOT, stdio: "inherit" },
+  );
+  const css = readdirSync(join(DIST_ROOT, "assets")).find((file) => file.endsWith(".css"));
+  if (!css)
+    throw new Error("The production build did not emit a stylesheet for the rows playground.");
+  writeFileSync(
+    join(DIST_ROOT, "rows-playground.html"),
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/assets/${css}" />
+  </head>
+  <body>
+    <div id="u1-rows-playground-root"></div>
+    <script type="module" src="/u1-rows-playground/rows-playground.js"></script>
+  </body>
+</html>
+`,
+  );
+}
 
 async function expectMarkdownStyles(page: Page): Promise<void> {
   await expect(page.locator("[data-markdown-inline]").first()).toBeVisible();
@@ -100,6 +132,7 @@ async function expectCollapsedThinkingBody(page: Page): Promise<void> {
 }
 test.beforeAll(() => {
   buildPlaygroundPage();
+  buildRowsPlaygroundPage();
 });
 
 test("renders fixture empty, streaming, settled and AppFailure states", async ({ page }) => {
@@ -218,6 +251,43 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   await darkPage.setViewportSize({ width: 390, height: 844 });
   await darkPage.screenshot({
     path: "../../.data/screenshots/u1-4-rich-narrow.png",
+    fullPage: false,
+  });
+  await darkPage.close();
+});
+test("renders U1.6 special rows in light, dark and narrow states", async ({ page }) => {
+  await page.goto("/rows-playground.html");
+  await expect(page.getByText("A custom extension notice")).toBeVisible();
+  await expect(page.getByText("src/app.ts")).toBeVisible();
+  await expect(page.getByText("Model changed")).toBeVisible();
+  await expect(page.getByText("Compaction summary")).toBeVisible();
+  await expect(page.getByText("Branch summary")).toBeVisible();
+  await expect(page.getByText("Provider unavailable")).toBeVisible();
+  await expect(page.getByText("Retrying in 5s (2/3)")).toBeVisible();
+  await expect(page.getByText("result.txt")).toBeVisible();
+  const providerRow = page.locator('[data-u1-row-kind="provider-error"] > div');
+  const lightStyles = await providerRow.evaluate((element) => {
+    const computed = getComputedStyle(element);
+    return { background: computed.backgroundColor, border: computed.borderTopStyle };
+  });
+  expect(lightStyles.background).not.toBe("rgba(0, 0, 0, 0)");
+  expect(lightStyles.border).toBe("solid");
+  await page.screenshot({ path: "../../.data/screenshots/u1-6-rows-light.png", fullPage: false });
+
+  const darkPage = await page.context().newPage();
+  await darkPage.addInitScript(() => document.documentElement.classList.add("dark"));
+  await darkPage.goto("/rows-playground.html");
+  await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
+  await expect(darkPage.locator("html")).toHaveClass(/dark/);
+  await expect(darkPage.getByText("Provider unavailable")).toBeVisible();
+  await expect(darkPage.locator('[data-u1-row-kind="tool-result-attachment"]')).toBeVisible();
+  await darkPage.screenshot({
+    path: "../../.data/screenshots/u1-6-rows-dark.png",
+    fullPage: false,
+  });
+  await darkPage.setViewportSize({ width: 390, height: 844 });
+  await darkPage.screenshot({
+    path: "../../.data/screenshots/u1-6-rows-narrow.png",
     fullPage: false,
   });
   await darkPage.close();
