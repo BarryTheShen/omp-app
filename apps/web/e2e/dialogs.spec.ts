@@ -70,7 +70,9 @@ test("renders select, confirm, input, editor and Ask with token-backed Button st
   const deny = darkPage.getByRole("button", { name: "Deny" });
   await expect(deny).toBeFocused();
   // The dialog's open transition must finish before colors are read: await it, never a fixed wait.
-  await darkPage.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished)));
+  await darkPage.evaluate(() =>
+    Promise.all(document.getAnimations().map((animation) => animation.finished)),
+  );
   const contrast = await darkPage.getByRole("button", { name: "Cancel" }).evaluate((element) => {
     const parse = (value: string) => {
       const numbers = value.match(/[\d.]+/g)?.map(Number) ?? [];
