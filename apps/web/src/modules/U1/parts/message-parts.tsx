@@ -1,10 +1,10 @@
-import type { EnrichedPartState, MessageState } from "@assistant-ui/react";
-import { MessagePrimitive } from "@assistant-ui/react";
+import { type EnrichedPartState, MessagePrimitive, type MessageState } from "@assistant-ui/react";
 import type { ReactNode } from "react";
 import { File } from "@/components/assistant-ui/elements/file";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { cn } from "@/lib/utils";
 import { MarkdownText } from "../markdown";
+import { ReasoningGroup, reasoningGroupBy } from "../reasoning";
 import { type ToolRendererMap, ToolSlot } from "../tool-slots";
 export interface MessagePartsProps {
   readonly message: MessageState;
@@ -136,9 +136,14 @@ export function MessageParts({ message, toolRenderers, extra }: MessagePartsProp
         className={className}
         data-message-surface={isUser ? "user-bubble" : isSystem ? "system-note" : "assistant-text"}
       >
-        <MessagePrimitive.Parts>
-          {({ part }) => renderPart(part, toolRenderers)}
-        </MessagePrimitive.Parts>
+        <MessagePrimitive.GroupedParts groupBy={reasoningGroupBy} indicator="never">
+          {({ part, children }) => {
+            if (part.type === "group-reasoning")
+              return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
+            if (part.type === "indicator") return null;
+            return renderPart(part as EnrichedPartState, toolRenderers);
+          }}
+        </MessagePrimitive.GroupedParts>
         {extra}
       </div>
     </MessagePrimitive.Root>

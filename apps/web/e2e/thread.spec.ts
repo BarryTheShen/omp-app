@@ -77,6 +77,27 @@ async function expectStreamedAnswerStyles(page: Page): Promise<void> {
   const lineHeight = await paragraph.evaluate((element) => getComputedStyle(element).lineHeight);
   expect(lineHeight).not.toBe("normal");
 }
+async function expectThinkingStyles(page: Page): Promise<void> {
+  await expect(page.locator("[data-u1-reasoning-group]")).toBeVisible({ timeout: 30_000 });
+  const trigger = page.getByRole("button", { name: /^Thought/ });
+  await expect(trigger).toBeVisible({ timeout: 30_000 });
+  const styles = await trigger.evaluate((element) => {
+    const computed = getComputedStyle(element);
+    return { color: computed.color, display: computed.display };
+  });
+  expect(styles.display).toBe("flex");
+  expect(styles.color).not.toBe("rgba(0, 0, 0, 0)");
+  await expect(page.locator("[data-u1-thinking-pulse]")).toHaveCount(0);
+}
+async function expectCollapsedThinkingBody(page: Page): Promise<void> {
+  const root = page.locator("[data-u1-reasoning-group]");
+  await expect(root).toBeVisible({ timeout: 30_000 });
+  await expect(root.getByRole("button", { name: /^Thought/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(root.locator("[data-u1-reasoning-body]")).not.toBeVisible();
+}
 test.beforeAll(() => {
   buildPlaygroundPage();
 });
@@ -98,7 +119,8 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   await page.locator("html").evaluate((element) => element.classList.remove("dark"));
 
   await page.getByTestId("thread-play-fixture").click();
-  await expect(page.getByRole("status")).toContainText("Assistant is working", { timeout: 10_000 });
+  await expect(page.getByText("Assistant is working…")).toBeVisible({ timeout: 10_000 });
+  await expectThinkingStyles(page);
   if (pageErrors.length > 0 || consoleErrors.length > 0) {
     throw new Error(`Thread playground errors: ${[...pageErrors, ...consoleErrors].join("; ")}`);
   }
@@ -107,7 +129,7 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
     fullPage: false,
   });
 
-  await expect(page.getByRole("status")).toContainText("Conversation settled", { timeout: 30_000 });
+  await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('[data-slot="u1-tool-slot"]')).toHaveCount(1);
   const userBubble = page.locator('[data-message-surface="user-bubble"]').first();
   await expect(userBubble).toBeVisible();
@@ -134,6 +156,27 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
     path: "../../.data/screenshots/u1-3-settled-light.png",
     fullPage: false,
   });
+  await page.addInitScript(() => document.documentElement.classList.add("dark"));
+  await page.reload();
+  await expect(page.getByText("No messages yet.")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await page.locator("html").evaluate((element) => element.classList.add("dark"));
+  await expect(page.getByTestId("thread-fixture-controls")).toBeVisible();
+  await page.getByTestId("thread-play-fixture").click();
+  await expect(page.getByText("Assistant is working…")).toBeVisible({ timeout: 10_000 });
+  await expectThinkingStyles(page);
+  await expectCollapsedThinkingBody(page);
+  await page.screenshot({
+    path: "../../.data/screenshots/u1-5-thinking-dark.png",
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "../../.data/screenshots/u1-5-thinking-narrow.png",
+    fullPage: false,
+  });
+  await page.reload();
+  await expect(page.getByText("No messages yet.")).toBeVisible();
 
   await page.getByTestId("thread-show-error").click();
   await expect(page.getByRole("alert")).toContainText("unavailable", { timeout: 5_000 });
