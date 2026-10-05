@@ -2,6 +2,7 @@ export * from "./checkpoint-store";
 export * from "./config-store";
 export * from "./draft-store";
 export * from "./file-search";
+export * from "./host-metadata";
 export * from "./omp-command-gateway";
 export * from "./session-file-store";
 export * from "./session-pin-store";
