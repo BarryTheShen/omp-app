@@ -144,6 +144,11 @@ describe("checkScrubbed", () => {
     ["a Linux home path", '{"cwd":"/home/user/project"}', "path"],
     ["a macOS home path", "see /Users/alice/Library", "path"],
     ["root's home", '{"path":"/root/.omp/agent"}', "path"],
+    [
+      "an omp-encoded absolute path in a session bucket",
+      '{"sessionFile":"<TMP>/agent/sessions/--home-alice-work-repo--/s.jsonl"}',
+      "path",
+    ],
     ["an Anthropic key", `key=${fake("sk-ant-api03-", 40)}`, "key"],
     ["an OpenAI key", `"${fake("sk-proj-", 40)}"`, "key"],
     ["a GitHub token", fake("ghp_", 36), "key"],
@@ -173,6 +178,16 @@ describe("checkScrubbed", () => {
         text,
         rules: ["path"],
       });
+    }
+  });
+
+  test("omp's home- and temp-relative bucket names carry no private root", () => {
+    for (const text of [
+      '{"sessionFile":"<TMP>/agent/sessions/-tmp-scenario/s.jsonl"}',
+      '{"sessionFile":"<HOME>/.omp/agent/sessions/-workspace-repo/s.jsonl"}',
+      "flags like --homepage-url stay clean",
+    ]) {
+      expect({ text, problems: checkScrubbed(text) }).toEqual({ text, problems: [] });
     }
   });
 

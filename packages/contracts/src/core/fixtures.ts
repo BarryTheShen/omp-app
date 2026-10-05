@@ -132,6 +132,16 @@ const SCRUB_PATTERNS: ReadonlyArray<{ rule: ScrubRule; pattern: RegExp }> = [
   // Every Windows drive path (`C:\Users\…`, `C:\tmp\…`, `D:/work`), system folders included: the
   // allowed system roots are POSIX ones.
   { rule: "path", pattern: /(?<!\w)[A-Za-z]:(?:\\{1,2}|\/)(?=[^\\/\s"'`<>|?*:])/g },
+  // omp's session bucket names encode an absolute cwd outside home and the temp root with dashes
+  // (`/home/alice/work` → `--home-alice-work--`, session-paths.ts encodeLegacyAbsoluteSessionDirName),
+  // which hides a private path from the rule above.
+  {
+    rule: "path",
+    pattern: new RegExp(
+      `(?<![\\w-])--(?:${PRIVATE_PATH_ROOTS.map((root) => root.slice(1)).join("|")})-[^\\s"'\`/\\\\]+`,
+      "g",
+    ),
+  },
   // Provider and platform key formats.
   { rule: "key", pattern: /\bsk-(?:ant-|proj-|or-)?[A-Za-z0-9_-]{16,}/g },
   { rule: "key", pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})/g },
