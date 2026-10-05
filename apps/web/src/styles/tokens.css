@@ -121,6 +121,8 @@
 
 /* ---------- Semantics: light ---------- */
 :root {
+  /* Native controls (select menus, scrollbars, date pickers) follow the theme. */
+  color-scheme: light;
   --background: var(--neutral-50);
   --foreground: var(--neutral-900);
   --card: var(--neutral-0);
@@ -175,6 +177,7 @@
 
 /* ---------- Semantics: dark ---------- */
 .dark {
+  color-scheme: dark;
   --background: var(--neutral-950);
   --foreground: var(--neutral-50);
   --card: oklch(0.205 0.006 58);
