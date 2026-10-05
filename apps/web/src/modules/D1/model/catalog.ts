@@ -1,0 +1,404 @@
+import type { AppClient } from "@omp-app/client";
+import type {
+  CapabilityKey,
+  CapabilityMap,
+  OmpWire,
+  PortCallOptions,
+  RpcSessionClient,
+  ThreadId,
+} from "@omp-app/contracts";
+import { AppFailure, RpcSessionPort } from "@omp-app/contracts";
+import {
+  D1_CAPABILITIES,
+  type EffortLevel,
+  EffortLevel as EffortLevelSchema,
+  type ModelApplyRequest,
+  type ModelApplyResult,
+  type ModelCapabilities,
+  ModelCapabilities as ModelCapabilitiesSchema,
+  type ModelCatalogPort,
+  type ModelCatalogResult,
+  type ModelCatalogSnapshot,
+  type ModelDescriptor,
+  type ModelRef,
+  type ModelSettingsPort,
+  modelScopeAvailability,
+} from "../contract";
+
+const INITIAL_REVISION = "catalog-initial";
+const MAX_RECENT_MODELS = 12;
+
+export type ModelView = "all" | "recent" | "roles";
+
+export interface ProviderModelGroup {
+  readonly provider: string;
+  readonly locked: boolean;
+  readonly models: readonly ModelDescriptor[];
+}
+
+export interface ModelCatalogMappingOptions {
+  readonly lockedProviders?: ReadonlySet<string>;
+  readonly unavailableProviders?: ReadonlySet<string>;
+}
+
+export interface ModelCatalogSource {
+  readonly getAvailableModels: (
+    options?: Pick<PortCallOptions, "signal">,
+  ) => Promise<readonly OmpWire.ModelInfo[]>;
+  readonly setModel: (
+    model: ModelRef,
+    options?: Pick<PortCallOptions, "signal">,
+  ) => Promise<OmpWire.ModelInfo>;
+  readonly cycleModel?: (
+    options?: Pick<PortCallOptions, "signal">,
+  ) => Promise<OmpWire.ModelCycleResult | null>;
+}
+
+/** R0.1's live snapshot seam; D1 subscribes to it rather than polling get_state itself. */
+export interface LiveModelState {
+  readonly getSnapshot: () => { readonly model: ModelRef | null };
+  readonly subscribe: (
+    listener: (snapshot: { readonly model: ModelRef | null }) => void,
+  ) => () => void;
+}
+export interface R0ModelStateSnapshot {
+  readonly model: ModelRef | OmpWire.ModelInfo | null | undefined;
+}
+
+export interface R0ModelStateStore {
+  readonly getSnapshot: () => R0ModelStateSnapshot;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
+function modelRefFromLiveValue(value: R0ModelStateSnapshot["model"]): ModelRef | null {
+  if (!value) return null;
+  return "modelId" in value
+    ? { provider: value.provider, modelId: value.modelId }
+    : { provider: value.provider, modelId: value.id };
+}
+
+/** Adapts R0.1's external store without issuing a second get_state request. */
+export function createR0LiveModelState(store: R0ModelStateStore): LiveModelState {
+  return {
+    getSnapshot: () => ({ model: modelRefFromLiveValue(store.getSnapshot().model) }),
+    subscribe: (listener) =>
+      store.subscribe(() => listener({ model: modelRefFromLiveValue(store.getSnapshot().model) })),
+  };
+}
+
+export interface ModelCatalogModelOptions {
+  readonly source: ModelCatalogSource;
+  readonly capabilities?: CapabilityMap;
+  readonly liveState?: LiveModelState;
+  readonly mapping?: ModelCatalogMappingOptions;
+  /** Kept as an explicit seam for the default scope; direct model selection remains session-only. */
+  readonly settings?: ModelSettingsPort;
+}
+
+function failure(error: unknown, fallback: string): AppFailure {
+  if (error instanceof AppFailure) return error;
+  return new AppFailure(
+    {
+      code: "internal",
+      message: error instanceof Error ? error.message : fallback,
+      retryable: true,
+    },
+    { cause: error },
+  );
+}
+
+function unavailable(capability: string, message: string): AppFailure {
+  const key = capability as CapabilityKey;
+  return new AppFailure({
+    code: "unavailable",
+    capability: key,
+    message,
+    retryable: false,
+  });
+}
+
+export function modelKey(model: Pick<ModelRef, "provider" | "modelId">): string {
+  return `${model.provider}/${model.modelId}`;
+}
+
+export function descriptorKey(model: Pick<ModelDescriptor, "provider" | "id">): string {
+  return modelKey({ provider: model.provider, modelId: model.id });
+}
+
+export function modelRefFromDescriptor(model: Pick<ModelDescriptor, "provider" | "id">): ModelRef {
+  return { provider: model.provider, modelId: model.id };
+}
+
+function safeEfforts(model: OmpWire.ModelInfo): EffortLevel[] {
+  return (model.thinking?.efforts ?? []).filter(
+    (effort): effort is EffortLevel => EffortLevelSchema.safeParse(effort).success,
+  );
+}
+
+export function toModelDescriptor(
+  model: OmpWire.ModelInfo,
+  options: ModelCatalogMappingOptions = {},
+): ModelDescriptor {
+  const availability = options.unavailableProviders?.has(model.provider)
+    ? "unavailable"
+    : options.lockedProviders?.has(model.provider)
+      ? "locked"
+      : "available";
+  return {
+    provider: model.provider,
+    id: model.id,
+    name: model.name,
+    api: model.api,
+    reasoning: model.reasoning,
+    input: [...model.input],
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    thinkingEfforts: safeEfforts(model),
+    availability,
+    ...(availability === "locked" ? { loginProvider: model.provider } : {}),
+    description: model.reasoning ? "Reasoning model" : "General-purpose model",
+  };
+}
+
+export function groupModels(models: readonly ModelDescriptor[]): readonly ProviderModelGroup[] {
+  const grouped = new Map<string, ModelDescriptor[]>();
+  for (const model of models) {
+    const provider = grouped.get(model.provider) ?? [];
+    provider.push(model);
+    grouped.set(model.provider, provider);
+  }
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([provider, providerModels]) => ({
+      provider,
+      locked: providerModels.every((model) => model.availability === "locked"),
+      models: [...providerModels].sort((left, right) =>
+        `${left.name} ${left.id}`.localeCompare(`${right.name} ${right.id}`),
+      ),
+    }));
+}
+
+export function filterModels(
+  models: readonly ModelDescriptor[],
+  query: string,
+): readonly ModelDescriptor[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return models;
+  return models.filter((model) =>
+    [model.provider, model.id, model.name, model.api, model.description ?? ""]
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(needle),
+  );
+}
+
+export function recentModels(
+  models: readonly ModelDescriptor[],
+  recent: readonly string[],
+): readonly ModelDescriptor[] {
+  const byKey = new Map(models.map((model) => [descriptorKey(model), model]));
+  return recent.flatMap((key) => {
+    const model = byKey.get(key);
+    return model ? [model] : [];
+  });
+}
+
+export function roleSelectorKey(selector: string | ModelRef): string {
+  return typeof selector === "string" ? selector : modelKey(selector);
+}
+
+function initialCapabilities(capabilities: CapabilityMap | undefined): ModelCapabilities {
+  const entries = D1_CAPABILITIES.flatMap((key) => {
+    const status = capabilities?.[key];
+    return status ? [[key, status] as const] : [];
+  });
+  return ModelCapabilitiesSchema.parse(Object.fromEntries(entries));
+}
+
+function currentFrom(raw: OmpWire.ModelInfo | null | undefined): ModelRef | null {
+  return raw ? { provider: raw.provider, modelId: raw.id } : null;
+}
+
+/**
+ * Stateful catalog model shared by the temporary picker and the full hub. It owns only browser
+ * presentation state; RPC, R0 and A1 remain injected authorities.
+ */
+export class ModelCatalogModel implements ModelCatalogPort {
+  private readonly source: ModelCatalogSource;
+  private readonly capabilities: ModelCapabilities;
+  private readonly mapping: ModelCatalogMappingOptions;
+  private readonly settings?: ModelSettingsPort;
+  private readonly listeners = new Set<(snapshot: ModelCatalogSnapshot) => void>();
+  private readonly recent: string[] = [];
+  private snapshot: ModelCatalogSnapshot;
+  private operation = 0;
+  private liveUnsubscribe: (() => void) | undefined;
+
+  public constructor(options: ModelCatalogModelOptions) {
+    this.source = options.source;
+    this.capabilities = initialCapabilities(options.capabilities);
+    this.mapping = options.mapping ?? {};
+    this.settings = options.settings;
+    this.snapshot = Object.freeze({
+      loadState: "idle",
+      models: [],
+      current: options.liveState?.getSnapshot().model ?? null,
+      capabilities: this.capabilities,
+      error: null,
+    });
+    if (options.liveState) {
+      this.liveUnsubscribe = options.liveState.subscribe((next) => {
+        this.commit({ current: next.model, error: null });
+      });
+    }
+  }
+
+  public getSnapshot(): ModelCatalogSnapshot {
+    return this.snapshot;
+  }
+
+  public subscribe(listener: (snapshot: ModelCatalogSnapshot) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  public getRecentKeys(): readonly string[] {
+    return [...this.recent];
+  }
+
+  public getSettingsPort(): ModelSettingsPort | undefined {
+    return this.settings;
+  }
+
+  public async refresh(options?: Pick<PortCallOptions, "signal">): Promise<ModelCatalogResult> {
+    const operation = ++this.operation;
+    this.commit({ loadState: "loading", error: null });
+    try {
+      const rawModels = await this.source.getAvailableModels(options);
+      if (operation !== this.operation) {
+        return {
+          models: [...this.snapshot.models],
+          current: this.snapshot.current,
+          capabilities: this.snapshot.capabilities,
+          revision: INITIAL_REVISION,
+        };
+      }
+      const models = rawModels.map((model) => toModelDescriptor(model, this.mapping));
+      this.commit({ loadState: "ready", models, error: null });
+      return {
+        models,
+        current: this.snapshot.current,
+        capabilities: this.snapshot.capabilities,
+        revision: INITIAL_REVISION,
+      };
+    } catch (error) {
+      const appFailure = failure(error, "Loading available models failed.");
+      if (operation === this.operation)
+        this.commit({ loadState: "error", error: appFailure.appError });
+      throw appFailure;
+    }
+  }
+
+  public async apply(
+    request: ModelApplyRequest,
+    options?: Pick<PortCallOptions, "signal">,
+  ): Promise<ModelApplyResult> {
+    const availability = modelScopeAvailability(request.scope, this.snapshot.capabilities);
+    if (availability.state === "unavailable") {
+      throw unavailable(availability.capability, availability.reason);
+    }
+    if (request.scope !== "session") {
+      throw new AppFailure({
+        code: "invalid_args",
+        message:
+          "Choose a role to save a model as the default; direct model changes are session-only.",
+        retryable: false,
+      });
+    }
+    try {
+      const selected = await this.source.setModel(request.model, options);
+      const current = currentFrom(selected);
+      this.recordRecent(current);
+      this.commit({ current, error: null });
+      return {
+        model: current ?? request.model,
+        scope: request.scope,
+        ...(request.thinkingLevel ? { thinkingLevel: request.thinkingLevel } : {}),
+        revision: INITIAL_REVISION,
+      };
+    } catch (error) {
+      const appFailure = failure(error, "Changing the session model failed.");
+      this.commit({ error: appFailure.appError });
+      throw appFailure;
+    }
+  }
+
+  public async cycle(options?: Pick<PortCallOptions, "signal">): Promise<ModelRef | null> {
+    const availability = modelScopeAvailability("session", this.snapshot.capabilities);
+    if (availability.state === "unavailable") {
+      throw unavailable(availability.capability, availability.reason);
+    }
+    if (!this.source.cycleModel) {
+      throw unavailable("omp.cmd.cycle_model", "Model cycling is unavailable.");
+    }
+    try {
+      const result = await this.source.cycleModel(options);
+      const current = currentFrom(result?.model);
+      if (current) this.recordRecent(current);
+      this.commit({ current, error: null });
+      return current;
+    } catch (error) {
+      const appFailure = failure(error, "Cycling the session model failed.");
+      this.commit({ error: appFailure.appError });
+      throw appFailure;
+    }
+  }
+
+  public dispose(): void {
+    this.liveUnsubscribe?.();
+    this.liveUnsubscribe = undefined;
+    this.listeners.clear();
+  }
+
+  private recordRecent(model: ModelRef | null): void {
+    if (!model) return;
+    const key = modelKey(model);
+    const next = [key, ...this.recent.filter((item) => item !== key)].slice(0, MAX_RECENT_MODELS);
+    this.recent.splice(0, this.recent.length, ...next);
+  }
+
+  private commit(patch: Partial<ModelCatalogSnapshot>): void {
+    this.snapshot = Object.freeze({ ...this.snapshot, ...patch });
+    for (const listener of this.listeners) listener(this.snapshot);
+  }
+}
+
+/** Real browser implementation over A0.8's typed RpcSession port. */
+export function createRpcModelCatalogSource(
+  client: AppClient,
+  threadId: ThreadId,
+): ModelCatalogSource {
+  const session = client.port(RpcSessionPort) as RpcSessionClient;
+  return {
+    getAvailableModels: async (options) => {
+      const result = await session.send(
+        { threadId, command: { type: "get_available_models" } },
+        options,
+      );
+      return (result as OmpWire.GetAvailableModelsResult).models;
+    },
+    setModel: async (model, options) =>
+      (await session.send(
+        {
+          threadId,
+          command: { type: "set_model", provider: model.provider, modelId: model.modelId },
+        },
+        options,
+      )) as OmpWire.ModelInfo,
+    cycleModel: async (options) =>
+      (await session.send(
+        { threadId, command: { type: "cycle_model" } },
+        options,
+      )) as OmpWire.ModelCycleResult | null,
+  };
+}
