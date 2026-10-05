@@ -1,5 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
+// Builders run e2e in parallel worktrees, so each run picks its own port (E2E_PORT) and never reuses
+// a server it did not start: a busy port fails loudly instead of testing someone else's build.
+const port = Number(process.env.E2E_PORT ?? 4173);
+const origin = `http://127.0.0.1:${port}`;
+
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
@@ -8,15 +13,15 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: origin,
     channel: "chrome",
     headless: true,
     trace: "on-first-retry",
   },
   webServer: {
-    command: "bun run preview --host 127.0.0.1 --port 4173",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+    command: `bun run preview --host 127.0.0.1 --port ${port} --strictPort`,
+    url: origin,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });
