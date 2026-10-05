@@ -1,0 +1,16 @@
+export {
+  DEFAULT_GIT_TIMEOUT_MS,
+  type GitBranchState,
+  type GitCommitState,
+  type GitFileKind,
+  type GitFileState,
+  type GitReadError,
+  type GitReadErrorCode,
+  type GitReadOptions,
+  type GitState,
+  type GitStatusSummary,
+  type GitWorktreeState,
+  readWorkspaceState,
+  type WorkspaceState,
+  type WorkspaceStateStatus,
+} from "./git";
