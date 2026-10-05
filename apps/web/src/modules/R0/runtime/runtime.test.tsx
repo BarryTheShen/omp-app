@@ -454,7 +454,8 @@ describe("R0.3 assistant-ui runtime", () => {
     const store = new OmpRuntimeStore({ threadId });
     const send: RpcSessionSend = async () => undefined as never;
     const result = renderHook(() => useOmpRuntime({ store, send, capabilities }));
-    expect(result.result.current).toBeDefined();
+    expect(result.result.current.runtime).toBeDefined();
+    expect(result.result.current.controller).toBeInstanceOf(Object);
     result.unmount();
   });
 

@@ -833,8 +833,13 @@ export function createOmpRuntime(options: OmpRuntimeOptions): OmpRuntimeControll
   return new OmpRuntimeController(options);
 }
 
+export interface OmpRuntime {
+  readonly runtime: AssistantRuntime;
+  readonly controller: OmpRuntimeController;
+}
+
 /** React hook that wires one OmpRuntimeStore to assistant-ui's ExternalStoreRuntime. */
-export function useOmpRuntime(options: OmpRuntimeOptions): AssistantRuntime {
+export function useOmpRuntime(options: OmpRuntimeOptions): OmpRuntime {
   const { capabilities, onRefetchThread, send, store } = options;
   const controller = useMemo(
     () =>
@@ -870,5 +875,6 @@ export function useOmpRuntime(options: OmpRuntimeOptions): AssistantRuntime {
     } = rawAdapter;
     return { ...base, messages: joinedMessages };
   }, [joinedMessages, rawAdapter]);
-  return useExternalStoreRuntime(adapter);
+  const runtime = useExternalStoreRuntime(adapter);
+  return { runtime, controller };
 }

@@ -169,7 +169,7 @@ function GateRuntime({
   readonly store: OmpRuntimeStore;
   readonly send: RpcSessionSend;
 }): ReactElement {
-  const runtime = useOmpRuntime({ store, send, capabilities });
+  const { runtime } = useOmpRuntime({ store, send, capabilities });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />

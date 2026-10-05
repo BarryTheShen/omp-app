@@ -4,14 +4,13 @@
  * and leaves descriptor/domain rendering to slots and U0's registry.
  */
 import {
-  AssistantRuntimeProvider,
   type EnrichedPartState,
   MessagePrimitive,
   type MessageState,
   type ThreadMessageLike,
   ThreadPrimitive,
 } from "@assistant-ui/react";
-import type { AppError, CapabilityMap, DescriptorId, RpcSessionSend } from "@omp-app/contracts";
+import type { AppError, DescriptorId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { type ReactNode, useState, useSyncExternalStore } from "react";
 import { File } from "@/components/assistant-ui/elements/file";
@@ -20,7 +19,6 @@ import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui";
 import { useDescriptor, useRenderer } from "@/registry-core";
-import { useOmpRuntime } from "../../R0/runtime";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
 
 const MESSAGE_DESCRIPTOR_BY_ROLE = {
@@ -38,9 +36,6 @@ export interface ThreadRowSlots {
 
 export interface ThreadShellProps {
   readonly store: OmpRuntimeStore;
-  readonly send: RpcSessionSend;
-  readonly capabilities?: CapabilityMap;
-  readonly onRefetchThread?: () => Promise<void>;
   readonly onRetry?: () => Promise<void> | void;
   readonly slots?: ThreadRowSlots;
 }
@@ -216,50 +211,38 @@ function MessageRow({ message, slots }: { message: MessageState; slots?: ThreadR
 }
 
 /**
- * Mounts R0.3's external-store runtime under assistant-ui and renders stable message rows. The
+ * Renders inside the caller's assistant-ui runtime provider and supplies stable message rows. The
  * composer is intentionally not included: U2 owns that surface and consumes this thread runtime.
  */
-export function ThreadShell({
-  store,
-  send,
-  capabilities,
-  onRefetchThread,
-  onRetry,
-  slots,
-}: ThreadShellProps) {
-  const runtime = useOmpRuntime({ store, send, capabilities, onRefetchThread });
+export function ThreadShell({ store, onRetry, slots }: ThreadShellProps) {
   const snapshot = useSyncExternalStore(
     (listener) => store.subscribe(listener),
     () => store.getSnapshot(),
     () => store.getSnapshot(),
   );
-  const retry = onRetry ?? onRefetchThread;
-
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <ThreadPrimitive.Root
-        className="aui-u1-thread bg-background flex h-full min-h-0 min-w-0 flex-col"
-        data-slot="u1-thread-root"
+    <ThreadPrimitive.Root
+      className="aui-u1-thread bg-background flex h-full min-h-0 min-w-0 flex-col"
+      data-slot="u1-thread-root"
+    >
+      <ThreadPrimitive.Viewport
+        data-slot="u1-thread-viewport"
+        className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
+        turnAnchor="top"
       >
-        <ThreadPrimitive.Viewport
-          data-slot="u1-thread-viewport"
-          className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
-          turnAnchor="top"
-        >
-          <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-1 flex-col">
-            <RuntimeStateSurface snapshot={snapshot} onRetry={retry} />
-            <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
-              <ThreadPrimitive.Messages>
-                {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
-              </ThreadPrimitive.Messages>
-            </div>
-            <ThreadPrimitive.ViewportFooter className="mt-auto min-h-8 shrink-0 border-t border-border bg-background px-6 py-2">
-              <RuntimeSettledStatus snapshot={snapshot} />
-            </ThreadPrimitive.ViewportFooter>
+        <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-1 flex-col">
+          <RuntimeStateSurface snapshot={snapshot} onRetry={onRetry} />
+          <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
+            <ThreadPrimitive.Messages>
+              {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
+            </ThreadPrimitive.Messages>
           </div>
-        </ThreadPrimitive.Viewport>
-      </ThreadPrimitive.Root>
-    </AssistantRuntimeProvider>
+          <ThreadPrimitive.ViewportFooter className="mt-auto min-h-8 shrink-0 border-t border-border bg-background px-6 py-2">
+            <RuntimeSettledStatus snapshot={snapshot} />
+          </ThreadPrimitive.ViewportFooter>
+        </div>
+      </ThreadPrimitive.Viewport>
+    </ThreadPrimitive.Root>
   );
 }
 

@@ -1,4 +1,4 @@
-import type { ThreadMessageLike } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import type {
   CapabilityMap,
   OmpMessage,
@@ -9,6 +9,7 @@ import type {
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createRegistry, RegistryProvider, registerRenderers } from "@/registry-core";
+import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
 import { U1MessageDescriptors } from "../../registry/messages";
 import type { ThreadShellProps } from "../../thread";
@@ -73,15 +74,30 @@ function assistant(
 function send(): RpcSessionSend {
   return async () => undefined as never;
 }
+const testSend = send();
 
 function readyStore(): OmpRuntimeStore {
   const store = new OmpRuntimeStore({ threadId });
   store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
   return store;
 }
+function RuntimeThread({
+  store,
+  props,
+}: {
+  readonly store: OmpRuntimeStore;
+  readonly props: Partial<ThreadShellProps>;
+}) {
+  const { runtime } = useOmpRuntime({ store, send: testSend, capabilities });
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <ThreadShell {...props} store={store} />
+    </AssistantRuntimeProvider>
+  );
+}
 
 function renderThread(store: OmpRuntimeStore, props: Partial<ThreadShellProps> = {}) {
-  return render(<ThreadShell capabilities={capabilities} send={send()} store={store} {...props} />);
+  return render(<RuntimeThread props={props} store={store} />);
 }
 
 describe("ThreadShell states", () => {
@@ -194,7 +210,7 @@ describe("descriptor and nested row slots", () => {
 
     render(
       <RegistryProvider capabilities={capabilities} registry={registry} renderers={renderers}>
-        <ThreadShell capabilities={capabilities} send={send()} store={store} />
+        <RuntimeThread props={{}} store={store} />
       </RegistryProvider>,
     );
     expect(document.querySelector('[data-slot="custom-assistant-row"]')?.textContent).toContain(

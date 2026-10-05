@@ -1,6 +1,8 @@
+import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import type { OmpMessage, RpcSessionEvent, RpcSessionSend, ThreadId } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
 import { FilePart, ImagePart, MessageParts, SourcePart } from "../../parts";
 import { ThreadShell } from "../../thread";
@@ -64,6 +66,22 @@ const assistantMessage = (
 function send(): RpcSessionSend {
   return async () => undefined as never;
 }
+const testSend = send();
+function RuntimeThread({ store }: { readonly store: OmpRuntimeStore }) {
+  const { runtime } = useOmpRuntime({
+    store,
+    send: testSend,
+    capabilities: assistantCapabilities,
+  });
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <ThreadShell
+        slots={{ renderMessage: (message) => <MessageParts message={message} /> }}
+        store={store}
+      />
+    </AssistantRuntimeProvider>
+  );
+}
 
 describe("U1.3 standalone parts", () => {
   test("renders safe image, file, and source boundaries", () => {
@@ -122,14 +140,7 @@ describe("U1.3 standalone parts", () => {
       },
       4,
     );
-    render(
-      <ThreadShell
-        capabilities={assistantCapabilities}
-        send={send()}
-        slots={{ renderMessage: (message) => <MessageParts message={message} /> }}
-        store={store}
-      />,
-    );
+    render(<RuntimeThread store={store} />);
 
     expect(document.querySelector('[data-message-surface="user-bubble"]')).toBeTruthy();
     expect(document.querySelector('[data-role="user"]')).toBeTruthy();

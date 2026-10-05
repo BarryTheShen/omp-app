@@ -1,7 +1,7 @@
 export type {
+  OmpRuntime,
   OmpRuntimeOptions,
   PromptDelivery,
-  PromptIntent,
   PromptMode,
   RuntimeMessageView,
   RuntimeToolStateReference,

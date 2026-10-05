@@ -1,3 +1,4 @@
+import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import type {
   CapabilityMap,
   Fixture,
@@ -10,6 +11,7 @@ import { createRoot } from "react-dom/client";
 import { AppShell } from "@/shell";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures/fixture-session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
+import { useOmpRuntime } from "../../R0/runtime";
 import { OmpRuntimeStore } from "../../R0/store";
 import { MarkdownShowcase } from "../markdown";
 import { MessageParts } from "../parts";
@@ -123,11 +125,12 @@ function ThreadPlayground() {
     };
   }, [fixture, store]);
 
-  const send: RpcSessionSend = async (args, options) => {
+  const send = useCallback<RpcSessionSend>(async (args, options) => {
     const session = sessionRef.current;
     if (session === undefined) throw new Error("Fixture session is not ready");
     return (await session.send(args.command, options)) as never;
-  };
+  }, []);
+  const { runtime } = useOmpRuntime({ store, send, capabilities: CAPABILITIES });
 
   const playFixture = useCallback(() => {
     const session = sessionRef.current;
@@ -164,39 +167,39 @@ function ThreadPlayground() {
   }
 
   return (
-    <AppShell
-      leftSidebar={
-        <div className="flex flex-1 items-center justify-center p-4 text-center text-xs text-sidebar-foreground">
-          Fixture-backed transcript
-        </div>
-      }
-      rightSidebar={
-        <div className="flex flex-1 items-center justify-center p-4 text-center text-xs text-sidebar-foreground">
-          Thread row slots
-        </div>
-      }
-      threadHeader={
-        <Controls
-          mode={mode}
-          onError={showError}
-          onMarkdown={showRichMarkdown}
-          onPlay={playFixture}
-        />
-      }
-      transcript={
-        <div className="h-full min-h-0 overflow-hidden">
-          <ThreadShell
-            capabilities={CAPABILITIES}
-            send={send}
-            slots={{
-              renderMessage: (message) => <MessageParts message={message} />,
-            }}
-            store={store}
+    <AssistantRuntimeProvider runtime={runtime}>
+      <AppShell
+        leftSidebar={
+          <div className="flex flex-1 items-center justify-center p-4 text-center text-xs text-sidebar-foreground">
+            Fixture-backed transcript
+          </div>
+        }
+        rightSidebar={
+          <div className="flex flex-1 items-center justify-center p-4 text-center text-xs text-sidebar-foreground">
+            Thread row slots
+          </div>
+        }
+        threadHeader={
+          <Controls
+            mode={mode}
+            onError={showError}
+            onMarkdown={showRichMarkdown}
+            onPlay={playFixture}
           />
-          {showMarkdown && <MarkdownShowcase />}
-        </div>
-      }
-    />
+        }
+        transcript={
+          <div className="h-full min-h-0 overflow-hidden">
+            <ThreadShell
+              slots={{
+                renderMessage: (message) => <MessageParts message={message} />,
+              }}
+              store={store}
+            />
+            {showMarkdown && <MarkdownShowcase />}
+          </div>
+        }
+      />
+    </AssistantRuntimeProvider>
   );
 }
 
