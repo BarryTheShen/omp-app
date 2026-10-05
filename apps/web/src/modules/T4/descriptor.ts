@@ -1,5 +1,6 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
+import { BrowserToolCard } from "./browser";
 import type { ReadUrlRenderer, ReadUrlRendererProps } from "./models";
 
 /** T4 owns the browser/GitHub/search descriptors; T1 owns read and its URL dispatch claim. */
@@ -12,7 +13,7 @@ export const T4_TOOL_DESCRIPTORS = [
     covers: ["T4.browser"],
     requires: [],
     match: { by: "name", name: "browser" },
-    renderer: ToolFallback,
+    renderer: BrowserToolCard,
   },
   {
     kind: "tool",
