@@ -7,6 +7,7 @@ import {
   compareAndSwapFile,
   ensureAppDataDir,
   hashContent,
+  mayConcernFile,
   NO_FILE,
   readFileSnapshot,
   resolveAppDataDir,
@@ -216,5 +217,16 @@ describe("file watching", () => {
     expect(events).toEqual([hashContent("appeared")]);
     expect(errors).toEqual([]);
     watcher.dispose();
+  });
+});
+
+describe("watch event filtering", () => {
+  test("an event without a filename may concern the file; another file's event does not", () => {
+    // Bun's fs.watch can report no filename at all; that once crashed the server.
+    expect(mayConcernFile(undefined, "config.yml")).toBe(true);
+    expect(mayConcernFile(null, "config.yml")).toBe(true);
+    expect(mayConcernFile("config.yml", "config.yml")).toBe(true);
+    expect(mayConcernFile(Buffer.from("config.yml"), "config.yml")).toBe(true);
+    expect(mayConcernFile("other.yml", "config.yml")).toBe(false);
   });
 });
