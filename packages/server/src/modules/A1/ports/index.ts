@@ -34,3 +34,4 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
 
 export * from "./context";
 export * from "./helper";
+export { createRuleStoreRegistration } from "./rule-store";

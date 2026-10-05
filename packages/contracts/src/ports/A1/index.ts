@@ -7,6 +7,7 @@ export * from "./host-metadata";
 export * from "./omp-command-gateway";
 export * from "./plan-documents";
 export * from "./provider-accounts";
+export * from "./rule-store";
 export * from "./session-file-store";
 export * from "./session-pin-store";
 export * from "./shared";
