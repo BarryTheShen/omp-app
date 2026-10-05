@@ -4,20 +4,50 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Icons } from "@/tokens";
 import type { TodoModel, TodoPhaseModel, TodoTaskModel } from "../model";
 
-interface StatusPresentation {
+export interface TodoTaskStatusPresentation {
   readonly label: string;
   readonly icon?: typeof Icons.check;
   readonly glyph?: "pending";
   readonly className: string;
 }
 
-const STATUS_PRESENTATION: Record<TodoTaskModel["status"], StatusPresentation> = {
+export const TODO_TASK_STATUS_PRESENTATION: Record<
+  TodoTaskModel["status"],
+  TodoTaskStatusPresentation
+> = {
   pending: { label: "Pending", glyph: "pending", className: "text-muted-foreground" },
   in_progress: { label: "In progress", icon: Icons.loading, className: "text-info" },
   completed: { label: "Done", icon: Icons.check, className: "text-success" },
   abandoned: { label: "Cancelled", icon: Icons.close, className: "text-muted-foreground" },
   blocked: { label: "Blocked", icon: Icons.warning, className: "text-warning" },
 };
+
+export interface TodoTaskStatusIconProps {
+  readonly status: TodoTaskModel["status"];
+  readonly className?: string;
+  readonly testId?: string;
+}
+
+export function TodoTaskStatusIcon({ status, className, testId }: TodoTaskStatusIconProps) {
+  const presentation = TODO_TASK_STATUS_PRESENTATION[status];
+  const Icon = presentation.icon;
+  const iconClassName = cn(
+    "mt-0.5 size-4 shrink-0",
+    presentation.className,
+    status === "in_progress" && "animate-spin motion-reduce:animate-none",
+    className,
+  );
+  if (presentation.glyph === "pending") {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn("rounded-full border-2 border-current", iconClassName)}
+        data-testid={testId}
+      />
+    );
+  }
+  return Icon ? <Icon aria-hidden="true" className={iconClassName} data-testid={testId} /> : null;
+}
 
 export interface TodoChecklistProps {
   readonly model: TodoModel;
@@ -122,13 +152,7 @@ function TodoTaskRow({
   readonly current: boolean;
   readonly task: TodoTaskModel;
 }) {
-  const presentation = STATUS_PRESENTATION[task.status];
-  const Icon = presentation.icon;
-  const iconClassName = cn(
-    "mt-0.5 size-4 shrink-0",
-    presentation.className,
-    task.status === "in_progress" && "animate-spin motion-reduce:animate-none",
-  );
+  const presentation = TODO_TASK_STATUS_PRESENTATION[task.status];
   return (
     <li
       aria-current={current ? "step" : undefined}
@@ -141,21 +165,7 @@ function TodoTaskRow({
       data-task-id={task.id}
     >
       <div className="flex min-w-0 items-start gap-2">
-        {presentation.glyph === "pending" ? (
-          <span
-            aria-hidden="true"
-            className={cn("mt-0.5 rounded-full border-2 border-current", iconClassName)}
-            data-testid={`todo-status-${task.id}`}
-          />
-        ) : (
-          Icon && (
-            <Icon
-              aria-hidden="true"
-              className={iconClassName}
-              data-testid={`todo-status-${task.id}`}
-            />
-          )
-        )}
+        <TodoTaskStatusIcon status={task.status} testId={`todo-status-${task.id}`} />
         <div className="min-w-0 flex-1">
           <p className="break-words text-foreground">{task.content}</p>
           <span className="sr-only">{presentation.label}</span>
