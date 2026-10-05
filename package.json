@@ -7,6 +7,8 @@
     "apps/*"
   ],
   "scripts": {
+    "build": "bun run --cwd apps/web build",
+    "dev": "bun run build && bun packages/server/scripts/dev.ts",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
     "lint": "biome check .",
