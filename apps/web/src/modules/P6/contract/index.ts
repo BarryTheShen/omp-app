@@ -1,6 +1,8 @@
 export type {
+  InterruptMode,
   QueueItemReference,
   QueueLane,
+  QueueMode,
   QueueModeChanges,
   QueueMutationResult,
   QueuePort,
