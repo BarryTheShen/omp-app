@@ -65,8 +65,9 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   await page.goto("/thread-playground.html");
   await expect(page.getByTestId("thread-fixture-controls")).toBeVisible();
   await expect(page.getByText("No messages yet.")).toBeVisible();
-  await page.screenshot({ path: "../../.data/screenshots/u1-2-empty-light.png", fullPage: true });
+  await page.screenshot({ path: "../../.data/screenshots/u1-3-empty-light.png", fullPage: false });
   await page.locator("html").evaluate((element) => element.classList.add("dark"));
+  await page.screenshot({ path: "../../.data/screenshots/u1-3-empty-dark.png", fullPage: false });
   await page.locator("html").evaluate((element) => element.classList.remove("dark"));
 
   await page.getByTestId("thread-play-fixture").click();
@@ -75,20 +76,43 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
     throw new Error(`Thread playground errors: ${[...pageErrors, ...consoleErrors].join("; ")}`);
   }
   await page.screenshot({
-    path: "../../.data/screenshots/u1-2-streaming-light.png",
-    fullPage: true,
+    path: "../../.data/screenshots/u1-3-streaming-light.png",
+    fullPage: false,
   });
 
   await expect(page.getByRole("status")).toContainText("Conversation settled", { timeout: 30_000 });
-  await expect(page.getByText("tool said: fixture-tool")).toBeVisible({ timeout: 30_000 });
-  await page.screenshot({ path: "../../.data/screenshots/u1-2-settled-light.png", fullPage: true });
+  await expect(page.locator('[data-slot="u1-tool-slot"]')).toHaveCount(1);
+  const userBubble = page.locator('[data-message-surface="user-bubble"]').first();
+  await expect(userBubble).toBeVisible();
+  await expect(page.locator('[data-part-type="image"]')).toHaveCount(1);
+  const userBubbleBackground = await userBubble.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  expect(userBubbleBackground).not.toBe("rgba(0, 0, 0, 0)");
+  const composerDock = page.locator('[data-shell-region="composer"]');
+  await expect(composerDock).toBeVisible();
+  await expect(page.locator('[data-shell-region="status"]')).toBeInViewport();
+  const transcript = page.locator('[data-shell-region="transcript"]');
+  const imagePart = page.locator('[data-part-type="image"]').first();
+  await imagePart.scrollIntoViewIfNeeded();
+  await expect(imagePart).toBeInViewport();
+  await page.screenshot({
+    path: "../../.data/screenshots/u1-3-conversation-light.png",
+    fullPage: false,
+  });
+  await transcript.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect(composerDock).toBeInViewport();
+  await page.screenshot({
+    path: "../../.data/screenshots/u1-3-settled-light.png",
+    fullPage: false,
+  });
 
   await page.getByTestId("thread-show-error").click();
   await expect(page.getByRole("alert")).toContainText("unavailable", { timeout: 5_000 });
-  await page.screenshot({ path: "../../.data/screenshots/u1-2-error-light.png", fullPage: true });
+  await page.screenshot({ path: "../../.data/screenshots/u1-3-error-light.png", fullPage: false });
 
   await page.reload();
   await expect(page.getByText("No messages yet.")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "../../.data/screenshots/u1-2-empty-narrow.png", fullPage: true });
+  await page.screenshot({ path: "../../.data/screenshots/u1-3-empty-narrow.png", fullPage: false });
 });

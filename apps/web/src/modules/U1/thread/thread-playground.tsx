@@ -1,10 +1,17 @@
-import type { CapabilityMap, Fixture, RpcSessionSend, ThreadId } from "@omp-app/contracts";
+import type {
+  CapabilityMap,
+  Fixture,
+  OmpMessage,
+  RpcSessionSend,
+  ThreadId,
+} from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AppShell } from "@/shell";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures/fixture-session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
 import { OmpRuntimeStore } from "../../R0/store";
+import { MessageParts } from "../parts";
 import { ThreadShell } from "./thread";
 
 const THREAD_ID = "u1-playground" as ThreadId;
@@ -15,8 +22,22 @@ const CAPABILITIES: CapabilityMap = {
   "omp.cmd.bash": { state: "available", via: "rpc" },
 };
 
+const IMAGE_DATA =
+  typeof btoa === "function"
+    ? btoa(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120"><rect width="320" height="120" fill="lightblue"/><text x="16" y="68" font-size="28" fill="darkslategray">U1 image part</text></svg>',
+      )
+    : "";
+const IMAGE_USER_MESSAGE: OmpMessage = {
+  role: "user",
+  content: [
+    { type: "text", text: "what is in this picture?" },
+    { type: "image", data: IMAGE_DATA, mimeType: "image/svg+xml" },
+  ],
+  attribution: "user",
+  timestamp: 1_759_600_000_500,
+} as OmpMessage;
 type PlaygroundMode = "empty" | "streaming" | "settled" | "error";
-
 function Controls({
   mode,
   onPlay,
@@ -53,6 +74,7 @@ function ThreadPlayground() {
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [mode, setMode] = useState<PlaygroundMode>("empty");
   const store = useMemo(() => new OmpRuntimeStore({ threadId: THREAD_ID }), []);
+  const sequenceRef = useRef(0);
   const sessionRef = useRef<RpcSession | undefined>(undefined);
 
   useEffect(() => {
@@ -77,8 +99,7 @@ function ThreadPlayground() {
     if (fixture === undefined) return;
     const duplex = new FixtureSession({ fixture, realtime: true });
     const session = new RpcSession(duplex);
-    let sequence = 0;
-    const unsubscribe = session.onEvent((event) => store.ingest(event, ++sequence));
+    const unsubscribe = session.onEvent((event) => store.ingest(event, ++sequenceRef.current));
     sessionRef.current = session;
     void session.start().catch((error: unknown) => {
       setLoadError(error instanceof Error ? error.message : "Fixture session failed to start");
@@ -99,12 +120,25 @@ function ThreadPlayground() {
   const playFixture = useCallback(() => {
     const session = sessionRef.current;
     if (session === undefined || mode === "streaming" || mode === "settled") return;
-    setMode("streaming");
+    store.ingest(
+      {
+        kind: "omp",
+        event: { type: "message_start", messageId: "msg-image", message: IMAGE_USER_MESSAGE },
+      },
+      ++sequenceRef.current,
+    );
+    store.ingest(
+      {
+        kind: "omp",
+        event: { type: "message_end", messageId: "msg-image", message: IMAGE_USER_MESSAGE },
+      },
+      ++sequenceRef.current,
+    );
     void session.send({ type: "prompt", message: "run_bash" }).then(
       () => setMode("settled"),
       () => setMode("error"),
     );
-  }, [mode]);
+  }, [mode, store]);
 
   const showError = useCallback(() => {
     setMode("error");
@@ -131,12 +165,16 @@ function ThreadPlayground() {
       }
       threadHeader={<Controls mode={mode} onError={showError} onPlay={playFixture} />}
       transcript={
-        <ThreadShell
-          capabilities={CAPABILITIES}
-          onRetry={() => store.setTodos([]).then(() => undefined)}
-          send={send}
-          store={store}
-        />
+        <div className="h-full min-h-0 overflow-hidden">
+          <ThreadShell
+            capabilities={CAPABILITIES}
+            send={send}
+            slots={{
+              renderMessage: (message) => <MessageParts message={message} />,
+            }}
+            store={store}
+          />
+        </div>
       }
     />
   );
