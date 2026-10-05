@@ -2,7 +2,13 @@
  * The public hooks every module uses to read the registry: lookups by kind and by id, renderer
  * lookup with a visible fallback, and capability-gating helpers.
  */
-import type { CapabilityKey, CapabilityMap, Descriptor, DescriptorId } from "@omp-app/contracts";
+import type {
+  CapabilityKey,
+  CapabilityMap,
+  CapabilityStatus,
+  Descriptor,
+  DescriptorId,
+} from "@omp-app/contracts";
 import { useRegistryContext } from "./context";
 import { MissingRendererFallback } from "./renderers";
 import type { DescriptorKind, DescriptorOfKind, DescriptorRenderer } from "./types";
@@ -50,6 +56,29 @@ export function useCapability(key: CapabilityKey): boolean {
 /** The whole live capability map, for gating more than one descriptor at a time (for example a list filter). */
 export function useCapabilities(): CapabilityMap {
   return useRegistryContext().capabilities;
+}
+
+/** Why an `upstream.*` capability the server did not report is unavailable (C0 capabilities.ts: AP6). */
+export const UPSTREAM_UNAVAILABLE: CapabilityStatus = Object.freeze({
+  state: "unavailable",
+  via: "upstream",
+  detail: "Needs a newer omp: this feature waits for a new omp RPC.",
+});
+
+/**
+ * The status to show for one capability: the server's report, or for an unreported `upstream.*` key
+ * the standing upstream reason; `undefined` means unknown (treated as unavailable).
+ */
+export function capabilityStatus(
+  capabilities: CapabilityMap,
+  key: CapabilityKey,
+): CapabilityStatus | undefined {
+  return capabilities[key] ?? (key.startsWith("upstream.") ? UPSTREAM_UNAVAILABLE : undefined);
+}
+
+/** The status of one capability, with its `detail`, for showing why a control is disabled. */
+export function useCapabilityStatus(key: CapabilityKey): CapabilityStatus | undefined {
+  return capabilityStatus(useRegistryContext().capabilities, key);
 }
 
 /** A descriptor is available when every capability it `requires` is usable (available or fallback). */

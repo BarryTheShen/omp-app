@@ -9,9 +9,12 @@ export type { RegistryContextValue, RegistryProviderProps } from "./context";
 export { RegistryProvider } from "./context";
 export { createRegistry } from "./create-registry";
 export {
+  capabilityStatus,
   isDescriptorAvailable,
+  UPSTREAM_UNAVAILABLE,
   useCapabilities,
   useCapability,
+  useCapabilityStatus,
   useDescriptor,
   useDescriptors,
   useIsDescriptorAvailable,
