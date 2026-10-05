@@ -36,11 +36,12 @@ test("GitHub references handler routes typed calls through Dispatcher", async ()
     search: async () => ({ candidates: [], truncated: false }),
     currentPullRequest: async () => ({ pullRequest: null }),
   };
-  const context = { publish: replay.publish.bind(replay) } as Pick<
-    A1PortContext,
-    "publish" | "watchStreamActivity"
-  >;
-  const registration = createGithubRefsRegistration(service as never, context);
+  const context = {
+    githubRefs: service,
+    publish: replay.publish.bind(replay),
+    watchStreamActivity: () => () => undefined,
+  } as unknown as A1PortContext;
+  const registration = createGithubRefsRegistration(context);
   const dispatcher = new Dispatcher({
     registry: createPortRegistry([registration]),
     replay,

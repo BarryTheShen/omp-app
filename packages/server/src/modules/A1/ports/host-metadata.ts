@@ -14,5 +14,7 @@ export function createHostMetadataRegistration(context: A1PortContext): PortRegi
       },
     },
     context.publish,
+    [],
+    context.watchStreamActivity,
   );
 }

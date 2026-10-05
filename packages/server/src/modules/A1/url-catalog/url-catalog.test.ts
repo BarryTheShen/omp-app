@@ -96,10 +96,11 @@ describe("createUrlCatalog", () => {
 
   test("registers list and refresh through A1.9's helper", () => {
     const catalog = createUrlCatalog();
-    const registration = createUrlCatalogRegistration(
-      { publish: () => undefined } as unknown as A1PortContext,
-      catalog,
-    );
+    const registration = createUrlCatalogRegistration({
+      urlCatalog: catalog,
+      publish: () => undefined,
+      watchStreamActivity: () => () => undefined,
+    } as unknown as A1PortContext);
 
     expect(registration.port).toBe(UrlCatalogPort);
     expect(Object.keys(registration.handlers)).toEqual(["list", "refresh"]);

@@ -6,10 +6,27 @@ import {
   type AbortSignalLike,
   AppFailure,
   CapabilityMap,
+  CheckpointStore,
+  ConfigStore,
+  DraftStore,
+  ExtensionCatalog,
+  FileSearchPort,
   FolderPath,
+  GithubRefsPort,
+  GitStatePort,
+  HostMetadataPort,
+  MemoryStore,
+  OmpCommandGateway,
+  PlanDocumentStore,
+  ProviderAccountStore,
+  RuleStore,
+  SessionFileStore,
+  SessionPinStore,
   serializeFrame,
   streamKey,
   ThreadId,
+  UrlCatalogPort,
+  WorkspaceStatePort,
 } from "@omp-app/contracts";
 import { Dispatcher, type DispatcherSocket } from "../../../dispatcher";
 import { createPortRegistry } from "../../../registry/ports";
@@ -220,9 +237,47 @@ function createContext(
       reload: async () => ({ revision: "revision-2", extensions: [], commands: [] }),
       subscribe: () => () => undefined,
     },
+    memoryStore: {
+      list: async () => ({
+        parsed: true,
+        rawText: "",
+        entries: [],
+        nextCursor: null,
+        revision: "revision-1",
+      }),
+      get: async () => ({ entry: null }),
+      write: async () => ({ entry: null, revision: "revision-1", previousRevision: "revision-0" }),
+      delete: async () => ({ revision: "revision-1" }),
+      clear: async () => ({ revision: "revision-1", deletedCount: 0 }),
+      subscribe: () => () => undefined,
+    },
+    ruleStore: {
+      list: async () => ({ rules: [], revision: "revision-1" }),
+      read: async () => undefined,
+      write: async () => undefined,
+      delete: async () => ({ deleted: true, revision: "revision-1" }),
+      subscribe: () => () => undefined,
+    },
+    githubRefs: {
+      search: async () => ({ candidates: [], truncated: false }),
+      currentPullRequest: async () => ({ pullRequest: null }),
+    },
+    urlCatalog: {
+      list: async () => ({ resources: [], revision: "revision-1" }),
+      refresh: async () => ({ resources: [], revision: "revision-1" }),
+      subscribe: () => () => undefined,
+    },
+    planDocumentStore: {
+      load: async () => ({ document: null, revisions: [] }),
+      save: async () => undefined,
+      export: async () => ({ markdown: "", revision: 0 }),
+      subscribe: () => () => undefined,
+    },
     readWorkspaceState: async () => ({ path: "/workspace", status: "ready", git: null }),
     searchWorkspaceFiles: async () => ({ results: [], truncated: false }),
     readHostMetadata: async () => ({ hostname: "host", displayPath: "~/code" }),
+    publish: () => undefined,
+    watchStreamActivity: () => () => undefined,
   };
   return context as unknown as A1PortContext;
 }
@@ -235,6 +290,7 @@ function createDispatcher(context: A1PortContext): {
   const registrations = createA1PortRegistrations({
     ...context,
     publish: (stream, payload) => replay.publish(stream, payload),
+    watchStreamActivity: (prefix, listener) => replay.registerStreamActivity(prefix, listener),
   });
   return {
     dispatcher: new Dispatcher({
@@ -283,11 +339,45 @@ describe("A1.9 port registrations", () => {
       ["A1.extensionCatalog", "list", { folder: null }],
       ["A1.fileSearch", "search", { folder: "/workspace", query: "" }],
       ["A1.hostMetadata", "read", { folder: "/workspace" }],
+      ["A1.memoryStore", "list", { scope: "global", folder: null }],
+      ["A1.planDocumentStore", "load", { threadId: "session-1" }],
+      ["A1.ruleStore", "list", { scope: "global", folder: null }],
+      ["A1.githubRefs", "search", { folder: "/workspace", query: "test", kind: "issue", limit: 5 }],
+      ["A1.urlCatalog", "list", { query: "", limit: 10 }],
     ];
     for (const [index, [port, method, args]] of calls.entries()) {
       const result = await call(session, socket, `call-${index}`, port, method, args);
+      if (!result.ok) throw new Error(`${port}.${method}: ${JSON.stringify(result.error)}`);
       expect(result.ok).toBe(true);
     }
+  });
+  test("registers each A1 port exactly once", () => {
+    const names = createA1PortRegistrations(createContext())
+      .map((registration) => registration.port.name)
+      .sort();
+    const expected = [
+      CheckpointStore,
+      ConfigStore,
+      DraftStore,
+      ExtensionCatalog,
+      FileSearchPort,
+      GithubRefsPort,
+      GitStatePort,
+      HostMetadataPort,
+      MemoryStore,
+      OmpCommandGateway,
+      PlanDocumentStore,
+      ProviderAccountStore,
+      RuleStore,
+      SessionFileStore,
+      SessionPinStore,
+      WorkspaceStatePort,
+      UrlCatalogPort,
+    ]
+      .map((port) => port.name)
+      .sort();
+    expect(names).toEqual(expected);
+    expect(new Set(names).size).toBe(names.length);
   });
   test("routes checkpoint snapshot calls through its handler", async () => {
     const workspace = join(process.cwd(), ".data", `a1-checkpoint-port-${crypto.randomUUID()}`);

@@ -40,5 +40,6 @@ export function createCheckpointStoreRegistration(context: A1PortContext): PortR
     },
     context.publish,
     bindings,
+    context.watchStreamActivity,
   );
 }

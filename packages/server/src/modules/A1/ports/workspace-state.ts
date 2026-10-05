@@ -87,6 +87,8 @@ export function createWorkspaceStateRegistration(context: A1PortContext): PortRe
       },
     },
     context.publish,
+    [],
+    context.watchStreamActivity,
   );
 }
 
@@ -102,5 +104,7 @@ export function createGitStateRegistration(context: A1PortContext): PortRegistra
       },
     },
     context.publish,
+    [],
+    context.watchStreamActivity,
   );
 }

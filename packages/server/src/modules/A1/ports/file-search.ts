@@ -14,5 +14,7 @@ export function createFileSearchRegistration(context: A1PortContext): PortRegist
         }),
     },
     context.publish,
+    [],
+    context.watchStreamActivity,
   );
 }

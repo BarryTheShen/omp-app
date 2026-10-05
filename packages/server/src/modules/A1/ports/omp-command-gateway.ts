@@ -20,5 +20,6 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
     },
     context.publish,
     bindings,
+    context.watchStreamActivity,
   );
 }

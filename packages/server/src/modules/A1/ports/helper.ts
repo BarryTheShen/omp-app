@@ -28,12 +28,10 @@ export interface A1EventBinding {
 export function createA1PortRegistration<P extends Port>(
   port: P,
   handlers: PortHandlers<P, PortHandlerContext>,
-  publish: A1EventPublisher | undefined,
+  publish: A1EventPublisher,
   bindings: readonly A1EventBinding[] = [],
-  watchActivity: A1StreamActivity | undefined = undefined,
+  watchActivity: A1StreamActivity,
 ): PortRegistration {
-  if (!publish)
-    return { port, handlers: handlers as unknown as Readonly<Record<string, PortHandler>> };
   for (const binding of bindings) {
     if (binding.subscribe) {
       binding.subscribe((payload) => {
@@ -42,7 +40,7 @@ export function createA1PortRegistration<P extends Port>(
       });
       continue;
     }
-    if (!binding.subscribeScoped || !watchActivity) continue;
+    if (!binding.subscribeScoped) continue;
     const prefix = `${port.name}/${binding.event}/`;
     const active = new Map<string, () => void>();
     watchActivity(prefix, (stream, isActive) => {

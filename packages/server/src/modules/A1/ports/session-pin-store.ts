@@ -26,5 +26,6 @@ export function createSessionPinStoreRegistration(context: A1PortContext): PortR
     },
     context.publish,
     bindings,
+    context.watchStreamActivity,
   );
 }

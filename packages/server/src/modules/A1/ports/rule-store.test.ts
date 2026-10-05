@@ -70,14 +70,15 @@ describe("A1.15 RuleStore handler", () => {
       },
     };
     const context = {
+      ruleStore,
       publish: (stream: Parameters<EventReplayHub["publish"]>[0], payload: unknown) =>
         replay.publish(stream, payload),
       watchStreamActivity: (
         prefix: string,
         listener: Parameters<EventReplayHub["registerStreamActivity"]>[1],
       ) => replay.registerStreamActivity(prefix, listener),
-    } as Pick<A1PortContext, "publish" | "watchStreamActivity">;
-    const registration = createRuleStoreRegistration(ruleStore as never, context);
+    } as unknown as A1PortContext;
+    const registration = createRuleStoreRegistration(context);
     const dispatcher = new Dispatcher({
       registry: createPortRegistry([registration]),
       replay,

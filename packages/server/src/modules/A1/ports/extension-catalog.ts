@@ -28,5 +28,6 @@ export function createExtensionCatalogRegistration(context: A1PortContext): Port
     },
     context.publish,
     bindings,
+    context.watchStreamActivity,
   );
 }

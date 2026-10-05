@@ -74,5 +74,7 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
       },
     },
     context.publish,
+    [],
+    context.watchStreamActivity,
   );
 }

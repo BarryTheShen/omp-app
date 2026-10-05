@@ -29,5 +29,7 @@ export function createProviderAccountStoreRegistration(context: A1PortContext): 
       },
     },
     context.publish,
+    [],
+    context.watchStreamActivity,
   );
 }

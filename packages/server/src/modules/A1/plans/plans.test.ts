@@ -77,10 +77,11 @@ describe("createPlanDocumentStore", () => {
     expect(changes).toEqual(["thread-history:1", "thread-history:2", "thread-history:3"]);
   });
   test("exposes the plan port through A1.9's registration helper", () => {
-    const registration = createPlanDocumentRegistration(
-      { publish: () => undefined } as unknown as A1PortContext,
-      createPlanDocumentStore({ appDataDir: join(dataRoot, "handler-data") }),
-    );
+    const registration = createPlanDocumentRegistration({
+      planDocumentStore: createPlanDocumentStore({ appDataDir: join(dataRoot, "handler-data") }),
+      publish: () => undefined,
+      watchStreamActivity: () => () => undefined,
+    } as unknown as A1PortContext);
 
     expect(registration.port).toBe(PlanDocumentStore);
     expect(Object.keys(registration.handlers)).toEqual(["load", "save", "export"]);

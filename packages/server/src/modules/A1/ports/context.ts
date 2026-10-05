@@ -6,9 +6,14 @@ import type { ExtensionCatalogService } from "../extensions";
 import type { searchWorkspaceFiles } from "../file-search";
 import type { OmpCommandGatewayService } from "../gateway";
 import type { readWorkspaceState } from "../git";
+import type { GithubRefsService } from "../github-refs";
 import type { readHostMetadata } from "../host";
+import type { MemoryStoreService } from "../memory";
 import type { SessionPinStoreService } from "../pins";
+import type { PlanDocumentStoreService } from "../plans";
+import type { RuleStoreService } from "../rules";
 import type { SessionFileStore } from "../sessions";
+import type { UrlCatalogService } from "../url-catalog";
 import type { A1EventPublisher, A1StreamActivity } from "./helper";
 /** Stores and host seams composed by the main server; A1 handlers never create parallel stores. */
 export interface A1PortContext {
@@ -20,9 +25,14 @@ export interface A1PortContext {
   readonly sessionPinStore: SessionPinStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;
   readonly extensionCatalog: ExtensionCatalogService;
+  readonly memoryStore: MemoryStoreService;
+  readonly ruleStore: RuleStoreService;
+  readonly githubRefs: GithubRefsService;
+  readonly urlCatalog: UrlCatalogService;
+  readonly planDocumentStore: PlanDocumentStoreService;
   readonly readWorkspaceState?: typeof readWorkspaceState;
   readonly searchWorkspaceFiles?: typeof searchWorkspaceFiles;
   readonly readHostMetadata?: typeof readHostMetadata;
-  readonly watchStreamActivity?: A1StreamActivity;
-  readonly publish?: A1EventPublisher;
+  readonly watchStreamActivity: A1StreamActivity;
+  readonly publish: A1EventPublisher;
 }

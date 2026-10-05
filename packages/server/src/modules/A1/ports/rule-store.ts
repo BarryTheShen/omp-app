@@ -1,6 +1,6 @@
 import { RuleStore } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
-import type { RuleChangeListener, RuleStoreService } from "../rules";
+import type { RuleChangeListener } from "../rules";
 import type { A1PortContext } from "./context";
 import { assertNotAborted, createA1PortRegistration } from "./helper";
 
@@ -14,17 +14,14 @@ function decodeScope(
   return null;
 }
 
-export function createRuleStoreRegistration(
-  ruleStore: RuleStoreService,
-  context: Pick<A1PortContext, "publish" | "watchStreamActivity">,
-): PortRegistration {
+export function createRuleStoreRegistration(context: A1PortContext): PortRegistration {
   const bindings = [
     {
       event: "changed",
       subscribeScoped: (scope: string, listener: (payload: unknown) => void) => {
         const decoded = decodeScope(scope);
         return decoded
-          ? ruleStore.subscribe(decoded, listener as RuleChangeListener)
+          ? context.ruleStore.subscribe(decoded, listener as RuleChangeListener)
           : () => undefined;
       },
     },
@@ -34,19 +31,19 @@ export function createRuleStoreRegistration(
     {
       list: async (args, handlerContext) => {
         assertNotAborted(handlerContext);
-        return ruleStore.list(args);
+        return context.ruleStore.list(args);
       },
       read: async (args, handlerContext) => {
         assertNotAborted(handlerContext);
-        return ruleStore.read(args);
+        return context.ruleStore.read(args);
       },
       write: async (args, handlerContext) => {
         assertNotAborted(handlerContext);
-        return ruleStore.write(args);
+        return context.ruleStore.write(args);
       },
       delete: async (args, handlerContext) => {
         assertNotAborted(handlerContext);
-        return ruleStore.delete(args);
+        return context.ruleStore.delete(args);
       },
     },
     context.publish,
