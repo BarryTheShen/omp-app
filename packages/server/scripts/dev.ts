@@ -26,6 +26,7 @@ import { createSessionPinStore } from "../src/modules/A1/pins";
 import { createPlanDocumentStore } from "../src/modules/A1/plans";
 import { type A1PortContext, createA1PortRegistrations } from "../src/modules/A1/ports";
 import { createRuleStore } from "../src/modules/A1/rules";
+import { createSessionImportStore } from "../src/modules/A1/session-import";
 import { createSessionFileStore } from "../src/modules/A1/sessions";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
@@ -204,6 +205,7 @@ export async function createCompositionServer(
     appDataDir,
     referencedAttachments: () => draftStore.referencedAttachments(),
   });
+  const sessionImportStore = createSessionImportStore();
   await attachmentStore.cleanup({ orphanAgeMs: 24 * 60 * 60 * 1000 });
   const ompCommandGateway = createOmpCommandGateway({ resolveSession });
   const sessionPinStore = createSessionPinStore({ env, homeDir, agentDir });
@@ -265,6 +267,7 @@ export async function createCompositionServer(
     extensionCatalog,
     memoryStore,
     ruleStore,
+    sessionImportStore,
     attachmentStore,
     githubRefs,
     urlCatalog,

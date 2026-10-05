@@ -13,6 +13,7 @@ import type { MemoryStoreService } from "../memory";
 import type { SessionPinStoreService } from "../pins";
 import type { PlanDocumentStoreService } from "../plans";
 import type { RuleStoreService } from "../rules";
+import type { SessionImportStoreService } from "../session-import";
 import type { SessionFileStore } from "../sessions";
 import type { UrlCatalogService } from "../url-catalog";
 import type { A1EventPublisher, A1StreamActivity } from "./helper";
@@ -28,6 +29,7 @@ export interface A1PortContext {
   readonly extensionCatalog: ExtensionCatalogService;
   readonly attachmentStore: AttachmentStoreService;
   readonly memoryStore: MemoryStoreService;
+  readonly sessionImportStore: SessionImportStoreService;
   readonly ruleStore: RuleStoreService;
   readonly githubRefs: GithubRefsService;
   readonly urlCatalog: UrlCatalogService;

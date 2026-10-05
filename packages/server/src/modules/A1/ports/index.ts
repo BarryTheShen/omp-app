@@ -14,6 +14,7 @@ import { createPlanDocumentRegistration } from "./plan-documents";
 import { createProviderAccountStoreRegistration } from "./provider-accounts";
 import { createRuleStoreRegistration } from "./rule-store";
 import { createSessionFileStoreRegistration } from "./session-file-store";
+import { createSessionImportRegistration } from "./session-import";
 import { createSessionPinStoreRegistration } from "./session-pin-store";
 import { createUrlCatalogRegistration } from "./url-catalog";
 import { createGitStateRegistration, createWorkspaceStateRegistration } from "./workspace-state";
@@ -30,6 +31,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createOmpCommandGatewayRegistration(context),
     createSessionPinStoreRegistration(context),
     createAttachmentStoreRegistration(context),
+    createSessionImportRegistration(context),
     createProviderAccountStoreRegistration(context),
     createExtensionCatalogRegistration(context),
     createMemoryStoreRegistration(context),
