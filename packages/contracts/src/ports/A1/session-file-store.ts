@@ -1,0 +1,128 @@
+import { z } from "zod";
+import { definePort } from "../../core/envelope";
+import { FolderPath, SessionFilePath, ThreadId } from "../../core/ids";
+import { Cursor, Timestamp } from "./shared";
+
+export const SessionStatus = z.enum([
+  "complete",
+  "interrupted",
+  "aborted",
+  "error",
+  "pending",
+  "unknown",
+]);
+export type SessionStatus = z.infer<typeof SessionStatus>;
+
+/** Liveness is explicit about the difference between omp's lease and this server's process. */
+export const SessionLiveness = z.strictObject({
+  lease: z.enum(["held", "free", "unknown"]),
+  serverProcess: z.boolean(),
+});
+export type SessionLiveness = z.infer<typeof SessionLiveness>;
+
+/** A discovered child transcript; entries stay in the session-file port, not the browser. */
+export const SubagentTranscript = z.strictObject({
+  key: z.string().min(1),
+  agentId: z.string().min(1),
+  parent: z.string().min(1).nullable(),
+  sessionFile: SessionFilePath,
+  leafId: z.string().min(1).nullable(),
+  entryCount: z.int().nonnegative(),
+  aborted: z.boolean(),
+});
+export type SubagentTranscript = z.infer<typeof SubagentTranscript>;
+
+/** Header and bounded listing metadata from an omp JSONL session. */
+export const SessionFile = z.strictObject({
+  id: ThreadId,
+  sessionFile: SessionFilePath,
+  version: z.int().min(1).max(3).nullable(),
+  title: z.string().nullable(),
+  cwd: FolderPath,
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+  parentSession: SessionFilePath.nullable(),
+  messageCount: z.int().nonnegative(),
+  assistantTurns: z.int().nonnegative(),
+  sizeBytes: z.int().nonnegative(),
+  status: SessionStatus,
+  liveness: SessionLiveness,
+  subagents: z.array(SubagentTranscript),
+  /** Non-fatal issues found while tolerantly reading a v3 (or older) file. */
+  parseWarnings: z.array(z.string().min(1)),
+});
+export type SessionFile = z.infer<typeof SessionFile>;
+
+export const SessionListArgs = z.strictObject({
+  folder: FolderPath,
+  cursor: Cursor.optional(),
+  limit: z.int().min(1).max(100).optional(),
+});
+export type SessionListArgs = z.infer<typeof SessionListArgs>;
+
+export const SessionListResult = z.strictObject({
+  sessions: z.array(SessionFile),
+  nextCursor: Cursor.nullable(),
+});
+export type SessionListResult = z.infer<typeof SessionListResult>;
+
+export const SessionFolderListArgs = z.strictObject({
+  cursor: Cursor.optional(),
+  limit: z.int().min(1).max(100).optional(),
+});
+export type SessionFolderListArgs = z.infer<typeof SessionFolderListArgs>;
+
+export const SessionFolderListResult = z.strictObject({
+  folders: z.array(FolderPath),
+  nextCursor: Cursor.nullable(),
+});
+export type SessionFolderListResult = z.infer<typeof SessionFolderListResult>;
+
+export const SessionReadArgs = z.strictObject({ sessionFile: SessionFilePath });
+export type SessionReadArgs = z.infer<typeof SessionReadArgs>;
+
+export const SessionSubagentsResult = z.strictObject({
+  sessionFile: SessionFilePath,
+  transcripts: z.array(SubagentTranscript),
+});
+export type SessionSubagentsResult = z.infer<typeof SessionSubagentsResult>;
+
+export const SessionFileChanged = z.strictObject({
+  folder: FolderPath,
+  sessionFile: SessionFilePath,
+  id: ThreadId,
+  kind: z.enum(["created", "updated", "removed"]),
+});
+export type SessionFileChanged = z.infer<typeof SessionFileChanged>;
+
+export const SessionFileStore = definePort({
+  name: "A1.sessionFileStore",
+  methods: {
+    listSessions: {
+      args: SessionListArgs,
+      result: SessionListResult,
+      capability: "host.session-files",
+    },
+    listFolders: {
+      args: SessionFolderListArgs,
+      result: SessionFolderListResult,
+      capability: "host.session-files",
+    },
+    readSession: {
+      args: SessionReadArgs,
+      result: SessionFile,
+      capability: "host.session-files",
+    },
+    listSubagents: {
+      args: SessionReadArgs,
+      result: SessionSubagentsResult,
+      capability: "host.session-files",
+    },
+  },
+  events: {
+    changed: {
+      payload: SessionFileChanged,
+      capability: "host.session-files",
+    },
+  },
+});
