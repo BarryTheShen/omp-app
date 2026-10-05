@@ -1,5 +1,5 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
-import { ToolFallback } from "../U3/tool-card/fallback";
+import { T7ToolFallback } from "./fallback";
 import { ResolveToolRenderer } from "./resolve";
 
 /** T7 owns exactly eight miscellaneous/host/domain renderer claims; the main agent composes them. */
@@ -12,7 +12,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.checkpoint"],
     requires: [],
     match: { by: "name", name: "checkpoint" },
-    renderer: ToolFallback,
+    renderer: T7ToolFallback,
   },
   {
     kind: "tool",
@@ -22,7 +22,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.goal"],
     requires: ["upstream.goal"],
     match: { by: "name", name: "goal" },
-    renderer: ToolFallback,
+    renderer: T7ToolFallback,
   },
   {
     kind: "tool",
@@ -32,7 +32,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.host-custom-mcp-tool-fallback"],
     requires: [],
     match: { by: "fallback" },
-    renderer: ToolFallback,
+    renderer: T7ToolFallback,
   },
   {
     kind: "tool",
@@ -62,7 +62,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.rewind"],
     requires: ["host.checkpoints"],
     match: { by: "name", name: "rewind" },
-    renderer: ToolFallback,
+    renderer: T7ToolFallback,
   },
   {
     kind: "tool",
@@ -72,7 +72,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.security-scan"],
     requires: ["upstream.security-scan"],
     match: { by: "name", name: "security_scan" },
-    renderer: ToolFallback,
+    renderer: T7ToolFallback,
   },
   {
     kind: "tool",
@@ -82,7 +82,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.think"],
     requires: [],
     match: { by: "name", name: "think" },
-    renderer: ToolFallback,
+    renderer: T7ToolFallback,
   },
 ] as const satisfies readonly ToolRegistryDescriptor[];
 
