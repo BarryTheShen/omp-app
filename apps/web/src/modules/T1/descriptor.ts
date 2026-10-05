@@ -1,5 +1,6 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
+import { EditToolRenderer } from "./edit";
 import { ReadToolRenderer } from "./read";
 /** T1 owns five exact file-operation tool claims; read also covers T4's URL-read inventory row. */
 export const T1_TOOL_DESCRIPTORS = [
@@ -11,7 +12,7 @@ export const T1_TOOL_DESCRIPTORS = [
     covers: ["T1.apply-patch-renderer-alias"],
     requires: [],
     match: { by: "name", name: "apply_patch" },
-    renderer: ToolFallback,
+    renderer: EditToolRenderer,
   },
   {
     kind: "tool",
@@ -31,7 +32,7 @@ export const T1_TOOL_DESCRIPTORS = [
     covers: ["T1.edit"],
     requires: [],
     match: { by: "name", name: "edit" },
-    renderer: ToolFallback,
+    renderer: EditToolRenderer,
   },
   {
     kind: "tool",
