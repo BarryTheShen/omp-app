@@ -116,6 +116,30 @@ describe("ShortcutRegistry", () => {
     ]);
   });
 
+  test("keeps Tab and Shift+Tab for focus navigation outside editor fields", () => {
+    const registry = new ShortcutRegistry([
+      ...descriptors,
+      {
+        id: "U2.complete",
+        owner: "U2",
+        title: "Composer completion",
+        kind: "shortcut",
+        chord: "Tab",
+        scope: "composer-input",
+        covers: [],
+        requires: [],
+      },
+    ]);
+
+    expect(registry.isBrowserReserved("Shift+Tab")).toBe(true);
+    expect(registry.isBrowserReserved("Tab", "composer-input")).toBe(false);
+    expect(registry.rebind("U1.toggle", "Shift+Tab")).toMatchObject({
+      ok: false,
+      error: "Shift+Tab moves keyboard focus in the browser",
+    });
+    expect(registry.problems()).toEqual([]);
+  });
+
   test("rejects rebinding to a browser-reserved chord", () => {
     const store = new MemoryPreferenceStore();
     const registry = new ShortcutRegistry(descriptors, { preferenceStore: store });

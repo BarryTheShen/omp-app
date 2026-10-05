@@ -20,6 +20,7 @@ export type {
 } from "./registry";
 export {
   BROWSER_RESERVED_CHORDS,
+  FOCUS_NAVIGATION_CHORDS,
   MemoryPreferenceStore,
   SHORTCUT_PREFERENCES_KEY,
   ShortcutRegistry,

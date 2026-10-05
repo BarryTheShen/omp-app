@@ -23,6 +23,13 @@ export const BROWSER_RESERVED_CHORDS = Object.freeze([
   "Mod+J",
 ]);
 
+/**
+ * Focus navigation: keyboard users move through the page with these, so no page-level default may
+ * take them. Editor scopes (`*-input`) handle Tab inside their own field (completion), so only they
+ * may use them.
+ */
+export const FOCUS_NAVIGATION_CHORDS = Object.freeze(["Tab", "Shift+Tab"]);
+
 export interface PreferenceStore {
   get(key: string): string | undefined;
   set(key: string, value: string): void;
@@ -138,13 +145,18 @@ function bindingFor(descriptor: ShortcutDescriptor, chord: string): ShortcutBind
     normalizedChord: normalizeChord(chord),
   };
 }
-function isBrowserReservedChord(chord: string): boolean {
+function isReservedChord(chord: string, scope: string): boolean {
   const normalized = normalizeChord(chord);
-  return BROWSER_RESERVED_CHORDS.some((reserved) => normalizeChord(reserved) === normalized);
+  const matches = (reserved: string) => normalizeChord(reserved) === normalized;
+  if (BROWSER_RESERVED_CHORDS.some(matches)) return true;
+  return !scope.endsWith("-input") && FOCUS_NAVIGATION_CHORDS.some(matches);
 }
 
-function browserReservedMessage(chord: string): string {
-  return `Your browser keeps ${chord.trim()} for itself`;
+function reservedMessage(chord: string): string {
+  const normalized = normalizeChord(chord);
+  return FOCUS_NAVIGATION_CHORDS.some((reserved) => normalizeChord(reserved) === normalized)
+    ? `${chord.trim()} moves keyboard focus in the browser`
+    : `Your browser keeps ${chord.trim()} for itself`;
 }
 
 interface ParsedOverrides {
@@ -222,18 +234,18 @@ export class ShortcutRegistry {
   public preferenceError(): ShortcutPreferenceError | undefined {
     return this.preferenceErrorSnapshot;
   }
-  public isBrowserReserved(chord: string): boolean {
-    return isBrowserReservedChord(chord);
+  public isBrowserReserved(chord: string, scope = "global"): boolean {
+    return isReservedChord(chord, scope);
   }
 
   public problems(): readonly ShortcutRegistryProblem[] {
     return this.bindings()
-      .filter((binding) => isBrowserReservedChord(binding.defaultChord))
+      .filter((binding) => isReservedChord(binding.defaultChord, binding.scope))
       .map((binding) => ({
         kind: "reserved-chord",
         id: binding.id,
         chord: binding.defaultChord,
-        detail: browserReservedMessage(binding.defaultChord),
+        detail: reservedMessage(binding.defaultChord),
       }));
   }
 
@@ -279,7 +291,7 @@ export class ShortcutRegistry {
       (candidate) =>
         candidate.scope === scope &&
         candidate.normalizedChord === normalized &&
-        !isBrowserReservedChord(candidate.chord),
+        !isReservedChord(candidate.chord, candidate.scope),
     );
     if (matching.length !== 1) return { handled: false };
     const binding = matching[0];
@@ -303,8 +315,8 @@ export class ShortcutRegistry {
     if (descriptor === undefined || chord.trim().length === 0) {
       return { ok: false, conflicts: [] };
     }
-    if (isBrowserReservedChord(chord)) {
-      return { ok: false, conflicts: [], error: browserReservedMessage(chord) };
+    if (isReservedChord(chord, descriptor.scope)) {
+      return { ok: false, conflicts: [], error: reservedMessage(chord) };
     }
     const candidate = bindingFor(descriptor, chord);
     const next = this.bindings().map((binding) => (binding.id === id ? candidate : binding));

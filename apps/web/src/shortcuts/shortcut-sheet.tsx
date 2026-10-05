@@ -83,7 +83,7 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="min-w-0 truncate text-sm">{binding.title}</span>
-                        {registry.isBrowserReserved(binding.defaultChord) && (
+                        {registry.isBrowserReserved(binding.defaultChord, binding.scope) && (
                           <span
                             className="text-warning shrink-0 text-xs"
                             role="status"
