@@ -91,8 +91,13 @@ class SearchBudget {
   }
 
   async wait<T>(operation: PromiseLike<T>): Promise<T> {
+    const pending = Promise.resolve(operation);
+    // Observe the operation before any early exit below. A stream read still pending when the
+    // budget runs out is rejected once its reader's lock is released; left unobserved, that
+    // rejection surfaces as an unhandled AbortError instead of this budget's timeout or cancel.
+    pending.catch(() => undefined);
     this.assert();
-    const promises: Promise<T>[] = [Promise.resolve(operation)];
+    const promises: Promise<T>[] = [pending];
     let timer: ReturnType<typeof setTimeout> | undefined;
     let removeAbortListener: (() => void) | undefined;
 

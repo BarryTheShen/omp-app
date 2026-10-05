@@ -184,6 +184,31 @@ describe("searchWorkspaceFiles", () => {
     expect((error as AppFailure).appError.code).toBe("timeout");
     expect(performance.now() - started).toBeLessThan(1_000);
   });
+
+  test("a budget that expires while Git starts leaks no unhandled rejection", async () => {
+    const folder = await temporaryDirectory();
+    const slowGit = join(folder, "slow-git");
+    await write(slowGit, "#!/bin/sh\nsleep 2\n");
+    await chmod(slowGit, 0o755);
+    const leaked: unknown[] = [];
+    const recordLeak = (reason: unknown) => leaked.push(reason);
+    process.on("unhandledRejection", recordLeak);
+    try {
+      // Deadlines of a few milliseconds run out while Git is still starting: its output readers
+      // exist, but their first read has not been awaited yet.
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const error = await searchWorkspaceFiles(
+          { folder, query: "anything" },
+          { gitBinary: slowGit, timeoutMs: 1 + (attempt % 6) },
+        ).catch((cause: unknown) => cause);
+        expect(error).toBeInstanceOf(AppFailure);
+      }
+      await Bun.sleep(50);
+    } finally {
+      process.off("unhandledRejection", recordLeak);
+    }
+    expect(leaked).toEqual([]);
+  });
 });
 
 async function temporaryDirectory(): Promise<string> {
