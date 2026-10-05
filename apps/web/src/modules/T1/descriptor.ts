@@ -1,6 +1,6 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
-
+import { ReadToolRenderer } from "./read";
 /** T1 owns five exact file-operation tool claims; read also covers T4's URL-read inventory row. */
 export const T1_TOOL_DESCRIPTORS = [
   {
@@ -41,7 +41,7 @@ export const T1_TOOL_DESCRIPTORS = [
     covers: ["T1.read", "T4.fetch-read-url-path"],
     requires: [],
     match: { by: "name", name: "read" },
-    renderer: ToolFallback,
+    renderer: ReadToolRenderer,
   },
   {
     kind: "tool",
