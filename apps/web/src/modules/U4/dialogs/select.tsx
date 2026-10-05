@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SelectDialogRequest } from "../contract";
@@ -16,9 +16,9 @@ export function SelectDialog({
   const [selected, setSelected] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const showFilter = request.options.length > 7;
   const filteredOptions = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
+    const normalized = showFilter ? query.trim().toLocaleLowerCase() : "";
     return request.options
       .map((label, index) => ({
         label,
@@ -29,7 +29,7 @@ export function SelectDialog({
         if (!normalized) return true;
         return `${label} ${description ?? ""}`.toLocaleLowerCase().includes(normalized);
       });
-  }, [query, request.options, request.optionDetails]);
+  }, [query, request.options, request.optionDetails, showFilter]);
 
   useEffect(() => {
     if (activeIndex >= filteredOptions.length)
@@ -70,31 +70,45 @@ export function SelectDialog({
           void submit();
         }}
       >
-        <Input
-          aria-label="Filter options"
-          placeholder="Filter options"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.currentTarget.value);
-            setActiveIndex(0);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              move(1);
-            } else if (event.key === "ArrowUp") {
-              event.preventDefault();
-              move(-1);
-            } else if (event.key === "Enter") {
-              event.preventDefault();
-              const option = filteredOptions[activeIndex];
-              if (option) setSelected(option.label);
-            }
-          }}
-        />
+        {showFilter ? (
+          <Input
+            aria-label="Filter options"
+            placeholder="Filter options"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value);
+              setActiveIndex(0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                move(1);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                move(-1);
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                const option = filteredOptions[activeIndex];
+                if (option) setSelected(option.label);
+              }
+            }}
+          />
+        ) : null}
         <div
           role="listbox"
           aria-label={request.title}
+          tabIndex={showFilter ? undefined : 0}
+          onKeyDown={(event) => {
+            if (showFilter || event.key.length !== 1) return;
+            const index = filteredOptions.findIndex((option) =>
+              option.label.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase()),
+            );
+            if (index < 0) return;
+            event.preventDefault();
+            setActiveIndex(index);
+            setSelected(filteredOptions[index]?.label ?? null);
+            setError(null);
+          }}
           className="flex max-h-64 flex-col gap-1 overflow-y-auto"
         >
           {filteredOptions.length === 0 ? (
@@ -105,9 +119,6 @@ export function SelectDialog({
             filteredOptions.map((option, index) => (
               <Button
                 key={`${option.label}-${option.index}`}
-                ref={(element) => {
-                  optionRefs.current[index] = element;
-                }}
                 type="button"
                 role="option"
                 aria-selected={selected === option.label}

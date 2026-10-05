@@ -40,8 +40,17 @@ describe("select dialog", () => {
       kind: "select",
       id: "select-1" as UiRequestId,
       title: "Choose a color",
-      options: ["Azure", "Beryl", "Crimson"],
-      optionDetails: [{ description: "blue" }, { description: "green" }, { description: "red" }],
+      options: ["Azure", "Beryl", "Crimson", "Delta", "Echo", "Fjord", "Gold", "Hazel"],
+      optionDetails: [
+        { description: "blue" },
+        { description: "green" },
+        { description: "red" },
+        { description: "gray" },
+        { description: "orange" },
+        { description: "teal" },
+        { description: "yellow" },
+        { description: "brown" },
+      ],
     };
     const result = renderRequest(request);
     const filter = screen.getByRole("textbox", { name: "Filter options" });
@@ -51,7 +60,7 @@ describe("select dialog", () => {
     const beryl = screen.getByRole("option", { name: /Beryl/ });
     fireEvent.keyDown(filter, { key: "ArrowDown" });
     fireEvent.keyDown(filter, { key: "Enter" });
-    expect(beryl.getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(beryl.getAttribute("aria-selected")).toBe("true"));
     fireEvent.click(screen.getByRole("button", { name: "Choose" }));
     expect(result.answers).toEqual([{ kind: "select", value: "Beryl" }]);
     const selectedResponse = result.answers[0];
@@ -63,6 +72,22 @@ describe("select dialog", () => {
       id: request.id,
       value: "Beryl",
     });
+  });
+
+  test("hides the filter for short lists and selects by first letter", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-short" as UiRequestId,
+      title: "Choose",
+      options: ["Alpha", "Beta", "Gamma"],
+    });
+    expect(screen.queryByRole("textbox", { name: "Filter options" })).toBeNull();
+    const listbox = screen.getByRole("listbox", { name: "Choose" });
+    listbox.focus();
+    fireEvent.keyDown(listbox, { key: "b" });
+    expect(screen.getByRole("option", { name: "Beta" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(result.answers).toEqual([{ kind: "select", value: "Beta" }]);
   });
 
   test("cancel has no value and does not answer", () => {
