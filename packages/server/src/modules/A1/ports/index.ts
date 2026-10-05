@@ -33,5 +33,6 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
 }
 
 export * from "./context";
+export { createGithubRefsRegistration } from "./github-refs";
 export * from "./helper";
 export { createRuleStoreRegistration } from "./rule-store";
