@@ -4,6 +4,7 @@ export * from "./draft-store";
 export * from "./file-search";
 export * from "./host-metadata";
 export * from "./omp-command-gateway";
+export * from "./provider-accounts";
 export * from "./session-file-store";
 export * from "./session-pin-store";
 export * from "./shared";
