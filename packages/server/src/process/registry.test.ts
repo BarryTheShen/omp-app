@@ -196,6 +196,27 @@ describe("OmpProcessRegistry", () => {
     expect(created).toHaveLength(2);
   });
 
+  test("rekeys a provisional process to omp's authoritative ThreadId", () => {
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const provisional = ThreadId.parse("provisional");
+    const authoritative = ThreadId.parse("omp-session-1");
+    registry.acquire(options(provisional, "/workspace/rekey"));
+    const process = createdAt(created, 0);
+
+    expect(registry.rekey(provisional, authoritative)).toBe(process);
+    expect(registry.get(provisional)).toBeUndefined();
+    expect(registry.get(authoritative)).toBe(process);
+    process.emit({ status: "stopped", processId: process.processId });
+    expect(registry.has(authoritative)).toBe(false);
+  });
+
   test("closeAll stops every process and clears the registry", async () => {
     const created: StubProcess[] = [];
     const registry = new OmpProcessRegistry({

@@ -23,6 +23,7 @@ export interface OmpProcessRegistryOptions {
 }
 
 interface Entry {
+  key: ThreadId;
   readonly process: OmpProcess;
   readonly folder: string;
   unsubscribe: () => void;
@@ -71,6 +72,7 @@ export class OmpProcessRegistry {
     }
     const process = this.#createProcess(options);
     const entry: Entry = {
+      key: options.threadId,
       process,
       folder: options.folder,
       watchers: 1,
@@ -80,8 +82,8 @@ export class OmpProcessRegistry {
     };
     entry.unsubscribe = process.onEvent((event) => {
       if (event.status !== "stopped") return;
-      if (this.#entries.get(options.threadId) !== entry) return;
-      this.#entries.delete(options.threadId);
+      if (this.#entries.get(entry.key) !== entry) return;
+      this.#entries.delete(entry.key);
       entry.unsubscribe();
     });
     this.#entries.set(options.threadId, entry);
@@ -111,6 +113,29 @@ export class OmpProcessRegistry {
 
   has(threadId: ThreadId): boolean {
     return this.#entries.has(threadId);
+  }
+  /** Move a just-started process from a provisional key to omp's authoritative session id. */
+  rekey(from: ThreadId, to: ThreadId): OmpProcess {
+    const entry = this.#entries.get(from);
+    if (entry === undefined) {
+      throw new AppFailure({
+        code: "not_found",
+        message: `No process is registered for thread ${from}`,
+        retryable: false,
+      });
+    }
+    if (from === to) return entry.process;
+    if (this.#entries.has(to)) {
+      throw new AppFailure({
+        code: "conflict",
+        message: `A process is already registered for thread ${to}`,
+        retryable: false,
+      });
+    }
+    this.#entries.delete(from);
+    entry.key = to;
+    this.#entries.set(to, entry);
+    return entry.process;
   }
 
   async restart(threadId: ThreadId): Promise<void> {
