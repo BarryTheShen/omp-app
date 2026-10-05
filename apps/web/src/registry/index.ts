@@ -10,6 +10,7 @@ import { D2_TRIGGER_DESCRIPTORS } from "../modules/D2/contract";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
 import { P4_DESCRIPTORS } from "../modules/P4/contract";
 import { R1_DESCRIPTORS } from "../modules/R1/descriptors";
+import { T1_TOOL_DESCRIPTORS } from "../modules/T1/descriptor";
 import { U1MessageDescriptors } from "../modules/U1/registry/messages";
 import { U2Descriptors } from "../modules/U2/descriptors";
 import { U3_BASH_DESCRIPTOR } from "../modules/U3/tool-card/bash";
@@ -22,6 +23,7 @@ import { createRegistry, type RendererMap } from "../registry-core";
 export const TOOL_RENDERERS: readonly ToolRegistryDescriptor[] = [
   U3_BASH_DESCRIPTOR,
   todoToolDescriptor,
+  ...T1_TOOL_DESCRIPTORS,
 ];
 
 /** A tool descriptor carries its renderer for U3.3's resolver; the registry holds the C0 part. */
