@@ -1,0 +1,4 @@
+# A bare `bun test` at the repo root runs only the Bun-tested packages. The web app's tests run under
+# Vitest and Playwright (`bun run test` runs every workspace's own test command).
+[test]
+root = "packages"
