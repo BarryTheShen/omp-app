@@ -6,9 +6,10 @@
  * `packages/contracts/README.md`).
  */
 import type { Descriptor } from "@omp-app/contracts";
+import { U1MessageDescriptors } from "../modules/U1/registry/messages";
 import { createRegistry, type RendererMap } from "../registry-core";
 
-export const DESCRIPTORS: readonly Descriptor[] = [];
+export const DESCRIPTORS: readonly Descriptor[] = [...U1MessageDescriptors];
 
 export const RENDERERS: RendererMap = {};
 
