@@ -1,4 +1,8 @@
-import { fromThreadMessageLike, type ThreadMessageLike } from "@assistant-ui/react";
+import {
+  fromThreadMessageLike,
+  type ThreadMessageLike,
+  unstable_convertExternalMessages,
+} from "@assistant-ui/react";
 import type {
   AppError,
   CapabilityMap,
@@ -14,6 +18,7 @@ import { describe, expect, test } from "vitest";
 import type { RuntimeMessage } from "../store/store";
 import { OmpRuntimeStore } from "../store/store";
 import {
+  convertExternalMessage,
   convertMessage,
   createOmpRuntime,
   type RuntimeMessageView,
@@ -51,6 +56,20 @@ function assistantMessage(content: AssistantMessageContent): OmpMessage {
     usage: baseUsage,
     stopReason: "stop",
     timestamp: 1_759_600_000_000,
+  } as OmpMessage;
+}
+function toolResultMessage(
+  toolCallId: string,
+  toolName = "bash",
+  content: string | readonly { readonly type: "text"; readonly text: string }[] = "done",
+): OmpMessage {
+  return {
+    role: "toolResult",
+    toolCallId,
+    toolName,
+    content: typeof content === "string" ? [{ type: "text", text: content }] : content,
+    isError: false,
+    timestamp: 1_759_600_000_003,
   } as OmpMessage;
 }
 
@@ -133,6 +152,102 @@ describe("R0.3 assistant-ui runtime", () => {
         }),
       ]),
     );
+  });
+  test("joins assistant steps and tool results into one assistant message", () => {
+    const views: RuntimeMessageView[] = [
+      {
+        record: runtimeMessage(
+          assistantMessage([
+            {
+              type: "toolCall",
+              id: "tool-join",
+              name: "bash",
+              arguments: { command: "pwd" },
+              rawBlock: '{"command":"pwd"}',
+            },
+          ]),
+          "entry:runtime-test-thread:entry-a",
+        ),
+        toolStates: [],
+        joinedAssistantEntryIds: ["entry-a", "entry-b"],
+      },
+      {
+        record: runtimeMessage(
+          assistantMessage([{ type: "text", text: "second assistant step" }]),
+          "entry:runtime-test-thread:entry-b",
+        ),
+        toolStates: [],
+        joinedAssistantEntryIds: ["entry-a", "entry-b"],
+      },
+      {
+        record: runtimeMessage(
+          toolResultMessage("tool-join", "bash", "wire result"),
+          "entry:runtime-test-thread:entry-tool",
+        ),
+        toolStates: [
+          {
+            toolCallId: "tool-join",
+            state: {
+              toolCallId: "tool-join" as never,
+              toolName: "bash",
+              args: { command: "pwd" },
+              status: "success",
+              partialResult: undefined,
+              streamProjection: { lines: ["wire result"] },
+              result: "state result",
+              isError: false,
+            },
+          },
+        ],
+        joinedAssistantEntryIds: ["entry-a", "entry-b"],
+        toolResultMatched: true,
+      },
+    ];
+    const joined = unstable_convertExternalMessages(views, convertExternalMessage, false, {});
+    expect(joined).toHaveLength(1);
+    const message = joined[0];
+    if (!message) throw new Error("expected a joined message");
+    expect(message.metadata?.custom?.ompEntryIds).toEqual(["entry-a", "entry-b"]);
+    const parts = messageParts(message);
+    expect(parts.filter((part) => part.type === "tool-call")).toHaveLength(1);
+    expect(parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-call",
+          toolCallId: "tool-join",
+          result: "state result",
+          artifact: { lines: ["wire result"] },
+        }),
+        expect.objectContaining({ type: "text", text: "second assistant step" }),
+      ]),
+    );
+    expect(() =>
+      fromThreadMessageLike(message, "joined", { type: "complete", reason: "unknown" }),
+    ).not.toThrow();
+  });
+
+  test("keeps an orphaned tool result visible instead of dropping it", () => {
+    const orphan: RuntimeMessageView = {
+      record: runtimeMessage(toolResultMessage("orphan-tool"), "entry:runtime-test-thread:orphan"),
+      toolStates: [],
+      joinedAssistantEntryIds: [],
+      toolResultMatched: false,
+    };
+    const joined = unstable_convertExternalMessages([orphan], convertExternalMessage, false, {});
+    expect(joined).toHaveLength(1);
+    const message = joined[0];
+    if (!message) throw new Error("expected an orphan message");
+    expect(messageParts(message)).toEqual([
+      expect.objectContaining({
+        type: "tool-call",
+        toolCallId: "orphan-tool",
+        toolName: "bash",
+        result: [{ type: "text", text: "done" }],
+      }),
+    ]);
+    expect(() =>
+      fromThreadMessageLike(message, "orphan", { type: "complete", reason: "unknown" }),
+    ).not.toThrow();
   });
 
   test("memoizes unchanged message conversion across an unrelated store update", () => {

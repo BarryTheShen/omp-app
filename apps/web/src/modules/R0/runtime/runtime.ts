@@ -6,7 +6,7 @@ import type {
   MessageStatus,
   ThreadMessageLike,
 } from "@assistant-ui/react";
-import { useExternalStoreRuntime } from "@assistant-ui/react";
+import { useExternalMessageConverter, useExternalStoreRuntime } from "@assistant-ui/react";
 import type {
   AttachmentRef,
   CapabilityKey,
@@ -54,6 +54,10 @@ export interface OmpRuntimeOptions {
 export interface RuntimeMessageView {
   readonly record: RuntimeMessage;
   readonly toolStates: readonly RuntimeToolStateReference[];
+  /** Assistant entry keys in this contiguous assistant/tool turn, for reload/edit mapping. */
+  readonly joinedAssistantEntryIds?: readonly string[];
+  /** Whether a tool result has a matching assistant tool call in this turn. */
+  readonly toolResultMatched?: boolean;
 }
 
 export interface RuntimeToolStateReference {
@@ -302,6 +306,41 @@ function toolResultPart(
         }),
   };
 }
+export type ExternalMessage =
+  | ThreadMessageLike
+  | {
+      readonly role: "tool";
+      readonly toolCallId: string;
+      readonly toolName: string;
+      readonly result: unknown;
+      readonly isError?: boolean;
+      readonly artifact?: unknown;
+    };
+
+function toolResultExternalMessage(
+  message: Record<string, unknown>,
+  toolStates: readonly RuntimeToolStateReference[],
+): ExternalMessage {
+  const toolCallId = nonEmptyString(message.toolCallId);
+  const toolName = nonEmptyString(message.toolName);
+  if (!toolCallId || !toolName) {
+    return {
+      role: "assistant",
+      content: [textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" })],
+      status: { type: "incomplete", reason: "other" },
+    } as unknown as ThreadMessageLike;
+  }
+  const state = stateFor(toolStates, toolCallId);
+  const result = state?.result !== undefined ? state.result : message.content;
+  return {
+    role: "tool",
+    toolCallId,
+    toolName,
+    result,
+    isError: state?.isError ?? message.isError === true,
+    ...(state?.streamProjection === undefined ? {} : { artifact: state.streamProjection }),
+  };
+}
 
 function fallbackMessage(id: string): ThreadMessageLike {
   return {
@@ -318,7 +357,9 @@ function convertRecord(
   fallbackMessageValue: unknown,
   index: number,
   toolStates: readonly RuntimeToolStateReference[],
-): ThreadMessageLike {
+  view?: RuntimeMessageView,
+  external = false,
+): ExternalMessage {
   const id = messageIdFor(runtime, index);
   const message = runtime?.message ?? fallbackMessageValue;
   if (!isRecord(message) || typeof message.role !== "string") return fallbackMessage(id);
@@ -328,6 +369,9 @@ function convertRecord(
     custom: {
       ompMessageKey: id,
       ompRole: message.role,
+      ...(message.role === "assistant"
+        ? { ompEntryIds: [...(view?.joinedAssistantEntryIds ?? [id])] }
+        : {}),
     },
   };
   switch (message.role) {
@@ -357,6 +401,8 @@ function convertRecord(
         metadata,
       } as unknown as ThreadMessageLike;
     case "toolResult":
+      if (external && view?.toolResultMatched !== false)
+        return toolResultExternalMessage(message, toolStates);
       return {
         role: "assistant",
         id,
@@ -387,12 +433,23 @@ export function convertMessage(
   index = 0,
 ): ThreadMessageLike {
   if (isRuntimeMessageView(input)) {
-    return convertRecord(input.record, input.record.message, index, input.toolStates);
+    return convertRecord(
+      input.record,
+      input.record.message,
+      index,
+      input.toolStates,
+      input,
+    ) as ThreadMessageLike;
   }
   if (isRuntimeMessage(input)) {
-    return convertRecord(input, input.message, index, []);
+    return convertRecord(input, input.message, index, []) as ThreadMessageLike;
   }
-  return convertRecord(undefined, input, index, []);
+  return convertRecord(undefined, input, index, []) as ThreadMessageLike;
+}
+
+/** The callback used by assistant-ui's external converter, including its supported join strategy. */
+export function convertExternalMessage(input: RuntimeMessageView): ExternalMessage {
+  return convertRecord(input.record, input.record.message, 0, input.toolStates, input, true);
 }
 
 /** A referentially stable converter cache for one external runtime. */
@@ -410,6 +467,54 @@ export function createMemoizedMessageConverter(): (
   };
 }
 
+type ProjectedMessageMetadata = {
+  readonly joinedAssistantEntryIds: readonly string[];
+  readonly toolResultMatched: boolean | undefined;
+};
+
+function projectedMessageMetadata(
+  snapshot: RuntimeSnapshot,
+): Readonly<Record<string, ProjectedMessageMetadata>> {
+  const result: Record<string, ProjectedMessageMetadata> = {};
+  let segment: RuntimeMessage[] = [];
+  const assistantEntryIds: string[] = [];
+  const assistantToolCallIds = new Set<string>();
+  const flush = (): void => {
+    for (const record of segment) {
+      const message = record.message;
+      result[record.key] = {
+        joinedAssistantEntryIds: [...assistantEntryIds],
+        toolResultMatched:
+          message.role === "toolResult" ? assistantToolCallIds.has(message.toolCallId) : undefined,
+      };
+    }
+    segment = [];
+    assistantEntryIds.length = 0;
+    assistantToolCallIds.clear();
+  };
+  for (const key of snapshot.messageOrder) {
+    const record = snapshot.messages[key];
+    if (!record) continue;
+    if (record.message.role !== "assistant" && record.message.role !== "toolResult") {
+      flush();
+      continue;
+    }
+    segment.push(record);
+    if (record.message.role === "assistant") {
+      assistantEntryIds.push(record.entryId ?? record.key);
+      for (const toolCallId of toolCallIds(record.message)) assistantToolCallIds.add(toolCallId);
+    }
+  }
+  flush();
+  return result;
+}
+
+function sameIds(left: readonly string[] | undefined, right: readonly string[]): boolean {
+  return (
+    left?.length === right.length && left?.every((value, index) => value === right[index]) === true
+  );
+}
+
 class RuntimeMessageProjector {
   private readonly entries = new WeakMap<
     object,
@@ -423,12 +528,19 @@ class RuntimeMessageProjector {
 
   public project(snapshot: RuntimeSnapshot): readonly RuntimeMessageView[] {
     const views: RuntimeMessageView[] = [];
+    const metadata = projectedMessageMetadata(snapshot);
     for (const key of snapshot.messageOrder) {
       const record = snapshot.messages[key];
       if (!record) continue;
+      const projected = metadata[key] ?? {
+        joinedAssistantEntryIds: [],
+        toolResultMatched: undefined,
+      };
       const previous = this.entries.get(record);
       if (previous) {
-        let unchanged = true;
+        let unchanged =
+          sameIds(previous.view.joinedAssistantEntryIds, projected.joinedAssistantEntryIds) &&
+          previous.view.toolResultMatched === projected.toolResultMatched;
         for (const reference of previous.references) {
           if (
             snapshot.tools[reference.toolCallId as keyof typeof snapshot.tools] !== reference.state
@@ -449,7 +561,12 @@ class RuntimeMessageProjector {
         toolCallId,
         state: snapshot.tools[toolCallId as keyof typeof snapshot.tools],
       }));
-      const view: RuntimeMessageView = { record, toolStates: references };
+      const view: RuntimeMessageView = {
+        record,
+        toolStates: references,
+        joinedAssistantEntryIds: projected.joinedAssistantEntryIds,
+        toolResultMatched: projected.toolResultMatched,
+      };
       this.entries.set(record, { references, view });
       views.push(view);
     }
@@ -736,6 +853,22 @@ export function useOmpRuntime(options: OmpRuntimeOptions): AssistantRuntime {
   );
   const getSnapshot = useCallback((): RuntimeSnapshot => controller.getSnapshot(), [controller]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const adapter = useMemo(() => controller.createAdapter(snapshot), [controller, snapshot]);
+  const rawAdapter = useMemo(() => controller.createAdapter(snapshot), [controller, snapshot]);
+  const rawMessages = useMemo(() => [...(rawAdapter.messages ?? [])], [rawAdapter.messages]);
+  const joinedMessages = useExternalMessageConverter<RuntimeMessageView>({
+    callback: convertExternalMessage,
+    messages: rawMessages,
+    isRunning: rawAdapter.isRunning ?? false,
+    joinStrategy: "concat-content",
+  });
+  const adapter: ExternalStoreAdapter = useMemo(() => {
+    const {
+      convertMessage: _convertMessage,
+      messages: _messages,
+      setMessages: _setMessages,
+      ...base
+    } = rawAdapter;
+    return { ...base, messages: joinedMessages };
+  }, [joinedMessages, rawAdapter]);
   return useExternalStoreRuntime(adapter);
 }
