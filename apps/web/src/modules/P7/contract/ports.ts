@@ -1,0 +1,200 @@
+import type { AppClient } from "@omp-app/client";
+import {
+  AppFailure,
+  type OmpCommandGateway,
+  type OmpWire,
+  type PortCallOptions,
+  type PortClient,
+  type RpcSessionClient,
+  RpcSessionPort,
+  type ThreadId,
+} from "@omp-app/contracts";
+import type {
+  AutoCompactionRequest,
+  CompactionState,
+  ContextUsage,
+  SessionContextProjection,
+  UsageTotals,
+} from "./models";
+import { ContextUsageState, UsageSnapshot } from "./models";
+
+export interface ContextUsagePort {
+  readonly getSnapshot: () => ContextUsageState;
+  readonly subscribe: (listener: (snapshot: ContextUsageState) => void) => () => void;
+}
+
+export interface UsagePort {
+  readonly getSnapshot: () => UsageSnapshot;
+  readonly subscribe: (listener: (snapshot: UsageSnapshot) => void) => () => void;
+  readonly refresh: (options?: Pick<PortCallOptions, "signal">) => Promise<UsageSnapshot>;
+}
+
+export interface CompactionPort {
+  readonly getSnapshot: () => CompactionState;
+  readonly subscribe: (listener: (snapshot: CompactionState) => void) => () => void;
+  readonly compact: (
+    request?: { readonly customInstructions?: string },
+    options?: Pick<PortCallOptions, "signal">,
+  ) => Promise<OmpWire.CompactionResult>;
+  readonly setAutoCompaction: (
+    request: AutoCompactionRequest,
+    options?: Pick<PortCallOptions, "signal">,
+  ) => Promise<void>;
+}
+
+export type P7CommandPort = Pick<PortClient<typeof OmpCommandGateway>, "run">;
+export type P7CommandResult = Awaited<ReturnType<P7CommandPort["run"]>>;
+
+export interface SessionContextSource {
+  readonly getSnapshot: () => SessionContextProjection;
+  readonly subscribe: (listener: (snapshot: SessionContextProjection) => void) => () => void;
+}
+
+export interface UsageStateSource {
+  readonly getSnapshot: () => UsageSnapshot;
+  readonly subscribe: (listener: (snapshot: UsageSnapshot) => void) => () => void;
+}
+
+export interface CompactionStateSource {
+  readonly getSnapshot: () => CompactionState;
+  readonly subscribe: (listener: (snapshot: CompactionState) => void) => () => void;
+}
+
+const INITIAL_CONTEXT_STATE: ContextUsageState = {
+  usage: null,
+  isCompacting: false,
+  autoCompactionEnabled: null,
+  tokensPerSecond: null,
+  revision: "initial",
+  error: null,
+};
+
+function contextState(projection: SessionContextProjection): ContextUsageState {
+  return ContextUsageState.parse({
+    usage: projection.contextUsage ?? null,
+    isCompacting: projection.isCompacting ?? false,
+    autoCompactionEnabled: projection.autoCompactionEnabled ?? null,
+    tokensPerSecond: projection.tokensPerSecond ?? null,
+    revision: projection.revision,
+    error: null,
+  });
+}
+
+/** Projects R0's normalized session snapshot without maintaining a second reducer. */
+export function createContextUsagePort(source: SessionContextSource): ContextUsagePort {
+  return {
+    getSnapshot: () => contextState(source.getSnapshot()),
+    subscribe: (listener) => source.subscribe((projection) => listener(contextState(projection))),
+  };
+}
+
+function totalsFromWire(usage: OmpWire.Usage): UsageTotals {
+  return {
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheWrite,
+    totalTokens: usage.totalTokens,
+    reasoning: usage.reasoningTokens ?? null,
+    cost: usage.cost.total,
+    premiumRequests: usage.premiumRequests ?? null,
+  };
+}
+
+export function usageTotalsFromWire(usage: OmpWire.Usage): UsageTotals {
+  return totalsFromWire(usage);
+}
+
+/**
+ * Binds refresh to A0's typed `get_session_stats`; snapshot/subscription state still belongs to the
+ * injected R0 projection and is never rebuilt from command output here.
+ */
+export function createUsagePort(
+  source: UsageStateSource,
+  client: AppClient,
+  threadId: ThreadId,
+): UsagePort {
+  const session = client.port(RpcSessionPort) as RpcSessionClient;
+  return {
+    getSnapshot: () => source.getSnapshot(),
+    subscribe: (listener) => source.subscribe(listener),
+    refresh: async (options) => {
+      try {
+        const stats = (await session.send(
+          { threadId, command: { type: "get_session_stats" } },
+          options,
+        )) as OmpWire.SessionStats;
+        const current = source.getSnapshot();
+        return UsageSnapshot.parse({
+          ...current,
+          status: "ready",
+          sessionId: stats.sessionId,
+          totals: totalsFromWire({
+            input: stats.tokens.input,
+            output: stats.tokens.output,
+            cacheRead: stats.tokens.cacheRead,
+            cacheWrite: stats.tokens.cacheWrite,
+            totalTokens: stats.tokens.total,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: stats.cost,
+            },
+            premiumRequests: stats.premiumRequests,
+            reasoningTokens: stats.tokens.reasoning,
+          }),
+          contextUsage: stats.contextUsage ?? null,
+          error: null,
+        });
+      } catch (error) {
+        if (error instanceof AppFailure) throw error;
+        throw new AppFailure(
+          { code: "internal", message: "Loading session usage failed.", retryable: true },
+          { cause: error },
+        );
+      }
+    },
+  };
+}
+
+/** Calls typed compaction RPCs while lifecycle state remains owned by R0's projection. */
+export function createCompactionPort(
+  source: CompactionStateSource,
+  client: AppClient,
+  threadId: ThreadId,
+): CompactionPort {
+  const session = client.port(RpcSessionPort) as RpcSessionClient;
+  return {
+    getSnapshot: () => source.getSnapshot(),
+    subscribe: (listener) => source.subscribe(listener),
+    compact: async (request = {}, options) =>
+      (await session.send(
+        {
+          threadId,
+          command: {
+            type: "compact",
+            ...(request.customInstructions
+              ? { customInstructions: request.customInstructions }
+              : {}),
+          },
+        },
+        options,
+      )) as OmpWire.CompactionResult,
+    setAutoCompaction: async (request, options) => {
+      await session.send(
+        { threadId, command: { type: "set_auto_compaction", enabled: request.enabled } },
+        options,
+      );
+    },
+  };
+}
+
+export function initialContextState(): ContextUsageState {
+  return INITIAL_CONTEXT_STATE;
+}
+
+export function contextPercent(usage: ContextUsage | null): number | null {
+  return usage?.percent ?? null;
+}
