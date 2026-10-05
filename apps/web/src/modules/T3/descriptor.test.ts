@@ -1,0 +1,30 @@
+import { describe, expect, test } from "vitest";
+import { T3_INVENTORY_COVERS, T3_LIVE_CAPABILITIES, T3_TOOL_DESCRIPTORS } from "./descriptor";
+
+describe("T3 execution descriptors", () => {
+  test("claims exactly the four T3 inventory rows once", () => {
+    expect(T3_INVENTORY_COVERS).toEqual(["T3.computer", "T3.debug", "T3.eval", "T3.inspect-image"]);
+    expect(T3_TOOL_DESCRIPTORS).toHaveLength(4);
+    expect(T3_TOOL_DESCRIPTORS.flatMap((descriptor) => descriptor.covers)).toEqual(
+      T3_INVENTORY_COVERS,
+    );
+    expect(new Set(T3_TOOL_DESCRIPTORS.flatMap((descriptor) => descriptor.covers)).size).toBe(4);
+  });
+
+  test("matches exact tool names and leaves live capabilities to runtime composition", () => {
+    expect(T3_TOOL_DESCRIPTORS.map((descriptor) => descriptor.match)).toEqual([
+      { by: "name", name: "computer" },
+      { by: "name", name: "debug" },
+      { by: "name", name: "eval" },
+      { by: "name", name: "inspect_image" },
+    ]);
+    expect(T3_TOOL_DESCRIPTORS.every((descriptor) => descriptor.requires.length === 0)).toBe(true);
+    expect(T3_TOOL_DESCRIPTORS.every((descriptor) => descriptor.renderer)).toBe(true);
+    expect(T3_LIVE_CAPABILITIES).toMatchObject({
+      computer: "upstream.computer",
+      debug: "upstream.debug",
+      eval: "upstream.eval",
+      inspectImage: "upstream.inspect-image",
+    });
+  });
+});
