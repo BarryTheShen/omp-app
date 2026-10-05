@@ -1,0 +1,279 @@
+import type { ConfigEntry } from "@omp-app/contracts";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import type {
+  ConfigSnapshot,
+  PreviewResult,
+  SettingControl,
+  SettingsSectionDescriptor,
+  SettingValue,
+  StagedSettings,
+  ValidationResult,
+} from "./grammar";
+import { effectiveEntry, provenanceLabel, secretSummary, stage } from "./grammar";
+
+export type SettingsSectionProps = {
+  readonly descriptor: SettingsSectionDescriptor;
+  readonly snapshot: ConfigSnapshot;
+  readonly staged?: StagedSettings;
+  readonly disabled?: boolean;
+  readonly validation?: Readonly<Record<string, ValidationResult>>;
+  readonly applyStatus?: string;
+  readonly onStage?: (state: StagedSettings) => void;
+  readonly onSecretAction?: (key: string, action: "set" | "unset") => void;
+  readonly onPreview?: (key: string, preview: PreviewResult) => void;
+  readonly onCommit?: () => void;
+  readonly onCancel?: () => void;
+};
+
+export function SettingsSection({
+  descriptor,
+  snapshot,
+  staged = { snapshot, edits: {} },
+  disabled = false,
+  validation = {},
+  applyStatus,
+  onStage,
+  onSecretAction,
+  onPreview,
+  onCommit,
+  onCancel,
+}: SettingsSectionProps) {
+  return (
+    <section
+      aria-labelledby={`${descriptor.id}-title`}
+      className="bg-card text-card-foreground rounded-xl border p-5 shadow-sm"
+    >
+      <header className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h2 id={`${descriptor.id}-title`} className="text-lg font-semibold tracking-tight">
+            {descriptor.title}
+          </h2>
+          <p className="text-muted-foreground mt-1 text-sm">{descriptor.section}</p>
+        </div>
+        {applyStatus ? (
+          <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
+            {applyStatus}
+          </span>
+        ) : null}
+      </header>
+
+      <div className="divide-border/60 divide-y">
+        {descriptor.controls.map((control) => (
+          <SettingControlRow
+            key={control.key}
+            control={control}
+            entry={effectiveEntry(snapshot, control.key)}
+            value={staged.edits[control.key]}
+            validation={validation[control.key]}
+            disabled={disabled}
+            onStage={(value) => {
+              const result = stage(descriptor, staged, control.key, value);
+              if (result.ok) {
+                onStage?.(result.state);
+                onPreview?.(control.key, {
+                  ok: true,
+                  patch: control.preview?.(value, snapshot) ?? null,
+                });
+              } else {
+                onPreview?.(control.key, { ok: false, validation: result.validation });
+              }
+            }}
+            onSecretAction={onSecretAction}
+          />
+        ))}
+      </div>
+
+      <footer className="mt-5 flex flex-wrap items-center justify-end gap-2">
+        {onCancel ? (
+          <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={disabled}>
+            Cancel
+          </Button>
+        ) : null}
+        {onCommit ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onCommit}
+            disabled={disabled || Object.keys(staged.edits).length === 0}
+          >
+            Save changes
+          </Button>
+        ) : null}
+      </footer>
+    </section>
+  );
+}
+
+type SettingControlRowProps = {
+  readonly control: SettingControl;
+  readonly entry?: ConfigEntry;
+  readonly value?: SettingValue;
+  readonly validation?: ValidationResult;
+  readonly disabled: boolean;
+  readonly onStage: (value: SettingValue) => void;
+  readonly onSecretAction?: (key: string, action: "set" | "unset") => void;
+};
+
+function SettingControlRow({
+  control,
+  entry,
+  value,
+  validation,
+  disabled,
+  onStage,
+  onSecretAction,
+}: SettingControlRowProps) {
+  const secret = entry ? secretSummary(entry) : null;
+  const effectiveValue =
+    value?.secret === false ? value.value : entry && !entry.secret ? entry.value : undefined;
+  const valueText = effectiveValue === undefined ? "" : String(effectiveValue);
+  const provenance = entry ? provenanceLabel(entry) : "not configured";
+  const setSecret = () => onSecretAction?.(control.key, "set");
+  const unsetSecret = () => onSecretAction?.(control.key, "unset");
+  const secretActionLabel = secret?.isSet ? "Replace…" : "Set…";
+
+  return (
+    <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(15rem,1.25fr)] sm:items-start sm:gap-8">
+      <div className="min-w-0">
+        <div className="font-medium">{control.label}</div>
+        {control.description ? (
+          <p className="text-muted-foreground mt-1 text-sm">{control.description}</p>
+        ) : null}
+        <div
+          className="text-muted-foreground mt-2 text-xs"
+          data-testid={`${control.key}-provenance`}
+        >
+          Source: {provenance}
+        </div>
+      </div>
+      <div className="min-w-0">
+        {control.secret ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="bg-muted text-muted-foreground rounded-md px-2.5 py-1.5 text-sm"
+              data-testid={`${control.key}-secret-status`}
+            >
+              {secret?.isSet ? "Set" : "Not set"}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={setSecret}
+              disabled={disabled}
+            >
+              {secretActionLabel}
+            </Button>
+            {secret?.isSet ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={unsetSecret}
+                disabled={disabled}
+              >
+                Unset
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <ControlInput
+            control={control}
+            value={valueText}
+            disabled={disabled}
+            onValue={(next) => onStage({ secret: false, value: parseControlValue(control, next) })}
+          />
+        )}
+        {validation && !validation.valid ? (
+          <p className="text-destructive mt-2 text-sm" role="alert">
+            {validation.message}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ControlInput({
+  control,
+  value,
+  disabled,
+  onValue,
+}: {
+  readonly control: SettingControl;
+  readonly value: string;
+  readonly disabled: boolean;
+  readonly onValue: (value: string) => void;
+}) {
+  if (control.kind === "boolean") {
+    return (
+      <label className="border-input bg-background has-focus-visible:ring-ring/50 flex min-h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-sm has-focus-visible:ring-2">
+        <input
+          type="checkbox"
+          checked={value === "true"}
+          onChange={(event) => onValue(String(event.target.checked))}
+          disabled={disabled}
+        />
+        <span>{value === "true" ? "On" : "Off"}</span>
+      </label>
+    );
+  }
+  if (control.kind === "enum" && control.options) {
+    return (
+      <select
+        className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2"
+        style={{ color: "var(--foreground)", WebkitTextFillColor: "var(--foreground)" }}
+        value={value}
+        onChange={(event) => onValue(event.target.value)}
+        disabled={disabled}
+      >
+        {control.options.map((option) => (
+          <option key={String(option.value)} value={String(option.value)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  if (control.kind === "multiline") {
+    return (
+      <Textarea
+        className="text-foreground"
+        style={{ color: "var(--foreground)", WebkitTextFillColor: "var(--foreground)" }}
+        value={value}
+        onChange={(event) => onValue(event.target.value)}
+        disabled={disabled}
+      />
+    );
+  }
+  return (
+    <Input
+      className="text-foreground"
+      style={{ color: "var(--foreground)", WebkitTextFillColor: "var(--foreground)" }}
+      type={control.kind === "number" || control.kind === "duration" ? "number" : "text"}
+      value={value}
+      onChange={(event) => onValue(event.target.value)}
+      disabled={disabled}
+    />
+  );
+}
+
+function parseControlValue(
+  control: SettingControl,
+  value: string,
+): string | number | boolean | readonly string[] {
+  if (control.kind === "boolean") return value === "true";
+  if (control.kind === "number" || control.kind === "duration") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+  if (control.kind === "list")
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  return value;
+}
