@@ -1,5 +1,6 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
+import { EvalToolRenderer } from "./eval";
 
 /** Exactly the four execution/computer inventory rows owned by T3. */
 export const T3_INVENTORY_COVERS = [
@@ -39,7 +40,7 @@ export const T3_TOOL_DESCRIPTORS = [
     covers: ["T3.eval"],
     requires: [],
     match: { by: "name", name: "eval" },
-    renderer: ToolFallback,
+    renderer: EvalToolRenderer,
   },
   {
     kind: "tool",
