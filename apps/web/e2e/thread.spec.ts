@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -50,6 +50,22 @@ function buildPlaygroundPage(): void {
   );
 }
 
+async function expectMarkdownStyles(page: Page): Promise<void> {
+  await expect(page.locator("[data-markdown-inline]").first()).toBeVisible();
+  await expect(page.locator("li").first()).toBeVisible();
+  await expect(page.locator("blockquote")).toBeVisible();
+  await expect(page.locator("th").first()).toBeVisible();
+  const styles = await page.evaluate(() => ({
+    inline: getComputedStyle(document.querySelector("[data-markdown-inline]") as Element).display,
+    list: getComputedStyle(document.querySelector("li") as Element).listStyleType,
+    quote: getComputedStyle(document.querySelector("blockquote") as Element).borderInlineStartStyle,
+    header: getComputedStyle(document.querySelector("th") as Element).backgroundColor,
+  }));
+  expect(styles.inline).toBe("inline");
+  expect(styles.list).not.toBe("none");
+  expect(styles.quote).not.toBe("none");
+  expect(styles.header).not.toBe("rgba(0, 0, 0, 0)");
+}
 test.beforeAll(() => {
   buildPlaygroundPage();
 });
@@ -115,4 +131,39 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   await expect(page.getByText("No messages yet.")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "../../.data/screenshots/u1-3-empty-narrow.png", fullPage: false });
+  await page.reload();
+  await page.getByTestId("thread-show-markdown").click();
+  await expect(page.getByRole("heading", { name: "Rich Markdown answer" })).toBeVisible();
+  await expect(page.locator("[data-markdown-code]")).toHaveCount(1);
+  await expect(page.locator("[data-markdown-table]")).toBeVisible();
+  await expectMarkdownStyles(page);
+  const richLight = page.getByRole("region", { name: "Rich Markdown answer" });
+  await richLight.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "../../.data/screenshots/u1-4-rich-light.png", fullPage: false });
+
+  const darkPage = await page.context().newPage();
+  await darkPage.addInitScript(() => document.documentElement.classList.add("dark"));
+  await darkPage.goto("/thread-playground.html");
+  await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
+  await darkPage.getByTestId("thread-show-markdown").click();
+  await expect(darkPage.locator("html")).toHaveClass(/dark/);
+  await expect(darkPage.getByRole("heading", { name: "Rich Markdown answer" })).toBeVisible();
+  await expectMarkdownStyles(darkPage);
+  const darkBackground = await darkPage.evaluate(
+    () => getComputedStyle(document.body).backgroundColor,
+  );
+  expect(darkBackground).not.toBe("rgb(255, 255, 255)");
+  const richDark = darkPage.getByRole("region", { name: "Rich Markdown answer" });
+  await richDark.scrollIntoViewIfNeeded();
+  await darkPage.screenshot({
+    path: "../../.data/screenshots/u1-4-rich-dark.png",
+    fullPage: false,
+  });
+
+  await darkPage.setViewportSize({ width: 390, height: 844 });
+  await darkPage.screenshot({
+    path: "../../.data/screenshots/u1-4-rich-narrow.png",
+    fullPage: false,
+  });
+  await darkPage.close();
 });

@@ -11,6 +11,7 @@ import { AppShell } from "@/shell";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures/fixture-session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
 import { OmpRuntimeStore } from "../../R0/store";
+import { MarkdownShowcase } from "../markdown";
 import { MessageParts } from "../parts";
 import { ThreadShell } from "./thread";
 
@@ -38,14 +39,17 @@ const IMAGE_USER_MESSAGE: OmpMessage = {
   timestamp: 1_759_600_000_500,
 } as OmpMessage;
 type PlaygroundMode = "empty" | "streaming" | "settled" | "error";
+
 function Controls({
   mode,
   onPlay,
   onError,
+  onMarkdown,
 }: {
   readonly mode: PlaygroundMode;
   readonly onPlay: () => void;
   readonly onError: () => void;
+  readonly onMarkdown: () => void;
 }) {
   return (
     <div className="flex items-center gap-1.5" data-testid="thread-fixture-controls">
@@ -65,6 +69,14 @@ function Controls({
       >
         Show error
       </button>
+      <button
+        className="border-border bg-background hover:bg-muted rounded-md border px-2 py-1 text-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        data-testid="thread-show-markdown"
+        type="button"
+        onClick={onMarkdown}
+      >
+        Rich Markdown
+      </button>
     </div>
   );
 }
@@ -72,11 +84,11 @@ function Controls({
 function ThreadPlayground() {
   const [fixture, setFixture] = useState<Fixture | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
+  const [showMarkdown, setShowMarkdown] = useState(false);
   const [mode, setMode] = useState<PlaygroundMode>("empty");
   const store = useMemo(() => new OmpRuntimeStore({ threadId: THREAD_ID }), []);
   const sequenceRef = useRef(0);
   const sessionRef = useRef<RpcSession | undefined>(undefined);
-
   useEffect(() => {
     let active = true;
     void fetch("/prompt-stream-fixture.json")
@@ -146,7 +158,7 @@ function ThreadPlayground() {
       setMode("error");
     });
   }, [store]);
-
+  const showRichMarkdown = useCallback(() => setShowMarkdown(true), []);
   if (loadError !== undefined) {
     return <div role="alert">{loadError}</div>;
   }
@@ -163,7 +175,14 @@ function ThreadPlayground() {
           Thread row slots
         </div>
       }
-      threadHeader={<Controls mode={mode} onError={showError} onPlay={playFixture} />}
+      threadHeader={
+        <Controls
+          mode={mode}
+          onError={showError}
+          onMarkdown={showRichMarkdown}
+          onPlay={playFixture}
+        />
+      }
       transcript={
         <div className="h-full min-h-0 overflow-hidden">
           <ThreadShell
@@ -174,6 +193,7 @@ function ThreadPlayground() {
             }}
             store={store}
           />
+          {showMarkdown && <MarkdownShowcase />}
         </div>
       }
     />
