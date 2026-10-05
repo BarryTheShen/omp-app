@@ -13,14 +13,21 @@ import { R1_DESCRIPTORS } from "../modules/R1/descriptors";
 import { U1MessageDescriptors } from "../modules/U1/registry/messages";
 import { U2Descriptors } from "../modules/U2/descriptors";
 import { U3_BASH_DESCRIPTOR } from "../modules/U3/tool-card/bash";
+import type { ToolRegistryDescriptor } from "../modules/U3/tool-card/contract";
+import { U4Descriptors } from "../modules/U4/descriptors";
+import { todoToolDescriptor } from "../modules/U5/todo/tool-card/tool-card";
 import { createRegistry, type RendererMap } from "../registry-core";
 
-/** U3's tool descriptors carry their renderer for U3.3's resolver; the registry holds the C0 part. */
-function withoutRenderer<D extends Descriptor & { readonly renderer: unknown }>(
-  descriptor: D,
-): Descriptor {
+/** Tool renderers by omp tool name, for U3.3's createToolRegistry (U3's fallback covers the rest). */
+export const TOOL_RENDERERS: readonly ToolRegistryDescriptor[] = [
+  U3_BASH_DESCRIPTOR,
+  todoToolDescriptor,
+];
+
+/** A tool descriptor carries its renderer for U3.3's resolver; the registry holds the C0 part. */
+function withoutRenderer(descriptor: ToolRegistryDescriptor): Descriptor {
   const { renderer: _renderer, ...rest } = descriptor;
-  return rest as Descriptor;
+  return rest;
 }
 
 export const DESCRIPTORS: readonly Descriptor[] = [
@@ -30,7 +37,8 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...N1_DESCRIPTORS,
   ...P4_DESCRIPTORS,
   ...D2_TRIGGER_DESCRIPTORS,
-  withoutRenderer(U3_BASH_DESCRIPTOR),
+  ...U4Descriptors,
+  ...TOOL_RENDERERS.map(withoutRenderer),
 ];
 
 export const RENDERERS: RendererMap = {};
