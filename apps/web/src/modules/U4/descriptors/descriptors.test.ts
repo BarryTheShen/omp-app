@@ -44,9 +44,11 @@ describe("U4Descriptors", () => {
     expect("RENDERERS" in descriptorsModule).toBe(false);
   });
 
-  test("passes validateRegistry when composed with the descriptors already on main", () => {
-    const problems = validateRegistry([...DESCRIPTORS, ...U4Descriptors]);
-    expect(problems).toEqual([]);
+  test("the composed registry includes every U4 descriptor once and validates", () => {
+    expect(validateRegistry(DESCRIPTORS)).toEqual([]);
+    for (const descriptor of U4Descriptors) {
+      expect(DESCRIPTORS.filter((candidate) => candidate.id === descriptor.id)).toHaveLength(1);
+    }
   });
 
   test("does not claim downstream feature namespaces or export an empty renderer alias", () => {
