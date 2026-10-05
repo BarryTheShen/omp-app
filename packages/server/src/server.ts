@@ -39,6 +39,11 @@ export interface AppServer {
   stop(): Promise<void>;
 }
 
+export interface UpgradeClose {
+  readonly closeCode: 4401 | 4403;
+  readonly reason: "invalid token" | "invalid origin";
+}
+
 export interface UpgradePolicy {
   readonly token: string;
   readonly origins?: readonly string[];
@@ -80,19 +85,19 @@ function forbiddenUpgrade(): Response {
   return new Response(null, { status: 403 });
 }
 
-/** Returns an HTTP rejection response, or `undefined` when the upgrade may proceed. */
+/** Returns an HTTP rejection for a bad Host, or a close decision after upgrade for auth failures. */
 export function authorizeWebSocketUpgrade(
   request: Request,
   policy: UpgradePolicy,
-): Response | undefined {
+): Response | UpgradeClose | undefined {
   const url = new URL(request.url);
   const candidate = url.searchParams.get("token") ?? "";
-  if (
-    !hostAllowed(request, policy.port) ||
-    !originAllowed(request.headers.get("origin"), policy) ||
-    !constantTimeEqual(policy.token, candidate)
-  ) {
-    return forbiddenUpgrade();
+  if (!hostAllowed(request, policy.port)) return forbiddenUpgrade();
+  if (!originAllowed(request.headers.get("origin"), policy)) {
+    return { closeCode: 4403, reason: "invalid origin" };
+  }
+  if (!constantTimeEqual(policy.token, candidate)) {
+    return { closeCode: 4401, reason: "invalid token" };
   }
   return undefined;
 }
@@ -166,6 +171,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
 
   interface SocketData {
     readonly id: string;
+    readonly authFailure?: UpgradeClose;
     session?: DispatcherSession;
   }
 
@@ -176,13 +182,18 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     fetch: async (request, server) => {
       const url = new URL(request.url);
       if (url.pathname === "/ws") {
-        const rejection = authorizeWebSocketUpgrade(request, {
+        const authorization = authorizeWebSocketUpgrade(request, {
           token,
           origins,
           port: bunServer.port ?? port,
         });
-        if (rejection !== undefined) return rejection;
-        const upgraded = server.upgrade(request, { data: { id: randomId() } });
+        if (authorization instanceof Response) return authorization;
+        const upgraded = server.upgrade(request, {
+          data: {
+            id: randomId(),
+            ...(authorization ? { authFailure: authorization } : {}),
+          },
+        });
         return upgraded ? undefined : new Response("WebSocket upgrade required", { status: 426 });
       }
       if (request.method !== "GET" && request.method !== "HEAD") {
@@ -192,6 +203,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     },
     websocket: {
       open: (socket) => {
+        if (socket.data.authFailure) {
+          socket.close(socket.data.authFailure.closeCode, socket.data.authFailure.reason);
+          return;
+        }
         const dispatcherSocket = {
           id: socket.data.id,
           send: (frame: ServerFrame) => socket.send(JSON.stringify(ServerFrameSchema.parse(frame))),

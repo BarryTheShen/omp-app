@@ -42,6 +42,7 @@ export type ConnectionState = "connecting" | "open" | "reconnecting" | "closed";
 export interface ConnectionStateEvent {
   readonly state: ConnectionState;
   readonly attempt: number;
+  readonly error?: AppError;
 }
 
 export type ResyncReason =
@@ -217,6 +218,11 @@ function defaultWebSocketFactory(url: string): WebSocketLike {
 function isConflict(error: unknown): error is AppFailure {
   return error instanceof AppFailure && error.appError.code === "conflict";
 }
+function closeCode(event: unknown): number | undefined {
+  if (typeof event !== "object" || event === null || !("code" in event)) return undefined;
+  const value = event.code;
+  return typeof value === "number" ? value : undefined;
+}
 
 class AppClientImpl implements AppClient {
   private readonly options: CreateAppClientOptions;
@@ -233,6 +239,7 @@ class AppClientImpl implements AppClient {
   private socketGeneration = 0;
   private welcomeReceived = false;
   private disposed = false;
+  private terminal = false;
   private requestCounter = 0;
   private readonly timers: TimerScheduler;
   private reconnectAttempt = 0;
@@ -355,7 +362,7 @@ class AppClientImpl implements AppClient {
   }
 
   private connectNow(): void {
-    if (this.disposed) return;
+    if (this.disposed || this.terminal) return;
     const url = withToken(this.options.url, this.options.token);
     let socket: WebSocketLike;
     try {
@@ -392,12 +399,26 @@ class AppClientImpl implements AppClient {
     socket.onerror = () => {
       // Standard WebSockets follow error with close; waiting for close avoids duplicate reconnects.
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (!this.isCurrent(socket, generation)) return;
+      const wasOpen = this.welcomeReceived;
       this.socket = undefined;
       this.welcomeReceived = false;
+      const code = closeCode(event);
+      if (code === 4401 || code === 4403) {
+        this.terminal = true;
+        const error = appFailure(
+          "permission",
+          code === 4401 ? "Launch token is invalid or expired" : "WebSocket origin is not allowed",
+          false,
+        );
+        this.rejectPending(error);
+        this.rejectOpenWaiters(error);
+        this.setConnectionState("closed", error.appError);
+        return;
+      }
       this.rejectPending(appFailure("unavailable", "Connection to the app server closed", true));
-      if (!this.disposed) this.scheduleReconnect();
+      if (!this.disposed) this.scheduleReconnect(wasOpen);
     };
   }
 
@@ -724,10 +745,10 @@ class AppClientImpl implements AppClient {
     }
   }
 
-  private setConnectionState(state: ConnectionState): void {
-    if (this._connectionState === state) return;
+  private setConnectionState(state: ConnectionState, error?: AppError): void {
+    if (this._connectionState === state && error === undefined && state !== "connecting") return;
     this._connectionState = state;
-    const event = { state, attempt: this.reconnectAttempt };
+    const event = { state, attempt: this.reconnectAttempt, ...(error ? { error } : {}) };
     for (const listener of this.stateListeners) this.notifyListener(listener, event);
   }
 
@@ -761,8 +782,8 @@ class AppClientImpl implements AppClient {
     }
   }
 
-  private scheduleReconnect(): void {
-    if (this.disposed || this.reconnectTimer !== undefined) return;
+  private scheduleReconnect(wasOpen = this.welcomeReceived): void {
+    if (this.disposed || this.terminal || this.reconnectTimer !== undefined) return;
     const nextAttempt = this.reconnectAttempt + 1;
     if (this.reconnect.maxAttempts !== undefined && nextAttempt > this.reconnect.maxAttempts) {
       this.setConnectionState("closed");
@@ -772,7 +793,7 @@ class AppClientImpl implements AppClient {
       return;
     }
     this.reconnectAttempt = nextAttempt;
-    this.setConnectionState("reconnecting");
+    this.setConnectionState(wasOpen ? "reconnecting" : "connecting");
     const exponent = Math.max(0, nextAttempt - 1);
     const delay = Math.min(this.reconnect.maxDelayMs, this.reconnect.baseDelayMs * 2 ** exponent);
     if (!this.timers.setTimeout) {

@@ -292,32 +292,32 @@ describe("A0.6 dispatcher", () => {
 });
 
 describe("A0.6 upgrade and static serving", () => {
-  test("rejects bad token, Origin and Host before upgrade", async () => {
+  test("closes bad token and Origin after upgrade, while rejecting bad Host before upgrade", async () => {
     const request = (token: string, origin: string, host = "127.0.0.1:4317") =>
       new Request(`http://127.0.0.1:4317/ws?token=${token}`, {
         headers: { origin, host },
       });
-    const badToken = authorizeWebSocketUpgrade(request("wrong", "http://allowed.test"), {
-      token: "right",
-      origins: ["http://allowed.test"],
-      port: 4317,
-    });
-    expect(badToken?.status).toBe(403);
-    expect(await badToken?.text()).toBe("");
+    expect(
+      authorizeWebSocketUpgrade(request("wrong", "http://allowed.test"), {
+        token: "right",
+        origins: ["http://allowed.test"],
+        port: 4317,
+      }),
+    ).toEqual({ closeCode: 4401, reason: "invalid token" });
     expect(
       authorizeWebSocketUpgrade(request("right", "http://denied.test"), {
         token: "right",
         origins: ["http://allowed.test"],
         port: 4317,
-      })?.status,
-    ).toBe(403);
+      }),
+    ).toEqual({ closeCode: 4403, reason: "invalid origin" });
     expect(
       authorizeWebSocketUpgrade(request("right", "http://allowed.test", "evil.test:4317"), {
         token: "right",
         origins: ["http://allowed.test"],
         port: 4317,
-      })?.status,
-    ).toBe(403);
+      }),
+    ).toMatchObject({ status: 403 });
     expect(
       authorizeWebSocketUpgrade(request("right", "http://allowed.test"), {
         token: "right",
@@ -384,6 +384,40 @@ describe("A0.6 upgrade and static serving", () => {
     } finally {
       if (socket !== undefined) socket.close();
       await app.stop();
+    }
+  });
+  test("closes unauthorized upgraded sockets with typed auth codes and no welcome", async () => {
+    const app = createAppServer({
+      port: 0,
+      staticRoot: new URL("./test-fixtures", import.meta.url).pathname,
+      token: "right",
+      origins: ["http://allowed.test"],
+    });
+    try {
+      const close = async (
+        url: string,
+        origin: string,
+      ): Promise<{ code: number; reason: string }> => {
+        const socket = new WebSocket(url, { headers: { origin } });
+        return new Promise((resolve, reject) => {
+          socket.onerror = () => undefined;
+          socket.onclose = (event) => {
+            resolve({ code: event.code, reason: event.reason });
+            socket.close();
+          };
+          setTimeout(() => reject(new Error("unauthorized socket did not close")), 1_000);
+        });
+      };
+      await expect(close(`${app.url}/ws?token=wrong`, "http://allowed.test")).resolves.toEqual({
+        code: 4401,
+        reason: "invalid token",
+      });
+      await expect(close(`${app.url}/ws?token=right`, "http://denied.test")).resolves.toEqual({
+        code: 4403,
+        reason: "invalid origin",
+      });
+    } finally {
+      void app.stop();
     }
   });
 });

@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 import {
   type AppClient,
+  type ConnectionStateEvent,
   createAppClient,
   type TimerScheduler,
   type WebSocketFactory,
@@ -328,5 +329,19 @@ describe("createAppClient", () => {
     client.dispose();
     expect(client.connectionState).toBe("closed");
     expect(states).toContain("reconnecting");
+  });
+  test("treats unauthorized close codes as terminal permission failures", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const states: ConnectionStateEvent[] = [];
+    client.onConnectionState((event) => states.push(event));
+    server.current().socket.onclose?.({ code: 4401, reason: "invalid token" });
+    await eventually(() => client.connectionState === "closed");
+    expect(server.connections).toHaveLength(1);
+    expect(states.at(-1)).toMatchObject({
+      state: "closed",
+      error: { code: "permission", message: "Launch token is invalid or expired" },
+    });
+    client.dispose();
   });
 });

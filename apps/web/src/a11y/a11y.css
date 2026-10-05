@@ -1,0 +1,22 @@
+/* U0.8 accessibility baseline: every keyboard focus target gets the shared token ring. */
+:where(:focus-visible) {
+  outline: var(--border-width-strong) solid var(--ring);
+  outline-offset: var(--space-3xs);
+}
+
+/* Long words and wide controls remain reachable at 200% text zoom. */
+:where([data-a11y-content]) {
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--duration-fast);
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: var(--duration-fast);
+  }
+}
