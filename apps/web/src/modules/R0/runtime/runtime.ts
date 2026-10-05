@@ -164,31 +164,30 @@ function imagePart(part: Record<string, unknown>): Record<string, unknown> | und
   return image ? { type: "image", image } : undefined;
 }
 
-function userContentParts(
-  content: unknown,
-  status: MessagePartStreamStatus,
-): Record<string, unknown>[] {
-  if (typeof content === "string") return [textPart(content, status)];
-  if (!Array.isArray(content))
-    return [textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" })];
+/**
+ * User and system content: assistant-ui accepts `status` only on assistant messages and their parts,
+ * so these parts never carry one (a malformed part becomes the fallback text without a status).
+ */
+function userContentParts(content: unknown): Record<string, unknown>[] {
+  if (typeof content === "string") return [textPart(content)];
+  if (!Array.isArray(content)) return [textPart(FALLBACK_TEXT)];
   const parts: Record<string, unknown>[] = [];
   for (const rawPart of content) {
     if (!isRecord(rawPart)) {
-      parts.push(textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" }));
+      parts.push(textPart(FALLBACK_TEXT));
       continue;
     }
     if (rawPart.type === "text" && typeof rawPart.text === "string") {
-      parts.push(textPart(rawPart.text, status));
+      parts.push(textPart(rawPart.text));
       continue;
     }
     if (rawPart.type === "image") {
-      const converted = imagePart(rawPart);
-      parts.push(converted ?? textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" }));
+      parts.push(imagePart(rawPart) ?? textPart(FALLBACK_TEXT));
       continue;
     }
-    parts.push(textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" }));
+    parts.push(textPart(FALLBACK_TEXT));
   }
-  return parts.length > 0 ? parts : [textPart("", status)];
+  return parts.length > 0 ? parts : [textPart("")];
 }
 
 function toolPart(
@@ -337,8 +336,7 @@ function convertRecord(
         role: "user",
         id,
         ...(createdAt ? { createdAt } : {}),
-        content: userContentParts(message.content, streamStatus(runtime)),
-        status,
+        content: userContentParts(message.content),
         metadata,
       } as unknown as ThreadMessageLike;
     case "developer":
@@ -346,8 +344,7 @@ function convertRecord(
         role: "system",
         id,
         ...(createdAt ? { createdAt } : {}),
-        content: userContentParts(message.content, streamStatus(runtime)),
-        status,
+        content: userContentParts(message.content),
         metadata,
       } as unknown as ThreadMessageLike;
     case "assistant":

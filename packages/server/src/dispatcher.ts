@@ -189,7 +189,9 @@ export class DispatcherSession {
   }
 
   #sendResult(id: RequestId, value: unknown): void {
-    const frame = ResultFrameSchema.parse({ type: "result", id, ok: true, value });
+    // A handler with no result (omp's response without data, a void method) still sends `value`:
+    // JSON drops undefined keys, and the client's ResultFrame requires the field.
+    const frame = ResultFrameSchema.parse({ type: "result", id, ok: true, value: value ?? null });
     this.#send(frame);
   }
 

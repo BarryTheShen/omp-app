@@ -1,4 +1,4 @@
-import type { ThreadMessageLike } from "@assistant-ui/react";
+import { fromThreadMessageLike, type ThreadMessageLike } from "@assistant-ui/react";
 import type {
   AppError,
   CapabilityMap,
@@ -341,6 +341,30 @@ describe("R0.3 assistant-ui runtime", () => {
     const result = renderHook(() => useOmpRuntime({ store, send, capabilities }));
     expect(result.result.current).toBeDefined();
     result.unmount();
+  });
+
+  test("every role converts into a message assistant-ui accepts (status only on assistant messages)", () => {
+    const records = [
+      { role: "user", content: "hello", timestamp: 1 },
+      { role: "user", content: [{ type: "text", text: "with parts" }], timestamp: 2 },
+      { role: "developer", content: "system note", timestamp: 3 },
+      assistantMessage([{ type: "text", text: "answer" }]),
+    ];
+    for (const [index, message] of records.entries()) {
+      const view: RuntimeMessageView = {
+        record: {
+          key: `entry:runtime-test-thread:m${index}` as MessageKey,
+          message: message as unknown as OmpMessage,
+          status: "persisted",
+        } as RuntimeMessage,
+        toolStates: [],
+      };
+      const converted = convertMessage(view, index);
+      // assistant-ui's own conversion throws on a status outside assistant messages.
+      expect(() =>
+        fromThreadMessageLike(converted, `m${index}`, { type: "complete", reason: "unknown" }),
+      ).not.toThrow();
+    }
   });
 
   test("renders a visible fallback part for a malformed message", () => {
