@@ -2,9 +2,9 @@ import type { EnrichedPartState, MessageState } from "@assistant-ui/react";
 import { MessagePrimitive } from "@assistant-ui/react";
 import type { ReactNode } from "react";
 import { File } from "@/components/assistant-ui/elements/file";
-import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { cn } from "@/lib/utils";
+import { MarkdownText } from "../markdown";
 import { type ToolRendererMap, ToolSlot } from "../tool-slots";
 export interface MessagePartsProps {
   readonly message: MessageState;

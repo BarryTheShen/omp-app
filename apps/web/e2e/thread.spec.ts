@@ -66,6 +66,17 @@ async function expectMarkdownStyles(page: Page): Promise<void> {
   expect(styles.quote).not.toBe("none");
   expect(styles.header).not.toBe("rgba(0, 0, 0, 0)");
 }
+async function expectStreamedAnswerStyles(page: Page): Promise<void> {
+  const streamedAnswer = page
+    .locator('[data-message-surface="assistant-text"]')
+    .filter({ hasText: "tool said: fixture-tool" })
+    .last();
+  await expect(streamedAnswer).toBeVisible();
+  const paragraph = streamedAnswer.locator("p").first();
+  await expect(paragraph).toBeVisible();
+  const lineHeight = await paragraph.evaluate((element) => getComputedStyle(element).lineHeight);
+  expect(lineHeight).not.toBe("normal");
+}
 test.beforeAll(() => {
   buildPlaygroundPage();
 });
@@ -101,6 +112,7 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   const userBubble = page.locator('[data-message-surface="user-bubble"]').first();
   await expect(userBubble).toBeVisible();
   await expect(page.locator('[data-part-type="image"]')).toHaveCount(1);
+  await expectStreamedAnswerStyles(page);
   const userBubbleBackground = await userBubble.evaluate(
     (element) => getComputedStyle(element).backgroundColor,
   );
