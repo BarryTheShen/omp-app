@@ -9,12 +9,7 @@ import {
   TodoReminderSchema,
   TtsrTriggeredSchema,
 } from "../../contract";
-import {
-  DESCRIPTORS,
-  N1_DESCRIPTORS,
-  N1_NOTICE_DESCRIPTORS,
-  N2_STATUS_DESCRIPTORS,
-} from "../../descriptors";
+import { N1_DESCRIPTORS, N1_NOTICE_DESCRIPTORS, N2_STATUS_DESCRIPTORS } from "../../descriptors";
 
 const EXPECTED_COVERS = [
   "N1.ttsr-rewind-notification",
@@ -112,7 +107,6 @@ describe("N1 typed payloads", () => {
 
 describe("N1 descriptor coverage", () => {
   test("covers exactly all fourteen N1 and thirteen N2 rows once", () => {
-    expect(DESCRIPTORS).toBe(N1_DESCRIPTORS);
     expect(N1_NOTICE_DESCRIPTORS).toHaveLength(14);
     expect(N2_STATUS_DESCRIPTORS).toHaveLength(13);
     const covers = N1_DESCRIPTORS.flatMap((descriptor) => descriptor.covers).sort();

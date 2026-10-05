@@ -4,7 +4,6 @@ import { describe, expect, test } from "vitest";
 import {
   CONVERSATION_FORK_LABEL,
   CONVERSATION_REWIND_LABEL,
-  DESCRIPTORS,
   EntryCursorSchema,
   P4_DESCRIPTORS,
   ReadOnlyTreeLabelSchema,
@@ -66,7 +65,6 @@ describe("P4 entry/tree contracts", () => {
 
 describe("P4 descriptor boundary", () => {
   test("covers exactly nine durable-tree rows and no P3 assistant-ui rows", () => {
-    expect(DESCRIPTORS).toBe(P4_DESCRIPTORS);
     expect(P4_DESCRIPTORS).toHaveLength(9);
     expect(P4_DESCRIPTORS.flatMap((descriptor) => descriptor.covers).sort()).toEqual([
       "P3.app-session-tree",

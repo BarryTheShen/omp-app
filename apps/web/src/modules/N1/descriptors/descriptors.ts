@@ -244,4 +244,3 @@ export const N1_DESCRIPTORS = [
   ...N1_NOTICE_DESCRIPTORS,
   ...N2_STATUS_DESCRIPTORS,
 ] as const satisfies readonly Descriptor[];
-export const DESCRIPTORS: readonly Descriptor[] = N1_DESCRIPTORS;

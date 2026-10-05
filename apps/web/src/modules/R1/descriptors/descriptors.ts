@@ -137,5 +137,3 @@ export const R1_DESCRIPTORS = [
     scope: "session-selector",
   },
 ] as const satisfies readonly Descriptor[];
-
-export const DESCRIPTORS: readonly Descriptor[] = R1_DESCRIPTORS;

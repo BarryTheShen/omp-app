@@ -1,6 +1,6 @@
 import { validateRegistry } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { DESCRIPTORS, R1_DESCRIPTORS } from ".";
+import { R1_DESCRIPTORS } from ".";
 
 const EXPECTED_COVERS = [
   "F3.open-session",
@@ -21,7 +21,6 @@ const EXPECTED_COVERS = [
 
 describe("R1 descriptor coverage", () => {
   test("covers exactly F3.open-session and the thirteen D2 rows", () => {
-    expect(DESCRIPTORS).toBe(R1_DESCRIPTORS);
     expect(R1_DESCRIPTORS).toHaveLength(14);
     const covers = R1_DESCRIPTORS.flatMap((descriptor) => descriptor.covers).sort();
     expect(covers).toEqual([...EXPECTED_COVERS].sort());

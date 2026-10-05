@@ -84,5 +84,3 @@ export const P4_DESCRIPTORS = [
     scope: "tree",
   },
 ] as const satisfies readonly Descriptor[];
-
-export const DESCRIPTORS: readonly Descriptor[] = P4_DESCRIPTORS;
