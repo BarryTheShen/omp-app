@@ -1,0 +1,295 @@
+import type {
+  AppendMessage,
+  ExternalThreadQueueAdapter,
+  QueueItemState,
+} from "@assistant-ui/react";
+import type { CapabilityKey, CapabilityMap, OmpWire } from "@omp-app/contracts";
+import { AppFailure } from "@omp-app/contracts";
+import type {
+  QueueItemReference,
+  QueueLane,
+  QueueModeChanges,
+  QueueMutationResult,
+  QueuePort,
+  QueueSnapshot,
+  QueueSubmitIntent,
+} from "../../R0/actions/actions";
+
+export type { QueueLane, QueueModeChanges, QueueMutationResult, QueuePort, QueueSnapshot };
+
+export const P6_QUEUE_CAPABILITIES = {
+  steer: "omp.cmd.steer" as CapabilityKey,
+  followUp: "omp.cmd.follow_up" as CapabilityKey,
+  remove: "omp.cmd.remove_queued_message" as CapabilityKey,
+  promote: "omp.cmd.promote_queued_message" as CapabilityKey,
+  steeringMode: "omp.cmd.set_steering_mode" as CapabilityKey,
+  followUpMode: "omp.cmd.set_follow_up_mode" as CapabilityKey,
+  interruptMode: "omp.cmd.set_interrupt_mode" as CapabilityKey,
+  reorder: "upstream.queue-reorder" as CapabilityKey,
+  edit: "upstream.queue-edit" as CapabilityKey,
+} as const;
+
+export type QueueItemStatus = "queued";
+
+export interface QueueItemView extends QueueItemState {
+  readonly lane: QueueLane;
+  readonly status: QueueItemStatus;
+  readonly canRemove: boolean;
+  readonly canPromote: boolean;
+}
+
+export interface QueueAdapterSnapshot {
+  readonly items: readonly QueueItemView[];
+  readonly steerItems: readonly QueueItemView[];
+  readonly steeringMode: QueueSnapshot["steeringMode"];
+  readonly followUpMode: QueueSnapshot["followUpMode"];
+  readonly interruptMode: QueueSnapshot["interruptMode"];
+  readonly isStreaming: boolean;
+  readonly capabilities: CapabilityMap;
+  readonly lastError?: AppFailure;
+}
+
+export type QueueAdapterErrorHandler = (error: AppFailure) => void;
+
+export interface QueueAdapterOptions {
+  readonly onError?: QueueAdapterErrorHandler;
+}
+
+export interface QueueAdapterController {
+  /** Stable object consumed by assistant-ui's ExternalStore runtime. */
+  readonly adapter: ExternalThreadQueueAdapter;
+  getSnapshot(): QueueAdapterSnapshot;
+  subscribe(listener: (snapshot: QueueAdapterSnapshot) => void): () => void;
+  dispose(): void;
+}
+
+function asFailure(error: unknown, fallback: string): AppFailure {
+  return error instanceof AppFailure
+    ? error
+    : new AppFailure({ code: "internal", message: fallback, retryable: true }, { cause: error });
+}
+
+function unavailable(capability: CapabilityKey, message: string): AppFailure {
+  return new AppFailure({ code: "unavailable", message, retryable: false, capability });
+}
+
+function notFound(message: string): AppFailure {
+  return new AppFailure({ code: "not_found", message, retryable: false });
+}
+
+function textParts(message: AppendMessage): string {
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .filter(
+      (part): part is Extract<(typeof message.content)[number], { type: "text" }> =>
+        part.type === "text",
+    )
+    .map((part) => part.text)
+    .join("");
+}
+
+function imageParts(message: AppendMessage): readonly OmpWire.ImageContent[] | undefined {
+  if (typeof message.content === "string") return undefined;
+  const images: OmpWire.ImageContent[] = [];
+  for (const part of message.content) {
+    if (part.type !== "image") continue;
+    const data = part.image;
+    images.push({ type: "image", data, mimeType: "image/*", url: data });
+  }
+  return images.length > 0 ? images : undefined;
+}
+
+function submitIntent(
+  message: AppendMessage,
+  delivery: QueueSubmitIntent["delivery"],
+): QueueSubmitIntent {
+  const text = textParts(message);
+  const images = imageParts(message);
+  return {
+    text,
+    delivery,
+    ...(images ? { images } : {}),
+  };
+}
+
+function itemId(lane: QueueLane, message: string, occurrence: number): string {
+  return `p6:${lane}:${encodeURIComponent(message)}:${occurrence}`;
+}
+
+function queueItem(lane: QueueLane, message: string, occurrence: number): QueueItemView {
+  return {
+    id: itemId(lane, message, occurrence),
+    prompt: message,
+    parts: [{ type: "text", text: message }],
+    lane,
+    status: "queued",
+    canRemove: false,
+    canPromote: false,
+  };
+}
+
+function hasCapability(capabilities: CapabilityMap, capability: CapabilityKey): boolean {
+  return capabilities[capability]?.state === "available";
+}
+
+function viewItems(
+  lane: QueueLane,
+  messages: readonly string[],
+  capabilities: CapabilityMap,
+): readonly QueueItemView[] {
+  const occurrences = new Map<string, number>();
+  return messages.map((message) => {
+    const occurrence = occurrences.get(message) ?? 0;
+    occurrences.set(message, occurrence + 1);
+    return {
+      ...queueItem(lane, message, occurrence),
+      canRemove: hasCapability(capabilities, P6_QUEUE_CAPABILITIES.remove),
+      canPromote: lane === "followUp" && hasCapability(capabilities, P6_QUEUE_CAPABILITIES.promote),
+    };
+  });
+}
+
+function placementLane(placement: { readonly lane?: "queue" | "steer" }): QueueLane | undefined {
+  if (placement.lane === "steer") return "steering";
+  if (placement.lane === "queue") return "followUp";
+  return undefined;
+}
+
+export function createQueueAdapter(
+  port: QueuePort,
+  options: QueueAdapterOptions = {},
+): QueueAdapterController {
+  const listeners = new Set<(snapshot: QueueAdapterSnapshot) => void>();
+  let lastError: AppFailure | undefined;
+  const report = (error: unknown, fallback: string): void => {
+    lastError = asFailure(error, fallback);
+    options.onError?.(lastError);
+    const next = getSnapshot();
+    for (const listener of [...listeners]) listener(next);
+  };
+  const getSnapshot = (): QueueAdapterSnapshot => {
+    const snapshot = port.getSnapshot();
+    const capabilities = port.getCapabilities();
+    return {
+      items: viewItems("followUp", snapshot.followUp, capabilities),
+      steerItems: viewItems("steering", snapshot.steering, capabilities),
+      steeringMode: snapshot.steeringMode,
+      followUpMode: snapshot.followUpMode,
+      interruptMode: snapshot.interruptMode,
+      isStreaming: snapshot.isStreaming,
+      capabilities,
+      ...(lastError ? { lastError } : {}),
+    };
+  };
+  const findItem = (id: string): QueueItemReference | undefined => {
+    const snapshot = port.getSnapshot();
+    for (const [lane, messages] of [
+      ["steering", snapshot.steering],
+      ["followUp", snapshot.followUp],
+    ] as const) {
+      const occurrences = new Map<string, number>();
+      for (const message of messages) {
+        const occurrence = occurrences.get(message) ?? 0;
+        occurrences.set(message, occurrence + 1);
+        if (itemId(lane, message, occurrence) === id) return { lane, message };
+      }
+    }
+    return undefined;
+  };
+  const enqueue = (message: AppendMessage): void => {
+    void port
+      .submit(submitIntent(message, "followUp"))
+      .catch((error) => report(error, "Queueing the follow-up failed"));
+  };
+  const steer = (message: AppendMessage): void => {
+    void port
+      .submit(submitIntent(message, "steer"))
+      .catch((error) => report(error, "Steering the running turn failed"));
+  };
+  const move = (
+    id: string,
+    placement: {
+      readonly lane?: "queue" | "steer";
+      readonly insertAfter?: string | null;
+      readonly insertBefore?: string | null;
+    },
+  ): void => {
+    const item = findItem(id);
+    const lane = placementLane(placement);
+    const anchored = placement.insertAfter !== undefined || placement.insertBefore !== undefined;
+    if (!item) {
+      report(
+        notFound("The queued message is no longer present"),
+        "The queued message is no longer present",
+      );
+      return;
+    }
+    if (lane === "steering" && item.lane === "followUp" && !anchored) {
+      void port
+        .promote(item.message)
+        .catch((error) => report(error, "Promoting the queued message failed"));
+      return;
+    }
+    if (!anchored && (lane === undefined || lane === item.lane)) return;
+    report(
+      unavailable(
+        P6_QUEUE_CAPABILITIES.reorder,
+        "Queue reordering is unavailable for this omp runtime",
+      ),
+      "Queue reordering is unavailable for this omp runtime",
+    );
+  };
+  const edit = (id: string, _message: AppendMessage): void => {
+    if (!findItem(id)) {
+      report(
+        notFound("The queued message is no longer present"),
+        "The queued message is no longer present",
+      );
+      return;
+    }
+    report(
+      unavailable(
+        P6_QUEUE_CAPABILITIES.edit,
+        "Editing queued messages is unavailable for this omp runtime",
+      ),
+      "Editing queued messages is unavailable for this omp runtime",
+    );
+  };
+  const remove = (id: string): void => {
+    const item = findItem(id);
+    if (!item) {
+      report(
+        notFound("The queued message is no longer present"),
+        "The queued message is no longer present",
+      );
+      return;
+    }
+    void port.remove(item).catch((error) => report(error, "Removing the queued message failed"));
+  };
+  const adapter = Object.defineProperties({} as ExternalThreadQueueAdapter, {
+    items: { enumerable: true, get: () => getSnapshot().items },
+    steerItems: { enumerable: true, get: () => getSnapshot().steerItems },
+    enqueue: { enumerable: true, value: enqueue },
+    steer: { enumerable: true, value: steer },
+    move: { enumerable: true, value: move },
+    edit: { enumerable: true, value: edit },
+    remove: { enumerable: true, value: remove },
+  });
+  const unsubscribe = port.subscribe(() => {
+    lastError = undefined;
+    const snapshot = getSnapshot();
+    for (const listener of [...listeners]) listener(snapshot);
+  });
+  return {
+    adapter,
+    getSnapshot,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    dispose() {
+      unsubscribe();
+      listeners.clear();
+    },
+  };
+}
