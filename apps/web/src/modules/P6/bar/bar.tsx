@@ -170,7 +170,7 @@ export function QueueLaneBar({
           disabled={disconnected}
           disabledReason={disabledReason}
           items={snapshot.items}
-          label="Follow-up"
+          label="After yield"
           onPromote={canPromote ? onPromote : undefined}
           onRemove={onRemove}
         />
