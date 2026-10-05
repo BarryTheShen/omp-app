@@ -2,7 +2,6 @@ import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
 import { BrowserToolCard } from "./browser";
 import { GithubToolRenderer } from "./github";
-import type { ReadUrlRenderer, ReadUrlRendererProps } from "./models";
 /** T4 owns the browser/GitHub/search descriptors; T1 owns read and its URL dispatch claim. */
 export const T4_TOOL_DESCRIPTORS = [
   {
@@ -38,7 +37,3 @@ export const T4_TOOL_DESCRIPTORS = [
 ] as const satisfies readonly ToolRegistryDescriptor[];
 
 export type T4ToolDescriptor = (typeof T4_TOOL_DESCRIPTORS)[number];
-
-/** T1's typed seam; T4.2 supplies the React renderer implementation later. */
-export type T4ReadUrlRenderer = ReadUrlRenderer;
-export type T4ReadUrlRendererProps = ReadUrlRendererProps;

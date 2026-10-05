@@ -1,13 +1,5 @@
-import {
-  AssistantRuntimeProvider,
-  MessagePrimitive,
-  type ThreadMessage,
-  ThreadPrimitive,
-  useExternalStoreRuntime,
-} from "@assistant-ui/react";
-import { useMemo } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
-import { MarkdownText } from "../U1/markdown";
+import { MarkdownContent } from "../U1/markdown";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolCardState, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
@@ -123,38 +115,9 @@ export function BrowserToolCard(rendererProps: ToolRendererProps) {
 }
 
 function JavascriptCell({ code }: { readonly code: string }) {
-  const markdown = useMemo<readonly ThreadMessage[]>(
-    () => [
-      {
-        role: "assistant",
-        id: "t4-browser-code",
-        content: [{ type: "text", text: `\`\`\`javascript\n${code}\n\`\`\`` }],
-        status: { type: "complete", reason: "stop" },
-        metadata: { custom: {} },
-      } as unknown as ThreadMessage,
-    ],
-    [code],
-  );
-  const runtime = useExternalStoreRuntime({
-    messages: markdown,
-    isRunning: false,
-    onNew: async () => undefined,
-  });
   return (
     <div className="min-w-0" data-browser-code>
-      <AssistantRuntimeProvider runtime={runtime}>
-        <ThreadPrimitive.Root>
-          <ThreadPrimitive.Messages>
-            {() => (
-              <MessagePrimitive.Root>
-                <MessagePrimitive.Parts>
-                  {({ part }) => (part.type === "text" ? <MarkdownText /> : null)}
-                </MessagePrimitive.Parts>
-              </MessagePrimitive.Root>
-            )}
-          </ThreadPrimitive.Messages>
-        </ThreadPrimitive.Root>
-      </AssistantRuntimeProvider>
+      <MarkdownContent text={`\`\`\`javascript\n${code}\n\`\`\``} variant="compact" />
     </div>
   );
 }

@@ -1,13 +1,8 @@
 import { AppFailure } from "@omp-app/contracts";
 import { z } from "zod";
 import { OutputMetaSchema, ReadToolDetailsSchema } from "../T1/models";
-import type { ReadUrlRenderer, ReadUrlRendererProps } from "../T1/read-url-seam";
 
 const UnknownRecord = z.record(z.string(), z.unknown());
-
-export type { OutputMeta } from "../T1/models";
-export type { ReadUrlRenderer, ReadUrlRendererProps };
-export { OutputMetaSchema };
 
 /** T1's normalized URL read details, narrowed without duplicating its read model. */
 export const ReadUrlToolDetailsSchema = ReadToolDetailsSchema.extend({ kind: z.literal("url") });
