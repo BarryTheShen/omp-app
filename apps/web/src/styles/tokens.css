@@ -1,0 +1,353 @@
+/**
+ * U0 design tokens (Plan item 2, `modules/U0/README.md`): the Notion AI look — warm neutral
+ * grays, quiet borders, the system sans stack, generous whitespace, soft radii, and little
+ * color. This file is the one place in `apps/web/src` allowed to hold a raw color, pixel or
+ * shadow literal; everywhere else consumes these custom properties, or the typed mirror in
+ * `src/tokens.ts` (enforced by `raw-values.test.ts` in this folder, H4).
+ *
+ * Two layers:
+ * 1. Primitives (`--neutral-*`, `--brand-*`, `--success-*`, `--warning-*`, `--danger-*`,
+ *    `--diff-*`): a fixed warm-gray scale (hue ~58°, matching Tailwind's own "stone" palette)
+ *    plus single-hue brand/status scales. These never change between themes; nothing outside
+ *    this file should reference a primitive directly except to build a semantic token below.
+ * 2. Semantics: the shadcn-compatible names (`--background`, `--primary`, `--destructive`,
+ *    `--card`, `--sidebar-*`, …) that `src/components/ui/**` and `src/components/assistant-ui/**`
+ *    (copied, U0.1) already depend on, plus U0's own additions (`--info`, `--success`,
+ *    `--warning`, `--diff-add`, `--diff-remove`). Each is assigned once for light (`:root`) and
+ *    once for dark (`.dark`); consumers always read a semantic name, never a primitive.
+ */
+
+/* ---------- Primitives (theme-independent) ---------- */
+:root {
+  /* Warm neutral scale */
+  --neutral-0: oklch(1 0 0);
+  --neutral-50: oklch(0.985 0.001 106.423);
+  --neutral-100: oklch(0.97 0.001 106.424);
+  --neutral-150: oklch(0.953 0.002 90);
+  --neutral-200: oklch(0.923 0.003 48.717);
+  --neutral-300: oklch(0.869 0.005 56.366);
+  --neutral-400: oklch(0.709 0.01 56.259);
+  --neutral-500: oklch(0.553 0.013 58.071);
+  --neutral-600: oklch(0.444 0.011 73.639);
+  --neutral-700: oklch(0.374 0.01 67.558);
+  --neutral-800: oklch(0.268 0.007 34.298);
+  --neutral-900: oklch(0.216 0.006 56.043);
+  --neutral-950: oklch(0.147 0.004 49.25);
+
+  /* Brand / interactive accent (blue) */
+  --brand-50: oklch(0.97 0.014 254.604);
+  --brand-100: oklch(0.932 0.032 255.585);
+  --brand-200: oklch(0.882 0.059 254.128);
+  --brand-300: oklch(0.809 0.105 251.813);
+  --brand-400: oklch(0.707 0.165 254.624);
+  --brand-500: oklch(0.623 0.214 259.815);
+  --brand-600: oklch(0.546 0.245 262.881);
+  --brand-700: oklch(0.488 0.243 264.376);
+
+  /* Status */
+  --success-50: oklch(0.982 0.018 155.826);
+  --success-500: oklch(0.723 0.219 149.579);
+  --success-600: oklch(0.627 0.194 149.214);
+  --success-700: oklch(0.527 0.154 150.069);
+
+  --warning-50: oklch(0.987 0.022 95.277);
+  --warning-500: oklch(0.769 0.188 70.08);
+  --warning-600: oklch(0.666 0.179 58.318);
+  --warning-700: oklch(0.555 0.163 48.998);
+
+  --danger-50: oklch(0.971 0.013 17.38);
+  --danger-400: oklch(0.704 0.191 22.216);
+  --danger-500: oklch(0.637 0.237 25.331);
+  --danger-600: oklch(0.577 0.245 27.325);
+  --danger-700: oklch(0.505 0.213 27.518);
+
+  /* Diff add/remove: same hue family as success/danger, kept distinct so they can be re-tuned
+     independently of status alerts. */
+  --diff-add-50: oklch(0.982 0.018 155.826);
+  --diff-add-500: oklch(0.627 0.194 149.214);
+  --diff-remove-50: oklch(0.971 0.013 17.38);
+  --diff-remove-500: oklch(0.637 0.237 25.331);
+  /* Spacing: semantic names over Tailwind's own numeric scale (both stay available). */
+  --space-3xs: 0.125rem;
+  --space-2xs: 0.25rem;
+  --space-xs: 0.375rem;
+  --space-sm: 0.5rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --space-2xl: 2rem;
+  --space-3xl: 3rem;
+
+  /* Radii: soft, generous rounding (shadcn's own default base is 0.625rem). */
+  --radius: 0.75rem;
+
+  /* Borders */
+  --border-width-hairline: 1px;
+  --border-width-strong: 1.5px;
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+  --ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-emphasized: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* Z-index layers (consumed by U0.4's OverlayHost). */
+  --z-base: 0;
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-overlay: 1200;
+  --z-modal: 1300;
+  --z-popover: 1400;
+  --z-tooltip: 1500;
+  --z-toast: 1600;
+
+  /* Shadows: soft, low-opacity in light; dark needs a stronger wash plus a faint top highlight to
+     separate a raised surface from the page behind it. */
+  --shadow-xs-raw: 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow-sm-raw: 0 1px 3px rgb(0 0 0 / 6%), 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow-md-raw: 0 4px 10px rgb(0 0 0 / 8%), 0 2px 4px rgb(0 0 0 / 4%);
+  --shadow-lg-raw: 0 12px 28px rgb(0 0 0 / 12%), 0 4px 8px rgb(0 0 0 / 4%);
+  --shadow-overlay-raw: 0 16px 40px rgb(0 0 0 / 16%), 0 6px 12px rgb(0 0 0 / 8%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0.01ms;
+    --duration-base: 0.01ms;
+    --duration-slow: 0.01ms;
+  }
+}
+
+/* ---------- Semantics: light ---------- */
+:root {
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --card: var(--neutral-0);
+  --card-foreground: var(--neutral-900);
+  --popover: var(--neutral-0);
+  --popover-foreground: var(--neutral-900);
+  --primary: var(--brand-600);
+  --primary-foreground: var(--neutral-0);
+  --secondary: var(--neutral-100);
+  --secondary-foreground: var(--neutral-900);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--neutral-150);
+  --accent-foreground: var(--neutral-900);
+  --destructive: var(--danger-600);
+  --border: var(--neutral-200);
+  --input: var(--neutral-500);
+  --ring: var(--brand-500);
+  --chart-1: var(--brand-500);
+  --chart-2: var(--success-500);
+  --chart-3: var(--warning-500);
+  --chart-4: var(--neutral-400);
+  --chart-5: var(--neutral-600);
+  --sidebar: var(--neutral-100);
+  --sidebar-foreground: var(--neutral-900);
+  --sidebar-primary: var(--brand-600);
+  --sidebar-primary-foreground: var(--neutral-0);
+  --sidebar-accent: var(--neutral-150);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--neutral-200);
+  --sidebar-ring: var(--brand-500);
+
+  --info: var(--brand-600);
+  --success: var(--success-600);
+  --warning: var(--warning-600);
+  --danger: var(--destructive);
+  --success-surface: var(--success-50);
+  --success-surface-foreground: var(--success-700);
+  --warning-surface: var(--warning-50);
+  --warning-surface-foreground: var(--warning-700);
+  --danger-surface: var(--danger-50);
+  --danger-surface-foreground: var(--danger-700);
+  --info-surface: var(--brand-50);
+  --info-surface-foreground: var(--brand-700);
+  --diff-add-surface: var(--diff-add-50);
+  --diff-add-foreground: var(--success-700);
+  --diff-remove-surface: var(--diff-remove-50);
+  --diff-remove-foreground: var(--danger-700);
+  --diff-add: var(--diff-add-500);
+  --diff-remove: var(--diff-remove-500);
+}
+
+/* ---------- Semantics: dark ---------- */
+.dark {
+  --background: var(--neutral-950);
+  --foreground: var(--neutral-50);
+  --card: oklch(0.205 0.006 58);
+  --card-foreground: var(--neutral-50);
+  --popover: oklch(0.205 0.006 58);
+  --popover-foreground: var(--neutral-50);
+  --primary: var(--brand-600);
+  --primary-foreground: var(--neutral-0);
+  --secondary: oklch(0.269 0.007 58);
+  --secondary-foreground: var(--neutral-50);
+  --muted: oklch(0.269 0.007 58);
+  --muted-foreground: oklch(0.708 0.009 58);
+  --accent: oklch(0.269 0.007 58);
+  --accent-foreground: var(--neutral-50);
+  --destructive: var(--danger-400);
+  --border: oklch(0.953 0.005 90 / 10%);
+  --input: var(--neutral-500);
+  --ring: var(--brand-400);
+  --chart-1: var(--brand-400);
+  --chart-2: var(--success-500);
+  --chart-3: var(--warning-500);
+  --chart-4: var(--neutral-400);
+  --chart-5: var(--neutral-300);
+  --sidebar: oklch(0.205 0.006 58);
+  --sidebar-foreground: var(--neutral-50);
+  --sidebar-primary: var(--brand-700);
+  --sidebar-primary-foreground: var(--neutral-50);
+  --sidebar-accent: oklch(0.269 0.007 58);
+  --sidebar-accent-foreground: var(--neutral-50);
+  --sidebar-border: oklch(0.953 0.005 90 / 10%);
+  --sidebar-ring: var(--brand-400);
+
+  --info: var(--brand-400);
+  --success: var(--success-500);
+  --warning: var(--warning-500);
+  --danger: var(--destructive);
+  --success-surface: oklch(0.24 0.04 149);
+  --success-surface-foreground: oklch(0.84 0.14 149);
+  --warning-surface: oklch(0.24 0.05 70);
+  --warning-surface-foreground: oklch(0.87 0.14 70);
+  --danger-surface: oklch(0.24 0.05 25);
+  --danger-surface-foreground: oklch(0.84 0.15 25);
+  --info-surface: oklch(0.24 0.05 260);
+  --info-surface-foreground: oklch(0.82 0.12 260);
+  --diff-add-surface: oklch(0.24 0.04 149);
+  --diff-add-foreground: oklch(0.84 0.14 149);
+  --diff-remove-surface: oklch(0.24 0.05 25);
+  --diff-remove-foreground: oklch(0.84 0.15 25);
+  --diff-add: var(--diff-add-500);
+  --diff-remove: var(--diff-remove-500);
+
+  --shadow-xs-raw: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-sm-raw: 0 1px 3px rgb(0 0 0 / 40%), 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-md-raw:
+    0 4px 10px rgb(0 0 0 / 45%), 0 2px 4px rgb(0 0 0 / 30%), inset 0 1px 0 rgb(255 255 255 / 4%);
+  --shadow-lg-raw:
+    0 12px 28px rgb(0 0 0 / 55%), 0 4px 8px rgb(0 0 0 / 35%), inset 0 1px 0 rgb(255 255 255 / 5%);
+  --shadow-overlay-raw:
+    0 20px 48px rgb(0 0 0 / 60%), 0 8px 16px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+
+/* ---------- Tailwind registration ---------- */
+
+/* Static literal values: Tailwind can pre-generate these utilities at build time. */
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial,
+    "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  /* `dialog.tsx` (U0.1, copied) applies `font-heading`; Notion AI uses the same sans for
+     headings, so this is not a second family. */
+  --font-heading: var(--font-sans);
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.5rem;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.625rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+}
+
+/* Values that reference another custom property (a theme-switched color, or `--radius`/
+   `--shadow-*-raw`) must stay `@theme inline`: Tailwind resolves them at run time, not at build
+   time, so a `.dark` override takes effect without regenerating the stylesheet. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-info: var(--info);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-success-surface: var(--success-surface);
+  --color-success-surface-foreground: var(--success-surface-foreground);
+  --color-warning-surface: var(--warning-surface);
+  --color-warning-surface-foreground: var(--warning-surface-foreground);
+  --color-danger-surface: var(--danger-surface);
+  --color-danger-surface-foreground: var(--danger-surface-foreground);
+  --color-info-surface: var(--info-surface);
+  --color-info-surface-foreground: var(--info-surface-foreground);
+  --color-diff-add: var(--diff-add);
+  --color-diff-add-surface: var(--diff-add-surface);
+  --color-diff-add-foreground: var(--diff-add-foreground);
+  --color-diff-remove: var(--diff-remove);
+  --color-diff-remove-surface: var(--diff-remove-surface);
+  --color-diff-remove-foreground: var(--diff-remove-foreground);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --shadow-xs: var(--shadow-xs-raw);
+  --shadow-sm: var(--shadow-sm-raw);
+  --shadow-md: var(--shadow-md-raw);
+  --shadow-lg: var(--shadow-lg-raw);
+  --shadow-overlay: var(--shadow-overlay-raw);
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+  }
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+    }
+    to {
+      height: 0;
+    }
+  }
+}
