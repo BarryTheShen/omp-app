@@ -1,0 +1,187 @@
+import { AppFailure } from "@omp-app/contracts";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import type { ToolRendererProps } from "../U3/tool-card/contract";
+import { WriteCard } from "./write";
+
+afterEach(() => cleanup());
+
+function props(
+  args: unknown,
+  result: unknown,
+  status: ToolRendererProps["status"] = { type: "complete" },
+): ToolRendererProps {
+  return {
+    type: "tool-call",
+    toolCallId: "write-1",
+    toolName: "write",
+    args,
+    argsText: JSON.stringify(args),
+    result,
+    status,
+  } as unknown as ToolRendererProps;
+}
+
+describe("WriteCard", () => {
+  test("keeps a streamed source preview stable with line numbers and bounded expansion", () => {
+    const content = Array.from(
+      { length: 24 },
+      (_, index) => `export const line${index + 1} = ${index + 1};`,
+    ).join("\n");
+    render(
+      <WriteCard
+        rendererProps={props({ path: "src/long.ts", content }, undefined, { type: "running" })}
+      />,
+    );
+
+    expect(screen.getByTestId("t1-write-card")).toBeTruthy();
+    expect(screen.getByTitle("src/long.ts")).toBeTruthy();
+    expect(
+      screen.getByTestId("t1-write-card").querySelector("[data-slot='t1-write-language']")
+        ?.textContent,
+    ).toBe("typescript");
+    expect(screen.getByText("Source preview shortened; 8 lines omitted")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+    expect(screen.queryByText("export const line24 = 24;")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show full source" }));
+    expect(screen.getByText("export const line24 = 24;")).toBeTruthy();
+  });
+
+  test("shows settled path, executable and delegated-device metadata without treating warnings as errors", () => {
+    render(
+      <WriteCard
+        rendererProps={props(
+          { path: "scripts/run.sh", content: "#!/bin/sh\necho ready\n" },
+          {
+            madeExecutable: true,
+            xdev: true,
+            message: "Write completed",
+            diagnostics: [
+              { severity: "warning", path: "scripts/run.sh", line: 2, message: "shellcheck" },
+            ],
+            meta: {
+              truncation: { direction: "tail", reason: "lines", omittedLines: 1 },
+              artifactId: "artifact-write-1",
+              artifactElidedBytes: 24,
+            },
+          },
+        )}
+      />,
+    );
+
+    expect(screen.getByText("Executable")).toBeTruthy();
+    expect(screen.getByText("Shebang")).toBeTruthy();
+    expect(screen.getByText("Delegated device")).toBeTruthy();
+    const bodyText =
+      screen.getByTestId("t1-write-card").querySelector("[data-slot='t1-write-body']")
+        ?.textContent ?? "";
+    expect(bodyText).toContain("shellcheck");
+    expect(screen.getByText(/Artifact available:/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Artifact action unavailable" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  test("uses an image data URL for SVG previews and never mounts SVG markup", () => {
+    const source =
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert("x")</script><rect width="4" height="4" /></svg>';
+    const { container } = render(
+      <WriteCard
+        rendererProps={props({ path: "assets/icon.svg", content: source }, { message: "ok" })}
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "assets/icon.svg SVG preview" });
+    expect(image.getAttribute("src")).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+    expect(container.querySelector("[data-slot='t1-write-svg-preview'] svg")).toBeNull();
+    expect(
+      container.querySelector("[data-slot='t1-write-svg-preview']")?.getAttribute("style"),
+    ).toContain("linear-gradient");
+    expect(
+      screen.getByText(
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>alert("x")</script><rect width="4" height="4" /></svg>',
+      ),
+    ).toBeTruthy();
+  });
+
+  test("keeps source visible when a typed write result is malformed and surfaces a retry-safe error", () => {
+    render(
+      <WriteCard
+        rendererProps={props({ path: "src/broken.ts", content: "export const value = 1;" }, [
+          "not",
+          "a",
+          "write",
+          "detail",
+        ])}
+      />,
+    );
+
+    expect(screen.getByText("export const value = 1;")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("Malformed write details");
+    expect(screen.getByTestId("tool-state-chip-error")).toBeTruthy();
+  });
+  test("retains an empty file as a settled zero-line source instead of showing a loading state", () => {
+    render(
+      <WriteCard
+        rendererProps={props({ path: "empty.txt", content: "" }, { message: "created" })}
+      />,
+    );
+
+    expect(
+      screen.getByTestId("t1-write-card").querySelector("[data-slot='t1-write-line-count']")
+        ?.textContent,
+    ).toBe("0 lines");
+    expect(screen.queryByText("Waiting for source content…")).toBeNull();
+  });
+
+  test("keeps partial source visible when the tool is cancelled", () => {
+    render(
+      <WriteCard
+        rendererProps={props(
+          { path: "src/cancelled.ts", content: "export const partial = true;" },
+          "partial output",
+          { type: "incomplete", reason: "cancelled" },
+        )}
+      />,
+    );
+
+    expect(screen.getByTestId("tool-state-chip-cancelled")).toBeTruthy();
+    expect(screen.getByText("export const partial = true;")).toBeTruthy();
+  });
+  test("surfaces rejected artifact callbacks instead of leaking a promise", async () => {
+    const onOpenArtifact = vi.fn(async () => {
+      throw new Error("artifact transport failed");
+    });
+    render(
+      <WriteCard
+        onOpenArtifact={onOpenArtifact}
+        rendererProps={props(
+          { path: "src/large.ts", content: "const source = true;" },
+          { meta: { artifactId: "artifact-failure" } },
+        )}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open full artifact" }));
+    expect(await screen.findByText("Artifact could not be opened.")).toBeTruthy();
+    expect(onOpenArtifact).toHaveBeenCalledOnce();
+  });
+
+  test("preserves typed AppFailure and offers raw-source copy through the injected callback", async () => {
+    const onCopy = vi.fn(async () => undefined);
+    render(
+      <WriteCard
+        onCopy={onCopy}
+        rendererProps={props(
+          { path: "src/error.ts", content: "const kept = true;" },
+          new AppFailure({ code: "permission", message: "Write denied", retryable: false }),
+        )}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain("Write denied");
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw source" }));
+    expect(onCopy).toHaveBeenCalledWith("const kept = true;", "code");
+  });
+});
