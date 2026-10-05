@@ -245,7 +245,7 @@ export function AppShell({
 
   return (
     <div
-      className="relative grid min-h-dvh min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-background text-foreground"
+      className="relative grid h-dvh min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-background text-foreground"
       data-shell-layout={isNarrow ? "narrow" : "wide"}
       style={{ gridTemplateColumns: columns }}
     >
