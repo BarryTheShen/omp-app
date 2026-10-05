@@ -41,11 +41,9 @@ function buildMemoryPlayground(): void {
 
 test.beforeAll(() => buildMemoryPlayground());
 
-test("renders recall, reflect and retain cards in light, dark and narrow states", async ({
-  page,
-}) => {
+test("renders all T6 memory cards in light, dark and narrow states", async ({ page }) => {
   await page.goto("/t6-memory-playground.html");
-  await expect(page.locator('[data-t6-memory-card="true"]')).toHaveCount(3);
+  await expect(page.locator('[data-t6-memory-card="true"]')).toHaveCount(6);
   await expect(page.getByText("prior release decision")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Synthesis" })).toBeVisible();
   await expect(
@@ -53,6 +51,14 @@ test("renders recall, reflect and retain cards in light, dark and narrow states"
   ).toBeVisible();
   await expect(page.getByText("Stored 2 of 3 memories")).toBeVisible();
   await expect(page.getByText("backend rejected item 3")).toBeVisible();
+  await expect(page.locator('[data-t6-tool="learn"]').getByText("Learned · project")).toBeVisible();
+  await expect(
+    page.locator('[data-t6-tool="manage_skill"]').getByText("update: release").first(),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Release" })).toBeVisible();
+  await expect(
+    page.locator('[data-t6-tool="memory_edit"]').getByText("Forgot memory: memory-1").first(),
+  ).toBeVisible();
   const trigger = page.locator('[data-t6-tool="recall"] [data-slot="u3-tool-card-trigger"]');
   const lightStyles = await trigger.evaluate((element) => {
     const computed = getComputedStyle(element);
@@ -66,7 +72,7 @@ test("renders recall, reflect and retain cards in light, dark and narrow states"
     .first()
     .evaluate((element) => getComputedStyle(element).listStyleType);
   expect(listStyle).not.toBe("none");
-  await page.screenshot({ path: "../../.data/screenshots/t6-3-memory-light.png", fullPage: false });
+  await page.screenshot({ path: "../../.data/screenshots/t6-4-memory-light.png", fullPage: false });
 
   const darkPage = await page.context().newPage();
   await darkPage.addInitScript(() => document.documentElement.classList.add("dark"));
@@ -76,12 +82,12 @@ test("renders recall, reflect and retain cards in light, dark and narrow states"
   await expect(darkPage.getByRole("heading", { name: "Synthesis" })).toBeVisible();
   await expect(darkPage.locator('[data-t6-tool="reflect"]')).toBeVisible();
   await darkPage.screenshot({
-    path: "../../.data/screenshots/t6-3-memory-dark.png",
+    path: "../../.data/screenshots/t6-4-memory-dark.png",
     fullPage: false,
   });
   await darkPage.setViewportSize({ width: 390, height: 844 });
   await darkPage.screenshot({
-    path: "../../.data/screenshots/t6-3-memory-narrow.png",
+    path: "../../.data/screenshots/t6-4-memory-narrow.png",
     fullPage: false,
   });
   await darkPage.close();

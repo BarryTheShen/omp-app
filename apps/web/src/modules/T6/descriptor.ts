@@ -1,5 +1,7 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
-import { ToolFallback } from "../U3/tool-card/fallback";
+import { LearnRenderer } from "./learn";
+import { ManageSkillRenderer } from "./manage-skill";
+import { MemoryEditRenderer } from "./memory-edit";
 import { RecallRenderer } from "./recall";
 import { ReflectRenderer } from "./reflect";
 import { RetainRenderer } from "./retain";
@@ -23,7 +25,7 @@ export const T6_TOOL_DESCRIPTORS = [
     covers: ["T6.learn"],
     requires: [],
     match: { by: "name", name: "learn" },
-    renderer: ToolFallback,
+    renderer: LearnRenderer,
   },
   {
     kind: "tool",
@@ -33,7 +35,7 @@ export const T6_TOOL_DESCRIPTORS = [
     covers: ["T6.manage-skill"],
     requires: [],
     match: { by: "name", name: "manage_skill" },
-    renderer: ToolFallback,
+    renderer: ManageSkillRenderer,
   },
   {
     kind: "tool",
@@ -43,7 +45,7 @@ export const T6_TOOL_DESCRIPTORS = [
     covers: ["T6.memory-edit"],
     requires: [],
     match: { by: "name", name: "memory_edit" },
-    renderer: ToolFallback,
+    renderer: MemoryEditRenderer,
   },
   {
     kind: "tool",

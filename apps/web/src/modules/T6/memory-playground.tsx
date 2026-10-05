@@ -1,6 +1,9 @@
 import { createRoot } from "react-dom/client";
 import { AppShell } from "@/shell";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
+import { LearnRenderer } from "./learn";
+import { ManageSkillRenderer } from "./manage-skill";
+import { MemoryEditRenderer } from "./memory-edit";
 import { RecallRenderer } from "./recall";
 import { ReflectRenderer } from "./reflect";
 import { RetainRenderer } from "./retain";
@@ -59,6 +62,51 @@ const RETAIN_PROPS = {
   },
   status: { type: "complete", reason: "stop" },
 } as unknown as ToolRendererProps;
+const LEARN_PROPS = {
+  toolCallId: "call-learn-fixture",
+  toolName: "learn",
+  args: {
+    memory: "Keep the browser client read-only.",
+    scope: "project",
+    skill: { action: "create", name: "release" },
+  },
+  argsText: '{"memory":"Keep the browser client read-only."}',
+  result: {
+    content: [{ type: "text", text: "Lesson stored." }],
+    details: { skill: "created" },
+  },
+  status: { type: "complete", reason: "stop" },
+} as unknown as ToolRendererProps;
+
+const MANAGE_SKILL_PROPS = {
+  toolCallId: "call-manage-skill-fixture",
+  toolName: "manage_skill",
+  args: {
+    action: "update",
+    name: "release",
+    body: `# Release
+
+Keep reviews compact.`,
+  },
+  argsText: '{"action":"update","name":"release"}',
+  result: {
+    content: [{ type: "text", text: "Updated managed skill" }],
+    details: { action: "update", name: "release" },
+  },
+  status: { type: "complete", reason: "stop" },
+} as unknown as ToolRendererProps;
+
+const MEMORY_EDIT_PROPS = {
+  toolCallId: "call-memory-edit-fixture",
+  toolName: "memory_edit",
+  args: { op: "forget", id: "memory-1" },
+  argsText: '{"op":"forget","id":"memory-1"}',
+  result: {
+    content: [{ type: "text", text: "Memory memory-1 forgotten." }],
+    details: { status: "forgotten", id: "memory-1" },
+  },
+  status: { type: "complete", reason: "stop" },
+} as unknown as ToolRendererProps;
 
 function MemoryPlayground() {
   return (
@@ -71,6 +119,9 @@ function MemoryPlayground() {
           <RecallRenderer {...RECALL_PROPS} />
           <ReflectRenderer {...REFLECT_PROPS} />
           <RetainRenderer {...RETAIN_PROPS} />
+          <LearnRenderer {...LEARN_PROPS} />
+          <ManageSkillRenderer {...MANAGE_SKILL_PROPS} />
+          <MemoryEditRenderer {...MEMORY_EDIT_PROPS} />
         </div>
       }
     />
