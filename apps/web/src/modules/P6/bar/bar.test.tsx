@@ -59,13 +59,13 @@ function fixture(next: QueueSnapshot = snapshot) {
 }
 
 describe("QueueLaneBar", () => {
-  test("renders steering and after-yield lanes from the adapter snapshot", () => {
+  test("renders steering and follow-up lanes from the adapter snapshot", () => {
     const state = fixture();
     render(<QueueLaneBar controller={state.controller} />);
 
     expect(screen.getByRole("complementary", { name: "Queued messages" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Steering" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "After yield" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Follow-up" })).toBeTruthy();
     expect(screen.getByText("fix the failing test")).toBeTruthy();
     expect(screen.getByText("summarize after yield")).toBeTruthy();
   });

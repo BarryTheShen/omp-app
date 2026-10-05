@@ -48,7 +48,7 @@ function LaneItem({
           className="shrink-0"
           disabled={disabled}
           size="icon-sm"
-          title={disabled ? disabledReason : "Apply after yield at the next tool boundary"}
+          title={disabled ? disabledReason : "Send as steering at the next tool boundary"}
           type="button"
           variant="ghost"
           onClick={onPromote}
@@ -170,7 +170,7 @@ export function QueueLaneBar({
           disabled={disconnected}
           disabledReason={disabledReason}
           items={snapshot.items}
-          label="After yield"
+          label="Follow-up"
           onPromote={canPromote ? onPromote : undefined}
           onRemove={onRemove}
         />
