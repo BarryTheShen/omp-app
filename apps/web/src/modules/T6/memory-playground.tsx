@@ -3,6 +3,7 @@ import { AppShell } from "@/shell";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { RecallRenderer } from "./recall";
 import { ReflectRenderer } from "./reflect";
+import { RetainRenderer } from "./retain";
 
 const RECALL_PROPS = {
   toolCallId: "call-recall-fixture",
@@ -37,6 +38,27 @@ const REFLECT_PROPS = {
   },
   status: { type: "complete", reason: "stop" },
 } as unknown as ToolRendererProps;
+const RETAIN_PROPS = {
+  toolCallId: "call-retain-fixture",
+  toolName: "retain",
+  args: {
+    items: [
+      { content: "Keep the browser client read-only.", scope: "project" },
+      { content: "Collaboration remains capability-gated.", scope: "global" },
+      { content: "A third item failed", scope: "project" },
+    ],
+  },
+  argsText: '{"items":[{"content":"Keep the browser client read-only."}]}',
+  result: {
+    content: [],
+    details: {
+      count: 3,
+      stored: 2,
+      failed: [{ reason: "backend rejected item 3" }],
+    },
+  },
+  status: { type: "complete", reason: "stop" },
+} as unknown as ToolRendererProps;
 
 function MemoryPlayground() {
   return (
@@ -48,6 +70,7 @@ function MemoryPlayground() {
         <div className="h-full overflow-y-auto px-6 py-6">
           <RecallRenderer {...RECALL_PROPS} />
           <ReflectRenderer {...REFLECT_PROPS} />
+          <RetainRenderer {...RETAIN_PROPS} />
         </div>
       }
     />

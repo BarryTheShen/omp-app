@@ -41,6 +41,7 @@ const TONE_CLASSES: Record<VisualState["tone"], string> = {
 export interface ToolCardProps {
   readonly state: ToolCardState;
   readonly summary?: string;
+  readonly summaryClassName?: string;
   readonly rawResult?: string;
   readonly copySlot?: CopySlot;
   readonly onCopy?: (raw: string, kind: CopyKind) => void | Promise<void>;
@@ -51,6 +52,7 @@ export interface ToolCardProps {
 export function ToolCard({
   state,
   summary: suppliedSummary,
+  summaryClassName,
   rawResult,
   copySlot,
   onCopy,
@@ -148,7 +150,14 @@ export function ToolCard({
           data-slot="u3-tool-card-icon"
         />
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">{state.label}</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{summary}</span>
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-xs",
+            summaryClassName ?? "text-muted-foreground",
+          )}
+        >
+          {summary}
+        </span>
         <span
           className={cn(
             "shrink-0 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium leading-tight",
