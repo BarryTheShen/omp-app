@@ -1059,7 +1059,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/builtin-names.ts:36-42; src/tools/glob.ts:538-610"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/packages/coding-agent/src/tools/jfind/index.ts:27-28,54,126-132; packages/tui/src/tools/find.ts"
   },
   {
     "id": "T2.glob",

@@ -1,6 +1,6 @@
 /**
- * Registry descriptors: data that says what a module adds to the app — tool cards, dialogs,
- * panels, commands, settings, shortcuts, status segments and notices. Descriptors hold no code
+ * Registry descriptors: data that says what a module adds to the app — tool cards, transcript
+ * message renderers, dialogs, panels, commands, settings, shortcuts, status segments and notices. Descriptors hold no code
  * and no React; the web app attaches a renderer to each by its id. Modules register descriptors
  * from their own folders; the main agent's composition index collects them, and
  * `validateRegistry` must return no problems before a registry ships.
@@ -121,6 +121,23 @@ export const NoticeDescriptor = DescriptorBase.extend({
 });
 export type NoticeDescriptor = z.infer<typeof NoticeDescriptor>;
 
+/**
+ * Which transcript messages a renderer draws: every message of one omp role (`bashExecution`,
+ * `compactionSummary`, …) or every custom message of one `customType`. Across a registry each
+ * role and each customType has one renderer (contract change 2026-10-05).
+ */
+export const MessageMatch = z.discriminatedUnion("by", [
+  z.object({ by: z.literal("role"), role: z.string().min(1) }),
+  z.object({ by: z.literal("customType"), customType: z.string().min(1) }),
+]);
+export type MessageMatch = z.infer<typeof MessageMatch>;
+
+export const MessageDescriptor = DescriptorBase.extend({
+  kind: z.literal("message"),
+  match: MessageMatch,
+});
+export type MessageDescriptor = z.infer<typeof MessageDescriptor>;
+
 export const Descriptor = z.discriminatedUnion("kind", [
   ToolDescriptor,
   DialogDescriptor,
@@ -130,6 +147,7 @@ export const Descriptor = z.discriminatedUnion("kind", [
   ShortcutDescriptor,
   StatusDescriptor,
   NoticeDescriptor,
+  MessageDescriptor,
 ]);
 export type Descriptor = z.infer<typeof Descriptor>;
 
@@ -191,6 +209,10 @@ function claimKeys(descriptor: Descriptor): string[] {
       return [`setting ${descriptor.key}`];
     case "shortcut":
       return [`chord ${normalizeChord(descriptor.chord)} in ${descriptor.scope}`];
+    case "message":
+      return descriptor.match.by === "role"
+        ? [`message role ${descriptor.match.role}`]
+        : [`message customType ${descriptor.match.customType}`];
     default:
       return [];
   }

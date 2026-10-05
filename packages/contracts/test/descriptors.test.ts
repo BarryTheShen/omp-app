@@ -165,6 +165,31 @@ describe("validateRegistry", () => {
     expect(kindsWith(again)).toEqual(["double-claim"]);
   });
 
+  test("rejects a second renderer for one message role or customType", () => {
+    const bash = {
+      ...base,
+      id: "U1.bashExecution",
+      owner: "U1",
+      kind: "message",
+      match: { by: "role", role: "bashExecution" },
+    };
+    expect(kindsWith(bash)).toEqual([]);
+    expect(kindsWith(bash, { ...bash, id: "U2.bashExecution", owner: "U2" })).toEqual([
+      "double-claim",
+    ]);
+    const skill = {
+      ...base,
+      id: "U1.skillPrompt",
+      owner: "U1",
+      kind: "message",
+      match: { by: "customType", customType: "skill-prompt" },
+    };
+    expect(kindsWith(skill, { ...skill, id: "D2.skillPrompt", owner: "D2" })).toEqual([
+      "double-claim",
+    ]);
+    expect(kindsWith(bash, skill)).toEqual([]);
+  });
+
   test("rejects the same chord twice in one scope, in any spelling", () => {
     const again = {
       ...base,

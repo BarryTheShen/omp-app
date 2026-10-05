@@ -220,7 +220,7 @@ export const MODULES: readonly ModuleInfo[] = [
     name: "Workspace checkpoints and rewind",
     wave: "W7",
     size: "L",
-    needs: ["A1", "P4", "P3", "U1", "U4"],
+    needs: ["A1", "P4", "P3", "U1", "U4", "U5"],
   },
   { id: "P6", name: "Queue and steering", wave: "W5", size: "M", needs: ["A0", "R0", "U2", "U4"] },
   {
@@ -228,7 +228,7 @@ export const MODULES: readonly ModuleInfo[] = [
     name: "Context, compaction, usage, and command exemplar",
     wave: "W5",
     size: "L",
-    needs: ["A0", "R0", "U0", "U1", "U5"],
+    needs: ["A0", "A1", "R0", "U0", "U1", "U5"],
   },
   {
     id: "D1",
