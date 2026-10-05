@@ -50,5 +50,10 @@ export function createPortRegistry(registrations: readonly PortRegistration[] = 
   return registry;
 }
 
-/** Initial composition point. A0.7 adds RpcSessionPort and AppPort handlers after this part. */
+/**
+ * The empty default registry, for tests and tools that compose their own. The running app composes
+ * its registrations with their runtime contexts (process registry, replay hub, stores) where the
+ * server starts: `createPortRegistry([...createA0PortRegistrations(a0), ...createA1PortRegistrations(a1)])`
+ * in A0.9's dev command.
+ */
 export const PORT_REGISTRY: PortRegistry = createPortRegistry();
