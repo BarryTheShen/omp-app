@@ -1,9 +1,5 @@
 import { ToolCard } from "../U3/tool-card/card";
-import type {
-  ToolCardState,
-  ToolRenderer,
-  ToolRendererProps,
-} from "../U3/tool-card/contract";
+import type { ToolCardState, ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import {
   decodeHubDetails,
