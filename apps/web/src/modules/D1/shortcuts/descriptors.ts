@@ -1,0 +1,55 @@
+import type { ShortcutDescriptor } from "@omp-app/contracts";
+
+/** Default chords cited by omp v18.6.1 docs/keybindings.md and inventory sources. */
+export const D1_SHORTCUT_DESCRIPTORS = [
+  {
+    id: "D1.appModelCycleBackward",
+    owner: "D1",
+    title: "Cycle model backward",
+    kind: "shortcut",
+    scope: "global",
+    chord: "Mod+Shift+P",
+    covers: ["D1.app-model-cyclebackward"],
+    requires: ["omp.cmd.cycle_model"],
+  },
+  {
+    id: "D1.appModelCycleForward",
+    owner: "D1",
+    title: "Cycle model forward",
+    kind: "shortcut",
+    scope: "global",
+    chord: "Mod+P",
+    covers: ["D1.app-model-cycleforward"],
+    requires: ["omp.cmd.cycle_model"],
+  },
+  {
+    id: "D1.appModelSelect",
+    owner: "D1",
+    title: "Open model selector",
+    kind: "shortcut",
+    chord: "Alt+M",
+    scope: "global",
+    covers: ["D1.app-model-select"],
+    requires: ["omp.cmd.set_model"],
+  },
+  {
+    id: "D1.appModelSelectTemporary",
+    owner: "D1",
+    title: "Pick a temporary session model",
+    kind: "shortcut",
+    chord: "Alt+P",
+    scope: "global",
+    covers: ["D1.app-model-selecttemporary"],
+    requires: ["omp.cmd.set_model"],
+  },
+  {
+    id: "D1.appThinkingCycle",
+    owner: "D1",
+    title: "Cycle thinking level",
+    kind: "shortcut",
+    chord: "Shift+Tab",
+    scope: "global",
+    covers: ["D1.app-thinking-cycle"],
+    requires: ["omp.cmd.cycle_thinking_level"],
+  },
+] as const satisfies readonly ShortcutDescriptor[];
