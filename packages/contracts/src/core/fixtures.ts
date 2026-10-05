@@ -21,9 +21,16 @@ export const FIXTURE_FILE_SUFFIX = ".fixture.jsonl";
 
 /**
  * Stand-ins the header must declare when the frames use them: the scenario's workspace, the home
- * folder and the temp folder for absolute paths, and `<EMAIL>` for an e-mail address.
+ * folder and the temp folder for absolute paths, `<WORKSPACE_BUCKET>` for omp's session-bucket name
+ * derived from the workspace path (session-paths.ts), and `<EMAIL>` for an e-mail address.
  */
-export const FIXTURE_PLACEHOLDERS = ["<WORKSPACE>", "<HOME>", "<TMP>", "<EMAIL>"] as const;
+export const FIXTURE_PLACEHOLDERS = [
+  "<WORKSPACE>",
+  "<HOME>",
+  "<TMP>",
+  "<WORKSPACE_BUCKET>",
+  "<EMAIL>",
+] as const;
 export type FixturePlaceholder = (typeof FIXTURE_PLACEHOLDERS)[number];
 
 /** Values the recorder replaced with a `<REDACTED:<kind>>` marker, by kind. */
