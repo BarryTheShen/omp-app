@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import {
   AppFailure,
@@ -282,6 +283,45 @@ export class DraftStoreService {
       cwd: options.cwd,
     });
     this.draftsDir = join(this.appDataDir, DRAFTS_DIRECTORY);
+  }
+
+  /** Returns attachment refs from every valid persisted draft; tombstones contribute none. */
+  async referencedAttachments(): Promise<readonly AttachmentRef[]> {
+    const refs = new Map<string, AttachmentRef>();
+    for (const directory of [THREADS_DIRECTORY, FOLDERS_DIRECTORY]) {
+      const root = join(this.draftsDir, directory);
+      let entries: string[] = [];
+      try {
+        entries = (await fs.readdir(root, { withFileTypes: true }))
+          .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+          .map((entry) => entry.name);
+      } catch (error) {
+        const code = errorCode(error);
+        const message = error instanceof Error ? error.message : "";
+        if (
+          code === "ENOENT" ||
+          code === "ENOTDIR" ||
+          message.includes("ENOENT") ||
+          message.includes("ENOTDIR")
+        ) {
+          continue;
+        }
+        throw toFailure(error, "list draft attachments");
+      }
+      for (const entry of entries) {
+        try {
+          const value = parseStoredValue(await fs.readFile(join(root, entry), "utf8"));
+          if (value.kind !== "draft") continue;
+          for (const attachment of value.attachments) refs.set(attachment.id, attachment);
+          for (const failedSend of value.failedSends) {
+            for (const attachment of failedSend.attachments) refs.set(attachment.id, attachment);
+          }
+        } catch (error) {
+          throw toFailure(error, "read draft attachments");
+        }
+      }
+    }
+    return [...refs.values()];
   }
 
   async get(args: DraftGetRequest): Promise<{ draft: Draft | null }> {

@@ -11,6 +11,7 @@ import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
 import { probeCapabilities } from "../src/capabilities";
 import { createProviderAccountStore } from "../src/modules/A1/accounts";
+import { AttachmentStoreService } from "../src/modules/A1/attachments";
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
 import { createConfigStore } from "../src/modules/A1/config";
 import { createDraftStore } from "../src/modules/A1/drafts";
@@ -199,6 +200,11 @@ export async function createCompositionServer(
   const configStore = createConfigStore({ env, homeDir, agentDir, appDataDir });
   const draftStore = createDraftStore({ env, homeDir, appDataDir });
   const checkpointStore = new CheckpointStoreService({ appDataDir });
+  const attachmentStore = new AttachmentStoreService({
+    appDataDir,
+    referencedAttachments: () => draftStore.referencedAttachments(),
+  });
+  await attachmentStore.cleanup({ orphanAgeMs: 24 * 60 * 60 * 1000 });
   const ompCommandGateway = createOmpCommandGateway({ resolveSession });
   const sessionPinStore = createSessionPinStore({ env, homeDir, agentDir });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
@@ -259,6 +265,7 @@ export async function createCompositionServer(
     extensionCatalog,
     memoryStore,
     ruleStore,
+    attachmentStore,
     githubRefs,
     urlCatalog,
     planDocumentStore,
@@ -295,8 +302,9 @@ export async function createCompositionServer(
           await processRegistry.closeAll();
         } finally {
           urlCatalog.dispose();
-          ruleStore.dispose();
           extensionCatalog.dispose();
+          ruleStore.dispose();
+          attachmentStore.dispose();
           configStore.dispose();
           draftStore.dispose();
           sessionPinStore.dispose();

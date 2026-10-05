@@ -1,4 +1,5 @@
 import type { ProviderAccountStoreService } from "../accounts";
+import type { AttachmentStoreService } from "../attachments";
 import type { CheckpointStoreService } from "../checkpoints";
 import type { ConfigStoreService } from "../config";
 import type { DraftStoreService } from "../drafts";
@@ -25,6 +26,7 @@ export interface A1PortContext {
   readonly sessionPinStore: SessionPinStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;
   readonly extensionCatalog: ExtensionCatalogService;
+  readonly attachmentStore: AttachmentStoreService;
   readonly memoryStore: MemoryStoreService;
   readonly ruleStore: RuleStoreService;
   readonly githubRefs: GithubRefsService;

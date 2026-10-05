@@ -1,0 +1,213 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, utimes } from "node:fs/promises";
+import { join } from "node:path";
+import { AppFailure, type AttachmentRef } from "@omp-app/contracts";
+import { AttachmentStoreService } from "./attachment-store";
+
+const temporaryDirectories: string[] = [];
+
+async function temporaryDirectory(): Promise<string> {
+  const root = join(import.meta.dir, "../../../../../../.data");
+  await mkdir(root, { recursive: true });
+  const directory = await mkdtemp(join(root, "attachments-"));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+function base64(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64");
+}
+
+async function expectAppFailure(promise: Promise<unknown>): Promise<AppFailure> {
+  try {
+    await promise;
+    throw new Error("Expected an AppFailure.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(AppFailure);
+    return error as AppFailure;
+  }
+}
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
+describe("AttachmentStoreService", () => {
+  test("round-trips content-addressed bytes and lists/deletes refs", async () => {
+    const appDataDir = await temporaryDirectory();
+    const store = new AttachmentStoreService({
+      appDataDir,
+      referencedAttachments: async () => [],
+    });
+    const put = await store.put({
+      id: "attachment-1",
+      name: "note.txt",
+      mediaType: "text/plain",
+      bytes: base64("hello"),
+    });
+    const ref = { ...put.ref };
+    expect(ref.id).toMatch(/^[a-f0-9]{64}$/);
+    expect(ref.name).toBe("note.txt");
+    expect(ref.mediaType).toBe("text/plain");
+    expect(ref.sizeBytes).toBe(5);
+    expect(ref.uri).toBe(`attachment://${ref.id}`);
+    expect(await store.get({ ref })).toEqual({ ref, bytes: base64("hello") });
+    expect((await store.list()).refs).toEqual([ref]);
+    expect(await store.delete({ ref })).toEqual({ deleted: true });
+    expect((await store.list()).refs).toEqual([]);
+  });
+
+  test("enforces MIME, base64, size and traversal limits", async () => {
+    const appDataDir = await temporaryDirectory();
+    const store = new AttachmentStoreService({
+      appDataDir,
+      maxTotalBytes: 100,
+      referencedAttachments: async () => [],
+    });
+    await expectAppFailure(
+      store.put({
+        id: "id",
+        name: "x.exe",
+        mediaType: "application/octet-stream",
+        bytes: base64("x"),
+      }),
+    ).then((error) => expect(error.appError.code).toBe("invalid_args"));
+    await expectAppFailure(
+      store.put({ id: "../outside", name: "x.txt", mediaType: "text/plain", bytes: base64("x") }),
+    ).then((error) => expect(error.appError.code).toBe("invalid_args"));
+    await expectAppFailure(
+      store.put({ id: "id", name: "x.txt", mediaType: "text/plain", bytes: "not base64" }),
+    ).then((error) => expect(error.appError.code).toBe("invalid_args"));
+    const oversized = base64("x".repeat(700 * 1024 + 1));
+    await expectAppFailure(
+      store.put({ id: "id", name: "x.txt", mediaType: "text/plain", bytes: oversized }),
+    ).then((error) => expect(error.appError.code).toBe("invalid_args"));
+  });
+
+  test("keeps referenced blobs and evicts oldest unreferenced blobs first", async () => {
+    const appDataDir = await temporaryDirectory();
+    let referenced: AttachmentRef[] = [];
+    const store = new AttachmentStoreService({
+      appDataDir,
+      maxTotalBytes: 8,
+      referencedAttachments: async () => referenced,
+    });
+    const first = await store.put({
+      id: "first",
+      name: "a.txt",
+      mediaType: "text/plain",
+      bytes: base64("1234"),
+    });
+    const second = await store.put({
+      id: "second",
+      name: "b.txt",
+      mediaType: "text/plain",
+      bytes: base64("5678"),
+    });
+    referenced = [second.ref];
+    await store.cleanup();
+    const third = await store.put({
+      id: "third",
+      name: "c.txt",
+      mediaType: "text/plain",
+      bytes: base64("abcd"),
+    });
+    expect((await store.list()).refs).toEqual([second.ref, third.ref]);
+    await expectAppFailure(store.get({ ref: first.ref })).then((error) =>
+      expect(error.appError.code).toBe("not_found"),
+    );
+    expect(third.ref.id).not.toBe(second.ref.id);
+  });
+  test("never evicts a draft-referenced blob and fails when referenced storage is full", async () => {
+    const appDataDir = await temporaryDirectory();
+    let referenced: AttachmentRef[] = [];
+    const store = new AttachmentStoreService({
+      appDataDir,
+      maxTotalBytes: 4,
+      referencedAttachments: async () => referenced,
+    });
+    const first = await store.put({
+      id: "first",
+      name: "a.txt",
+      mediaType: "text/plain",
+      bytes: base64("1234"),
+    });
+    referenced = [first.ref];
+    const failure = await expectAppFailure(
+      store.put({ id: "second", name: "b.txt", mediaType: "text/plain", bytes: base64("5678") }),
+    );
+    expect(failure.appError).toMatchObject({ code: "unavailable", retryable: false });
+    expect((await store.list()).refs).toEqual([first.ref]);
+  });
+
+  test("startup cleanup removes old orphans but keeps draft-referenced blobs", async () => {
+    const appDataDir = await temporaryDirectory();
+    let referenced: AttachmentRef[] = [];
+    const store = new AttachmentStoreService({
+      appDataDir,
+      maxTotalBytes: 100,
+      referencedAttachments: async () => referenced,
+    });
+    const keep = await store.put({
+      id: "keep",
+      name: "keep.txt",
+      mediaType: "text/plain",
+      bytes: base64("keep"),
+    });
+    const orphan = await store.put({
+      id: "orphan",
+      name: "orphan.txt",
+      mediaType: "text/plain",
+      bytes: base64("orphan"),
+    });
+    referenced = [keep.ref];
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    await utimes(join(appDataDir, "attachments", `${orphan.ref.id}.blob`), old, old);
+    await utimes(join(appDataDir, "attachments", `${orphan.ref.id}.json`), old, old);
+    await store.cleanup({ orphanAgeMs: 24 * 60 * 60 * 1000 });
+    expect((await store.list()).refs).toEqual([keep.ref]);
+    await expectAppFailure(store.get({ ref: orphan.ref })).then((error) =>
+      expect(error.appError.code).toBe("not_found"),
+    );
+  });
+
+  test("maps malformed refs and missing blobs to typed failures", async () => {
+    const appDataDir = await temporaryDirectory();
+    const store = new AttachmentStoreService({
+      appDataDir,
+      referencedAttachments: async () => [],
+    });
+    await expectAppFailure(
+      store.get({ ref: { id: "../bad", name: "x.txt", mediaType: "text/plain" } }),
+    ).then((error) => expect(error.appError.code).toBe("invalid_args"));
+  });
+  test("fails closed when draft reference scanning fails", async () => {
+    const appDataDir = await temporaryDirectory();
+    let scanFailed = false;
+    const store = new AttachmentStoreService({
+      appDataDir,
+      maxTotalBytes: 4,
+      referencedAttachments: async () => {
+        if (scanFailed)
+          throw new AppFailure({ code: "internal", message: "scan failed", retryable: false });
+        return [];
+      },
+    });
+    const first = await store.put({
+      id: "first",
+      name: "a.txt",
+      mediaType: "text/plain",
+      bytes: base64("1234"),
+    });
+    scanFailed = true;
+    await expectAppFailure(
+      store.put({ id: "second", name: "b.txt", mediaType: "text/plain", bytes: base64("5678") }),
+    ).then((error) => expect(error.appError.code).toBe("internal"));
+    expect((await store.list()).refs).toHaveLength(2);
+    expect(await store.get({ ref: first.ref })).toEqual({ ref: first.ref, bytes: base64("1234") });
+  });
+});

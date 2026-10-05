@@ -85,6 +85,7 @@ describe("DraftStoreService", () => {
     ).toMatchObject({
       text: "thread text",
     });
+    expect(await store.referencedAttachments()).toEqual([attachment()]);
     store.dispose();
   });
 
@@ -94,7 +95,7 @@ describe("DraftStoreService", () => {
     const failedSends = Array.from({ length: 21 }, (_, index) => ({
       attemptedAt: `2026-10-04T00:00:${String(index).padStart(2, "0")}Z`,
       text: `failed-${index}`,
-      attachments: [attachment()],
+      attachments: [{ ...attachment(), id: "failed-attachment" }],
       reason: `reason-${index}`,
     }));
     const saved = await store.save({
@@ -106,6 +107,10 @@ describe("DraftStoreService", () => {
     expect(saved.failedSends[0]?.text).toBe("failed-1");
     const loaded = (await store.get({ scope: { kind: "thread", threadId: "history" } })).draft;
     expect(loaded?.failedSends).toHaveLength(20);
+    expect((await store.referencedAttachments()).map((ref) => ref.id)).toEqual([
+      "attachment-1",
+      "failed-attachment",
+    ]);
     expect(loaded?.failedSends.at(-1)?.text).toBe("failed-20");
     store.dispose();
   });

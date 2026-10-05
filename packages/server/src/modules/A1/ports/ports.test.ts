@@ -5,6 +5,7 @@ import type { ServerFrame } from "@omp-app/contracts";
 import {
   type AbortSignalLike,
   AppFailure,
+  AttachmentBlobStore,
   CapabilityMap,
   CheckpointStore,
   ConfigStore,
@@ -232,6 +233,19 @@ function createContext(
         reset: true as const,
       }),
     },
+    attachmentStore: {
+      put: async () => ({
+        ref: {
+          id: "a".repeat(64),
+          name: "x.txt",
+          mediaType: "text/plain",
+          uri: `attachment://${"a".repeat(64)}`,
+        },
+      }),
+      get: async (args: { ref: unknown }) => ({ ref: args.ref, bytes: "eA==" }),
+      delete: async () => ({ deleted: true as const }),
+      list: async () => ({ refs: [] }),
+    },
     extensionCatalog: {
       list: async () => ({ revision: "revision-1", extensions: [], commands: [] }),
       reload: async () => ({ revision: "revision-2", extensions: [], commands: [] }),
@@ -334,7 +348,7 @@ describe("A1.9 port registrations", () => {
       ["A1.workspaceState", "read", { folder: "/workspace" }],
       ["A1.gitState", "read", { folder: "/workspace" }],
       ["A1.ompCommandGateway", "run", { threadId: "session-1", command: "/session" }],
-      ["A1.sessionPinStore", "list", {}],
+      ["A1.attachmentStore", "list", {}],
       ["A1.providerAccountStore", "listProviders", {}],
       ["A1.extensionCatalog", "list", { folder: null }],
       ["A1.fileSearch", "search", { folder: "/workspace", query: "" }],
@@ -367,6 +381,7 @@ describe("A1.9 port registrations", () => {
       MemoryStore,
       OmpCommandGateway,
       PlanDocumentStore,
+      AttachmentBlobStore,
       ProviderAccountStore,
       RuleStore,
       SessionFileStore,

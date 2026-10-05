@@ -1,3 +1,4 @@
+export * from "./attachment-store";
 export * from "./checkpoint-store";
 export * from "./config-store";
 export * from "./draft-store";
