@@ -1,0 +1,22 @@
+{
+  "name": "@omp-app/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./omp-wire/schema.json": "./src/omp-wire/rpc-wire.schema.json"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "test": "bun test",
+    "sync-omp-wire": "bun scripts/sync-omp-wire.ts",
+    "build-inventory": "bun scripts/build-inventory.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2"
+  }
+}
