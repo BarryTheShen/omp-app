@@ -52,6 +52,22 @@ export const AppError = z.object({
 });
 export type AppError = z.infer<typeof AppError>;
 
+/**
+ * The one way to throw an AppError (contract change 2026-10-05). Server handlers and stores throw
+ * it; A0's dispatcher sends its `appError` in the `result` frame; the client rejects a failed call
+ * with it, so every layer catches the same type and reads `appError.code`. Anything else that is
+ * thrown is reported as `internal`.
+ */
+export class AppFailure extends Error {
+  readonly appError: AppError;
+
+  constructor(appError: AppError, options?: { cause?: unknown }) {
+    super(appError.message, options);
+    this.name = "AppFailure";
+    this.appError = appError;
+  }
+}
+
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: AppError };
 
 /**
