@@ -7,6 +7,7 @@ import { createExtensionCatalogRegistration } from "./extension-catalog";
 import { createFileSearchRegistration } from "./file-search";
 import { createHostMetadataRegistration } from "./host-metadata";
 import { createOmpCommandGatewayRegistration } from "./omp-command-gateway";
+import { createPlanDocumentRegistration } from "./plan-documents";
 import { createProviderAccountStoreRegistration } from "./provider-accounts";
 import { createSessionFileStoreRegistration } from "./session-file-store";
 import { createSessionPinStoreRegistration } from "./session-pin-store";
@@ -27,6 +28,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createExtensionCatalogRegistration(context),
     createFileSearchRegistration(context),
     createHostMetadataRegistration(context),
+    createPlanDocumentRegistration(context),
   ];
 }
 
