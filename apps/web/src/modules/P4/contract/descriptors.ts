@@ -1,0 +1,88 @@
+import type { Descriptor } from "@omp-app/contracts";
+
+/** P4 owns durable session-tree/fork rows only; P3 assistant-ui rows stay outside this list. */
+export const P4_DESCRIPTORS = [
+  {
+    kind: "command",
+    id: "P4.branch",
+    owner: "P4",
+    title: "Conversation rewind",
+    covers: ["P3.branch"],
+    requires: ["omp.cmd.branch"],
+    slash: { name: "branch", source: "builtin" },
+  },
+  {
+    kind: "command",
+    id: "P4.fork",
+    owner: "P4",
+    title: "Conversation fork",
+    covers: ["P3.fork"],
+    requires: ["omp.cmd.fork"],
+    slash: { name: "fork", source: "builtin" },
+  },
+  {
+    kind: "command",
+    id: "P4.getEntries",
+    owner: "P4",
+    title: "Load conversation entries",
+    covers: ["P3.get-entries"],
+    requires: ["omp.cmd.get_entries"],
+  },
+  {
+    kind: "command",
+    id: "P4.getTree",
+    owner: "P4",
+    title: "Load conversation tree",
+    covers: ["P3.get-tree"],
+    requires: ["omp.cmd.get_tree"],
+  },
+  {
+    kind: "command",
+    id: "P4.tree",
+    owner: "P4",
+    title: "Conversation tree",
+    covers: ["P3.tree"],
+    requires: ["omp.cmd.get_tree"],
+    slash: { name: "tree", source: "builtin" },
+  },
+  {
+    kind: "dialog",
+    id: "P4.treeSelector",
+    owner: "P4",
+    title: "Conversation tree selector",
+    covers: ["P3.tree-selector"],
+    requires: ["omp.cmd.get_tree"],
+  },
+  {
+    kind: "shortcut",
+    id: "P4.sessionTree",
+    owner: "P4",
+    title: "Open conversation tree",
+    covers: ["P3.app-session-tree"],
+    requires: ["omp.cmd.get_tree"],
+    chord: "Mod+T",
+    scope: "global",
+  },
+  {
+    kind: "shortcut",
+    id: "P4.treeFoldOrUp",
+    owner: "P4",
+    title: "Fold tree or move up",
+    covers: ["P3.app-tree-foldorup"],
+    requires: ["omp.cmd.get_tree"],
+    chord: "ArrowLeft",
+    scope: "tree",
+  },
+  {
+    kind: "shortcut",
+    id: "P4.treeUnfoldOrDown",
+    owner: "P4",
+    title: "Unfold tree or move down",
+    covers: ["P3.app-tree-unfoldordown"],
+    requires: ["omp.cmd.get_tree"],
+    chord: "ArrowRight",
+    scope: "tree",
+  },
+] as const satisfies readonly Descriptor[];
+
+export const DESCRIPTORS: readonly Descriptor[] = P4_DESCRIPTORS;
