@@ -8,6 +8,7 @@ import {
   submitModeInput,
   textForMode,
 } from "./modes";
+
 const promptCapabilities: CapabilityMap = {
   "omp.cmd.prompt": { state: "available", via: "rpc" },
   "omp.cmd.bash": { state: "available", via: "rpc" },

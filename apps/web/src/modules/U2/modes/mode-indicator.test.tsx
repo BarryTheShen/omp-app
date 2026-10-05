@@ -1,12 +1,12 @@
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
+  type ThreadMessage,
   useAuiState,
   useExternalStoreRuntime,
-  type ThreadMessage,
 } from "@assistant-ui/react";
 import type { CapabilityMap } from "@omp-app/contracts";
-import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { type PropsWithChildren, useMemo } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { ModeIndicator } from "./mode-indicator";
@@ -14,7 +14,11 @@ import { ModeIndicator } from "./mode-indicator";
 const capabilities: CapabilityMap = {
   "omp.cmd.prompt": { state: "available", via: "rpc" },
   "omp.cmd.bash": { state: "available", via: "rpc" },
-  "upstream.python-mode": { state: "unavailable", via: "upstream", detail: "Python mode is not released" },
+  "upstream.python-mode": {
+    state: "unavailable",
+    via: "upstream",
+    detail: "Python mode is not released",
+  },
 };
 
 function TextProbe() {
@@ -50,7 +54,9 @@ describe("U2.6 ModeIndicator", () => {
     expect(screen.getByRole("button", { name: "Bash" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Prompt" }));
     await waitFor(() => expect(screen.getByTestId("composer-text").textContent).toBe("ls"));
-    expect(screen.getByRole("button", { name: "Prompt" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Prompt" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
   });
 
   test("typing ! immediately highlights Bash and deleting it returns Prompt", async () => {
@@ -62,8 +68,16 @@ describe("U2.6 ModeIndicator", () => {
     );
     const input = screen.getByRole("textbox", { name: "Mode input" });
     fireEvent.change(input, { target: { value: "!" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Bash" }).getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Bash" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      ),
+    );
     fireEvent.change(input, { target: { value: "" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Prompt" }).getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Prompt" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      ),
+    );
   });
 });

@@ -9,8 +9,8 @@ import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ComposerSurface } from "../composer/composer";
 import type { PromptIntent } from "../contract";
-import { modeForText, parseComposerMode, submitModeInput } from "./modes";
 import { ModeIndicator } from "./mode-indicator";
+import { modeForText, parseComposerMode, submitModeInput } from "./modes";
 
 const capabilities: CapabilityMap = {
   "omp.cmd.prompt": { state: "available", via: "rpc" },
@@ -37,7 +37,9 @@ function PlaygroundBody({ setLastSubmit }: { readonly setLastSubmit: (value: str
       <header className="border-border bg-card flex items-center justify-between border-b px-6 py-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">U2.6 Composer Modes</h1>
-          <p className="text-muted-foreground text-sm">Bash/Python mode handoff through PromptIntent</p>
+          <p className="text-muted-foreground text-sm">
+            Bash/Python mode handoff through PromptIntent
+          </p>
         </div>
         <span data-testid="mode-label" className="text-muted-foreground text-xs">
           {mode}

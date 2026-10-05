@@ -12,11 +12,18 @@ const playground = "/u2-modes-playground.html";
 function buildPlaygroundPage(): void {
   execFileSync(
     "bun",
-    ["build", "src/modules/U2/modes/playground.tsx", "--outfile", "dist/u2-modes-playground.js", "--target=browser"],
+    [
+      "build",
+      "src/modules/U2/modes/playground.tsx",
+      "--outfile",
+      "dist/u2-modes-playground.js",
+      "--target=browser",
+    ],
     { cwd: APP_ROOT, stdio: "inherit" },
   );
   const css = readdirSync(join(DIST_ROOT, "assets")).find((file) => file.endsWith(".css"));
-  if (!css) throw new Error("The production build did not emit a stylesheet for the modes playground.");
+  if (!css)
+    throw new Error("The production build did not emit a stylesheet for the modes playground.");
   writeFileSync(
     join(DIST_ROOT, "u2-modes-playground.html"),
     `<!doctype html>
