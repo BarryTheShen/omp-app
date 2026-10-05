@@ -10,12 +10,11 @@ import type { OmpWire } from "@omp-app/contracts";
 import { HostCallId } from "@omp-app/contracts";
 import { z } from "zod";
 
-export type HostToolResultPayload = OmpWire.HostToolResultPayload;
 export type HostUriResultPayload = Omit<OmpWire.HostUriResult, "type" | "id">;
 
 /** A duck-typed runtime check: U4 never re-declares the wire's `UserContent` union, so this
  *  confirms only the shape the answer path actually reads (an array under `content`). */
-function isHostToolResultPayload(value: unknown): value is HostToolResultPayload {
+function isHostToolResultPayload(value: unknown): value is OmpWire.HostToolResultPayload {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -28,7 +27,7 @@ function isHostUriResultPayload(value: unknown): value is HostUriResultPayload {
   return typeof value === "object" && value !== null;
 }
 
-const HostToolResultPayloadSchema = z.custom<HostToolResultPayload>(
+const HostToolResultPayloadSchema = z.custom<OmpWire.HostToolResultPayload>(
   isHostToolResultPayload,
   "expected a host tool result payload",
 );

@@ -22,14 +22,6 @@ export type SessionScope = z.infer<typeof SessionScope>;
 export const SessionScopeKind = z.enum(["folder", "project"]);
 export type SessionScopeKind = z.infer<typeof SessionScopeKind>;
 
-/** Short aliases used by catalog consumers; both names describe the same discriminated DTOs. */
-export const FolderScope = FolderSessionScope;
-export type FolderScope = FolderSessionScope;
-export const ProjectScope = ProjectSessionScope;
-export type ProjectScope = ProjectSessionScope;
-export const CatalogScope = SessionScope;
-export type CatalogScope = SessionScope;
-
 /** Origin shown in the catalog; imported sources are explicit, never silently mounted. */
 export const SessionProvenance = z.enum(["native", "claude", "codex", "omp-share"]);
 export type SessionProvenance = z.infer<typeof SessionProvenance>;
