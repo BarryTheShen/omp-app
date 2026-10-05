@@ -9,8 +9,8 @@ The floor version is omp **18.6.1**. Features are switched on by capabilities om
 **Under construction (2026-10-05).** It is built in 42 modules and 8 waves, and every module is split into small "parts". As of this writing:
 
 - All 42 module specs (the plans and part lists) are done.
-- 53 of 261 parts are merged: the infrastructure (waves W1 and W2: the link to omp, the server stores, the app shell, design tokens, the chat runtime and its tests on recorded omp sessions) and the first W3 parts (thread view, composer, dialog host, tool-card and panel contracts).
-- The server talks to the real omp end to end: the A0.9 smoke test opens a thread, streams a reply, reconnects and closes against a real omp process. Its pull request is in review, so `bun run dev` does not start the full app yet, and the browser side has no screen that lists or opens sessions yet (R1.3 onward).
+- 68 of 261 parts are merged: the infrastructure (waves W1 and W2: the link to omp, the server stores, the app shell, design tokens, the chat runtime and its tests on recorded omp sessions) and much of W3 (thread view and message parts, composer with drafts and attachments, dialogs and approvals, tool cards, panels, session catalog, settings kit, launch link and accessibility).
+- `bun run dev` starts the real server against your omp and prints the app's link. The server side works end to end (a real omp session opens, streams and reconnects). The browser still shows the starter page: the screen that puts the session list, the conversation and the composer together is the app-root part (#476), which starts once the session sidebar (R1.6) lands.
 
 The live board: `bun tools/board.ts show`. GitHub issues are the source of truth.
 
