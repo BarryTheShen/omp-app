@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { promises as fs } from "node:fs";
+import { join } from "node:path";
 import type { ServerFrame } from "@omp-app/contracts";
 import {
   type AbortSignalLike,
   AppFailure,
   CapabilityMap,
+  FolderPath,
   serializeFrame,
   streamKey,
   ThreadId,
@@ -11,6 +14,7 @@ import {
 import { Dispatcher, type DispatcherSocket } from "../../../dispatcher";
 import { createPortRegistry } from "../../../registry/ports";
 import { EventReplayHub } from "../../../replay";
+import { CheckpointStoreService } from "../checkpoints";
 import type { A1PortContext } from "./context";
 import { createA1PortRegistrations } from "./index";
 
@@ -117,7 +121,9 @@ function internalSessionFile() {
   };
 }
 
-function createContext(options: { readonly providerFailure?: AppFailure } = {}): A1PortContext {
+function createContext(
+  options: { readonly providerFailure?: AppFailure; readonly checkpointAppData?: string } = {},
+): A1PortContext {
   const pinListeners = new Set<(change: unknown) => void>();
   const session = internalSessionFile();
   const draft = {
@@ -129,6 +135,7 @@ function createContext(options: { readonly providerFailure?: AppFailure } = {}):
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
   const context = {
+    checkpointStore: new CheckpointStoreService({ appDataDir: options.checkpointAppData }),
     sessionFileStore: {
       listSessions: async () => ({ sessions: [session], nextCursor: null, parseWarnings: [] }),
       listFolders: async () => ({ folders: ["/workspace"], nextCursor: null }),
@@ -248,10 +255,14 @@ async function call(
   args: unknown,
 ): Promise<Extract<ServerFrame, { type: "result" }>> {
   session.receive(JSON.stringify({ type: "call", id, port, method, args }));
-  await settle();
-  const result = resultFrames(socket).find((frame) => frame.id === id);
-  if (!result) throw new Error(`Missing result for ${id}`);
-  return result;
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const result = resultFrames(socket).find((frame) => frame.id === id);
+    if (result) return result;
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 10);
+    await promise;
+  }
+  throw new Error(`Missing result for ${id}`);
 }
 
 describe("A1.9 port registrations", () => {
@@ -276,6 +287,44 @@ describe("A1.9 port registrations", () => {
     for (const [index, [port, method, args]] of calls.entries()) {
       const result = await call(session, socket, `call-${index}`, port, method, args);
       expect(result.ok).toBe(true);
+    }
+  });
+  test("routes checkpoint snapshot calls through its handler", async () => {
+    const workspace = join(process.cwd(), ".data", `a1-checkpoint-port-${crypto.randomUUID()}`);
+    const appData = join(process.cwd(), ".data", `a1-checkpoint-app-${crypto.randomUUID()}`);
+    await fs.mkdir(workspace, { recursive: true });
+    await fs.mkdir(appData, { recursive: true });
+    await fs.writeFile(join(workspace, "hello.txt"), "hello\n");
+    try {
+      const context = createContext({ checkpointAppData: appData });
+      const { dispatcher } = createDispatcher(context);
+      const socket = createSocket("connection-checkpoint");
+      const session = dispatcher.open(socket);
+      hello(session);
+      const result = await call(
+        session,
+        socket,
+        "checkpoint-snapshot",
+        "A1.checkpointStore",
+        "snapshot",
+        {
+          workspace: FolderPath.parse(workspace),
+          conversation: {
+            threadId: ThreadId.parse("session-1"),
+            sessionFile: `${workspace}/session.jsonl`,
+            entryId: "entry-1",
+          },
+          source: "manual",
+          pinned: true,
+        },
+      );
+      expect(result).toMatchObject({
+        ok: true,
+        value: { workspaceKey: expect.any(String), guarantee: "boundary" },
+      });
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
     }
   });
 

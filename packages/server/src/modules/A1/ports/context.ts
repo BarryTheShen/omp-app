@@ -1,4 +1,5 @@
 import type { ProviderAccountStoreService } from "../accounts";
+import type { CheckpointStoreService } from "../checkpoints";
 import type { ConfigStoreService } from "../config";
 import type { DraftStoreService } from "../drafts";
 import type { ExtensionCatalogService } from "../extensions";
@@ -13,6 +14,7 @@ import type { A1EventPublisher, A1StreamActivity } from "./helper";
 export interface A1PortContext {
   readonly sessionFileStore: SessionFileStore;
   readonly configStore: ConfigStoreService;
+  readonly checkpointStore: CheckpointStoreService;
   readonly draftStore: DraftStoreService;
   readonly ompCommandGateway: OmpCommandGatewayService;
   readonly sessionPinStore: SessionPinStoreService;
