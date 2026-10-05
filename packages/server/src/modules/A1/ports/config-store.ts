@@ -1,4 +1,4 @@
-import { ConfigChanged, ConfigStore } from "@omp-app/contracts";
+import { type ConfigChanged, ConfigStore } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
 import type { A1PortContext } from "./context";
 import { assertNotAborted, createA1PortRegistration } from "./helper";
@@ -7,12 +7,11 @@ export function createConfigStoreRegistration(context: A1PortContext): PortRegis
   const bindings = [
     {
       event: "changed",
-      subscribe: (listener: (payload: unknown) => void) =>
-        context.configStore.subscribe(null, listener as (change: ConfigChanged) => void),
-      scope: (payload: unknown) => {
-        const change = ConfigChanged.parse(payload);
-        return change.folder ?? "global";
-      },
+      subscribeScoped: (scope: string, listener: (payload: unknown) => void) =>
+        context.configStore.subscribe(
+          scope === "global" ? null : scope,
+          listener as (change: ConfigChanged) => void,
+        ),
     },
   ];
   return createA1PortRegistration(
@@ -33,5 +32,6 @@ export function createConfigStoreRegistration(context: A1PortContext): PortRegis
     },
     context.publish,
     bindings,
+    context.watchStreamActivity,
   );
 }

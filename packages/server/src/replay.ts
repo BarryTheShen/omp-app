@@ -12,6 +12,8 @@ export interface ReplayResult {
   readonly frames: readonly ReplayEventFrame[];
 }
 
+export type StreamActivityListener = (stream: StreamKey, active: boolean) => void;
+
 interface StreamState {
   nextSeq: number;
   frames: ReplayEventFrame[];
@@ -19,11 +21,12 @@ interface StreamState {
 
 type Subscriber = (frame: ReplayEventFrame) => void;
 
-/** Per-stream sequence assignment and bounded replay for reconnecting clients. */
+/** Per-stream sequence assignment, bounded replay, and subscriber activity notifications. */
 export class EventReplayHub {
   readonly #limit: number;
   readonly #streams = new Map<StreamKey, StreamState>();
   readonly #subscribers = new Map<StreamKey, Set<Subscriber>>();
+  readonly #activityWatchers = new Map<string, Set<StreamActivityListener>>();
 
   constructor(limit = 256) {
     if (!Number.isInteger(limit) || limit < 1) {
@@ -67,18 +70,55 @@ export class EventReplayHub {
     return { frames: state.frames.filter((frame) => frame.seq > afterSeq) };
   }
 
+  /** Register a callback for first/last activity of every stream beginning with `prefix`. */
+  registerStreamActivity(prefix: string, listener: StreamActivityListener): () => void {
+    if (prefix.length === 0) throw new Error("Stream activity prefix must not be empty");
+    const listeners = this.#activityWatchers.get(prefix) ?? new Set<StreamActivityListener>();
+    listeners.add(listener);
+    this.#activityWatchers.set(prefix, listeners);
+    let disposed = false;
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      listeners.delete(listener);
+      if (listeners.size === 0) this.#activityWatchers.delete(prefix);
+    };
+  }
+
   subscribe(stream: StreamKey, subscriber: Subscriber): () => void {
     const validStream = StreamKeySchema.parse(stream);
     const subscribers = this.#subscribers.get(validStream) ?? new Set<Subscriber>();
+    const first = subscribers.size === 0;
     subscribers.add(subscriber);
     this.#subscribers.set(validStream, subscribers);
+    if (first) {
+      try {
+        this.#notifyActivity(validStream, true);
+      } catch (error) {
+        subscribers.delete(subscriber);
+        if (subscribers.size === 0) this.#subscribers.delete(validStream);
+        throw error;
+      }
+    }
+    let disposed = false;
     return () => {
+      if (disposed) return;
+      disposed = true;
       subscribers.delete(subscriber);
-      if (subscribers.size === 0) this.#subscribers.delete(validStream);
+      if (subscribers.size !== 0) return;
+      this.#subscribers.delete(validStream);
+      this.#notifyActivity(validStream, false);
     };
   }
 
   latestSeq(stream: StreamKey): number {
     return this.#streams.get(StreamKeySchema.parse(stream))?.nextSeq ?? 0;
+  }
+
+  #notifyActivity(stream: StreamKey, active: boolean): void {
+    for (const [prefix, listeners] of this.#activityWatchers) {
+      if (!stream.startsWith(prefix)) continue;
+      for (const listener of [...listeners]) listener(stream, active);
+    }
   }
 }

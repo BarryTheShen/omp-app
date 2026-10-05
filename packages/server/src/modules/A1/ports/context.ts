@@ -8,7 +8,7 @@ import type { readWorkspaceState } from "../git";
 import type { readHostMetadata } from "../host";
 import type { SessionPinStoreService } from "../pins";
 import type { SessionFileStore } from "../sessions";
-import type { A1EventPublisher } from "./helper";
+import type { A1EventPublisher, A1StreamActivity } from "./helper";
 /** Stores and host seams composed by the main server; A1 handlers never create parallel stores. */
 export interface A1PortContext {
   readonly sessionFileStore: SessionFileStore;
@@ -21,5 +21,6 @@ export interface A1PortContext {
   readonly readWorkspaceState?: typeof readWorkspaceState;
   readonly searchWorkspaceFiles?: typeof searchWorkspaceFiles;
   readonly readHostMetadata?: typeof readHostMetadata;
+  readonly watchStreamActivity?: A1StreamActivity;
   readonly publish?: A1EventPublisher;
 }
