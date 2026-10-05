@@ -1,0 +1,101 @@
+import type { CapabilityMap } from "@omp-app/contracts";
+import { AppFailure } from "@omp-app/contracts";
+import type { PromptDelivery, PromptIntent, PromptMode } from "../contract";
+
+export interface ParsedModeInput {
+  readonly mode: PromptMode;
+  readonly text: string;
+  readonly excludeFromContext?: boolean;
+}
+
+/** The released prompt wire has no exclude flag; U2 carries this app intent extension to the host seam. */
+export type BashPromptIntent = PromptIntent & { readonly excludeFromContext?: boolean };
+
+export type ModeExitKey = "Escape" | "Backspace" | string;
+
+export interface PythonModeAvailability {
+  readonly available: boolean;
+  readonly reason: string;
+}
+
+function hasWhitespaceAfterSigil(text: string, sigilLength: number): boolean {
+  const next = text[sigilLength];
+  return next === " " || next === "\t" || next === "\n" || next === "\r";
+}
+
+/** Parses terminal-compatible !/!! and $/$$ prefixes without treating $HOME as Python. */
+export function parseComposerMode(text: string): ParsedModeInput {
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("!!")) {
+    return { mode: "bash", text: trimmed.slice(2).trimStart(), excludeFromContext: true };
+  }
+  if (trimmed.startsWith("!") && !trimmed.startsWith("!!")) {
+    return { mode: "bash", text: trimmed.slice(1).trimStart() };
+  }
+  if (trimmed.startsWith("$$") && hasWhitespaceAfterSigil(trimmed, 2)) {
+    return { mode: "python", text: trimmed.slice(2).trimStart(), excludeFromContext: true };
+  }
+  if (trimmed.startsWith("$") && hasWhitespaceAfterSigil(trimmed, 1)) {
+    return { mode: "python", text: trimmed.slice(1).trimStart() };
+  }
+  return { mode: "prompt", text };
+}
+/** The indicator's source of truth: derive mode directly from current composer text. */
+export function modeForText(text: string): PromptMode {
+  return parseComposerMode(text).mode;
+}
+
+/** Adds/removes terminal mode prefixes without keeping a second mode state. */
+export function textForMode(text: string, mode: PromptMode): string {
+  const parsed = parseComposerMode(text);
+  const body = parsed.mode === "prompt" ? text : parsed.text;
+  switch (mode) {
+    case "prompt":
+      return body;
+    case "bash":
+      return `!${body}`;
+    case "python":
+      return `$ ${body}`;
+  }
+}
+
+export function shouldExitMode(mode: PromptMode, key: ModeExitKey, text: string): boolean {
+  if (mode === "prompt") return false;
+  return key === "Escape" || (key === "Backspace" && text.length === 0);
+}
+
+export function pythonModeAvailability(capabilities: CapabilityMap): PythonModeAvailability {
+  if (capabilities["upstream.python-mode"]?.state === "available") {
+    return { available: true, reason: "" };
+  }
+  return {
+    available: false,
+    reason:
+      capabilities["upstream.python-mode"]?.detail ?? "Python mode requires upstream.python-mode",
+  };
+}
+
+export async function submitModeInput(
+  input: ParsedModeInput,
+  delivery: PromptDelivery,
+  capabilities: CapabilityMap,
+  submitPrompt: (intent: PromptIntent) => Promise<void>,
+): Promise<void> {
+  if (input.mode === "python" && !pythonModeAvailability(capabilities).available) {
+    throw new AppFailure({
+      code: "unavailable",
+      message: pythonModeAvailability(capabilities).reason,
+      retryable: false,
+      capability: "upstream.python-mode",
+    });
+  }
+  const intent: BashPromptIntent = {
+    mode: input.mode,
+    text: input.text,
+    delivery,
+    ...(input.excludeFromContext === undefined
+      ? {}
+      : { excludeFromContext: input.excludeFromContext }),
+  };
+  await submitPrompt(intent);
+}
