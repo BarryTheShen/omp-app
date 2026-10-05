@@ -1,9 +1,7 @@
+import { AppShell } from "./shell";
+
 function App() {
-  return (
-    <main>
-      <h1>omp</h1>
-    </main>
-  );
+  return <AppShell />;
 }
 
 export default App;
