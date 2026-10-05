@@ -1,5 +1,6 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
+import { ResolveToolRenderer } from "./resolve";
 
 /** T7 owns exactly eight miscellaneous/host/domain renderer claims; the main agent composes them. */
 export const T7_TOOL_DESCRIPTORS = [
@@ -41,7 +42,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.reject"],
     requires: [],
     match: { by: "name", name: "reject" },
-    renderer: ToolFallback,
+    renderer: ResolveToolRenderer,
   },
   {
     kind: "tool",
@@ -51,7 +52,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.resolve"],
     requires: [],
     match: { by: "name", name: "resolve" },
-    renderer: ToolFallback,
+    renderer: ResolveToolRenderer,
   },
   {
     kind: "tool",
