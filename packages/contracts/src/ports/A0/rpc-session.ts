@@ -16,6 +16,7 @@ import type {
   OmpCommand,
   OmpCommandMap,
   OmpCommandName,
+  OmpCommandResult,
   OmpEvent,
   OmpResponse,
   OmpServerFrame,
@@ -70,8 +71,8 @@ export const OmpCommandSchema = z.custom<OmpCommand>(isOmpCommand, {
   message: "expected a known omp command",
 });
 
-export type OmpCommandResult = OmpCommandMap[OmpCommandName]["result"];
-export const OmpCommandResultSchema = z.custom<OmpCommandResult>(() => true);
+/** Any command's result; `send`'s typed signature narrows it per command (C0's `OmpCommandResult<K>`). */
+export const OmpCommandResultSchema = z.custom<OmpCommandResult<OmpCommandName>>(() => true);
 
 export const SendCommandArgs = z
   .object({

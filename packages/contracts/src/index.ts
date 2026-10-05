@@ -8,3 +8,5 @@ export * from "./core/inventory";
 export * from "./core/modules";
 export * from "./core/omp";
 export * from "./core/provenance";
+export * from "./ports/A0";
+export * from "./ports/A1";
