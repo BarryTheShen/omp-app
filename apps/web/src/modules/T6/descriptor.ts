@@ -1,6 +1,7 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
-
+import { RecallRenderer } from "./recall";
+import { ReflectRenderer } from "./reflect";
 /** Exactly the six T6 memory/learning rows; no descriptor claims a checkpoint or memory backend row. */
 export const T6_INVENTORY_COVERS = [
   "T6.learn",
@@ -51,7 +52,7 @@ export const T6_TOOL_DESCRIPTORS = [
     covers: ["T6.recall"],
     requires: [],
     match: { by: "name", name: "recall" },
-    renderer: ToolFallback,
+    renderer: RecallRenderer,
   },
   {
     kind: "tool",
@@ -61,7 +62,7 @@ export const T6_TOOL_DESCRIPTORS = [
     covers: ["T6.reflect"],
     requires: [],
     match: { by: "name", name: "reflect" },
-    renderer: ToolFallback,
+    renderer: ReflectRenderer,
   },
   {
     kind: "tool",

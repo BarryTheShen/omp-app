@@ -10,7 +10,9 @@ import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { SafeImage } from "../media";
 
-export type MarkdownTextProps = Partial<TextMessagePartProps>;
+export type MarkdownTextProps = Partial<TextMessagePartProps> & {
+  readonly variant?: "default" | "compact";
+};
 
 function CodeBlock({ className, children, ...props }: HTMLAttributes<HTMLElement>) {
   const isCodeBlock = useIsMarkdownCodeBlock();
@@ -151,11 +153,45 @@ const markdownComponents = memoizeMarkdownComponents({
     </ul>
   ),
 });
+const compactMarkdownComponents = memoizeMarkdownComponents({
+  ...markdownComponents,
+  h1: ({ children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
+    <h1 {...props} className="mt-2 mb-1 text-base font-semibold tracking-tight">
+      {children}
+    </h1>
+  ),
+  h2: ({ children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
+    <h2 {...props} className="mt-2 mb-1 text-sm font-semibold tracking-tight">
+      {children}
+    </h2>
+  ),
+  h3: ({ children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
+    <h3 {...props} className="mt-2 mb-1 text-sm font-semibold">
+      {children}
+    </h3>
+  ),
+  p: ({ children, ...props }: HTMLAttributes<HTMLParagraphElement>) => (
+    <p {...props} className="my-1 leading-relaxed first:mt-0 last:mb-0">
+      {children}
+    </p>
+  ),
+  ol: ({ children, ...props }: HTMLAttributes<HTMLOListElement>) => (
+    <ol {...props} className="my-1 ms-4 list-decimal space-y-0.5">
+      {children}
+    </ol>
+  ),
+  ul: ({ children, ...props }: HTMLAttributes<HTMLUListElement>) => (
+    <ul {...props} className="marker:text-muted-foreground my-1 ms-4 list-disc space-y-0.5">
+      {children}
+    </ul>
+  ),
+});
 
 /** U1.4's one Markdown implementation: assistant-ui's react-markdown primitive with safe components. */
-export const MarkdownText: FC<MarkdownTextProps> = memo(() => (
+export const MarkdownText: FC<MarkdownTextProps> = memo(({ variant = "default", ...props }) => (
   <MarkdownTextPrimitive
-    components={markdownComponents}
+    {...props}
+    components={variant === "compact" ? compactMarkdownComponents : markdownComponents}
     defer={false}
     remarkPlugins={[remarkGfm]}
     skipHtml
