@@ -1,85 +1,93 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { AppFailure, type MemoryChanged, MemoryScope } from "@omp-app/contracts";
+import { describe, expect, test } from "bun:test";
+import { AppFailure, type MemoryChanged, ThreadId } from "@omp-app/contracts";
 import { type MemoryCommandGateway, MemoryStoreService } from "./store";
 
-const temporaryDirectories: string[] = [];
-
-async function temporaryDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "omp-app-memory-"));
-  temporaryDirectories.push(directory);
-  return directory;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
+const threadId = (value: string): ThreadId => ThreadId.parse(value);
 
 function gatewayFor(outputs: Record<string, string>): {
   gateway: MemoryCommandGateway;
-  commands: string[];
+  calls: Array<{ readonly threadId: string; readonly command: string }>;
 } {
-  const commands: string[] = [];
+  const calls: Array<{ readonly threadId: string; readonly command: string }> = [];
   return {
-    commands,
+    calls,
     gateway: {
-      run: async ({ command }) => {
-        commands.push(command);
-        return { outputs: [{ text: outputs[command] ?? "unparseable output" }] };
+      run: async ({ threadId, command }) => {
+        calls.push({ threadId, command });
+        const output =
+          outputs[`${threadId}\0${command}`] ?? outputs[command] ?? "unparseable output";
+        return { outputs: [{ text: output }] };
       },
     },
   };
 }
 
 describe("MemoryStoreService", () => {
-  test("reports unavailable without an A1.8 gateway and creates no browser/database store", async () => {
-    const home = await temporaryDirectory();
-    const store = new MemoryStoreService({ threadId: "thread-memory" });
-    let thrown: unknown;
-    try {
-      await store.list({ folder: null, scope: "global" });
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(AppFailure);
-    expect((thrown as AppFailure).appError).toMatchObject({
-      code: "unavailable",
-      capability: "host.command-gateway",
-      retryable: false,
+  test("routes two threads to their own gateway sessions and reports closed threads", async () => {
+    const firstId = "aaaaaaaaaaaaaaaa";
+    const secondId = "bbbbbbbbbbbbbbbb";
+    const { gateway, calls } = gatewayFor({
+      "thread-one\0/memory mm list": `Mental models:\n- ${firstId}: First thread`,
+      "thread-two\0/memory mm list": `Mental models:\n- ${secondId}: Second thread`,
     });
-    expect(await readdir(home)).toEqual([]);
-    expect(MemoryScope.safeParse("global").success).toBe(true);
+    const store = new MemoryStoreService({ gateway });
+
+    const first = await store.list({
+      folder: null,
+      scope: "global",
+      threadId: threadId("thread-one"),
+    });
+    const second = await store.list({
+      folder: null,
+      scope: "global",
+      threadId: threadId("thread-two"),
+    });
+    expect(first.entries).toMatchObject([{ id: firstId, threadId: "thread-one" }]);
+    expect(second.entries).toMatchObject([{ id: secondId, threadId: "thread-two" }]);
+    expect(calls).toEqual([
+      { threadId: "thread-one", command: "/memory mm list" },
+      { threadId: "thread-two", command: "/memory mm list" },
+    ]);
     store.dispose();
+
+    const closedGateway: MemoryCommandGateway = {
+      run: async () => {
+        throw new AppFailure({
+          code: "not_found",
+          message: "No open thread thread-closed",
+          retryable: false,
+        });
+      },
+    };
+    const closedStore = new MemoryStoreService({ gateway: closedGateway });
+    await expect(
+      closedStore.list({ folder: null, scope: "global", threadId: threadId("thread-closed") }),
+    ).rejects.toMatchObject({ appError: { code: "not_found" } });
+    closedStore.dispose();
   });
 
   test("runs list/get/delete/clear through the gateway and parses renderer-shaped output", async () => {
     const firstId = "aaaaaaaaaaaaaaaa";
     const secondId = "bbbbbbbbbbbbbbbb";
-    const { gateway, commands } = gatewayFor({
+    const { gateway, calls } = gatewayFor({
       "/memory mm list": `Mental models:\n- ${firstId}: Keep edits small\n- ${secondId}: Verify tests`,
       [`/memory mm show ${firstId}`]: `# ${firstId}\nKeep edits small`,
       [`/memory mm delete ${firstId}`]: `Mental model deleted: ${firstId}`,
       "/memory clear": "Memory cleared. Deleted 2 entries.",
       "/memory reset": "Memory reset.",
     });
-    const store = new MemoryStoreService({ gateway, threadId: "thread-memory" });
-    const list = await store.list({ folder: null, scope: "global" });
+    const store = new MemoryStoreService({ gateway });
+    const args = { folder: null, scope: "global" as const, threadId: threadId("thread-memory") };
+    const list = await store.list(args);
     expect(list).toMatchObject({ parsed: true, entries: [{ id: firstId }, { id: secondId }] });
-    const read = await store.get({ folder: null, scope: "global", id: firstId });
+    const read = await store.get({ ...args, id: firstId });
     expect(read).toMatchObject({
       parsed: true,
       entry: { id: firstId, content: "Keep edits small" },
     });
     expect(
       await store.delete({
-        folder: null,
-        scope: "global",
+        ...args,
         id: firstId,
         confirmed: true,
         expectedRevision: null,
@@ -87,41 +95,43 @@ describe("MemoryStoreService", () => {
     ).toMatchObject({ parsed: true });
     expect(
       await store.clear({
-        folder: null,
-        scope: "global",
+        ...args,
         operation: "clear",
         confirmed: true,
         expectedRevision: null,
       }),
     ).toMatchObject({ parsed: true, deletedCount: 2 });
     await store.clear({
-      folder: null,
-      scope: "global",
+      ...args,
       operation: "reset",
       confirmed: true,
       expectedRevision: null,
     });
-    expect(commands).toEqual([
-      "/memory mm list",
-      `/memory mm show ${firstId}`,
-      `/memory mm delete ${firstId}`,
-      "/memory clear",
-      "/memory reset",
+    expect(calls).toEqual([
+      { threadId: "thread-memory", command: "/memory mm list" },
+      { threadId: "thread-memory", command: `/memory mm show ${firstId}` },
+      { threadId: "thread-memory", command: `/memory mm delete ${firstId}` },
+      { threadId: "thread-memory", command: "/memory clear" },
+      { threadId: "thread-memory", command: "/memory reset" },
     ]);
     store.dispose();
   });
 
   test("returns raw text when a renderer format cannot be parsed", async () => {
     const { gateway } = gatewayFor({ "/memory mm list": "new renderer format" });
-    const store = new MemoryStoreService({ gateway, threadId: "thread-memory" });
-    const result = await store.list({ folder: null, scope: "global" });
+    const store = new MemoryStoreService({ gateway });
+    const result = await store.list({
+      folder: null,
+      scope: "global",
+      threadId: threadId("thread-memory"),
+    });
     expect(result).toMatchObject({ parsed: false, rawText: "new renderer format", entries: [] });
     store.dispose();
   });
 
   test("rejects unsafe memory ids before the gateway is called", async () => {
-    const { gateway, commands } = gatewayFor({});
-    const store = new MemoryStoreService({ gateway, threadId: "thread-memory" });
+    const { gateway, calls } = gatewayFor({});
+    const store = new MemoryStoreService({ gateway });
     const invalidIds = [
       "memory with space",
       "memory\nnewline",
@@ -130,55 +140,38 @@ describe("MemoryStoreService", () => {
       "a".repeat(65),
     ];
     for (const id of invalidIds) {
-      let thrown: unknown;
-      try {
-        await store.get({ folder: null, scope: "global", id });
-      } catch (error) {
-        thrown = error;
-      }
-      expect(thrown).toBeInstanceOf(AppFailure);
-      expect((thrown as AppFailure).appError.code).toBe("invalid_args");
+      await expect(
+        store.get({ folder: null, scope: "global", threadId: threadId("thread-memory"), id }),
+      ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
     }
-    expect(commands).toEqual([]);
+    expect(calls).toEqual([]);
     store.dispose();
   });
 
   test("requires destructive confirmation and exposes unsupported memory editing", async () => {
-    const { gateway, commands } = gatewayFor({ "/memory clear": "Memory cleared." });
-    const store = new MemoryStoreService({ gateway, threadId: "thread-memory" });
-    let clearError: unknown;
-    try {
-      await store.clear({
-        folder: null,
-        scope: "global",
+    const { gateway, calls } = gatewayFor({ "/memory clear": "Memory cleared." });
+    const store = new MemoryStoreService({ gateway });
+    const args = { folder: null, scope: "global" as const, threadId: threadId("thread-memory") };
+    await expect(
+      store.clear({
+        ...args,
         operation: "clear",
         confirmed: false,
         expectedRevision: null,
-      });
-    } catch (error) {
-      clearError = error;
-    }
-    expect(clearError).toBeInstanceOf(AppFailure);
-    expect((clearError as AppFailure).appError.code).toBe("invalid_args");
-    expect(commands).toEqual([]);
+      }),
+    ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
+    expect(calls).toEqual([]);
 
-    let writeError: unknown;
-    try {
-      await store.write({
-        folder: null,
-        scope: "global",
+    await expect(
+      store.write({
+        ...args,
         content: "edited",
         metadata: {},
         sensitive: false,
         expectedRevision: null,
-      });
-    } catch (error) {
-      writeError = error;
-    }
-    expect(writeError).toBeInstanceOf(AppFailure);
-    expect((writeError as AppFailure).appError).toMatchObject({
-      code: "unavailable",
-      capability: "upstream.memory-edit",
+      }),
+    ).rejects.toMatchObject({
+      appError: { code: "unavailable", capability: "upstream.memory-edit" },
     });
     store.dispose();
   });
@@ -186,12 +179,13 @@ describe("MemoryStoreService", () => {
   test("forwards command changes without owning a second memory reducer", async () => {
     const firstId = "aaaaaaaaaaaaaaaa";
     const { gateway } = gatewayFor({ [`/memory mm delete ${firstId}`]: `deleted ${firstId}` });
-    const store = new MemoryStoreService({ gateway, threadId: "thread-memory" });
+    const store = new MemoryStoreService({ gateway });
     const events: MemoryChanged[] = [];
     const unsubscribe = store.subscribe((event) => events.push(event));
     await store.delete({
       folder: null,
       scope: "global",
+      threadId: threadId("thread-memory"),
       id: firstId,
       confirmed: true,
       expectedRevision: null,

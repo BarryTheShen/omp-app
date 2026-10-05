@@ -8,17 +8,11 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
     context,
     handlers: {
       serverInfo: (_args: unknown, _call: PortHandlerContext): AppServerInfo =>
-        AppServerInfo.parse(
-          context.serverInfo ?? {
-            instanceId: "omp-app",
-            serverVersion: "0.0.0",
-            omp: null,
-          },
-        ),
+        AppServerInfo.parse(context.serverInfo),
       capabilities: (_args: unknown, _call: PortHandlerContext) =>
-        CapabilityMap.parse(context.capabilities ?? {}),
+        CapabilityMap.parse(context.capabilities),
       health: (_args: unknown, _call: PortHandlerContext): AppHealth =>
-        AppHealth.parse(context.health ?? { status: "ok" }),
+        AppHealth.parse(context.health),
     },
   };
 }

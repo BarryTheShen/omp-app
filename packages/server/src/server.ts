@@ -19,10 +19,12 @@ export interface AppServerOptions {
   readonly port?: number;
   readonly token?: string;
   readonly origins?: readonly string[];
+  readonly instanceId?: string;
   readonly serverVersion?: string;
   readonly omp?: { readonly version: string; readonly protocolVersion: 1 | 2 } | null;
   readonly capabilities?: CapabilityMapType;
   readonly replayLimit?: number;
+  readonly replay?: EventReplayHub;
   readonly staticRoot?: string;
   readonly registry?: PortRegistry;
 }
@@ -141,8 +143,8 @@ function randomToken(): string {
 export function createAppServer(options: AppServerOptions = {}): AppServer {
   const token = options.token ?? randomToken();
   if (token.length === 0) throw new Error("WebSocket token cannot be empty");
-  const instanceId = randomId();
-  const replay = new EventReplayHub(options.replayLimit ?? DEFAULT_REPLAY_LIMIT);
+  const instanceId = options.instanceId ?? randomId();
+  const replay = options.replay ?? new EventReplayHub(options.replayLimit ?? DEFAULT_REPLAY_LIMIT);
   const capabilities = CapabilityMap.parse(options.capabilities ?? {});
   const omp = options.omp ?? null;
   const welcome = WelcomeFrameSchema.parse({

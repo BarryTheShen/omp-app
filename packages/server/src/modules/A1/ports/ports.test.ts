@@ -339,7 +339,7 @@ describe("A1.9 port registrations", () => {
       ["A1.extensionCatalog", "list", { folder: null }],
       ["A1.fileSearch", "search", { folder: "/workspace", query: "" }],
       ["A1.hostMetadata", "read", { folder: "/workspace" }],
-      ["A1.memoryStore", "list", { scope: "global", folder: null }],
+      ["A1.memoryStore", "list", { scope: "global", folder: null, threadId: "session-1" }],
       ["A1.planDocumentStore", "load", { threadId: "session-1" }],
       ["A1.ruleStore", "list", { scope: "global", folder: null }],
       ["A1.githubRefs", "search", { folder: "/workspace", query: "test", kind: "issue", limit: 5 }],

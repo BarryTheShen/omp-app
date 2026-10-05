@@ -37,7 +37,7 @@ export type MemoryEntry = z.infer<typeof MemoryEntry>;
 export const MemoryListArgs = z.strictObject({
   folder: FolderPath.nullable(),
   scope: MemoryScope,
-  threadId: ThreadId.optional(),
+  threadId: ThreadId,
   cursor: Cursor.optional(),
 });
 export type MemoryListArgs = z.infer<typeof MemoryListArgs>;
@@ -54,7 +54,7 @@ export type MemoryListResult = z.infer<typeof MemoryListResult>;
 export const MemoryGetArgs = z.strictObject({
   folder: FolderPath.nullable(),
   scope: MemoryScope,
-  threadId: ThreadId.optional(),
+  threadId: ThreadId,
   id: MemoryId,
 });
 export type MemoryGetArgs = z.infer<typeof MemoryGetArgs>;
@@ -69,7 +69,7 @@ export type MemoryGetResult = z.infer<typeof MemoryGetResult>;
 export const MemoryWriteArgs = z.strictObject({
   folder: FolderPath.nullable(),
   scope: MemoryScope,
-  threadId: ThreadId.optional(),
+  threadId: ThreadId,
   id: MemoryId.optional(),
   content: z.string(),
   metadata: z.record(z.string(), JsonValue),
@@ -90,7 +90,7 @@ export type MemoryWriteResult = z.infer<typeof MemoryWriteResult>;
 export const MemoryDeleteArgs = z.strictObject({
   folder: FolderPath.nullable(),
   scope: MemoryScope,
-  threadId: ThreadId.optional(),
+  threadId: ThreadId,
   id: MemoryId,
   confirmed: z.boolean().default(false),
   expectedRevision: Revision.nullable(),
@@ -110,7 +110,7 @@ export type MemoryClearOperation = z.infer<typeof MemoryClearOperation>;
 export const MemoryClearArgs = z.strictObject({
   folder: FolderPath.nullable(),
   scope: MemoryScope,
-  threadId: ThreadId.optional(),
+  threadId: ThreadId,
   operation: MemoryClearOperation.default("clear"),
   confirmed: z.boolean().default(false),
   expectedRevision: Revision.nullable(),

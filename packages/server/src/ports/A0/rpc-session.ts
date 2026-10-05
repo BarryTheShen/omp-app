@@ -35,13 +35,13 @@ export interface ThreadBootstrap {
 export interface A0PortContext {
   readonly processRegistry: OmpProcessRegistry;
   readonly replay: EventReplayHub;
-  readonly capabilities?: CapabilityMap;
-  readonly serverInfo?: {
+  readonly capabilities: CapabilityMap;
+  readonly serverInfo: {
     readonly instanceId: string;
     readonly serverVersion: string;
     readonly omp: { readonly version: string; readonly protocolVersion: 1 | 2 } | null;
   };
-  readonly health?: { readonly status: "ok" | "degraded" | "unhealthy"; readonly detail?: string };
+  readonly health: { readonly status: "ok" | "degraded" | "unhealthy"; readonly detail?: string };
   /** Required catalog seam: A1 resolves the omp-authoritative session file and cwd for a ThreadId. */
   readonly resolveThread: (
     threadId: ThreadId,
@@ -87,6 +87,9 @@ const SESSION_SWITCH_COMMANDS: Record<string, true> = {
 
 function notFound(message: string): AppFailure {
   return new AppFailure({ code: "not_found", message, retryable: false });
+}
+function unavailable(message: string): AppFailure {
+  return new AppFailure({ code: "unavailable", message, retryable: true });
 }
 function provisionalBootstrap(folderPath: FolderPath, args: readonly string[]): ThreadBootstrap {
   const threadId = ThreadId.parse(`provisional-${crypto.randomUUID()}`);
@@ -154,8 +157,14 @@ export class RpcSessionPortRuntime {
   get entries(): ReadonlyMap<ThreadId, ThreadEntry> {
     return this.#entries;
   }
+  sessionFor(threadId: ThreadId): RpcSession | undefined {
+    return this.#entryOrUndefined(threadId)?.session;
+  }
 
   async open(args: OpenThreadArgs, call: PortHandlerContext) {
+    if (this.#context.health.status !== "ok") {
+      throw unavailable(this.#context.health.detail ?? "omp is unavailable");
+    }
     const bootstrap = await this.#resolveBootstrap(args, call);
     const existing = this.#entryOrUndefined(bootstrap.threadId);
     if (existing !== undefined) {

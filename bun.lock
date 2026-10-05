@@ -81,6 +81,7 @@
       "name": "@omp-app/server",
       "version": "0.0.0",
       "dependencies": {
+        "@omp-app/client": "workspace:*",
         "@omp-app/contracts": "workspace:*",
         "@omp-app/omp-rpc": "workspace:*",
         "yaml": "^2.8.1",

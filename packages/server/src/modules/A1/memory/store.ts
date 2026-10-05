@@ -26,27 +26,25 @@ import {
   MemoryWriteArgs,
   type MemoryWriteArgs as MemoryWriteArgsValue,
   type MemoryWriteResult as MemoryWriteResultValue,
+  type ThreadId,
 } from "@omp-app/contracts";
 import type { z } from "zod";
 import { hashContent } from "../fs";
 
 const CAPABILITY = "host.memory-store" as const;
 const EDIT_CAPABILITY = "upstream.memory-edit" as const;
-const GATEWAY_CAPABILITY = "host.command-gateway" as const;
 const EDIT_UNAVAILABLE_REASON =
   "omp v18.6.1 has no typed memory-edit command; editing one memory is unavailable rather than emulated.";
-const GATEWAY_UNAVAILABLE_REASON = "The memory command gateway is unavailable.";
 
 export interface MemoryCommandGateway {
   readonly run: (args: {
-    readonly threadId: string;
+    readonly threadId: ThreadId;
     readonly command: string;
   }) => Promise<{ readonly outputs: readonly { readonly text: string }[] }>;
 }
 
 export interface MemoryStoreOptions {
-  readonly gateway?: MemoryCommandGateway;
-  readonly threadId?: string;
+  readonly gateway: MemoryCommandGateway;
   readonly onError?: (error: AppFailure) => void;
 }
 
@@ -205,38 +203,36 @@ function parseClearText(raw: string): MemoryClearResultValue {
  * Parsers are intentionally conservative: a format mismatch returns raw text with `parsed:false`.
  */
 export class MemoryStoreService {
-  readonly #gateway: MemoryCommandGateway | undefined;
-  readonly #threadId: string | undefined;
+  readonly #gateway: MemoryCommandGateway;
   readonly #onError: MemoryStoreOptions["onError"];
   readonly #listeners = new Set<MemoryChangedListener>();
 
-  constructor(options: MemoryStoreOptions = {}) {
+  constructor(options: MemoryStoreOptions) {
     this.#gateway = options.gateway;
-    this.#threadId = options.threadId;
     this.#onError = options.onError;
   }
 
   async list(args: MemoryListArgsValue): Promise<MemoryListResultValue> {
     const parsed = parseArgs(MemoryListArgs, args, "Invalid memory list arguments.");
-    const result = await this.runCommand("/memory mm list");
+    const result = await this.runCommand(parsed.threadId, "/memory mm list");
     return MemoryListResult.parse(parseListText(result, parsed));
   }
 
   async get(args: MemoryGetArgsValue): Promise<MemoryGetResultValue> {
     const parsed = parseArgs(MemoryGetArgs, args, "Invalid memory get arguments.");
-    const result = await this.runCommand(`/memory mm show ${parsed.id}`);
+    const result = await this.runCommand(parsed.threadId, `/memory mm show ${parsed.id}`);
     return MemoryGetResult.parse(parseGetText(result, parsed));
   }
 
-  async write(_args: MemoryWriteArgsValue): Promise<MemoryWriteResultValue> {
-    parseArgs(MemoryWriteArgs, _args, "Invalid memory write arguments.");
+  async write(args: MemoryWriteArgsValue): Promise<MemoryWriteResultValue> {
+    parseArgs(MemoryWriteArgs, args, "Invalid memory write arguments.");
     throw unavailable(EDIT_UNAVAILABLE_REASON, EDIT_CAPABILITY);
   }
 
   async delete(args: MemoryDeleteArgsValue): Promise<MemoryDeleteResultValue> {
     const parsed = parseArgs(MemoryDeleteArgs, args, "Invalid memory delete arguments.");
     if (!parsed.confirmed) throw invalidArgs("Deleting a memory requires explicit confirmation.");
-    const result = await this.runCommand(`/memory mm delete ${parsed.id}`);
+    const result = await this.runCommand(parsed.threadId, `/memory mm delete ${parsed.id}`);
     const output = parseDeleteText(result);
     if (output.parsed && output.revision) {
       this.publishChange(parsed, output.revision, [parsed.id], "command");
@@ -247,7 +243,7 @@ export class MemoryStoreService {
   async clear(args: MemoryClearArgsValue): Promise<MemoryClearResultValue> {
     const parsed = parseArgs(MemoryClearArgs, args, "Invalid memory clear arguments.");
     if (!parsed.confirmed) throw invalidArgs("Clearing memory requires explicit confirmation.");
-    const result = await this.runCommand(`/memory ${parsed.operation}`);
+    const result = await this.runCommand(parsed.threadId, `/memory ${parsed.operation}`);
     const output = parseClearText(result);
     if (output.parsed && output.revision) {
       this.publishChange(parsed, output.revision, [], "command");
@@ -264,12 +260,9 @@ export class MemoryStoreService {
     this.#listeners.clear();
   }
 
-  private async runCommand(command: string): Promise<string> {
-    if (!this.#gateway || !this.#threadId) {
-      throw unavailable(GATEWAY_UNAVAILABLE_REASON, GATEWAY_CAPABILITY);
-    }
+  private async runCommand(threadId: ThreadId, command: string): Promise<string> {
     try {
-      const result = await this.#gateway.run({ threadId: this.#threadId, command });
+      const result = await this.#gateway.run({ threadId, command });
       return rawText(result);
     } catch (error) {
       throw asFailure(error, "Memory command failed.");
@@ -308,6 +301,6 @@ export class MemoryStoreService {
   }
 }
 
-export function createMemoryStore(options: MemoryStoreOptions = {}): MemoryStoreService {
+export function createMemoryStore(options: MemoryStoreOptions): MemoryStoreService {
   return new MemoryStoreService(options);
 }
