@@ -1,7 +1,6 @@
 import { ToolCard } from "../U3/tool-card/card";
 import type {
   ToolCardState,
-  ToolRegistryDescriptor,
   ToolRenderer,
   ToolRendererProps,
 } from "../U3/tool-card/contract";
@@ -38,17 +37,6 @@ export function WaitCard({ rendererProps }: { readonly rendererProps: ToolRender
 }
 
 export const WaitToolRenderer: ToolRenderer = (props) => <WaitCard rendererProps={props} />;
-
-export const T5_WAIT_DESCRIPTOR = {
-  kind: "tool",
-  id: "T5.wait",
-  owner: "T5",
-  title: "Coordination wait",
-  covers: ["T5.wait"],
-  requires: [],
-  match: { by: "name", name: "wait" },
-  renderer: WaitToolRenderer,
-} as const satisfies ToolRegistryDescriptor;
 
 function WaitDetailsView({ details }: { readonly details: WaitDetails }) {
   const jobs = details.jobs ?? [];

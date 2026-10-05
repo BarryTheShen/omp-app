@@ -1,7 +1,6 @@
 import { ToolCard } from "../U3/tool-card/card";
 import type {
   ToolCardState,
-  ToolRegistryDescriptor,
   ToolRenderer,
   ToolRendererProps,
 } from "../U3/tool-card/contract";
@@ -43,17 +42,6 @@ export function HubCard({ rendererProps }: { readonly rendererProps: ToolRendere
 }
 
 export const HubToolRenderer: ToolRenderer = (props) => <HubCard rendererProps={props} />;
-
-export const T5_HUB_DESCRIPTOR = {
-  kind: "tool",
-  id: "T5.hub",
-  owner: "T5",
-  title: "Hub coordination",
-  covers: ["T5.hub"],
-  requires: [],
-  match: { by: "name", name: "hub" },
-  renderer: HubToolRenderer,
-} as const satisfies ToolRegistryDescriptor;
 
 function HubDetailsView({ details }: { readonly details: HubDetails }) {
   return (

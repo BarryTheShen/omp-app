@@ -1,5 +1,7 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
+import { HubToolRenderer } from "./hub";
+import { WaitToolRenderer } from "./wait";
 
 /** T5 claims nine exact tool names; task also owns P1's compact read-only task row. */
 export const T5_TOOL_DESCRIPTORS = [
@@ -11,7 +13,7 @@ export const T5_TOOL_DESCRIPTORS = [
     covers: ["T5.hub"],
     requires: [],
     match: { by: "name", name: "hub" },
-    renderer: ToolFallback,
+    renderer: HubToolRenderer,
   },
   {
     kind: "tool",
@@ -91,7 +93,7 @@ export const T5_TOOL_DESCRIPTORS = [
     covers: ["T5.wait"],
     requires: [],
     match: { by: "name", name: "wait" },
-    renderer: ToolFallback,
+    renderer: WaitToolRenderer,
   },
 ] as const satisfies readonly ToolRegistryDescriptor[];
 
