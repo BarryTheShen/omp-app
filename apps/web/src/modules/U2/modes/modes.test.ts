@@ -1,5 +1,6 @@
 import type { CapabilityMap } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
+import { UPSTREAM_UNAVAILABLE } from "@/registry-core";
 import {
   modeForText,
   parseComposerMode,
@@ -64,6 +65,12 @@ describe("U2.6 composer modes", () => {
       appError: { code: "unavailable", capability: "upstream.python-mode" },
     });
     expect(submitPrompt).not.toHaveBeenCalled();
+  });
+
+  test("explains a Python capability omp doesn't report in plain words", () => {
+    const reason = pythonModeAvailability({}).reason;
+    expect(reason).toBe(UPSTREAM_UNAVAILABLE.detail);
+    expect(reason).not.toContain("upstream.");
   });
 
   test("submits bash through the one PromptIntent callback", async () => {

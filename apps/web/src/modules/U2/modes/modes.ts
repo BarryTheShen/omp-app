@@ -1,5 +1,6 @@
 import type { CapabilityMap } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
+import { capabilityStatus, UPSTREAM_UNAVAILABLE } from "@/registry-core";
 import type { PromptDelivery, PromptIntent, PromptMode } from "../contract";
 
 export interface ParsedModeInput {
@@ -65,14 +66,9 @@ export function shouldExitMode(mode: PromptMode, key: ModeExitKey, text: string)
 }
 
 export function pythonModeAvailability(capabilities: CapabilityMap): PythonModeAvailability {
-  if (capabilities["upstream.python-mode"]?.state === "available") {
-    return { available: true, reason: "" };
-  }
-  return {
-    available: false,
-    reason:
-      capabilities["upstream.python-mode"]?.detail ?? "Python mode requires upstream.python-mode",
-  };
+  const status = capabilityStatus(capabilities, "upstream.python-mode");
+  if (status?.state === "available") return { available: true, reason: "" };
+  return { available: false, reason: status?.detail ?? UPSTREAM_UNAVAILABLE.detail ?? "" };
 }
 
 export async function submitModeInput(
