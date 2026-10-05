@@ -17,7 +17,8 @@ export type SnapshotId = z.infer<typeof SnapshotId>;
 export const RestorePlanId = z.string().min(1).brand<"RestorePlanId">();
 export type RestorePlanId = z.infer<typeof RestorePlanId>;
 
-export const SnapshotSource = z.enum(["prompt-boundary", "manual", "pretool-hook"]);
+/** `pre-restore`: the automatic snapshot taken before a workspace restore, which makes the restore undoable. */
+export const SnapshotSource = z.enum(["prompt-boundary", "manual", "pretool-hook", "pre-restore"]);
 export type SnapshotSource = z.infer<typeof SnapshotSource>;
 
 export const SnapshotPathKind = z.enum(["file", "directory", "symlink"]);
