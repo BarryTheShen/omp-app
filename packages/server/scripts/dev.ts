@@ -1,8 +1,15 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { AppFailure, FolderPath, SessionFilePath, type ThreadId } from "@omp-app/contracts";
+import {
+  AppFailure,
+  CapabilityMap,
+  FolderPath,
+  SessionFilePath,
+  type ThreadId,
+} from "@omp-app/contracts";
 import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
+import { probeCapabilities } from "../src/capabilities";
 import { createProviderAccountStore } from "../src/modules/A1/accounts";
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
 import { createConfigStore } from "../src/modules/A1/config";
@@ -123,13 +130,27 @@ export async function createCompositionServer(
   };
   const ompBinary = options.ompBin ?? env.OMP_BIN ?? "omp";
   const probe = await probeOmp(ompBinary, env, process.cwd());
+  let capabilities = CapabilityMap.parse({});
+  let protocolVersion: 1 | 2 = 1;
+  let health = probe.health;
+  if (health.status === "ok") {
+    try {
+      const capabilityProbe = await probeCapabilities({
+        cwd: FolderPath.parse(appDataDir),
+        ompBin: ompBinary,
+        env,
+      });
+      capabilities = capabilityProbe.capabilities;
+      protocolVersion = capabilityProbe.protocolVersion;
+    } catch {
+      health = { status: "unhealthy", detail: "omp capability probe failed" };
+    }
+  }
   const instanceId = crypto.randomUUID();
   const serverVersion = String(serverPackage.version);
-  const capabilities = {}; // Capability probing is tracked by #456; unknown stays unavailable.
-  const health = probe.health;
   const omp =
-    probe.health.status === "ok" && probe.version !== null
-      ? { version: probe.version, protocolVersion: 1 as const }
+    health.status === "ok" && probe.version !== null
+      ? { version: probe.version, protocolVersion }
       : null;
   const processRegistry = new OmpProcessRegistry({
     createProcess: (processOptions) =>

@@ -5,7 +5,7 @@ import {
   type AnswerHostToolArgs,
   type AnswerHostUriArgs,
   AppFailure,
-  CapabilityMap,
+  type CapabilityMap,
   type FolderPath,
   type OpenThreadArgs,
   type RpcSessionEvent,
@@ -21,6 +21,7 @@ import {
   ThreadId,
 } from "@omp-app/contracts";
 import { type CommandFuture, RpcSession } from "@omp-app/omp-rpc";
+import { capabilitiesForProtocol } from "../../capabilities";
 import type { OmpProcess, OmpProcessOptions, OmpProcessRegistry } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { EventReplayHub } from "../../replay";
@@ -428,7 +429,10 @@ export class RpcSessionPortRuntime {
     return {
       threadId: entry.bootstrap.threadId,
       sessionFile: entry.bootstrap.sessionFile,
-      capabilities: this.#context.capabilities ?? CapabilityMap.parse({}),
+      capabilities: capabilitiesForProtocol(
+        this.#context.capabilities,
+        entry.session.protocolVersion,
+      ),
     };
   }
 
