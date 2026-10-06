@@ -534,6 +534,62 @@ function mergeEntryMessageKey(next: MutableSnapshot, entryId: EntryId, key: Mess
   entries[entryId] = { ...current, messageKey: key };
 }
 
+/** The entries from the root to `head` (the branch the session is on), oldest first. */
+function activeBranch(transcript: TranscriptState): readonly EntryId[] {
+  if (transcript.head === null) return transcript.order;
+  const path: EntryId[] = [];
+  const seen = new Set<EntryId>();
+  let current: EntryId | null = transcript.head;
+  while (current !== null && !seen.has(current)) {
+    seen.add(current);
+    const entry: TranscriptEntry | undefined = transcript.entries[current];
+    if (!entry) break;
+    path.push(current);
+    current = entry.parentId;
+  }
+  return path.reverse();
+}
+
+/** The message an omp `message` session entry carries, if any. */
+function messageFromEntry(entry: TranscriptEntry): OmpMessage | undefined {
+  if (entry.type !== "message" || !isRecord(entry.raw)) return undefined;
+  const message = entry.raw.message;
+  if (!isRecord(message) || typeof message.role !== "string") return undefined;
+  return cloneValue(message) as unknown as OmpMessage;
+}
+
+/**
+ * Shows the persisted history of the active branch: every `message` entry on it becomes a persisted
+ * message (live messages already paired to an entry keep their record), in branch order, followed by
+ * the live messages omp has not persisted yet. Persisted messages of other branches leave the view.
+ */
+function hydratePersistedMessages(next: MutableSnapshot): void {
+  const persistedOrder: MessageKey[] = [];
+  for (const entryId of activeBranch(next.transcript)) {
+    const entry = next.transcript.entries[entryId];
+    if (!entry) continue;
+    if (entry.messageKey !== undefined) {
+      if (next.messages[entry.messageKey] !== undefined) persistedOrder.push(entry.messageKey);
+      continue;
+    }
+    const message = messageFromEntry(entry);
+    if (!message) continue;
+    const key = persistedMessageKey(next.threadId, entryId);
+    addOrReplaceMessage(next, key, {
+      key,
+      message,
+      status: "persisted",
+      entryId,
+      parentId: entry.parentId,
+    });
+    mergeEntryMessageKey(next, entryId, key);
+    persistedOrder.push(key);
+  }
+  const persisted = new Set<MessageKey>(persistedOrder);
+  const live = next.messageOrder.filter((key) => !persisted.has(key) && key.startsWith("stream:"));
+  next.messageOrder = [...persistedOrder, ...live];
+}
+
 interface PendingDraft {
   extensionUi: Record<string, PendingExtensionUiRequest>;
   hostTools: Record<string, PendingHostToolRequest>;
@@ -693,6 +749,7 @@ export class OmpRuntimeStore {
     for (const entry of parsed) recordTranscriptEntry(next, entry);
     if (leafId !== undefined) next.transcript = { ...next.transcript, head: leafId };
     this.pairEndedInDraft(next, entries);
+    hydratePersistedMessages(next);
     this.commit(next);
   }
 
@@ -703,6 +760,7 @@ export class OmpRuntimeStore {
     for (const entry of parsed) recordTranscriptEntry(next, entry);
     next.transcript = { ...next.transcript, head: leafId };
     this.pairEndedInDraft(next, entries);
+    hydratePersistedMessages(next);
     this.commit(next);
   }
 
@@ -722,6 +780,9 @@ export class OmpRuntimeStore {
       streaming: state.isStreaming,
       sessionSettled: state.isSettled,
     });
+    // omp answered get_state, so its process is up. When the lifecycle events that announced it are
+    // older than the server's replay window, this is the only signal the store gets.
+    if (next.process.status === "starting") setProcess(next, "ready");
     this.commit(next);
   }
 
@@ -1271,7 +1332,10 @@ export class OmpRuntimeStore {
       const entry = entryFromUnknown(value);
       if (!entry) return false;
       const current = next.transcript.entries[entry.id];
-      return current?.messageKey === undefined;
+      if (current?.messageKey === undefined) return true;
+      // An entry shown from history (no live message behind it yet) still takes its live message,
+      // so a message omp streams and also returns from get_entries appears once.
+      return next.messages[current.messageKey]?.streamMessageId === undefined;
     });
     if (candidates.length === 0) return;
     const messages = waitingKeys

@@ -182,7 +182,12 @@ function context(
       threadId,
       args: ["--resume", authorityFile],
     }),
-    serverInfo: { instanceId: "instance-a0-7", serverVersion: "test", omp: null },
+    serverInfo: {
+      instanceId: "instance-a0-7",
+      serverVersion: "test",
+      launchFolder: FolderPath.parse("/workspace"),
+      omp: null,
+    },
     health: { status: "ok" },
   };
 }

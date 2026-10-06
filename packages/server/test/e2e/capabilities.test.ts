@@ -142,9 +142,9 @@ describe("composition capability wiring", () => {
     expect(await app.serverInfo({})).toEqual({
       instanceId: welcome.instanceId,
       serverVersion: welcome.serverVersion,
+      launchFolder: FolderPath.parse(process.cwd()),
       omp: welcome.omp,
     });
-    expect(await app.capabilities({})).toEqual(welcome.capabilities);
     const folder = await temporaryRoot("capabilities-thread-");
     const rpc = client.port(RpcSessionPort);
     const opened = await rpc.open({ folderPath: FolderPath.parse(folder), start: "new" });

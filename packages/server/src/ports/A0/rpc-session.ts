@@ -40,6 +40,7 @@ export interface A0PortContext {
   readonly serverInfo: {
     readonly instanceId: string;
     readonly serverVersion: string;
+    readonly launchFolder: FolderPath;
     readonly omp: { readonly version: string; readonly protocolVersion: 1 | 2 } | null;
   };
   readonly health: { readonly status: "ok" | "degraded" | "unhealthy"; readonly detail?: string };

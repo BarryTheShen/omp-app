@@ -1,6 +1,7 @@
 import type { AppClient } from "@omp-app/client";
 import type {
   AppError,
+  CapabilityMap,
   FolderPath,
   OpenThreadArgs,
   RpcSessionClient,
@@ -21,6 +22,7 @@ interface EventSubscription {
 export interface SelectedThreadHistoryState {
   readonly threadId: ThreadId | undefined;
   readonly store: OmpRuntimeStore | undefined;
+  readonly capabilities: CapabilityMap | undefined;
   readonly isLoading: boolean;
   readonly error: AppError | null;
 }
@@ -73,6 +75,7 @@ export class SelectedThreadHistoryController {
   private state: SelectedThreadHistoryState = Object.freeze({
     threadId: undefined,
     store: undefined,
+    capabilities: undefined,
     isLoading: false,
     error: null,
   });
@@ -80,6 +83,7 @@ export class SelectedThreadHistoryController {
   private offEvents: (() => void) | undefined;
   private loader: SessionHistoryLoader | undefined;
   private stopRefetchWatch: (() => void) | undefined;
+  private refetchAfterSettle: SessionHistoryLoader | undefined;
   private listeners = new Set<(state: SelectedThreadHistoryState) => void>();
   private rekeying: Promise<void> | undefined;
 
@@ -134,6 +138,7 @@ export class SelectedThreadHistoryController {
   }
 
   public async close(): Promise<void> {
+    this.refetchAfterSettle = undefined;
     this.loader?.dispose();
     this.stopRefetchWatch?.();
     this.loader = undefined;
@@ -143,7 +148,13 @@ export class SelectedThreadHistoryController {
     const subscription = this.subscription;
     this.subscription = undefined;
     if (subscription) await subscription.unsubscribe();
-    this.commit({ threadId: undefined, store: undefined, isLoading: false, error: null });
+    this.commit({
+      threadId: undefined,
+      store: undefined,
+      capabilities: undefined,
+      isLoading: false,
+      error: null,
+    });
   }
 
   private async open(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
@@ -157,11 +168,27 @@ export class SelectedThreadHistoryController {
         this.options.createLoader?.(threadId, this.rpc, store) ??
         this.defaultLoader(threadId, store);
       this.loader = loader;
-      this.commit({ threadId, store, isLoading: true, error: null });
-      await this.attachSubscription(threadId, store);
+      this.commit({
+        threadId,
+        store,
+        capabilities: result.capabilities,
+        isLoading: true,
+        error: null,
+      });
+      // Replay everything the server still holds for this thread: omp's process lifecycle and any
+      // prompt events sent between `open` and this subscription (the composer is usable as soon
+      // as the store exists). Without it the store never sees the process become ready and can
+      // miss the start of the first prompt.
+      await this.attachSubscription(threadId, store, 0);
       await loader.loadInitial();
       this.stopRefetchWatch = loader.watchNeedsRefetch();
-      this.commit({ threadId, store, isLoading: false, error: null });
+      this.commit({
+        threadId,
+        store,
+        capabilities: result.capabilities,
+        isLoading: false,
+        error: null,
+      });
       this.options.onThreadIdChange?.(threadId);
       return store;
     } catch (error) {
@@ -196,13 +223,31 @@ export class SelectedThreadHistoryController {
     const previous = this.subscription;
     this.subscription = undefined;
     if (previous) await previous.unsubscribe();
-    const subscription = (await this.client.subscribe(RpcSessionPortSchema, "event", {
-      scope: threadId,
-      ...(afterSeq === undefined ? {} : { afterSeq }),
-    })) as EventSubscription;
+    const subscribe = (from: number | undefined) =>
+      this.client.subscribe(RpcSessionPortSchema, "event", {
+        scope: threadId,
+        ...(from === undefined ? {} : { afterSeq: from }),
+      }) as Promise<EventSubscription>;
+    let subscription: EventSubscription;
+    try {
+      subscription = await subscribe(afterSeq);
+    } catch (error) {
+      // The server keeps the last few hundred events per thread. When the requested ones are gone,
+      // follow live events only; the history loader supplies everything older.
+      if (afterSeq === undefined || asFailure(error, "").appError.code !== "conflict") throw error;
+      subscription = await subscribe(undefined);
+    }
     this.subscription = subscription;
     this.offEvents = subscription.onEvent((payload, seq) => {
       store.ingest(payload, seq);
+      if (payload.kind === "session_settled" && this.refetchAfterSettle) {
+        const loader = this.refetchAfterSettle;
+        this.refetchAfterSettle = undefined;
+        void loader.refetch().catch((error: unknown) => {
+          const failure = asFailure(error, "Refreshing the re-keyed session failed");
+          if (failure.appError.code !== "cancelled") this.commit({ error: failure.appError });
+        });
+      }
       const nextThreadId = this.sessionIdFromEvent(payload);
       if (nextThreadId && nextThreadId !== this.state.threadId) {
         void this.rekeyInProcess(nextThreadId);
@@ -226,19 +271,23 @@ export class SelectedThreadHistoryController {
   }
 
   private async rekey(threadId: ThreadId): Promise<void> {
+    const store = this.state.store;
+    if (!store) return;
     this.loader?.dispose();
     this.stopRefetchWatch?.();
     this.loader = undefined;
     this.stopRefetchWatch = undefined;
-    const store = this.options.createStore?.(threadId, this.rpc) ?? this.defaultStore(threadId);
     const loader =
       this.options.createLoader?.(threadId, this.rpc, store) ?? this.defaultLoader(threadId, store);
     this.loader = loader;
-    this.commit({ threadId, store, isLoading: true, error: null });
-    await this.attachSubscription(threadId, store);
-    await loader.loadInitial();
-    this.stopRefetchWatch = loader.watchNeedsRefetch();
+    // omp may move the same session to a persisted file while a prompt is streaming. Keep the
+    // existing store/runtime and only move the event subscription and future history requests.
     this.commit({ threadId, store, isLoading: false, error: null });
+    const shouldRefetchAfterSettle = store.getSnapshot().prompt.streaming;
+    this.refetchAfterSettle = shouldRefetchAfterSettle ? loader : undefined;
+    await this.attachSubscription(threadId, store);
+    if (!shouldRefetchAfterSettle) await loader.refetch();
+    this.stopRefetchWatch = loader.watchNeedsRefetch();
     this.options.onThreadIdChange?.(threadId);
   }
 

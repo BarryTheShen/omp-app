@@ -1,9 +1,9 @@
 /** The app-level server information, capabilities and health contract. */
 import { z } from "zod";
-
 import { CapabilityMap } from "../../core/capabilities";
 import type { PortClient, PortHandlers } from "../../core/envelope";
 import { definePort } from "../../core/envelope";
+import { FolderPath } from "../../core/ids";
 import { OMP_PROTOCOL_VERSIONS } from "../../core/omp";
 
 export const AppServerInfo = z
@@ -11,7 +11,8 @@ export const AppServerInfo = z
     /** Changes whenever the server process restarts; stream sequence numbers restart with it. */
     instanceId: z.string().min(1),
     serverVersion: z.string().min(1),
-    /** Null means the server is up but omp is not currently available. */
+    /** Folder from which the app server was launched; the browser uses it as its initial workspace. */
+    launchFolder: FolderPath,
     omp: z
       .object({
         version: z.string().min(1),

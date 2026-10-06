@@ -6,7 +6,7 @@ import type {
   RpcSessionEvent,
   ThreadId,
 } from "@omp-app/contracts";
-import { ThreadId as ThreadIdSchema } from "@omp-app/contracts";
+import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { createSelectedThreadHistoryController } from ".";
 
@@ -102,6 +102,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     });
 
     const store = await controller.openExisting(threadOne);
+    expect(controller.getSnapshot().capabilities).toEqual({});
     await controller.loadOlder();
 
     expect(store.getSnapshot().threadId).toBe(threadOne);
@@ -148,6 +149,46 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(controller.getSnapshot().threadId).toBe(threadTwo);
   });
 
+  test("opening replays the thread's buffered events and treats a get_state answer as ready", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    expect(subscriptions[0]?.options?.afterSeq).toBe(0);
+    expect(store.getSnapshot().process.status).toBe("ready");
+  });
+
+  test("follows live events when the server's replay window has moved past the start", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const client = fakeClient(rpc, subscriptions);
+    const liveOnly = client.subscribe.bind(client);
+    const attempts: Array<number | undefined> = [];
+    const controller = createSelectedThreadHistoryController({
+      client: {
+        ...client,
+        subscribe: async (port: unknown, event: unknown, options?: SubscribeOptions) => {
+          attempts.push(options?.afterSeq);
+          if (options?.afterSeq === 0) {
+            throw new AppFailure({
+              code: "conflict",
+              message: "The requested event history is no longer available",
+              retryable: true,
+            });
+          }
+          return liveOnly(port as never, event as never, options);
+        },
+      } as AppClient,
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    expect(attempts).toEqual([0, undefined]);
+    expect(controller.getSnapshot().threadId).toBe(threadOne);
+  });
+
   test("resumes a reconnect from afterSeq without duplicate event application", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
@@ -167,7 +208,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(store.getSnapshot().needsRefetch).toBe(false);
   });
 
-  test("re-keys after an in-process session_info_update and disposes the old stream", async () => {
+  test("re-keys in place during a turn without replacing the streaming store", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const switched: ThreadId[] = [];
@@ -181,12 +222,24 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const oldStore = await controller.openExisting(threadOne);
     const rekey = subscriptions[0]?.listeners[0];
     if (!rekey) throw new Error("initial subscription did not attach");
+    oldStore.ingest({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 1);
+    oldStore.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "live-message",
+          message: { role: "assistant", content: [{ type: "text", text: "live" }] },
+        },
+      } as RpcSessionEvent,
+      2,
+    );
     rekey(
       {
         kind: "notification",
         frame: { type: "session_info_update", sessionId: threadTwo },
       } as RpcSessionEvent,
-      1,
+      3,
     );
     for (
       let index = 0;
@@ -197,8 +250,16 @@ describe("SelectedThreadHistoryController open and paging", () => {
       await Promise.resolve();
     }
     expect(controller.getSnapshot().threadId).toBe(threadTwo);
-    expect(controller.getSnapshot().store).not.toBe(oldStore);
+    expect(controller.getSnapshot().store).toBe(oldStore);
+    expect(controller.getSnapshot().isLoading).toBe(false);
+    expect(oldStore.getSnapshot().prompt.streaming).toBe(true);
+    expect(oldStore.getSnapshot().messageOrder.length).toBeGreaterThan(0);
     expect(subscriptions[0]?.unsubscribed).toBe(true);
-    expect(switched).toContain(threadTwo);
+    expect(subscriptions[1]?.options?.scope).toBe(threadTwo);
+    const rekeyed = subscriptions[1]?.listeners[0];
+    if (!rekeyed) throw new Error("re-keyed subscription did not attach");
+    rekeyed({ kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent, 4);
+    await Promise.resolve();
+    expect(oldStore.getSnapshot().prompt.streaming).toBe(false);
   });
 });

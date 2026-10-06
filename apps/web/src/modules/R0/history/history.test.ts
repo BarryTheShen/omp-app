@@ -183,7 +183,11 @@ describe("SessionHistoryLoader.refetch", () => {
     const secondEntriesCall = calls.find((call) => call.type === "get_entries");
     expect(secondEntriesCall?.args).toMatchObject({ command: { since: "b" } });
     expect(store.getSnapshot().transcript.order).toEqual(["a", "b"]);
-    expect(store.getSnapshot().messageOrder).toEqual([]);
+    // History messages show once, in branch order, however often the history is refetched.
+    expect(store.getSnapshot().messageOrder).toEqual([
+      `entry:${threadId}:a`,
+      `entry:${threadId}:b`,
+    ]);
   });
 
   test("falls back to a full reload when the known watermark is unknown to omp", async () => {

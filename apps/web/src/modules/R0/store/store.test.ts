@@ -612,4 +612,59 @@ describe("OmpRuntimeStore", () => {
     ingest(store, { kind: "process", status: "running" }, 1044);
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 1044, needsRefetch: false });
   });
+
+  test("shows a reopened session's history on the active branch, oldest first", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const message = (id: string, parentId: string | null, role: string, text: string) => ({
+      type: "message",
+      id,
+      parentId,
+      timestamp: "2026-10-05T00:00:00.000Z",
+      message: { role, content: text, timestamp: 1 },
+    });
+    store.setTree(
+      [
+        message("u1", null, "user", "first question"),
+        message("a1", "u1", "assistant", "first answer"),
+        // An earlier edit left a second branch under the first question.
+        message("a1-old", "u1", "assistant", "abandoned answer"),
+        { type: "model_change", id: "m1", parentId: "a1", timestamp: "2026-10-05T00:00:01.000Z" },
+        message("u2", "m1", "user", "second question"),
+      ],
+      "u2" as EntryId,
+    );
+    const snapshot = store.getSnapshot();
+    expect(snapshot.messageOrder).toEqual([
+      `entry:${threadId}:u1`,
+      `entry:${threadId}:a1`,
+      `entry:${threadId}:u2`,
+    ]);
+    expect(snapshot.messages[`entry:${threadId}:a1` as MessageKey]).toMatchObject({
+      status: "persisted",
+      entryId: "a1",
+      parentId: "u1",
+      message: { role: "assistant", content: "first answer" },
+    });
+  });
+
+  test("keeps the turn in progress after the history and shows each message once", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const entry = {
+      type: "message",
+      id: "u1",
+      parentId: null,
+      timestamp: "2026-10-05T00:00:00.000Z",
+      message: { role: "user", content: "question", timestamp: 1 },
+    };
+    store.setTree([entry], "u1" as EntryId);
+    // omp streams the same user message (it is also in get_entries), then starts the answer.
+    omp(store, { type: "message_start", messageId: "m-user", message: entry.message }, 1);
+    omp(store, { type: "message_end", messageId: "m-user", message: entry.message }, 2);
+    omp(store, { type: "message_start", messageId: "m-answer", message: assistant("Hel") }, 3);
+    store.pairEndedMessages([entry], "u1" as EntryId);
+    expect(store.getSnapshot().messageOrder).toEqual([
+      `entry:${threadId}:u1`,
+      expect.stringMatching(/^stream:.*:m-answer$/),
+    ]);
+  });
 });

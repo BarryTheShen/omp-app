@@ -44,6 +44,8 @@ export interface CompositionServerOptions {
   readonly homeDir?: string;
   readonly agentDir?: string;
   readonly appDataDir?: string;
+  /** Test/embedding override for the process launch directory surfaced to the browser. */
+  readonly cwd?: string;
 }
 
 interface OmpProbe {
@@ -130,8 +132,9 @@ export async function createCompositionServer(
     PI_CODING_AGENT_DIR: agentDir,
     OMP_APP_DATA_DIR: appDataDir,
   };
+  const launchFolder = resolve(options.cwd ?? process.cwd());
   const ompBinary = options.ompBin ?? env.OMP_BIN ?? "omp";
-  const probe = await probeOmp(ompBinary, env, process.cwd());
+  const probe = await probeOmp(ompBinary, env, launchFolder);
   let capabilities = CapabilityMap.parse({});
   let protocolVersion: 1 | 2 = 1;
   let health = probe.health;
@@ -183,7 +186,7 @@ export async function createCompositionServer(
     replay,
     resolveThread,
     capabilities,
-    serverInfo: { instanceId, serverVersion, omp },
+    serverInfo: { instanceId, serverVersion, launchFolder: FolderPath.parse(launchFolder), omp },
     health,
   };
   const a0Runtime = createA0Runtime(a0Context);

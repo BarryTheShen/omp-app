@@ -1,7 +1,7 @@
-import { AppShell } from "./shell";
+import { AppRoot } from "./app/root";
 
 function App() {
-  return <AppShell />;
+  return <AppRoot />;
 }
 
 export default App;
