@@ -195,7 +195,7 @@ export function SessionCatalogSidebar({
       aria-label="Sessions"
       className="flex min-h-0 w-full flex-col bg-sidebar text-sidebar-foreground"
     >
-      <div className="-mt-10 flex h-10 shrink-0 items-center justify-end border-b border-sidebar-border pe-12 ps-2">
+      <div className="flex shrink-0 items-center justify-end border-b border-sidebar-border p-2">
         <Button type="button" size="sm" onClick={() => void createNewChat()}>
           New chat
         </Button>

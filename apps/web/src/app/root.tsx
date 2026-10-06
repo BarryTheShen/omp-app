@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AccessibilityProvider } from "@/a11y";
 import { AppConnectionGate, AppConnectionProvider, useAppConnection } from "@/launch";
+import { LayoutArea, type LayoutAreaName, type SurfaceMap } from "@/layout";
 import { QueueLaneBar } from "@/modules/P6/bar/bar";
 import { resolveQueueSubmitPolicy } from "@/modules/P6/composer/composer";
 import { createQueueAdapter } from "@/modules/P6/contract";
@@ -288,22 +289,45 @@ function RouterBridge({
   return null;
 }
 
+/** The "Add file" button: picks one file and uploads it as an attachment. */
+function AttachFileButton({ manager }: { readonly manager: AttachmentManager }) {
+  return (
+    <label className="text-muted-foreground cursor-pointer text-xs">
+      Add file
+      <input
+        className="sr-only"
+        type="file"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          void manager
+            .add({ file })
+            .then((pending) => manager.send(pending))
+            .catch(() => undefined);
+          event.target.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
 function DraftComposer({
   controller,
   submit,
   cancel,
   policy,
-  queueBar,
+  toolbar,
+  footer,
   manager,
-  capabilities,
 }: {
   readonly controller: DraftController;
   readonly submit: (intent: PromptIntent) => Promise<void>;
   readonly cancel: () => Promise<void>;
   readonly policy: SubmitPolicy;
-  readonly queueBar: ReactNode;
+  /** The composer's areas from the layout (`composerToolbar`, `composerFooter`). */
+  readonly toolbar: ReactNode;
+  readonly footer: ReactNode;
   readonly manager: AttachmentManager;
-  readonly capabilities: CapabilityMap;
 }) {
   const aui = useAui();
   const hydrated = useRef(false);
@@ -336,27 +360,8 @@ function DraftComposer({
       policy={policy}
       submitPrompt={submit}
     >
-      <div className="flex items-center gap-2 px-(--space-md) py-(--space-xs)">
-        <label className="text-muted-foreground cursor-pointer text-xs">
-          Add file
-          <input
-            className="sr-only"
-            type="file"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              void manager
-                .add({ file })
-                .then((pending) => manager.send(pending))
-                .catch(() => undefined);
-              event.target.value = "";
-            }}
-          />
-        </label>
-        <ModeIndicator capabilities={capabilities} />
-        {queueBar}
-      </div>
-      <AttachmentChips manager={manager} />
+      {toolbar}
+      {footer}
     </ComposerSurface>
   );
 }
@@ -457,15 +462,76 @@ function ActiveThreadReady({
             : ("closed" as const),
     reason: connection.reason,
   };
+  // What each surface id renders for an open conversation. Where it goes: `@/layout` (LAYOUT).
+  const threadSurfaces: SurfaceMap = {
+    title: {
+      title: "Conversation",
+      grow: true,
+      render: () => (
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
+          <p className="text-muted-foreground truncate text-xs">{title}</p>
+        </div>
+      ),
+    },
+    model: {
+      title: "Model",
+      render: () => (
+        <SessionModelControl
+          capabilities={capabilities}
+          client={client}
+          store={store}
+          threadId={threadId}
+        />
+      ),
+    },
+    todo: {
+      title: "Todo checklist",
+      grow: true,
+      render: () => (
+        <PanelShell
+          body={todoModel.phases.length === 0 ? null : <TodoChecklist model={todoModel} />}
+          onOpenChange={() => undefined}
+          state={{
+            open: true,
+            lifecycle: todoModel.phases.length === 0 ? "empty" : "populated",
+            position: "right",
+            title: "Todo checklist",
+            error: todoModel.error,
+            readOnly: true,
+            pendingUpdates: 0,
+          }}
+        />
+      ),
+    },
+    attach: { title: "Add file", render: () => <AttachFileButton manager={attachmentManager} /> },
+    mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
+    queue: {
+      title: "Queued messages",
+      render: () => <QueueLaneBar connection={queueConnection} controller={queueAdapter} />,
+    },
+    attachments: {
+      title: "Attachments",
+      render: () => <AttachmentChips manager={attachmentManager} />,
+    },
+    context: {
+      title: "Context",
+      grow: true,
+      render: () => <SessionStatusBar client={client} store={store} threadId={threadId} />,
+    },
+  };
+  const area = (name: LayoutAreaName) => (
+    <LayoutArea area={name} capabilities={capabilities} surfaces={threadSurfaces} />
+  );
   const composer = (
     <DraftComposer
       cancel={cancel}
-      capabilities={capabilities}
       controller={draftController}
+      footer={area("composerFooter")}
       manager={attachmentManager}
       policy={resolveQueueSubmitPolicy}
-      queueBar={<QueueLaneBar connection={queueConnection} controller={queueAdapter} />}
       submit={submit}
+      toolbar={area("composerToolbar")}
     />
   );
   return (
@@ -480,36 +546,9 @@ function ActiveThreadReady({
       <AppShell
         composer={composer}
         leftSidebar={leftSidebar}
-        statusBar={<SessionStatusBar client={client} store={store} threadId={threadId} />}
-        threadHeader={
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
-              <p className="text-muted-foreground truncate text-xs">{title}</p>
-            </div>
-            <SessionModelControl
-              capabilities={capabilities}
-              client={client}
-              store={store}
-              threadId={threadId}
-            />
-          </div>
-        }
-        rightSidebar={
-          <PanelShell
-            body={todoModel.phases.length === 0 ? null : <TodoChecklist model={todoModel} />}
-            onOpenChange={() => undefined}
-            state={{
-              open: true,
-              lifecycle: todoModel.phases.length === 0 ? "empty" : "populated",
-              position: "right",
-              title: "Todo checklist",
-              error: todoModel.error,
-              readOnly: true,
-              pendingUpdates: 0,
-            }}
-          />
-        }
+        statusBar={area("statusBar")}
+        threadHeader={area("header")}
+        rightSidebar={area("panels")}
         transcript={
           store && threadId ? (
             <ThreadShell
@@ -682,17 +721,25 @@ function ConnectedApp({
   const openThread = async (threadId: ThreadId): Promise<void> => {
     await controller?.openExisting(threadId);
   };
-  const leftSidebar = (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <FolderSwitcher
-        error={folderError}
-        folder={folder}
-        onFolderChange={selectFolder}
-        onOtherFolder={validateOtherFolder}
-        recentFolders={[launchFolder, ...recentFolders]}
-      />
-      {catalog && remote && (
-        <div className="min-h-0 flex-1 pt-10">
+  // What each sidebar surface id renders. Where it goes: `@/layout` (LAYOUT).
+  const sidebarSurfaces: SurfaceMap = {
+    folder: {
+      title: "Workspace folder",
+      render: () => (
+        <FolderSwitcher
+          error={folderError}
+          folder={folder}
+          onFolderChange={selectFolder}
+          onOtherFolder={validateOtherFolder}
+          recentFolders={[launchFolder, ...recentFolders]}
+        />
+      ),
+    },
+    sessions: {
+      title: "Sessions",
+      grow: true,
+      render: () =>
+        catalog && remote ? (
           <SessionCatalogSidebar
             catalog={catalog}
             currentThreadId={history.threadId}
@@ -700,9 +747,11 @@ function ConnectedApp({
             onOpenThread={openThread}
             remote={remote}
           />
-        </div>
-      )}
-    </div>
+        ) : null,
+    },
+  };
+  const leftSidebar = (
+    <LayoutArea area="sidebar" capabilities={capabilities} surfaces={sidebarSurfaces} />
   );
   if (history.store && history.threadId) {
     return (
