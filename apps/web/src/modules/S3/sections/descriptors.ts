@@ -1,5 +1,6 @@
 import type { JsonValue } from "@omp-app/contracts";
 import type {
+  MapSettingControl,
   ScalarSettingControl,
   SettingControl,
   SettingsSectionDescriptor,
@@ -8,10 +9,8 @@ import type {
 } from "../../S1/settings-kit";
 
 /**
- * Keys mirror omp v18.6.1's UI registrations in tools/settings.ts, tools/browser/settings.ts,
- * ida/settings.ts, task/settings.ts, goals/settings.ts, plan-mode/settings.ts and
- * extensibility/settings.ts. The execution/cache keys are retained from the pinned S3 research
- * schema because they are config-only in the released source tree.
+ * Keys mirror omp v18.6.1's registered settings. Per-key type/default citations are in
+ * `test/tasks/fixtures.ts`; ConfigStore provenance stays in the typed S1-backed snapshots.
  */
 
 const HOST_CONFIG = ["host.config"] as const;
@@ -94,6 +93,126 @@ function arrayValidator(value: SettingValue): ValidationResult {
     ? { valid: true }
     : { valid: false, code: "array", message: "Enter a list." };
 }
+function stringArrayValidator(value: SettingValue): ValidationResult {
+  const candidate = plain(value);
+  if (!Array.isArray(candidate)) {
+    return { valid: false, code: "array", message: "Enter a list of agent names." };
+  }
+  for (const item of candidate) {
+    if (typeof item !== "string") {
+      return { valid: false, code: "array", message: "Enter a list of agent names." };
+    }
+  }
+  return { valid: true };
+}
+
+function modelOverridesValidator(value: SettingValue): ValidationResult {
+  const candidate = plain(value);
+  if (
+    candidate === undefined ||
+    candidate === null ||
+    typeof candidate !== "object" ||
+    Array.isArray(candidate)
+  ) {
+    return { valid: false, code: "map", message: "Enter model selectors by agent." };
+  }
+  for (const model of Object.values(candidate)) {
+    if (typeof model === "string") continue;
+    if (!Array.isArray(model)) {
+      return {
+        valid: false,
+        code: "map",
+        message: "Each agent needs a model selector or model list.",
+      };
+    }
+    for (const selector of model) {
+      if (typeof selector !== "string") {
+        return {
+          valid: false,
+          code: "map",
+          message: "Each agent needs a model selector or model list.",
+        };
+      }
+    }
+  }
+  return { valid: true };
+}
+
+function serviceTierOverridesValidator(value: SettingValue): ValidationResult {
+  const candidate = plain(value);
+  if (
+    candidate === undefined ||
+    candidate === null ||
+    typeof candidate !== "object" ||
+    Array.isArray(candidate)
+  ) {
+    return { valid: false, code: "map", message: "Enter service tiers by agent." };
+  }
+  for (const tier of Object.values(candidate)) {
+    if (
+      tier !== "inherit" &&
+      tier !== "none" &&
+      tier !== "auto" &&
+      tier !== "default" &&
+      tier !== "flex" &&
+      tier !== "scale" &&
+      tier !== "priority" &&
+      tier !== "ultrafast"
+    ) {
+      return {
+        valid: false,
+        code: "map",
+        message: "Choose a supported service tier for each agent.",
+      };
+    }
+  }
+  return { valid: true };
+}
+
+function compactionThresholdOverridesValidator(value: SettingValue): ValidationResult {
+  const candidate = plain(value);
+  if (
+    candidate === undefined ||
+    candidate === null ||
+    typeof candidate !== "object" ||
+    Array.isArray(candidate)
+  ) {
+    return { valid: false, code: "map", message: "Enter compaction thresholds by agent." };
+  }
+  for (const threshold of Object.values(candidate)) {
+    if (threshold === null) continue;
+    if (typeof threshold === "number" && Number.isSafeInteger(threshold) && threshold > 0) continue;
+    if (typeof threshold === "string") {
+      const match = /^(\d+(?:\.\d+)?)%$/.exec(threshold.trim());
+      const percent = match ? Number(match[1]) : Number.NaN;
+      if (percent > 0 && percent <= 100) continue;
+    }
+    return {
+      valid: false,
+      code: "map",
+      message: "Use a positive whole token count or a percentage from 0 to 100 for each agent.",
+    };
+  }
+  return { valid: true };
+}
+
+function agentOverrideMapValidator(value: SettingValue): ValidationResult {
+  const candidate = plain(value);
+  if (
+    candidate === undefined ||
+    candidate === null ||
+    typeof candidate !== "object" ||
+    Array.isArray(candidate)
+  ) {
+    return { valid: false, code: "map", message: "Enter agent overrides as name and value pairs." };
+  }
+  for (const override of Object.values(candidate)) {
+    if (typeof override !== "string") {
+      return { valid: false, code: "map", message: "Enter text for each agent override." };
+    }
+  }
+  return { valid: true };
+}
 
 function control(
   key: string,
@@ -140,6 +259,9 @@ const url = (key: string, apply: SettingControl["apply"] = "reload") =>
   control(key, "text", apply, urlValidator);
 const array = (key: string, apply: SettingControl["apply"] = "reload") =>
   control(key, "list", apply, arrayValidator);
+function described(setting: SettingControl, label: string, description: string): SettingControl {
+  return { ...setting, label, description };
+}
 
 const toolsAvailable: readonly SettingControl[] = [
   bool("todo.enabled"),
@@ -243,18 +365,50 @@ const tasksCommandsSkills: readonly SettingControl[] = [
 ];
 
 const tasksIsolation: readonly SettingControl[] = [
-  bool("task.isolation.enabled", "restart"),
-  enumSetting(
-    "isolation.backend",
-    ["auto", "apfs", "btrfs", "zfs", "reflink", "overlayfs", "projfs", "block-clone", "rcopy"],
-    "restart",
+  described(
+    bool("task.isolation.enabled", "restart"),
+    "Isolate Subagents",
+    "Run subagents in an isolated copy of the checkout. Saving this preference changes configuration only; it does not create or alter a worktree.",
   ),
-  bool("worktree.clone", "restart"),
-  bool("worktree.cleanSource", "restart"),
-  bool("task.isolation.apply", "restart"),
-  enumSetting("task.isolation.merge", ["patch", "branch"], "restart"),
-  enumSetting("task.isolation.commits", ["generic", "ai"], "restart"),
-  text("worktree.base", "path", "restart"),
+  described(
+    enumSetting(
+      "isolation.backend",
+      ["auto", "apfs", "btrfs", "zfs", "reflink", "overlayfs", "projfs", "block-clone", "rcopy"],
+      "restart",
+    ),
+    "Isolation Backend",
+    "Choose the backend for future isolated task workspaces. Saving this preference does not create or alter a worktree.",
+  ),
+  described(
+    bool("worktree.clone", "restart"),
+    "Clone New Worktrees",
+    "Use copy-on-write clones for future managed worktrees when supported. Saving this preference does not create a worktree.",
+  ),
+  described(
+    bool("worktree.cleanSource", "restart"),
+    "Clean Source Checkout When Creating a Worktree",
+    "Destructive: `/wt` may reset tracked changes and remove untracked files from the source checkout after copying them. Saving only updates configuration; it does not clean the checkout.",
+  ),
+  described(
+    bool("task.isolation.apply", "restart"),
+    "Automatically Apply Isolated Task Changes",
+    "Destructive: successful isolated task changes may be applied to the parent checkout automatically. Saving only updates configuration; it does not apply task changes.",
+  ),
+  described(
+    enumSetting("task.isolation.merge", ["patch", "branch"], "restart"),
+    "Isolation Merge Strategy",
+    "Choose patch application or branch merging for future isolated task results. Saving only updates configuration; it does not create or merge a branch.",
+  ),
+  described(
+    enumSetting("task.isolation.commits", ["generic", "ai"], "restart"),
+    "Isolation Commit Message Style",
+    "Choose generic or AI-generated commit messages for future nested repository changes. Saving only updates configuration; it does not create a commit.",
+  ),
+  described(
+    text("worktree.base", "path", "restart"),
+    "Worktree Base Directory",
+    "Choose where future omp-managed worktrees are stored. An unset value uses omp's default directory. Saving only updates configuration; it does not create or alter a worktree.",
+  ),
 ];
 
 const tasksModes: readonly SettingControl[] = [
@@ -266,6 +420,101 @@ const tasksModes: readonly SettingControl[] = [
   bool("plan.defaultOnStartup", "restart"),
   bool("plan.autosave", "reload"),
   text("plan.autosaveDir", "path", "reload"),
+];
+
+const tasksSubagentMaps: readonly MapSettingControl[] = [
+  {
+    key: "task.agentModelOverrides",
+    label: "Agent Model Overrides",
+    description: "Set one model selector or an ordered model preference list for each agent.",
+    kind: "map",
+    secret: false,
+    keyLabel: "Agent name",
+    keyPlaceholder: "Agent name",
+    value: {
+      label: "Model selector",
+      kind: "list",
+      placeholder: "provider/model, provider/model",
+      collapseSingle: true,
+    },
+    addLabel: "Add model override",
+    emptyLabel: "No per-agent model overrides",
+    validate: modelOverridesValidator,
+    apply: "live",
+  },
+  {
+    key: "task.agentServiceTierOverrides",
+    label: "Agent Service Tier Overrides",
+    description:
+      "Choose the service tier for each agent; inherit follows the session's current tier.",
+    kind: "map",
+    secret: false,
+    keyLabel: "Agent name",
+    keyPlaceholder: "Agent name",
+    value: {
+      label: "Service tier",
+      kind: "enum",
+      options: [
+        { value: "inherit", label: "Inherit" },
+        { value: "none", label: "None" },
+        { value: "auto", label: "Auto" },
+        { value: "default", label: "Default" },
+        { value: "flex", label: "Flex" },
+        { value: "scale", label: "Scale" },
+        { value: "priority", label: "Priority" },
+        { value: "ultrafast", label: "Ultrafast" },
+      ],
+    },
+    addLabel: "Add service tier",
+    emptyLabel: "No per-agent service tier overrides",
+    validate: serviceTierOverridesValidator,
+    apply: "live",
+  },
+  {
+    key: "task.agentCompactionThresholdOverrides",
+    label: "Agent Compaction Threshold Overrides",
+    description: "Set a token count or percentage threshold for each agent.",
+    kind: "map",
+    secret: false,
+    keyLabel: "Agent name",
+    keyPlaceholder: "Agent name",
+    value: { label: "Token count or percentage", kind: "text", placeholder: "90000 or 80%" },
+    addLabel: "Add compaction threshold",
+    emptyLabel: "No per-agent compaction overrides",
+    validate: compactionThresholdOverridesValidator,
+    apply: "live",
+    readOnly: {
+      reason: "This setting accepts token counts or percentages; change it in omp's settings file.",
+    },
+  },
+  {
+    key: "task.agentPrewalk",
+    label: "Agent Prewalk Overrides",
+    description: "Choose whether an agent hands off to a cheaper model at its first edit.",
+    kind: "map",
+    secret: false,
+    keyLabel: "Agent name",
+    keyPlaceholder: "Agent name",
+    value: { label: "Prewalk override", kind: "text", placeholder: "on, off, or a model selector" },
+    addLabel: "Add prewalk override",
+    emptyLabel: "No per-agent prewalk overrides",
+    validate: agentOverrideMapValidator,
+    apply: "live",
+  },
+  {
+    key: "task.agentAdvisor",
+    label: "Agent Advisor Overrides",
+    description: "Enable or disable an advisor for an agent, or choose its model.",
+    kind: "map",
+    secret: false,
+    keyLabel: "Agent name",
+    keyPlaceholder: "Agent name",
+    value: { label: "Advisor override", kind: "text", placeholder: "on, off, or a model selector" },
+    addLabel: "Add advisor override",
+    emptyLabel: "No per-agent advisor overrides",
+    validate: agentOverrideMapValidator,
+    apply: "live",
+  },
 ];
 
 const tasksSubagents: readonly SettingControl[] = [
@@ -282,7 +531,18 @@ const tasksSubagents: readonly SettingControl[] = [
   number("task.softRequestBudget", 0, 100_000, "session"),
   bool("task.softRequestBudgetNotice", "session"),
   enumSetting("task.maxEffort", ["minimal", "low", "medium", "high", "xhigh", "max"], "session"),
+  described(
+    control("task.disabledAgents", "list", "live", stringArrayValidator),
+    "Disabled Agents",
+    "Prevent selected agent names from being used by future task and eval dispatches.",
+  ),
+  ...tasksSubagentMaps,
   bool("task.prewalk", "session"),
+  described(
+    bool("task.showResolvedModelBadge", "live"),
+    "Show Resolved Model Badge",
+    "Display the model actually used by each subagent in the task status line.",
+  ),
 ];
 
 function section(

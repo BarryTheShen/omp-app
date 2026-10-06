@@ -106,7 +106,14 @@ const EXPECTED_KEYS = [
     "task.softRequestBudget",
     "task.softRequestBudgetNotice",
     "task.maxEffort",
+    "task.disabledAgents", // `task/settings.ts:384-388`
+    "task.agentModelOverrides", // `task/settings.ts:19-20,391-395`
+    "task.agentServiceTierOverrides", // `task/settings.ts:16,398-403`
+    "task.agentCompactionThresholdOverrides", // `task/settings.ts:17,406-411`
+    "task.agentPrewalk", // `task/settings.ts:414-418`
+    "task.agentAdvisor", // `task/settings.ts:421-425`
     "task.prewalk",
+    "task.showResolvedModelBadge", // `task/settings.ts:441-445`
   ],
 ] as const;
 

@@ -265,10 +265,10 @@ function scalarText(value: JsonValue | undefined, options?: SettingField["option
   return typeof value === "object" ? "Set" : String(value);
 }
 
-/** A structured row's input text, as a person would read it. */
 function draftText(field: SettingField, draft: string | undefined): string {
   if (field.kind === "boolean") return draft === "true" ? "On" : "Off";
   if (field.kind === "enum") return scalarText(draft, field.options);
+  if (field.kind === "list") return draft && draft.trim().length > 0 ? draft : "Not set";
   return draft && draft.length > 0 ? draft : "Not set";
 }
 

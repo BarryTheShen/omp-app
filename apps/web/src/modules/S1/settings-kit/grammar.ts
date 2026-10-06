@@ -67,7 +67,7 @@ export type ScalarSettingControl = SettingControlBase & {
 /** One typed field of a structured setting: a map's value, or a column of a rows setting. */
 export type SettingField = {
   readonly label: string;
-  readonly kind: "text" | "number" | "enum" | "boolean";
+  readonly kind: "text" | "number" | "enum" | "boolean" | "list";
   /** Choices for `enum`. */
   readonly options?: readonly SettingOption[];
   readonly placeholder?: string;
@@ -75,6 +75,8 @@ export type SettingField = {
   readonly positive?: boolean;
   /** A `number` must be a whole number. */
   readonly integer?: boolean;
+  /** A one-item list is stored as a string instead of an array. */
+  readonly collapseSingle?: boolean;
 };
 
 /** A record of name → value pairs, edited as rows (e.g. provider name → request limit). */
@@ -344,6 +346,16 @@ export type StructuredResult =
 function fieldDraft(field: SettingField, value: JsonValue | undefined): string {
   if (value === undefined || value === null) return "";
   if (field.kind === "boolean") return value === true ? "true" : "false";
+  if (field.kind === "list") {
+    if (typeof value === "string") return value;
+    if (!Array.isArray(value)) return "";
+    const items: string[] = [];
+    for (const item of value) {
+      if (typeof item !== "string") return "";
+      items.push(item);
+    }
+    return items.join(", ");
+  }
   return typeof value === "object" ? "" : String(value);
 }
 
@@ -383,6 +395,20 @@ function parseField(
     }
     return { ok: true, value };
   }
+  if (field.kind === "list") {
+    const items: string[] = [];
+    for (const item of draft.split(",")) {
+      const value = item.trim();
+      if (value.length > 0) items.push(value);
+    }
+    if (items.length === 0) return { ok: false, message: `Enter ${withArticle(noun)}.` };
+    const first = items[0];
+    if (field.collapseSingle && items.length === 1 && first !== undefined) {
+      return { ok: true, value: first };
+    }
+    return { ok: true, value: items };
+  }
+
   const text = draft.trim();
   return text.length > 0
     ? { ok: true, value: text }
@@ -419,7 +445,7 @@ export function structuredDrafts(
     );
 }
 
-/** A new, empty row: text and numbers blank, an enum on its first choice, a switch off. */
+/** A new, empty row: text, numbers and lists blank; an enum starts on its first choice, a switch off. */
 export function emptyStructuredDraft(
   control: MapSettingControl | RowsSettingControl,
 ): StructuredDraftRow {
@@ -435,9 +461,11 @@ export function emptyStructuredDraft(
   );
 }
 
-/** Typed inputs (text and number) are blank; enum and switch fields always hold a choice. */
+/** Typed inputs (text, number and list) are blank; enum and switch fields always hold a choice. */
 function isBlankRow(fields: readonly [string, SettingField][], row: StructuredDraftRow): boolean {
-  const typed = fields.filter(([, field]) => field.kind === "text" || field.kind === "number");
+  const typed = fields.filter(
+    ([, field]) => field.kind === "text" || field.kind === "number" || field.kind === "list",
+  );
   return typed.length > 0 && typed.every(([name]) => (row[name] ?? "").trim() === "");
 }
 

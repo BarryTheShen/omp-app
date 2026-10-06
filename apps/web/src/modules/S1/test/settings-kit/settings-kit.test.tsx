@@ -314,6 +314,77 @@ describe("S1 structured settings", () => {
       validation: { message: "Choose an approval." },
     });
   });
+  test("round-trips collapsed single selectors and selector lists", () => {
+    const modelSelectors: MapSettingControl = {
+      ...limits,
+      key: "task.agentModelOverrides",
+      label: "Agent Model Overrides",
+      description: "Choose a model selector or ordered list for an agent.",
+      keyLabel: "Agent name",
+      keyPlaceholder: "Agent name",
+      value: {
+        label: "Model selector",
+        kind: "list",
+        placeholder: "provider/model, provider/model",
+        collapseSingle: true,
+      },
+      addLabel: "Add model override",
+      emptyLabel: "No per-agent model overrides",
+    };
+    expect(structuredDrafts(modelSelectors, { task: "@task" })).toEqual([
+      { key: "task", value: "@task" },
+    ]);
+    expect(structuredValue(modelSelectors, [{ key: "task", value: "@task" }])).toEqual({
+      ok: true,
+      value: { task: "@task" },
+    });
+    expect(structuredDrafts(modelSelectors, { task: ["@fast", "provider/model"] })).toEqual([
+      { key: "task", value: "@fast, provider/model" },
+    ]);
+    expect(
+      structuredValue(modelSelectors, [{ key: "task", value: "@fast, provider/model" }]),
+    ).toEqual({ ok: true, value: { task: ["@fast", "provider/model"] } });
+    expect(
+      structuredValue(modelSelectors, [{ key: "task", value: "@fast, , provider/model" }]),
+    ).toEqual({
+      ok: true,
+      value: { task: ["@fast", "provider/model"] },
+    });
+
+    expect(structuredValue(modelSelectors, [{ key: "", value: "" }])).toEqual({
+      ok: true,
+      value: {},
+    });
+    expect(structuredValue(modelSelectors, [{ key: "task", value: "" }])).toMatchObject({
+      ok: false,
+      validation: { message: "Enter a model selector." },
+    });
+  });
+
+  test("uses the configured placeholder for a list field", () => {
+    const modelSelectors: MapSettingControl = {
+      ...limits,
+      key: "task.agentModelOverrides",
+      label: "Agent Model Overrides",
+      keyLabel: "Agent name",
+      value: {
+        label: "Model selector",
+        kind: "list",
+        placeholder: "provider/model, provider/model",
+        collapseSingle: true,
+      },
+      addLabel: "Add model override",
+      emptyLabel: "No per-agent model overrides",
+    };
+    const modelDescriptor = { ...descriptor, controls: [modelSelectors] };
+    const modelSnapshot: ConfigSnapshot = {
+      ...structuredSnapshot,
+      entries: [entry("task.agentModelOverrides", { task: ["@fast", "provider/model"] })],
+    };
+    render(<SettingsSection descriptor={modelDescriptor} snapshot={modelSnapshot} />);
+    expect(screen.getByPlaceholderText("provider/model, provider/model")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Model selector 1" })).toBeTruthy();
+  });
 
   test("edits a map in place: add, change, remove, and blocks Save while a row is wrong", async () => {
     const stagedValues: JsonValue[] = [];
