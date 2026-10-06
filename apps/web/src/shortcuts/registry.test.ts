@@ -45,6 +45,16 @@ const descriptors: readonly Descriptor[] = [
     requires: [],
   },
 ];
+const globalShortcut: Descriptor = {
+  id: "U0.globalSearch",
+  owner: "U0",
+  title: "Search the workspace",
+  kind: "shortcut",
+  chord: "Mod+P",
+  scope: "global",
+  covers: [],
+  requires: [],
+};
 const browserReservedDescriptor: Descriptor = {
   id: "U3.browser",
   owner: "U3",
@@ -86,6 +96,20 @@ describe("ShortcutRegistry", () => {
 
     expect(registry.dispatch(event, "composer")).toEqual({ handled: false });
     expect(action).not.toHaveBeenCalled();
+    input.remove();
+  });
+  test("does not dispatch a normal global shortcut from an editable field", () => {
+    const registry = new ShortcutRegistry([...descriptors, globalShortcut]);
+    const action = vi.fn();
+    registry.registerAction("U0.globalSearch", action);
+    const input = document.createElement("input");
+    document.body.append(input);
+    const event = keyEvent("p", { ctrlKey: true });
+    Object.defineProperty(event, "target", { value: input });
+
+    expect(registry.dispatch(event, "global")).toEqual({ handled: false });
+    expect(action).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
     input.remove();
   });
 

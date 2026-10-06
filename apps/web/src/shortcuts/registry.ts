@@ -128,9 +128,14 @@ function eventChord(event: KeyboardEvent): string {
   return [...modifiers, keyName(event)].join("+");
 }
 
-function shortcutDescriptors(descriptors: readonly Descriptor[]): readonly ShortcutDescriptor[] {
+/** App-only opt-in for shortcuts like the command palette; the shared C0 descriptor stays frozen. */
+type RegisteredShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable?: true };
+
+function shortcutDescriptors(
+  descriptors: readonly Descriptor[],
+): readonly RegisteredShortcutDescriptor[] {
   return descriptors.filter(
-    (descriptor): descriptor is ShortcutDescriptor => descriptor.kind === "shortcut",
+    (descriptor): descriptor is RegisteredShortcutDescriptor => descriptor.kind === "shortcut",
   );
 }
 
@@ -184,7 +189,7 @@ function parseOverrides(raw: string | undefined): ParsedOverrides {
 
 /** C0 shortcut descriptors plus app-owned overrides, actions, dispatch, and conflict checks. */
 export class ShortcutRegistry {
-  private readonly descriptors: ReadonlyMap<DescriptorId, ShortcutDescriptor>;
+  private readonly descriptors: ReadonlyMap<DescriptorId, RegisteredShortcutDescriptor>;
   private readonly store: PreferenceStore;
   private readonly preferenceKey: string;
   private readonly overrides: Map<string, string>;
@@ -283,7 +288,7 @@ export class ShortcutRegistry {
   }
 
   public dispatch(event: KeyboardEvent, scope: string): DispatchResult {
-    if (event.defaultPrevented || event.isComposing || isEditableTarget(event.target)) {
+    if (event.defaultPrevented || event.isComposing) {
       return { handled: false };
     }
     const normalized = normalizeChord(eventChord(event));
@@ -296,6 +301,11 @@ export class ShortcutRegistry {
     if (matching.length !== 1) return { handled: false };
     const binding = matching[0];
     if (binding === undefined) return { handled: false };
+    if (
+      isEditableTarget(event.target) &&
+      this.descriptors.get(binding.id)?.allowInEditable !== true
+    )
+      return { handled: false };
     const action = this.actions.get(binding.id);
     if (action === undefined) return { handled: false, binding };
     event.preventDefault();
