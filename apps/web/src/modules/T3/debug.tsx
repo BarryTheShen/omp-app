@@ -70,7 +70,7 @@ export function DebugCard({ rendererProps }: { readonly rendererProps: ToolRende
     settled && text.length > 0 && (action === undefined || STRUCTURED_ACTIONS[action] !== true);
   const showUnavailable = settled && parsedDetails === undefined;
   const sections = parsedDetails === undefined ? undefined : debugSections(parsedDetails);
-  const hasSection = showText || showUnavailable || (sections !== undefined && sections.hasContent);
+  const hasSection = showText || showUnavailable || sections?.hasContent === true;
 
   return (
     <div data-testid={`t3-debug-card-${state.toolCallId}`}>

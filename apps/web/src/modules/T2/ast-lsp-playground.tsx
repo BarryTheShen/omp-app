@@ -79,7 +79,8 @@ function AstLspPlayground() {
                   "  33│  );",
                   "## lib/",
                   "### logger.ts",
-                  "  *8│    console.log(`[${level}]`, message);",
+                  // ast_grep output quotes source text that itself contains a template literal.
+                  `  *8│    console.log(\`[\${level}]\`, message);`,
                 ].join("\n"),
               },
             },
