@@ -52,6 +52,14 @@ describe("PanelShell lifecycle and accessibility", () => {
     expect(screen.getByRole("alert").textContent).toContain("Retry me");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(onRetry).toHaveBeenCalledOnce());
+    rerender(
+      <PanelShell
+        body={<p>Tasks</p>}
+        state={state({ lifecycle: "empty" })}
+        onOpenChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toContain("Nothing here yet");
   });
 
   test("moves focus only for an invoking open, restores once, and closes on Escape", () => {

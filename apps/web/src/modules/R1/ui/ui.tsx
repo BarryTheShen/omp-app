@@ -2,6 +2,7 @@ import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import type { ThreadId } from "@omp-app/contracts";
 import { MoreHorizontalIcon, PinIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCapabilityStatus } from "@/registry-core";
@@ -216,28 +217,21 @@ export function SessionCatalogSidebar({
         </div>
       )}
       {!snapshot.isLoading && snapshot.error && (
-        <div className="flex flex-col gap-2 p-4 text-sm" role="alert">
-          <p className="text-destructive">{snapshot.error.message}</p>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => void catalog.list({ filter: snapshot.filter, limit: 50 })}
-          >
-            Retry
-          </Button>
-        </div>
+        <InlineError
+          message={snapshot.error.message}
+          onRetry={() => void catalog.list({ filter: snapshot.filter, limit: 50 })}
+        />
       )}
       {!snapshot.isLoading && !snapshot.error && sessions.length === 0 && (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
-          <p className="text-sm font-medium">No sessions in this folder</p>
-          <p className="text-muted-foreground text-xs">
-            Start a new chat to create an omp session.
-          </p>
-          <Button type="button" size="sm" onClick={() => void createNewChat()}>
-            New chat
-          </Button>
-        </div>
+        <EmptyState
+          title="No sessions in this folder"
+          hint="Start a new chat to create an omp session."
+          action={
+            <Button type="button" size="sm" onClick={() => void createNewChat()}>
+              New chat
+            </Button>
+          }
+        />
       )}
       {!snapshot.isLoading && !snapshot.error && sessions.length > 0 && (
         <div
@@ -249,13 +243,14 @@ export function SessionCatalogSidebar({
           onKeyDown={onListKeyDown}
         >
           {grouped.map(([cwd, groupedSessions]) => (
-            <section key={cwd} aria-label={cwd} className="mb-3 last:mb-0">
-              <h3
-                className="text-muted-foreground truncate px-2 py-1 text-xs font-medium"
-                title={cwd}
-              >
-                {folderLabel(cwd)}
-              </h3>
+            <Section
+              key={cwd}
+              ariaLabel={cwd}
+              heading={folderLabel(cwd)}
+              headingTooltip={cwd}
+              headingLevel={3}
+              variant="plain"
+            >
               {groupedSessions.map((session) => {
                 const index = sessions.findIndex((item) => item.id === session.id);
                 const selected = currentThreadId === session.id;
@@ -272,76 +267,77 @@ export function SessionCatalogSidebar({
                   : capabilityReason(pinStatus, "Pinning is unavailable");
                 return (
                   <div key={session.id} className="group relative mb-1">
-                    <button
-                      aria-selected={selected}
-                      className="hover:bg-sidebar-accent focus-visible:ring-ring flex w-full min-w-0 flex-col items-start rounded-lg px-2 py-1.5 pe-8 text-left text-sm outline-none focus-visible:ring-2 data-[selected=true]:bg-sidebar-accent"
-                      data-selected={selected}
-                      role="option"
-                      tabIndex={index === focusedIndex ? 0 : -1}
-                      type="button"
-                      onClick={() => void openSession(session)}
-                      onFocus={() => setFocusedIndex(index)}
-                    >
-                      {isEditing ? (
-                        <Input
-                          aria-label={`Rename ${title}`}
-                          autoFocus
-                          value={editingTitle}
-                          onChange={(event) => setEditingTitle(event.target.value)}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              void finishRename(session);
-                            }
-                            if (event.key === "Escape") setEditingId(undefined);
-                          }}
-                        />
-                      ) : (
-                        <span className="flex w-full min-w-0 items-center gap-1">
-                          {session.pinned && (
-                            <PinIcon
-                              aria-label="Pinned"
-                              className="text-primary size-3 shrink-0"
-                              role="img"
-                            />
+                    <ListRow
+                      title={
+                        isEditing ? (
+                          <Input
+                            aria-label={`Rename ${title}`}
+                            autoFocus
+                            value={editingTitle}
+                            onChange={(event) => setEditingTitle(event.target.value)}
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void finishRename(session);
+                              }
+                              if (event.key === "Escape") setEditingId(undefined);
+                            }}
+                          />
+                        ) : (
+                          highlight(title, query)
+                        )
+                      }
+                      titleTooltip={isEditing ? undefined : title}
+                      leading={
+                        session.pinned ? (
+                          <PinIcon
+                            aria-label="Pinned"
+                            className="text-primary size-3 shrink-0"
+                            role="img"
+                          />
+                        ) : undefined
+                      }
+                      detail={
+                        <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate text-xs">
+                          <time dateTime={session.updatedAt} title={activity.title}>
+                            {activity.label}
+                          </time>
+                          {snapshot.git?.branch && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span className="truncate" title={`Branch: ${snapshot.git.branch}`}>
+                                {snapshot.git.branch}
+                              </span>
+                            </>
                           )}
-                          <span className="min-w-0 truncate font-medium" title={title}>
-                            {highlight(title, query)}
-                          </span>
                         </span>
-                      )}
-                      <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate text-xs">
-                        <time dateTime={session.updatedAt} title={activity.title}>
-                          {activity.label}
-                        </time>
-                        {snapshot.git?.branch && (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="truncate" title={`Branch: ${snapshot.git.branch}`}>
-                              {snapshot.git.branch}
-                            </span>
-                          </>
-                        )}
-                      </span>
-                    </button>
-                    <div className="absolute end-1 top-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                      <Button
-                        aria-expanded={menuOpen}
-                        aria-haspopup="menu"
-                        aria-label={`More actions for ${title}`}
-                        size="icon-xs"
-                        title="More actions"
-                        type="button"
-                        variant="ghost"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setMenuSessionId(menuOpen ? undefined : session.id);
-                        }}
-                      >
-                        <MoreHorizontalIcon aria-hidden="true" />
-                      </Button>
-                    </div>
+                      }
+                      selected={selected}
+                      tabIndex={index === focusedIndex ? 0 : -1}
+                      onSelect={!isEditing ? () => void openSession(session) : undefined}
+                      onFocus={!isEditing ? () => setFocusedIndex(index) : undefined}
+                      trailing={
+                        <Toolbar ariaLabel={`Actions for ${title}`}>
+                          <Button
+                            aria-expanded={menuOpen}
+                            aria-haspopup="menu"
+                            aria-label={`More actions for ${title}`}
+                            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                            size="icon-xs"
+                            title="More actions"
+                            type="button"
+                            variant="ghost"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setMenuSessionId(menuOpen ? undefined : session.id);
+                            }}
+                          >
+                            <MoreHorizontalIcon aria-hidden="true" />
+                          </Button>
+                        </Toolbar>
+                      }
+                    />
                     {menuOpen && (
                       <div
                         aria-label={`Actions for ${title}`}
@@ -429,7 +425,7 @@ export function SessionCatalogSidebar({
                   </div>
                 );
               })}
-            </section>
+            </Section>
           ))}
         </div>
       )}

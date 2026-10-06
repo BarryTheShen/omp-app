@@ -1,5 +1,6 @@
 import type { ConfigEntry } from "@omp-app/contracts";
 import { useState } from "react";
+import { InlineError, Section, SettingRow, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,23 +63,17 @@ export function SettingsSection({
   const shown = (key: string): ValidationResult | undefined => checks[key] ?? validation[key];
   const hasError = descriptor.controls.some((control) => shown(control.key)?.valid === false);
   return (
-    <section
-      aria-labelledby={`${descriptor.id}-title`}
-      className="bg-card text-card-foreground rounded-xl border p-5 shadow-sm"
-    >
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h2 id={`${descriptor.id}-title`} className="text-lg font-semibold tracking-tight">
-            {descriptor.title}
-          </h2>
-        </div>
-        {applyStatus ? (
+    <Section
+      heading={descriptor.title}
+      headingId={`${descriptor.id}-title`}
+      actions={
+        applyStatus ? (
           <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
             {applyStatus}
           </span>
-        ) : null}
-      </header>
-
+        ) : null
+      }
+    >
       <div className="divide-border/60 divide-y">
         {descriptor.controls.map((control) => (
           <SettingControlRow
@@ -111,36 +106,37 @@ export function SettingsSection({
           />
         ))}
       </div>
-
-      <footer className="mt-5 flex flex-wrap items-center justify-end gap-2">
-        {onCancel ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setChecks({});
-              setResetToken((token) => token + 1);
-              onCancel();
-            }}
-            disabled={disabled}
-          >
-            Cancel
-          </Button>
-        ) : null}
-        {onCommit ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onCommit}
-            disabled={disabled || hasError || Object.keys(staged.edits).length === 0}
-          >
-            Save changes
-          </Button>
-        ) : null}
-      </footer>
-    </section>
+      <div className="mt-5">
+        <Toolbar ariaLabel="Settings actions" alignment="end">
+          {onCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setChecks({});
+                setResetToken((token) => token + 1);
+                onCancel();
+              }}
+              disabled={disabled}
+            >
+              Cancel
+            </Button>
+          ) : null}
+          {onCommit ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onCommit}
+              disabled={disabled || hasError || Object.keys(staged.edits).length === 0}
+            >
+              Save changes
+            </Button>
+          ) : null}
+        </Toolbar>
+      </div>
+    </Section>
   );
 }
 
@@ -177,76 +173,58 @@ function SettingControlRow({
   const secretActionLabel = secret?.isSet ? "Replace…" : "Set…";
 
   return (
-    <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(15rem,1.25fr)] sm:items-start sm:gap-8">
-      <div className="min-w-0">
-        <div className="font-medium">{control.label}</div>
-        {control.description ? (
-          <p className="text-muted-foreground mt-1 text-sm">{control.description}</p>
-        ) : null}
-        <div
-          className="text-muted-foreground mt-2 text-xs"
-          data-testid={`${control.key}-provenance`}
-        >
-          Source: {provenance}
-        </div>
-      </div>
-      <div className="min-w-0">
-        {control.secret ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="bg-muted text-muted-foreground rounded-md px-2.5 py-1.5 text-sm"
-              data-testid={`${control.key}-secret-status`}
-            >
-              {secret?.isSet ? "Set" : "Not set"}
-            </span>
+    <SettingRow
+      title={control.label}
+      description={control.description}
+      detail={<span data-testid={`${control.key}-provenance`}>Source: {provenance}</span>}
+    >
+      {control.secret ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="bg-muted text-muted-foreground rounded-md px-2.5 py-1.5 text-sm"
+            data-testid={`${control.key}-secret-status`}
+          >
+            {secret?.isSet ? "Set" : "Not set"}
+          </span>
+          <Button type="button" variant="outline" size="sm" onClick={setSecret} disabled={disabled}>
+            {secretActionLabel}
+          </Button>
+          {secret?.isSet ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={setSecret}
+              onClick={unsetSecret}
               disabled={disabled}
             >
-              {secretActionLabel}
+              Unset
             </Button>
-            {secret?.isSet ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={unsetSecret}
-                disabled={disabled}
-              >
-                Unset
-              </Button>
-            ) : null}
-          </div>
-        ) : control.readOnly ? (
-          <ReadOnlyValue control={control} value={effectiveValue} />
-        ) : isStructuredControl(control) ? (
-          <StructuredEditor
-            committed={committedValue}
-            control={control}
-            disabled={disabled}
-            resetToken={resetToken}
-            value={effectiveValue}
-            onInvalid={onInvalid}
-            onValue={(next) => onStage({ secret: false, value: next })}
-          />
-        ) : (
-          <ControlInput
-            control={control}
-            value={effectiveValue === undefined ? "" : String(effectiveValue)}
-            disabled={disabled}
-            onValue={(next) => onStage({ secret: false, value: parseControlValue(control, next) })}
-          />
-        )}
-        {validation && !validation.valid ? (
-          <p className="text-destructive mt-2 text-sm" role="alert">
-            {validation.message}
-          </p>
-        ) : null}
-      </div>
-    </div>
+          ) : null}
+        </div>
+      ) : control.readOnly ? (
+        <ReadOnlyValue control={control} value={effectiveValue} />
+      ) : isStructuredControl(control) ? (
+        <StructuredEditor
+          committed={committedValue}
+          control={control}
+          disabled={disabled}
+          resetToken={resetToken}
+          value={effectiveValue}
+          onInvalid={onInvalid}
+          onValue={(next) => onStage({ secret: false, value: next })}
+        />
+      ) : (
+        <ControlInput
+          control={control}
+          value={effectiveValue === undefined ? "" : String(effectiveValue)}
+          disabled={disabled}
+          onValue={(next) => onStage({ secret: false, value: parseControlValue(control, next) })}
+        />
+      )}
+      {validation && !validation.valid ? (
+        <InlineError message={validation.message} variant="message" />
+      ) : null}
+    </SettingRow>
   );
 }
 
