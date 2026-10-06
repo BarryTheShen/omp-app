@@ -155,6 +155,7 @@ export function ToolCard({
             "min-w-0 flex-1 truncate text-xs",
             summaryClassName ?? "text-muted-foreground",
           )}
+          title={summary}
         >
           {summary}
         </span>

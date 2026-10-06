@@ -35,7 +35,12 @@ describe("WriteCard", () => {
     );
 
     expect(screen.getByTestId("t1-write-card")).toBeTruthy();
-    expect(screen.getByTitle("src/long.ts")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("t1-write-card")
+        .querySelector("[data-slot='t1-write-target']")
+        ?.getAttribute("title"),
+    ).toBe("src/long.ts");
     expect(
       screen.getByTestId("t1-write-card").querySelector("[data-slot='t1-write-language']")
         ?.textContent,
