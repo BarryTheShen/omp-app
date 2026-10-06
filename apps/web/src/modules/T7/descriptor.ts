@@ -1,4 +1,5 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
+import { CheckpointToolRenderer, RewindToolRenderer } from "./checkpoint";
 import { T7ToolFallback } from "./fallback";
 import { GoalToolRenderer } from "./goal";
 import { ResolveToolRenderer } from "./resolve";
@@ -15,7 +16,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.checkpoint"],
     requires: [],
     match: { by: "name", name: "checkpoint" },
-    renderer: T7ToolFallback,
+    renderer: CheckpointToolRenderer,
   },
   {
     kind: "tool",
@@ -65,7 +66,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.rewind"],
     requires: ["host.checkpoints"],
     match: { by: "name", name: "rewind" },
-    renderer: T7ToolFallback,
+    renderer: RewindToolRenderer,
   },
   {
     kind: "tool",

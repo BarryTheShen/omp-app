@@ -57,6 +57,16 @@ export const ResolveDetailsSchema = z.looseObject({
 });
 export type ResolveDetails = z.infer<typeof ResolveDetailsSchema>;
 
+/** omp v18.6.1 `checkpoint`/`rewind` parameters (packages/coding-agent/src/tools/checkpoint.ts:29-37). */
+export const CheckpointArgsSchema = z.looseObject({ goal: z.string() });
+export type CheckpointArgs = z.infer<typeof CheckpointArgsSchema>;
+export const RewindArgsSchema = z.looseObject({ report: z.string() });
+export type RewindArgs = z.infer<typeof RewindArgsSchema>;
+
+/**
+ * omp v18.6.1 `CheckpointToolDetails`/`RewindToolDetails`
+ * (packages/coding-agent/src/tools/checkpoint.ts:41-51, filled at :83 and :127).
+ */
 export const CheckpointDetailsSchema = z.looseObject({
   goal: OptionalText,
   startedAt: OptionalText,
@@ -228,8 +238,12 @@ export const decodeResolve = (raw: unknown): T7DetailDecode<ResolveDetails> =>
   decode(ResolveDetailsSchema, raw, "resolve details");
 export const decodeCheckpoint = (raw: unknown): T7DetailDecode<CheckpointDetails> =>
   decode(CheckpointDetailsSchema, raw, "checkpoint details");
+export const decodeCheckpointArgs = (raw: unknown): T7DetailDecode<CheckpointArgs> =>
+  decode(CheckpointArgsSchema, raw, "checkpoint arguments");
 export const decodeRewind = (raw: unknown): T7DetailDecode<RewindDetails> =>
   decode(RewindDetailsSchema, raw, "rewind details");
+export const decodeRewindArgs = (raw: unknown): T7DetailDecode<RewindArgs> =>
+  decode(RewindArgsSchema, raw, "rewind arguments");
 export const decodeGoal = (raw: unknown): T7DetailDecode<GoalDetails> =>
   decode(GoalDetailsSchema, raw, "goal details");
 export const decodeSecurityScan = (raw: unknown): T7DetailDecode<SecurityScanDetails> =>

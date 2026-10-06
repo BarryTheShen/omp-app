@@ -3,11 +3,13 @@ import { describe, expect, test } from "vitest";
 import {
   capabilityForT7Tool,
   decodeCheckpoint,
+  decodeCheckpointArgs,
   decodeGoal,
   decodeHostTool,
   decodeHostUri,
   decodeResolve,
   decodeRewind,
+  decodeRewindArgs,
   decodeSecurityScan,
   decodeThink,
   safeToolError,
@@ -26,6 +28,18 @@ describe("T7 tolerant domain models", () => {
     [decodeThink, { recorded: true }],
   ])("decodes %s details without executing", (decode, raw) => {
     expect(decode(raw)).toMatchObject({ ok: true, raw });
+  });
+
+  test("decodes omp v18.6.1 checkpoint and rewind arguments and details", () => {
+    // omp packages/coding-agent/src/tools/checkpoint.ts:29-37 (args) and :41-51,83,127 (details).
+    expect(decodeCheckpointArgs({ goal: "find the cache bug" }).ok).toBe(true);
+    expect(decodeCheckpointArgs({}).ok).toBe(false);
+    expect(decodeRewindArgs({ report: "Found it." }).ok).toBe(true);
+    expect(
+      decodeCheckpoint({ goal: "find the cache bug", startedAt: "2026-10-05T12:00:00.000Z" }).ok,
+    ).toBe(true);
+    expect(decodeRewind({ report: "Found it.", rewound: true }).ok).toBe(true);
+    expect(decodeRewind({ report: 4 }).ok).toBe(false);
   });
 
   test("decodes omp v18.6.1 goal details with a nested goal and null fields", () => {
