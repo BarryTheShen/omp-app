@@ -9,9 +9,9 @@ The floor version is omp **18.6.1**. Features are switched on by capabilities om
 **Under construction (2026-10-06).** It is built in 42 modules and 8 waves, and every module is split into small "parts". As of this writing:
 
 - All 42 module specs (the plans and part lists) are done.
-- 152 of 261 parts are merged: the infrastructure (waves W1 and W2), most of W3 (thread view, composer with drafts and attachments, queued messages, dialogs and approvals, panels and the todo checklist, the session catalog and sidebar, settings kit, shortcuts) and most of W4 (tool cards for read, edit, write, AST edit, grep, glob, find, ast_grep, lsp, eval, debug, bash, browser, GitHub, web search, security scan, checkpoint/rewind, goal, recall/reflect, resolve/reject), plus parts of W5 (models, mentions and internal links, MCP lifecycle, notifications, context and usage).
+- 159 of 261 parts are merged: the infrastructure (waves W1 and W2), most of W3 (thread view, composer with drafts and attachments, queued messages, dialogs and approvals, panels and the todo checklist, the session catalog and sidebar, settings kit, shortcuts) and most of W4 (tool cards for read, edit, write, AST edit, grep, glob, find, ast_grep, lsp, eval, debug, bash, browser, GitHub, web search, security scan, checkpoint/rewind, goal, recall/reflect, resolve/reject), plus parts of W5–W7 (models, mentions and internal links, MCP lifecycle, notifications, context and usage, session commands, branch and fork, restore-point snapshots).
 - `bun run dev` starts the real server against your omp and prints the app's link. The app works end to end on real omp: pick a folder, start or reopen a chat, send a prompt, watch tool calls and replies stream, change the model and thinking level, see context usage, reload and get the chat and the unsent draft back. Modules merged since the app root are being wired into the running app (#566).
-- The colors are omp's own default themes: `titanium` (dark) and `light` (`apps/web/src/styles/tokens.css`). A UI overhaul (shared component kit and shell redesign) waits for the owner's go.
+- The UI keeps its current stack and patterns (the owner, 2026-10-06), with omp's own default themes as the colors: `titanium` (dark) and `light` (`apps/web/src/styles/tokens.css`).
 
 The live board: `bun tools/board.ts show`. GitHub issues are the source of truth.
 
