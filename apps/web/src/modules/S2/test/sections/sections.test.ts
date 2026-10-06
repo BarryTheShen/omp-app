@@ -138,7 +138,7 @@ describe("S2 Files and Shell sections", () => {
     });
   });
 
-  test("marks runtime boundaries explicitly", () => {
+  test("matches v18.6.1 live and reload boundaries", () => {
     for (const key of [
       "readLineNumbers",
       "read.defaultLimit",
@@ -154,10 +154,80 @@ describe("S2 Files and Shell sections", () => {
     ]) {
       expect(control(key).apply).toBe("live");
     }
-    expect(control("lsp.shared").apply).toBe("restart");
-    expect(control("bash.direnv").apply).toBe("restart");
-    expect(control("python.kernelMode").apply).toBe("restart");
-    expect(control("python.interpreter").apply).toBe("restart");
+
+    const upstreamApplyEvidence = [
+      ["lsp.enabled", "live", "lsp/settings.ts:8-18; tools/index.ts:751-752; sdk.ts:4988-4993"],
+      ["lsp.lazy", "reload", "lsp/settings.ts:20-31; sdk.ts:4980-4993,5032-5035"],
+      ["lsp.shared", "live", "lsp/settings.ts:33-44; sdk.ts:4968-4976"],
+      [
+        "lsp.formatOnWrite",
+        "live",
+        "lsp/settings.ts:46-56; edit/index.ts:172-177; write.ts:486-490",
+      ],
+      ["lsp.diagnosticsOnWrite", "live", "lsp/settings.ts:58-68; write.ts:486-490"],
+      ["lsp.diagnosticsOnEdit", "live", "lsp/settings.ts:70-80; edit/index.ts:172-177"],
+      [
+        "lsp.diagnosticsDeduplicate",
+        "live",
+        "lsp/settings.ts:82-92; write.ts:486-492; lsp/deferred-diagnostics.ts:42-45",
+      ],
+      ["bash.enabled", "live", "exec/settings.ts:82-92; tools/index.ts:751-752"],
+      ["bash.allowCompoundCommands", "live", "exec/settings.ts:94-105; tools/bash.ts:506-511"],
+      [
+        "bash.autoBackground.enabled",
+        "live",
+        "exec/settings.ts:107-118; tools/bash.ts:603,1142-1147",
+      ],
+      [
+        "bash.patterns",
+        "live",
+        "exec/settings.ts:120-131; tools/bash.ts:237-240,260-271,507-508; docs/settings.md:104-106",
+      ],
+      ["bashInterceptor.enabled", "live", "exec/settings.ts:134-144; tools/bash.ts:996-1002"],
+      ["bash.direnv", "live", "exec/settings.ts:152-164; exec/bash-executor.ts:549-555"],
+      [
+        "bash.direnvLoadTimeoutMs",
+        "live",
+        "exec/settings.ts:166-177; exec/bash-executor.ts:549-554",
+      ],
+      ["shellMinimizer.enabled", "live", "exec/settings.ts:180-190; exec/bash-executor.ts:536"],
+      [
+        "shellMinimizer.sourceOutlineLevel",
+        "live",
+        "exec/settings.ts:216-227; exec/bash-executor.ts:301-303,536",
+      ],
+      ["eval.py", "live", "eval/settings.ts:8-19; tools/eval-backends.ts:10-15"],
+      ["eval.js", "live", "eval/settings.ts:21-32; tools/eval-backends.ts:10-15"],
+      [
+        "eval.autoProvision",
+        "live",
+        "eval/settings.ts:34-45; tools/eval.ts:402-403; eval/js/executor.ts:139",
+      ],
+      [
+        "eval.tools.enabled",
+        "live",
+        "eval/settings.ts:46-58; task/eval-tools.ts:79-82; session/agent-session.ts:6850-6852",
+      ],
+      ["eval.workpool.freshAgents", "live", "eval/settings.ts:59-69; task/workpool.ts:140-143"],
+      [
+        "eval.autoBackground.enabled",
+        "live",
+        "eval/settings.ts:71-82; tools/eval.ts:397-403,606-607",
+      ],
+      [
+        "python.kernelMode",
+        "live",
+        "eval/settings.ts:92-103; eval/py/index.ts:50-70; eval/py/executor.ts:599-603",
+      ],
+      [
+        "python.interpreter",
+        "live",
+        "eval/settings.ts:105-116; eval/py/index.ts:21-37; eval/py/executor.ts:413-415",
+      ],
+    ] as const;
+    for (const [key, apply, source] of upstreamApplyEvidence) {
+      expect(control(key).apply, `${key}: omp v18.6.1 ${source}`).toBe(apply);
+    }
     expect(control("edit.mode").apply).toBe("reload");
   });
 });

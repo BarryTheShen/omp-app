@@ -197,7 +197,7 @@ const bashPatternsControl: RowsSettingControl = {
   addLabel: "Add rule",
   emptyLabel: "No approval rules",
   validate: validateBashPatterns,
-  apply: "reload",
+  apply: "live",
 };
 
 const filesEditing: readonly SettingControl[] = [
@@ -241,41 +241,41 @@ const filesReadSummaries: readonly SettingControl[] = [
 ];
 
 const filesLsp: readonly SettingControl[] = [
-  booleanControl("lsp.enabled", "LSP", "reload"),
+  booleanControl("lsp.enabled", "LSP", "live"),
   booleanControl("lsp.lazy", "Lazy LSP Startup", "reload"),
-  booleanControl("lsp.shared", "Shared Language Servers", "restart"),
-  booleanControl("lsp.formatOnWrite", "Format on Write", "reload"),
-  booleanControl("lsp.diagnosticsOnWrite", "Diagnostics on Write", "reload"),
-  booleanControl("lsp.diagnosticsOnEdit", "Diagnostics on Edit", "reload"),
-  booleanControl("lsp.diagnosticsDeduplicate", "Deduplicate Diagnostics", "reload"),
+  booleanControl("lsp.shared", "Shared Language Servers", "live"),
+  booleanControl("lsp.formatOnWrite", "Format on Write", "live"),
+  booleanControl("lsp.diagnosticsOnWrite", "Diagnostics on Write", "live"),
+  booleanControl("lsp.diagnosticsOnEdit", "Diagnostics on Edit", "live"),
+  booleanControl("lsp.diagnosticsDeduplicate", "Deduplicate Diagnostics", "live"),
 ];
 
 const shellBash: readonly SettingControl[] = [
-  booleanControl("bash.enabled", "Bash", "restart"),
-  booleanControl("bash.allowCompoundCommands", "Allow Compound Commands", "reload"),
-  booleanControl("bash.autoBackground.enabled", "Bash Auto-Background", "reload"),
+  booleanControl("bash.enabled", "Bash", "live"),
+  booleanControl("bash.allowCompoundCommands", "Allow Compound Commands", "live"),
+  booleanControl("bash.autoBackground.enabled", "Bash Auto-Background", "live"),
   bashPatternsControl,
-  booleanControl("bashInterceptor.enabled", "Bash Interceptor", "reload"),
-  enumControl("bash.direnv", "direnv Auto-Load", ["auto", "off"], "restart"),
-  durationControl("bash.direnvLoadTimeoutMs", "direnv Load Timeout (ms)", 600_000, "restart"),
-  booleanControl("shellMinimizer.enabled", "Shell Minimizer", "reload"),
+  booleanControl("bashInterceptor.enabled", "Bash Interceptor", "live"),
+  enumControl("bash.direnv", "direnv Auto-Load", ["auto", "off"], "live"),
+  durationControl("bash.direnvLoadTimeoutMs", "direnv Load Timeout (ms)", 600_000, "live"),
+  booleanControl("shellMinimizer.enabled", "Shell Minimizer", "live"),
   enumControl(
     "shellMinimizer.sourceOutlineLevel",
     "Shell Minimizer Source Outline",
     ["default", "aggressive"],
-    "reload",
+    "live",
   ),
 ];
 
 const shellEvalRuntimes: readonly SettingControl[] = [
-  booleanControl("eval.py", "Python Eval Backend", "reload"),
-  booleanControl("eval.js", "JavaScript Eval Backend", "reload"),
-  booleanControl("eval.autoProvision", "Eval Environment Provisioning", "reload"),
-  booleanControl("eval.tools.enabled", "Eval-Defined Tools", "reload"),
-  booleanControl("eval.workpool.freshAgents", "Fresh Workpool Agents", "restart"),
-  booleanControl("eval.autoBackground.enabled", "Eval Auto-Background", "reload"),
-  enumControl("python.kernelMode", "Python Kernel Mode", ["session", "per-call"], "restart"),
-  pathControl("python.interpreter", "Python Interpreter", "restart"),
+  booleanControl("eval.py", "Python Eval Backend", "live"),
+  booleanControl("eval.js", "JavaScript Eval Backend", "live"),
+  booleanControl("eval.autoProvision", "Eval Environment Provisioning", "live"),
+  booleanControl("eval.tools.enabled", "Eval-Defined Tools", "live"),
+  booleanControl("eval.workpool.freshAgents", "Fresh Workpool Agents", "live"),
+  booleanControl("eval.autoBackground.enabled", "Eval Auto-Background", "live"),
+  enumControl("python.kernelMode", "Python Kernel Mode", ["session", "per-call"], "live"),
+  pathControl("python.interpreter", "Python Interpreter", "live"),
 ];
 
 function section(
