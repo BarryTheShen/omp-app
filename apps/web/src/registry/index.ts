@@ -6,6 +6,7 @@
  * `packages/contracts/README.md`).
  */
 import type { Descriptor } from "@omp-app/contracts";
+import { D1_DESCRIPTORS } from "../modules/D1/descriptors";
 import { D2_TRIGGER_DESCRIPTORS } from "../modules/D2/contract";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
@@ -60,6 +61,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...U1MessageDescriptors,
   THINKING_VISIBILITY_SHORTCUT_DESCRIPTOR,
   ...U2Descriptors,
+  ...D1_DESCRIPTORS,
   U2_EXTERNAL_EDITOR_SHORTCUT,
   ...R1_DESCRIPTORS,
   ...N1_DESCRIPTORS,
