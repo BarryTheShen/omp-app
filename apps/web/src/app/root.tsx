@@ -56,6 +56,7 @@ import { OverlayHost, useOverlayHost } from "@/overlay";
 import { RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
+import { SessionModelControl, SessionStatusBar } from "./session-controls";
 
 const FOLDER_KEY = "omp.app.root.folder";
 const THREAD_KEY = "omp.app.root.thread";
@@ -479,10 +480,19 @@ function ActiveThreadReady({
       <AppShell
         composer={composer}
         leftSidebar={leftSidebar}
+        statusBar={<SessionStatusBar client={client} store={store} threadId={threadId} />}
         threadHeader={
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
-            <p className="text-muted-foreground truncate text-xs">{title}</p>
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
+              <p className="text-muted-foreground truncate text-xs">{title}</p>
+            </div>
+            <SessionModelControl
+              capabilities={capabilities}
+              client={client}
+              store={store}
+              threadId={threadId}
+            />
           </div>
         }
         rightSidebar={

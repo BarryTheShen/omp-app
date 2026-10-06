@@ -709,4 +709,30 @@ describe("OmpRuntimeStore", () => {
       expect.stringMatching(/^stream:.*:m-answer$/),
     ]);
   });
+
+  test("keeps what get_state says about the session, field by field", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const model = { provider: "anthropic", id: "claude-x", name: "Claude X", reasoning: true };
+    store.applySessionState({
+      model: model as never,
+      thinkingLevel: "high",
+      contextUsage: { tokens: 1200, contextWindow: 200_000, percent: 0.6 } as never,
+      autoCompactionEnabled: true,
+    });
+    expect(store.getSnapshot().session).toMatchObject({
+      model,
+      thinkingLevel: "high",
+      autoCompactionEnabled: true,
+      isCompacting: false,
+      revision: 1,
+    });
+    // A later answer without a field keeps the last value instead of clearing it.
+    store.applySessionState({ isCompacting: true });
+    expect(store.getSnapshot().session).toMatchObject({
+      model,
+      thinkingLevel: "high",
+      isCompacting: true,
+      revision: 2,
+    });
+  });
 });

@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { ContextUsagePort } from "../contract";
 
-function useContextSnapshot(port: ContextUsagePort) {
+export function useContextSnapshot(port: ContextUsagePort) {
   const subscribe = useCallback(
     (listener: Parameters<ContextUsagePort["subscribe"]>[0]) => port.subscribe(listener),
     [port],
@@ -10,7 +10,7 @@ function useContextSnapshot(port: ContextUsagePort) {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-function percentLabel(percent: number): string {
+export function percentLabel(percent: number): string {
   return `${Math.round(Math.max(0, Math.min(100, percent)))}%`;
 }
 

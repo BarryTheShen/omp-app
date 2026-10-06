@@ -142,6 +142,22 @@ export interface TodoReminderState {
   readonly afterMessage: MessageKey | null;
 }
 
+/**
+ * What omp's `get_state` last said about the session. D1 (model, thinking), P2 and P7 (context,
+ * compaction) read it here instead of asking omp again; `revision` counts the answers.
+ */
+export interface SessionInfoState {
+  readonly model: SessionState["model"] | null;
+  readonly thinkingLevel: SessionState["thinkingLevel"] | null;
+  readonly sessionName: string | null;
+  readonly contextUsage: SessionState["contextUsage"] | null;
+  readonly isCompacting: boolean;
+  readonly autoCompactionEnabled: boolean | null;
+  readonly tokensPerSecond: number | null;
+  readonly goal: SessionState["goal"] | null;
+  readonly revision: number;
+}
+
 export interface RuntimeSnapshot {
   readonly threadId: ThreadId;
   /** `<threadId>:<generation>`; message ids are only unique within one omp process. */
@@ -167,6 +183,7 @@ export interface RuntimeSnapshot {
   readonly todoReminders: readonly TodoReminderState[];
   readonly pending: PendingRequestsState;
   readonly process: ProcessState;
+  readonly session: SessionInfoState;
   readonly error: AppError | null;
 }
 
@@ -216,6 +233,17 @@ const EMPTY_PENDING: PendingRequestsState = Object.freeze({
   hostUris: Object.freeze({}),
 });
 const EMPTY_PROCESS: ProcessState = Object.freeze({ status: "starting", error: null });
+const EMPTY_SESSION: SessionInfoState = Object.freeze({
+  model: null,
+  thinkingLevel: null,
+  sessionName: null,
+  contextUsage: null,
+  isCompacting: false,
+  autoCompactionEnabled: null,
+  tokensPerSecond: null,
+  goal: null,
+  revision: 0,
+});
 const PROCESS_STATUSES: Record<ProcessState["status"], true> = {
   starting: true,
   ready: true,
@@ -391,6 +419,7 @@ function makeInitialSnapshot(threadId: ThreadId): RuntimeSnapshot {
     todoReminders: EMPTY_REMINDERS,
     pending: EMPTY_PENDING,
     process: EMPTY_PROCESS,
+    session: EMPTY_SESSION,
     error: null,
   });
 }
@@ -822,6 +851,19 @@ export class OmpRuntimeStore {
     // omp answered get_state, so its process is up. When the lifecycle events that announced it are
     // older than the server's replay window, this is the only signal the store gets.
     if (next.process.status === "starting") setProcess(next, "ready");
+    const previous = next.session;
+    next.session = {
+      model: state.model ?? previous.model,
+      thinkingLevel: state.thinkingLevel ?? previous.thinkingLevel,
+      sessionName: state.sessionName ?? previous.sessionName,
+      contextUsage: state.contextUsage ?? previous.contextUsage,
+      isCompacting: state.isCompacting ?? previous.isCompacting,
+      autoCompactionEnabled: state.autoCompactionEnabled ?? previous.autoCompactionEnabled,
+      tokensPerSecond:
+        state.tokensPerSecond === undefined ? previous.tokensPerSecond : state.tokensPerSecond,
+      goal: state.goal === undefined ? previous.goal : state.goal,
+      revision: previous.revision + 1,
+    };
     this.commit(next);
   }
 

@@ -83,7 +83,6 @@ export class SelectedThreadHistoryController {
   private offEvents: (() => void) | undefined;
   private loader: SessionHistoryLoader | undefined;
   private stopRefetchWatch: (() => void) | undefined;
-  private refetchAfterSettle: SessionHistoryLoader | undefined;
   private listeners = new Set<(state: SelectedThreadHistoryState) => void>();
   private rekeying: Promise<void> | undefined;
 
@@ -138,7 +137,6 @@ export class SelectedThreadHistoryController {
   }
 
   public async close(): Promise<void> {
-    this.refetchAfterSettle = undefined;
     this.loader?.dispose();
     this.stopRefetchWatch?.();
     this.loader = undefined;
@@ -240,11 +238,12 @@ export class SelectedThreadHistoryController {
     this.subscription = subscription;
     this.offEvents = subscription.onEvent((payload, seq) => {
       store.ingest(payload, seq);
-      if (payload.kind === "session_settled" && this.refetchAfterSettle) {
-        const loader = this.refetchAfterSettle;
-        this.refetchAfterSettle = undefined;
-        void loader.refetch().catch((error: unknown) => {
-          const failure = asFailure(error, "Refreshing the re-keyed session failed");
+      // After each settled turn, omp has persisted the turn: refetch so its messages pair with their
+      // entries (edit and branch need entry ids) and get_state brings the model, context and usage.
+      // While the thread is still loading (replayed settles), the initial load covers it.
+      if (payload.kind === "session_settled" && this.loader && !this.state.isLoading) {
+        void this.loader.refreshAfterTurn().catch((error: unknown) => {
+          const failure = asFailure(error, "Refreshing the session after the turn failed");
           if (failure.appError.code !== "cancelled") this.commit({ error: failure.appError });
         });
       }
@@ -283,10 +282,10 @@ export class SelectedThreadHistoryController {
     // omp may move the same session to a persisted file while a prompt is streaming. Keep the
     // existing store/runtime and only move the event subscription and future history requests.
     this.commit({ threadId, store, isLoading: false, error: null });
-    const shouldRefetchAfterSettle = store.getSnapshot().prompt.streaming;
-    this.refetchAfterSettle = shouldRefetchAfterSettle ? loader : undefined;
+    // While a prompt streams, its settle refetches; otherwise refetch now.
+    const streaming = store.getSnapshot().prompt.streaming;
     await this.attachSubscription(threadId, store);
-    if (!shouldRefetchAfterSettle) await loader.refetch();
+    if (!streaming) await loader.refetch();
     this.stopRefetchWatch = loader.watchNeedsRefetch();
     this.options.onThreadIdChange?.(threadId);
   }

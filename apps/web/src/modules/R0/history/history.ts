@@ -114,6 +114,17 @@ export class SessionHistoryLoader {
   }
 
   /**
+   * After a settled turn: omp's state (model, context, usage) and the entries the turn appended, so
+   * its messages pair with their entries. No tree walk and no cursor move: the stream had no gap.
+   */
+  public async refreshAfterTurn(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
+    await this.run(options?.signal, async (signal) => {
+      await this.applyState(signal);
+      await this.applyEntries(this.latestKnownEntryId(), signal);
+    });
+  }
+
+  /**
    * Starts watching the store for `needsRefetch`; each transition to `true` triggers exactly one
    * `refetch()`. Returns a function that stops watching; an already-running operation keeps going.
    */

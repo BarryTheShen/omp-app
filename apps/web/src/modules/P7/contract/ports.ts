@@ -80,11 +80,20 @@ function contextState(projection: SessionContextProjection): ContextUsageState {
   });
 }
 
-/** Projects R0's normalized session snapshot without maintaining a second reducer. */
+/**
+ * Projects R0's normalized session snapshot without maintaining a second reducer. The same
+ * projection revision returns the same snapshot object, as React's `useSyncExternalStore` requires
+ * (a fresh object per read re-renders forever).
+ */
 export function createContextUsagePort(source: SessionContextSource): ContextUsagePort {
+  let cached: ContextUsageState | undefined;
+  const read = (projection: SessionContextProjection): ContextUsageState => {
+    if (cached?.revision !== projection.revision) cached = contextState(projection);
+    return cached;
+  };
   return {
-    getSnapshot: () => contextState(source.getSnapshot()),
-    subscribe: (listener) => source.subscribe((projection) => listener(contextState(projection))),
+    getSnapshot: () => read(source.getSnapshot()),
+    subscribe: (listener) => source.subscribe((projection) => listener(read(projection))),
   };
 }
 
@@ -106,8 +115,9 @@ export function usageTotalsFromWire(usage: OmpWire.Usage): UsageTotals {
 }
 
 /**
- * Binds refresh to A0's typed `get_session_stats`; snapshot/subscription state still belongs to the
- * injected R0 projection and is never rebuilt from command output here.
+ * Binds refresh to A0's typed `get_session_stats`. The injected source supplies the live
+ * projection; the latest refreshed totals are kept here (omp streams no session totals) and shown
+ * until the next refresh, so every subscriber sees the same numbers.
  */
 export function createUsagePort(
   source: UsageStateSource,
@@ -115,18 +125,27 @@ export function createUsagePort(
   threadId: ThreadId,
 ): UsagePort {
   const session = client.port(RpcSessionPort) as RpcSessionClient;
+  const listeners = new Set<(snapshot: UsageSnapshot) => void>();
+  let refreshed: UsageSnapshot | null = null;
+  const current = (): UsageSnapshot => refreshed ?? source.getSnapshot();
   return {
-    getSnapshot: () => source.getSnapshot(),
-    subscribe: (listener) => source.subscribe(listener),
+    getSnapshot: current,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      const unsubscribe = source.subscribe(() => listener(current()));
+      return () => {
+        listeners.delete(listener);
+        unsubscribe();
+      };
+    },
     refresh: async (options) => {
       try {
         const stats = (await session.send(
           { threadId, command: { type: "get_session_stats" } },
           options,
         )) as OmpWire.SessionStats;
-        const current = source.getSnapshot();
-        return UsageSnapshot.parse({
-          ...current,
+        const next = UsageSnapshot.parse({
+          ...source.getSnapshot(),
           status: "ready",
           sessionId: stats.sessionId,
           totals: totalsFromWire({
@@ -148,6 +167,9 @@ export function createUsagePort(
           contextUsage: stats.contextUsage ?? null,
           error: null,
         });
+        refreshed = next;
+        for (const listener of listeners) listener(next);
+        return next;
       } catch (error) {
         if (error instanceof AppFailure) throw error;
         throw new AppFailure(

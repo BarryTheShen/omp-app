@@ -98,6 +98,8 @@ describe("P7 context and usage schemas", () => {
     };
     const port = createContextUsagePort(source);
     expect(port.getSnapshot().usage?.percent).toBe(80);
+    // useSyncExternalStore needs the same object until the projection changes.
+    expect(port.getSnapshot()).toBe(port.getSnapshot());
     snapshot = { ...snapshot, contextUsage: undefined, revision: "r2" };
     for (const listener of listeners) listener();
     expect(port.getSnapshot().usage).toBeNull();
@@ -146,8 +148,13 @@ describe("P7 typed RPC adapters", () => {
     const client = { port: () => session } as unknown as AppClient;
     const usage = createUsagePort(usageSource, client, threadId);
     const compaction = createCompactionPort(compactionSource, client, threadId);
+    const seen: number[] = [];
+    usage.subscribe((snapshot) => seen.push(snapshot.totals?.totalTokens ?? 0));
     const refreshed = await usage.refresh();
     expect(refreshed.totals?.totalTokens).toBe(60);
+    // The usage popover reads the port, so a refresh must reach the snapshot and subscribers.
+    expect(usage.getSnapshot().totals?.totalTokens).toBe(60);
+    expect(seen).toEqual([60]);
     await compaction.compact({ customInstructions: "focus" });
     await compaction.setAutoCompaction({ enabled: true });
     expect(

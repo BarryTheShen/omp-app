@@ -262,4 +262,25 @@ describe("SelectedThreadHistoryController open and paging", () => {
     await Promise.resolve();
     expect(oldStore.getSnapshot().prompt.streaming).toBe(false);
   });
+
+  test("refreshes history and session state after each settled turn", async () => {
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      calls,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    const listener = subscriptions[0]?.listeners[0];
+    if (!listener) throw new Error("subscription did not attach");
+    calls.length = 0;
+    listener({ kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent, 1);
+    for (let index = 0; index < 20 && calls.length < 2; index += 1) await Promise.resolve();
+    // get_state brings the model, context and usage; get_entries pairs the turn with its entries.
+    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
+  });
 });
