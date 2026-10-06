@@ -19,6 +19,8 @@ export interface TaskSettingEvidence {
   readonly controlKind: SettingControlKind | "map" | null;
   readonly defaultValue: JsonValue | undefined;
   readonly source: string;
+  /** Read into S3's typed policy snapshot, but this module owns the control instead. */
+  readonly ownedBy?: "S1";
 }
 
 export const TASK_SETTING_EVIDENCE = [
@@ -349,6 +351,7 @@ export const TASK_SETTING_EVIDENCE = [
     controlKind: "boolean",
     defaultValue: false,
     source: "packages/coding-agent/src/task/settings.ts:441-452",
+    ownedBy: "S1",
   },
 ] as const satisfies readonly TaskSettingEvidence[];
 

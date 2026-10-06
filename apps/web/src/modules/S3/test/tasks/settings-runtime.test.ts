@@ -95,19 +95,19 @@ describe("S3 Tasks ConfigStore runtime", () => {
   test("refreshes typed settings when ConfigStore reports an external change", async () => {
     const { fixture, runtime, changes } = createRuntime("subagents");
     await runtime.read();
-    let badgeIndex = -1;
+    let prewalkIndex = -1;
     for (let index = 0; index < fixture.state.entries.length; index += 1) {
-      if (fixture.state.entries[index]?.key === "task.showResolvedModelBadge") badgeIndex = index;
+      if (fixture.state.entries[index]?.key === "task.prewalk") prewalkIndex = index;
     }
-    if (badgeIndex < 0) throw new Error("Default badge setting was not listed.");
+    if (prewalkIndex < 0) throw new Error("Default prewalk setting was not listed.");
     const updated: ConfigEntry = {
-      key: "task.showResolvedModelBadge",
+      key: "task.prewalk",
       secret: false,
       value: true,
       source: "global",
       overrides: ["default"],
     };
-    fixture.state.entries[badgeIndex] = updated;
+    fixture.state.entries[prewalkIndex] = updated;
     fixture.state.revision = "revision-2";
     changes.emit({
       key: updated.key,
@@ -206,20 +206,20 @@ describe("S3 Tasks ConfigStore runtime", () => {
   test("saves live non-isolation policy through ConfigStore without a confirmation", async () => {
     const { fixture, runtime } = createRuntime("subagents");
     await runtime.read();
-    const stagedBadge = runtime.stage("task.showResolvedModelBadge", {
+    const stagedAgents = runtime.stage("task.disabledAgents", {
       secret: false,
-      value: true,
+      value: ["scout"],
     });
-    expect(stagedBadge.ok).toBe(true);
+    expect(stagedAgents.ok).toBe(true);
     const result = await runtime.save();
     expect(result.status).toBe("saved");
     expect(fixture.state.writeCalls).toHaveLength(1);
     expect(fixture.state.writeCalls[0]).toMatchObject({
-      key: "task.showResolvedModelBadge",
+      key: "task.disabledAgents",
       layer: "global",
       folder: null,
       expectedRevision: "revision-1",
-      value: { secret: false, value: true },
+      value: { secret: false, value: ["scout"] },
     });
   });
 

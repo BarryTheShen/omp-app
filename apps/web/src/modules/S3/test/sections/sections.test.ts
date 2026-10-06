@@ -114,7 +114,6 @@ const EXPECTED_KEYS = [
     "task.agentPrewalk", // `task/settings.ts:414-418`
     "task.agentAdvisor", // `task/settings.ts:421-425`
     "task.prewalk",
-    "task.showResolvedModelBadge", // `task/settings.ts:441-445`
   ],
 ] as const;
 

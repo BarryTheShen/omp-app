@@ -558,11 +558,6 @@ const tasksSubagents: readonly SettingControl[] = [
   ),
   ...tasksSubagentMaps,
   bool("task.prewalk", "session"),
-  described(
-    bool("task.showResolvedModelBadge", "live"),
-    "Show Resolved Model Badge",
-    "Display the model actually used by each subagent in the task status line.",
-  ),
 ];
 
 function section(

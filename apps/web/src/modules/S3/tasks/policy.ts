@@ -72,9 +72,16 @@ export interface TasksPolicySnapshot {
   readonly subagents: SubagentPolicySnapshot;
 }
 
+/**
+ * Policy-only inputs: read for the task snapshot without an S3 control. omp registers
+ * `task.showResolvedModelBadge` under the appearance tab (`task/settings.ts:442-452`), so S1's
+ * Appearance › Display section owns its control.
+ */
+const TASK_POLICY_CONFIG_KEYS = ["task.showResolvedModelBadge"] as const;
 const TASK_POLICY_KEYS: Record<string, true> = {};
 for (const control of TOOLS_TODOS_SECTION.controls) TASK_POLICY_KEYS[control.key] = true;
 for (const control of TASKS_SUBAGENTS_SECTION.controls) TASK_POLICY_KEYS[control.key] = true;
+for (const key of TASK_POLICY_CONFIG_KEYS) TASK_POLICY_KEYS[key] = true;
 
 function invalidTaskSettings(): AppFailure {
   return new AppFailure({

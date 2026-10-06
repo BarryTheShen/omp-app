@@ -30,12 +30,13 @@ describe("S3 Tasks settings", () => {
     const actualKeys: string[] = [];
     for (const control of settingControls()) actualKeys.push(control.key);
     const expectedKeys: string[] = [];
-    for (const evidence of TASK_SETTING_EVIDENCE) expectedKeys.push(evidence.key);
-    expect(actualKeys).toEqual(expectedKeys);
     for (const evidence of TASK_SETTING_EVIDENCE) {
       expect(evidence.source).toMatch(/^packages\/coding-agent\/src\/.+:\d/);
+      if ("ownedBy" in evidence) continue;
+      expectedKeys.push(evidence.key);
       expect(controlFor(evidence.key).kind).toBe(evidence.controlKind);
     }
+    expect(actualKeys).toEqual(expectedKeys);
     let taskRowCount = 0;
     for (const section of S3_SETTINGS_SECTIONS) {
       let taskRow = false;
@@ -58,10 +59,6 @@ describe("S3 Tasks settings", () => {
       valid: false,
       code: "array",
     });
-    const badge = controlFor("task.showResolvedModelBadge");
-    expect(badge.kind).toBe("boolean");
-    expect(badge.apply).toBe("live");
-    expect(valid(badge, { secret: false, value: false })).toEqual({ valid: true });
   });
 
   test("uses the S1 list-field editor for model selectors and validates all map value shapes", () => {
