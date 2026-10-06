@@ -67,8 +67,14 @@ test.beforeAll(() => buildPlayground());
 test("shows context pressure, usage details and compaction controls", async ({ page }) => {
   await page.goto("/p7-context-playground.html");
   await expect(page.getByRole("heading", { name: "Context and usage" })).toBeVisible();
+  // The full card for a panel …
   await expect(page.getByText("82,000 / 128,000 tokens")).toBeVisible();
-  await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "64.0625");
+  await expect(page.getByRole("progressbar", { name: /context/i }).first()).toHaveAttribute(
+    "aria-valuenow",
+    "64.0625",
+  );
+  // … and the one-line status bar version.
+  await expect(page.getByTestId("p7-status-line")).toContainText("82k of 128k tokens");
   await expect(page.getByRole("button", { name: "Compact now" })).toBeVisible();
   await page.getByRole("button", { name: /Usage/ }).click();
   await expect(page.getByText("Provider quota is unavailable from this host.")).toBeVisible();

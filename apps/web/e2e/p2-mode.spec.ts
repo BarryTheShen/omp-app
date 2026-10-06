@@ -85,7 +85,9 @@ test.describe("P2.2 plan mode", () => {
     await expectStylesLoaded(page);
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expect(page.getByTestId("plan-mode-status")).toBeVisible();
-    await expect(page.getByTestId("plan-mode-status")).toContainText("unavailable");
+    await expect(page.getByTestId("plan-mode-status")).toContainText(
+      "can only be switched in the omp terminal",
+    );
     await expect(page.getByTestId("plan-mode-toggle")).toBeDisabled();
     await page.screenshot({ path: "../../.data/screenshots/p2.2-mode-dark.png", fullPage: true });
 

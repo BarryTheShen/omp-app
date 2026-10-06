@@ -36,7 +36,7 @@ export interface PlanModeControllerOptions {
 
 function unavailableReason(capability?: CapabilityStatus): string {
   if (capability?.detail) return capability.detail;
-  return "Plan mode can't be switched from the app yet: omp 18.6.1 doesn't offer it over RPC.";
+  return "Plan mode can only be switched in the omp terminal for now.";
 }
 
 function unavailable(capabilityReason: string): AppFailure {

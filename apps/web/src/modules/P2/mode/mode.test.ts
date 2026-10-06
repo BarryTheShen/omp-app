@@ -41,7 +41,7 @@ describe("PlanModeController", () => {
       appError: { code: "unavailable", capability: "upstream.plan-mode" },
     });
     expect(controller.getSnapshot().capabilityReason).toBe(
-      "Plan mode can't be switched from the app yet: omp 18.6.1 doesn't offer it over RPC.",
+      "Plan mode can only be switched in the omp terminal for now.",
     );
     controller.dispose();
   });

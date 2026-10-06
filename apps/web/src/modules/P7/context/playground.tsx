@@ -1,5 +1,5 @@
 import type { CompactionPort, ContextUsagePort, UsagePort } from "../contract";
-import { CompactionControls, ContextStatusBar } from "./index";
+import { CompactionControls, ContextMeter, ContextStatusBar } from "./index";
 
 const contextSnapshot = {
   usage: { tokens: 82_000, contextWindow: 128_000, percent: 64.0625 },
@@ -82,7 +82,11 @@ export function ContextUsagePlayground() {
             Live context pressure, session totals and compaction controls.
           </p>
         </header>
-        <ContextStatusBar context={contextPort} usage={usagePort} />
+        {/* The full card (for a panel) and the one-line version the app's status bar uses. */}
+        <ContextMeter port={contextPort} />
+        <div className="border-border rounded-xl border px-3 py-2" data-testid="p7-status-line">
+          <ContextStatusBar context={contextPort} usage={usagePort} />
+        </div>
         <CompactionControls port={compactionPort} />
       </div>
     </main>
