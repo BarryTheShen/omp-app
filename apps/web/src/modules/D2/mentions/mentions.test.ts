@@ -78,6 +78,17 @@ describe("D2.4 mention detection and expansion", () => {
     ]);
   });
 
+  test("keeps exact basename ahead of a higher-scored longer prefix path", () => {
+    const ranked = rankFileMentions(
+      [
+        { path: "src/application.ts", kind: "file", score: 10_000 },
+        { path: "src/app.ts", kind: "file", score: 0 },
+      ],
+      "app",
+    );
+    expect(ranked.map((item) => item.path)).toEqual(["src/app.ts", "src/application.ts"]);
+  });
+
   test("expands a file candidate into replacement text and an attachment ref", () => {
     const text = "read @src/app.ts now";
     const match = detectMentionTrigger(text, text.indexOf(" now"));

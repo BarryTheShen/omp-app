@@ -131,15 +131,26 @@ function normalizedQuery(query: string): string {
   return query.trim().replaceAll("\\", "/").replace(/^"|"$/gu, "").toLocaleLowerCase();
 }
 
-function fuzzyScore(path: string, query: string): number | null {
+function matchQuality(path: string, query: string): number | null {
   const normalizedPath = path.toLocaleLowerCase();
   if (query.length === 0) return 0;
   const segments = normalizedPath.split("/");
-  if (segments.some((segment) => segment === query || segment.startsWith(`${query}.`))) {
-    return 2_000 - path.length;
+  if (normalizedPath === query || segments.some((segment) => segment === query)) return 0;
+  if (segments.some((segment) => segment.startsWith(`${query}.`))) return 1;
+  if (normalizedPath.startsWith(query)) return 2;
+  if (normalizedPath.includes(query)) return 3;
+  let cursor = 0;
+  for (const character of query) {
+    const found = normalizedPath.indexOf(character, cursor);
+    if (found < 0) return null;
+    cursor = found + 1;
   }
-  if (normalizedPath === query) return 2_000;
-  if (normalizedPath.startsWith(query)) return 1_500 - (path.length - query.length);
+  return 4;
+}
+
+function fuzzyScore(path: string, query: string): number | null {
+  const normalizedPath = path.toLocaleLowerCase();
+  if (query.length === 0) return 0;
   const substring = normalizedPath.indexOf(query);
   if (substring >= 0) return 1_200 - substring * 4 - (path.length - query.length);
   let cursor = 0;
@@ -166,16 +177,22 @@ export function rankFileMentions(
       candidate,
       index,
       fuzzy: fuzzyScore(candidate.path.toLocaleLowerCase(), normalized),
+      quality: matchQuality(candidate.path, normalized),
       recentIndex: recent.get(candidate.path) ?? Number.MAX_SAFE_INTEGER,
     }))
-    .filter((entry) => entry.fuzzy !== null)
+    .filter((entry) => entry.fuzzy !== null && entry.quality !== null)
     .sort((left, right) => {
       if (normalized.length === 0 && left.recentIndex !== right.recentIndex) {
         return left.recentIndex - right.recentIndex;
       }
-      const score =
-        (right.fuzzy ?? 0) + right.candidate.score - ((left.fuzzy ?? 0) + left.candidate.score);
-      if (score !== 0) return score;
+      if (left.quality !== right.quality) return (left.quality ?? 99) - (right.quality ?? 99);
+      if (left.candidate.path.length !== right.candidate.path.length) {
+        return left.candidate.path.length - right.candidate.path.length;
+      }
+      if (left.fuzzy !== right.fuzzy) return (right.fuzzy ?? 0) - (left.fuzzy ?? 0);
+      if (left.candidate.score !== right.candidate.score) {
+        return right.candidate.score - left.candidate.score;
+      }
       if (left.recentIndex !== right.recentIndex) return left.recentIndex - right.recentIndex;
       const path = left.candidate.path.localeCompare(right.candidate.path);
       return path !== 0 ? path : left.index - right.index;
