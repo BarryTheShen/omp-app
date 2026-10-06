@@ -9,8 +9,11 @@ import type {
 } from "../../S1/settings-kit";
 
 /**
- * Keys mirror omp v18.6.1's registered settings. Per-key type/default citations are in
- * `test/tasks/fixtures.ts`; ConfigStore provenance stays in the typed S1-backed snapshots.
+ * Keys mirror omp v18.6.1's UI registrations in tools/settings.ts, tools/browser/settings.ts,
+ * ida/settings.ts, task/settings.ts, goals/settings.ts, plan-mode/settings.ts and
+ * extensibility/settings.ts. Per-key type/default citations are in `test/tasks/fixtures.ts`;
+ * ConfigStore provenance stays in the typed S1-backed snapshots, with Tools citations in
+ * `../tools/policy.ts`.
  */
 
 const HOST_CONFIG = ["host.config"] as const;
@@ -323,14 +326,20 @@ const toolsOutputLimits: readonly SettingControl[] = [
   number("tools.artifactMaxBytes", 0, 1_048_576),
 ];
 
+// omp v18.6.1 `packages/coding-agent/src/tools/settings.ts:839-842`: boolean, default false.
+// omp v18.6.1 `packages/coding-agent/src/tools/settings.ts:852-855`: number, default 2.
+// omp v18.6.1 `packages/coding-agent/src/tools/settings.ts:892-896`: boolean, default true.
+// omp v18.6.1 `packages/coding-agent/src/tools/settings.ts:905-909`: number, default 100.
 const toolsExecution: readonly SettingControl[] = [
   duration("images.questionTimeoutMs", 3_600_000),
   bool("tools.intentTracing"),
   bool("tools.abortOnFabricatedResult"),
+  bool("tools.speculativeExecution.enabled", "reload"),
+  number("tools.speculativeExecution.maxInFlight", 1, 4, "reload"),
   number("tools.maxTimeout", 0, 86_400),
-  bool("async.enabled", "reload"),
-  number("async.maxPollTimeMs", 0, 86_400_000, "reload"),
-  duration("irc.timeoutMs", 0, "reload"),
+  // omp v18.6.1 reconciles this session tool gate live (`tools/settings.ts:1014-1045`).
+  bool("async.enabled", "live"),
+  number("async.maxJobs", 0, 100_000, "reload"),
 ];
 
 const toolsExtensions: readonly SettingControl[] = [
