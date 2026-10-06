@@ -1,12 +1,21 @@
+import { z } from "zod";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { decodeGlobArgs, decodeGlobDetails, type GlobToolDetails } from "./models";
 
+/** omp's tool result is `{ content, details }`; a result without `details` has no glob details. */
+const GlobResultEnvelopeSchema = z.looseObject({
+  content: z.array(z.unknown()),
+  details: z.unknown().optional(),
+});
+
 export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const state = normalizeToolRendererProps(rendererProps);
   const args = decodeGlobArgs(rendererProps.args);
-  const details = decodeGlobDetails(state.result ?? state.partialResult);
+  const result = state.result ?? state.partialResult;
+  const envelope = GlobResultEnvelopeSchema.safeParse(result);
+  const details = decodeGlobDetails(envelope.success ? envelope.data.details : result);
   const parsedDetails = details.ok ? details.value : undefined;
   const rawResult = rawText(state.result ?? state.partialResult);
   const summary = globSummary(

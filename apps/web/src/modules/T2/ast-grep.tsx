@@ -13,7 +13,7 @@ const PartialAstGrepArgsSchema = AstGrepToolArgsSchema.partial();
 /** omp's tool result is `{ content, details }`; the ast_grep details live under `details`. */
 const AstGrepResultEnvelopeSchema = z.looseObject({
   content: z.array(z.unknown()),
-  details: z.unknown(),
+  details: z.unknown().optional(),
 });
 
 /** omp's grouped display rows (packages/tui/src/tools/grouped-file-output.ts:143-145,302). */

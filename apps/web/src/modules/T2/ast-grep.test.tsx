@@ -123,6 +123,14 @@ describe("AstGrepCard", () => {
     expect(screen.queryByText(/"path"/)).toBeNull();
   });
 
+  test("a result with content but no details is unavailable, not empty", () => {
+    render(
+      <AstGrepCard rendererProps={props({ content: [{ type: "text", text: "3 matches" }] })} />,
+    );
+    expect(screen.getByText("Search details unavailable.")).toBeTruthy();
+    expect(screen.queryByText("No matches.")).toBeNull();
+  });
+
   test("running state shows the pattern and scope from the arguments only", () => {
     render(<AstGrepCard rendererProps={props(undefined, { type: "running" })} />);
     expect(screen.getByText("console.log($$$) in src")).toBeTruthy();

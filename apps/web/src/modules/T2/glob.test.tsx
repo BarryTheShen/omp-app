@@ -53,6 +53,22 @@ describe("GlobCard", () => {
     expect(screen.getByTestId("t2-glob-limit").textContent).toContain("20");
   });
 
+  test("reads omp's result.details and never calls a result without details empty", () => {
+    render(
+      <GlobCard
+        rendererProps={props({
+          content: [{ type: "text", text: "src/a.ts" }],
+          details: { fileCount: 1, files: [{ path: "src/a.ts", target: "src/a.ts" }] },
+        })}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "src/a.ts" })).toBeTruthy();
+    cleanup();
+    render(<GlobCard rendererProps={props({ content: [{ type: "text", text: "src/a.ts" }] })} />);
+    expect(screen.queryByText("No matches.")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Glob details were malformed");
+  });
+
   test("keeps running scope visible while hiding raw argument/result blocks", () => {
     render(<GlobCard rendererProps={props(undefined, { type: "running" })} />);
     expect(screen.getByTestId("t2-glob-pattern")).toBeTruthy();

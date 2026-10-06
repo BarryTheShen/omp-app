@@ -114,6 +114,12 @@ describe("FindCard", () => {
     expect(screen.queryByText(/not a list/)).toBeNull();
   });
 
+  test("a result with content but no details is unavailable, not empty", () => {
+    render(<FindCard rendererProps={props({ content: [{ type: "text", text: "2 hits" }] })} />);
+    expect(screen.getByText("Search details unavailable.")).toBeTruthy();
+    expect(screen.queryByText("No matches.")).toBeNull();
+  });
+
   test("running state shows the query and scope from the arguments only", () => {
     render(<FindCard rendererProps={props(undefined, { type: "running" })} />);
     expect(screen.getByText("retry budget in src")).toBeTruthy();

@@ -19,7 +19,7 @@ const PartialFindArgsSchema = FindToolArgsSchema.partial();
 /** omp's tool result is `{ content, details }`; the find details live under `details`. */
 const FindResultEnvelopeSchema = z.looseObject({
   content: z.array(z.unknown()),
-  details: z.unknown(),
+  details: z.unknown().optional(),
 });
 
 export function FindCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
