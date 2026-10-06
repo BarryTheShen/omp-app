@@ -15,12 +15,13 @@ export function InputDialog({
   const secret = isSecretInput(request);
 
   const submit = async () => {
-    if (value.trim().length === 0) {
+    const blank = value.trim().length === 0;
+    if (blank && !request.optional) {
       setError("Enter a value before continuing.");
       return;
     }
     setError(null);
-    await context.answer({ kind: "input", value });
+    await context.answer({ kind: "input", value: blank ? "" : value });
   };
 
   return (
@@ -52,6 +53,9 @@ export function InputDialog({
             }
           }}
         />
+        {request.optional ? (
+          <p className="text-xs text-muted-foreground">Leave blank to skip.</p>
+        ) : null}
         {secret ? (
           <p className="text-xs text-muted-foreground">Secret input is masked and is not echoed.</p>
         ) : null}

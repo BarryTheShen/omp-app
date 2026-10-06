@@ -98,6 +98,11 @@ export const InputDialogRequestSchema = z.strictObject({
   title: z.string().min(1),
   placeholder: z.string().min(1).optional(),
   timeoutMs: TimeoutMs.optional(),
+  /**
+   * App dialogs only: an empty answer is allowed and means "skip". `toDialogRequest` never sets it,
+   * so omp's own input requests always require a value.
+   */
+  optional: z.boolean().optional(),
 });
 export type InputDialogRequest = z.infer<typeof InputDialogRequestSchema>;
 

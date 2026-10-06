@@ -259,4 +259,45 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
     expect(screen.queryByText(secret)).toBeNull();
     expect(screen.getByTestId("secret-test").textContent).not.toContain(secret);
   });
+
+  test("an optional app input submits blank as a skip; a required one refuses blank", async () => {
+    const answers: unknown[] = [];
+    const context = (optional: boolean) => ({
+      request: { kind: "input" as const, id: "gate-optional" as never, title: "SSH user" },
+      threadId,
+      signal: new AbortController().signal,
+      answer: async (response: unknown) => {
+        answers.push({ optional, response });
+      },
+      cancel: async () => {},
+    });
+    const { unmount } = render(
+      <OverlayHost>
+        {renderDialogRequest(
+          { kind: "input", id: "gate-optional" as never, title: "SSH user", optional: true },
+          context(true),
+        )}
+      </OverlayHost>,
+    );
+    expect(screen.getByText("Leave blank to skip.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("SSH user"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() =>
+      expect(answers).toEqual([{ optional: true, response: { kind: "input", value: "" } }]),
+    );
+    unmount();
+
+    render(
+      <OverlayHost>
+        {renderDialogRequest(
+          { kind: "input", id: "gate-required" as never, title: "SSH host" },
+          context(false),
+        )}
+      </OverlayHost>,
+    );
+    expect(screen.queryByText("Leave blank to skip.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Enter a value before continuing.")).toBeTruthy();
+    expect(answers).toHaveLength(1);
+  });
 });
