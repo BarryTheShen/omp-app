@@ -120,8 +120,16 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
   );
 }
 
-/** Descriptor renderer entry; T4/read grouping can use ReadCard directly for injected seams. */
-export const ReadToolRenderer: ToolRenderer = (props) => <ReadCard rendererProps={props} />;
+/**
+ * A read renderer whose URL reads go to `urlRenderer` (T4 implements it; the composition root injects
+ * it, so T1 never imports T4). Without one, URL reads say the renderer is unavailable.
+ */
+export function createReadToolRenderer(urlRenderer?: ReadUrlRenderer): ToolRenderer {
+  return (props) => <ReadCard rendererProps={props} urlRenderer={urlRenderer} />;
+}
+
+/** Descriptor renderer entry; the composition root swaps in the URL-aware one. */
+export const ReadToolRenderer: ToolRenderer = createReadToolRenderer();
 
 function ReadBody({
   args,

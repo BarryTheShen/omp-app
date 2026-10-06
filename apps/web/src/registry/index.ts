@@ -12,9 +12,11 @@ import { P4_DESCRIPTORS } from "../modules/P4/contract";
 import { P6_SHORTCUT_DESCRIPTORS } from "../modules/P6/shortcuts/descriptors";
 import { R1_DESCRIPTORS } from "../modules/R1/descriptors";
 import { T1_TOOL_DESCRIPTORS } from "../modules/T1/descriptor";
+import { createReadToolRenderer } from "../modules/T1/read";
 import { T2_MESSAGE_DESCRIPTORS, T2_TOOL_DESCRIPTORS } from "../modules/T2/descriptor";
 import { T3_TOOL_DESCRIPTORS } from "../modules/T3/descriptor";
 import { T4_TOOL_DESCRIPTORS } from "../modules/T4/descriptor";
+import { T4ReadUrlRenderer } from "../modules/T4/url-read";
 import { T5_TOOL_DESCRIPTORS } from "../modules/T5/descriptor";
 import { T6_TOOL_DESCRIPTORS } from "../modules/T6/descriptor";
 import { T7_TOOL_DESCRIPTORS } from "../modules/T7/descriptor";
@@ -28,11 +30,16 @@ import { U4Descriptors } from "../modules/U4/descriptors";
 import { todoToolDescriptor } from "../modules/U5/todo/tool-card/tool-card";
 import { createRegistry, type RendererMap } from "../registry-core";
 
+/** T1's read card renders URL reads through T4's renderer; the seam keeps T1 from importing T4. */
+const READ_WITH_URLS = createReadToolRenderer(T4ReadUrlRenderer);
+
 /** Tool renderers by omp tool name, for U3.3's createToolRegistry (T7 owns the one fallback). */
 export const TOOL_RENDERERS: readonly ToolRegistryDescriptor[] = [
   U3_BASH_DESCRIPTOR,
   todoToolDescriptor,
-  ...T1_TOOL_DESCRIPTORS,
+  ...T1_TOOL_DESCRIPTORS.map((descriptor) =>
+    descriptor.id === "T1.read" ? { ...descriptor, renderer: READ_WITH_URLS } : descriptor,
+  ),
   ...T2_TOOL_DESCRIPTORS,
   ...T3_TOOL_DESCRIPTORS,
   ...T4_TOOL_DESCRIPTORS,
