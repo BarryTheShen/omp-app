@@ -661,7 +661,49 @@ describe("OmpRuntimeStore", () => {
     omp(store, { type: "message_start", messageId: "m-user", message: entry.message }, 1);
     omp(store, { type: "message_end", messageId: "m-user", message: entry.message }, 2);
     omp(store, { type: "message_start", messageId: "m-answer", message: assistant("Hel") }, 3);
+    // While the answer streams, the history (shown first) and the stream show each message once.
+    expect(store.getSnapshot().messageOrder).toEqual([
+      expect.stringMatching(/^stream:.*:m-user$/),
+      expect.stringMatching(/^stream:.*:m-answer$/),
+    ]);
     store.pairEndedMessages([entry], "u1" as EntryId);
+    expect(store.getSnapshot().messageOrder).toEqual([
+      `entry:${threadId}:u1`,
+      expect.stringMatching(/^stream:.*:m-answer$/),
+    ]);
+  });
+
+  test("shows a message once when the history returns it before its message_end arrives", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const user = { role: "user", content: "question", timestamp: 1 };
+    const answer = { ...assistant("Hello there"), timestamp: 2 };
+    omp(store, { type: "message_start", messageId: "m-user", message: user }, 1);
+    omp(store, { type: "message_end", messageId: "m-user", message: user }, 2);
+    omp(
+      store,
+      { type: "message_start", messageId: "m-answer", message: { ...answer, stopReason: "stop" } },
+      3,
+    );
+    // omp persisted the answer, and the history load returns it while its stream is still open.
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "u1",
+          parentId: null,
+          timestamp: "2026-10-05T00:00:00.000Z",
+          message: user,
+        },
+        {
+          type: "message",
+          id: "a1",
+          parentId: "u1",
+          timestamp: "2026-10-05T00:00:01.000Z",
+          message: { ...answer, stopReason: "toolUse" },
+        },
+      ],
+      "a1" as EntryId,
+    );
     expect(store.getSnapshot().messageOrder).toEqual([
       `entry:${threadId}:u1`,
       expect.stringMatching(/^stream:.*:m-answer$/),

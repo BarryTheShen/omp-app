@@ -559,20 +559,59 @@ function messageFromEntry(entry: TranscriptEntry): OmpMessage | undefined {
 }
 
 /**
+ * omp sets a message's role and timestamp at `message_start` and its session entry keeps both, so
+ * they identify a streamed message's entry even before `message_end` (C0's identity rule needs the
+ * final stop reason, which a streaming message does not have yet).
+ */
+function streamedCopyKey(message: OmpMessage): string | undefined {
+  if (!("timestamp" in message) || typeof message.timestamp !== "number") return undefined;
+  return message.role === "toolResult"
+    ? `${message.role}:${message.timestamp}:${message.toolCallId}`
+    : `${message.role}:${message.timestamp}`;
+}
+
+/**
  * Shows the persisted history of the active branch: every `message` entry on it becomes a persisted
- * message (live messages already paired to an entry keep their record), in branch order, followed by
- * the live messages omp has not persisted yet. Persisted messages of other branches leave the view.
+ * message, in branch order, followed by the live messages omp has not persisted yet. A live message
+ * already paired to an entry keeps its record; one not paired yet stands in for its entry (so a
+ * message never shows twice while its `message_end` and the history race). Persisted messages of
+ * other branches leave the view.
  */
 function hydratePersistedMessages(next: MutableSnapshot): void {
-  const persistedOrder: MessageKey[] = [];
+  const unpairedLive = new Map<string, MessageKey>();
+  for (const key of next.messageOrder) {
+    const record = next.messages[key];
+    if (!key.startsWith("stream:") || record === undefined || record.entryId !== undefined)
+      continue;
+    const copyKey = streamedCopyKey(record.message);
+    if (copyKey !== undefined) unpairedLive.set(copyKey, key);
+  }
+  const takeLiveCopy = (message: OmpMessage | undefined): MessageKey | undefined => {
+    const copyKey = message === undefined ? undefined : streamedCopyKey(message);
+    const live = copyKey === undefined ? undefined : unpairedLive.get(copyKey);
+    if (copyKey !== undefined && live !== undefined) unpairedLive.delete(copyKey);
+    return live;
+  };
+
+  const viewOrder: MessageKey[] = [];
   for (const entryId of activeBranch(next.transcript)) {
     const entry = next.transcript.entries[entryId];
     if (!entry) continue;
-    if (entry.messageKey !== undefined) {
-      if (next.messages[entry.messageKey] !== undefined) persistedOrder.push(entry.messageKey);
+    const current = entry.messageKey === undefined ? undefined : next.messages[entry.messageKey];
+    if (current?.streamMessageId !== undefined) {
+      viewOrder.push(current.key);
       continue;
     }
-    const message = messageFromEntry(entry);
+    const message = current?.message ?? messageFromEntry(entry);
+    const live = takeLiveCopy(message);
+    if (live !== undefined) {
+      viewOrder.push(live);
+      continue;
+    }
+    if (current !== undefined) {
+      viewOrder.push(current.key);
+      continue;
+    }
     if (!message) continue;
     const key = persistedMessageKey(next.threadId, entryId);
     addOrReplaceMessage(next, key, {
@@ -583,11 +622,11 @@ function hydratePersistedMessages(next: MutableSnapshot): void {
       parentId: entry.parentId,
     });
     mergeEntryMessageKey(next, entryId, key);
-    persistedOrder.push(key);
+    viewOrder.push(key);
   }
-  const persisted = new Set<MessageKey>(persistedOrder);
-  const live = next.messageOrder.filter((key) => !persisted.has(key) && key.startsWith("stream:"));
-  next.messageOrder = [...persistedOrder, ...live];
+  const shown = new Set<MessageKey>(viewOrder);
+  const live = next.messageOrder.filter((key) => !shown.has(key) && key.startsWith("stream:"));
+  next.messageOrder = [...viewOrder, ...live];
 }
 
 interface PendingDraft {
@@ -1184,7 +1223,25 @@ export class OmpRuntimeStore {
       streamMessageId: messageId,
     };
     addOrReplaceMessage(next, key, record);
-    if (!next.messageOrder.includes(key)) (next.messageOrder as MessageKey[]).push(key);
+    const order = next.messageOrder as MessageKey[];
+    if (!order.includes(key)) {
+      // A message the history already shows (the stream was replayed, or lagged behind a history
+      // load) takes that message's place instead of showing twice.
+      const copyKey = streamedCopyKey(message);
+      const shownIndex =
+        copyKey === undefined
+          ? -1
+          : order.findIndex((shownKey) => {
+              const shown = next.messages[shownKey];
+              return (
+                shown !== undefined &&
+                shown.streamMessageId === undefined &&
+                streamedCopyKey(shown.message) === copyKey
+              );
+            });
+      if (shownIndex >= 0) order.splice(shownIndex, 1, key);
+      else order.push(key);
+    }
     updatePrompt(next, { admitted: true, streaming: true, sessionSettled: false });
   }
 
