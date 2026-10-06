@@ -93,19 +93,105 @@ export const GoalDetailsSchema = z.looseObject({
 });
 export type GoalDetails = z.infer<typeof GoalDetailsSchema>;
 
+const SecurityActionSchema = z.enum([
+  "preflight",
+  "start",
+  "status",
+  "cancel",
+  "validate",
+  "cloud_scans",
+  "cloud_start",
+  "cloud_status",
+  "cloud_pull",
+]);
+const SecurityValidationStatusSchema = z.enum([
+  "unvalidated",
+  "validated",
+  "rejected",
+  "partial",
+  "error",
+]);
+const SeverityCount = z.number().nonnegative().optional();
+
+/** omp v18.6.1 security_scan arguments: packages/coding-agent/src/tools/security-scan.ts:21-45. */
+export const SecurityScanArgsSchema = z.looseObject({
+  action: SecurityActionSchema.optional(),
+  target_kind: z.enum(["repository", "scoped_path", "ref_diff", "working_tree"]).optional(),
+  include_paths: z.array(z.string()).optional(),
+  base_revision: OptionalText,
+  head_revision: OptionalText,
+  finding_id: OptionalText,
+  repository_url: OptionalText,
+});
+export type SecurityScanArgs = z.infer<typeof SecurityScanArgsSchema>;
+
+/**
+ * omp v18.6.1 security_scan details: packages/coding-agent/src/tools/security-scan.ts:49-59
+ * (`SecurityScanToolDetails`). `operation` is the coordinator snapshot
+ * (packages/coding-agent/src/security/coordinator.ts:56-77); cloud shapes come from
+ * packages/coding-agent/src/security/cloud.ts:49-62 and :81-92. The result carries no
+ * per-finding rows; failures arrive as tool errors.
+ */
 export const SecurityScanDetailsSchema = z.looseObject({
-  action: OptionalText,
-  plan: UnknownRecord.optional(),
-  operation: OptionalText,
-  target: OptionalText,
-  path: OptionalText,
-  revision: OptionalText,
-  scan: UnknownRecord.optional(),
-  finding: UnknownRecord.optional(),
-  validation: UnknownRecord.optional(),
-  cloud: UnknownRecord.optional(),
-  configurations: z.array(UnknownRecord).optional(),
-  error: UnknownRecord.optional(),
+  action: SecurityActionSchema.optional(),
+  plan: z.looseObject({ id: OptionalText, fingerprint: OptionalText }).optional(),
+  operation: z
+    .looseObject({
+      operationId: OptionalText,
+      planId: OptionalText,
+      scanId: OptionalText,
+      phase: z
+        .enum([
+          "queued",
+          "preparing",
+          "reviewing",
+          "publishing",
+          "completed",
+          "partial",
+          "cancelled",
+          "failed",
+        ])
+        .optional(),
+      findingCount: z.number().nonnegative().optional(),
+      error: OptionalText,
+    })
+    .optional(),
+  cancelled: z.boolean().optional(),
+  finding: z
+    .looseObject({ id: OptionalText, validationStatus: SecurityValidationStatusSchema.optional() })
+    .optional(),
+  cloudConfigurations: z
+    .array(
+      z.looseObject({
+        id: OptionalText,
+        repositoryUrl: OptionalText,
+        currentStep: OptionalText,
+        state: OptionalText,
+      }),
+    )
+    .optional(),
+  cloudStats: z
+    .looseObject({
+      configurationId: OptionalText,
+      currentStep: OptionalText,
+      pendingCommits: z.number().nonnegative().optional(),
+      finishedCommits: z.number().nonnegative().optional(),
+      failedCommits: z.number().nonnegative().optional(),
+      findingCounts: z
+        .looseObject({
+          critical: SeverityCount,
+          high: SeverityCount,
+          medium: SeverityCount,
+          low: SeverityCount,
+          informational: SeverityCount,
+        })
+        .optional(),
+    })
+    .optional(),
+  cloudScan: z.looseObject({ id: OptionalText, repositoryUrl: OptionalText }).optional(),
+  importedScan: z
+    .looseObject({ id: OptionalText, findingCount: z.number().nonnegative().optional() })
+    .optional(),
 });
 export type SecurityScanDetails = z.infer<typeof SecurityScanDetailsSchema>;
 
@@ -148,6 +234,8 @@ export const decodeGoal = (raw: unknown): T7DetailDecode<GoalDetails> =>
   decode(GoalDetailsSchema, raw, "goal details");
 export const decodeSecurityScan = (raw: unknown): T7DetailDecode<SecurityScanDetails> =>
   decode(SecurityScanDetailsSchema, raw, "security scan details");
+export const decodeSecurityScanArgs = (raw: unknown): T7DetailDecode<SecurityScanArgs> =>
+  decode(SecurityScanArgsSchema, raw, "security scan arguments");
 export const decodeThink = (raw: unknown): T7DetailDecode<ThinkDetails> =>
   decode(ThinkDetailsSchema, raw, "think details");
 

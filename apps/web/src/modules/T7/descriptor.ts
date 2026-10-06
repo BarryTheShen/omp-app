@@ -2,6 +2,7 @@ import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { T7ToolFallback } from "./fallback";
 import { GoalToolRenderer } from "./goal";
 import { ResolveToolRenderer } from "./resolve";
+import { SecurityScanToolRenderer } from "./security";
 import { ThinkToolRenderer } from "./think";
 
 /** T7 owns exactly eight miscellaneous/host/domain renderer claims; the main agent composes them. */
@@ -74,7 +75,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.security-scan"],
     requires: ["upstream.security-scan"],
     match: { by: "name", name: "security_scan" },
-    renderer: T7ToolFallback,
+    renderer: SecurityScanToolRenderer,
   },
   {
     kind: "tool",

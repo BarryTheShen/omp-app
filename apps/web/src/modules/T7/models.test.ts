@@ -22,7 +22,7 @@ describe("T7 tolerant domain models", () => {
     [decodeCheckpoint, { goal: "before migration" }],
     [decodeRewind, { report: "recorded only", rewound: false }],
     [decodeGoal, { op: "create", goal: { objective: "ship", tokenBudget: 100, tokensUsed: 0 } }],
-    [decodeSecurityScan, { action: "status", operation: "preflight" }],
+    [decodeSecurityScan, { action: "status", operation: { scanId: "scan-1", phase: "reviewing" } }],
     [decodeThink, { recorded: true }],
   ])("decodes %s details without executing", (decode, raw) => {
     expect(decode(raw)).toMatchObject({ ok: true, raw });
@@ -56,6 +56,43 @@ describe("T7 tolerant domain models", () => {
       decodeGoal({ op: "get", goal: null, remainingTokens: null, completionBudgetReport: null }),
     ).toMatchObject({ ok: true, value: { goal: null, remainingTokens: null } });
     expect(decodeGoal({ op: "get", goal: { status: "finished" } })).toMatchObject({ ok: false });
+  });
+
+  test("decodes omp v18.6.1 security_scan details with an operation snapshot and cloud stats", () => {
+    const status = {
+      action: "status",
+      operation: {
+        operationId: "op-1",
+        planId: "plan-1",
+        scanId: "scan-1",
+        phase: "completed",
+        createdAt: "2026-10-05T10:00:00Z",
+        updatedAt: "2026-10-05T10:05:00Z",
+        findingCount: 3,
+      },
+    };
+    expect(decodeSecurityScan(status)).toMatchObject({
+      ok: true,
+      value: { operation: { phase: "completed", findingCount: 3 } },
+    });
+    const cloud = {
+      action: "cloud_status",
+      cloudStats: {
+        configurationId: "cfg-1",
+        currentStep: "scanning",
+        pendingCommits: 2,
+        finishedCommits: 10,
+        failedCommits: 0,
+        findingCounts: { critical: 1, high: 0, medium: 4, low: 2, informational: 0 },
+      },
+    };
+    expect(decodeSecurityScan(cloud)).toMatchObject({
+      ok: true,
+      value: { cloudStats: { findingCounts: { critical: 1, medium: 4 } } },
+    });
+    expect(decodeSecurityScan({ action: "status", operation: "preflight" })).toMatchObject({
+      ok: false,
+    });
   });
 
   test("keeps unknown details raw and maps malformed data to a safe AppFailure", () => {
