@@ -16,7 +16,10 @@ describe("AppShell regions", () => {
 
     expect(screen.getByRole("navigation", { name: "Sessions" })).toBeTruthy();
     expect(screen.getByRole("main", { name: "Conversation" })).toBeTruthy();
-    expect(screen.getByRole("log", { name: "Conversation transcript" })).toBeTruthy();
+    const transcript = screen.getByRole("region", { name: "Conversation transcript" });
+    // Not a live region: streamed tokens must not be announced one by one.
+    expect(transcript.getAttribute("aria-live")).toBeNull();
+    expect(transcript.getAttribute("role")).toBeNull();
     expect(screen.getByRole("region", { name: "Composer" })).toBeTruthy();
     expect(screen.getByRole("complementary", { name: "Panels" })).toBeTruthy();
     expect(screen.getByRole("contentinfo", { name: "Status" })).toBeTruthy();
@@ -24,7 +27,7 @@ describe("AppShell regions", () => {
     const landmarks = [
       screen.getByRole("navigation", { name: "Sessions" }),
       screen.getByRole("main", { name: "Conversation" }),
-      screen.getByRole("log", { name: "Conversation transcript" }),
+      transcript,
       screen.getByRole("region", { name: "Composer" }),
       screen.getByRole("complementary", { name: "Panels" }),
       screen.getByRole("contentinfo", { name: "Status" }),

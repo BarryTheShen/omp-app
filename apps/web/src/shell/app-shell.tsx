@@ -309,11 +309,12 @@ export function AppShell({
           {threadHeader}
           <SidebarToggle side="right" open={rightOpen} onToggle={toggleRight} />
         </header>
+        {/* A labelled region, not role="log": a log is a live region, so every streamed token
+            would be announced. U1.8's polite status announces new content instead. */}
         <section
           aria-label="Conversation transcript"
           className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
           data-shell-region="transcript"
-          role="log"
         >
           {transcript}
         </section>

@@ -135,7 +135,7 @@ test("connects the shell with a fragment token and checks landmarks/focus order"
 
   const landmarks = await page
     .locator(
-      "main, nav, aside, footer, [role='log'], [role='region'], [data-shell-region='composer']",
+      "main, nav, aside, footer, [role='region'], [data-shell-region='transcript'], [data-shell-region='composer']",
     )
     .evaluateAll((elements) =>
       elements.map((element) => element.getAttribute("aria-label")).filter(Boolean),
