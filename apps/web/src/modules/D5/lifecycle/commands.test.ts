@@ -204,7 +204,7 @@ describe("SessionLifecycleController", () => {
         message:
           "This can fix a stuck or confused reply. Your conversation stays exactly as it is.",
       }),
-      { threadId },
+      { threadId, origin: "app" },
     );
     expect(run).toHaveBeenCalledOnce();
     expect(run).toHaveBeenCalledWith({ threadId, command: "/fresh" }, undefined);

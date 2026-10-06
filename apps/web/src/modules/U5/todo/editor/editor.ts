@@ -17,8 +17,8 @@ export type TodoEditorResult =
   | { readonly status: "cancelled" }
   | { readonly status: "rejected" };
 
-function requestId(prefix: string, now: () => number): ReturnType<typeof UiRequestId.parse> {
-  return UiRequestId.parse(`u5-todo-${prefix}-${now()}`);
+function requestId(prefix: string, now: () => number): UiRequestId {
+  return UiRequestId.parse(`app-u5-todo-${prefix}-${now()}`);
 }
 
 function invalid(message: string): AppFailure {
@@ -48,7 +48,10 @@ export class TodoEditorController {
       title: "Edit todo list",
       prefill: exportTodosMarkdown(current.phases),
     };
-    const result = await this.dialogs.open(editorRequest, { threadId: this.threadId });
+    const result = await this.dialogs.open(editorRequest, {
+      threadId: this.threadId,
+      origin: "app",
+    });
     if (result.outcome !== "answered" || result.response.kind !== "editor") {
       return { status: "cancelled" };
     }
@@ -67,7 +70,10 @@ export class TodoEditorController {
       title: "Replace todo list?",
       message: "Replace the current todo list with this Markdown?",
     };
-    const confirmed = await this.dialogs.confirm(confirmRequest, { threadId: this.threadId });
+    const confirmed = await this.dialogs.confirm(confirmRequest, {
+      threadId: this.threadId,
+      origin: "app",
+    });
     if (!confirmed) return { status: "rejected" };
     return { status: "saved", phases: await this.store.setTodos(phases) };
   }

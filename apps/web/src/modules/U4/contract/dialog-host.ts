@@ -10,19 +10,24 @@ import type { DialogResultFor } from "./responses";
 /** Returns focus to exactly the element that had it before the dialog opened. Supplied by the
  *  caller (U0's `FocusScope`, once merged); this contract carries no DOM type. */
 export type FocusRestoreHandle = () => void;
+export type DialogOrigin = "omp" | "app";
 
 export interface DialogHostOpenOptions {
   readonly signal?: AbortSignal;
   readonly threadId: ThreadId;
+  /** OMP is the default. App-owned dialogs resolve locally without answering an omp request. */
+  readonly origin?: DialogOrigin;
   readonly restoreFocus?: FocusRestoreHandle;
 }
 
 export interface DialogHost {
   /**
    * Presents one request; later calls for the same thread queue FIFO behind it (one modal per
-   * thread). Resolves with the dialog's outcome. Rejects with `AppFailure(unavailable)` when
-   * `omp.ui` is absent, `AppFailure(conflict)` for a request id no longer pending, or
-   * `AppFailure(invalid_args)` for a malformed request.
+   * thread). OMP-origin requests (the default) require `omp.ui` and answer omp; app-origin requests
+   * use the same overlay and queue but settle locally. App request ids begin with `app-`.
+   * Rejects with `AppFailure(unavailable)` when an OMP-origin request lacks `omp.ui`,
+   * `AppFailure(conflict)` for a request id already open, or `AppFailure(invalid_args)` for a
+   * malformed request.
    */
   open<R extends DialogRequest>(
     request: R,

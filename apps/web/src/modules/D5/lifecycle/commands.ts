@@ -106,11 +106,14 @@ export class SessionLifecycleController {
       if (blocked) return blocked;
 
       const threadId = this.session.getSnapshot().id;
-      const confirmationOptions = signal === undefined ? { threadId } : { threadId, signal };
+      const confirmationOptions =
+        signal === undefined
+          ? { threadId, origin: "app" as const }
+          : { threadId, signal, origin: "app" as const };
       const confirmed = await this.dialogs.confirm(
         {
           kind: "confirm",
-          id: UiRequestIdSchema.parse(`d5-fresh-${crypto.randomUUID()}`),
+          id: UiRequestIdSchema.parse(`app-d5-fresh-${crypto.randomUUID()}`),
           title: "Start a fresh connection to the model?",
           message:
             "This can fix a stuck or confused reply. Your conversation stays exactly as it is.",

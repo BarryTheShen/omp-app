@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 const threadA = "thread-a" as ThreadId;
 const threadB = "thread-b" as ThreadId;
-const capabilities: CapabilityMap = {
+const ompUiCapabilities: CapabilityMap = {
   "omp.ui": { state: "available", via: "rpc" },
 };
 
@@ -38,7 +38,13 @@ interface HarnessState {
   answer: ((response: DialogResponse) => Promise<void>) | undefined;
 }
 
-function Harness({ state }: { state: HarnessState }) {
+function Harness({
+  state,
+  capabilities,
+}: {
+  readonly state: HarnessState;
+  readonly capabilities: CapabilityMap;
+}) {
   const overlay = useOverlayHost();
   const controllerRef = useRef<DialogHostController | null>(null);
   if (controllerRef.current === null) {
@@ -88,7 +94,7 @@ function Harness({ state }: { state: HarnessState }) {
   return <button type="button">Opener</button>;
 }
 
-function renderHarness() {
+function renderHarness(capabilities = ompUiCapabilities) {
   const state: HarnessState = {
     controller: undefined,
     overlay: undefined,
@@ -97,7 +103,7 @@ function renderHarness() {
   };
   render(
     <OverlayHost>
-      <Harness state={state} />
+      <Harness state={state} capabilities={capabilities} />
     </OverlayHost>,
   );
   return state;
@@ -112,7 +118,7 @@ function open(
   controller: DialogHostController,
   dialogRequest: DialogRequest,
   threadId = threadA,
-  extra: Pick<DialogHostOpenOptions, "signal" | "restoreFocus"> = {},
+  extra: Pick<DialogHostOpenOptions, "signal" | "restoreFocus" | "origin"> = {},
 ): Promise<unknown> {
   let pending!: Promise<unknown>;
   act(() => {
@@ -171,6 +177,57 @@ describe("DialogHostController", () => {
       { type: "extension_ui_response", id: "abort-me", cancelled: true },
     ]);
     expect(restored).toEqual(["restored"]);
+  });
+  test("app confirms settle locally without requiring omp.ui or answering omp", async () => {
+    const state = renderHarness({});
+    const controller = await controllerFrom(state);
+    const accepted = controller.confirm(
+      request("confirm", "app-confirm") as Extract<DialogRequest, { kind: "confirm" }>,
+      { threadId: threadA, origin: "app" },
+    );
+    await screen.findByTestId("body-app-confirm");
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await expect(accepted).resolves.toBe(true);
+
+    const cancelled = controller.confirm(
+      request("confirm", "app-cancel") as Extract<DialogRequest, { kind: "confirm" }>,
+      { threadId: threadA, origin: "app" },
+    );
+    await screen.findByTestId("body-app-cancel");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await expect(cancelled).resolves.toBe(false);
+    expect(state.answers).toEqual([]);
+  });
+
+  test("app confirmation cancellation and timeout settle locally", async () => {
+    const state = renderHarness(ompUiCapabilities);
+    const controller = await controllerFrom(state);
+    const cancelled = open(controller, request("confirm", "app-cancelled"), threadA, {
+      origin: "app",
+    });
+    await screen.findByTestId("body-app-cancelled");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await expect(cancelled).resolves.toEqual({
+      outcome: "cancelled",
+      kind: "confirm",
+      timedOut: false,
+    });
+
+    const timedOut = controller.confirm(
+      request("confirm", "app-timeout", 10) as Extract<DialogRequest, { kind: "confirm" }>,
+      { threadId: threadA, origin: "app" },
+    );
+    await expect(timedOut).resolves.toBe(false);
+    expect(state.answers).toEqual([]);
+  });
+
+  test("requires app-owned ids to use the app prefix", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    await expect(
+      open(controller, request("confirm", "missing-prefix"), threadA, { origin: "app" }),
+    ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
+    expect(state.answers).toEqual([]);
   });
 
   test("confirm timeout resolves false and sends timedOut cancellation", async () => {

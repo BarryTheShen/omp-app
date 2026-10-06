@@ -82,8 +82,8 @@ function isUiAvailable(capabilities: CapabilityMap | undefined): boolean {
   return capabilities?.[DIALOG_CAPABILITY]?.state === "available";
 }
 
-/** U4.2's one-modal-per-thread host. Request state is local presentation state; R0 remains the
- *  source of truth for pending requests and is called only through the injected answer action. */
+/** U4.2's one-modal-per-thread host. OMP-origin answers use the injected R0 action; app-origin
+ *  dialogs share the queue and overlay but settle locally. */
 export class DialogHostController implements DialogHost {
   private readonly overlay: OverlayHostApi;
   private readonly capabilities: CapabilityMap | undefined;
@@ -108,21 +108,30 @@ export class DialogHostController implements DialogHost {
   ): Promise<DialogResultFor<R>> {
     if (this.disposed)
       return Promise.reject(failure("internal", "The dialog host has been disposed."));
-    if (!isUiAvailable(this.capabilities)) return Promise.reject(unavailableUi());
+    const origin = options.origin ?? "omp";
+    if (origin === "omp" && !isUiAvailable(this.capabilities)) {
+      return Promise.reject(unavailableUi());
+    }
     const parsed = DialogRequestSchema.safeParse(request);
     if (!parsed.success) return Promise.reject(invalidRequest());
+    if (origin === "app" && !parsed.data.id.startsWith("app-")) {
+      return Promise.reject(
+        failure("invalid_args", "App dialog request ids must start with app-."),
+      );
+    }
     if (this.entries.has(parsed.data.id)) {
       return Promise.reject(conflict("A dialog with this request id is already open."));
     }
 
+    const entryOptions = { ...options, origin };
     return new Promise<DialogResultFor<R>>((resolve, reject) => {
       const entry: DialogEntry = {
         request: parsed.data,
-        options,
+        options: entryOptions,
         resolve: resolve as unknown as (result: DialogResult) => void,
         reject,
         abortController: new AbortController(),
-        restoreFocus: options.restoreFocus,
+        restoreFocus: entryOptions.restoreFocus,
         state: "queued",
         overlay: null,
         timer: undefined,
@@ -131,14 +140,14 @@ export class DialogHostController implements DialogHost {
         restoreCalled: false,
       };
       this.entries.set(parsed.data.id, entry);
-      const key = String(options.threadId);
+      const key = String(entryOptions.threadId);
       const queue = this.queues.get(key) ?? [];
       queue.push(entry);
       this.queues.set(key, queue);
       this.installAbort(entry);
       this.installTimeout(entry);
-      if (this.activeThread === null) this.activeThread = options.threadId;
-      if (this.activeThread === options.threadId) this.startNext(options.threadId);
+      if (this.activeThread === null) this.activeThread = entryOptions.threadId;
+      if (this.activeThread === entryOptions.threadId) this.startNext(entryOptions.threadId);
     });
   }
 
@@ -264,7 +273,7 @@ export class DialogHostController implements DialogHost {
     }
     const result: DialogResult = { outcome: "answered", response: parsed.data };
     try {
-      await this.sendAndFinish(entry, result);
+      await this.settleAndFinish(entry, result);
     } catch (error) {
       this.finishRejected(entry, error);
       throw error;
@@ -273,7 +282,7 @@ export class DialogHostController implements DialogHost {
 
   private settleTimeout(entry: DialogEntry): Promise<void> {
     const result = defaultDialogResult(entry.request, { timedOut: true });
-    return this.sendAndFinish(entry, result).catch((error) => {
+    return this.settleAndFinish(entry, result).catch((error) => {
       this.finishRejected(entry, error);
     });
   }
@@ -289,13 +298,17 @@ export class DialogHostController implements DialogHost {
       this.finishResolved(entry, result);
       return Promise.resolve();
     }
-    return this.sendAndFinish(entry, result).catch((error) => {
+    return this.settleAndFinish(entry, result).catch((error) => {
       this.finishRejected(entry, error);
     });
   }
 
-  private async sendAndFinish(entry: DialogEntry, result: DialogResult): Promise<void> {
+  private async settleAndFinish(entry: DialogEntry, result: DialogResult): Promise<void> {
     if (entry.state === "settled" || entry.state === "settling") return;
+    if (entry.options.origin === "app") {
+      this.finishResolved(entry, result);
+      return;
+    }
     entry.state = "settling";
     const wire = toWireExtensionUiResponse(entry.request.id, result);
     try {

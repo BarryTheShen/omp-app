@@ -15,8 +15,8 @@ import type { CapabilityKey, OmpWire } from "@omp-app/contracts";
 import { AppFailure, UiRequestId } from "@omp-app/contracts";
 import { z } from "zod";
 
-/** `omp.ui` gates every modal/presentation request; `set_ask_dialog` additionally gates rich
- *  `ask` (`research/modules/U4.md` §3.4). A missing capability is a visible reason, never faked. */
+/** `omp.ui` gates OMP-origin extension-UI requests; app-origin dialogs settle locally. The
+ *  `set_ask_dialog` command additionally gates rich `ask` (`research/modules/U4.md` §3.4). */
 export const DIALOG_CAPABILITY: CapabilityKey = "omp.ui";
 export const ASK_DIALOG_CAPABILITY: CapabilityKey = "omp.cmd.set_ask_dialog";
 

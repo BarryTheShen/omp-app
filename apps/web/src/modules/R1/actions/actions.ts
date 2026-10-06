@@ -87,7 +87,7 @@ export class SessionActionsController {
 
   public async delete(
     session: Pick<SessionMetadata, "id" | "title">,
-    confirmationId: string = `delete-${session.id}`,
+    confirmationId: string = `app-delete-${session.id}`,
   ): Promise<SessionActionOutcome<void>> {
     if (this.options.dialogs === undefined) {
       return {
@@ -95,14 +95,17 @@ export class SessionActionsController {
         error: unavailable("host.dialogs", "Deleting a session requires a confirmation dialog."),
       };
     }
+    const appConfirmationId = confirmationId.startsWith("app-")
+      ? confirmationId
+      : `app-${confirmationId}`;
     const confirmed = await this.options.dialogs.confirm(
       {
         kind: "confirm",
-        id: UiRequestIdSchema.parse(confirmationId),
+        id: UiRequestIdSchema.parse(appConfirmationId),
         title: "Delete session",
         message: `Delete ${session.title ?? session.id}? omp will remove only this native session.`,
       },
-      { threadId: this.options.threadId },
+      { threadId: this.options.threadId, origin: "app" },
     );
     if (!confirmed) return { status: "cancelled" };
     try {
