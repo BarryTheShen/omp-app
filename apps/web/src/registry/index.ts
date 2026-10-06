@@ -7,9 +7,10 @@
  */
 import type { Descriptor } from "@omp-app/contracts";
 import { D2_TRIGGER_DESCRIPTORS } from "../modules/D2/contract";
+import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
 import { P4_DESCRIPTORS } from "../modules/P4/contract";
-import { P6_SHORTCUT_DESCRIPTORS } from "../modules/P6/shortcuts/descriptors";
+import { P6_DESCRIPTORS } from "../modules/P6";
 import { R1_DESCRIPTORS } from "../modules/R1/descriptors";
 import { T1_TOOL_DESCRIPTORS } from "../modules/T1/descriptor";
 import { createReadToolRenderer } from "../modules/T1/read";
@@ -62,7 +63,8 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...R1_DESCRIPTORS,
   ...N1_DESCRIPTORS,
   ...P4_DESCRIPTORS,
-  ...P6_SHORTCUT_DESCRIPTORS,
+  ...P6_DESCRIPTORS,
+  ...I1_MCP_SERVER_DESCRIPTORS,
   ...D2_TRIGGER_DESCRIPTORS,
   ...U4Descriptors,
   ...T2_MESSAGE_DESCRIPTORS,
