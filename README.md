@@ -6,11 +6,12 @@ The floor version is omp **18.6.1**. Features are switched on by capabilities om
 
 ## Status
 
-**Under construction (2026-10-05).** It is built in 42 modules and 8 waves, and every module is split into small "parts". As of this writing:
+**Under construction (2026-10-06).** It is built in 42 modules and 8 waves, and every module is split into small "parts". As of this writing:
 
 - All 42 module specs (the plans and part lists) are done.
-- 126 of 261 parts are merged (GitHub Actions has been in an outage today, so merges go through as its gate runs complete). Merged: the infrastructure (waves W1 and W2), most of W3 (thread view, reasoning disclosure, styled Markdown, composer with drafts, attachments, bash mode, prompt history, queued messages and queue modes, dialogs and approvals, panels, the todo checklist and board, the session catalog and sidebar, settings kit and runtime, shortcuts and the shortcut sheet) and much of W4 (tool cards for read, edit, write, AST edit, glob, browser, GitHub, recall/reflect, resolve/reject; mentions; the extension control center; voice and execution-mode contracts).
-- `bun run dev` starts the real server against your omp and prints the app's link. The server side works end to end (a real omp session opens, streams and reconnects). The browser still shows the starter page until the app-root part (#476) merges; its real-stack browser test passes (create a session, send a prompt, see the streamed reply and tool card, reload and get the session and draft back), and the last fixes found by that test (the thread reloading after omp's first-prompt rekey, the folder switcher) are in progress.
+- 152 of 261 parts are merged: the infrastructure (waves W1 and W2), most of W3 (thread view, composer with drafts and attachments, queued messages, dialogs and approvals, panels and the todo checklist, the session catalog and sidebar, settings kit, shortcuts) and most of W4 (tool cards for read, edit, write, AST edit, grep, glob, find, ast_grep, lsp, eval, debug, bash, browser, GitHub, web search, security scan, checkpoint/rewind, goal, recall/reflect, resolve/reject), plus parts of W5 (models, mentions and internal links, MCP lifecycle, notifications, context and usage).
+- `bun run dev` starts the real server against your omp and prints the app's link. The app works end to end on real omp: pick a folder, start or reopen a chat, send a prompt, watch tool calls and replies stream, change the model and thinking level, see context usage, reload and get the chat and the unsent draft back. Modules merged since the app root are being wired into the running app (#566).
+- The colors are omp's own default themes: `titanium` (dark) and `light` (`apps/web/src/styles/tokens.css`). A UI overhaul (shared component kit and shell redesign) waits for the owner's go.
 
 The live board: `bun tools/board.ts show`. GitHub issues are the source of truth.
 
