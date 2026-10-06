@@ -7,6 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
+import { settingOptions } from "../../S1/settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const;
 
@@ -116,6 +117,9 @@ function optionalUrlValidator(value: SettingValue): ValidationResult {
     return { valid: false, code: "url", message: "Enter an HTTP(S) URL or leave it blank." };
   }
 }
+/** Choice labels `optionLabel` can't spell. */
+const I5_OPTION_LABELS: Readonly<Record<string, string>> = { unset: "Not set" };
+
 function labelFor(key: string): string {
   return (
     key
@@ -142,9 +146,7 @@ function control(
     secret: false,
     validate,
     apply,
-    ...(options === undefined
-      ? {}
-      : { options: options.map((value) => ({ value, label: value })) }),
+    ...(options === undefined ? {} : { options: settingOptions(options, I5_OPTION_LABELS) }),
   };
 }
 

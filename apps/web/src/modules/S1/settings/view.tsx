@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AppearancePreview } from "../appearance/preview";
 import { ShowImagesSelector, ThemeSelector } from "../appearance/selectors";
-import { SettingsSection } from "../settings-kit";
+import { SettingsSection, saveLocationText } from "../settings-kit";
 import type {
   AppearanceSettingsActions,
   AppearanceSettingsActiveSectionModel,
@@ -151,9 +151,7 @@ export function AppearanceSettingsView({ model, actions, onClose }: AppearanceSe
           <p className="text-muted-foreground text-sm">
             Theme, composer, status line, display, and image behavior.
           </p>
-          <p className="text-muted-foreground text-xs">
-            Layer: {model.layer} · Scope: {model.scope}
-          </p>
+          <p className="text-muted-foreground text-xs">{saveLocationText(model.layer)}</p>
         </div>
         <Button type="button" variant="outline" onClick={onClose} aria-label="Close settings">
           Close

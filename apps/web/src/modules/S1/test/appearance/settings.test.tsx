@@ -106,7 +106,7 @@ describe("S1.3 appearance settings surface", () => {
 
     await screen.findByRole("button", { name: "Choose dark theme…" });
     fireEvent.click(screen.getByRole("button", { name: "Choose dark theme…" }));
-    fireEvent.change(screen.getByLabelText("OMP theme name"), {
+    fireEvent.change(screen.getByLabelText("omp theme name"), {
       target: { value: "custom-dark" },
     });
     expect(screen.getByText(APP_THEME_PREVIEW_NOTE)).toBeTruthy();

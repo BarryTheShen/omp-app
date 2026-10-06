@@ -7,6 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
+import { settingOptions } from "../../S1/settings-kit";
 
 /**
  * Keys mirror omp v18.6.1's UI registrations in tools/settings.ts, tools/browser/settings.ts,
@@ -23,6 +24,18 @@ type Validator = (value: SettingValue) => ValidationResult;
 function plain(value: SettingValue): JsonValue | undefined {
   return value.secret ? undefined : value.value;
 }
+
+/** Choice labels `optionLabel` can't spell: file systems, acronyms and "xhigh". */
+const S3_OPTION_LABELS: Readonly<Record<string, string>> = {
+  apfs: "APFS",
+  btrfs: "Btrfs",
+  zfs: "ZFS",
+  overlayfs: "OverlayFS",
+  projfs: "ProjFS",
+  rcopy: "Git worktree or copy",
+  ai: "AI",
+  xhigh: "Extra high",
+};
 
 function labelFor(key: string): string {
   const segment = key.split(".").at(-1) ?? key;
@@ -231,9 +244,7 @@ function control(
     secret: false,
     validate,
     apply,
-    ...(options === undefined
-      ? {}
-      : { options: options.map((value) => ({ value, label: value })) }),
+    ...(options === undefined ? {} : { options: settingOptions(options, S3_OPTION_LABELS) }),
   };
 }
 

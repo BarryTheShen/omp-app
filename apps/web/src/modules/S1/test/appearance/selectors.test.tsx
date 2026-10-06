@@ -47,7 +47,7 @@ describe("S1.3 browser-owned appearance previews", () => {
 
     fireEvent.focus(screen.getByRole("button", { name: "Light" }));
     expect(previews).toContain("light");
-    fireEvent.change(screen.getByLabelText("OMP theme name"), {
+    fireEvent.change(screen.getByLabelText("omp theme name"), {
       target: { value: "custom-dark" },
     });
     expect(previews).toContain("custom-dark");

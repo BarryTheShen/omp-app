@@ -9,7 +9,13 @@ import type {
   StagedSettings,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { commit, readSection, SettingsSection, subscribeChanged } from "../../S1/settings-kit";
+import {
+  commit,
+  readSection,
+  SettingsSection,
+  saveLocationText,
+  subscribeChanged,
+} from "../../S1/settings-kit";
 import { I5_SETTINGS_SECTIONS } from "./descriptors";
 
 export type I5SettingsPanelProps = {
@@ -184,12 +190,11 @@ export function I5SettingsPanel({
           <p className="text-muted-foreground text-sm">Settings</p>
           <h1 className="text-2xl font-semibold tracking-tight">Voice and speech</h1>
           <p className="text-muted-foreground max-w-2xl text-sm">
-            Speech input, realtime voice, playback, and provider services are read and written
-            through omp&apos;s typed ConfigStore. Secret entries are write-only and never displayed
+            Speech input, realtime voice, playback and voice providers. Saved keys are never shown
             here.
           </p>
           <p className="text-muted-foreground text-xs" data-i5-settings-layer>
-            Layer: {layer} · Scope: {folder ?? "global"}
+            {saveLocationText(layer)}
           </p>
         </header>
         {loading ? (

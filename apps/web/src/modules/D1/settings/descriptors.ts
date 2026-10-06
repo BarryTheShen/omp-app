@@ -4,6 +4,7 @@ import type {
   SettingsSectionDescriptor,
   SettingValue,
 } from "@/modules/S1/settings-kit";
+import { settingOptions } from "@/modules/S1/settings-kit";
 
 const valid = () => ({ valid: true as const });
 
@@ -32,17 +33,22 @@ function enumControl(
   description: string,
   apply: SettingControl["apply"] = "restart",
 ): SettingControl {
+  const choices = settingOptions(options, { xhigh: "Extra high" });
   return {
     key,
     label,
     description,
     kind: "enum",
     secret: false,
-    options: options.map((value) => ({ value, label: value })),
+    options: choices,
     validate: (value: SettingValue, _snapshot: ConfigSnapshot) =>
       !value.secret && typeof value.value === "string" && options.includes(value.value)
         ? valid()
-        : { valid: false, code: "enum", message: `Choose one of: ${options.join(", ")}.` },
+        : {
+            valid: false,
+            code: "enum",
+            message: `Choose one of: ${choices.map((choice) => choice.label).join(", ")}.`,
+          },
     apply,
   };
 }

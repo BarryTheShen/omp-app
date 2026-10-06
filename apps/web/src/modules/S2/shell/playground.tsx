@@ -121,7 +121,7 @@ export function S2SectionsPlayground() {
         <header>
           <h1 className="text-xl font-semibold tracking-tight">Files and Shell settings</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Preview of ConfigStore-backed LSP, Bash, and Eval &amp; Runtimes sections.
+            Language server, Bash, and Eval &amp; Runtimes settings.
           </p>
         </header>
         <FilesLspSection runtime={runtimes.lsp} />

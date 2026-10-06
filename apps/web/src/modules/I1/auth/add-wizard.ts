@@ -171,7 +171,7 @@ async function testAddedServer(
       status: "failed",
       error: new AppFailure({
         code: "unavailable",
-        message: "The server was saved, but OMP did not report a successful connection test.",
+        message: "The server was saved, but omp did not report a successful connection test.",
         retryable: true,
         capability: I1_CAPABILITIES.mcp,
       }).appError,
@@ -329,7 +329,7 @@ export async function runMcpAddWizard({
     if (added.server === null) {
       throw new AppFailure({
         code: "internal",
-        message: "OMP did not return a summary for the saved MCP server.",
+        message: "omp did not return a summary for the saved MCP server.",
         retryable: true,
         capability: I1_CAPABILITIES.mcp,
       });

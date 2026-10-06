@@ -66,7 +66,6 @@ export type AppearanceSettingsViewModel = {
   readonly emptyMessage?: string;
   readonly actionError?: string;
   readonly layer: ConfigWriteLayer;
-  readonly scope: "Global" | "Project";
   readonly preview: AppearancePreviewModel;
 };
 
@@ -512,7 +511,6 @@ export function useAppearanceSettingsController({
         : undefined,
     actionError,
     layer,
-    scope: folder ? "Project" : "Global",
     preview,
   };
 

@@ -145,7 +145,7 @@ export function FilesPlayground() {
         <header>
           <h1 className="text-xl font-semibold tracking-tight">Files settings</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            ConfigStore-backed editing, reading, and read summary controls.
+            Editing, reading and read summary settings.
           </p>
         </header>
         <PreviewFilesSection runtime={runtimes.editing} Section={FilesEditingSection} />

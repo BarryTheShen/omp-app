@@ -1,3 +1,4 @@
+import { optionLabel } from "../settings-kit";
 import { APP_COMPOSER_PREVIEW_NOTE, APP_THEME_PREVIEW_NOTE } from "./descriptors";
 
 export type BrowserPalette = "light" | "dark";
@@ -55,7 +56,9 @@ export function AppearancePreview({ model }: { readonly model: AppearancePreview
       </header>
       <div className="grid gap-3 md:grid-cols-2">
         <section className="bg-muted rounded-lg p-3" aria-label="Composer and status preview">
-          <p className="text-muted-foreground text-xs">Composer · {model.composerShape}</p>
+          <p className="text-muted-foreground text-xs">
+            Composer shape: {optionLabel(model.composerShape)}
+          </p>
           {model.composerNote ? (
             <p className="text-muted-foreground text-xs">{model.composerNote}</p>
           ) : null}
@@ -63,7 +66,9 @@ export function AppearancePreview({ model }: { readonly model: AppearancePreview
             Ask omp to inspect this change
           </div>
           <p className="text-muted-foreground mt-2 text-xs">
-            {model.statusLinePreset} · {model.statusLineSeparator} · context {model.contextLine}
+            Status line: {optionLabel(model.statusLinePreset)} · Separators:{" "}
+            {optionLabel(model.statusLineSeparator)} · Context line:{" "}
+            {optionLabel(model.contextLine)}
           </p>
         </section>
         <section className="bg-muted space-y-2 rounded-lg p-3" aria-label="Transcript preview">

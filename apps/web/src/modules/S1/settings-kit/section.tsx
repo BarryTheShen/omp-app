@@ -71,7 +71,6 @@ export function SettingsSection({
           <h2 id={`${descriptor.id}-title`} className="text-lg font-semibold tracking-tight">
             {descriptor.title}
           </h2>
-          <p className="text-muted-foreground mt-1 text-sm">{descriptor.section}</p>
         </div>
         {applyStatus ? (
           <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">

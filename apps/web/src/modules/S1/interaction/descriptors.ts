@@ -8,6 +8,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../settings-kit";
+import { settingOptions } from "../settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 const HOST_CONFIG_AND_GIT = ["host.config", "host.git"] as const satisfies readonly CapabilityKey[];
@@ -166,7 +167,7 @@ function enumControl(
     "enum",
     apply,
     validateEnum(values),
-    values.map((value) => ({ value, label: labels[value] ?? value })),
+    settingOptions(values, labels),
     description,
   );
 }

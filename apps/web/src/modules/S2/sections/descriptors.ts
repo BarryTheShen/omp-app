@@ -7,6 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
+import { settingOptions } from "../../S1/settings-kit";
 
 /**
  * Keys and labels mirror omp v18.6.1's registered UI settings:
@@ -111,7 +112,7 @@ function enumControl(
     "enum",
     (value) => validateEnum(values, value),
     apply,
-    values.map((value) => ({ value, label: value })),
+    settingOptions(values),
   );
 }
 

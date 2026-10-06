@@ -172,6 +172,35 @@ export async function readSection(
   });
 }
 
+/** A readable label for a raw setting value: "apply_patch" → "Apply patch", "per-call" → "Per call". */
+export function optionLabel(value: string): string {
+  const words = value.replace(/[_-]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : value;
+}
+
+/**
+ * Choices for an enum control. Every module builds its options here so no raw value reaches the UI;
+ * `labels` covers what `optionLabel` can't spell (acronyms, product names, "xhigh").
+ */
+export function settingOptions(
+  values: readonly string[],
+  labels: Readonly<Record<string, string>> = {},
+): readonly SettingOption[] {
+  return values.map((value) => ({ value, label: labels[value] ?? optionLabel(value) }));
+}
+
+/** Where a settings screen's changes are written, as a sentence for the screen header. */
+export function saveLocationText(layer: ConfigWriteLayer): string {
+  switch (layer) {
+    case "global":
+      return "Changes are saved to your global omp settings.";
+    case "project":
+      return "Changes are saved to this project's omp settings.";
+    case "app":
+      return "Changes are saved in this app only.";
+  }
+}
+
 export function stage(
   descriptor: SettingsSectionDescriptor,
   state: StagedSettings,

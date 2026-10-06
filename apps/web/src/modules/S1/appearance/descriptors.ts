@@ -7,6 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../settings-kit";
+import { settingOptions } from "../settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 
@@ -120,11 +121,15 @@ function enumControl(
   description?: string,
   preview?: ScalarSettingControl["preview"],
 ): ScalarSettingControl {
-  const options: readonly SettingOption[] = values.map((value) => ({
-    value,
-    label: labels[value] ?? value,
-  }));
-  return control(key, label, "enum", validateEnum(values), options, description, preview);
+  return control(
+    key,
+    label,
+    "enum",
+    validateEnum(values),
+    settingOptions(values, labels),
+    description,
+    preview,
+  );
 }
 
 function textControl(
@@ -155,13 +160,13 @@ export const THEME_SETTINGS_SECTION = section(
     textControl(
       "theme.dark",
       "Dark Theme",
-      "OMP theme used for dark terminal appearance. Any installed OMP theme name can be saved.",
+      "The omp theme for dark mode in the terminal. Any installed omp theme name can be saved.",
       previewValue("theme.dark"),
     ),
     textControl(
       "theme.light",
       "Light Theme",
-      "OMP theme used for light terminal appearance. Any installed OMP theme name can be saved.",
+      "The omp theme for light mode in the terminal. Any installed omp theme name can be saved.",
       previewValue("theme.light"),
     ),
     enumControl("symbolPreset", "Symbol Preset", ["unicode", "nerd", "ascii"], {
@@ -182,7 +187,7 @@ export const COMPOSER_SETTINGS_SECTION = section(
     textControl(
       "composer.shape",
       "Composer Shape",
-      "OMP composer shape id. Built-in shapes can be previewed; extension shapes remain editable by name.",
+      "The omp composer shape. Built-in shapes can be previewed; shapes from extensions can still be set by name.",
       previewValue("composer.shape"),
     ),
     booleanControl("composer.tokenRate", "Generation Rate"),

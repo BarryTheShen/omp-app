@@ -29,11 +29,11 @@ export function ThemeSelector({
           {title}
         </h2>
         <p className="text-muted-foreground text-sm">
-          Preview a bundled browser palette or enter any OMP theme name to save it for the terminal.
+          Preview a bundled browser palette or enter any omp theme name to save it for the terminal.
         </p>
       </header>
       <fieldset className="flex flex-wrap gap-2 border-0 p-0">
-        <legend className="sr-only">Bundled OMP themes</legend>
+        <legend className="sr-only">Bundled omp themes</legend>
         {BUNDLED_THEME_NAMES.map((theme) => (
           <Button
             key={theme}
@@ -49,7 +49,7 @@ export function ThemeSelector({
       </fieldset>
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor={`${settingKey}-custom-theme`}>
-          OMP theme name
+          omp theme name
         </label>
         <Input
           id={`${settingKey}-custom-theme`}
