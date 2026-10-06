@@ -20,6 +20,8 @@ type StyleEvidence = {
     readonly borderStyle: string;
   };
   readonly cardPixel: Pixel;
+  /** The theme's `--foreground` token as the browser computed it. */
+  readonly foreground: string;
   readonly input: {
     readonly color: string | undefined;
     readonly textFillColor: string | undefined;
@@ -148,6 +150,15 @@ async function collectStyleEvidence(page: Page): Promise<StyleEvidence> {
         borderStyle: buttonStyle.borderStyle,
       },
       cardPixel: composite(cardStyle.backgroundColor),
+      // A probe resolves the token the same way the inputs' `color` does (same serialization).
+      foreground: (() => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--foreground)";
+        document.body.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      })(),
       input: {
         color: inputStyle?.color,
         textFillColor: inputStyle?.webkitTextFillColor,
@@ -178,8 +189,10 @@ function assertControlEvidence(evidence: StyleEvidence, dark: boolean): void {
     const buttonLum = luminance(evidence.button.backgroundPixel);
     expect(buttonLum).toBeLessThan(cardLum + 0.15);
     expect(evidence.button.textContrast).toBeGreaterThanOrEqual(4.5);
-    expect(evidence.input.textFillColor ?? evidence.input.color).toContain("0.985");
-    expect(evidence.select.textFillColor ?? evidence.select.color).toContain("0.985");
+    // Text in dark inputs and selects is the theme's foreground, whatever the palette.
+    expect(evidence.foreground).not.toBe("");
+    expect(evidence.input.textFillColor ?? evidence.input.color).toBe(evidence.foreground);
+    expect(evidence.select.textFillColor ?? evidence.select.color).toBe(evidence.foreground);
   }
 }
 

@@ -96,11 +96,15 @@ test("renders complete voice and speech settings with provenance in light mode",
     path: "../../.data/screenshots/i5-4-settings-light.png",
     fullPage: true,
   });
-  const providerLimits = page.locator("[data-i5-provider-limits]");
+  // The provider limits are an ordinary control inside Providers / Services, in descriptor order.
+  const providerSection = page.locator('[data-i5-settings-section="I5.providersServices"]');
+  const providerLimits = providerSection.locator('[data-slot="s1-structured-control"]');
+  await expect(providerSection.getByText("Max In-Flight Requests")).toBeVisible();
   await providerLimits.getByRole("button", { name: "Add provider" }).click();
   await providerLimits.getByLabel("Provider name 2").fill("anthropic");
   await providerLimits.getByLabel("Request limit 2").fill("2");
   await expect(providerLimits.getByRole("button", { name: "Remove anthropic" })).toBeVisible();
+  await expect(providerSection.getByRole("button", { name: "Save changes" })).toBeEnabled();
   await expect(page.locator("body")).not.toContainText('{"openai"');
 });
 

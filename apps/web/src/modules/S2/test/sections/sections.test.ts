@@ -114,10 +114,23 @@ describe("S2 Files and Shell sections", () => {
       code: "range",
     });
     expect(validate("bash.patterns", { secret: false, value: [] })).toEqual({ valid: true });
-    expect(validate("bash.patterns", { secret: false, value: "*" })).toMatchObject({
-      valid: false,
-      code: "list",
-    });
+    expect(
+      validate("bash.patterns", {
+        secret: false,
+        value: [{ match: "git push *", approval: "prompt" }],
+      }),
+    ).toEqual({ valid: true });
+    // omp drops rules with an empty match or an approval other than allow/deny/prompt.
+    for (const value of [
+      "*",
+      [{ match: " ", approval: "allow" }],
+      [{ match: "ls", approval: "yes" }],
+    ]) {
+      expect(validate("bash.patterns", { secret: false, value })).toMatchObject({
+        valid: false,
+        code: "rows",
+      });
+    }
     expect(validate("python.interpreter", { secret: false, value: "" })).toEqual({ valid: true });
     expect(validate("python.interpreter", { secret: false, value: "\0" })).toMatchObject({
       valid: false,

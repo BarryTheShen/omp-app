@@ -1,5 +1,7 @@
 import type { JsonValue } from "@omp-app/contracts";
 import type {
+  MapSettingControl,
+  ScalarSettingControl,
   SettingControl,
   SettingsSectionDescriptor,
   SettingValue,
@@ -58,36 +60,39 @@ function textValidator(value: SettingValue): ValidationResult {
     : { valid: false, code: "text", message: "Enter text without control characters." };
 }
 
-function recordValue(value: SettingValue): Record<string, JsonValue> | undefined {
-  const candidate = plain(value);
-  if (typeof candidate === "string") {
-    try {
-      const parsed: unknown = JSON.parse(candidate);
-      return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-        ? (parsed as Record<string, JsonValue>)
-        : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-  return typeof candidate === "object" && candidate !== null && !Array.isArray(candidate)
-    ? (candidate as Record<string, JsonValue>)
-    : undefined;
-}
-
+/** Every provider name maps to a positive number (the map control produces this object). */
 function positiveRecordValidator(value: SettingValue): ValidationResult {
-  const candidate = recordValue(value);
-  if (!candidate) {
-    return { valid: false, code: "record", message: "Enter provider limits as a JSON object." };
+  const candidate = plain(value);
+  if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+    return { valid: false, code: "record", message: "Enter request limits by provider." };
   }
   const invalid = Object.entries(candidate).some(
     ([key, limit]) =>
-      key.length === 0 || typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0,
+      key.trim().length === 0 || typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0,
   );
   return invalid
-    ? { valid: false, code: "record", message: "Each provider limit must be a positive number." }
+    ? { valid: false, code: "record", message: "Each request limit must be a positive number." }
     : { valid: true };
 }
+
+/**
+ * `providers.maxInFlightRequests`: provider name → positive concurrency limit; providers not listed
+ * are unlimited, and omp rejects non-positive or non-numeric values (omp v18.6.1 docs/settings.md:921).
+ */
+const providerLimitsControl: MapSettingControl = {
+  key: "providers.maxInFlightRequests",
+  label: "Max In-Flight Requests",
+  description: "Limit concurrent requests by provider. Providers not listed here remain unlimited.",
+  kind: "map",
+  secret: false,
+  keyLabel: "Provider name",
+  keyPlaceholder: "Provider name",
+  value: { label: "Request limit", kind: "number", positive: true },
+  addLabel: "Add provider",
+  emptyLabel: "No provider-specific limits",
+  validate: positiveRecordValidator,
+  apply: "live",
+};
 
 function listValidator(value: SettingValue): ValidationResult {
   const candidate = plain(value);
@@ -123,12 +128,12 @@ function labelFor(key: string): string {
 
 function control(
   key: string,
-  kind: SettingControl["kind"],
+  kind: ScalarSettingControl["kind"],
   validate: Validator,
   apply: SettingControl["apply"],
   description: string,
   options?: readonly string[],
-): SettingControl {
+): ScalarSettingControl {
   return {
     key,
     label: labelFor(key),
@@ -276,13 +281,7 @@ const providerServiceControls: readonly SettingControl[] = [
     "Kokoro voice used for speech vocalization.",
     "live",
   ),
-  control(
-    "providers.maxInFlightRequests",
-    "multiline",
-    positiveRecordValidator,
-    "live",
-    "Maximum concurrent requests per provider; omitted providers are unlimited.",
-  ),
+  providerLimitsControl,
   enumControl(
     "providers.openai-codex.codeMode",
     ["off", "on", "auto"],

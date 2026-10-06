@@ -129,7 +129,7 @@ describe("I5 settings descriptors", () => {
     ).toMatchObject({ valid: false, code: "enum" });
     expect(
       requireControl("providers.maxInFlightRequests").validate(
-        { secret: false, value: '{"openai":4}' },
+        { secret: false, value: { openai: 4, anthropic: 2.5 } },
         snapshot,
       ),
     ).toEqual({ valid: true });

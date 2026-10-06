@@ -1,5 +1,6 @@
 import type { JsonValue } from "@omp-app/contracts";
 import type {
+  ScalarSettingControl,
   SettingControl,
   SettingsSectionDescriptor,
   SettingValue,
@@ -96,11 +97,11 @@ function arrayValidator(value: SettingValue): ValidationResult {
 
 function control(
   key: string,
-  kind: SettingControl["kind"],
+  kind: ScalarSettingControl["kind"],
   apply: SettingControl["apply"],
   validate: Validator,
   options?: readonly string[],
-): SettingControl {
+): ScalarSettingControl {
   return {
     key,
     label: labelFor(key),

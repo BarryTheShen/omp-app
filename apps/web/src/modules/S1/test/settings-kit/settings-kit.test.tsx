@@ -1,11 +1,15 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import type { ConfigEntry, JsonValue } from "@omp-app/contracts";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { afterEach, describe, expect, test } from "vitest";
 import {
   type ConfigSnapshot,
   type ConfigStoreClient,
   commit,
+  type MapSettingControl,
   preview,
   provenanceLabel,
+  type RowsSettingControl,
   readSection,
   resetToEffective,
   type SettingControl,
@@ -14,8 +18,12 @@ import {
   type StagedSettings,
   secretSummary,
   stage,
+  structuredDrafts,
+  structuredValue,
   validate,
 } from "../../settings-kit";
+
+afterEach(cleanup);
 
 const controls: readonly SettingControl[] = [
   {
@@ -211,5 +219,191 @@ describe("S1 settings section", () => {
     expect(screen.getByRole("combobox")).toBeTruthy();
     expect(screen.getByRole("spinbutton")).toBeTruthy();
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
+  });
+});
+
+describe("S1 structured settings", () => {
+  const limits: MapSettingControl = {
+    key: "providers.maxInFlightRequests",
+    label: "Max In-Flight Requests",
+    kind: "map",
+    secret: false,
+    keyLabel: "Provider name",
+    value: { label: "Request limit", kind: "number", positive: true },
+    addLabel: "Add provider",
+    emptyLabel: "No provider-specific limits",
+    validate: () => ({ valid: true }),
+    apply: "live",
+  };
+  const rules: RowsSettingControl = {
+    key: "bash.patterns",
+    label: "Bash Approval Patterns",
+    kind: "rows",
+    secret: false,
+    fields: {
+      match: { label: "Command pattern", kind: "text" },
+      approval: {
+        label: "Approval",
+        kind: "enum",
+        options: [
+          { value: "prompt", label: "Ask first" },
+          { value: "allow", label: "Allow" },
+        ],
+      },
+    },
+    ordered: true,
+    addLabel: "Add rule",
+    emptyLabel: "No approval rules",
+    validate: () => ({ valid: true }),
+    apply: "reload",
+  };
+  const structuredDescriptor: SettingsSectionDescriptor = {
+    ...descriptor,
+    controls: [limits, rules],
+  };
+  const entry = (key: string, value: JsonValue): ConfigEntry => ({
+    key,
+    secret: false,
+    value,
+    source: "global",
+    overrides: [],
+  });
+  const structuredSnapshot: ConfigSnapshot = {
+    folder: null,
+    revision: "r1",
+    entries: [
+      entry("providers.maxInFlightRequests", { openai: 4 }),
+      entry("bash.patterns", [
+        { match: "git push *", approval: "prompt" },
+        { match: "ls *", approval: "allow" },
+      ]),
+    ],
+  };
+
+  test("turns rows into a value and reports the first problem in plain English", () => {
+    expect(structuredDrafts(limits, { openai: 4, anthropic: 2 })).toEqual([
+      { key: "anthropic", value: "2" },
+      { key: "openai", value: "4" },
+    ]);
+    expect(structuredValue(limits, [{ key: " openai ", value: "4" }])).toEqual({
+      ok: true,
+      value: { openai: 4 },
+    });
+    // A row added but not typed in yet doesn't count; a half-filled one does.
+    expect(structuredValue(limits, [{ key: "", value: "" }])).toEqual({ ok: true, value: {} });
+    expect(structuredValue(limits, [{ key: "", value: "4" }])).toMatchObject({
+      ok: false,
+      validation: { message: "Enter a provider name." },
+    });
+    expect(
+      structuredValue(limits, [
+        { key: "openai", value: "4" },
+        { key: "openai", value: "2" },
+      ]),
+    ).toMatchObject({ ok: false, validation: { message: "Provider names must be unique." } });
+    expect(structuredValue(limits, [{ key: "openai", value: "0" }])).toMatchObject({
+      ok: false,
+      validation: { message: "Enter a positive request limit." },
+    });
+    expect(structuredValue(rules, [{ match: "git *", approval: "allow" }])).toEqual({
+      ok: true,
+      value: [{ match: "git *", approval: "allow" }],
+    });
+    expect(structuredValue(rules, [{ match: "git *", approval: "sometimes" }])).toMatchObject({
+      ok: false,
+      validation: { message: "Choose an approval." },
+    });
+  });
+
+  test("edits a map in place: add, change, remove, and blocks Save while a row is wrong", async () => {
+    const stagedValues: JsonValue[] = [];
+    function Harness() {
+      const [staged, setStaged] = useState<StagedSettings>({
+        snapshot: structuredSnapshot,
+        edits: {},
+      });
+      return (
+        <SettingsSection
+          descriptor={structuredDescriptor}
+          snapshot={structuredSnapshot}
+          staged={staged}
+          onStage={(next) => {
+            const value = next.edits["providers.maxInFlightRequests"];
+            if (value && !value.secret) stagedValues.push(value.value);
+            setStaged(next);
+          }}
+          onCommit={() => undefined}
+          onCancel={() => setStaged({ snapshot: structuredSnapshot, edits: {} })}
+        />
+      );
+    }
+    render(<Harness />);
+    const save = () => screen.getByRole("button", { name: "Save changes" });
+    expect(screen.getByLabelText("Provider name 1")).toHaveProperty("value", "openai");
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    fireEvent.change(screen.getByLabelText("Request limit 2"), { target: { value: "2" } });
+    expect(screen.getByRole("alert").textContent).toBe("Enter a provider name.");
+    expect(save()).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Provider name 2"), { target: { value: "anthropic" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(stagedValues.at(-1)).toEqual({ openai: 4, anthropic: 2 });
+    expect(save()).toHaveProperty("disabled", false);
+    fireEvent.click(screen.getByRole("button", { name: "Remove openai" }));
+    expect(stagedValues.at(-1)).toEqual({ anthropic: 2 });
+    // Cancel drops the rows being edited and shows the stored value again.
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText("Provider name 1")).toHaveProperty("value", "openai");
+    expect(screen.queryByLabelText("Provider name 2")).toBeNull();
+  });
+
+  test("moves ordered rows and stages the new order", () => {
+    const stagedValues: JsonValue[] = [];
+    function Harness() {
+      const [staged, setStaged] = useState<StagedSettings>({
+        snapshot: structuredSnapshot,
+        edits: {},
+      });
+      return (
+        <SettingsSection
+          descriptor={structuredDescriptor}
+          snapshot={structuredSnapshot}
+          staged={staged}
+          onStage={(next) => {
+            const value = next.edits["bash.patterns"];
+            if (value && !value.secret) stagedValues.push(value.value);
+            setStaged(next);
+          }}
+        />
+      );
+    }
+    render(<Harness />);
+    expect(screen.getByRole("button", { name: "Move row 1 up" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Move row 2 up" }));
+    expect(stagedValues.at(-1)).toEqual([
+      { match: "ls *", approval: "allow" },
+      { match: "git push *", approval: "prompt" },
+    ]);
+  });
+
+  test("shows a read-only setting as text with where to change it, and refuses to stage it", () => {
+    const readOnly: MapSettingControl = {
+      ...limits,
+      readOnly: { reason: "Change this in omp's settings file." },
+    };
+    const readOnlyDescriptor = { ...descriptor, controls: [readOnly] };
+    render(<SettingsSection descriptor={readOnlyDescriptor} snapshot={structuredSnapshot} />);
+    expect(screen.getByText("openai: 4")).toBeTruthy();
+    expect(screen.getByText("Change this in omp's settings file.")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    const result = stage(
+      readOnlyDescriptor,
+      { snapshot: structuredSnapshot, edits: {} },
+      readOnly.key,
+      {
+        secret: false,
+        value: { openai: 1 },
+      },
+    );
+    expect(result).toMatchObject({ ok: false, validation: { code: "read-only" } });
   });
 });

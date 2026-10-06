@@ -1,5 +1,7 @@
 import type { JsonValue } from "@omp-app/contracts";
 import type {
+  RowsSettingControl,
+  ScalarSettingControl,
   SettingControl,
   SettingsSectionDescriptor,
   SettingValue,
@@ -70,20 +72,14 @@ function validatePath(value: SettingValue): ValidationResult {
     : { valid: true };
 }
 
-function validateList(value: SettingValue): ValidationResult {
-  return Array.isArray(plainValue(value))
-    ? { valid: true }
-    : { valid: false, code: "list", message: "Enter a list." };
-}
-
 function control(
   key: SettingControl["key"],
   label: string,
-  kind: SettingControl["kind"],
+  kind: ScalarSettingControl["kind"],
   validate: SettingControl["validate"],
   apply: SettingControl["apply"],
-  options?: SettingControl["options"],
-): SettingControl {
+  options?: ScalarSettingControl["options"],
+): ScalarSettingControl {
   return {
     key,
     label,
@@ -153,13 +149,56 @@ function pathControl(
   return control(key, label, "path", validatePath, apply);
 }
 
-function listControl(
-  key: SettingControl["key"],
-  label: string,
-  apply: SettingControl["apply"],
-): SettingControl {
-  return control(key, label, "list", validateList, apply);
+const BASH_PATTERN_APPROVALS = ["allow", "deny", "prompt"] as const;
+
+/** Each rule is `{ match, approval }`; omp drops rules with an empty match or another approval. */
+function validateBashPatterns(value: SettingValue): ValidationResult {
+  const candidate = plainValue(value);
+  const valid =
+    Array.isArray(candidate) &&
+    candidate.every(
+      (rule) =>
+        typeof rule === "object" &&
+        rule !== null &&
+        !Array.isArray(rule) &&
+        typeof rule.match === "string" &&
+        rule.match.trim().length > 0 &&
+        BASH_PATTERN_APPROVALS.some((approval) => approval === rule.approval),
+    );
+  return valid
+    ? { valid: true }
+    : { valid: false, code: "rows", message: "Each rule needs a command pattern and an approval." };
 }
+
+/**
+ * `bash.patterns`: ordered command approval rules, first match wins; `*` is the only wildcard
+ * (omp v18.6.1 exec/settings.ts:120-131, tools/bash.ts:235-270).
+ */
+const bashPatternsControl: RowsSettingControl = {
+  key: "bash.patterns",
+  label: "Bash Approval Patterns",
+  description:
+    "Ordered rules for approving bash commands; the first matching rule wins. Use * as a wildcard.",
+  kind: "rows",
+  secret: false,
+  fields: {
+    match: { label: "Command pattern", kind: "text", placeholder: "git push *" },
+    approval: {
+      label: "Approval",
+      kind: "enum",
+      options: [
+        { value: "prompt", label: "Ask first" },
+        { value: "allow", label: "Allow" },
+        { value: "deny", label: "Deny" },
+      ],
+    },
+  },
+  ordered: true,
+  addLabel: "Add rule",
+  emptyLabel: "No approval rules",
+  validate: validateBashPatterns,
+  apply: "reload",
+};
 
 const filesEditing: readonly SettingControl[] = [
   enumControl(
@@ -215,7 +254,7 @@ const shellBash: readonly SettingControl[] = [
   booleanControl("bash.enabled", "Bash", "restart"),
   booleanControl("bash.allowCompoundCommands", "Allow Compound Commands", "reload"),
   booleanControl("bash.autoBackground.enabled", "Bash Auto-Background", "reload"),
-  listControl("bash.patterns", "Bash Approval Patterns", "reload"),
+  bashPatternsControl,
   booleanControl("bashInterceptor.enabled", "Bash Interceptor", "reload"),
   enumControl("bash.direnv", "direnv Auto-Load", ["auto", "off"], "restart"),
   durationControl("bash.direnvLoadTimeoutMs", "direnv Load Timeout (ms)", 600_000, "restart"),

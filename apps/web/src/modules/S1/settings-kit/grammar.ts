@@ -46,17 +46,61 @@ export type PreviewPatch = {
 
 export type ApplyBoundary = "live" | "session" | "reload" | "restart" | "unsupported";
 
-export type SettingControl = {
+type SettingControlBase = {
   readonly key: ConfigKey;
   readonly label: string;
   readonly description?: string;
-  readonly kind: SettingControlKind;
   readonly secret: boolean;
-  readonly options?: readonly SettingOption[];
   readonly validate: (value: SettingValue, snapshot: ConfigSnapshot) => ValidationResult;
   readonly apply: ApplyBoundary;
   readonly preview?: (value: SettingValue, snapshot: ConfigSnapshot) => PreviewPatch | null;
+  /** Shown but not editable in the app; `reason` says, in plain English, where to change it. */
+  readonly readOnly?: { readonly reason: string };
 };
+
+/** A single value edited in one input. */
+export type ScalarSettingControl = SettingControlBase & {
+  readonly kind: SettingControlKind;
+  readonly options?: readonly SettingOption[];
+};
+
+/** One typed field of a structured setting: a map's value, or a column of a rows setting. */
+export type SettingField = {
+  readonly label: string;
+  readonly kind: "text" | "number" | "enum" | "boolean";
+  /** Choices for `enum`. */
+  readonly options?: readonly SettingOption[];
+  readonly placeholder?: string;
+  /** A `number` must be greater than zero. */
+  readonly positive?: boolean;
+  /** A `number` must be a whole number. */
+  readonly integer?: boolean;
+};
+
+/** A record of name → value pairs, edited as rows (e.g. provider name → request limit). */
+export type MapSettingControl = SettingControlBase & {
+  readonly kind: "map";
+  readonly keyLabel: string;
+  readonly keyPlaceholder?: string;
+  readonly value: SettingField;
+  /** The add button, e.g. "Add provider". */
+  readonly addLabel: string;
+  /** Shown when there are no rows, e.g. "No provider-specific limits". */
+  readonly emptyLabel: string;
+};
+
+/** An ordered list of objects with fixed fields, edited as rows (e.g. bash approval rules). */
+export type RowsSettingControl = SettingControlBase & {
+  readonly kind: "rows";
+  /** Object property name → field. Every field is required. */
+  readonly fields: Readonly<Record<string, SettingField>>;
+  /** The order matters to omp (first match wins), so rows can be moved. */
+  readonly ordered: boolean;
+  readonly addLabel: string;
+  readonly emptyLabel: string;
+};
+
+export type SettingControl = ScalarSettingControl | MapSettingControl | RowsSettingControl;
 
 export type SettingsSectionDescriptor = {
   readonly id: DescriptorId;
@@ -137,6 +181,12 @@ export function stage(
     return {
       ok: false,
       validation: { valid: false, code: "unknown-key", message: `Unknown setting ${key}` },
+    };
+  }
+  if (control.readOnly) {
+    return {
+      ok: false,
+      validation: { valid: false, code: "read-only", message: control.readOnly.reason },
     };
   }
   const validation = validate(control, value, state.snapshot);
@@ -281,4 +331,153 @@ export function secretSummary(
   entry: ConfigEntry,
 ): { readonly isSecret: true; readonly isSet: boolean; readonly source: string } | null {
   return entry.secret ? { isSecret: true, isSet: entry.isSet, source: entry.source } : null;
+}
+
+/** The text in each input of one row of a structured control (a map row is `key` + `value`). */
+export type StructuredDraftRow = Readonly<Record<string, string>>;
+
+export type StructuredResult =
+  | { readonly ok: true; readonly value: JsonValue }
+  | { readonly ok: false; readonly validation: ValidationResult & { readonly valid: false } };
+
+/** The input text that shows a field's stored value. */
+function fieldDraft(field: SettingField, value: JsonValue | undefined): string {
+  if (value === undefined || value === null) return "";
+  if (field.kind === "boolean") return value === true ? "true" : "false";
+  return typeof value === "object" ? "" : String(value);
+}
+
+function withArticle(noun: string): string {
+  return `${/^[aeiou]/iu.test(noun) ? "an" : "a"} ${noun}`;
+}
+
+function invalid(message: string): StructuredResult {
+  return { ok: false, validation: { valid: false, code: "structured", message } };
+}
+
+/** Parses one field's input text, or says in plain English what is wrong with it. */
+function parseField(
+  field: SettingField,
+  draft: string,
+):
+  | { readonly ok: true; readonly value: JsonValue }
+  | { readonly ok: false; readonly message: string } {
+  const noun = field.label.toLowerCase();
+  if (field.kind === "boolean") return { ok: true, value: draft === "true" };
+  if (field.kind === "enum") {
+    const option = field.options?.find((candidate) => String(candidate.value) === draft);
+    return option
+      ? { ok: true, value: option.value }
+      : { ok: false, message: `Choose ${withArticle(noun)}.` };
+  }
+  if (field.kind === "number") {
+    const value = Number(draft);
+    if (draft.trim() === "" || !Number.isFinite(value) || (field.positive && value <= 0)) {
+      return {
+        ok: false,
+        message: field.positive ? `Enter a positive ${noun}.` : `Enter a number for ${noun}.`,
+      };
+    }
+    if (field.integer && !Number.isInteger(value)) {
+      return { ok: false, message: `Enter a whole number for ${noun}.` };
+    }
+    return { ok: true, value };
+  }
+  const text = draft.trim();
+  return text.length > 0
+    ? { ok: true, value: text }
+    : { ok: false, message: `Enter ${withArticle(noun)}.` };
+}
+
+function isJsonObject(
+  value: JsonValue | undefined,
+): value is { readonly [key: string]: JsonValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The rows a structured control shows for a stored value (map rows sorted by name). */
+export function structuredDrafts(
+  control: MapSettingControl | RowsSettingControl,
+  value: JsonValue | undefined,
+): readonly StructuredDraftRow[] {
+  if (control.kind === "map") {
+    if (!isJsonObject(value)) return [];
+    return Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => ({ key, value: fieldDraft(control.value, item) }));
+  }
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isJsonObject)
+    .map((item) =>
+      Object.fromEntries(
+        Object.entries(control.fields).map(([name, field]) => [
+          name,
+          fieldDraft(field, item[name]),
+        ]),
+      ),
+    );
+}
+
+/** A new, empty row: text and numbers blank, an enum on its first choice, a switch off. */
+export function emptyStructuredDraft(
+  control: MapSettingControl | RowsSettingControl,
+): StructuredDraftRow {
+  const initial = (field: SettingField): string =>
+    field.kind === "enum"
+      ? String(field.options?.[0]?.value ?? "")
+      : field.kind === "boolean"
+        ? "false"
+        : "";
+  if (control.kind === "map") return { key: "", value: initial(control.value) };
+  return Object.fromEntries(
+    Object.entries(control.fields).map(([name, field]) => [name, initial(field)]),
+  );
+}
+
+/** Typed inputs (text and number) are blank; enum and switch fields always hold a choice. */
+function isBlankRow(fields: readonly [string, SettingField][], row: StructuredDraftRow): boolean {
+  const typed = fields.filter(([, field]) => field.kind === "text" || field.kind === "number");
+  return typed.length > 0 && typed.every(([name]) => (row[name] ?? "").trim() === "");
+}
+
+/**
+ * The setting value the rows describe, or the first problem with them (in row order). A row whose
+ * typed inputs are all blank (one just added) is left out instead of reported.
+ */
+export function structuredValue(
+  control: MapSettingControl | RowsSettingControl,
+  rows: readonly StructuredDraftRow[],
+): StructuredResult {
+  if (control.kind === "map") {
+    const keyNoun = control.keyLabel.toLowerCase();
+    const columns: [string, SettingField][] = [
+      ["key", { label: control.keyLabel, kind: "text" }],
+      ["value", control.value],
+    ];
+    const value: Record<string, JsonValue> = {};
+    for (const row of rows) {
+      if (isBlankRow(columns, row)) continue;
+      const key = (row.key ?? "").trim();
+      if (key.length === 0) return invalid(`Enter ${withArticle(keyNoun)}.`);
+      if (Object.hasOwn(value, key)) return invalid(`${control.keyLabel}s must be unique.`);
+      const parsed = parseField(control.value, row.value ?? "");
+      if (!parsed.ok) return invalid(parsed.message);
+      value[key] = parsed.value;
+    }
+    return { ok: true, value };
+  }
+  const fields = Object.entries(control.fields);
+  const items: JsonValue[] = [];
+  for (const row of rows) {
+    if (isBlankRow(fields, row)) continue;
+    const item: Record<string, JsonValue> = {};
+    for (const [name, field] of fields) {
+      const parsed = parseField(field, row[name] ?? "");
+      if (!parsed.ok) return invalid(parsed.message);
+      item[name] = parsed.value;
+    }
+    items.push(item);
+  }
+  return { ok: true, value: items };
 }

@@ -1,10 +1,12 @@
 import type { ConfigEntry } from "@omp-app/contracts";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   ConfigSnapshot,
   PreviewResult,
+  ScalarSettingControl,
   SettingControl,
   SettingsSectionDescriptor,
   SettingValue,
@@ -12,6 +14,7 @@ import type {
   ValidationResult,
 } from "./grammar";
 import { effectiveEntry, provenanceLabel, secretSummary, stage } from "./grammar";
+import { isStructuredControl, ReadOnlyValue, StructuredEditor } from "./structured";
 
 export type SettingsSectionProps = {
   readonly descriptor: SettingsSectionDescriptor;
@@ -40,6 +43,24 @@ export function SettingsSection({
   onCommit,
   onCancel,
 }: SettingsSectionProps) {
+  // The latest check of each control in this section, so errors show (and block Save) even when
+  // the caller doesn't track `onPreview`; the caller's `validation` fills in the rest.
+  const [checks, setChecks] = useState<Readonly<Record<string, ValidationResult>>>({});
+  // Bumped by Cancel so structured editors drop rows the user was still typing.
+  const [resetToken, setResetToken] = useState(0);
+  const check = (key: string, result: ValidationResult) => {
+    setChecks((current) => {
+      if (result.valid) {
+        if (!(key in current)) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      }
+      return { ...current, [key]: result };
+    });
+  };
+  const shown = (key: string): ValidationResult | undefined => checks[key] ?? validation[key];
+  const hasError = descriptor.controls.some((control) => shown(control.key)?.valid === false);
   return (
     <section
       aria-labelledby={`${descriptor.id}-title`}
@@ -66,19 +87,26 @@ export function SettingsSection({
             control={control}
             entry={effectiveEntry(snapshot, control.key)}
             value={staged.edits[control.key]}
-            validation={validation[control.key]}
+            validation={shown(control.key)}
             disabled={disabled}
+            resetToken={resetToken}
             onStage={(value) => {
               const result = stage(descriptor, staged, control.key, value);
               if (result.ok) {
+                check(control.key, { valid: true });
                 onStage?.(result.state);
                 onPreview?.(control.key, {
                   ok: true,
                   patch: control.preview?.(value, snapshot) ?? null,
                 });
               } else {
+                check(control.key, result.validation);
                 onPreview?.(control.key, { ok: false, validation: result.validation });
               }
+            }}
+            onInvalid={(result) => {
+              check(control.key, result);
+              onPreview?.(control.key, { ok: false, validation: result });
             }}
             onSecretAction={onSecretAction}
           />
@@ -87,7 +115,17 @@ export function SettingsSection({
 
       <footer className="mt-5 flex flex-wrap items-center justify-end gap-2">
         {onCancel ? (
-          <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={disabled}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setChecks({});
+              setResetToken((token) => token + 1);
+              onCancel();
+            }}
+            disabled={disabled}
+          >
             Cancel
           </Button>
         ) : null}
@@ -97,7 +135,7 @@ export function SettingsSection({
             variant="outline"
             size="sm"
             onClick={onCommit}
-            disabled={disabled || Object.keys(staged.edits).length === 0}
+            disabled={disabled || hasError || Object.keys(staged.edits).length === 0}
           >
             Save changes
           </Button>
@@ -113,7 +151,9 @@ type SettingControlRowProps = {
   readonly value?: SettingValue;
   readonly validation?: ValidationResult;
   readonly disabled: boolean;
+  readonly resetToken: number;
   readonly onStage: (value: SettingValue) => void;
+  readonly onInvalid: (validation: ValidationResult & { readonly valid: false }) => void;
   readonly onSecretAction?: (key: string, action: "set" | "unset") => void;
 };
 
@@ -123,13 +163,15 @@ function SettingControlRow({
   value,
   validation,
   disabled,
+  resetToken,
   onStage,
+  onInvalid,
   onSecretAction,
 }: SettingControlRowProps) {
   const secret = entry ? secretSummary(entry) : null;
   const effectiveValue =
     value?.secret === false ? value.value : entry && !entry.secret ? entry.value : undefined;
-  const valueText = effectiveValue === undefined ? "" : String(effectiveValue);
+  const committedValue = entry && !entry.secret ? entry.value : undefined;
   const provenance = entry ? provenanceLabel(entry) : "not configured";
   const setSecret = () => onSecretAction?.(control.key, "set");
   const unsetSecret = () => onSecretAction?.(control.key, "unset");
@@ -179,10 +221,22 @@ function SettingControlRow({
               </Button>
             ) : null}
           </div>
+        ) : control.readOnly ? (
+          <ReadOnlyValue control={control} value={effectiveValue} />
+        ) : isStructuredControl(control) ? (
+          <StructuredEditor
+            committed={committedValue}
+            control={control}
+            disabled={disabled}
+            resetToken={resetToken}
+            value={effectiveValue}
+            onInvalid={onInvalid}
+            onValue={(next) => onStage({ secret: false, value: next })}
+          />
         ) : (
           <ControlInput
             control={control}
-            value={valueText}
+            value={effectiveValue === undefined ? "" : String(effectiveValue)}
             disabled={disabled}
             onValue={(next) => onStage({ secret: false, value: parseControlValue(control, next) })}
           />
@@ -203,7 +257,7 @@ function ControlInput({
   disabled,
   onValue,
 }: {
-  readonly control: SettingControl;
+  readonly control: ScalarSettingControl;
   readonly value: string;
   readonly disabled: boolean;
   readonly onValue: (value: string) => void;
@@ -262,7 +316,7 @@ function ControlInput({
 }
 
 function parseControlValue(
-  control: SettingControl,
+  control: ScalarSettingControl,
   value: string,
 ): string | number | boolean | readonly string[] {
   if (control.kind === "boolean") return value === "true";
