@@ -71,7 +71,7 @@ function unavailable(message: string, capability: `host.${string}`): AppFailure 
 function queryMatches(session: SessionMetadata, query: string): boolean {
   const needle = query.trim().toLocaleLowerCase();
   if (needle.length === 0) return true;
-  return [session.title ?? "", session.id, session.cwd].some((value) =>
+  return [session.title ?? "", session.firstPrompt ?? "", session.id, session.cwd].some((value) =>
     value.toLocaleLowerCase().includes(needle),
   );
 }

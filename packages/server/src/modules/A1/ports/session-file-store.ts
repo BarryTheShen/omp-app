@@ -29,6 +29,7 @@ function mapSession(file: InternalSessionFile): ContractSessionFile {
     sessionFile: file.sessionFile as ContractSessionFile["sessionFile"],
     version: file.version,
     title: file.title ?? null,
+    firstPrompt: file.firstPrompt,
     cwd: file.cwd as ContractSessionFile["cwd"],
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,

@@ -20,6 +20,7 @@ function metadata(id: ThreadId, title: string, updatedAt: string): SessionMetada
     sessionFile: `/workspace/project/.omp/${id}.jsonl` as SessionMetadata["sessionFile"],
     version: 3,
     title,
+    firstPrompt: null,
     cwd: folder,
     createdAt: "2026-10-05T00:00:00.000Z",
     updatedAt,

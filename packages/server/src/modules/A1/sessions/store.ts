@@ -135,18 +135,45 @@ function statusFromEntries(entries: readonly unknown[]): SessionStatus {
   return "unknown";
 }
 
+const FIRST_PROMPT_MAX = 120;
+
 function messageCounts(entries: readonly unknown[]): {
   messageCount: number;
   assistantTurns: number;
+  firstPrompt: string | null;
 } {
   let messageCount = 0;
   let assistantTurns = 0;
+  let firstPrompt: string | null = null;
   for (const entry of entries) {
     if (!isJsonObject(entry) || entry.type !== "message") continue;
     messageCount++;
-    if (isJsonObject(entry.message) && entry.message.role === "assistant") assistantTurns++;
+    if (!isJsonObject(entry.message)) continue;
+    if (entry.message.role === "assistant") assistantTurns++;
+    if (firstPrompt === null && entry.message.role === "user") {
+      firstPrompt = promptLine(entry.message.content);
+    }
   }
-  return { messageCount, assistantTurns };
+  return { messageCount, assistantTurns, firstPrompt };
+}
+
+/** A user message's text as one line of at most FIRST_PROMPT_MAX characters; null when empty. */
+function promptLine(content: unknown): string | null {
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .map((part) =>
+              isJsonObject(part) && part.type === "text" && typeof part.text === "string"
+                ? part.text
+                : "",
+            )
+            .join(" ")
+        : "";
+  const line = text.replace(/\s+/g, " ").trim();
+  if (line.length === 0) return null;
+  return line.length > FIRST_PROMPT_MAX ? `${line.slice(0, FIRST_PROMPT_MAX - 1)}…` : line;
 }
 
 function sortListings(listings: SessionListing[]): void {
@@ -365,6 +392,7 @@ export class SessionFileStore {
       parentSession: header.parentSession,
       messageCount: counts.messageCount,
       assistantTurns: counts.assistantTurns,
+      firstPrompt: counts.firstPrompt,
       sizeBytes: stat.size,
       status: statusFromEntries(parsed.entries),
       liveness: { lease: lease.lease, serverProcess },

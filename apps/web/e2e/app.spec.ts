@@ -197,7 +197,15 @@ realTest(
       await expect(page.getByRole("textbox", { name: "Message input" })).toHaveValue(
         "draft survives reload",
       );
-      await expect(page.getByText(promptText, { exact: true })).toBeVisible();
+      await expect(
+        page
+          .locator('[data-slot="u1-message-row"][data-role="user"]')
+          .filter({ hasText: promptText }),
+      ).toBeVisible();
+      // omp hasn't titled the session, so the sidebar names it after the first prompt.
+      await expect(
+        page.getByRole("listbox", { name: "Session list" }).getByRole("option").first(),
+      ).toContainText(promptText);
       await expect(page.locator('[data-testid^="tool-card-"]').first()).toBeVisible();
       await expect(
         page.locator('[data-slot="u1-message-row"][data-role="assistant"]').last(),

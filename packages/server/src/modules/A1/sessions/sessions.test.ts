@@ -169,6 +169,19 @@ describe("SessionFileStore", () => {
         cwd,
         timestamp: "2026-10-04T10:00:00.000Z",
         slotTitle: "Older physical title",
+        records: [
+          {
+            type: "message",
+            id: "long-user-entry",
+            message: {
+              role: "user",
+              content: [
+                { type: "text", text: `Explain\n  this   ${"very ".repeat(40)}long question` },
+                { type: "image", data: "..." },
+              ],
+            },
+          },
+        ],
       });
       await writeSession(newer, {
         id: "newer",
@@ -208,6 +221,12 @@ describe("SessionFileStore", () => {
       expect(result.sessions[0]?.createdAt).toBe("2026-10-04T11:00:00.000Z");
       expect(result.sessions[0]?.messageCount).toBe(2);
       expect(result.sessions[0]?.assistantTurns).toBe(1);
+      // The first user message, one line: what the sidebar shows until omp titles the session.
+      expect(result.sessions[0]?.firstPrompt).toBe("hello");
+      const longPrompt = result.sessions[1]?.firstPrompt ?? "";
+      expect(longPrompt.startsWith("Explain this very very")).toBe(true);
+      expect(longPrompt).toHaveLength(120);
+      expect(longPrompt.endsWith("…")).toBe(true);
       expect(result.sessions[0]?.status).toBe("complete");
       expect(
         result.sessions[0]?.parseWarnings.some((warning) => warning.code === "malformed_line"),

@@ -90,6 +90,8 @@ export interface SessionFile {
   readonly sessionFile: string;
   readonly version: number;
   readonly title?: string;
+  /** The first user message, trimmed to one line of at most 120 characters, for untitled sessions. */
+  readonly firstPrompt: string | null;
   readonly cwd: string;
   readonly createdAt: string;
   readonly updatedAt: string;

@@ -126,6 +126,7 @@ function internalSessionFile() {
     sessionFile: "/workspace/session.jsonl",
     version: 3,
     title: "Session",
+    firstPrompt: null,
     cwd: "/workspace",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",

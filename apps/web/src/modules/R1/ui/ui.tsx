@@ -39,8 +39,9 @@ function highlight(text: string, query: string): React.ReactNode {
   );
 }
 
+/** omp's title, else the first thing the user asked (omp titles a session after its first turn). */
 function sessionTitle(session: SessionMetadata): string {
-  return session.title ?? session.id;
+  return session.title ?? session.firstPrompt ?? "New session";
 }
 
 function folderLabel(folder: string): string {

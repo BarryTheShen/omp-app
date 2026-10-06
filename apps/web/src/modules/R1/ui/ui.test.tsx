@@ -12,12 +12,18 @@ afterEach(cleanup);
 const folder = "/workspace/project" as SessionMetadata["cwd"];
 const scope = { kind: "folder" as const, folder };
 
-function session(id: string, updatedAt: string, title = id): SessionFile {
+function session(
+  id: string,
+  updatedAt: string,
+  title: string | null = id,
+  firstPrompt: string | null = null,
+): SessionFile {
   return {
     id: ThreadIdSchema.parse(id),
     sessionFile: SessionFilePath.parse(`${folder}/.omp/${id}.jsonl`),
     version: 3,
     title,
+    firstPrompt,
     cwd: folder,
     createdAt: "2026-10-05T00:00:00.000Z",
     updatedAt,
@@ -32,11 +38,12 @@ function session(id: string, updatedAt: string, title = id): SessionFile {
   };
 }
 
-function modelWithSessions(): SessionCatalogModel {
-  const files = [
+function modelWithSessions(
+  files: SessionFile[] = [
     session("old", "2026-10-01T00:00:00.000Z", "Old chat"),
     session("new", "2026-10-03T00:00:00.000Z", "Newest chat"),
-  ];
+  ],
+): SessionCatalogModel {
   return new SessionCatalogModel({
     scope,
     sessionFiles: {
@@ -84,6 +91,19 @@ describe("SessionCatalogSidebar", () => {
     expect(options[0]?.textContent).toContain("Newest chat");
     expect(options[1]?.textContent).toContain("Old chat");
     expect(calls).toEqual([]);
+  });
+
+  test("an untitled session shows its first prompt, then a generic name, never its id", async () => {
+    renderSidebar({
+      catalog: modelWithSessions([
+        session("01a10e79-prompted", "2026-10-03T00:00:00.000Z", null, "Fix the flaky login test"),
+        session("01a10e79-empty", "2026-10-02T00:00:00.000Z", null, null),
+      ]),
+    });
+    await waitFor(() => expect(screen.getByText("Fix the flaky login test")).toBeTruthy());
+    const options = screen.getAllByRole("option");
+    expect(options[1]?.textContent).toContain("New session");
+    expect(screen.queryByText(/01a10e79/)).toBeNull();
   });
 
   test("search highlights matching titles and arrow/Enter opens the focused row", async () => {
