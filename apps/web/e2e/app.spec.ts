@@ -166,8 +166,9 @@ realTest(
       // The fake provider answers a prompt containing "run_bash" with a bash tool call
       // (`echo fixture-tool`) and then "tool said: fixture-tool" (packages/omp-rpc/scripts/fake-openai-server.ts).
       const promptText = "Please run_bash and tell me what it printed.";
-      await page.getByRole("textbox", { name: "Message input" }).fill(promptText);
-      await page.getByRole("button", { name: "Send message" }).click();
+      const messageInput = page.getByRole("textbox", { name: "Message input" });
+      await messageInput.fill(promptText);
+      await messageInput.press("Enter");
       const toolCard = page.locator('[data-testid^="tool-card-"]');
       const userMessage = page
         .locator('[data-slot="u1-message-row"][data-role="user"]')
@@ -175,6 +176,8 @@ realTest(
       const assistantMessages = page.locator('[data-slot="u1-message-row"][data-role="assistant"]');
       await expect(page.getByText("tool said: fixture-tool")).toBeVisible({ timeout: 45_000 });
       await expect(userMessage).toBeVisible();
+      // After sending, the cursor stays in the composer so the next message can be typed at once.
+      await expect(messageInput).toBeFocused();
       await expect(toolCard.first()).toBeVisible();
       // The bash card shows the command's output (omp's bash tool result), not a waiting state.
       await expect(page.getByTestId("u3-bash-stdout")).toContainText("fixture-tool");
