@@ -176,6 +176,9 @@ realTest(
       await expect(page.getByText("tool said: fixture-tool")).toBeVisible({ timeout: 45_000 });
       await expect(userMessage).toBeVisible();
       await expect(toolCard.first()).toBeVisible();
+      // The bash card shows the command's output (omp's bash tool result), not a waiting state.
+      await expect(page.getByTestId("u3-bash-stdout")).toContainText("fixture-tool");
+      await expect(page.getByText("Waiting for bash output…")).toHaveCount(0);
       await expect(assistantMessages.last()).toBeVisible();
       await expect(page.getByText("Assistant is working…")).toBeHidden({ timeout: 45_000 });
       await expect(page.getByText("Loading conversation…")).toBeHidden();

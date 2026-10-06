@@ -286,7 +286,7 @@ function toolResultPart(
   if (!toolCallId || !toolName)
     return textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" });
   const state = stateFor(toolStates, toolCallId);
-  const result = state?.result !== undefined ? state.result : message.content;
+  const result = state?.result !== undefined ? state.result : toolResultFromMessage(message);
   return {
     type: "tool-call",
     toolCallId,
@@ -305,6 +305,17 @@ function toolResultPart(
           ompToolState: state,
         }),
   };
+}
+
+/**
+ * A `toolResult` message from history carries the same fields omp's `tool_execution_end` result has
+ * (`{ content, details }`), so cards read one shape whether the call ran live or was reopened.
+ */
+function toolResultFromMessage(message: Record<string, unknown>): unknown {
+  if (message.content === undefined) return undefined;
+  return message.details === undefined
+    ? { content: message.content }
+    : { content: message.content, details: message.details };
 }
 export type ExternalMessage =
   | ThreadMessageLike
@@ -331,7 +342,7 @@ function toolResultExternalMessage(
     } as unknown as ThreadMessageLike;
   }
   const state = stateFor(toolStates, toolCallId);
-  const result = state?.result !== undefined ? state.result : message.content;
+  const result = state?.result !== undefined ? state.result : toolResultFromMessage(message);
   return {
     role: "tool",
     toolCallId,

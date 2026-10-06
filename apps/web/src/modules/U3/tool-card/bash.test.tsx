@@ -79,4 +79,34 @@ describe("BashCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
     expect(onCancel).toHaveBeenCalledOnce();
   });
+
+  test("shows the output of omp's bash tool result, with wall time apart from it", () => {
+    // The shape omp v18.6.1 sends in tool_execution_end and the toolResult message.
+    const toolResult = {
+      content: [{ type: "text", text: "fixture-tool\n\n\nWall time: 0.04 seconds" }],
+      details: { timeoutSeconds: 300, wallTimeMs: 37.9 },
+    };
+    render(<BashCard rendererProps={props(toolResult)} />);
+
+    const stdout = screen.getByTestId("u3-bash-stdout").textContent ?? "";
+    expect(stdout).toContain("fixture-tool");
+    expect(stdout).not.toContain("Wall time");
+    expect(screen.getByText("Wall time: 38ms")).toBeTruthy();
+    expect(screen.queryByText("Waiting for bash output…")).toBeNull();
+  });
+
+  test("streams partial output while the command runs", () => {
+    // R0 puts a running call's latest partialResult in the part's `result` while status is running.
+    render(
+      <BashCard
+        rendererProps={props(
+          { content: [{ type: "text", text: "line 1\n" }], details: {} },
+          { type: "running" },
+        )}
+      />,
+    );
+
+    expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("line 1");
+    expect(screen.queryByText("Waiting for bash output…")).toBeNull();
+  });
 });

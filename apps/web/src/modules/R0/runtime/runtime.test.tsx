@@ -242,7 +242,8 @@ describe("R0.3 assistant-ui runtime", () => {
         type: "tool-call",
         toolCallId: "orphan-tool",
         toolName: "bash",
-        result: [{ type: "text", text: "done" }],
+        // A history tool result has the same `{ content, details }` shape as a live one.
+        result: { content: [{ type: "text", text: "done" }] },
       }),
     ]);
     expect(() =>

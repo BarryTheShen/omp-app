@@ -1,5 +1,6 @@
 import type { OmpWire } from "@omp-app/contracts";
 import { useState } from "react";
+import { z } from "zod";
 import { Button } from "../../../components/ui/button";
 import { Icons } from "../../../tokens";
 import { ToolCard } from "./card";
@@ -29,7 +30,9 @@ export interface BashCardProps {
 /** Renders one normalized bash tool call; stop cancels the parent turn when supplied. */
 export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
   const normalized = normalizeToolRendererProps(rendererProps);
-  const result = decodeBashResult(rendererProps.result ?? normalized.result);
+  const result = decodeBashResult(
+    rendererProps.result ?? normalized.result ?? normalized.partialResult,
+  );
   const outputMeta = bashOutputMeta(result, normalized.outputMeta);
   const state = bashState(normalized, result, outputMeta);
   const command = commandFromArgs(rendererProps.args);
@@ -102,30 +105,95 @@ function bashState(
   };
 }
 
+/**
+ * The bash *tool* result omp emits for an agent's call, also each `tool_execution_update`
+ * partialResult: the AgentToolResult of omp v18.6.1 `packages/coding-agent/src/tools/bash.ts`, with
+ * `BashToolDetails` (`packages/tui/src/tools/bash.ts:54-105`).
+ */
+const BashToolResultSchema = z.looseObject({
+  content: z.array(z.unknown()),
+  details: z
+    .looseObject({
+      wallTimeMs: z.number().optional(),
+      exitCode: z.number().optional(),
+      timedOut: z.boolean().optional(),
+    })
+    .optional(),
+});
+const TextPartSchema = z.looseObject({ type: z.literal("text"), text: z.string() });
+
+/** The RPC `bash` command's result (`packages/coding-agent/src/exec/bash-executor.ts:87-102`). */
+const BashCommandResultSchema = z.looseObject({
+  output: z.string(),
+  exitCode: z.number().optional(),
+  cancelled: z.boolean().optional(),
+  timedOut: z.boolean().optional(),
+  truncated: z.boolean().optional(),
+  totalLines: z.number().optional(),
+  totalBytes: z.number().optional(),
+  outputLines: z.number().optional(),
+  outputBytes: z.number().optional(),
+  artifactId: z.string().optional(),
+  artifactElidedBytes: z.number().optional(),
+  workingDir: z.string().optional(),
+  wallTimeMs: z.number().optional(),
+  stderr: z.string().optional(),
+});
+
+/** omp appends "Wall time: N seconds" to the text it sends the model; the card shows wall time apart. */
+const WALL_TIME_SUFFIX = /\n*Wall time: [\d.]+ seconds?\s*$/;
+
+/** Reads bash output from either the agent's bash tool or the RPC bash command. */
 function decodeBashResult(value: unknown): BashResult | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-  if (!("output" in value) || typeof value.output !== "string") return undefined;
-  const output = value.output;
-  const result = value as Partial<BashResult>;
+  const tool = BashToolResultSchema.safeParse(value);
+  if (tool.success) return decodeBashToolResult(tool.data);
+  const command = BashCommandResultSchema.safeParse(value);
+  if (!command.success) return undefined;
+  const result = command.data;
+  const lines = result.output.split("\n").length;
   return {
-    output,
+    output: result.output,
     cancelled: result.cancelled === true,
     truncated: result.truncated === true,
-    totalLines:
-      typeof result.totalLines === "number" ? result.totalLines : output.split("\n").length,
-    totalBytes: typeof result.totalBytes === "number" ? result.totalBytes : output.length,
-    outputLines:
-      typeof result.outputLines === "number" ? result.outputLines : output.split("\n").length,
-    outputBytes: typeof result.outputBytes === "number" ? result.outputBytes : output.length,
-    ...(typeof result.exitCode === "number" ? { exitCode: result.exitCode } : {}),
+    totalLines: result.totalLines ?? lines,
+    totalBytes: result.totalBytes ?? result.output.length,
+    outputLines: result.outputLines ?? lines,
+    outputBytes: result.outputBytes ?? result.output.length,
+    ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
     ...(result.timedOut === true ? { timedOut: true } : {}),
-    ...(typeof result.artifactId === "string" ? { artifactId: result.artifactId } : {}),
-    ...(typeof result.artifactElidedBytes === "number"
-      ? { artifactElidedBytes: result.artifactElidedBytes }
-      : {}),
-    ...(typeof result.workingDir === "string" ? { workingDir: result.workingDir } : {}),
-    ...(typeof result.wallTimeMs === "number" ? { wallTimeMs: result.wallTimeMs } : {}),
-    ...(typeof result.stderr === "string" ? { stderr: result.stderr } : {}),
+    ...(result.artifactId === undefined ? {} : { artifactId: result.artifactId }),
+    ...(result.artifactElidedBytes === undefined
+      ? {}
+      : { artifactElidedBytes: result.artifactElidedBytes }),
+    ...(result.workingDir === undefined ? {} : { workingDir: result.workingDir }),
+    ...(result.wallTimeMs === undefined ? {} : { wallTimeMs: result.wallTimeMs }),
+    ...(result.stderr === undefined ? {} : { stderr: result.stderr }),
+  };
+}
+
+function decodeBashToolResult(result: z.infer<typeof BashToolResultSchema>): BashResult {
+  const text = result.content
+    .map((part) => {
+      const textPart = TextPartSchema.safeParse(part);
+      return textPart.success ? textPart.data.text : "";
+    })
+    .join("");
+  const details = result.details ?? {};
+  const withoutWallTime =
+    details.wallTimeMs === undefined ? text : text.replace(WALL_TIME_SUFFIX, "");
+  const output = withoutWallTime.replace(/\n+$/, "");
+  const lines = output.length === 0 ? 0 : output.split("\n").length;
+  return {
+    output,
+    cancelled: false,
+    truncated: false,
+    totalLines: lines,
+    totalBytes: output.length,
+    outputLines: lines,
+    outputBytes: output.length,
+    ...(details.exitCode === undefined ? {} : { exitCode: details.exitCode }),
+    ...(details.timedOut === true ? { timedOut: true } : {}),
+    ...(details.wallTimeMs === undefined ? {} : { wallTimeMs: Math.round(details.wallTimeMs) }),
   };
 }
 
