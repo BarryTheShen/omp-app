@@ -1,6 +1,8 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { T7ToolFallback } from "./fallback";
+import { GoalToolRenderer } from "./goal";
 import { ResolveToolRenderer } from "./resolve";
+import { ThinkToolRenderer } from "./think";
 
 /** T7 owns exactly eight miscellaneous/host/domain renderer claims; the main agent composes them. */
 export const T7_TOOL_DESCRIPTORS = [
@@ -22,7 +24,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.goal"],
     requires: ["upstream.goal"],
     match: { by: "name", name: "goal" },
-    renderer: T7ToolFallback,
+    renderer: GoalToolRenderer,
   },
   {
     kind: "tool",
@@ -82,7 +84,7 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.think"],
     requires: [],
     match: { by: "name", name: "think" },
-    renderer: T7ToolFallback,
+    renderer: ThinkToolRenderer,
   },
 ] as const satisfies readonly ToolRegistryDescriptor[];
 

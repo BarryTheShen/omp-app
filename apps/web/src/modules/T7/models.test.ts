@@ -21,11 +21,41 @@ describe("T7 tolerant domain models", () => {
     [decodeResolve, { action: "apply", reason: "approved" }],
     [decodeCheckpoint, { goal: "before migration" }],
     [decodeRewind, { report: "recorded only", rewound: false }],
-    [decodeGoal, { op: "create", objective: "ship", tokenBudget: 100 }],
+    [decodeGoal, { op: "create", goal: { objective: "ship", tokenBudget: 100, tokensUsed: 0 } }],
     [decodeSecurityScan, { action: "status", operation: "preflight" }],
     [decodeThink, { recorded: true }],
   ])("decodes %s details without executing", (decode, raw) => {
     expect(decode(raw)).toMatchObject({ ok: true, raw });
+  });
+
+  test("decodes omp v18.6.1 goal details with a nested goal and null fields", () => {
+    const complete = {
+      op: "complete",
+      goal: {
+        id: "goal-1",
+        objective: "Ship the release notes",
+        status: "complete",
+        tokenBudget: 50_000,
+        tokensUsed: 41_250,
+        timeUsedSeconds: 600,
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      remainingTokens: 8_750,
+      completionBudgetReport:
+        "Goal achieved. Report final budget usage to the user: tokens used: 41250 of 50000.",
+    };
+    expect(decodeGoal(complete)).toMatchObject({
+      ok: true,
+      value: {
+        goal: { objective: "Ship the release notes", status: "complete", tokensUsed: 41_250 },
+        remainingTokens: 8_750,
+      },
+    });
+    expect(
+      decodeGoal({ op: "get", goal: null, remainingTokens: null, completionBudgetReport: null }),
+    ).toMatchObject({ ok: true, value: { goal: null, remainingTokens: null } });
+    expect(decodeGoal({ op: "get", goal: { status: "finished" } })).toMatchObject({ ok: false });
   });
 
   test("keeps unknown details raw and maps malformed data to a safe AppFailure", () => {

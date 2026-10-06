@@ -70,15 +70,25 @@ export const RewindDetailsSchema = z.looseObject({
 });
 export type RewindDetails = z.infer<typeof RewindDetailsSchema>;
 
-export const GoalDetailsSchema = z.looseObject({
-  op: z.enum(["create", "get", "complete", "resume", "drop"]).optional(),
+/**
+ * omp v18.6.1 goal tool details: packages/tui/src/tools/goal.ts:13-33 (`Goal`, `GoalToolDetails`),
+ * built in packages/coding-agent/src/goals/tools/goal-tool.ts:115-120. Objective, status and token
+ * counts live inside `goal`; `goal`, `remainingTokens` and `completionBudgetReport` may be null.
+ */
+const GoalRecordSchema = z.looseObject({
+  id: OptionalText,
   objective: OptionalText,
-  status: z.enum(["active", "paused", "complete", "dropped", "error"]).optional(),
+  status: z.enum(["active", "paused", "budget-limited", "complete", "dropped"]).optional(),
   tokenBudget: z.number().nonnegative().optional(),
   tokensUsed: z.number().nonnegative().optional(),
-  remainingTokens: z.number().nonnegative().optional(),
-  completionBudgetReport: UnknownRecord.optional(),
-  goal: UnknownRecord.optional(),
+  timeUsedSeconds: z.number().nonnegative().optional(),
+});
+export const GoalDetailsSchema = z.looseObject({
+  op: z.enum(["create", "get", "complete", "resume", "drop"]).optional(),
+  goal: GoalRecordSchema.nullable().optional(),
+  remainingTokens: z.number().nonnegative().nullable().optional(),
+  completionBudgetReport: z.string().nullable().optional(),
+  /** Not sent by omp v18.6.1 (failures arrive as tool errors); shown when a host supplies one. */
   error: UnknownRecord.optional(),
 });
 export type GoalDetails = z.infer<typeof GoalDetailsSchema>;
