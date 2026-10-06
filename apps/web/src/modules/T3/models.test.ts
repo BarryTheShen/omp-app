@@ -3,11 +3,11 @@ import { describe, expect, test } from "vitest";
 import {
   decodeComputerArgs,
   decodeDebugArgs,
+  decodeDebugDetails,
   decodeEvalArgs,
   decodeInspectImageArgs,
   mapT3Failure,
   normalizeComputer,
-  normalizeDebug,
   normalizeEval,
   normalizeInspectImage,
 } from "./models";
@@ -33,15 +33,35 @@ describe("T3 tolerant execution models", () => {
     });
   });
 
-  test("accepts debug action snapshots and tolerant computer results", () => {
+  test("accepts omp v18.6.1's real debug details and tolerant computer results", () => {
     expect(decodeDebugArgs({ action: "launch", program: "node" }).ok).toBe(true);
     expect(decodeComputerArgs({ action: "run", code: "return 1", read_only: true }).ok).toBe(true);
-    expect(
-      normalizeDebug(
-        { action: "launch" },
-        { details: { status: "stopped", stackFrames: [{ id: 1 }] } },
-      ),
-    ).toMatchObject({ details: { status: "stopped" } });
+    // DebugExecutionDetails: omp packages/coding-agent/src/tools/debug.ts:143-171.
+    const debug = decodeDebugDetails({
+      action: "stack_trace",
+      success: true,
+      snapshot: {
+        id: "session-1",
+        adapter: "debugpy",
+        cwd: "/repo",
+        status: "stopped",
+        launchedAt: "2026-10-05T12:00:00Z",
+        lastUsedAt: "2026-10-05T12:00:01Z",
+        stopReason: "breakpoint",
+        source: { path: "src/main.py" },
+        line: 42,
+        breakpointFiles: 1,
+        breakpointCount: 1,
+        functionBreakpointCount: 0,
+        outputBytes: 0,
+        outputTruncated: false,
+        needsConfigurationDone: false,
+      },
+      stackFrames: [{ id: 1, name: "main", source: { path: "src/main.py" }, line: 42, column: 5 }],
+    });
+    expect(debug.ok && debug.value?.snapshot?.source?.path).toBe("src/main.py");
+    expect(debug.ok && debug.value?.stackFrames?.[0]?.line).toBe(42);
+    expect(decodeDebugDetails({ stackFrames: [{ file: "src/main.py" }] }).ok).toBe(false);
     expect(
       normalizeComputer(
         { action: "capabilities" },

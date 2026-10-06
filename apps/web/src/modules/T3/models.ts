@@ -30,16 +30,25 @@ export const EvalArgsSchema = z.looseObject({
   timeout: z.number().nonnegative().optional(),
   reset: z.boolean().optional(),
 });
+/** omp v18.6.1 `debug` parameters (packages/coding-agent/src/tools/debug.ts:69-138). */
 export const DebugArgsSchema = z.looseObject({
   action: z.string().optional(),
   program: z.string().optional(),
-  args: z.array(z.unknown()).optional(),
+  args: z.array(z.string()).optional(),
   adapter: z.string().optional(),
   cwd: z.string().optional(),
   file: z.string().optional(),
   line: z.number().int().positive().optional(),
   function: z.string().optional(),
+  name: z.string().optional(),
+  condition: z.string().optional(),
   expression: z.string().optional(),
+  pid: z.number().int().nonnegative().optional(),
+  port: z.number().int().nonnegative().optional(),
+  memory_reference: z.string().optional(),
+  instruction_reference: z.string().optional(),
+  data_id: z.string().optional(),
+  command: z.string().optional(),
   timeout: z.number().nonnegative().optional(),
 });
 export const ComputerArgsSchema = z.looseObject({
@@ -92,24 +101,70 @@ export const EvalDetailsSchema = z.looseObject({
     })
     .optional(),
 });
+/** omp v18.6.1 DAP shapes (packages/coding-agent/src/dap/types.ts:4,42-49,233-244,279-294,382-400,515-521,543-549,564-590). */
+const DapSourceSchema = z.looseObject({
+  name: z.string().optional(),
+  path: z.string().optional(),
+});
+const DebugSessionSnapshotSchema = z.looseObject({
+  id: z.string().optional(),
+  adapter: z.string().optional(),
+  cwd: z.string().optional(),
+  program: z.string().optional(),
+  status: z.string().optional(),
+  stopReason: z.string().optional(),
+  stopDescription: z.string().optional(),
+  frameName: z.string().optional(),
+  source: DapSourceSchema.optional(),
+  line: z.number().int().optional(),
+  column: z.number().int().optional(),
+  exitCode: z.number().int().optional(),
+  needsConfigurationDone: z.boolean().optional(),
+});
+const DebugStackFrameSchema = z.looseObject({
+  id: z.number().int(),
+  name: z.string(),
+  source: DapSourceSchema.optional(),
+  line: z.number().int(),
+  column: z.number().int().optional(),
+});
+const DebugThreadSchema = z.looseObject({ id: z.number().int(), name: z.string() });
+const DebugVariableSchema = z.looseObject({
+  name: z.string(),
+  value: z.string(),
+  type: z.string().optional(),
+});
+const DebugBreakpointSchema = z.looseObject({
+  verified: z.boolean(),
+  line: z.number().int().optional(),
+  name: z.string().optional(),
+  condition: z.string().optional(),
+  message: z.string().optional(),
+});
+
+/**
+ * omp v18.6.1 `DebugExecutionDetails` (packages/coding-agent/src/tools/debug.ts:143-171; base
+ * `DebugToolDetails` in packages/tui/src/tools/debug.ts:38-42). Each action fills only its own
+ * fields; the result's text content repeats them for the model.
+ */
 export const DebugDetailsSchema = z.looseObject({
   action: z.string().optional(),
   success: z.boolean().optional(),
-  session: UnknownRecord.optional(),
-  adapter: z.string().optional(),
-  status: z.string().optional(),
-  cwd: z.string().optional(),
-  program: z.string().optional(),
-  stopReason: z.string().optional(),
-  stackFrames: z.array(UnknownRecord).optional(),
-  threads: z.array(UnknownRecord).optional(),
+  snapshot: DebugSessionSnapshotSchema.optional(),
+  sessions: z.array(DebugSessionSnapshotSchema).optional(),
+  stackFrames: z.array(DebugStackFrameSchema).optional(),
+  threads: z.array(DebugThreadSchema).optional(),
   scopes: z.array(UnknownRecord).optional(),
-  variables: z.array(UnknownRecord).optional(),
-  sources: z.array(UnknownRecord).optional(),
+  variables: z.array(DebugVariableSchema).optional(),
+  sources: z.array(DapSourceSchema).optional(),
   modules: z.array(UnknownRecord).optional(),
-  evaluation: UnknownRecord.optional(),
-  breakpoints: z.array(UnknownRecord).optional(),
-  output: z.unknown().optional(),
+  evaluation: z.looseObject({ result: z.string(), type: z.string().optional() }).optional(),
+  breakpoints: z.array(DebugBreakpointSchema).optional(),
+  functionBreakpoints: z.array(DebugBreakpointSchema).optional(),
+  output: z.string().optional(),
+  adapter: z.string().optional(),
+  state: z.enum(["running", "stopped", "terminated"]).optional(),
+  timedOut: z.boolean().optional(),
   meta: OutputMetaSchema.optional(),
 });
 export const ComputerDetailsSchema = z.looseObject({
@@ -205,6 +260,9 @@ export function decodeEvalArgs(raw: unknown): T3Decode<EvalArgs> {
 export function decodeDebugArgs(raw: unknown): T3Decode<DebugArgs> {
   return decode(DebugArgsSchema, raw, "debug arguments");
 }
+export function decodeDebugDetails(raw: unknown): T3Decode<DebugDetails> {
+  return decode(DebugDetailsSchema, raw, "debug details");
+}
 export function decodeComputerArgs(raw: unknown): T3Decode<ComputerArgs> {
   return decode(ComputerArgsSchema, raw, "computer arguments");
 }
@@ -245,12 +303,6 @@ function model<TArgs, TDetails>(
 
 export function normalizeEval(args: unknown, result: unknown): T3ToolModel<EvalArgs, EvalDetails> {
   return model(EvalArgsSchema, EvalDetailsSchema, args, result, "eval");
-}
-export function normalizeDebug(
-  args: unknown,
-  result: unknown,
-): T3ToolModel<DebugArgs, DebugDetails> {
-  return model(DebugArgsSchema, DebugDetailsSchema, args, result, "debug");
 }
 export function normalizeComputer(
   args: unknown,
