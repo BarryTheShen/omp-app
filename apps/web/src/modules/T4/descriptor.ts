@@ -1,7 +1,7 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
-import { ToolFallback } from "../U3/tool-card/fallback";
 import { BrowserToolCard } from "./browser";
 import { GithubToolRenderer } from "./github";
+import { WebSearchToolRenderer } from "./web-search";
 /** T4 owns the browser/GitHub/search descriptors; T1 owns read and its URL dispatch claim. */
 export const T4_TOOL_DESCRIPTORS = [
   {
@@ -32,7 +32,7 @@ export const T4_TOOL_DESCRIPTORS = [
     covers: ["T4.web-search"],
     requires: [],
     match: { by: "name", name: "web_search" },
-    renderer: ToolFallback,
+    renderer: WebSearchToolRenderer,
   },
 ] as const satisfies readonly ToolRegistryDescriptor[];
 
