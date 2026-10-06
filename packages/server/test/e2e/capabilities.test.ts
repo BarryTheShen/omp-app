@@ -14,6 +14,10 @@ if (Bun.argv.includes("--version")) {
   process.stdout.write("omp 18.6.1\\n");
   process.exit(0);
 }
+if (Bun.argv.slice(-3).join(" ") === "config list --json") {
+  process.stdout.write(JSON.stringify({ model: { type: "string", value: "fake-default" } }));
+  process.exit(0);
+}
 console.log(JSON.stringify({ type: "ready", protocolVersion: 1, supportedProtocolVersions: [1, 2], maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 }));
 let pending = "";
 function respond(command) {

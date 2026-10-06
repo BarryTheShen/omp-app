@@ -13,7 +13,7 @@ import { probeCapabilities } from "../src/capabilities";
 import { createProviderAccountStore } from "../src/modules/A1/accounts";
 import { AttachmentStoreService } from "../src/modules/A1/attachments";
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
-import { createConfigStore } from "../src/modules/A1/config";
+import { createConfigStoreWithOmpDefaults } from "../src/modules/A1/config";
 import { createDraftStore } from "../src/modules/A1/drafts";
 import { createExtensionCatalog } from "../src/modules/A1/extensions";
 import { searchWorkspaceFiles } from "../src/modules/A1/file-search";
@@ -201,7 +201,14 @@ export async function createCompositionServer(
     }
     return session;
   };
-  const configStore = createConfigStore({ env, homeDir, agentDir, appDataDir });
+  const configStore = await createConfigStoreWithOmpDefaults(
+    { env, homeDir, agentDir, appDataDir },
+    {
+      binary: ompBinary,
+      launchDirectory: launchFolder,
+      pathEnvironment: env.PATH ?? "",
+    },
+  );
   const draftStore = createDraftStore({ env, homeDir, appDataDir });
   const checkpointStore = new CheckpointStoreService({ appDataDir });
   const attachmentStore = new AttachmentStoreService({

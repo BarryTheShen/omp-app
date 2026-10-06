@@ -1,0 +1,126 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { AppFailure } from "@omp-app/contracts";
+import type { ConfigStoreService } from "./config-store";
+import { createConfigStoreWithOmpDefaults } from "./omp-defaults";
+
+const dataRoot = resolve(import.meta.dir, "../../../../../../.data");
+const temporaryDirectories: string[] = [];
+const stores: ConfigStoreService[] = [];
+
+async function temporaryRoot(): Promise<string> {
+  await mkdir(dataRoot, { recursive: true });
+  const root = await mkdtemp(join(dataRoot, "settings-defaults-"));
+  temporaryDirectories.push(root);
+  return root;
+}
+
+async function fakeOmp(root: string, body: string): Promise<string> {
+  const binary = join(root, "fake-omp");
+  await writeFile(binary, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  await chmod(binary, 0o755);
+  return binary;
+}
+
+async function serverStore(root: string, binary: string, timeoutMs = 500) {
+  const warnings: string[] = [];
+  const store = await createConfigStoreWithOmpDefaults(
+    { agentDir: join(root, "agent"), appDataDir: join(root, "app-data") },
+    {
+      binary,
+      launchDirectory: root,
+      pathEnvironment: Bun.env.PATH ?? "",
+      temporaryDirectoryBase: root,
+      timeoutMs,
+      onWarning: (message) => warnings.push(message),
+    },
+  );
+  stores.push(store);
+  return { store, warnings };
+}
+
+async function expectNotFound(store: ConfigStoreService, key: string): Promise<void> {
+  try {
+    await store.read({ key, folder: null });
+  } catch (error) {
+    if (error instanceof AppFailure) {
+      expect(error.appError.code).toBe("not_found");
+      return;
+    }
+    throw error;
+  }
+  throw new Error(`Expected ${key} to be absent.`);
+}
+
+async function expectUnavailableDefaults(
+  root: string,
+  body: string,
+  timeoutMs: number,
+): Promise<void> {
+  const binary = await fakeOmp(root, body);
+  const { store, warnings } = await serverStore(root, binary, timeoutMs);
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("defaults");
+  await expectNotFound(store, "model");
+}
+
+afterEach(async () => {
+  for (const store of stores.splice(0)) store.dispose();
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
+describe("omp ConfigStore defaults", () => {
+  test("loads registered values as defaults while a user-set value wins", async () => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    await mkdir(agent, { recursive: true });
+    await writeFile(join(agent, "config.yml"), "model: user-value\n", "utf8");
+    const payload = JSON.stringify({
+      model: { type: "string", value: "omp-default" },
+      "compaction.enabled": { type: "boolean", value: false },
+      noDefault: { type: "string" },
+    });
+    const binary = await fakeOmp(
+      root,
+      [
+        '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64',
+        `printf '%s\\n' '${payload}'`,
+      ].join("\n"),
+    );
+    const { store, warnings } = await serverStore(root, binary);
+
+    expect(await store.read({ key: "compaction.enabled", folder: null })).toMatchObject({
+      value: false,
+      source: "default",
+    });
+    expect(await store.read({ key: "model", folder: null })).toMatchObject({
+      value: "user-value",
+      source: "global",
+    });
+    await expectNotFound(store, "noDefault");
+    expect(warnings).toEqual([]);
+  });
+
+  test("starts without defaults and warns once when omp exits unsuccessfully", async () => {
+    const root = await temporaryRoot();
+    await expectUnavailableDefaults(
+      root,
+      '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64\nexit 1',
+      500,
+    );
+  });
+
+  test("starts without defaults and warns once when omp times out", async () => {
+    const root = await temporaryRoot();
+    await expectUnavailableDefaults(
+      root,
+      '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64\nexec /bin/sleep 30',
+      50,
+    );
+  });
+});
