@@ -167,27 +167,36 @@ export const FindToolDetailsSchema = z.looseObject({
 });
 export type FindToolDetails = z.infer<typeof FindToolDetailsSchema>;
 
+/** omp v18.6.1 `ast_grep` parameters (packages/coding-agent/src/tools/ast-grep.ts:33-40). */
 export const AstGrepToolArgsSchema = z.looseObject({
-  pattern: z.string().optional(),
+  pat: z.string(),
   path: OptionalText,
-  language: OptionalText,
-  rewrite: OptionalText,
+  lang: OptionalText,
+  skip: z.number().int().nonnegative().optional(),
 });
 export type AstGrepToolArgs = z.infer<typeof AstGrepToolArgsSchema>;
 
+/**
+ * omp v18.6.1 `AstGrepToolDetails` (packages/tui/src/tools/ast-grep.ts:24-45, filled by
+ * packages/coding-agent/src/tools/ast-grep.ts:260-352). `displayContent` is omp's grouped
+ * display text: `# dir/` and `## file` headers, then `*12│code` rows where `*` marks a match.
+ */
 export const AstGrepToolDetailsSchema = z.looseObject({
-  pattern: OptionalText,
-  scopePath: OptionalText,
-  language: OptionalText,
-  matches: z.array(PathLinkSchema).optional(),
   matchCount: z.number().int().nonnegative().optional(),
-  files: z.array(PathLinkSchema).optional(),
-  parseErrors: z.array(z.string()).optional(),
+  fileCount: z.number().int().nonnegative().optional(),
+  filesSearched: z.number().int().nonnegative().optional(),
   limitReached: z.boolean().optional(),
-  truncated: z.boolean().optional(),
+  parseErrors: z.array(z.string()).optional(),
+  parseErrorsTotal: z.number().int().nonnegative().optional(),
+  scopePath: OptionalText,
+  files: z.array(z.string()).optional(),
+  fileMatches: z
+    .array(z.looseObject({ path: z.string(), count: z.number().int().nonnegative() }))
+    .optional(),
   meta: OutputMetaSchema.optional(),
-  error: OptionalText,
-  raw: OptionalText,
+  displayContent: OptionalText,
+  searchPath: OptionalText,
+  cwd: OptionalText,
 });
 export type AstGrepToolDetails = z.infer<typeof AstGrepToolDetailsSchema>;
 
@@ -199,7 +208,7 @@ export const LspToolArgsSchema = z.looseObject({
   query: OptionalText,
   new_name: OptionalText,
   apply: z.boolean().optional(),
-  timeout: z.number().int().nonnegative().optional(),
+  timeout: z.number().positive().optional(),
   payload: z.unknown().optional(),
 });
 export type LspToolArgs = z.infer<typeof LspToolArgsSchema>;
@@ -226,22 +235,16 @@ export const FileDiagnosticsResultSchema = z.looseObject({
 });
 export type FileDiagnosticsResult = z.infer<typeof FileDiagnosticsResultSchema>;
 
+/**
+ * omp v18.6.1 `LspToolDetails` (packages/tui/src/tools/lsp.ts:67-72). Every action's answer is
+ * the result's text content (packages/coding-agent/src/lsp/tool.ts:1537-1541); details carry
+ * only the action, server, success flag and the request.
+ */
 export const LspToolDetailsSchema = z.looseObject({
   serverName: OptionalText,
   action: OptionalText,
   success: z.boolean().optional(),
   request: UnknownRecord.optional(),
-  hover: OptionalText,
-  diagnostics: z.array(FileDiagnosticsResultSchema).optional(),
-  files: z.array(FileDiagnosticsResultSchema).optional(),
-  references: z.array(PathLinkSchema).optional(),
-  symbols: z.array(UnknownRecord).optional(),
-  result: z.unknown().optional(),
-  formatter: FileFormatResultSchema.optional(),
-  truncated: z.boolean().optional(),
-  meta: OutputMetaSchema.optional(),
-  error: OptionalText,
-  raw: OptionalText,
 });
 export type LspToolDetails = z.infer<typeof LspToolDetailsSchema>;
 

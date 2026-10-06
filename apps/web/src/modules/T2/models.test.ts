@@ -93,11 +93,27 @@ describe("T2 search and code-intelligence models", () => {
     expect(details.ok && details.value.stats?.inputTokens).toBe(1200);
   });
 
-  test("decodes ast_grep and every LSP action without executing code", () => {
-    expect(decodeAstGrepArgs({ pattern: "$A", path: "src", language: "typescript" }).ok).toBe(true);
-    expect(
-      decodeAstGrepDetails({ matches: [{ path: "src/a.ts", line: 4 }], parseErrors: [] }).ok,
-    ).toBe(true);
+  test("decodes omp v18.6.1's real ast_grep and lsp shapes without executing code", () => {
+    // ast_grep params: omp packages/coding-agent/src/tools/ast-grep.ts:33-40.
+    expect(decodeAstGrepArgs({ pat: "console.log($$$)", path: "src", lang: "ts" }).ok).toBe(true);
+    expect(decodeAstGrepArgs({ pattern: "$A" }).ok).toBe(false);
+    // ast_grep details: omp packages/coding-agent/src/tools/ast-grep.ts:260-352.
+    const astDetails = decodeAstGrepDetails({
+      matchCount: 2,
+      fileCount: 1,
+      filesSearched: 14,
+      limitReached: false,
+      parseErrors: ["src/bad.ts: parse error (syntax tree contains error nodes)"],
+      parseErrorsTotal: 1,
+      scopePath: "src",
+      searchPath: "/repo/src",
+      cwd: "/repo",
+      files: ["src/a.ts"],
+      fileMatches: [{ path: "src/a.ts", count: 2 }],
+      displayContent: "# src/a.ts\n *4│console.log(a)\n *9│console.log(b)",
+    });
+    expect(astDetails.ok && astDetails.value.fileMatches?.[0]?.count).toBe(2);
+    expect(decodeAstGrepDetails({ files: [{ path: "src/a.ts" }] }).ok).toBe(false);
     expect(
       decodeLspArgs({
         action: "rename",
@@ -105,16 +121,17 @@ describe("T2 search and code-intelligence models", () => {
         line: 4,
         symbol: "value",
         new_name: "next",
+        timeout: 7.5,
       }).ok,
     ).toBe(true);
-    expect(
-      decodeLspDetails({
-        serverName: "typescript",
-        action: "diagnostics",
-        diagnostics: [{ path: "src/a.ts", messages: [{ severity: "error", message: "bad" }] }],
-        formatter: "formatted",
-      }).ok,
-    ).toBe(true);
+    // lsp details: omp packages/tui/src/tools/lsp.ts:67-72; the answer itself is text content.
+    const lspDetails = decodeLspDetails({
+      serverName: "typescript-language-server",
+      action: "hover",
+      success: true,
+      request: { action: "hover", file: "src/a.ts", line: 4 },
+    });
+    expect(lspDetails.ok && lspDetails.value.success).toBe(true);
   });
 
   test("adapts late diagnostics to the existing tool call without inventing an id", () => {

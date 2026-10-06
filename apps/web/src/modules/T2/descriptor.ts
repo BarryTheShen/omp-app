@@ -1,9 +1,10 @@
 import type { MessageDescriptor } from "@omp-app/contracts";
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
-import { ToolFallback } from "../U3/tool-card/fallback";
+import { AstGrepToolRenderer } from "./ast-grep";
 import { FindToolRenderer } from "./find";
 import { GlobToolRenderer } from "./glob";
 import { GrepCard } from "./grep";
+import { LspToolRenderer } from "./lsp";
 
 /** T2 owns five search/code-intelligence tool claims and one late diagnostic message claim. */
 export const T2_TOOL_DESCRIPTORS = [
@@ -15,7 +16,7 @@ export const T2_TOOL_DESCRIPTORS = [
     covers: ["T2.ast-grep"],
     requires: [],
     match: { by: "name", name: "ast_grep" },
-    renderer: ToolFallback,
+    renderer: AstGrepToolRenderer,
   },
   {
     kind: "tool",
@@ -55,7 +56,7 @@ export const T2_TOOL_DESCRIPTORS = [
     covers: ["T2.lsp"],
     requires: [],
     match: { by: "name", name: "lsp" },
-    renderer: ToolFallback,
+    renderer: LspToolRenderer,
   },
 ] as const satisfies readonly ToolRegistryDescriptor[];
 
