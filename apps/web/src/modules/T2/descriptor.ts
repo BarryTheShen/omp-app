@@ -1,6 +1,7 @@
 import type { MessageDescriptor } from "@omp-app/contracts";
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
+import { FindToolRenderer } from "./find";
 import { GlobToolRenderer } from "./glob";
 
 /** T2 owns five search/code-intelligence tool claims and one late diagnostic message claim. */
@@ -23,7 +24,7 @@ export const T2_TOOL_DESCRIPTORS = [
     covers: ["T2.find-legacy-alias-to-glob"],
     requires: [],
     match: { by: "name", name: "find" },
-    renderer: ToolFallback,
+    renderer: FindToolRenderer,
   },
   {
     kind: "tool",

@@ -52,6 +52,47 @@ describe("T2 search and code-intelligence models", () => {
     ).toBe(true);
   });
 
+  test("decodes omp v18.6.1's real find details, including string failures and range scores", () => {
+    // Shape from omp v18.6.1 packages/tui/test/find-render.test.ts:15-56.
+    const details = decodeFindDetails({
+      query: "retry budget",
+      keywords: ["retry", "budget"],
+      threshold: 0.2,
+      cwd: "/repo",
+      elapsedMs: 1500,
+      hits: [
+        {
+          rel: "src/retry.ts",
+          nameScore: 0.8,
+          contentScore: 0.9,
+          linesSeen: 120,
+          truncated: false,
+          ranges: [{ start: 10, end: 20, p: 0.9, snippet: "function retryBudget() {" }],
+        },
+      ],
+      stats: {
+        listed: 2,
+        requests: 3,
+        errors: 1,
+        judged: 2,
+        filesRead: 2,
+        fileBytes: 100,
+        inputTokens: 1200,
+        outputTokens: 0,
+        cost: 0,
+        apiMs: 900,
+        windowsJudged: 4,
+        windowsPruned: 1,
+        mapCards: 3,
+        failures: ["verification: boom"],
+      },
+    });
+    expect(details.ok).toBe(true);
+    expect(details.ok && details.value.hits?.[0]?.ranges?.[0]?.p).toBe(0.9);
+    expect(details.ok && details.value.stats?.failures).toEqual(["verification: boom"]);
+    expect(details.ok && details.value.stats?.inputTokens).toBe(1200);
+  });
+
   test("decodes ast_grep and every LSP action without executing code", () => {
     expect(decodeAstGrepArgs({ pattern: "$A", path: "src", language: "typescript" }).ok).toBe(true);
     expect(

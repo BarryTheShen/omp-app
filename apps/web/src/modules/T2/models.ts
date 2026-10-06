@@ -111,13 +111,23 @@ export const FindToolArgsSchema = z.looseObject({
 });
 export type FindToolArgs = z.infer<typeof FindToolArgsSchema>;
 
+/**
+ * omp v18.6.1 `FindRange`/`FindHit`/`FindStats` (packages/tui/src/tools/find.ts:39-80, filled by
+ * packages/coding-agent/src/tools/jfind/cascade.ts:110-125). `p` is the range's verified
+ * probability; `failures` lists distinct phase-prefixed request failure messages.
+ */
+export const FindRangeSchema = OutputRangeSchema.extend({
+  p: OptionalNumber,
+});
+export type FindRange = z.infer<typeof FindRangeSchema>;
+
 export const FindHitSchema = z.looseObject({
   rel: OptionalText,
   path: OptionalText,
   nameScore: OptionalNumber,
   contentScore: OptionalNumber,
   score: OptionalNumber,
-  ranges: z.array(OutputRangeSchema).optional(),
+  ranges: z.array(FindRangeSchema).optional(),
   linesSeen: z.number().int().nonnegative().optional(),
   truncated: z.boolean().optional(),
   snippet: OptionalText,
@@ -126,16 +136,19 @@ export type FindHit = z.infer<typeof FindHitSchema>;
 
 export const FindStatsSchema = z.looseObject({
   listed: z.number().int().nonnegative().optional(),
-  requested: z.number().int().nonnegative().optional(),
+  requests: z.number().int().nonnegative().optional(),
   errors: z.number().int().nonnegative().optional(),
   judged: z.number().int().nonnegative().optional(),
   filesRead: z.number().int().nonnegative().optional(),
   fileBytes: z.number().int().nonnegative().optional(),
-  tokens: z.number().int().nonnegative().optional(),
+  inputTokens: z.number().int().nonnegative().optional(),
+  outputTokens: z.number().int().nonnegative().optional(),
   cost: OptionalNumber,
-  elapsedMs: OptionalNumber,
-  window: UnknownRecord.optional(),
-  failures: z.number().int().nonnegative().optional(),
+  apiMs: OptionalNumber,
+  windowsJudged: z.number().int().nonnegative().optional(),
+  windowsPruned: z.number().int().nonnegative().optional(),
+  mapCards: z.number().int().nonnegative().optional(),
+  failures: z.array(z.string()).optional(),
 });
 export type FindStats = z.infer<typeof FindStatsSchema>;
 
