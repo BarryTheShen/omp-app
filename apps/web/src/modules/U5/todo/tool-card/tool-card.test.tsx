@@ -53,7 +53,7 @@ describe("TodoToolRenderer", () => {
 
   test("exports an exact-name U5 descriptor without claiming a capability", () => {
     expect(todoToolDescriptor).toMatchObject({
-      id: "U5.todo",
+      id: "U5.todoTool",
       owner: "U5",
       kind: "tool",
       match: { by: "name", name: "todo" },

@@ -70,7 +70,7 @@ export function TodoToolRenderer(props: ToolRendererProps) {
 
 /** Local U5 descriptor; the main agent composes it into U3's central registry. */
 export const todoToolDescriptor = {
-  id: "U5.todo",
+  id: "U5.todoTool",
   owner: "U5",
   title: "Todo",
   covers: ["E3.todo-tool-renderer"],
