@@ -28,6 +28,7 @@ import { U2_EXTERNAL_EDITOR_SHORTCUT } from "../modules/U2/shortcuts/shortcuts";
 import { U3_BASH_DESCRIPTOR } from "../modules/U3/tool-card/bash";
 import type { ToolRegistryDescriptor } from "../modules/U3/tool-card/contract";
 import { U4Descriptors } from "../modules/U4/descriptors";
+import { U5Descriptors } from "../modules/U5/descriptors";
 import { todoToolDescriptor } from "../modules/U5/todo/tool-card/tool-card";
 import { createRegistry, type RendererMap } from "../registry-core";
 
@@ -67,6 +68,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...I1_MCP_SERVER_DESCRIPTORS,
   ...D2_TRIGGER_DESCRIPTORS,
   ...U4Descriptors,
+  ...U5Descriptors,
   ...T2_MESSAGE_DESCRIPTORS,
   ...TOOL_RENDERERS.map(withoutRenderer),
 ];
