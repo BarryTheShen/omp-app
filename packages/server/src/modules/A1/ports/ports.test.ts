@@ -30,6 +30,7 @@ import {
   UrlCatalogPort,
   WorkspaceStatePort,
 } from "@omp-app/contracts";
+import { DEFAULT_HOST_CAPABILITIES } from "../../../capabilities";
 import { Dispatcher, type DispatcherSocket } from "../../../dispatcher";
 import { createPortRegistry } from "../../../registry/ports";
 import { EventReplayHub } from "../../../replay";
@@ -411,6 +412,18 @@ describe("A1.9 port registrations", () => {
       .sort();
     expect(names).toEqual(expected);
     expect(new Set(names).size).toBe(names.length);
+  });
+  test("publishes every host capability its registered ports declare", () => {
+    const declared = new Set<string>();
+    for (const registration of createA1PortRegistrations(createContext())) {
+      for (const method of Object.values(registration.port.methods)) {
+        const capability = method.capability;
+        if (capability?.startsWith("host.")) declared.add(capability);
+      }
+    }
+    // The gh probe publishes host.github-refs itself; everything else must be in the default list.
+    const published = new Set<string>([...DEFAULT_HOST_CAPABILITIES, "host.github-refs"]);
+    expect([...declared].filter((key) => !published.has(key)).sort()).toEqual([]);
   });
   test("routes checkpoint snapshot calls through its handler", async () => {
     const workspace = join(process.cwd(), ".data", `a1-checkpoint-port-${crypto.randomUUID()}`);

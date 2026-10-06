@@ -36,8 +36,14 @@ export const RPC_UNKNOWN_COMMAND_SOURCE =
 export const RPC_INVALID_ARGUMENT_SOURCE =
   "omp-v18.6.1:packages/coding-agent/src/modes/rpc/rpc-mode.ts:1760-1765,2400-2402; docs/rpc.md:114-119,283-290";
 
-/** Host seams that are registered by the A1 bridge and do not require an omp probe. */
+/**
+ * Host seams that are registered by the A1 bridge and do not require an omp probe. Every `host.*`
+ * capability an A1 port registration declares must be listed here (except `host.github-refs`, which
+ * the gh probe below decides); `ports.test.ts` fails when one is missing, because an unlisted
+ * capability reaches the browser as unavailable even though the server handles it.
+ */
 export const DEFAULT_HOST_CAPABILITIES = [
+  "host.attachments",
   "host.checkpoints",
   "host.command-gateway",
   "host.config",
@@ -51,8 +57,10 @@ export const DEFAULT_HOST_CAPABILITIES = [
   "host.provider-accounts",
   "host.rules",
   "host.session-files",
+  "host.session-import",
   "host.session-pins",
   "host.url-catalog",
+  "host.workspace-state",
 ] as const satisfies readonly CapabilityKey[];
 
 export type CommandProbeKind = "read-only" | "invalid-arguments";

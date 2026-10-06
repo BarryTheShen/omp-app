@@ -119,7 +119,14 @@ describe("probeCapabilities", () => {
     expect(result.capabilities["omp.host-uris"]).toEqual({ state: "available", via: "rpc" });
     expect(result.capabilities["omp.subagent-events"]).toEqual({ state: "available", via: "rpc" });
     expect(result.capabilities["omp.live-voice"]).toEqual({ state: "available", via: "rpc" });
-    expect(result.capabilities["host.config"]).toEqual({ state: "available", via: "host" });
+    for (const key of [
+      "host.config",
+      "host.workspace-state",
+      "host.attachments",
+      "host.session-import",
+    ] as const) {
+      expect(result.capabilities[key]).toEqual({ state: "available", via: "host" });
+    }
     expect(result.capabilities["host.github-refs"]).toMatchObject({
       state: "fallback",
       via: "host",
