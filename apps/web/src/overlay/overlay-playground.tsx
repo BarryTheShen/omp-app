@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { OverlayHost, useOverlayHost } from "./index";
 
@@ -104,8 +104,11 @@ function OverlayPlayground() {
 const root = document.getElementById("overlay-playground-root");
 if (!root) throw new Error("Overlay playground root is missing.");
 
+// StrictMode, as in main.tsx: development double-invokes effects, which once broke focus restore.
 createRoot(root).render(
-  <OverlayHost>
-    <OverlayPlayground />
-  </OverlayHost>,
+  <StrictMode>
+    <OverlayHost>
+      <OverlayPlayground />
+    </OverlayHost>
+  </StrictMode>,
 );

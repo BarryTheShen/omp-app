@@ -24,7 +24,9 @@ function getTabbableElements(root: HTMLElement): HTMLElement[] {
 }
 
 function isConnectedElement(value: HTMLElement | null): value is HTMLElement {
-  return value?.isConnected === true && !value.hidden && !value.hasAttribute("inert");
+  // `closest`, not `hasAttribute`: OverlayHost makes a whole background subtree inert, and calling
+  // focus() on anything inside it silently does nothing.
+  return value?.isConnected === true && !value.hidden && value.closest("[inert]") === null;
 }
 
 function resolveFocusTarget(target: FocusTarget | undefined): HTMLElement | null {
@@ -50,7 +52,8 @@ export interface FocusScopeProps extends Omit<ComponentPropsWithoutRef<"div">, "
 /**
  * Focus behavior shared by U0 overlays and U4 dialogs. It captures the opener before moving focus
  * in, loops Tab/Shift+Tab through the scope when trapped, handles programmatic focus leaving the
- * scope, and restores a connected opener/target exactly once. A removed opener is ignored safely.
+ * scope, and restores a connected opener/target when the scope really unmounts. A removed opener is
+ * ignored safely.
  */
 export function FocusScope({
   children,
@@ -62,8 +65,16 @@ export function FocusScope({
 }: FocusScopeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
-  const restoredRef = useRef(false);
   const mountedRef = useRef(false);
+  const initialFocusPendingRef = useRef(true);
+  // The latest props, read through refs so a parent that passes a fresh closure on every render
+  // never re-runs the mount effect (which would re-capture the opener and re-steal focus).
+  const initialFocusRef = useRef(initialFocus);
+  const restoreFocusRef = useRef(restoreFocus);
+  useLayoutEffect(() => {
+    initialFocusRef.current = initialFocus;
+    restoreFocusRef.current = restoreFocus;
+  });
 
   const focusFirst = useCallback(() => {
     const root = rootRef.current;
@@ -74,29 +85,39 @@ export function FocusScope({
 
   useLayoutEffect(() => {
     mountedRef.current = true;
-    const active = document.activeElement;
-    openerRef.current = active instanceof HTMLElement ? active : null;
+    if (openerRef.current === null) {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement ? active : null;
+    }
 
-    queueMicrotask(() => {
-      if (!mountedRef.current) return;
-      if (initialFocus === false) return;
-      const root = rootRef.current;
-      if (!root) return;
-      const explicitTarget = resolveFocusTarget(initialFocus);
-      focusElement(explicitTarget);
-      if (explicitTarget === null) focusFirst();
-    });
+    if (initialFocusPendingRef.current) {
+      initialFocusPendingRef.current = false;
+      queueMicrotask(() => {
+        if (!mountedRef.current) return;
+        const initial = initialFocusRef.current;
+        if (initial === false) return;
+        const root = rootRef.current;
+        if (!root) return;
+        const explicitTarget = resolveFocusTarget(initial);
+        focusElement(explicitTarget);
+        if (explicitTarget === null) focusFirst();
+      });
+    }
 
     return () => {
       mountedRef.current = false;
-      if (restoredRef.current || restoreFocus === false) return;
-      restoredRef.current = true;
+      // React's development double-invocation (StrictMode) unmounts and remounts this effect
+      // synchronously, and OverlayHost clears the background's inert state in the same commit as
+      // the real unmount. Deciding after the commit settles means only a scope that is still
+      // unmounted has really closed, and its opener can take focus again.
       queueMicrotask(() => {
-        const target = resolveFocusTarget(restoreFocus) ?? openerRef.current;
-        focusElement(target);
+        if (mountedRef.current) return;
+        const restore = restoreFocusRef.current;
+        if (restore === false) return;
+        focusElement(resolveFocusTarget(restore) ?? openerRef.current);
       });
     };
-  }, [focusFirst, initialFocus, restoreFocus]);
+  }, [focusFirst]);
 
   useLayoutEffect(() => {
     if (!trapped) return;

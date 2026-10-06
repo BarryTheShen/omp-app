@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, StrictMode, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FocusScope } from "./focus-scope";
 import { OVERLAY_GRAMMAR, OVERLAY_Z_INDEX } from "./grammar";
@@ -90,6 +90,29 @@ describe("OverlayHost modal focus behavior", () => {
     await waitFor(() => expect(document.activeElement).toBe(opener));
     expect(document.body.style.overflow).toBe("");
     expect(background?.getAttribute("aria-hidden")).toBeNull();
+  });
+
+  test("restores the opener under StrictMode, whose simulated unmount must not spend the restore", async () => {
+    // main.tsx and several playgrounds render inside StrictMode. In development React mounts every
+    // effect, unmounts it and mounts it again; FocusScope used to treat that fake unmount as the
+    // real close, restore too early (while the background was still inert) and never again.
+    let opened: OverlayOpenResult | undefined;
+    render(
+      <StrictMode>
+        <OverlayHost>
+          <ModalFixture onOpened={(result) => (opened = result)} />
+        </OverlayHost>
+      </StrictMode>,
+    );
+    const opener = screen.getByRole("button", { name: "Open modal" });
+    opener.focus();
+    fireEvent.click(opener);
+    const first = await screen.findByRole("button", { name: "First action" });
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    await expect(opened?.closed).resolves.toBe("programmatic");
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
   test("does not throw or focus a detached opener when it is removed before close", async () => {
