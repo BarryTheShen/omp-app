@@ -34,6 +34,23 @@ function reply(request: Request): Reply {
   }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";
+  if (prompt.includes("spawn_subagent"))
+    return {
+      tool: "task",
+      args: {
+        name: "NestedProbe",
+        agent: "task",
+        task: "nested_probe_child: return a short result by calling yield.",
+        solutionSpace: "one tiny task: return a short summary",
+      },
+      thinking: "I should start one child task.",
+    };
+  if (prompt.includes("nested_probe_child"))
+    return {
+      tool: "yield",
+      args: { data: { summary: "Nested probe completed." } },
+      thinking: "I should submit the result.",
+    };
   if (prompt.includes("make_it_big")) return { text: "a".repeat(1_100_000) };
   if (prompt.includes("abort_slow")) return { text: "slow-stream", thinking: "working" };
   if (prompt.includes("ask_user"))

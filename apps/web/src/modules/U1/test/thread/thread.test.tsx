@@ -227,7 +227,7 @@ describe("descriptor and nested row slots", () => {
         <span>Nested</span>
       </ReadOnlyNestedTranscript>,
     );
-    const region = screen.getByRole("group", { name: "1 nested messages" });
+    const region = screen.getByRole("group", { name: "1 message in nested transcript" });
     expect(region.getAttribute("data-read-only")).toBe("true");
     expect(region.querySelector("button")).toBeNull();
   });

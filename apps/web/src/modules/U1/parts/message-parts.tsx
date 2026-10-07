@@ -13,6 +13,11 @@ export interface MessagePartsProps {
   readonly message: MessageState;
   readonly toolRenderers?: ToolRendererMap;
   readonly extra?: ReactNode;
+  /** Use compact rows and let each tool call place its nested transcript directly below the card. */
+  readonly nested?: boolean;
+  readonly renderNested?: (
+    part: Extract<EnrichedPartState, { readonly type: "tool-call" }>,
+  ) => ReactNode;
 }
 
 export interface ImagePartProps {
@@ -90,6 +95,7 @@ export function SourcePart({ title, url, detail, className }: SourcePartProps) {
 function renderPart(
   part: EnrichedPartState,
   toolRenderers: ToolRendererMap | undefined,
+  renderNested: MessagePartsProps["renderNested"],
 ): ReactNode {
   switch (part.type) {
     case "text":
@@ -100,8 +106,22 @@ function renderPart(
       return <ImagePart alt="Image attachment" src={part.image} />;
     case "file":
       return <File {...part} />;
-    case "tool-call":
-      return <ToolSlot part={part} renderers={toolRenderers} />;
+    case "tool-call": {
+      const tool = <ToolSlot part={part} renderers={toolRenderers} />;
+      const nested = renderNested?.(part);
+      return nested === undefined ? (
+        tool
+      ) : (
+        <div
+          className="w-full min-w-0"
+          data-nested-tool-call-id={part.toolCallId}
+          data-slot="u1-nested-tool-call"
+        >
+          {tool}
+          {nested}
+        </div>
+      );
+    }
     case "data":
       return part.dataRendererUI;
     default:
@@ -125,7 +145,13 @@ function customNoteOf(message: MessageState): CustomNoteSource | undefined {
 }
 
 /** Renders one assistant-ui message with U1's role grammar and U3's tool boundary. */
-export function MessageParts({ message, toolRenderers, extra }: MessagePartsProps) {
+export function MessageParts({
+  message,
+  toolRenderers,
+  extra,
+  nested = false,
+  renderNested,
+}: MessagePartsProps) {
   const role = message.role;
   const isUser = role === "user";
   const isSystem = role === "system";
@@ -134,18 +160,19 @@ export function MessageParts({ message, toolRenderers, extra }: MessagePartsProp
   // A very long assistant turn folds its earlier steps away (see earlier-steps.tsx).
   const groupBy = useTurnGroupBy(!isUser && !isSystem);
   const className = isUser
-    ? "ms-auto max-w-[min(42rem,85%)] rounded-2xl bg-muted px-4 py-2.5"
+    ? nested
+      ? "ms-auto min-w-0 max-w-full rounded-2xl bg-muted px-3 py-2.5"
+      : "ms-auto max-w-[min(42rem,85%)] rounded-2xl bg-muted px-4 py-2.5"
     : isSystem
       ? "border-border bg-muted/40 text-muted-foreground rounded-md border px-3 py-2 text-sm"
-      : "w-full";
+      : "min-w-0 w-full";
+  const rowClassName = nested
+    ? "mx-auto w-full min-w-0 py-1"
+    : "mx-auto w-full min-w-0 max-w-(--layout-thread-width) px-6 py-3";
 
   return (
     <MessagePrimitive.Root
-      className={cn(
-        "mx-auto w-full max-w-(--layout-thread-width) px-6 py-3",
-        isUser && "flex justify-end",
-        isSystem && "py-2",
-      )}
+      className={cn(rowClassName, isUser && "flex justify-end", isSystem && "py-2")}
       data-message-id={message.id}
       data-role={role}
       data-slot="u1-message-row"
@@ -164,7 +191,7 @@ export function MessageParts({ message, toolRenderers, extra }: MessagePartsProp
               if (isTurnGroup(part, "group-reasoning"))
                 return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
               if (part.type === "indicator") return null;
-              return renderPart(part as EnrichedPartState, toolRenderers);
+              return renderPart(part as EnrichedPartState, toolRenderers, renderNested);
             }}
           </MessagePrimitive.GroupedParts>
         )}

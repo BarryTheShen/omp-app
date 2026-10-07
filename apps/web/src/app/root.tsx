@@ -14,6 +14,7 @@ import {
   RpcSessionPort,
   SessionFileStore,
   ThreadId,
+  ToolCallId,
   UiRequestId,
 } from "@omp-app/contracts";
 import type { ReactNode } from "react";
@@ -66,6 +67,7 @@ import { ComposerSurface } from "@/modules/U2/composer";
 import type { AttachmentAdapter, PromptIntent, SubmitPolicy } from "@/modules/U2/contract";
 import { createDraftStoreAdapter, DraftController } from "@/modules/U2/drafts";
 import { ModeIndicator } from "@/modules/U2/modes";
+import { NestedTranscript } from "@/modules/U3/tool-card/nested";
 import { createToolRegistry } from "@/modules/U3/tool-card/registry";
 import {
   cancelledHostToolResult,
@@ -828,9 +830,30 @@ function ActiveThreadReady({
                 autoScroll
                 footer={area("threadFooter")}
                 slots={{
-                  renderMessage: (message) => (
-                    <MessageParts message={message} toolRenderers={toolRenderers} />
+                  renderMessage: (message, renderNested) => (
+                    <MessageParts
+                      message={message}
+                      renderNested={(part) =>
+                        part.messages === undefined
+                          ? undefined
+                          : renderNested?.(part.messages, part.toolCallId, part.toolName)
+                      }
+                      toolRenderers={toolRenderers}
+                    />
                   ),
+                  renderNested: (messages, taskId, toolName) => {
+                    const parsedTaskId = ToolCallId.safeParse(taskId);
+                    return (
+                      <NestedTranscript
+                        depth={0}
+                        key={taskId}
+                        messages={messages}
+                        parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
+                        taskName={toolName}
+                        toolRenderers={toolRenderers}
+                      />
+                    );
+                  },
                 }}
                 store={store}
               />

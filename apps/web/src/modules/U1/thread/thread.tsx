@@ -29,9 +29,16 @@ const MESSAGE_DESCRIPTOR_BY_ROLE = {
 
 export interface ThreadRowSlots {
   /** Replaces U1's default assistant-ui row; the caller owns its row semantics and controls. */
-  readonly renderMessage?: (message: MessageState) => ReactNode;
-  /** Renders nested messages read-only; the caller must not add edit/branch/answer controls. */
-  readonly renderNested?: (messages: readonly ThreadMessageLike[]) => ReactNode;
+  readonly renderMessage?: (
+    message: MessageState,
+    renderNested?: ThreadRowSlots["renderNested"],
+  ) => ReactNode;
+  /** Renders nested messages read-only with the owning tool call's id and name. */
+  readonly renderNested?: (
+    messages: readonly ThreadMessageLike[],
+    taskId: string,
+    toolName?: string,
+  ) => ReactNode;
 }
 
 export interface ThreadShellProps {
@@ -177,7 +184,7 @@ function renderPart(part: EnrichedPartState, slots: ThreadRowSlots | undefined):
       return (
         <>
           {part.toolUI ?? <ToolFallback {...part} />}
-          {nested !== undefined && slots?.renderNested?.(nested)}
+          {nested !== undefined && slots?.renderNested?.(nested, part.toolCallId, part.toolName)}
         </>
       );
     }
@@ -207,7 +214,7 @@ function MessageRow({ message, slots }: { message: MessageState; slots?: ThreadR
   );
 
   const descriptorId = MESSAGE_DESCRIPTOR_BY_ROLE[message.role];
-  if (slots?.renderMessage !== undefined) return slots.renderMessage(message);
+  if (slots?.renderMessage !== undefined) return slots.renderMessage(message, slots.renderNested);
   if (descriptorId === undefined) return fallback;
   return <DescriptorMessageBoundary descriptorId={descriptorId} fallback={fallback} />;
 }
@@ -264,21 +271,24 @@ export function ThreadShell({
   );
 }
 
-/** A read-only nested transcript slot for U3/P1/T5; no editing or answer controls are added here. */
 export function ReadOnlyNestedTranscript({
   messages,
+  label,
   children,
 }: {
   readonly messages: readonly ThreadMessageLike[];
+  readonly label?: string;
   readonly children: ReactNode;
 }) {
+  const count = `${messages.length} ${messages.length === 1 ? "message" : "messages"}`;
+  const legend = label === undefined ? `${count} in nested transcript` : `${label} · ${count}`;
   return (
     <fieldset
-      className="border-border bg-muted/30 mt-2 rounded-md border px-3 py-2"
+      className="border-border bg-muted/30 mt-2 box-border w-full min-w-0 [min-inline-size:0] rounded-md border px-3 py-2"
       data-read-only="true"
       data-slot="u1-nested-transcript"
     >
-      <legend className="sr-only">{`${messages.length} nested messages`}</legend>
+      <legend className="text-muted-foreground px-1 text-xs">{legend}</legend>
       {children}
     </fieldset>
   );
