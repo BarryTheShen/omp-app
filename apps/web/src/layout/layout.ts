@@ -25,13 +25,14 @@ export type SurfaceId =
   | "attach"
   | "mode"
   | "queue"
-  | "context";
+  | "context"
+  | "theme";
 
 export type AppLayout = Readonly<Record<LayoutAreaName, readonly SurfaceId[]>>;
 
 export const LAYOUT: AppLayout = {
-  /** Left sidebar, top to bottom. */
-  sidebar: ["folder", "sessions"],
+  /** Left sidebar, top to bottom; the theme control sits at the bottom. */
+  sidebar: ["folder", "sessions", "theme"],
   /** Above the conversation, left to right; the title takes the free space. */
   header: ["title", "model"],
   /** Right sidebar; with more than one panel they become tabs, in this order. */

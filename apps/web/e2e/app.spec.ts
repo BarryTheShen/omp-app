@@ -73,23 +73,11 @@ realTest(
     ).toBeVisible();
     await expect(page.getByText("Loading conversation…")).toBeHidden();
 
+    // Dark the way a person gets it: the remembered Dark choice, read before the page paints.
     const dark = await realApp.open({
       beforeLoad: (target) =>
-        target.addInitScript(() => {
-          const applyDark = (): boolean => {
-            const root = document.documentElement;
-            if (!root) return false;
-            root.classList.add("dark");
-            return true;
-          };
-          if (applyDark()) return;
-          const observer = new MutationObserver(() => {
-            if (applyDark()) observer.disconnect();
-          });
-          observer.observe(document, { childList: true, subtree: true });
-        }),
+        target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
     });
-    await dark.evaluate(() => document.documentElement.classList.add("dark"));
     await expect(dark.locator("html")).toHaveClass(/dark/);
     const darkBackground = await dark
       .locator("[data-shell-layout]")

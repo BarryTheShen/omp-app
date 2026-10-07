@@ -84,6 +84,7 @@ import { DESCRIPTORS, RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
 import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
+import { ThemeApplier, ThemeButton } from "@/theme";
 import { reportClientError, setClientErrorSink } from "./client-errors";
 import { saveTextFile } from "./save-file";
 import { SessionModelControl, SessionStatusBar } from "./session-controls";
@@ -1015,6 +1016,7 @@ function ConnectedApp({
           />
         ) : null,
     },
+    theme: { title: "Theme", render: () => <ThemeButton /> },
   };
   const leftSidebar = (
     <LayoutArea area="sidebar" capabilities={capabilities} surfaces={sidebarSurfaces} />
@@ -1117,6 +1119,7 @@ function ConnectedRoot() {
 export function AppRoot() {
   return (
     <AppConnectionProvider>
+      <ThemeApplier />
       <AccessibilityProvider>
         <AppConnectionGate>
           <ConnectedRoot />

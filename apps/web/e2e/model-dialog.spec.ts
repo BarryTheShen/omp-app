@@ -103,18 +103,7 @@ realTest(
     // The same dialog in the dark theme, in a window the size of the owner's screenshot.
     const dark = await realApp.open({
       beforeLoad: (target) =>
-        target.addInitScript(() => {
-          const apply = (): boolean => {
-            if (!document.documentElement) return false;
-            document.documentElement.classList.add("dark");
-            return true;
-          };
-          if (apply()) return;
-          const observer = new MutationObserver(() => {
-            if (apply()) observer.disconnect();
-          });
-          observer.observe(document, { childList: true, subtree: true });
-        }),
+        target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
     });
     await dark.setViewportSize({ width: 834, height: 1021 });
     // A chat with no message yet is not saved by omp, so the session list is empty: start a new one.

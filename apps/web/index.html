@@ -6,6 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="omp coding agent interface" />
     <title>omp</title>
+    <script>
+      // The theme before the first paint, so a dark browser never flashes light. The same rule as
+      // apps/web/src/theme/theme.ts: an explicit Light or Dark wins, anything else follows the browser.
+      try {
+        const saved = window.localStorage.getItem("omp-app.theme");
+        const dark =
+          saved === "dark" ||
+          (saved !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      } catch {
+        // Without storage or matchMedia the page stays light; the app applies the theme once it runs.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
