@@ -72,10 +72,13 @@ realTest(
       { name: "laptop", width: 1280, height: 800 },
       { name: "user", width: 1771, height: 1100 },
       { name: "monitor", width: 1920, height: 1080 },
+      { name: "mobile", width: 390, height: 844 },
     ] as const) {
-      for (const sidebars of [false, true] as const) {
+      const sidebarStates = size.width <= 600 ? [false] : [false, true];
+      for (const sidebars of sidebarStates) {
+        if (size.width <= 600) await setSidebars(page, false);
         await page.setViewportSize({ width: size.width, height: size.height });
-        await setSidebars(page, sidebars);
+        if (size.width > 600) await setSidebars(page, sidebars);
         await waitForFiniteAnimations(page);
         const columns = await measureColumns(page);
         const label = `${size.name}, sidebars ${sidebars ? "open" : "closed"}`;
