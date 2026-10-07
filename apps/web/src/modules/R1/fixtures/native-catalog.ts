@@ -357,17 +357,10 @@ const historyAssistantEntry = {
   },
 };
 
-/** Persisted entries and tree projection in the shape returned by omp get_entries/get_tree. */
+/** Persisted entries in the shape returned by omp get_entries. */
 export const R1_HISTORY_ENTRIES: readonly Record<string, unknown>[] = Object.freeze([
   historyUserEntry,
   historyAssistantEntry,
-]);
-
-export const R1_HISTORY_TREE: readonly Record<string, unknown>[] = Object.freeze([
-  {
-    entry: historyUserEntry,
-    children: [{ entry: historyAssistantEntry, children: [] }],
-  },
 ]);
 
 export const R1_HISTORY_STATE: OmpWire.SessionState = {

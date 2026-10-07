@@ -21,7 +21,7 @@ function userEntryRecord(content: string): Record<string, unknown> {
 
 function storeWithUserEntry(): OmpRuntimeStore {
   const store = new OmpRuntimeStore({ threadId: sourceThread });
-  store.setTree([userEntryRecord("original draft")], userEntry);
+  store.pairEndedMessages([userEntryRecord("original draft")], userEntry);
   return store;
 }
 

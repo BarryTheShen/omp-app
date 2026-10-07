@@ -2,7 +2,7 @@ import type { OmpWire, RpcSessionEvent, RpcSessionSend, ThreadId } from "@omp-ap
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
-import { flattenSessionTree, SessionHistoryLoader } from "./history";
+import { SessionHistoryLoader } from "./history";
 
 const threadId = "thread-h" as ThreadId;
 
@@ -86,56 +86,23 @@ function makeSend(
   return { send, calls };
 }
 
-function idOf(value: unknown): string {
-  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") {
-    return value.id;
-  }
-  throw new Error("expected an entry with a string id");
-}
-
 function sinceOf(command: Record<string, unknown>): string | undefined {
   const since = command.since;
   return typeof since === "string" ? since : undefined;
 }
 
-describe("flattenSessionTree", () => {
-  test("flattens nested branches parent before children, siblings in order", () => {
-    const tree = [
-      {
-        entry: entry("a", null, "root"),
-        children: [
-          { entry: entry("b", "a", "left"), children: [] },
-          {
-            entry: entry("c", "a", "right"),
-            children: [{ entry: entry("d", "c", "grandchild"), children: [] }],
-          },
-        ],
-      },
-    ];
-    const flat = flattenSessionTree(tree);
-    expect(flat.map(idOf)).toEqual(["a", "b", "c", "d"]);
-  });
-
-  test("skips malformed nodes without throwing", () => {
-    expect(
-      flattenSessionTree([null, 42, { entry: entry("a", null, "x"), children: "not-an-array" }]),
-    ).toEqual([entry("a", null, "x")]);
-  });
-});
-
 describe("SessionHistoryLoader.loadInitial", () => {
-  test("hydrates state, entries and tree, then establishes a fresh sequence baseline", async () => {
+  test("hydrates state and entries, never asks for the tree, then establishes a fresh sequence baseline", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const { send, calls } = makeSend({
       get_state: () => ({ sessionId: "s1", isStreaming: false }),
       get_entries: () => ({ entries: [entry("a", null, "hi")], leafId: "a" }),
-      get_tree: () => ({ tree: [{ entry: entry("a", null, "hi"), children: [] }], leafId: "a" }),
     });
     const loader = new SessionHistoryLoader({ send, threadId, store });
 
     await loader.loadInitial();
 
-    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_tree", "get_entries"]);
+    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
     const snapshot = store.getSnapshot();
     expect(snapshot.needsRefetch).toBe(false);
     expect(snapshot.lastSeq).toBe(0);
@@ -160,15 +127,6 @@ describe("SessionHistoryLoader.refetch", () => {
         sinceOf(command) === undefined
           ? { entries: [entry("a", null, "hi"), entry("b", "a", "there")], leafId: "b" }
           : { entries: [], leafId: "b" },
-      get_tree: () => ({
-        tree: [
-          {
-            entry: entry("a", null, "hi"),
-            children: [{ entry: entry("b", "a", "there"), children: [] }],
-          },
-        ],
-        leafId: "b",
-      }),
     });
     const loader = new SessionHistoryLoader({ send, threadId, store });
 
@@ -195,7 +153,6 @@ describe("SessionHistoryLoader.refetch", () => {
     const { send: initialSend } = makeSend({
       get_state: () => ({ sessionId: "s1" }),
       get_entries: () => ({ entries: [entry("a", null, "hi")], leafId: "a" }),
-      get_tree: () => ({ tree: [{ entry: entry("a", null, "hi"), children: [] }], leafId: "a" }),
     });
     await new SessionHistoryLoader({ send: initialSend, threadId, store }).loadInitial();
 
@@ -212,7 +169,6 @@ describe("SessionHistoryLoader.refetch", () => {
         }
         return { entries: [entry("x", null, "fresh"), entry("y", "x", "fresh2")], leafId: "y" };
       },
-      get_tree: () => ({ tree: [], leafId: "y" }),
     });
     const loader = new SessionHistoryLoader({ send, threadId, store });
 
@@ -233,7 +189,6 @@ describe("SessionHistoryLoader.refetch", () => {
         return stateCallIndex === 1 ? firstState.promise : { sessionId: "s2" };
       },
       get_entries: () => ({ entries: [], leafId: null }),
-      get_tree: () => ({ tree: [], leafId: null }),
     });
     const loader = new SessionHistoryLoader({ send, threadId, store });
 
@@ -252,7 +207,6 @@ describe("SessionHistoryLoader.refetch", () => {
     const { send } = makeSend({
       get_state: () => pending.promise,
       get_entries: () => ({ entries: [], leafId: null }),
-      get_tree: () => ({ tree: [], leafId: null }),
     });
     const loader = new SessionHistoryLoader({ send, threadId, store });
     const controller = new AbortController();
@@ -284,7 +238,6 @@ describe("SessionHistoryLoader.watchNeedsRefetch", () => {
     const { send, calls } = makeSend({
       get_state: () => ({ sessionId: "s1" }),
       get_entries: () => ({ entries: [entry("a", null, "hi")], leafId: "a" }),
-      get_tree: () => ({ tree: [{ entry: entry("a", null, "hi"), children: [] }], leafId: "a" }),
     });
     const loader = new SessionHistoryLoader({ send, threadId, store });
 
@@ -294,7 +247,7 @@ describe("SessionHistoryLoader.watchNeedsRefetch", () => {
     store.ingest(processEvent("ready"), 5);
     await flushMicrotasks();
 
-    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_tree", "get_entries"]);
+    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
     expect(store.getSnapshot().needsRefetch).toBe(false);
     unsubscribe();
   });
@@ -310,7 +263,6 @@ describe("SessionHistoryLoader.watchNeedsRefetch", () => {
         return stateCallIndex === 1 ? failing.promise : { sessionId: "s2" };
       },
       get_entries: () => ({ entries: [], leafId: null }),
-      get_tree: () => ({ tree: [], leafId: null }),
     });
     const loader = new SessionHistoryLoader({
       send,

@@ -312,7 +312,6 @@ describe("R0 W2 recorded fixture runtime gate", () => {
     const send: RpcSessionSend = async ({ command }) => {
       if (command.type === "get_state") return { sessionId: "gap-thread" } as never;
       if (command.type === "get_entries") return { entries: [], leafId: null } as never;
-      if (command.type === "get_tree") return { tree: [], leafId: null } as never;
       return undefined as never;
     };
     const loader = new SessionHistoryLoader({
@@ -335,7 +334,7 @@ describe("R0 W2 recorded fixture runtime gate", () => {
   test("branch flow through R0.4 reloads history before admission", async () => {
     const store = new OmpRuntimeStore({ threadId: "source-thread" as ThreadId });
     const entryId = "user-entry" as EntryId;
-    store.setTree(
+    store.pairEndedMessages(
       [
         {
           type: "message",

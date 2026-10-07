@@ -12,7 +12,6 @@ import type { OmpRuntimeStore } from "../store/store";
 type AbortSignalLike = NonNullable<PortCallOptions["signal"]>;
 type SessionState = OmpWire.SessionState;
 type SessionEntriesResult = OmpWire.SessionEntries;
-type SessionTreeResult = OmpWire.SessionTree;
 
 const SUPERSEDED_MESSAGE = "A newer history request superseded this one";
 const CANCELLED_MESSAGE = "The history request was cancelled";
@@ -23,10 +22,6 @@ export interface SessionHistoryLoaderOptions {
   readonly store: OmpRuntimeStore;
   /** Called when an automatic (`watchNeedsRefetch`) refetch fails; cancellations are never reported. */
   readonly onRefetchError?: (error: AppFailure) => void;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function toAppFailure(error: unknown, fallbackMessage: string): AppFailure {
@@ -49,33 +44,14 @@ function asEntryIdOrNull(value: string | null): EntryId | null {
 export function isUnknownSinceError(error: unknown): boolean {
   return error instanceof AppFailure && error.appError.omp?.code === "unknown_since";
 }
-
 /**
- * Flattens `get_tree`'s nested `{ entry, children }[]` into the same flat entry shape `get_entries`
- * returns, parent before children. Walked iteratively: one linear conversation nests one entry per
- * turn, so a recursive walk would risk the call stack on a long session.
- */
-export function flattenSessionTree(tree: readonly unknown[]): unknown[] {
-  const flat: unknown[] = [];
-  const stack: unknown[] = [...tree].reverse();
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!isRecord(node)) continue;
-    if (node.entry !== undefined) flat.push(node.entry);
-    const children = node.children;
-    if (Array.isArray(children)) {
-      for (let index = children.length - 1; index >= 0; index -= 1) stack.push(children[index]);
-    }
-  }
-  return flat;
-}
-
-/**
- * Loads one open thread's history from omp (Plan item 1: `get_state`, `get_entries`, `get_tree`)
- * and feeds it to R0.1's `OmpRuntimeStore`. `refetch` drives the store's own
- * `needsRefetch` → refetch → `resetSequence` cycle; `watchNeedsRefetch` arms that cycle
- * automatically. Exactly one load or refetch is in flight at a time: starting a new one cancels
- * whichever is already running, and every rejection is a typed `AppFailure`.
+ * Loads one open thread's history from omp (`get_state` and `get_entries`) and feeds it to R0.1's
+ * `OmpRuntimeStore`. `get_tree` is not called: it returns the same entries as `get_entries`, nested
+ * instead of flat, so on the largest real chat (17,099 entries) it sent the same 48 MB twice.
+ * `refetch` drives the store's own `needsRefetch` → refetch → `resetSequence` cycle;
+ * `watchNeedsRefetch` arms that cycle automatically. Exactly one load or refetch is in flight at a
+ * time: starting a new one cancels whichever is already running, and every rejection is a typed
+ * `AppFailure`.
  */
 export class SessionHistoryLoader {
   private readonly send: RpcSessionSend;
@@ -95,7 +71,6 @@ export class SessionHistoryLoader {
   public async loadInitial(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
     await this.run(options?.signal, async (signal) => {
       await this.applyState(signal);
-      await this.applyTree(signal);
       // Entries last, right before the cursor moves: anything persisted after this read arrives as a
       // live event once the gap is cleared.
       await this.applyEntries(undefined, signal);
@@ -107,7 +82,6 @@ export class SessionHistoryLoader {
   public async refetch(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
     await this.run(options?.signal, async (signal) => {
       await this.applyState(signal);
-      await this.applyTree(signal);
       await this.applyEntries(this.latestKnownEntryId(), signal);
       this.store.resetSequence();
     });
@@ -115,7 +89,7 @@ export class SessionHistoryLoader {
 
   /**
    * After a settled turn: omp's state (model, context, usage) and the entries the turn appended, so
-   * its messages pair with their entries. No tree walk and no cursor move: the stream had no gap.
+   * its messages pair with their entries. No cursor move: the stream had no gap.
    */
   public async refreshAfterTurn(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
     await this.run(options?.signal, async (signal) => {
@@ -183,15 +157,6 @@ export class SessionHistoryLoader {
       { signal },
     );
     return result as SessionEntriesResult;
-  }
-
-  private async applyTree(signal: AbortSignalLike): Promise<void> {
-    const result = await this.send(
-      { threadId: this.threadId, command: { type: "get_tree" } },
-      { signal },
-    );
-    const tree = result as SessionTreeResult;
-    this.store.setTree(flattenSessionTree(tree.tree), asEntryIdOrNull(tree.leafId));
   }
 
   private latestKnownEntryId(): EntryId | undefined {

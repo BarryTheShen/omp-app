@@ -28,8 +28,6 @@ function createRpc(
         return { sessionId: args.threadId };
       case "get_entries":
         return { entries: [], leafId: null };
-      case "get_tree":
-        return { tree: [], leafId: null };
       default:
         return undefined;
     }
@@ -107,7 +105,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
 
     expect(store.getSnapshot().threadId).toBe(threadOne);
     expect(older).toEqual([threadOne]);
-    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_tree", "get_entries"]);
+    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
     expect(subscriptions).toHaveLength(1);
   });
 

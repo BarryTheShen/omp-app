@@ -28,7 +28,6 @@ function entry(id: EntryId, parentId: EntryId | null, text: string): Record<stri
 
 function sourceStore(): OmpRuntimeStore {
   const store = new OmpRuntimeStore({ threadId: sourceThread });
-  store.setTree([entry(sourceEntry, null, "source text")], sourceEntry);
   store.pairEndedMessages([entry(sourceEntry, null, "source text")], sourceEntry);
   return store;
 }
@@ -56,12 +55,6 @@ function rpc(
         });
       }
       return { sessionId: targetThread, sessionFile: "/workspace/target.jsonl" } as never;
-    }
-    if (command.type === "get_tree") {
-      return {
-        tree: [{ entry: entry(sourceEntry, null, "source text"), children: [] }],
-        leafId: sourceEntry,
-      } as never;
     }
     if (command.type === "get_entries") {
       return { entries: [entry(sourceEntry, null, "source text")], leafId: sourceEntry } as never;
@@ -126,7 +119,6 @@ describe("OmpConversationTransitionPort", () => {
     const send = rpc({ text: "source text", cancelled: false }, calls);
     const active = activeHistoryController(source, send, (store) => {
       targetHistory.store = store;
-      vi.spyOn(store, "setTree");
       vi.spyOn(store, "pairEndedMessages");
     });
     const port = createOmpConversationTransitionPort({
@@ -142,7 +134,6 @@ describe("OmpConversationTransitionPort", () => {
       { threadId: sourceThread, type: "branch" },
       { threadId: sourceThread, type: "get_state" },
       { threadId: targetThread, type: "get_state" },
-      { threadId: targetThread, type: "get_tree" },
       { threadId: targetThread, type: "get_entries" },
     ]);
     expect(active.activeThreadId).toBe(targetThread);
@@ -162,10 +153,6 @@ describe("OmpConversationTransitionPort", () => {
     );
     const hydratedStore = targetHistory.store;
     if (hydratedStore === null) throw new Error("R0.4 did not create the selected target store");
-    expect(hydratedStore.setTree).toHaveBeenCalledWith(
-      [expect.objectContaining({ id: sourceEntry })],
-      sourceEntry,
-    );
     expect(hydratedStore.pairEndedMessages).toHaveBeenCalledWith(
       [expect.objectContaining({ id: sourceEntry })],
       sourceEntry,
@@ -200,7 +187,6 @@ describe("OmpConversationTransitionPort", () => {
       { threadId: sourceThread, type: "fork" },
       { threadId: sourceThread, type: "get_state" },
       { threadId: targetThread, type: "get_state" },
-      { threadId: targetThread, type: "get_tree" },
       { threadId: targetThread, type: "get_entries" },
     ]);
     expect(active.activeThreadId).toBe(targetThread);
@@ -268,7 +254,6 @@ describe("OmpConversationTransitionPort", () => {
       { threadId: sourceThread, type: "fork" },
       { threadId: sourceThread, type: "get_state" },
       { threadId: targetThread, type: "get_state" },
-      { threadId: targetThread, type: "get_tree" },
       { threadId: targetThread, type: "get_entries" },
     ]);
     expect(active.activeThreadId).toBe(targetThread);

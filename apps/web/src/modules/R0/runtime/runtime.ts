@@ -820,8 +820,7 @@ export class OmpRuntimeController {
     const canBash = capabilityAvailable(this.capabilities, "omp.cmd.bash");
     const canRefetch =
       capabilityAvailable(this.capabilities, "omp.cmd.get_state") &&
-      capabilityAvailable(this.capabilities, "omp.cmd.get_entries") &&
-      capabilityAvailable(this.capabilities, "omp.cmd.get_tree");
+      capabilityAvailable(this.capabilities, "omp.cmd.get_entries");
     const adapter: ExternalStoreAdapter<RuntimeMessageView> = {
       messages: this.messages(snapshot),
       convertMessage: this.converter,

@@ -837,17 +837,6 @@ export class OmpRuntimeStore {
     this.commit(next);
   }
 
-  /** Add a tree projection from `get_tree`; history pagination belongs to R0.2. */
-  public setTree(entries: readonly unknown[], leafId: EntryId | null): void {
-    const next = mutableSnapshot(this.snapshot);
-    const parsed = entriesFromUnknown(entries);
-    for (const entry of parsed) recordTranscriptEntry(next, entry);
-    next.transcript = { ...next.transcript, head: leafId };
-    this.pairEndedInDraft(next, entries);
-    hydratePersistedMessages(next);
-    this.commit(next);
-  }
-
   /** Apply the relevant fields of a `get_state` result; no JSONL or wire parsing happens here. */
   public applySessionState(state: Partial<SessionState>): void {
     const next = mutableSnapshot(this.snapshot);

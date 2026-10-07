@@ -681,7 +681,7 @@ describe("OmpRuntimeStore", () => {
       timestamp: "2026-10-05T00:00:00.000Z",
       message: { role, content: text, timestamp: 1 },
     });
-    store.setTree(
+    store.pairEndedMessages(
       [
         message("u1", null, "user", "first question"),
         message("a1", "u1", "assistant", "first answer"),
@@ -715,7 +715,7 @@ describe("OmpRuntimeStore", () => {
       timestamp: "2026-10-05T00:00:00.000Z",
       message: { role: "user", content: "question", timestamp: 1 },
     };
-    store.setTree([entry], "u1" as EntryId);
+    store.pairEndedMessages([entry], "u1" as EntryId);
     // omp streams the same user message (it is also in get_entries), then starts the answer.
     omp(store, { type: "message_start", messageId: "m-user", message: entry.message }, 1);
     omp(store, { type: "message_end", messageId: "m-user", message: entry.message }, 2);

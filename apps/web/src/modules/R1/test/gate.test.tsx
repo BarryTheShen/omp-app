@@ -30,7 +30,6 @@ import {
   R1_FIXTURE_WORKTREE,
   R1_HISTORY_ENTRIES,
   R1_HISTORY_STATE,
-  R1_HISTORY_TREE,
   R1_IMPORT_RESULT,
   R1_NATIVE_SESSION_FILES,
   R1_NATIVE_SESSION_FILES_BY_FOLDER,
@@ -158,8 +157,6 @@ function createHistoryRpc(
     switch (command.type) {
       case "get_state":
         return { ...R1_HISTORY_STATE, sessionId: threadId } as never;
-      case "get_tree":
-        return { tree: R1_HISTORY_TREE, leafId: "entry-assistant-1" } as never;
       case "get_entries":
         return { entries: R1_HISTORY_ENTRIES, leafId: "entry-assistant-1" } as never;
       default:
@@ -527,7 +524,7 @@ describe("R1 W3 sidebar to history handoff", () => {
 
     expect(openedByRemote).toEqual([{ threadId: R1_THREAD_IDS.active }]);
     expect(openedByHistory).toEqual([{ threadId: R1_THREAD_IDS.active }]);
-    expect(historyCalls.slice(0, 3)).toEqual(["get_state", "get_tree", "get_entries"]);
+    expect(historyCalls.slice(0, 2)).toEqual(["get_state", "get_entries"]);
     const store = controller.getSnapshot().store;
     expect(store).toBeDefined();
     expect(store?.getSnapshot().transcript.order).toEqual(["entry-user-1", "entry-assistant-1"]);
