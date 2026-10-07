@@ -142,7 +142,7 @@ export function SelectDialog({
                 }}
                 onFocus={() => setActiveIndex(index)}
               >
-                <span className="flex flex-col gap-0.5">
+                <span className="flex min-w-0 flex-col gap-0.5 [overflow-wrap:anywhere]">
                   <span>{option.label}</span>
                   {option.description ? (
                     <span className="text-xs font-normal text-muted-foreground">
