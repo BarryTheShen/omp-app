@@ -124,7 +124,7 @@ export function MessageParts({ message, toolRenderers, extra }: MessagePartsProp
   return (
     <MessagePrimitive.Root
       className={cn(
-        "mx-auto w-full max-w-3xl px-6 py-3",
+        "mx-auto w-full max-w-(--layout-thread-width) px-6 py-3",
         isUser && "flex justify-end",
         isSystem && "py-2",
       )}

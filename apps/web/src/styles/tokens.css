@@ -86,6 +86,13 @@
   --space-2xl: 2rem;
   --space-3xl: 3rem;
 
+  /*
+   * Layout: how wide the conversation is (messages, tool cards, the composer and the queue bar all
+   * share it, so they line up). A moderate share of a wide window, not all of it: the owner's feedback
+   * #654 found 48rem too narrow on a wide screen. Change it here, in one place.
+   */
+  --layout-thread-width: 60rem;
+
   /* Radii: soft, generous rounding (shadcn's own default base is 0.625rem). */
   --radius: 0.75rem;
 

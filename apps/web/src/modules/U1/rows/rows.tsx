@@ -114,7 +114,11 @@ function RowSurface({
   readonly variant?: "card" | "inline";
 } & React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-1.5" data-u1-row-kind={kind} {...props}>
+    <div
+      className="mx-auto w-full max-w-(--layout-thread-width) px-6 py-1.5"
+      data-u1-row-kind={kind}
+      {...props}
+    >
       {variant === "inline" ? (
         <div className={cn("border-border border-b py-1.5 text-sm", className)}>{children}</div>
       ) : (

@@ -139,7 +139,7 @@ export function QueueLaneBar({
   return (
     <aside
       aria-label="Queued messages"
-      className="border-border bg-card mx-auto mb-(--space-xs) flex w-full max-w-3xl flex-col gap-(--space-md) rounded-(--radius) border p-(--space-sm) shadow-xs"
+      className="border-border bg-card mb-(--space-xs) flex w-full flex-col gap-(--space-md) rounded-(--radius) border p-(--space-sm) shadow-xs"
       data-queue-bar="true"
       data-queue-connection={connection.state}
     >

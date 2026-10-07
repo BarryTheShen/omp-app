@@ -69,7 +69,7 @@ function RuntimeError({
   };
 
   return (
-    <div className="mx-auto my-6 w-full max-w-3xl px-6">
+    <div className="mx-auto my-6 w-full max-w-(--layout-thread-width) px-6">
       <div
         aria-live="assertive"
         className="border-danger bg-danger-surface text-danger-surface-foreground rounded-lg border p-4"
@@ -106,7 +106,7 @@ function RuntimeStateSurface({ snapshot, onRetry }: RuntimeStateSurfaceProps) {
     return (
       <div
         aria-live="polite"
-        className="text-muted-foreground mx-auto flex min-h-32 w-full max-w-3xl items-center justify-center px-6 py-12 text-sm"
+        className="text-muted-foreground mx-auto flex min-h-32 w-full max-w-(--layout-thread-width) items-center justify-center px-6 py-12 text-sm"
         data-slot="u1-thread-loading"
         role="status"
       >
@@ -118,7 +118,7 @@ function RuntimeStateSurface({ snapshot, onRetry }: RuntimeStateSurfaceProps) {
   if (snapshot.messageOrder.length === 0) {
     return (
       <div
-        className="text-muted-foreground mx-auto flex min-h-32 w-full max-w-3xl items-center justify-center px-6 py-12 text-sm"
+        className="text-muted-foreground mx-auto flex min-h-32 w-full max-w-(--layout-thread-width) items-center justify-center px-6 py-12 text-sm"
         data-slot="u1-thread-empty"
       >
         No messages yet.
@@ -193,7 +193,7 @@ function renderPart(part: EnrichedPartState, slots: ThreadRowSlots | undefined):
 function MessageRow({ message, slots }: { message: MessageState; slots?: ThreadRowSlots }) {
   const fallback = (
     <MessagePrimitive.Root
-      className="mx-auto w-full max-w-3xl px-6 py-3"
+      className="mx-auto w-full max-w-(--layout-thread-width) px-6 py-3"
       data-message-id={message.id}
       data-role={message.role}
       data-slot="u1-thread-message"
@@ -230,7 +230,7 @@ export function ThreadShell({ store, onRetry, slots }: ThreadShellProps) {
         className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
         turnAnchor="top"
       >
-        <div className="mx-auto flex min-h-full w-full min-w-0 max-w-4xl flex-1 flex-col">
+        <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) flex-1 flex-col">
           <RuntimeStateSurface snapshot={snapshot} onRetry={onRetry} />
           <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
             <ThreadPrimitive.Messages>

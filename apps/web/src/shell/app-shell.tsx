@@ -50,7 +50,7 @@ function DefaultThreadHeader() {
 
 function DefaultTranscript() {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-6 py-12 text-center">
+    <div className="mx-auto flex w-full max-w-(--layout-thread-width) flex-1 flex-col justify-center px-6 py-12 text-center">
       <p className="text-lg font-medium tracking-tight">Ready when you are</p>
       <p className="text-muted-foreground mt-2 text-sm">
         Your conversation will appear here once a session is open.
@@ -61,10 +61,8 @@ function DefaultTranscript() {
 
 function DefaultComposer() {
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-4">
-      <div className="border-border bg-card text-muted-foreground rounded-xl border px-4 py-3 text-sm">
-        Open a session to start composing.
-      </div>
+    <div className="border-border bg-card text-muted-foreground rounded-xl border px-4 py-3 text-sm">
+      Open a session to start composing.
     </div>
   );
 }
@@ -323,7 +321,8 @@ export function AppShell({
           className="shrink-0 border-t border-border bg-background"
           data-shell-region="composer"
         >
-          {composer}
+          {/* The composer shares the conversation's width, so its edges line up with the messages. */}
+          <div className="mx-auto w-full max-w-(--layout-thread-width) px-6 py-3">{composer}</div>
         </section>
       </main>
 
