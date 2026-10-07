@@ -12,6 +12,8 @@ import type {
 } from "@omp-app/contracts";
 import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Panel } from "@/components/blocks";
+import { LayoutArea, type SurfaceMap } from "@/layout";
 import { createRegistry, RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
 import { SessionCatalogModel } from "../catalog";
@@ -75,6 +77,15 @@ function session(
   };
 }
 
+/** `?sessions=60` or `?panelRows=80` adds that many rows, to see how a long list behaves. */
+function queryCount(name: string): number {
+  const requested = Number.parseInt(
+    new URLSearchParams(window.location.search).get(name) ?? "",
+    10,
+  );
+  return Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 500) : 0;
+}
+
 const fixtureSessions: readonly SessionFile[] = [
   session(PINNED_ID, ROOT, "Pinned project kickoff", "2026-10-05T11:59:00.000Z", 0),
   session(
@@ -100,6 +111,15 @@ const fixtureSessions: readonly SessionFile[] = [
       `Recent worktree chat ${index + 1}`,
       `2026-10-0${4 - Math.floor(index / 2)}T10:${String(55 - index).padStart(2, "0")}:00.000Z`,
       index + 6,
+    ),
+  ),
+  ...Array.from({ length: queryCount("sessions") }, (_, index) =>
+    session(
+      `session-older-${index + 1}` as ThreadId,
+      ROOT,
+      `Older project chat ${index + 1}`,
+      new Date(Date.UTC(2026, 8, 30, 12, 0) - index * 3_600_000).toISOString(),
+      index + 12,
     ),
   ),
 ];
@@ -174,20 +194,49 @@ function SessionSidebarPlayground() {
   );
 
   const sidebar = (
-    <SessionCatalogSidebar
-      catalog={catalog}
-      currentThreadId={PINNED_ID}
-      remote={remote}
-      onNewChat={(threadId) => setLastAction(`Started ${threadId}`)}
-      onOpenThread={(threadId) => setLastAction(`Selected ${threadId}`)}
-    />
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="r1-session-sidebar">
+      <SessionCatalogSidebar
+        catalog={catalog}
+        currentThreadId={PINNED_ID}
+        remote={remote}
+        onNewChat={(threadId) => setLastAction(`Started ${threadId}`)}
+        onOpenThread={(threadId) => setLastAction(`Selected ${threadId}`)}
+      />
+    </div>
   );
+  // The same area and surface the app mounts (`apps/web/src/app/root.tsx`), so this page shows the
+  // real height and scrolling chain from the shell down to the list.
+  const sidebarSurfaces: SurfaceMap = {
+    sessions: { title: "Sessions", grow: true, render: () => sidebar },
+  };
+  const notes = Array.from({ length: queryCount("panelRows") }, (_, index) => `Note ${index + 1}`);
+  const panelSurfaces: SurfaceMap = {
+    todo: {
+      title: "Notes",
+      grow: true,
+      render: () => (
+        <Panel title="Notes">
+          {notes.map((note) => (
+            <p className="py-2 text-sm" key={note}>
+              {note}
+            </p>
+          ))}
+        </Panel>
+      ),
+    },
+  };
 
   return (
     <RegistryProvider capabilities={capabilities} registry={createRegistry([])} renderers={{}}>
       <AppShell
-        leftSidebar={<div data-testid="r1-session-sidebar">{sidebar}</div>}
-        rightSidebar={<div className="p-4 text-sm">Panels are empty in this fixture.</div>}
+        leftSidebar={<LayoutArea area="sidebar" surfaces={sidebarSurfaces} />}
+        rightSidebar={
+          notes.length > 0 ? (
+            <LayoutArea area="panels" surfaces={panelSurfaces} />
+          ) : (
+            <div className="p-4 text-sm">Panels are empty in this fixture.</div>
+          )
+        }
         threadHeader={<h1 className="truncate text-sm font-semibold">R1 session catalog</h1>}
         transcript={
           <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">

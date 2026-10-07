@@ -22,6 +22,7 @@ const REAL_OMP = "/home/user/.bun/bin/omp";
 export const APP_ROOT = resolve(process.cwd(), "../..");
 const SERVER_SCRIPT = resolve(APP_ROOT, "packages/server/scripts/dev.ts");
 const FAKE_PROVIDER = resolve(APP_ROOT, "packages/omp-rpc/scripts/fake-openai-server.ts");
+const SESSION_PATHS = resolve(APP_ROOT, "packages/server/src/modules/A1/sessions/paths.ts");
 export const screenshots = resolve(APP_ROOT, ".data/screenshots");
 
 export async function waitForFiniteAnimations(page: Page): Promise<void> {
@@ -110,12 +111,34 @@ async function startProvider(agentDir: string, env: Record<string, string>): Pro
 async function startServer(
   root: string,
   env: Record<string, string>,
-  idleCloseMs: number | undefined,
+  options: { readonly idleCloseMs: number | undefined; readonly seedSessions: number },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
   const script = join(root, "app-root-server.ts");
   await writeFile(
     script,
-    `import { createCompositionServer } from ${JSON.stringify(SERVER_SCRIPT)};
+    `import { mkdir, utimes, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createCompositionServer } from ${JSON.stringify(SERVER_SCRIPT)};
+import { sessionBucketName } from ${JSON.stringify(SESSION_PATHS)};
+// Old chats written the way omp writes them, before the app starts.
+const seed = ${options.seedSessions};
+if (seed > 0) {
+  const folder = ${JSON.stringify(join(root, "workspace"))};
+  const bucket = join(${JSON.stringify(join(root, "agent"))}, "sessions", sessionBucketName(folder, { home: ${JSON.stringify(join(root, "home"))} }));
+  await mkdir(bucket, { recursive: true });
+  for (let index = 0; index < seed; index += 1) {
+    const id = "01a00000-0000-7000-8000-" + String(index).padStart(12, "0");
+    const when = new Date(Date.UTC(2026, 8, 1) + index * 3600000);
+    const stamp = when.toISOString();
+    const lines = [
+      { type: "session", version: 3, id, timestamp: stamp, cwd: folder },
+      { type: "message", id: "m" + index, parentId: null, timestamp: stamp, message: { role: "user", content: [{ type: "text", text: "Seeded chat " + (index + 1) }], timestamp: when.getTime() } },
+    ];
+    const file = join(bucket, stamp.replace(/[:.]/g, "-") + "_" + id + ".jsonl");
+    await writeFile(file, lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
+    await utimes(file, when, when);
+  }
+}
 const server = await createCompositionServer({
   port: 0,
   cwd: ${JSON.stringify(join(root, "workspace"))},
@@ -126,7 +149,7 @@ const server = await createCompositionServer({
   ompBin: ${JSON.stringify(REAL_OMP)},
   ompArgs: ["--model", "fake/fake-model"],
   staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
-  idleCloseMs: ${idleCloseMs === undefined ? "undefined" : idleCloseMs},
+  idleCloseMs: ${options.idleCloseMs === undefined ? "undefined" : options.idleCloseMs},
 });
 console.log("APP_ROOT_READY " + JSON.stringify({ url: server.url, token: server.token }));
 const stop = () => void server.stop().finally(() => process.exit(0));
@@ -156,11 +179,17 @@ const enabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
 
 /**
  * A test with a `realApp` fixture: a fresh composed app per test, torn down afterwards. A spec can
- * shorten how long an unwatched chat's omp process lives with `realTest.use({ idleCloseMs })`.
+ * shorten how long an unwatched chat's omp process lives with `realTest.use({ idleCloseMs })`, and
+ * start with that many old chats already in the folder with `realTest.use({ seedSessions })`.
  */
-export const realTest = test.extend<{ realApp: RealApp; idleCloseMs: number | undefined }>({
+export const realTest = test.extend<{
+  realApp: RealApp;
+  idleCloseMs: number | undefined;
+  seedSessions: number;
+}>({
   idleCloseMs: [undefined, { option: true }],
-  realApp: async ({ browser, idleCloseMs }, use, testInfo) => {
+  seedSessions: [0, { option: true }],
+  realApp: async ({ browser, idleCloseMs, seedSessions }, use, testInfo) => {
     testInfo.skip(!enabled, "needs OMP_APP_REAL_OMP=1 and omp installed");
     // Real omp starts a process per chat: a loaded machine needs more than the default 30 s.
     testInfo.slow();
@@ -185,7 +214,7 @@ export const realTest = test.extend<{ realApp: RealApp; idleCloseMs: number | un
     const problems: string[] = [];
     try {
       provider = await startProvider(agentDir, env);
-      server = await startServer(root, env, idleCloseMs);
+      server = await startServer(root, env, { idleCloseMs, seedSessions });
       const url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
         const page = await browser.newPage();

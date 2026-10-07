@@ -280,7 +280,7 @@ export function AppShell({
         }}
       >
         <SidebarHeader side="left" open={leftOpen} onToggle={() => setLeftOpen(false)} />
-        <div className="min-h-0 flex-1">{leftSidebar}</div>
+        <div className="flex min-h-0 flex-1 flex-col">{leftSidebar}</div>
         {!isNarrow && leftOpen && (
           <ResizeHandle
             maximum={MAX_SIDEBAR_WIDTH}
@@ -344,7 +344,7 @@ export function AppShell({
         }}
       >
         <SidebarHeader side="right" open={rightOpen} onToggle={() => setRightOpen(false)} />
-        <div className="min-h-0 flex-1">{rightSidebar}</div>
+        <div className="flex min-h-0 flex-1 flex-col">{rightSidebar}</div>
         {!isNarrow && rightOpen && (
           <ResizeHandle
             maximum={MAX_SIDEBAR_WIDTH}

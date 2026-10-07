@@ -183,3 +183,73 @@ test("captures the narrow U0 left drawer", async ({ page }) => {
   });
   assertNoConsoleErrors();
 });
+
+// Feedback #661: with about 20 sessions the list was cut off at the bottom of the window and the
+// older ones could not be reached, because the sidebar's content box had no height of its own.
+for (const height of [600, 844, 1659]) {
+  test(`a long session list scrolls inside the sidebar at ${height} px tall, and the controls above it stay put`, async ({
+    page,
+  }) => {
+    const assertNoConsoleErrors = trackConsoleErrors(page);
+    await page.setViewportSize({ width: 1280, height });
+    await page.goto(`${PLAYGROUND}?sessions=60`);
+    await expectCatalogReady(page);
+    const list = page.getByRole("listbox", { name: "Session list" });
+    const newChat = page.getByRole("button", { name: "New chat" }).first();
+    const search = page.getByRole("textbox", { name: "Search sessions" });
+    const controlsBefore = [await newChat.boundingBox(), await search.boundingBox()];
+
+    // The list is taller than its box, so it scrolls; the window itself does not.
+    const metrics = await list.evaluate((element) => ({
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      overflowY: getComputedStyle(element).overflowY,
+      bottom: element.getBoundingClientRect().bottom,
+    }));
+    expect(metrics.overflowY).toBe("auto");
+    expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+    expect(metrics.bottom).toBeLessThanOrEqual(height);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(
+      height,
+    );
+
+    // The wheel reaches the last row of the list, and the controls above did not move.
+    const last = page.getByRole("option", { name: /Recent worktree chat 5/ });
+    await expect(last).not.toBeInViewport();
+    await list.hover();
+    await page.mouse.wheel(0, 50_000);
+    await expect(last).toBeInViewport();
+    expect([await newChat.boundingBox(), await search.boundingBox()]).toEqual(controlsBefore);
+
+    await page.screenshot({
+      path: join(SCREENSHOT_ROOT, `r1-6-session-sidebar-long-list-${height}.png`),
+      fullPage: true,
+    });
+    assertNoConsoleErrors();
+  });
+}
+
+test("a long panel scrolls inside the right-hand sidebar, with its title staying put", async ({
+  page,
+}) => {
+  const assertNoConsoleErrors = trackConsoleErrors(page);
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto(`${PLAYGROUND}?panelRows=80`);
+  await expectCatalogReady(page);
+  const body = page.locator('[data-panel-scroll="body"]');
+  const metrics = await body.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+    bottom: element.getBoundingClientRect().bottom,
+  }));
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+  expect(metrics.bottom).toBeLessThanOrEqual(600);
+
+  const last = page.getByText("Note 80", { exact: true });
+  await expect(last).not.toBeInViewport();
+  await body.hover();
+  await page.mouse.wheel(0, 50_000);
+  await expect(last).toBeInViewport();
+  await expect(page.getByRole("heading", { name: "Notes" })).toBeInViewport();
+  assertNoConsoleErrors();
+});
