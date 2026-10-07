@@ -2,6 +2,13 @@ import { createRoot } from "react-dom/client";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { EditCard } from "./edit";
 
+/** omp's real result is `{ content: [{ type: "text", text }], details }`; a string is raw text from a call that is still streaming. */
+function envelope(result: unknown): unknown {
+  return typeof result === "string"
+    ? result
+    : { content: [{ type: "text", text: "" }], details: result };
+}
+
 function props(
   toolCallId: string,
   toolName: string,
@@ -15,7 +22,7 @@ function props(
     toolName,
     args,
     argsText: JSON.stringify(args),
-    result,
+    result: envelope(result),
     status,
   } as unknown as ToolRendererProps;
 }

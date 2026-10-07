@@ -79,6 +79,7 @@ describe("T1 read URL seam", () => {
         details,
         rawArgs: '{"path":"skill://review"}',
         rawResult: "content",
+        text: "content",
       },
       renderer,
     );
@@ -91,6 +92,7 @@ describe("T1 read URL seam", () => {
           details: { kind: "file", displayTarget: "a.ts" },
           rawArgs: "{}",
           rawResult: "file",
+          text: "file",
         },
         renderer,
       ),
@@ -106,6 +108,7 @@ describe("T1 read URL seam", () => {
           details: { kind: "url", url: "rule://security" },
           rawArgs: "{}",
           rawResult: "rule",
+          text: "rule",
         },
         undefined,
       ),

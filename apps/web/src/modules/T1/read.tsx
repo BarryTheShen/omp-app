@@ -3,9 +3,12 @@ import { Icons } from "../../tokens";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { splitToolResult } from "../U3/tool-card/result";
+import { TextOutput } from "../U3/tool-card/text-output";
 import {
   decodeReadArgs,
   decodeReadDetails,
+  omittedOf,
   type ReadToolDetails,
   type TruncationMeta,
 } from "./models";
@@ -28,8 +31,11 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
   const args = decodeReadArgs(rendererProps.args);
   const detailSource = rendererProps.result ?? normalized.result ?? normalized.partialResult;
   const rawResult = rawText(detailSource);
-  const details = detailSource === undefined ? undefined : decodeReadDetails(detailSource);
-  if (details === undefined) {
+  // omp's result is `{ content, details }`: the details are decoded, the text is the fallback.
+  const split = splitToolResult(detailSource);
+  const details = detailSource === undefined ? undefined : decodeReadDetails(split.details ?? {});
+  // A failed read is its error banner (omp's own words); a body under it would say the same again.
+  if (details === undefined || normalized.phase === "error") {
     return (
       <ToolCard
         className="[&_[data-slot='u3-tool-card-args']]:hidden"
@@ -88,6 +94,7 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
         details: details.value,
         rawArgs: normalized.argsText,
         rawResult,
+        text: split.text,
       },
       urlRenderer,
     );
@@ -112,6 +119,7 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
       <ReadBody
         args={args.ok ? args.value : undefined}
         details={details.value}
+        fallbackText={split.text}
         groupedReads={groupedReads}
         target={target}
         urlAvailable={details.value.kind !== "url" || urlRenderer !== undefined}
@@ -134,12 +142,15 @@ export const ReadToolRenderer: ToolRenderer = createReadToolRenderer();
 function ReadBody({
   args,
   details,
+  fallbackText,
   groupedReads,
   target,
   urlAvailable,
 }: {
   readonly args?: { readonly offset?: number; readonly limit?: number };
   readonly details: ReadToolDetails;
+  /** The text omp returned; shown when the details hold no lines to display (a directory, a database, a summary). */
+  readonly fallbackText: string;
   readonly groupedReads?: readonly ReadGroupItem[];
   readonly target: string;
   readonly urlAvailable: boolean;
@@ -178,7 +189,8 @@ function ReadBody({
       </div>
       {details.isDirectory ? (
         <div className="border-border bg-muted/40 rounded-lg border p-3 text-sm">
-          Directory listing
+          <p>Directory listing</p>
+          {fallbackText !== "" && <TextOutput text={fallbackText} testId="t1-read-text" />}
         </div>
       ) : imageSource !== undefined ? (
         <div className="border-border bg-muted/30 flex items-center justify-center rounded-lg border p-3">
@@ -200,9 +212,18 @@ function ReadBody({
       ) : content !== undefined ? (
         <CodePreview
           content={content}
+          lineNumbers={
+            Array.isArray(details.displayContent?.lineNumbers)
+              ? details.displayContent.lineNumbers
+              : undefined
+          }
           startLine={details.displayContent?.startLine ?? 1}
           target={target}
         />
+      ) : details.summary === undefined && fallbackText !== "" ? (
+        <div className="border-border bg-muted/40 rounded-lg border p-3 text-sm">
+          <TextOutput text={fallbackText} testId="t1-read-text" />
+        </div>
       ) : (
         <div className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground">
           {details.summary ?? "No displayable content"}
@@ -230,16 +251,26 @@ function ReadBody({
 
 function CodePreview({
   content,
+  lineNumbers,
   startLine,
   target,
 }: {
   readonly content: string;
+  /**
+   * The number of each line as omp sent them (not always consecutive; `null` marks a row that stands
+   * for lines omp left out). Counted from `startLine` when absent.
+   */
+  readonly lineNumbers?: readonly (number | null)[];
   readonly startLine: number;
   readonly target: string;
 }) {
   const lines = content.split("\n");
-  let lineNumber = startLine;
-  const numberedLines = lines.map((line) => ({ line, lineNumber: lineNumber++ }));
+  // Rows only ever append or are replaced whole, so a row's position is a stable key.
+  const numberedLines = lines.map((line, index) => ({
+    id: `row-${index}`,
+    line,
+    lineNumber: lineNumbers === undefined ? startLine + index : (lineNumbers[index] ?? null),
+  }));
   const language = languageForTarget(target);
   return (
     <div className="border-border bg-muted/30 overflow-hidden rounded-lg border" data-markdown-code>
@@ -253,8 +284,8 @@ function CodePreview({
         data-slot="t1-read-code"
       >
         <code className="font-mono text-info">
-          {numberedLines.map(({ line, lineNumber: currentLine }) => (
-            <span className="block" key={currentLine}>
+          {numberedLines.map(({ id, line, lineNumber: currentLine }) => (
+            <span className="block" key={id}>
               <span
                 aria-hidden="true"
                 className="mr-4 inline-block min-w-8 select-none text-right text-muted-foreground"
@@ -271,9 +302,10 @@ function CodePreview({
 }
 
 function TruncationNotice({ meta }: { readonly meta: TruncationMeta }) {
+  const left = omittedOf(meta);
   const omitted = [
-    meta.omittedLines === undefined ? "" : `${meta.omittedLines} lines`,
-    meta.omittedBytes === undefined ? "" : `${meta.omittedBytes} bytes`,
+    left.lines === undefined || left.lines === 0 ? "" : `${left.lines} lines`,
+    left.bytes === undefined || left.bytes === 0 ? "" : `${left.bytes} bytes`,
   ].filter(Boolean);
   return (
     <div
@@ -382,6 +414,16 @@ function selectorText(
   args: { readonly offset?: number; readonly limit?: number } | undefined,
   details: ReadToolDetails,
 ): string | undefined {
+  // omp lists the number of every line it shows (null for lines it left out): the range is exact.
+  const listed = details.displayContent?.lineNumbers;
+  if (Array.isArray(listed)) {
+    const shown = listed.filter((number): number is number => number !== null);
+    const first = shown[0];
+    const last = shown[shown.length - 1];
+    if (first !== undefined && last !== undefined) {
+      return first === last ? `line ${first}` : `lines ${first}–${last}`;
+    }
+  }
   const start =
     details.displayContent?.startLine ?? (args?.offset === undefined ? undefined : args.offset + 1);
   if (start === undefined) return undefined;

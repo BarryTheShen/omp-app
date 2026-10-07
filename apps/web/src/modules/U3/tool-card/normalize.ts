@@ -9,6 +9,7 @@ import type {
   ToolCardState,
   ToolRendererProps,
 } from "./contract";
+import { splitToolResult } from "./result";
 
 export interface ToolStateSource {
   readonly toolState?: ToolCallState;
@@ -27,6 +28,7 @@ export function normalizeToolRendererProps(
     args: props.args,
     argsText: props.argsText,
     result: props.result,
+    isError: props.isError,
     status: props.status,
     toolState: source.toolState ?? props.toolState,
     outputMeta: source.outputMeta ?? props.outputMeta,
@@ -110,7 +112,7 @@ function malformedToolState(
 function resolvePhase(input: NormalizeToolCallInput): ToolCardPhase {
   const sourceStatus = input.toolState?.status;
   if (sourceStatus === "cancelled") return "cancelled";
-  if (input.toolState?.isError === true) return "error";
+  if (input.toolState?.isError === true || input.isError === true) return "error";
   if (isTimedOut(input.toolState?.result) || isTimedOut(input.result)) return "error";
   if (sourceStatus !== undefined) {
     if (sourceStatus === "error") return "error";
@@ -158,7 +160,12 @@ function resolveError(
     return { code: "timeout", message: "Tool call timed out.", retryable: false, timeout: true };
   }
   if (phase === "error") {
-    return { message: "The tool reported an error.", retryable: false };
+    // omp's own words for why a call failed are in the result's text ("Path 'x' not found").
+    const reason = splitToolResult(input.toolState?.result ?? input.result).text.trim();
+    return {
+      message: reason === "" ? "The tool reported an error." : reason.slice(0, 600),
+      retryable: false,
+    };
   }
   return undefined;
 }

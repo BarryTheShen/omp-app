@@ -111,6 +111,8 @@ export interface NormalizeToolCallInput {
   readonly args?: unknown;
   readonly argsText?: string;
   readonly result?: unknown;
+  /** The part's own flag: omp marked this tool result as a failure (set on parts loaded from history too). */
+  readonly isError?: boolean;
   readonly error?: unknown;
   readonly status?: ToolCallMessagePartStatus;
   readonly toolState?: ToolCallState;

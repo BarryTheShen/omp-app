@@ -1,6 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
+import { T4_REAL_RESULTS } from "./fixtures/real-results";
 import { T4ReadUrlRenderer } from "./url-read";
 
 afterEach(() => cleanup());
@@ -30,7 +31,13 @@ describe("T4ReadUrlRenderer", () => {
           contentType: "text/markdown",
           method: "GET",
           totalLines: 2,
-          truncation: { direction: "tail", reason: "lines", omittedLines: 4 },
+          truncation: {
+            truncated: true,
+            direction: "tail",
+            truncatedBy: "lines",
+            totalLines: 20,
+            outputLines: 16,
+          },
           notes: ["Retrieved from the network"],
           sources: [{ title: "Source", url: "https://source.test/page", snippet: "Snippet" }],
           screenshots: [{ data: "data:image/png;base64,AAAA" }],
@@ -43,13 +50,20 @@ describe("T4ReadUrlRenderer", () => {
           contentType: "text/markdown",
           method: "GET",
           totalLines: 2,
-          truncation: { direction: "tail", reason: "lines", omittedLines: 4 },
+          truncation: {
+            truncated: true,
+            direction: "tail",
+            truncatedBy: "lines",
+            totalLines: 20,
+            outputLines: 16,
+          },
           notes: ["Retrieved from the network"],
           sources: [{ title: "Source", url: "https://source.test/page", snippet: "Snippet" }],
           screenshots: [{ data: "data:image/png;base64,AAAA" }],
         } as never,
         rawArgs: '{"path":"https://example.test/docs"}',
         rawResult: "raw page",
+        text: "",
       }),
     );
     expect(screen.getByTestId("t4-url-read")).toBeTruthy();
@@ -84,10 +98,53 @@ describe("T4ReadUrlRenderer", () => {
         } as never,
         rawArgs: "skill://review",
         rawResult: "skill content",
+        text: "",
       }),
     );
     expect(screen.getByText("Resource metadata")).toBeTruthy();
     expect(screen.getByText("Skill content")).toBeTruthy();
     expect(screen.queryByRole("link", { name: /skill/i })).toBeNull();
+  });
+
+  test("a real URL read, whose page is the returned text, shows the head of the page and a button for all of it", () => {
+    const sample = T4_REAL_RESULTS[0];
+    if (sample === undefined) throw new Error("no real URL read fixture");
+    render(
+      T4ReadUrlRenderer({
+        toolCallId: "url-read-1" as never,
+        rendererProps: props(sample.result),
+        details: sample.result.details as never,
+        rawArgs: JSON.stringify(sample.args),
+        rawResult: JSON.stringify(sample.result),
+        text: "URL: https://lazy.folke.io/usage\nContent-Type: text/html\n".concat(
+          Array.from({ length: 40 }, (_, index) => `page line ${index + 1}`).join("\n"),
+        ),
+      }),
+    );
+    const text = screen.getByTestId("t4-url-text").textContent ?? "";
+    expect(text).toContain("URL: https://lazy.folke.io/usage");
+    expect(text).toContain("page line 14");
+    expect(text).not.toContain("page line 15");
+    expect(screen.getByText("42 lines")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 42 lines" }));
+    expect(screen.getByTestId("t4-url-text").textContent).toContain("page line 40");
+    expect(screen.queryByText("No page content was returned.")).toBeNull();
+  });
+
+  test("says so plainly when the page really had no text", () => {
+    render(
+      T4ReadUrlRenderer({
+        toolCallId: "url-read-2" as never,
+        rendererProps: props({
+          content: [],
+          details: { kind: "url", url: "https://example.test/empty" },
+        }),
+        details: { kind: "url", url: "https://example.test/empty" } as never,
+        rawArgs: "{}",
+        rawResult: "{}",
+        text: "",
+      }),
+    );
+    expect(screen.getByText("No page content was returned.")).toBeTruthy();
   });
 });

@@ -1,7 +1,21 @@
+import { AppError as AppErrorSchema } from "@omp-app/contracts";
 import { createRoot } from "react-dom/client";
 import "../../index.css";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { WriteCard } from "./write";
+
+/**
+ * omp's real result is `{ content: [{ type: "text", text }], details }`. A string is raw text from a
+ * call that is still streaming, and a typed error is a failure: neither is details.
+ */
+function envelope(result: unknown): unknown {
+  return typeof result === "string" ||
+    result === undefined ||
+    result instanceof Error ||
+    AppErrorSchema.safeParse(result).success
+    ? result
+    : { content: [{ type: "text", text: "" }], details: result };
+}
 
 function props(
   toolCallId: string,
@@ -15,7 +29,7 @@ function props(
     toolName: "write",
     args,
     argsText: JSON.stringify(args),
-    result,
+    result: envelope(result),
     status,
   } as unknown as ToolRendererProps;
 }

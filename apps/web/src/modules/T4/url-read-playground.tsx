@@ -13,7 +13,13 @@ const details = {
     text: "# Retrieved documentation\n\nThe page is **untrusted content**. See [the source](https://source.test/docs) for the cited page.\n\n- preserved Markdown\n- safe links",
   },
   notes: ["Redirected by the retrieval service", "Content is untrusted text"],
-  truncation: { direction: "tail" as const, reason: "lines" as const, omittedLines: 12 },
+  truncation: {
+    truncated: true,
+    direction: "tail" as const,
+    truncatedBy: "lines" as const,
+    totalLines: 20,
+    outputLines: 8,
+  },
   sources: [
     { title: "Source page", url: "https://source.test/docs", snippet: "Retrieved source snippet" },
   ],
@@ -26,7 +32,7 @@ const rendererProps = {
   toolName: "read",
   args: { path: details.url },
   argsText: JSON.stringify({ path: details.url }),
-  result: details,
+  result: { content: [{ type: "text", text: details.displayContent.text }], details },
   status: { type: "complete" },
 } as unknown as ToolRendererProps;
 
@@ -52,6 +58,7 @@ export function T4UrlReadPlayground() {
           details={details as never}
           rawArgs={JSON.stringify({ path: details.url })}
           rawResult={JSON.stringify(details)}
+          text=""
         />
       </div>
     </main>

@@ -11,11 +11,14 @@ import type {
   ToolRendererProps,
 } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { detailsSource, splitToolResult } from "../U3/tool-card/result";
 import type { ArtifactSlot, CopyKind } from "../U3/tool-card/slots";
+import { TextOutput } from "../U3/tool-card/text-output";
 import {
   type Diagnostic,
   decodeWriteArgs,
   decodeWriteDetails,
+  omittedOf,
   type OutputMeta as ParsedOutputMeta,
   type WriteToolDetails,
 } from "./models";
@@ -38,7 +41,7 @@ export function WriteCard({ rendererProps, artifactSlot, onCopy, onOpenArtifact 
   const args = decodeWriteArgs(rendererProps.args);
   const looseArgs = looseWriteArgs(rendererProps.args);
   const rawDetails = rendererProps.result ?? normalized.result ?? normalized.partialResult;
-  const details = decodeDetails(rawDetails);
+  const details = decodeDetails(detailsSource(rawDetails));
   const detailsValue = details.ok ? details.value : undefined;
   const outputMeta = mergeOutputMeta(normalized.outputMeta, toToolOutputMeta(detailsValue?.meta));
   const source = args.ok ? args.value.content : looseArgs.content;
@@ -58,11 +61,17 @@ export function WriteCard({ rendererProps, artifactSlot, onCopy, onOpenArtifact 
     outputMeta,
   );
   const rawResult = rawText(rawDetails);
+  // A plain file write needs no answer (the card shows the source). A device's answer, a worker's
+  // receipt or a process action is the whole point of the call, so the text omp returned is shown.
+  const returnedText =
+    detailsValue?.resolvedPath === undefined && state.phase === "success"
+      ? splitToolResult(rawDetails).text
+      : "";
 
   return (
     <div data-slot="t1-write-card" data-testid="t1-write-card">
       <ToolCard
-        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden"
+        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-truncation']]:hidden"
         rawResult={rawResult}
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={middleEllipsis(displayTarget)}
@@ -74,7 +83,9 @@ export function WriteCard({ rendererProps, artifactSlot, onCopy, onOpenArtifact 
         onCopy={onCopy}
         onOpenArtifact={onOpenArtifact}
         outputMeta={outputMeta}
+        returnedText={returnedText}
         source={source}
+        waiting={state.phase === "running" || state.phase === "partial"}
       />
     </div>
   );
@@ -90,7 +101,9 @@ function WriteBody({
   onCopy,
   onOpenArtifact,
   outputMeta,
+  returnedText,
   source,
+  waiting,
 }: {
   readonly artifactSlot?: ArtifactSlot;
   readonly details?: WriteToolDetails;
@@ -98,7 +111,10 @@ function WriteBody({
   readonly onCopy?: (raw: string, kind: CopyKind) => void | Promise<void>;
   readonly onOpenArtifact?: () => void | Promise<void>;
   readonly outputMeta?: ToolOutputMeta;
+  readonly returnedText: string;
   readonly source?: string;
+  /** The call is still being written, so a missing source is not there yet. */
+  readonly waiting: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
@@ -139,12 +155,22 @@ function WriteBody({
         >
           {middleEllipsis(displayTarget)}
         </span>
-        <span className="rounded border border-border px-2 py-0.5" data-slot="t1-write-language">
-          {language}
-        </span>
-        <span className="rounded border border-border px-2 py-0.5" data-slot="t1-write-line-count">
-          {lineCount} {lineCount === 1 ? "line" : "lines"}
-        </span>
+        {hasSource && (
+          <>
+            <span
+              className="rounded border border-border px-2 py-0.5"
+              data-slot="t1-write-language"
+            >
+              {language}
+            </span>
+            <span
+              className="rounded border border-border px-2 py-0.5"
+              data-slot="t1-write-line-count"
+            >
+              {lineCount} {lineCount === 1 ? "line" : "lines"}
+            </span>
+          </>
+        )}
         {details?.madeExecutable === true && (
           <span className="rounded border border-success/40 bg-success-surface px-2 py-0.5 text-success-surface-foreground">
             Executable
@@ -157,23 +183,21 @@ function WriteBody({
         )}
         {details?.xdev !== undefined && (
           <span className="rounded border border-border px-2 py-0.5" data-slot="t1-write-device">
-            {details.xdev ? "Delegated device" : "Local device"}
+            {deviceName(details.xdev)}
           </span>
         )}
-        {(details?.proc !== undefined || details?.cfg !== undefined) && (
+        {details?.proc !== undefined && (
           <span className="rounded border border-border px-2 py-0.5" data-slot="t1-write-delegated">
-            Host write metadata
+            Background job
+          </span>
+        )}
+        {details?.cfg !== undefined && (
+          <span className="rounded border border-border px-2 py-0.5" data-slot="t1-write-delegated">
+            Setting change
           </span>
         )}
       </div>
-      {!hasSource ? (
-        <div
-          className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground"
-          data-slot="t1-write-empty"
-        >
-          Waiting for source content…
-        </div>
-      ) : (
+      {hasSource ? (
         <SourcePreview
           content={content}
           expanded={expanded}
@@ -184,7 +208,17 @@ function WriteBody({
           svg={svg}
           target={displayTarget}
         />
+      ) : (
+        waiting && (
+          <div
+            className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground"
+            data-slot="t1-write-empty"
+          >
+            Waiting for source content…
+          </div>
+        )
       )}
+      {returnedText !== "" && <TextOutput text={returnedText} testId="t1-write-returned" />}
       {diagnostics.length > 0 && <Diagnostics diagnostics={diagnostics} />}
       {metadataNotices.length > 0 && <MetadataNotices notices={metadataNotices} />}
       {artifactId !== undefined && (
@@ -502,37 +536,34 @@ function looseWriteArgs(value: unknown): LooseWriteArgs {
 function toToolOutputMeta(value: ParsedOutputMeta | undefined): ToolOutputMeta | undefined {
   if (value === undefined) return undefined;
   const truncation = value.truncation;
+  const omitted = truncation === undefined ? undefined : omittedOf(truncation);
   return {
-    source: value.source,
+    source: value.source?.value,
     artifactId: value.artifactId,
     artifactElidedBytes: value.artifactElidedBytes,
     artifactError: value.artifactError,
     diagnostics: value.diagnostics,
-    limits: value.limits,
+    limits:
+      value.limits === undefined
+        ? undefined
+        : Object.entries(value.limits).map(([name, detail]) => ({ name, detail })),
     ...(truncation === undefined
       ? {}
       : {
           truncation: {
-            direction: truncation.direction,
-            reason: truncation.reason,
+            direction: truncation.direction ?? "head",
+            reason: truncation.truncatedBy ?? "lines",
             totalLines: truncation.totalLines,
-            shownLines: truncation.shownLines,
+            shownLines: truncation.outputLines,
             totalBytes: truncation.totalBytes,
-            shownBytes: truncation.shownBytes,
-            shownHead:
-              truncation.shownHead === undefined
-                ? undefined
-                : { start: truncation.shownHead.start, end: truncation.shownHead.end },
-            shownTail:
-              truncation.shownTail === undefined
-                ? undefined
-                : { start: truncation.shownTail.start, end: truncation.shownTail.end },
-            omittedLines: truncation.omittedLines,
-            omittedBytes: truncation.omittedBytes,
+            shownBytes: truncation.outputBytes,
+            shownHead: truncation.headRange ?? truncation.shownRange,
+            shownTail: truncation.tailRange,
+            omittedLines: omitted?.lines,
+            omittedBytes: omitted?.bytes,
             artifactId: truncation.artifactId,
-            artifactElidedBytes: truncation.artifactElidedBytes,
-            offset: truncation.offset,
-            partialLine: truncation.partialLine,
+            offset: truncation.nextOffset,
+            partialLine: truncation.lastLinePartial,
           },
         }),
   };
@@ -670,6 +701,19 @@ function lineCountFor(content: string): number {
 
 function hasShebang(content: string): boolean {
   return content.startsWith("#!");
+}
+
+/** The tool a call to a device (`xd://...`) ran, from omp's record of it (`{ tool, mode, args, tier }`). */
+function deviceName(xdev: unknown): string {
+  if (
+    typeof xdev === "object" &&
+    xdev !== null &&
+    "tool" in xdev &&
+    typeof xdev.tool === "string"
+  ) {
+    return xdev.tool;
+  }
+  return "Device call";
 }
 
 function isSvg(target: string, content: string): boolean {

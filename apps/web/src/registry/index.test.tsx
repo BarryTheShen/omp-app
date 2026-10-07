@@ -30,7 +30,14 @@ describe("the composition index", () => {
       toolName: "read",
       args: { path: "https://example.com/docs" },
       argsText: '{"path":"https://example.com/docs"}',
-      result: { kind: "url", url: "https://example.com/docs", displayContent: { text: "# Docs" } },
+      result: {
+        content: [{ type: "text", text: "# Docs" }],
+        details: {
+          kind: "url",
+          url: "https://example.com/docs",
+          finalUrl: "https://example.com/docs",
+        },
+      },
       status: { type: "complete" },
     } as unknown as ToolRendererProps;
     render(<Read {...props} />);

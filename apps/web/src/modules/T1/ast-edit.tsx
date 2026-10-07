@@ -1,6 +1,7 @@
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { detailsSource } from "../U3/tool-card/result";
 import { type AstEditToolDetails, decodeAstEditArgs, decodeAstEditDetails } from "./models";
 
 interface ReplacementView {
@@ -12,7 +13,7 @@ interface ReplacementView {
 export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const state = normalizeToolRendererProps(rendererProps);
   const args = decodeAstEditArgs(rendererProps.args);
-  const details = decodeAstEditDetails(state.result ?? state.partialResult);
+  const details = decodeAstEditDetails(detailsSource(state.result ?? state.partialResult));
   const parsedDetails = details.ok ? details.value : undefined;
   const stateForCard =
     state.phase === "running" || state.phase === "partial" ? { ...state, argsText: "" } : state;

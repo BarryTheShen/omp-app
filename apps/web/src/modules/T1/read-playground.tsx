@@ -3,9 +3,10 @@ import "../../index.css";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { ReadCard } from "./read";
 
+/** omp's real result: `{ content: [{ type: "text", text }], details }`. */
 function props(
   toolCallId: string,
-  result: unknown,
+  details: unknown,
   args: unknown = { path: "src/index.ts" },
 ): ToolRendererProps {
   return {
@@ -14,7 +15,7 @@ function props(
     toolName: "read",
     args,
     argsText: JSON.stringify(args),
-    result,
+    result: { content: [{ type: "text", text: "" }], details },
     status: { type: "complete" },
   } as unknown as ToolRendererProps;
 }

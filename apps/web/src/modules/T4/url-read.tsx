@@ -1,11 +1,12 @@
 import { AlertCircleIcon, ExternalLinkIcon, InfoIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ReadToolDetails } from "../T1/models";
+import { omittedOf, type ReadToolDetails } from "../T1/models";
 import type { ReadUrlRendererProps } from "../T1/read-url-seam";
 import { MarkdownContent } from "../U1/markdown";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolCardState } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { TextOutput } from "../U3/tool-card/text-output";
 import { safeRetrievalUrl } from "./models";
 
 /** T4.2 implementation of T1's URL-read renderer seam; it never fetches in the browser. */
@@ -13,6 +14,7 @@ export function T4ReadUrlRenderer({
   rendererProps,
   details,
   rawResult,
+  text,
 }: ReadUrlRendererProps): ReactNode {
   const normalized = normalizeToolRendererProps(rendererProps);
   const state: ToolCardState = {
@@ -20,14 +22,17 @@ export function T4ReadUrlRenderer({
     result: undefined,
     partialResult: undefined,
   };
+  // A real URL read carries its page in the text omp returned; `displayContent` is for line selections.
   const content = details.displayContent?.text;
+  const returned = text.trim() === "" ? undefined : text;
+  const shown = content ?? returned;
   const target = details.finalUrl ?? details.url ?? details.displayTarget ?? "URL read";
   const redirect = redirectLabel(details.url, details.finalUrl);
   const finalUrl = details.finalUrl ?? details.url;
   const title = titleFor(details, target);
   const lineCount =
-    details.totalLines ?? (content === undefined ? undefined : content.split("\n").length);
-  const characterCount = content?.length;
+    details.totalLines ?? (shown === undefined ? undefined : shown.split("\n").length);
+  const characterCount = shown?.length;
   const sources = sourceItems(details);
   const catalog = catalogItems(details);
   const screenshots = screenshotItems(details);
@@ -72,6 +77,8 @@ export function T4ReadUrlRenderer({
         {screenshots.length > 0 && <ScreenshotStrip screenshots={screenshots} />}
         {content !== undefined ? (
           <MarkdownPreview text={content} />
+        ) : returned !== undefined ? (
+          <TextOutput text={returned} testId="t4-url-text" />
         ) : (
           <p className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground">
             No page content was returned.
@@ -278,9 +285,10 @@ function screenshotItems(details: ReadToolDetails): readonly string[] {
 }
 
 function truncationText(meta: NonNullable<ReadToolDetails["truncation"]>): string {
+  const left = omittedOf(meta);
   const omitted = [
-    meta.omittedLines === undefined ? undefined : `${meta.omittedLines} lines`,
-    meta.omittedBytes === undefined ? undefined : `${meta.omittedBytes} bytes`,
+    left.lines === undefined || left.lines === 0 ? undefined : `${left.lines} lines`,
+    left.bytes === undefined || left.bytes === 0 ? undefined : `${left.bytes} bytes`,
   ].filter((item): item is string => item !== undefined);
   return omitted.length > 0
     ? `Output shortened; omitted ${omitted.join(" and ")}`

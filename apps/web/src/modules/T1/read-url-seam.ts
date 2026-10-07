@@ -10,6 +10,8 @@ export interface ReadUrlRendererProps {
   readonly details: ReadToolDetails;
   readonly rawArgs: string;
   readonly rawResult: string;
+  /** The text omp returned for the read ("" when there is none): a URL read's page is here, not in `details`. */
+  readonly text: string;
 }
 
 /** T4 implements this type in its own module; T1 never imports T4 or fetches the URL. */

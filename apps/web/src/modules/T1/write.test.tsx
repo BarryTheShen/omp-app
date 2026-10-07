@@ -6,10 +6,11 @@ import { WriteCard } from "./write";
 
 afterEach(() => cleanup());
 
-function props(
+function rawProps(
   args: unknown,
   result: unknown,
   status: ToolRendererProps["status"] = { type: "complete" },
+  isError = false,
 ): ToolRendererProps {
   return {
     type: "tool-call",
@@ -18,8 +19,21 @@ function props(
     args,
     argsText: JSON.stringify(args),
     result,
+    isError,
     status,
   } as unknown as ToolRendererProps;
+}
+
+/** omp's real result: `{ content: [{ type: "text", text }], details }`. */
+function props(
+  args: unknown,
+  details: unknown,
+  status: ToolRendererProps["status"] = { type: "complete" },
+  text = "",
+  isError = false,
+): ToolRendererProps {
+  const result = details === undefined ? undefined : { content: [{ type: "text", text }], details };
+  return rawProps(args, result, status, isError);
 }
 
 describe("WriteCard", () => {
@@ -53,20 +67,26 @@ describe("WriteCard", () => {
     expect(screen.getByText("export const line24 = 24;")).toBeTruthy();
   });
 
-  test("shows settled path, executable and delegated-device metadata without treating warnings as errors", () => {
+  test("shows settled path, executable and device metadata without treating warnings as errors", () => {
     render(
       <WriteCard
         rendererProps={props(
           { path: "scripts/run.sh", content: "#!/bin/sh\necho ready\n" },
           {
             madeExecutable: true,
-            xdev: true,
-            message: "Write completed",
+            resolvedPath: "/home/user/project/scripts/run.sh",
+            xdev: { tool: "recall", mode: "execute", tier: "read" },
             diagnostics: [
               { severity: "warning", path: "scripts/run.sh", line: 2, message: "shellcheck" },
             ],
             meta: {
-              truncation: { direction: "tail", reason: "lines", omittedLines: 1 },
+              truncation: {
+                truncated: true,
+                direction: "tail",
+                truncatedBy: "lines",
+                totalLines: 10,
+                outputLines: 9,
+              },
               artifactId: "artifact-write-1",
               artifactElidedBytes: 24,
             },
@@ -77,7 +97,7 @@ describe("WriteCard", () => {
 
     expect(screen.getByText("Executable")).toBeTruthy();
     expect(screen.getByText("Shebang")).toBeTruthy();
-    expect(screen.getByText("Delegated device")).toBeTruthy();
+    expect(screen.getByText("recall")).toBeTruthy();
     const bodyText =
       screen.getByTestId("t1-write-card").querySelector("[data-slot='t1-write-body']")
         ?.textContent ?? "";
@@ -88,12 +108,61 @@ describe("WriteCard", () => {
     ).toBe(true);
   });
 
+  test("a call with nothing written (a job cancelled, a message sent) shows what omp answered, not a wait", () => {
+    render(
+      <WriteCard
+        rendererProps={props(
+          { path: "proc://Overlap/kill" },
+          { proc: { op: "cancel", jobs: [{ id: "Overlap", status: "cancelled" }] } },
+          { type: "complete" },
+          "Cancelled background job Overlap.",
+        )}
+      />,
+    );
+    expect(screen.getByText("Cancelled background job Overlap.")).toBeTruthy();
+    expect(screen.getByText("Background job")).toBeTruthy();
+    expect(screen.queryByText("Waiting for source content…")).toBeNull();
+    expect(
+      screen.getByTestId("t1-write-card").querySelector("[data-slot='t1-write-language']"),
+    ).toBeNull();
+  });
+
+  test("a still-running call without source says it is waiting for it", () => {
+    render(
+      <WriteCard
+        rendererProps={rawProps({ path: "src/new.ts" }, undefined, { type: "running" })}
+      />,
+    );
+    expect(screen.getByText("Waiting for source content…")).toBeTruthy();
+  });
+
+  test("a device call that failed shows omp's reason once, as the error", () => {
+    render(
+      <WriteCard
+        rendererProps={props(
+          { path: "xd://recall", content: '{"query":"phone"}' },
+          { xdev: { tool: "recall", mode: "execute", tier: "read" } },
+          { type: "complete" },
+          "recall request failed: The socket connection was closed unexpectedly.",
+          true,
+        )}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "recall request failed: The socket connection was closed unexpectedly.",
+    );
+    expect(screen.getByTestId("tool-state-chip-error")).toBeTruthy();
+  });
+
   test("uses an image data URL for SVG previews and never mounts SVG markup", () => {
     const source =
       '<svg xmlns="http://www.w3.org/2000/svg"><script>alert("x")</script><rect width="4" height="4" /></svg>';
     const { container } = render(
       <WriteCard
-        rendererProps={props({ path: "assets/icon.svg", content: source }, { message: "ok" })}
+        rendererProps={props(
+          { path: "assets/icon.svg", content: source },
+          { resolvedPath: "assets/icon.svg" },
+        )}
       />,
     );
 
@@ -113,7 +182,7 @@ describe("WriteCard", () => {
   test("keeps source visible when a typed write result is malformed and surfaces a retry-safe error", () => {
     render(
       <WriteCard
-        rendererProps={props({ path: "src/broken.ts", content: "export const value = 1;" }, [
+        rendererProps={rawProps({ path: "src/broken.ts", content: "export const value = 1;" }, [
           "not",
           "a",
           "write",
@@ -129,7 +198,7 @@ describe("WriteCard", () => {
   test("retains an empty file as a settled zero-line source instead of showing a loading state", () => {
     render(
       <WriteCard
-        rendererProps={props({ path: "empty.txt", content: "" }, { message: "created" })}
+        rendererProps={props({ path: "empty.txt", content: "" }, { resolvedPath: "empty.txt" })}
       />,
     );
 
@@ -143,7 +212,7 @@ describe("WriteCard", () => {
   test("keeps partial source visible when the tool is cancelled", () => {
     render(
       <WriteCard
-        rendererProps={props(
+        rendererProps={rawProps(
           { path: "src/cancelled.ts", content: "export const partial = true;" },
           "partial output",
           { type: "incomplete", reason: "cancelled" },
@@ -178,7 +247,7 @@ describe("WriteCard", () => {
     render(
       <WriteCard
         onCopy={onCopy}
-        rendererProps={props(
+        rendererProps={rawProps(
           { path: "src/error.ts", content: "const kept = true;" },
           new AppFailure({ code: "permission", message: "Write denied", retryable: false }),
         )}

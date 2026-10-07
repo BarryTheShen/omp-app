@@ -10,32 +10,66 @@ export const OutputRangeSchema = z.looseObject({
 });
 export type OutputRange = z.infer<typeof OutputRangeSchema>;
 
+/**
+ * omp's truncation record, as it is really sent (`details.truncation` and `details.meta.truncation`):
+ * `{ truncated, direction, truncatedBy, totalLines, totalBytes, outputLines, outputBytes, maxBytes,
+ * shownRange, headRange, tailRange, nextOffset, elidedLines, elidedBytes, artifactId, ... }`. Every
+ * field is optional: a card shows what is there.
+ */
 export const TruncationMetaSchema = z.looseObject({
-  direction: z.enum(["head", "tail", "middle"]),
-  reason: z.enum(["lines", "bytes", "middle"]),
+  truncated: z.boolean().optional(),
+  direction: z.enum(["head", "tail", "middle"]).optional(),
+  truncatedBy: z.enum(["lines", "bytes", "middle"]).optional(),
   totalLines: z.int().nonnegative().optional(),
-  shownLines: z.int().nonnegative().optional(),
   totalBytes: z.int().nonnegative().optional(),
-  shownBytes: z.int().nonnegative().optional(),
-  shownHead: OutputRangeSchema.optional(),
-  shownTail: OutputRangeSchema.optional(),
-  omittedLines: z.int().nonnegative().optional(),
-  omittedBytes: z.int().nonnegative().optional(),
+  outputLines: z.int().nonnegative().optional(),
+  outputBytes: z.int().nonnegative().optional(),
+  maxBytes: z.int().nonnegative().optional(),
+  shownRange: OutputRangeSchema.optional(),
+  headRange: OutputRangeSchema.optional(),
+  tailRange: OutputRangeSchema.optional(),
+  nextOffset: z.int().nonnegative().optional(),
+  elidedLines: z.int().nonnegative().optional(),
+  elidedBytes: z.int().nonnegative().optional(),
   artifactId: z.string().min(1).optional(),
-  artifactElidedBytes: z.int().nonnegative().optional(),
-  offset: z.int().nonnegative().optional(),
-  partialLine: z.boolean().optional(),
+  lastLinePartial: z.boolean().optional(),
+  firstLineExceedsLimit: z.boolean().optional(),
 });
 export type TruncationMeta = z.infer<typeof TruncationMetaSchema>;
 
+/** How many lines and bytes a real truncation record says were left out (undefined when it does not say). */
+export function omittedOf(truncation: TruncationMeta): {
+  readonly lines: number | undefined;
+  readonly bytes: number | undefined;
+} {
+  const lines =
+    truncation.elidedLines ??
+    (truncation.totalLines !== undefined && truncation.outputLines !== undefined
+      ? Math.max(0, truncation.totalLines - truncation.outputLines)
+      : undefined);
+  const bytes =
+    truncation.elidedBytes ??
+    (truncation.totalBytes !== undefined && truncation.outputBytes !== undefined
+      ? Math.max(0, truncation.totalBytes - truncation.outputBytes)
+      : undefined);
+  return { lines, bytes };
+}
+
+/** Where a result came from: `{ type: "path" | "url" | "report" | ..., value }`. */
+export const OutputSourceSchema = z.looseObject({
+  type: z.string(),
+  value: z.string().optional(),
+});
+
 export const OutputMetaSchema = z.looseObject({
   truncation: TruncationMetaSchema.optional(),
-  source: z.string().optional(),
+  source: OutputSourceSchema.optional(),
   artifactId: z.string().min(1).optional(),
   artifactElidedBytes: z.int().nonnegative().optional(),
   artifactError: UnknownRecord.optional(),
   diagnostics: z.array(z.unknown()).optional(),
-  limits: z.array(z.unknown()).optional(),
+  /** What cut the output short beyond truncation, such as `{ resultLimit: { reached: 200 } }`. */
+  limits: UnknownRecord.optional(),
 });
 export type OutputMeta = z.infer<typeof OutputMetaSchema>;
 
@@ -72,7 +106,11 @@ export type ReadToolArgs = z.infer<typeof ReadToolArgsSchema>;
 export const ReadDisplayContentSchema = z.looseObject({
   text: z.string(),
   startLine: z.int().nonnegative().optional(),
-  lineNumbers: z.boolean().optional(),
+  /**
+   * The number of each displayed line (a list, one per line; `null` for a row that stands for lines
+   * omp left out, shown as "…"), or a flag that line numbers are shown.
+   */
+  lineNumbers: z.union([z.boolean(), z.array(z.int().nonnegative().nullable())]).optional(),
 });
 export type ReadDisplayContent = z.infer<typeof ReadDisplayContentSchema>;
 
@@ -117,8 +155,10 @@ export const WriteToolDetailsSchema = z.looseObject({
   meta: OutputMetaSchema.optional(),
   madeExecutable: z.boolean().optional(),
   resolvedPath: z.string().optional(),
-  xdev: z.boolean().optional(),
-  message: z.string().optional(),
+  /** Set when the write went to a device (`xd://...`): omp's record of the tool it ran, `{ tool, mode, args, tier, inner }`. */
+  xdev: z.unknown().optional(),
+  /** Set when the write sent a message (`agent://...`): omp's receipt, `{ op, from, to, receipts }`. */
+  message: z.unknown().optional(),
   proc: UnknownRecord.optional(),
   cfg: UnknownRecord.optional(),
 });

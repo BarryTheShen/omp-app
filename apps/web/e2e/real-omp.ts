@@ -35,6 +35,23 @@ export async function waitForFiniteAnimations(page: Page): Promise<void> {
   });
 }
 
+/** A tool call and the result omp recorded for it: what `seedToolResults` puts in one chat as one turn each. */
+export interface SeedToolResult {
+  readonly toolName: string;
+  readonly args: Readonly<Record<string, unknown>>;
+  readonly result: { readonly content: readonly unknown[]; readonly details?: unknown };
+  readonly isError: boolean;
+}
+
+/**
+ * The value of the `seedToolResults` option. It is an object around the list, not the list itself:
+ * Playwright reads any list whose second item is an object as a `[value, options]` pair and would
+ * hand the fixture only the first sample.
+ */
+export interface SeedToolResults {
+  readonly results: readonly SeedToolResult[];
+}
+
 export interface OpenOptions {
   /** Runs before the app loads, for example to add an init script; its result is ignored. */
   readonly beforeLoad?: (page: Page) => Promise<unknown>;
@@ -124,6 +141,7 @@ async function startServer(
     readonly idleCloseMs: number | undefined;
     readonly seedSessions: number;
     readonly seedLongTurn: number;
+    readonly seedToolResults: SeedToolResults | undefined;
     readonly ompBinary: string | undefined;
   },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
@@ -182,6 +200,37 @@ if (longTurn > 0) {
   await writeFile(file, lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
   await utimes(file, when, when);
 }
+// One chat from real tool results (a list of { toolName, args, result: { content, details }, isError }):
+// every sample is its own turn, so the cards are rendered by the real history loader and the real registry.
+const samples = ${JSON.stringify(options.seedToolResults?.results ?? [])};
+if (samples.length > 0) {
+  const folder = ${JSON.stringify(join(root, "workspace"))};
+  const bucket = join(${JSON.stringify(join(root, "agent"))}, "sessions", sessionBucketName(folder, { home: ${JSON.stringify(join(root, "home"))} }));
+  await mkdir(bucket, { recursive: true });
+  const id = "01a22222-0000-7000-8000-000000000002";
+  const when = new Date(Date.UTC(2026, 9, 2));
+  const stamp = when.toISOString();
+  const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const lines = [{ type: "session", version: 3, id, timestamp: stamp, cwd: folder }];
+  let parent = null;
+  let count = 0;
+  const add = (message) => {
+    const entryId = "e" + String(count++).padStart(6, "0");
+    lines.push({ type: "message", id: entryId, parentId: parent, timestamp: stamp, message });
+    parent = entryId;
+  };
+  const base = { api: "openai-completions", provider: "fake", model: "fake-model", usage, timestamp: when.getTime() };
+  samples.forEach((sample, index) => {
+    const callId = "call_" + index;
+    add({ role: "user", content: [{ type: "text", text: "sample " + index + ": " + sample.toolName }], timestamp: when.getTime() });
+    add({ ...base, role: "assistant", content: [{ type: "toolCall", id: callId, name: sample.toolName, arguments: sample.args ?? {} }], stopReason: "toolUse" });
+    add({ role: "toolResult", toolCallId: callId, toolName: sample.toolName, content: sample.result.content, ...(sample.result.details === undefined ? {} : { details: sample.result.details }), isError: sample.isError === true, timestamp: when.getTime() });
+    add({ ...base, role: "assistant", content: [{ type: "text", text: "end of sample " + index }], stopReason: "stop" });
+  });
+  const file = join(bucket, stamp.replace(/[:.]/g, "-") + "_" + id + ".jsonl");
+  await writeFile(file, lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
+  await utimes(file, when, when);
+}
 const server = await createCompositionServer({
   port: 0,
   cwd: ${JSON.stringify(join(root, "workspace"))},
@@ -226,7 +275,9 @@ const enabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
  * A test with a `realApp` fixture: a fresh composed app per test, torn down afterwards. A spec can
  * shorten how long an unwatched chat's omp process lives with `realTest.use({ idleCloseMs })`, and
  * start with that many old chats already in the folder with `realTest.use({ seedSessions })`, or with
- * one chat holding a single turn of that many steps with `realTest.use({ seedLongTurn })`. A spec
+ * one chat holding a single turn of that many steps with `realTest.use({ seedLongTurn })`, or with one
+ * chat made of recorded tool results with `realTest.use({ seedToolResults: [...] })` (one turn each, in
+ * order). A spec
  * about omp being missing points the app at another binary with `realTest.use({ ompBinary })`.
  */
 export const realTest = test.extend<{
@@ -234,14 +285,16 @@ export const realTest = test.extend<{
   idleCloseMs: number | undefined;
   seedSessions: number;
   seedLongTurn: number;
+  seedToolResults: SeedToolResults | undefined;
   ompBinary: string | undefined;
 }>({
   idleCloseMs: [undefined, { option: true }],
   seedSessions: [0, { option: true }],
   seedLongTurn: [0, { option: true }],
+  seedToolResults: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
   realApp: async (
-    { browser, idleCloseMs, seedSessions, seedLongTurn, ompBinary },
+    { browser, idleCloseMs, seedSessions, seedLongTurn, seedToolResults, ompBinary },
     use,
     testInfo,
   ) => {
@@ -270,7 +323,13 @@ export const realTest = test.extend<{
     const allowed: RegExp[] = [];
     try {
       provider = await startProvider(agentDir, env);
-      server = await startServer(root, env, { idleCloseMs, seedSessions, seedLongTurn, ompBinary });
+      server = await startServer(root, env, {
+        idleCloseMs,
+        seedSessions,
+        seedLongTurn,
+        seedToolResults,
+        ompBinary,
+      });
       const url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
         const page = await browser.newPage();

@@ -4,6 +4,7 @@ import { Icons } from "../../tokens";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolCardPhase, ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { splitToolResult } from "../U3/tool-card/result";
 import {
   type Diagnostic,
   decodeEditArgs,
@@ -36,17 +37,23 @@ export function EditCard({ rendererProps, onCopy }: EditCardProps) {
     rendererProps.args,
     decodedArgs.ok ? decodedArgs.value : undefined,
   );
-  const detailSource =
-    rendererProps.result ??
-    normalized.result ??
-    normalized.streamProjection ??
-    normalized.partialResult;
-  const rawResult = rawText(detailSource);
+  // omp's result is `{ content, details }`. R0's stream projection (a preview while the call is
+  // still running) is shaped like details, so it is decoded as they are.
+  const resultSource = rendererProps.result ?? normalized.result ?? normalized.partialResult;
+  const split = splitToolResult(resultSource);
+  const detailSource = split.isEnvelope
+    ? (split.details ?? {})
+    : (normalized.streamProjection ?? resultSource);
+  const rawResult = rawText(resultSource ?? normalized.streamProjection);
   const decodedDetails = detailSource === undefined ? undefined : decodeEditDetails(detailSource);
   const details = decodedDetails?.ok === true ? decodedDetails.value : undefined;
   const target = editTarget(args, details);
   const summary = editSummary(target, args, details);
-  const fallbackText = editFallbackText(args, detailSource, details);
+  const fallbackText = editFallbackText(
+    args,
+    split.isEnvelope ? split.text : detailSource,
+    details,
+  );
   const failedDetails =
     details !== undefined &&
     (detailsFailed(details) || details.perFileResults?.some(fileFailure) === true);
@@ -187,7 +194,12 @@ function EditBody({
         </p>
       )}
       {diff !== undefined && diff.length > 0 && <DiffBlock diff={diff} target={target} />}
-      {hasFallback && <RawPreview text={fallbackText ?? ""} />}
+      {hasFallback && (
+        <RawPreview
+          label={phase === "success" || phase === "error" ? "Edit as sent" : "Streaming preview"}
+          text={fallbackText ?? ""}
+        />
+      )}
       {!hasVisibleFile && !hasVisibleDiff && !hasFallback && (
         <p className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground">
           {phase === "running" || phase === "partial"
@@ -362,7 +374,7 @@ function diffRows(text: string): readonly DiffRow[] {
   return rows;
 }
 
-function RawPreview({ text }: { readonly text: string }) {
+function RawPreview({ label, text }: { readonly label: string; readonly text: string }) {
   const preview = boundedText(text, MAX_RAW_LINES, MAX_RAW_CHARS);
   return (
     <div
@@ -371,7 +383,7 @@ function RawPreview({ text }: { readonly text: string }) {
       data-testid="t1-edit-raw-preview"
     >
       <p className="border-border border-b px-3 py-1.5 text-xs font-medium text-muted-foreground">
-        Streaming preview
+        {label}
       </p>
       <pre
         className="max-h-80 overflow-auto p-3 text-xs leading-relaxed"
