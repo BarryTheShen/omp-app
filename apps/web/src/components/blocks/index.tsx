@@ -109,7 +109,7 @@ export interface SectionProps {
   readonly headingLevel?: 2 | 3;
   readonly description?: ReactNode;
   readonly actions?: ReactNode;
-  readonly variant?: "card" | "plain";
+  readonly variant?: "card" | "plain" | "dialog";
   readonly children: ReactNode;
 }
 
@@ -125,11 +125,15 @@ export function Section({
   children,
 }: SectionProps) {
   const plain = variant === "plain";
+  const dialog = variant === "dialog";
   // A card heading wraps: cutting a long section title off would hide it. The plain (list group)
   // heading sits in a narrow column, so it truncates and carries the full text in a tooltip.
+  // The dialog heading is U4's dialog title, so pickers and dialogs read alike.
   const headingClasses = plain
     ? "text-muted-foreground min-w-0 truncate text-xs font-medium"
-    : "min-w-0 text-lg font-semibold tracking-tight";
+    : dialog
+      ? "min-w-0 text-base font-medium text-popover-foreground"
+      : "min-w-0 text-lg font-semibold tracking-tight";
   const headingTitle = plain ? (headingTooltip ?? heading) : undefined;
   const headingText = (
     <>
@@ -161,14 +165,18 @@ export function Section({
       className={
         plain
           ? "mb-3 min-w-0 last:mb-0"
-          : "bg-card text-card-foreground rounded-xl border p-5 shadow-sm"
+          : dialog
+            ? "min-w-0"
+            : "bg-card text-card-foreground rounded-xl border p-5 shadow-sm"
       }
     >
       <header
         className={
           plain
             ? "flex min-w-0 items-center gap-2 px-2 py-1"
-            : "mb-5 flex min-w-0 items-start justify-between gap-4"
+            : dialog
+              ? "flex min-w-0 items-start gap-4"
+              : "mb-5 flex min-w-0 items-start justify-between gap-4"
         }
       >
         <div className="min-w-0 flex-1">{headingText}</div>

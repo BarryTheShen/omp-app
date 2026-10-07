@@ -11,8 +11,9 @@ import {
   EntryId as EntryIdSchema,
   SessionEntryHead as SessionEntryHeadSchema,
 } from "@omp-app/contracts";
+import { z } from "zod";
 import type { EntryCursor, SessionTreePort, TreeNode, TreeSnapshot } from "../contract";
-import { ReadOnlyTreeLabelSchema, TreeNodeSchema } from "../contract";
+import { ReadOnlyTreeLabelSchema } from "../contract";
 
 /** The port seam used by the cursor; A0/R0 remain the only owners of transport and stores. */
 export interface OmpSessionTreePortOptions {
@@ -23,10 +24,7 @@ export interface OmpSessionTreePortOptions {
 
 const EMPTY_ENTRIES: readonly SessionEntryHead[] = Object.freeze([]);
 const DEFAULT_PAGE_SIZE = 50;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
+const RawTreeNodeSchema = z.record(z.string(), z.unknown());
 
 function asAppFailure(error: unknown, fallback: string): AppFailure {
   if (error instanceof AppFailure) return error;
@@ -48,32 +46,73 @@ function normalizeEntry(value: unknown): SessionEntryHead {
   }
 }
 
-function normalizeTreeNode(value: unknown): TreeNode {
-  if (!isRecord(value))
-    throw new AppFailure({
-      code: "invalid_args",
-      message: "The omp tree node was malformed",
-      retryable: false,
-    });
-  const children = Array.isArray(value.children) ? value.children.map(normalizeTreeNode) : [];
-  const label = value.label === undefined ? undefined : ReadOnlyTreeLabelSchema.parse(value.label);
-  const node = {
-    entry: normalizeEntry(value.entry),
-    children,
-    ...(label === undefined ? {} : { label }),
-    raw: value,
-  } satisfies TreeNode;
-  return TreeNodeSchema.parse(node);
+interface PendingTreeNode {
+  readonly value: unknown;
+  readonly destination: TreeNode[];
+  readonly index: number;
 }
 
-function collectLabels(nodes: readonly TreeNode[]): readonly TreeNode["label"][] {
+interface NormalizedTree {
+  readonly tree: readonly TreeNode[];
+  readonly labels: readonly NonNullable<TreeNode["label"]>[];
+}
+
+function normalizeTreeLabel(value: unknown, targetId: EntryId): TreeNode["label"] {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") {
+    return {
+      targetId,
+      text: value,
+      editable: false,
+      disabledReason: "Labels can't be changed here.",
+    };
+  }
+  try {
+    return ReadOnlyTreeLabelSchema.parse(value);
+  } catch (error) {
+    throw asAppFailure(error, "The omp tree label was malformed");
+  }
+}
+
+function normalizeTreeNodes(values: readonly unknown[]): NormalizedTree {
+  const roots = new Array<TreeNode>(values.length);
   const labels: NonNullable<TreeNode["label"]>[] = [];
-  const visit = (node: TreeNode): void => {
-    if (node.label !== undefined) labels.push(node.label);
-    for (const child of node.children) visit(child);
-  };
-  for (const node of nodes) visit(node);
-  return labels;
+  const pending: PendingTreeNode[] = [];
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    pending.push({ value: values[index], destination: roots, index });
+  }
+
+  while (pending.length > 0) {
+    const item = pending.pop();
+    if (!item) continue;
+    const rawNode = RawTreeNodeSchema.safeParse(item.value);
+    if (!rawNode.success) {
+      throw new AppFailure({
+        code: "invalid_args",
+        message: "The omp tree node was malformed",
+        retryable: false,
+      });
+    }
+
+    const value = rawNode.data;
+    const entry = normalizeEntry(value.entry);
+    const rawChildren = Array.isArray(value.children) ? value.children : [];
+    const children = new Array<TreeNode>(rawChildren.length);
+    const label = normalizeTreeLabel(value.label, entry.id);
+    if (label !== undefined) labels.push(label);
+    const node = {
+      entry,
+      children,
+      ...(label === undefined ? {} : { label }),
+      raw: value,
+    } satisfies TreeNode;
+    item.destination[item.index] = node;
+
+    for (let index = rawChildren.length - 1; index >= 0; index -= 1) {
+      pending.push({ value: rawChildren[index], destination: children, index });
+    }
+  }
+  return { tree: roots, labels };
 }
 
 function entryId(value: string | null): EntryCursor["leafId"] {
@@ -141,10 +180,7 @@ export class OmpSessionTreePort implements SessionTreePort {
         { threadId, command: { type: "get_tree" } },
         this.callOptions(signal),
       )) as OmpWire.SessionTree;
-      const tree = result.tree.map(normalizeTreeNode);
-      const labels = collectLabels(tree).filter(
-        (label): label is NonNullable<TreeNode["label"]> => label !== undefined,
-      );
+      const { tree, labels } = normalizeTreeNodes(result.tree);
       const snapshot: TreeSnapshot = {
         threadId,
         sessionFile: this.sessionFile,

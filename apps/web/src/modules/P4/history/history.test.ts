@@ -16,6 +16,11 @@ function entry(id: string, parentId: string | null): SessionEntryHead {
     unknownField: { retained: true },
   };
 }
+interface WireTreeNode extends Record<string, unknown> {
+  readonly entry: SessionEntryHead;
+  readonly children: readonly WireTreeNode[];
+  readonly label?: string;
+}
 
 function tree(threadId: ThreadId, entries: readonly SessionEntryHead[]): TreeSnapshot {
   return {
@@ -114,12 +119,7 @@ describe("OmpSessionTreePort", () => {
           {
             entry: entry("a-1", null),
             children: [],
-            label: {
-              targetId: "a-1",
-              text: "checkpoint",
-              editable: false,
-              disabledReason: "read-only",
-            },
+            label: "checkpoint",
           },
         ],
         leafId: "a-1",
@@ -134,6 +134,39 @@ describe("OmpSessionTreePort", () => {
     expect(cursor.entries[0]).toMatchObject({ id: "a-1", unknownField: { retained: true } });
     expect(snapshot.tree[0]?.label?.text).toBe("checkpoint");
     expect(snapshot.leafId).toBe("a-1");
+  });
+  test("normalizes string labels and a 17,000-entry chain without recursion", async () => {
+    const depth = 17_000;
+    let node: WireTreeNode | undefined;
+    for (let index = depth - 1; index >= 0; index -= 1) {
+      const id = `a-${String(index).padStart(5, "0")}`;
+      node = {
+        entry: entry(id, index === 0 ? null : `a-${String(index - 1).padStart(5, "0")}`),
+        children: node ? [node] : [],
+        ...(index === 0 ? { label: "Saved point" } : {}),
+      };
+    }
+    if (!node) throw new Error("Expected the deep-tree fixture to have a root.");
+
+    const send: RpcSessionSend = async (args) => {
+      if (args.command.type === "get_entries") return { entries: [], leafId: null };
+      return { tree: [node], leafId: `a-${String(depth - 1).padStart(5, "0")}` };
+    };
+    const snapshot = await new OmpSessionTreePort({ send }).readTree(threadA);
+
+    expect(snapshot.labels).toHaveLength(1);
+    expect(snapshot.labels[0]).toMatchObject({
+      targetId: "a-00000",
+      text: "Saved point",
+      editable: false,
+    });
+    let current = snapshot.tree[0];
+    let count = 0;
+    while (current) {
+      count += 1;
+      current = current.children[0];
+    }
+    expect(count).toBe(depth);
   });
 });
 
