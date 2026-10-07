@@ -11,6 +11,7 @@ import {
   sessionBucketPath,
 } from "./paths";
 import { collectSubagentTranscripts } from "./subagents";
+import { readSessionHeader, type SessionSummary, summarizeSessionFile } from "./summary";
 import type {
   ListFoldersArgs,
   ListSessionsArgs,
@@ -22,7 +23,6 @@ import type {
   SessionFoldersResult,
   SessionHeader,
   SessionLeaseState,
-  SessionListing,
   SessionListResult,
   SessionStatus,
   SubagentListResult,
@@ -176,13 +176,31 @@ function promptLine(content: unknown): string | null {
   return line.length > FIRST_PROMPT_MAX ? `${line.slice(0, FIRST_PROMPT_MAX - 1)}…` : line;
 }
 
-function sortListings(listings: SessionListing[]): void {
-  listings.sort((left, right) => {
-    const rightTime = Date.parse(right.updatedAt);
-    const leftTime = Date.parse(left.updatedAt);
-    if (rightTime !== leftTime) return rightTime - leftTime;
-    return left.sessionFile.localeCompare(right.sessionFile);
-  });
+/** What the list cache remembers about a file: valid while the file's size and time are unchanged. */
+interface CachedSummary {
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly summary: SessionSummary;
+}
+
+/** A file a listing may show: found by its name and its size and time, never by reading it. */
+interface SessionCandidate {
+  readonly file: string;
+  readonly size: number;
+  readonly mtimeMs: number;
+}
+
+/** Files whose summaries are remembered; the oldest are forgotten first. */
+const SUMMARY_CACHE_LIMIT = 2_000;
+/** Files stat-ed or read at the same moment, so a folder with many sessions can't exhaust file handles. */
+const FILE_BATCH = 24;
+
+async function inBatches<T, R>(items: readonly T[], work: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let start = 0; start < items.length; start += FILE_BATCH) {
+    results.push(...(await Promise.all(items.slice(start, start + FILE_BATCH).map(work))));
+  }
+  return results;
 }
 
 /**
@@ -194,6 +212,8 @@ export class SessionFileStore {
   readonly sessionsRoot: string;
   readonly ownersRoot: string;
   readonly #options: SessionFileStoreOptions;
+  readonly #summaries = new Map<string, CachedSummary>();
+  readonly #cwds = new Map<string, { size: number; mtimeMs: number; cwd: string | undefined }>();
 
   constructor(options: SessionFileStoreOptions = {}) {
     this.#options = options;
@@ -245,9 +265,11 @@ export class SessionFileStore {
 
   /** List distinct cwd values represented by session headers for the port. */
   async listFolders(args: ListFoldersArgs = {}): Promise<SessionFoldersResult> {
-    const listings = await this.listSessions();
+    const candidates = await this.#candidates(undefined, []);
+    // Only each file's first lines are read (and remembered), never the whole file.
+    const cwds = await inBatches(candidates, (candidate) => this.#cwdOf(candidate));
     const folders = [
-      ...new Set(listings.sessions.map((session) => session.cwd).filter((cwd) => cwd.length > 0)),
+      ...new Set(cwds.filter((cwd): cwd is string => cwd !== undefined && cwd.length > 0)),
     ].sort();
     const limit = parseLimit(args.limit);
     const offset = parseCursor(args.cursor);
@@ -260,44 +282,30 @@ export class SessionFileStore {
     };
   }
 
-  /** Port-friendly listing, with numeric cursors stable over one read. */
+  /**
+   * Port-friendly listing. The order depends only on each file's modified time, so files are found
+   * and ordered by their size and time alone; only the files of the requested page are summarized
+   * (in one streaming pass, remembered until the file changes). The cursor counts files, including
+   * any without a valid header, which a page silently skips. A listing doesn't walk nested subagent
+   * transcripts (`readSession` and `listSubagents` do) and carries no entries.
+   */
   async listSessions(args: ListSessionsArgs = {}): Promise<SessionListResult> {
     const limit = parseLimit(args.limit);
     const offset = parseCursor(args.cursor);
     const parseWarnings: ParseWarning[] = [];
-    const sessionDirs = await this.#sessionDirectories(args.folder, parseWarnings);
-    const candidateFiles: string[] = [];
-
-    for (const sessionDir of sessionDirs) {
-      let entries: Dirent[];
-      try {
-        entries = await fs.readdir(sessionDir, { withFileTypes: true });
-      } catch (error) {
-        if (isMissing(error)) continue;
-        parseWarnings.push(warningForReadFailure(sessionDir, error));
-        continue;
-      }
-      for (const entry of entries) {
-        if (entry.isFile() && entry.name.endsWith(".jsonl") && !entry.name.includes(".bak")) {
-          candidateFiles.push(path.join(sessionDir, entry.name));
-        }
-      }
-    }
-
-    const outcomes = await Promise.all(candidateFiles.map((file) => this.#readSessionFile(file)));
+    const candidates = await this.#candidates(args.folder, parseWarnings);
+    const page =
+      limit === undefined ? candidates.slice(offset) : candidates.slice(offset, offset + limit);
+    const outcomes = await inBatches(page, (candidate) => this.#listingEntry(candidate));
     const sessions: SessionFile[] = [];
     for (const outcome of outcomes) {
       parseWarnings.push(...outcome.parseWarnings);
       if (outcome.file) sessions.push(outcome.file);
     }
-    sortListings(sessions);
-
-    const selected =
-      limit === undefined ? sessions.slice(offset) : sessions.slice(offset, offset + limit);
-    const nextOffset = offset + selected.length;
+    const nextOffset = offset + page.length;
     return {
-      sessions: selected,
-      nextCursor: nextOffset < sessions.length ? String(nextOffset) : null,
+      sessions,
+      nextCursor: nextOffset < candidates.length ? String(nextOffset) : null,
       parseWarnings,
     };
   }
@@ -354,6 +362,134 @@ export class SessionFileStore {
     return entries
       .filter((entry) => entry.isDirectory())
       .map((entry) => path.join(this.sessionsRoot, entry.name));
+  }
+
+  /** Every session file a listing may show, found and ordered by name, size and time alone. */
+  async #candidates(
+    folder: string | undefined,
+    warnings: ParseWarning[],
+  ): Promise<SessionCandidate[]> {
+    const names: string[] = [];
+    for (const sessionDir of await this.#sessionDirectories(folder, warnings)) {
+      let entries: Dirent[];
+      try {
+        entries = await fs.readdir(sessionDir, { withFileTypes: true });
+      } catch (error) {
+        if (isMissing(error)) continue;
+        warnings.push(warningForReadFailure(sessionDir, error));
+        continue;
+      }
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith(".jsonl") && !entry.name.includes(".bak")) {
+          names.push(path.join(sessionDir, entry.name));
+        }
+      }
+    }
+    const found = await inBatches(names, async (file): Promise<SessionCandidate | undefined> => {
+      try {
+        const stat = await fs.stat(file);
+        return { file, size: stat.size, mtimeMs: stat.mtimeMs };
+      } catch (error) {
+        // A file that vanished between listing and stat is simply not listed.
+        if (!isMissing(error)) warnings.push(warningForReadFailure(file, error));
+        return undefined;
+      }
+    });
+    const candidates = found.filter(
+      (candidate): candidate is SessionCandidate => candidate !== undefined,
+    );
+    // Newest first by the same whole milliseconds an ISO timestamp holds, then by path.
+    candidates.sort((left, right) => {
+      const leftTime = Math.trunc(left.mtimeMs);
+      const rightTime = Math.trunc(right.mtimeMs);
+      if (leftTime !== rightTime) return rightTime - leftTime;
+      return left.file.localeCompare(right.file);
+    });
+    return candidates;
+  }
+
+  /** One streaming pass over a file, remembered until its size or modified time changes. */
+  async #summary(candidate: SessionCandidate): Promise<SessionSummary> {
+    const cached = this.#summaries.get(candidate.file);
+    if (cached && cached.size === candidate.size && cached.mtimeMs === candidate.mtimeMs) {
+      // Most recently used goes last, so the oldest entry is the one forgotten.
+      this.#summaries.delete(candidate.file);
+      this.#summaries.set(candidate.file, cached);
+      return cached.summary;
+    }
+    const summary = await summarizeSessionFile(candidate.file);
+    this.#summaries.delete(candidate.file);
+    this.#summaries.set(candidate.file, {
+      size: candidate.size,
+      mtimeMs: candidate.mtimeMs,
+      summary,
+    });
+    for (const oldest of this.#summaries.keys()) {
+      if (this.#summaries.size <= SUMMARY_CACHE_LIMIT) break;
+      this.#summaries.delete(oldest);
+    }
+    return summary;
+  }
+
+  /** The working folder a session was started in, from the start of its file. */
+  async #cwdOf(candidate: SessionCandidate): Promise<string | undefined> {
+    const cached = this.#cwds.get(candidate.file);
+    if (cached && cached.size === candidate.size && cached.mtimeMs === candidate.mtimeMs) {
+      return cached.cwd;
+    }
+    let cwd: string | undefined;
+    try {
+      cwd = (await readSessionHeader(candidate.file))?.cwd;
+    } catch (error) {
+      // A file that can't be read has no folder to offer; it is not an error for the folder list.
+      if (!isMissing(error) && fileErrorCode(error) === undefined) throw error;
+      cwd = undefined;
+    }
+    this.#cwds.delete(candidate.file);
+    this.#cwds.set(candidate.file, { size: candidate.size, mtimeMs: candidate.mtimeMs, cwd });
+    for (const oldest of this.#cwds.keys()) {
+      if (this.#cwds.size <= SUMMARY_CACHE_LIMIT) break;
+      this.#cwds.delete(oldest);
+    }
+    return cwd;
+  }
+
+  /** A listing item built from a summary; `readSession` is the whole-file read. */
+  async #listingEntry(candidate: SessionCandidate): Promise<SessionReadOutcome> {
+    let summary: SessionSummary;
+    try {
+      summary = await this.#summary(candidate);
+    } catch (error) {
+      if (isMissing(error)) return { parseWarnings: [], missing: true };
+      return { parseWarnings: [warningForReadFailure(candidate.file, error)], missing: false };
+    }
+    const header = summary.header;
+    if (!header) return { parseWarnings: summary.parseWarnings, missing: false };
+    const mtimeIso = new Date(candidate.mtimeMs).toISOString();
+    const serverProcess = serverOwnsSession(this.#options, header.id, candidate.file);
+    const lease = serverProcess
+      ? ({ lease: "held" } satisfies { lease: SessionLeaseState })
+      : await detectSessionLiveness(header.id, candidate.file, this.#options.leaseProbe);
+    const file: SessionFile = {
+      id: header.id,
+      sessionFile: candidate.file,
+      version: header.version ?? 1,
+      title: header.title,
+      cwd: header.cwd,
+      createdAt: header.timestamp ?? mtimeIso,
+      updatedAt: mtimeIso,
+      parentSession: header.parentSession,
+      messageCount: summary.messageCount,
+      assistantTurns: summary.assistantTurns,
+      firstPrompt: summary.firstPrompt,
+      sizeBytes: candidate.size,
+      status: summary.status,
+      liveness: { lease: lease.lease, serverProcess },
+      subagents: [],
+      parseWarnings: summary.parseWarnings,
+      entries: [],
+    };
+    return { file, parseWarnings: file.parseWarnings, missing: false };
   }
 
   async #readSessionFile(sessionFile: string): Promise<SessionReadOutcome> {

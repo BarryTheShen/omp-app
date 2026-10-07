@@ -69,7 +69,7 @@ export function parseTitleSlotFromContent(content: string): SessionTitleSlot | u
   return parseTitleSlotLine(content.slice(0, newline));
 }
 
-function normalizeHeader(value: Record<string, unknown>): SessionHeader | undefined {
+export function normalizeHeader(value: Record<string, unknown>): SessionHeader | undefined {
   if (value.type !== "session" || typeof value.id !== "string" || value.id.length === 0)
     return undefined;
   const header: Record<string, unknown> = { ...value, type: "session", id: value.id };
