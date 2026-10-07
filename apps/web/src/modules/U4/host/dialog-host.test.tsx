@@ -311,4 +311,27 @@ describe("DialogHostController", () => {
     unavailable.dispose();
     controller.dispose();
   });
+
+  test("reads capabilities when a request arrives, so a replaced map takes effect without a new host", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    let current: CapabilityMap = {};
+    const lazy = new DialogHostController({
+      overlay: state.overlay as OverlayHostApi,
+      capabilities: () => current,
+      answerExtensionUi: async () => {},
+      render: () => <p>Question</p>,
+    });
+
+    await expect(lazy.open(request(), { threadId: threadA })).rejects.toMatchObject({
+      appError: { code: "unavailable", capability: "omp.ui" },
+    });
+    // The map is replaced (a reconnect reloads it); the same host now presents omp's questions.
+    current = ompUiCapabilities;
+    const shown = open(lazy, request("confirm", "later"));
+    await screen.findByText("Question");
+    lazy.dispose();
+    await expect(shown).resolves.toMatchObject({ outcome: "cancelled" });
+    controller.dispose();
+  });
 });

@@ -114,6 +114,8 @@ async function stopChild(child: ChildProcess | undefined): Promise<void> {
 realTest(
   "creates, chats, reloads session and draft, and captures styled themes",
   async ({ browser }) => {
+    // Real omp, two browser pages and a palette round trip: a loaded machine needs more than 30 s.
+    test.slow();
     const root = await mkdtemp(join(resolve(APP_ROOT, ".data"), "app-root-e2e-"));
     const home = join(root, "home");
     const agentDir = join(root, "agent");
@@ -162,7 +164,10 @@ realTest(
         .getByRole("button", { name: "New chat" })
         .first()
         .click();
-      await expect(page.getByRole("textbox", { name: "Message input" })).toBeVisible();
+      // A new chat starts a real omp process: allow it time on a loaded machine.
+      await expect(page.getByRole("textbox", { name: "Message input" })).toBeVisible({
+        timeout: 30_000,
+      });
       // The fake provider answers a prompt containing "run_bash" with a bash tool call
       // (`echo fixture-tool`) and then "tool said: fixture-tool" (packages/omp-rpc/scripts/fake-openai-server.ts).
       const promptText = "Please run_bash and tell me what it printed.";
@@ -216,11 +221,31 @@ realTest(
       await expect(page.getByText("Loading conversation…")).toBeHidden();
 
       const dark = await browser.newPage();
-      await dark.addInitScript(() => document.documentElement.classList.add("dark"));
+      await dark.addInitScript(() => {
+        const applyDark = (): boolean => {
+          const root = document.documentElement;
+          if (!root) return false;
+          root.classList.add("dark");
+          return true;
+        };
+        if (applyDark()) return;
+        const observer = new MutationObserver(() => {
+          if (applyDark()) observer.disconnect();
+        });
+        observer.observe(document, { childList: true, subtree: true });
+      });
+      dark.on("console", (message) => {
+        if (message.type() === "error") consoleErrors.push(message.text());
+      });
+      dark.on("pageerror", (error) => pageErrors.push(error.message));
       await dark.goto(server.url);
       await dark.evaluate(() => document.documentElement.classList.add("dark"));
       await expect(dark.locator("[data-app-root='true']")).toBeVisible();
       await expect(dark.locator("html")).toHaveClass(/dark/);
+      const darkBackground = await dark
+        .locator("[data-shell-layout]")
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+      expect(darkBackground).not.toBe("rgba(0, 0, 0, 0)");
       // A fresh browser has no remembered thread: open the session from the sidebar, which loads
       // its history from omp.
       await dark.getByRole("listbox", { name: "Session list" }).getByRole("option").first().click();
@@ -234,11 +259,132 @@ realTest(
       await dark.screenshot({ path: join(screenshots, "app-root-dark.png"), fullPage: true });
       await dark.setViewportSize({ width: 390, height: 844 });
       await waitForFiniteAnimations(dark);
+      const narrowBackground = await dark
+        .locator("[data-shell-layout]")
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+      expect(narrowBackground).not.toBe("rgba(0, 0, 0, 0)");
       await dark.screenshot({ path: join(screenshots, "app-root-narrow.png"), fullPage: true });
+      await dark.setViewportSize({ width: 1280, height: 900 });
+      const currentThreadId = await dark.evaluate(() =>
+        window.localStorage.getItem("omp.app.root.thread"),
+      );
+      expect(currentThreadId).not.toBeNull();
+      const composer = dark.getByRole("textbox", { name: "Message input" });
+      await composer.focus();
+      await composer.press("Control+k");
+      await expect(dark.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+      const newChat = dark.getByRole("option", { name: /New chat/ });
+      await expect(newChat).toBeEnabled();
+      await waitForFiniteAnimations(dark);
+      const paletteBackground = await dark
+        .getByRole("dialog", { name: "Command palette" })
+        .evaluate((element) => getComputedStyle(element).backgroundColor);
+      expect(paletteBackground).not.toBe("rgba(0, 0, 0, 0)");
+      await dark.screenshot({
+        path: join(screenshots, "app-root-command-palette.png"),
+        fullPage: true,
+      });
+      await newChat.click();
+      await expect(dark.getByRole("textbox", { name: "Message input" })).toBeVisible();
+      await expect
+        .poll(() => dark.evaluate(() => window.localStorage.getItem("omp.app.root.thread")), {
+          timeout: 45_000,
+        })
+        .not.toBe(currentThreadId);
+      await expect(dark.getByRole("dialog", { name: "Command palette" })).toHaveCount(0);
+      expect(consoleErrors).toEqual([]);
+      expect(pageErrors).toEqual([]);
       await dark.close();
       await page.close();
       expect(consoleErrors).toEqual([]);
       expect(pageErrors).toEqual([]);
+    } finally {
+      await stopChild(server?.process);
+      if (provider?.process.stdin) provider.process.stdin.end();
+      await stopChild(provider?.process);
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+realTest(
+  "shows omp's own question after another overlay has opened, and the answer continues the turn",
+  async ({ browser }) => {
+    // Real omp, a fake model and two phases (palette, then the question): give a loaded run room.
+    test.slow();
+    const root = await mkdtemp(join(resolve(APP_ROOT, ".data"), "app-dialog-e2e-"));
+    const home = join(root, "home");
+    const agentDir = join(root, "agent");
+    const appDataDir = join(root, "app-data");
+    const folder = join(root, "workspace");
+    await Promise.all([mkdir(home), mkdir(agentDir), mkdir(appDataDir), mkdir(folder)]);
+    const env = {
+      ...process.env,
+      HOME: home,
+      PI_CODING_AGENT_DIR: agentDir,
+      OMP_APP_DATA_DIR: appDataDir,
+      ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-"),
+    };
+    let provider: ReadyProvider | undefined;
+    let server: { readonly process: ChildProcess; readonly url: string } | undefined;
+    const pageErrors: string[] = [];
+    try {
+      provider = await startProvider(agentDir, env);
+      server = await startServer(root, env);
+      const page = await browser.newPage();
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      await page.goto(server.url);
+      await expect(page.locator("[data-app-root='true']")).toBeVisible();
+      await page
+        .locator('[aria-label="Sessions"]')
+        .getByRole("button", { name: "New chat" })
+        .first()
+        .click();
+      const messageInput = page.getByRole("textbox", { name: "Message input" });
+      await expect(messageInput).toBeVisible({ timeout: 30_000 });
+
+      // Opening any overlay used to rebuild and dispose the dialog host, so omp's questions never
+      // appeared and the turn waited forever. Open and close the palette first.
+      await messageInput.focus();
+      await page.keyboard.press("Control+k");
+      await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog", { name: "Command palette" })).toHaveCount(0);
+
+      // The fake provider answers a prompt containing "ask_user" with omp's ask tool, which makes
+      // omp send a select request to the app (packages/omp-rpc/scripts/fake-openai-server.ts).
+      await messageInput.fill("Please ask_user which database to use.");
+      await messageInput.press("Enter");
+      const question = page.getByRole("dialog");
+      try {
+        await expect(question).toBeVisible({ timeout: 45_000 });
+      } catch (cause) {
+        // Say why, so a rare failure is diagnosable: was the prompt sent, and what is on screen?
+        const sent = await page
+          .locator('[data-slot="u1-message-row"][data-role="user"]')
+          .filter({ hasText: "ask_user" })
+          .count();
+        const working = await page.getByText("Assistant is working…").count();
+        const dialogs = await page.getByRole("dialog").count();
+        const composer = await messageInput.inputValue();
+        throw new Error(
+          `omp's question never appeared: prompt in transcript=${sent}, "Assistant is working"=${working}, dialogs=${dialogs}, composer text=${JSON.stringify(composer)}`,
+          { cause },
+        );
+      }
+      await expect(question).toContainText("Which database?");
+      await mkdir(screenshots, { recursive: true });
+      await waitForFiniteAnimations(page);
+      await page.screenshot({ path: join(screenshots, "app-root-omp-question.png") });
+      await question.getByText("SQLite").first().click();
+      await question
+        .getByRole("button", { name: /choose/i })
+        .first()
+        .click();
+      await expect(page.getByText(/tool said:/)).toBeVisible({ timeout: 45_000 });
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      expect(pageErrors).toEqual([]);
+      await page.close();
     } finally {
       await stopChild(server?.process);
       if (provider?.process.stdin) provider.process.stdin.end();

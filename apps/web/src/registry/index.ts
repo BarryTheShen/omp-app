@@ -8,6 +8,7 @@
 import type { Descriptor } from "@omp-app/contracts";
 import { D1_DESCRIPTORS } from "../modules/D1/descriptors";
 import { D2_TRIGGER_DESCRIPTORS } from "../modules/D2/contract";
+import { D5_LIFECYCLE_COMMAND_DESCRIPTORS } from "../modules/D5/descriptors";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
 import { P4_DESCRIPTORS } from "../modules/P4/contract";
@@ -31,6 +32,7 @@ import type { ToolRegistryDescriptor } from "../modules/U3/tool-card/contract";
 import { U4Descriptors } from "../modules/U4/descriptors";
 import { U5Descriptors } from "../modules/U5/descriptors";
 import { todoToolDescriptor } from "../modules/U5/todo/tool-card/tool-card";
+import { U0_COMMAND_PALETTE_SHORTCUT } from "../palette/descriptor";
 import { createRegistry, type RendererMap } from "../registry-core";
 
 /** T1's read card renders URL reads through T4's renderer; the seam keeps T1 from importing T4. */
@@ -63,7 +65,9 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...U2Descriptors,
   ...D1_DESCRIPTORS,
   U2_EXTERNAL_EDITOR_SHORTCUT,
+  U0_COMMAND_PALETTE_SHORTCUT,
   ...R1_DESCRIPTORS,
+  ...D5_LIFECYCLE_COMMAND_DESCRIPTORS,
   ...N1_DESCRIPTORS,
   ...P4_DESCRIPTORS,
   ...P6_DESCRIPTORS,

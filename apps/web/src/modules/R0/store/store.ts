@@ -737,24 +737,23 @@ export class OmpRuntimeStore {
 
   /**
    * Apply exactly one contiguous A0 envelope event. Replays are ignored. A gap is not applied: the
-   * caller must refetch history and call `resetSequence` before the next event can change state.
-   * Every seq is remembered (`latestSeenSeq`) so the refetch resumes where the stream really is.
+   * caller must refetch history and call `resetSequence` before the next event can change state,
+   * except that a request omp is waiting on is recorded anyway (`ingestAcrossGap`). Every seq is
+   * remembered (`latestSeenSeq`) so the refetch resumes where the stream really is.
    */
   public ingest(event: RpcSessionEvent, seq: number): void {
     if (!Number.isSafeInteger(seq) || seq < 1) {
       throw new RangeError("event seq must be a positive safe integer");
     }
     if (seq > this.latestSeenSeq) this.latestSeenSeq = seq;
-    if (seq <= this.snapshot.lastSeq || this.snapshot.needsRefetch) return;
-    if (seq !== this.snapshot.lastSeq + 1) {
-      const next = mutableSnapshot(this.snapshot);
-      next.needsRefetch = true;
-      this.commit(next);
+    if (seq <= this.snapshot.lastSeq) return;
+    const eventValue = event as unknown as Record<string, unknown>;
+    if (this.snapshot.needsRefetch || seq !== this.snapshot.lastSeq + 1) {
+      this.ingestAcrossGap(eventValue, seq);
       return;
     }
 
     const next = mutableSnapshot(this.snapshot);
-    const eventValue = event as unknown as Record<string, unknown>;
     switch (eventValue.kind) {
       case "omp":
         this.reduceOmp(next, eventValue.event, seq);
@@ -792,6 +791,23 @@ export class OmpRuntimeStore {
     if (eventValue.kind === "notification") {
       this.forwardNotification(eventValue.frame, seq);
     }
+  }
+
+  /**
+   * An event that cannot be applied in order: the stream has a gap, or a refetch is still running.
+   * The refetch restores messages and state from omp, but it can never restore what omp is waiting
+   * on, so a notification (a question, an approval, a host tool call, or the cancellation of one)
+   * is recorded anyway; everything else is dropped and covered by the refetch. Dropping the
+   * request left omp blocked forever on an answer nobody was shown (a fresh chat's first events
+   * predate the browser's subscription, which is a gap by construction).
+   */
+  private ingestAcrossGap(eventValue: Record<string, unknown>, seq: number): void {
+    const next = mutableSnapshot(this.snapshot);
+    if (eventValue.kind === "notification") this.reduceNotification(next, eventValue.frame, seq);
+    const recorded = next.pending !== this.snapshot.pending || next.error !== this.snapshot.error;
+    if (this.snapshot.needsRefetch && !recorded) return;
+    next.needsRefetch = true;
+    this.commit(next);
   }
 
   /**

@@ -70,7 +70,7 @@ async function openPalette(page: Page): Promise<void> {
   await expect(
     dialog
       .getByText(
-        /current session has not confirmed|does not support|does not provide|not available|needs a newer version/,
+        /current session has not confirmed|does not support|does not provide|not available|needs a newer version|only works in the omp terminal/,
       )
       .first(),
   ).toBeVisible();

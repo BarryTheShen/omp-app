@@ -2,26 +2,26 @@ import type {
   CapabilityKey,
   CapabilityMap,
   CapabilityStatus,
-  CommandDescriptor,
+  DescriptorId,
 } from "@omp-app/contracts";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Textarea } from "@/components/ui/textarea";
 import { OverlayHost } from "@/overlay";
 import { DESCRIPTORS, RENDERERS, registry } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { MemoryPreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
-import { CommandPaletteHost, U0_COMMAND_PALETTE_SHORTCUT } from "./index";
+import {
+  type CommandPaletteHandler,
+  CommandPaletteHost,
+  U0_COMMAND_PALETTE_SHORTCUT,
+} from "./index";
 
 const commandShortcutDescriptors = [
   ...DESCRIPTORS.filter((descriptor) => descriptor.id !== U0_COMMAND_PALETTE_SHORTCUT.id),
   U0_COMMAND_PALETTE_SHORTCUT,
 ];
-
-const firstGatedCommand = DESCRIPTORS.find(
-  (descriptor): descriptor is CommandDescriptor =>
-    descriptor.kind === "command" && descriptor.requires.length > 0,
-);
+const CLEAR_REASON = "Clearing the conversation only works in the omp terminal for now.";
 
 function capabilityProvider(key: CapabilityKey): CapabilityStatus["via"] {
   if (key.startsWith("omp.")) return "rpc";
@@ -30,13 +30,29 @@ function capabilityProvider(key: CapabilityKey): CapabilityStatus["via"] {
   return "upstream";
 }
 
+/** Two real D5 commands the app can run, and one it cannot (clear), as in the running app. */
 const capabilities: CapabilityMap = {};
-for (const key of firstGatedCommand?.requires ?? []) {
-  capabilities[key] = { state: "available", via: capabilityProvider(key) };
+for (const descriptor of DESCRIPTORS) {
+  if (descriptor.id !== "D5.new" && descriptor.id !== "D5.fresh") continue;
+  for (const key of descriptor.requires) {
+    capabilities[key] = { state: "available", via: capabilityProvider(key) };
+  }
 }
+const UNAVAILABLE_REASONS: ReadonlyMap<DescriptorId, string> = new Map([
+  ["D5.clear", CLEAR_REASON],
+]);
 
 function PalettePlayground() {
   const [selectedCommand, setSelectedCommand] = useState<string | null>(null);
+  const handlers = useMemo(
+    () =>
+      new Map<DescriptorId, CommandPaletteHandler>([
+        ["D5.new", () => setSelectedCommand("New chat")],
+        ["D5.fresh", () => setSelectedCommand("Fresh connection to the model")],
+        ["D5.clear", () => setSelectedCommand("Clear conversation")],
+      ]),
+    [],
+  );
   return (
     <RegistryProvider capabilities={capabilities} registry={registry} renderers={RENDERERS}>
       <ShortcutRegistryProvider
@@ -52,7 +68,7 @@ function PalettePlayground() {
               <header className="flex flex-col gap-(--space-xs)">
                 <h1 className="text-2xl font-semibold">Workspace commands</h1>
                 <p className="text-muted-foreground text-sm">
-                  Search the app's registered commands. Press Ctrl+K from the composer.
+                  Search available commands. Press Ctrl+K from the composer.
                 </p>
               </header>
               <Textarea
@@ -74,7 +90,7 @@ function PalettePlayground() {
               )}
             </div>
           </main>
-          <CommandPaletteHost onCommandSelect={(command) => setSelectedCommand(command.title)} />
+          <CommandPaletteHost handlers={handlers} unavailableReasons={UNAVAILABLE_REASONS} />
         </OverlayHost>
       </ShortcutRegistryProvider>
     </RegistryProvider>

@@ -3,6 +3,7 @@ import type {
   CapabilityMap,
   CapabilityStatus,
   CommandDescriptor,
+  DescriptorId,
 } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -10,22 +11,31 @@ import { OverlayHost } from "@/overlay";
 import { DESCRIPTORS, RENDERERS, registry } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { MemoryPreferenceStore, ShortcutRegistry, ShortcutRegistryProvider } from "@/shortcuts";
-import { CommandPaletteHost, U0_COMMAND_PALETTE_SHORTCUT } from "./index";
+import {
+  type CommandPaletteHandler,
+  CommandPaletteHost,
+  U0_COMMAND_PALETTE_SHORTCUT,
+} from "./index";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
-const commandDescriptors: readonly CommandDescriptor[] = DESCRIPTORS.filter(
-  (descriptor): descriptor is CommandDescriptor => descriptor.kind === "command",
-);
-
-function commandWithRequirements(): CommandDescriptor {
-  const command = commandDescriptors.find((descriptor) => descriptor.requires.length > 0);
-  if (command === undefined) throw new Error("The composed registry has no gated commands.");
+function commandById(id: string): CommandDescriptor {
+  const command = DESCRIPTORS.find(
+    (descriptor): descriptor is CommandDescriptor =>
+      descriptor.kind === "command" && descriptor.id === id,
+  );
+  if (command === undefined) throw new Error(`The composed registry has no command ${id}.`);
   return command;
 }
+
+const NEW_CHAT = commandById("D5.new");
+const FRESH = commandById("D5.fresh");
+const CLEAR = commandById("D5.clear");
+// A registered command with a slash that the app has not mounted: it must never be listed.
+const MODEL = commandById("D1.model");
 
 function capabilityVia(key: CapabilityKey): CapabilityStatus["via"] {
   if (key.startsWith("omp.")) return "rpc";
@@ -35,31 +45,27 @@ function capabilityVia(key: CapabilityKey): CapabilityStatus["via"] {
 }
 
 function capabilitiesFor(
-  command: CommandDescriptor,
+  commands: readonly CommandDescriptor[],
   state: CapabilityStatus["state"],
   detail?: string,
 ): CapabilityMap {
   const capabilities: CapabilityMap = {};
-  for (const key of command.requires) {
-    capabilities[key] = {
-      state,
-      via: capabilityVia(key),
-      ...(detail === undefined ? {} : { detail }),
-    };
-  }
-  return capabilities;
-}
-function capabilitiesForCommands(
-  commands: readonly CommandDescriptor[],
-  state: CapabilityStatus["state"],
-): CapabilityMap {
-  const capabilities: CapabilityMap = {};
   for (const command of commands) {
     for (const key of command.requires) {
-      capabilities[key] = { state, via: capabilityVia(key) };
+      capabilities[key] = {
+        state,
+        via: capabilityVia(key),
+        ...(detail === undefined ? {} : { detail }),
+      };
     }
   }
   return capabilities;
+}
+
+function handlersFor(
+  ...entries: readonly (readonly [CommandDescriptor, CommandPaletteHandler])[]
+): ReadonlyMap<DescriptorId, CommandPaletteHandler> {
+  return new Map(entries.map(([command, handler]) => [command.id, handler]));
 }
 
 function optionFor(command: CommandDescriptor): HTMLElement {
@@ -72,7 +78,8 @@ function optionFor(command: CommandDescriptor): HTMLElement {
 
 function renderPalette(
   capabilities: CapabilityMap = {},
-  onCommandSelect: (command: CommandDescriptor) => void = () => undefined,
+  handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler> = new Map(),
+  unavailableReasons: ReadonlyMap<DescriptorId, string> = new Map(),
 ) {
   const shortcutDescriptors = [
     ...DESCRIPTORS.filter((descriptor) => descriptor.id !== U0_COMMAND_PALETTE_SHORTCUT.id),
@@ -87,7 +94,7 @@ function renderPalette(
         <OverlayHost>
           <button type="button">Return to app</button>
           <textarea aria-label="Composer input" />
-          <CommandPaletteHost onCommandSelect={onCommandSelect} />
+          <CommandPaletteHost handlers={handlers} unavailableReasons={unavailableReasons} />
         </OverlayHost>
       </ShortcutRegistryProvider>
     </RegistryProvider>,
@@ -99,6 +106,10 @@ async function openPalette(): Promise<HTMLElement> {
   opener.focus();
   fireEvent.keyDown(opener, { key: "k", ctrlKey: true });
   return screen.findByRole("dialog", { name: "Command palette" });
+}
+
+async function expectPaletteClosed(): Promise<void> {
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull());
 }
 
 describe("U0 command palette", () => {
@@ -115,102 +126,121 @@ describe("U0 command palette", () => {
     expect(document.activeElement).toBe(search);
     fireEvent.keyDown(search, { key: "Escape" });
 
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull(),
-    );
+    await expectPaletteClosed();
     await waitFor(() => expect(document.activeElement).toBe(opener));
     expect(dialog.getAttribute("aria-modal")).toBe("true");
   });
 
-  test("shows every registry command without exposing descriptor ids", async () => {
+  test("lists only the commands the app has a handler for, by their plain titles", async () => {
+    renderPalette(
+      capabilitiesFor([NEW_CHAT, FRESH], "available"),
+      handlersFor([NEW_CHAT, () => undefined], [FRESH, () => undefined]),
+    );
+    await openPalette();
+
+    const titles = screen.getAllByRole("option").map((option) => option.textContent ?? "");
+    expect(titles).toHaveLength(2);
+    expect(titles.some((text) => text.includes(NEW_CHAT.title))).toBe(true);
+    expect(titles.some((text) => text.includes(FRESH.title))).toBe(true);
+    // Registered, with a slash, but not mounted in the app: not offered.
+    expect(titles.every((text) => !text.includes(MODEL.title))).toBe(true);
+    expect(titles.every((text) => !text.includes(NEW_CHAT.id))).toBe(true);
+  });
+
+  test("shows an empty state when the app has mounted no command", async () => {
     renderPalette();
     await openPalette();
 
-    const options = screen.getAllByRole("option");
-    const optionText = options.map((option) => option.textContent ?? "");
-    expect(options).toHaveLength(commandDescriptors.length);
-    for (const descriptor of commandDescriptors) {
-      expect(optionText.some((text) => text.includes(descriptor.title))).toBe(true);
-      expect(optionText.every((text) => !text.includes(descriptor.id))).toBe(true);
-    }
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    expect(screen.getByRole("status").textContent).toBe("No commands found.");
   });
 
-  test("keeps unavailable commands visible but disabled with a plain-English reason", async () => {
-    const command = commandDescriptors.find((descriptor) =>
-      descriptor.requires.some((key) => key.startsWith("omp.cmd.")),
-    );
-    if (command === undefined) throw new Error("The composed registry has no RPC command.");
-    const rpcKey = command.requires.find((key) => key.startsWith("omp.cmd."));
-    if (rpcKey === undefined) throw new Error("Expected an RPC capability.");
-    const capabilities = capabilitiesFor(command, "available");
-    capabilities[rpcKey] = {
-      state: "unavailable",
-      via: "rpc",
-      detail: `The ${rpcKey} check failed`,
-    };
-    const onCommandSelect = vi.fn<(selected: CommandDescriptor) => void>();
-    renderPalette(capabilities, onCommandSelect);
+  test("runs the chosen command's handler and closes", async () => {
+    const handler = vi.fn<CommandPaletteHandler>();
+    renderPalette(capabilitiesFor([NEW_CHAT], "available"), handlersFor([NEW_CHAT, handler]));
     await openPalette();
 
-    const option = optionFor(command);
-    expect(option.getAttribute("aria-disabled")).toBe("true");
-    expect(option.textContent).toContain(
-      "The connected omp process does not support this command.",
-    );
-    expect(option.textContent).not.toContain(rpcKey);
-    fireEvent.click(option);
-    expect(onCommandSelect).not.toHaveBeenCalled();
+    fireEvent.click(optionFor(NEW_CHAT));
+
+    await waitFor(() => expect(handler).toHaveBeenCalledWith(expect.any(AbortSignal)));
+    await expectPaletteClosed();
   });
 
-  test("treats fallback capabilities as usable and filters/selects the matching descriptor", async () => {
-    const command = commandWithRequirements();
-    const capabilities = capabilitiesFor(
-      command,
-      "fallback",
-      "Some advanced options are unavailable.",
+  test("filters by title and runs the match on Enter; a fallback capability still counts", async () => {
+    const handler = vi.fn<CommandPaletteHandler>();
+    renderPalette(
+      capabilitiesFor([NEW_CHAT, FRESH], "fallback", "Some advanced options are unavailable."),
+      handlersFor([NEW_CHAT, () => undefined], [FRESH, handler]),
     );
-    const onCommandSelect = vi.fn<(selected: CommandDescriptor) => void>();
-    renderPalette(capabilities, onCommandSelect);
     await openPalette();
 
     const search = screen.getByRole("combobox", { name: "Search commands" });
-    fireEvent.change(search, { target: { value: command.title } });
-    const option = optionFor(command);
-    expect(option.getAttribute("aria-disabled")).toBe("false");
+    fireEvent.change(search, { target: { value: "fresh" } });
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(optionFor(FRESH).getAttribute("aria-disabled")).toBe("false");
     fireEvent.keyDown(search, { key: "Enter" });
 
-    expect(onCommandSelect).toHaveBeenCalledWith(command);
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull(),
-    );
+    await waitFor(() => expect(handler).toHaveBeenCalledTimes(1));
+    await expectPaletteClosed();
   });
-  test("moves through the registry command list with arrow keys", async () => {
-    const selected = commandDescriptors[1];
-    if (selected === undefined) throw new Error("Expected at least two commands.");
-    const onCommandSelect = vi.fn<(command: CommandDescriptor) => void>();
-    renderPalette(capabilitiesForCommands(commandDescriptors, "available"), onCommandSelect);
+
+  test("moves the highlight with the arrow keys and runs that command", async () => {
+    const first = vi.fn<CommandPaletteHandler>();
+    const second = vi.fn<CommandPaletteHandler>();
+    renderPalette(
+      capabilitiesFor([NEW_CHAT, FRESH], "available"),
+      handlersFor([NEW_CHAT, first], [FRESH, second]),
+    );
     await openPalette();
 
     const search = screen.getByRole("combobox", { name: "Search commands" });
     fireEvent.keyDown(search, { key: "ArrowDown" });
     fireEvent.keyDown(search, { key: "Enter" });
 
-    expect(onCommandSelect).toHaveBeenCalledWith(selected);
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull(),
-    );
+    await waitFor(() => expect(second).toHaveBeenCalledTimes(1));
+    expect(first).not.toHaveBeenCalled();
+    await expectPaletteClosed();
   });
 
-  test("explains unconfirmed capabilities without showing internal names", async () => {
-    const command = commandWithRequirements();
-    renderPalette();
+  test("keeps an unavailable command visible but disabled, with a plain reason and no internal names", async () => {
+    const handler = vi.fn<CommandPaletteHandler>();
+    const capabilities = capabilitiesFor([NEW_CHAT], "unavailable", "the new_session probe failed");
+    renderPalette(capabilities, handlersFor([NEW_CHAT, handler]));
     await openPalette();
 
-    const option = optionFor(command);
+    const option = optionFor(NEW_CHAT);
+    expect(option.getAttribute("aria-disabled")).toBe("true");
+    expect(option.textContent).toContain(
+      "The connected omp process does not support this command.",
+    );
+    for (const key of NEW_CHAT.requires) expect(option.textContent).not.toContain(key);
+    fireEvent.click(option);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  test("shows the app's own reason for a command it knows is unavailable", async () => {
+    const reason = "Clearing the conversation only works in the omp terminal for now.";
+    renderPalette(
+      capabilitiesFor([CLEAR], "unavailable"),
+      handlersFor([CLEAR, () => undefined]),
+      new Map([[CLEAR.id, reason]]),
+    );
+    await openPalette();
+
+    const option = optionFor(CLEAR);
+    expect(option.getAttribute("aria-disabled")).toBe("true");
+    expect(option.textContent).toContain(reason);
+  });
+
+  test("explains a capability the session has not confirmed, without internal names", async () => {
+    renderPalette({}, handlersFor([NEW_CHAT, () => undefined]));
+    await openPalette();
+
+    const option = optionFor(NEW_CHAT);
     expect(option.textContent).toContain(
       "The current session has not confirmed that this command is available.",
     );
-    for (const key of command.requires) expect(option.textContent).not.toContain(key);
+    for (const key of NEW_CHAT.requires) expect(option.textContent).not.toContain(key);
   });
 
   test("does not bind a chord the shortcut registry marks as browser-reserved", async () => {
@@ -223,22 +253,42 @@ describe("U0 command palette", () => {
     expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
   });
 
-  test("shows an empty search state and keeps command-start failures recoverable", async () => {
-    const command = commandWithRequirements();
-    const onCommandSelect = vi.fn(() => {
+  test("keeps a failing command recoverable and never shows its private details", async () => {
+    const failing = vi.fn(() => {
       throw new Error("private command details");
     });
-    renderPalette(capabilitiesFor(command, "available"), onCommandSelect);
+    renderPalette(capabilitiesFor([NEW_CHAT], "available"), handlersFor([NEW_CHAT, failing]));
     await openPalette();
     const search = screen.getByRole("combobox", { name: "Search commands" });
     fireEvent.change(search, { target: { value: "no command matches this phrase" } });
     expect(screen.getByRole("status").textContent).toBe("No commands found.");
 
-    fireEvent.change(search, { target: { value: command.title } });
+    fireEvent.change(search, { target: { value: NEW_CHAT.title } });
     fireEvent.keyDown(search, { key: "Enter" });
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("The command could not be started. Try again.");
     expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
     expect(screen.queryByText("private command details")).toBeNull();
+  });
+
+  test("runs a command once even if chosen twice, and aborts it when the palette closes", async () => {
+    let signal: AbortSignal | undefined;
+    const handler = vi.fn<CommandPaletteHandler>((received) => {
+      signal = received;
+      return new Promise<void>(() => undefined);
+    });
+    renderPalette(capabilitiesFor([NEW_CHAT], "available"), handlersFor([NEW_CHAT, handler]));
+    await openPalette();
+
+    const search = screen.getByRole("combobox", { name: "Search commands" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    await waitFor(() => expect(handler).toHaveBeenCalledTimes(1));
+    expect(signal?.aborted).toBe(false);
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await expectPaletteClosed();
+    expect(signal?.aborted).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

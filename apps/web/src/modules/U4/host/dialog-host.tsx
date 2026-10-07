@@ -28,7 +28,11 @@ export type DialogRenderer = (request: DialogRequest, context: DialogRenderConte
 
 export interface DialogHostControllerOptions {
   readonly overlay: OverlayHostApi;
-  readonly capabilities?: CapabilityMap;
+  /**
+   * The capability map, or a function that returns the current one. Pass the function from a long
+   * lived owner: the host is not rebuilt (cancelling an open question) when a map is replaced.
+   */
+  readonly capabilities?: CapabilityMap | (() => CapabilityMap | undefined);
   readonly answerExtensionUi: (
     response: OmpWire.ExtensionUiResponse,
     options?: { readonly signal?: AbortSignal },
@@ -86,7 +90,7 @@ function isUiAvailable(capabilities: CapabilityMap | undefined): boolean {
  *  dialogs share the queue and overlay but settle locally. */
 export class DialogHostController implements DialogHost {
   private readonly overlay: OverlayHostApi;
-  private readonly capabilities: CapabilityMap | undefined;
+  private readonly capabilities: CapabilityMap | (() => CapabilityMap | undefined) | undefined;
   private readonly answerExtensionUi: DialogHostControllerOptions["answerExtensionUi"];
   private readonly render: DialogRenderer;
   private readonly queues = new Map<string, DialogEntry[]>();
@@ -109,7 +113,9 @@ export class DialogHostController implements DialogHost {
     if (this.disposed)
       return Promise.reject(failure("internal", "The dialog host has been disposed."));
     const origin = options.origin ?? "omp";
-    if (origin === "omp" && !isUiAvailable(this.capabilities)) {
+    const capabilities =
+      typeof this.capabilities === "function" ? this.capabilities() : this.capabilities;
+    if (origin === "omp" && !isUiAvailable(capabilities)) {
       return Promise.reject(unavailableUi());
     }
     const parsed = DialogRequestSchema.safeParse(request);

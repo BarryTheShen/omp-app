@@ -1,27 +1,44 @@
 import { AssistantRuntimeProvider, useAui, useAuiState } from "@assistant-ui/react";
 import {
+  AppFailure,
   AppPort,
   type AppServerInfo,
   AttachmentBlobStore,
   type CapabilityMap,
+  type DescriptorId,
   FolderPath,
   type HostCallId,
   HostMetadataPort,
-  type RpcSessionClient,
+  OmpCommandGateway,
   RpcSessionPort,
   SessionFileStore,
   ThreadId,
   UiRequestId,
 } from "@omp-app/contracts";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { AccessibilityProvider } from "@/a11y";
 import { AppConnectionGate, AppConnectionProvider, useAppConnection } from "@/launch";
 import { LayoutArea, type LayoutAreaName, type SurfaceMap } from "@/layout";
+import type {
+  SessionCapabilitiesSource,
+  SessionInfoMetadataSource,
+  SessionInfoRuntimeSource,
+} from "@/modules/D5/contract";
+import { SessionLifecycleController } from "@/modules/D5/lifecycle";
+import { SessionInfoModel } from "@/modules/D5/session/info";
 import { QueueLaneBar } from "@/modules/P6/bar/bar";
 import { resolveQueueSubmitPolicy } from "@/modules/P6/composer/composer";
 import { createQueueAdapter } from "@/modules/P6/contract";
-import { createQueueController } from "@/modules/R0/actions";
+import { createQueueController, type QueueController } from "@/modules/R0/actions";
 import { useOmpRuntime } from "@/modules/R0/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
@@ -53,10 +70,12 @@ import { PanelShell } from "@/modules/U5/panel/shell";
 import { TodoChecklist } from "@/modules/U5/todo/checklist/checklist";
 import { projectTodoSnapshot } from "@/modules/U5/todo/model";
 import { TodoStoreAdapter } from "@/modules/U5/todo/store/store";
-import { OverlayHost, useOverlayHost } from "@/overlay";
-import { RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
+import { OverlayHost, useStableOverlayHost } from "@/overlay";
+import { type CommandPaletteHandler, CommandPaletteHost } from "@/palette";
+import { DESCRIPTORS, RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
+import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
 import { SessionModelControl, SessionStatusBar } from "./session-controls";
 
 const FOLDER_KEY = "omp.app.root.folder";
@@ -191,33 +210,17 @@ function EmptyTranscript({ state }: { readonly state: SelectedThreadHistoryState
 
 function RouterBridge({
   store,
-  rpc,
   threadId,
-  capabilities,
   queueController,
+  dialogHost,
 }: {
   readonly store: OmpRuntimeStore;
-  readonly rpc: RpcSessionClient;
   readonly threadId: ThreadId;
-  readonly capabilities: CapabilityMap;
-  readonly queueController: ReturnType<typeof createQueueController>;
+  readonly queueController: QueueController;
+  readonly dialogHost: DialogHostController;
 }) {
-  const overlay = useOverlayHost();
-  const dialogHostRef = useRef<DialogHostController | null>(null);
-  if (dialogHostRef.current === null) {
-    dialogHostRef.current = new DialogHostController({
-      overlay,
-      capabilities,
-      answerExtensionUi: async (response, options) => {
-        await rpc.answerExtensionUi(
-          { threadId, response: { ...response, id: UiRequestId.parse(response.id) } },
-          options,
-        );
-      },
-      render: renderDialogRequest,
-    });
-  }
-  const dialogHost = dialogHostRef.current;
+  // Stable: the router must not be rebuilt every time some overlay opens or closes.
+  const overlay = useStableOverlayHost();
   const hostAnswers = useMemo(() => {
     const submit = async (
       answer: HostRequestAnswer,
@@ -283,9 +286,8 @@ function RouterBridge({
     sync();
     return () => {
       unsubscribe();
-      dialogHost.dispose();
     };
-  }, [dialogHost, router, store, threadId]);
+  }, [router, store, threadId]);
   return null;
 }
 
@@ -370,6 +372,9 @@ interface ActiveThreadProps {
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly history: SelectedThreadHistoryState;
   readonly capabilities: CapabilityMap;
+  readonly catalog: SessionCatalogModel | null;
+  readonly remote: ReturnType<typeof createNativeRemoteThreadListAdapter> | null;
+  readonly openThread: (threadId: ThreadId) => Promise<void>;
   readonly leftSidebar: ReactNode;
   readonly title: string;
 }
@@ -382,14 +387,200 @@ function ActiveThreadContent(props: ActiveThreadProps) {
 function ActiveThreadReady({
   client,
   capabilities,
+  catalog,
   history,
   leftSidebar,
+  openThread,
+  remote,
   title,
 }: ActiveThreadProps) {
   const store = history.store as OmpRuntimeStore;
   const threadId = history.threadId as ThreadId;
   const connection = useAppConnection();
-  const rpc = client.port(RpcSessionPort);
+  const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
+  const [commandError, setCommandError] = useState<string | null>(null);
+  const [commandStatus, setCommandStatus] = useState<string | null>(null);
+  // Stable, so the dialog host below isn't torn down (cancelling a dialog that was just presented)
+  // when the command palette or any other overlay opens.
+  const overlay = useStableOverlayHost();
+  const commandGateway = useMemo(() => client.port(OmpCommandGateway), [client]);
+  // Answers go through R0's queue controller (assigned below), because it forgets the request once
+  // omp accepts the answer. Answering through the raw RPC port left the request "pending" in the
+  // store, and the router presented the same question a second time.
+  const answerExtensionUiRef = useRef<QueueController["answerExtensionUi"] | null>(null);
+  // The newest capability map, read when a question arrives, so replacing the map (a reconnect
+  // reloads it) never rebuilds the host and cancels a question the user is looking at.
+  const capabilitiesRef = useRef(capabilities);
+  useLayoutEffect(() => {
+    capabilitiesRef.current = capabilities;
+  });
+  // One host per thread: a host only presents dialogs for the thread it first served.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: threadId deliberately re-keys the host.
+  const dialogHost = useMemo(
+    () =>
+      new DialogHostController({
+        overlay,
+        capabilities: () => capabilitiesRef.current,
+        answerExtensionUi: (response, options) => {
+          const answer = answerExtensionUiRef.current;
+          if (answer === null) {
+            throw new AppFailure({
+              code: "unavailable",
+              message: "omp's question can't be answered right now. Try again.",
+              retryable: true,
+            });
+          }
+          return answer({ ...response, id: UiRequestId.parse(response.id) }, options);
+        },
+        render: renderDialogRequest,
+      }),
+    [overlay, threadId],
+  );
+  useEffect(() => () => dialogHost.dispose(), [dialogHost]);
+  const runtimeSource = useMemo<SessionInfoRuntimeSource>(
+    () => ({
+      getSnapshot: () => ({ threadId, session: store.getSnapshot().session }),
+      subscribe: (listener) => store.subscribe(listener),
+    }),
+    [store, threadId],
+  );
+  const metadataSource = useMemo<SessionInfoMetadataSource>(
+    () => ({
+      getSnapshot: () =>
+        catalog?.getSnapshot().sessions.find((session) => session.id === threadId) ?? null,
+      subscribe: (listener) => catalog?.subscribe(() => listener()) ?? (() => undefined),
+    }),
+    [catalog, threadId],
+  );
+  const sessionInfo = useMemo(
+    () => new SessionInfoModel({ runtime: runtimeSource, metadata: metadataSource }),
+    [metadataSource, runtimeSource],
+  );
+  useEffect(() => () => sessionInfo.dispose(), [sessionInfo]);
+  const sessionCapabilities = useMemo<SessionCapabilitiesSource>(
+    () => ({ getSnapshot: () => capabilities }),
+    [capabilities],
+  );
+  const lifecycle = useMemo(
+    () =>
+      remote
+        ? new SessionLifecycleController({
+            remote,
+            gateway: commandGateway,
+            dialogs: dialogHost,
+            capabilities: sessionCapabilities,
+            session: sessionInfo,
+          })
+        : null,
+    [commandGateway, dialogHost, remote, sessionCapabilities, sessionInfo],
+  );
+  const openSessionBrowser = useCallback(() => {
+    if (!catalog || !remote) {
+      throw new AppFailure({
+        code: "unavailable",
+        message: "Session browsing is unavailable for this workspace.",
+        retryable: false,
+        capability: "host.session-files",
+      });
+    }
+    const restoreFocus =
+      document.querySelector<HTMLElement>('[aria-label="Search sessions"]') ?? false;
+    overlay.open({
+      kind: "modal",
+      label: "Open session",
+      width: "content",
+      restoreFocus,
+      content: ({ close }) => (
+        <div className="max-h-[75vh] overflow-y-auto">
+          <SessionCatalogSidebar
+            catalog={catalog}
+            currentThreadId={threadId}
+            onNewChat={async (newThreadId) => {
+              await openThread(newThreadId);
+              close("programmatic");
+            }}
+            onOpenThread={async (selectedThreadId) => {
+              await openThread(selectedThreadId);
+              close("programmatic");
+            }}
+            remote={remote}
+          />
+        </div>
+      ),
+    });
+  }, [catalog, openThread, overlay, remote, threadId]);
+  const commandHandlers = useMemo(() => {
+    const handlers = new Map<DescriptorId, CommandPaletteHandler>();
+    handlers.set("D5.new", () => {
+      setCommandError(null);
+      setCommandStatus("Starting a new chat…");
+      if (!lifecycle) {
+        setCommandStatus(null);
+        setCommandError("Starting a new chat requires a selected workspace folder.");
+        return;
+      }
+      void lifecycle
+        .newSession()
+        .then(async (outcome) => {
+          if (outcome.status === "completed") {
+            await openThread(outcome.value);
+          } else if (outcome.status === "error" || outcome.status === "unavailable") {
+            setCommandError(outcome.error.message);
+          }
+          setCommandStatus(null);
+        })
+        .catch(() => {
+          setCommandStatus(null);
+          setCommandError("The new chat could not be started. Try again.");
+        });
+    });
+    handlers.set("D5.fresh", (signal) => {
+      setCommandError(null);
+      setCommandStatus("Refreshing the model connection…");
+      if (!lifecycle) {
+        setCommandStatus(null);
+        setCommandError("Refreshing the model connection is unavailable for this session.");
+        return;
+      }
+      void lifecycle
+        .fresh(signal)
+        .then((outcome) => {
+          if (outcome.status === "error" || outcome.status === "unavailable") {
+            setCommandError(outcome.error.message);
+          }
+          setCommandStatus(null);
+        })
+        .catch(() => {
+          setCommandStatus(null);
+          setCommandError("The model connection could not be refreshed. Try again.");
+        });
+    });
+    handlers.set("D5.clear", () => {
+      setCommandError(null);
+      setCommandStatus(null);
+      if (!lifecycle) {
+        setCommandError("Clearing the conversation only works in the omp terminal for now.");
+        return;
+      }
+      void lifecycle
+        .clear()
+        .then((outcome) => {
+          if (outcome.status === "error" || outcome.status === "unavailable") {
+            setCommandError(outcome.error.message);
+          }
+        })
+        .catch(() => setCommandError("Clearing the conversation is unavailable."));
+    });
+    if (catalog && remote) handlers.set("R1.openSession", openSessionBrowser);
+    return handlers;
+  }, [catalog, lifecycle, openSessionBrowser, openThread, remote]);
+  const clearReason =
+    lifecycle?.getAvailability("clear").reason ??
+    "Clearing the conversation only works in the omp terminal for now.";
+  const commandUnavailableReasons = useMemo(
+    () => new Map<DescriptorId, string>([["D5.clear", clearReason]]),
+    [clearReason],
+  );
   const attachmentManager = useMemo(
     () =>
       new AttachmentManager({
@@ -406,6 +597,13 @@ function ActiveThreadReady({
     () => createQueueController({ store, send: rpc.send, capabilities }),
     [capabilities, rpc.send, store],
   );
+  useLayoutEffect(() => {
+    answerExtensionUiRef.current = (response, options) =>
+      queueController.answerExtensionUi(response, options);
+    return () => {
+      answerExtensionUiRef.current = null;
+    };
+  }, [queueController]);
   const queueAdapter = useMemo(() => createQueueAdapter(queueController), [queueController]);
   const todoStore = useMemo(() => new TodoStoreAdapter({ store }), [store]);
   const todoSnapshot = useSyncExternalStore(
@@ -471,6 +669,16 @@ function ActiveThreadReady({
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
           <p className="text-muted-foreground truncate text-xs">{title}</p>
+          {commandStatus && (
+            <p className="text-muted-foreground text-xs" role="status">
+              {commandStatus}
+            </p>
+          )}
+          {commandError && (
+            <p className="text-danger text-xs" role="alert">
+              {commandError}
+            </p>
+          )}
         </div>
       ),
     },
@@ -536,10 +744,14 @@ function ActiveThreadReady({
   );
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <RouterBridge
+      <CommandPaletteHost
         capabilities={capabilities}
+        handlers={commandHandlers}
+        unavailableReasons={commandUnavailableReasons}
+      />
+      <RouterBridge
+        dialogHost={dialogHost}
         queueController={queueController}
-        rpc={rpc}
         store={store}
         threadId={threadId}
       />
@@ -670,9 +882,10 @@ function ConnectedApp({
     if (controller && history.threadId)
       void controller.openExisting(history.threadId).catch(() => undefined);
   }, [client.instanceId, connection.state, controller, history.threadId]);
-  const activeCapabilities = history.capabilities
-    ? { ...capabilities, ...history.capabilities }
-    : capabilities;
+  const activeCapabilities = useMemo(
+    () => (history.capabilities ? { ...capabilities, ...history.capabilities } : capabilities),
+    [capabilities, history.capabilities],
+  );
   useEffect(() => {
     if (!catalog || !history.threadId || !folder) {
       setTitle("New conversation");
@@ -718,9 +931,20 @@ function ConnectedApp({
       return false;
     }
   };
-  const openThread = async (threadId: ThreadId): Promise<void> => {
-    await controller?.openExisting(threadId);
-  };
+  const openThread = useCallback(
+    async (threadId: ThreadId): Promise<void> => {
+      if (!controller) {
+        throw new AppFailure({
+          code: "unavailable",
+          message: "Opening a session requires a selected workspace folder.",
+          retryable: false,
+          capability: "host.session-files",
+        });
+      }
+      await controller.openExisting(threadId);
+    },
+    [controller],
+  );
   // What each sidebar surface id renders. Where it goes: `@/layout` (LAYOUT).
   const sidebarSurfaces: SurfaceMap = {
     folder: {
@@ -757,9 +981,12 @@ function ConnectedApp({
     return (
       <ActiveThreadContent
         capabilities={activeCapabilities}
+        catalog={catalog}
         client={client}
         history={history}
         leftSidebar={leftSidebar}
+        openThread={openThread}
+        remote={remote}
         title={title}
       />
     );
@@ -780,6 +1007,14 @@ function ConnectedRoot() {
   const client = connection.client;
   const [capabilities, setCapabilities] = useState<CapabilityMap>(EMPTY_CAPABILITIES);
   const [serverInfo, setServerInfo] = useState<AppServerInfo>();
+  const shortcutPreferences = useMemo<PreferenceStore>(
+    () => ({
+      get: (key) => window.localStorage.getItem(key) ?? undefined,
+      set: (key, value) => window.localStorage.setItem(key, value),
+      delete: (key) => window.localStorage.removeItem(key),
+    }),
+    [],
+  );
   useEffect(() => {
     if (!client) return;
     let active = true;
@@ -798,13 +1033,15 @@ function ConnectedRoot() {
   if (!client || !serverInfo) return null;
   return (
     <RegistryProvider capabilities={capabilities} registry={registry} renderers={RENDERERS}>
-      <OverlayHost>
-        <ConnectedApp
-          capabilities={capabilities}
-          client={client}
-          launchFolder={serverInfo.launchFolder}
-        />
-      </OverlayHost>
+      <ShortcutRegistryProvider descriptors={DESCRIPTORS} preferenceStore={shortcutPreferences}>
+        <OverlayHost>
+          <ConnectedApp
+            capabilities={capabilities}
+            client={client}
+            launchFolder={serverInfo.launchFolder}
+          />
+        </OverlayHost>
+      </ShortcutRegistryProvider>
     </RegistryProvider>
   );
 }

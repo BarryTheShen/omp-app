@@ -1,4 +1,9 @@
-import type { CapabilityKey, CapabilityMap, CommandDescriptor } from "@omp-app/contracts";
+import type {
+  CapabilityKey,
+  CapabilityMap,
+  CommandDescriptor,
+  DescriptorId,
+} from "@omp-app/contracts";
 import { cn } from "cn";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,8 +14,18 @@ import { capabilityStatus, isDescriptorAvailable, useCapabilities } from "@/regi
 import { useShortcutRegistry, useShortcutScope } from "@/shortcuts";
 import { U0_COMMAND_PALETTE_SHORTCUT } from "./descriptor";
 
+/**
+ * What a palette command does. The app registers one per command it has actually mounted: the
+ * palette lists nothing it cannot run, because a bare slash command sent to omp over RPC often does
+ * nothing visible (`/resume`, `/new`, `/branch`, `/tree` return success with no output).
+ */
+export type CommandPaletteHandler = (signal?: AbortSignal) => Promise<void> | void;
+
 export interface CommandPaletteHostProps {
-  readonly onCommandSelect: (command: CommandDescriptor) => void;
+  /** Commands to list, keyed by their descriptor id. */
+  readonly handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler>;
+  readonly capabilities?: CapabilityMap;
+  readonly unavailableReasons?: ReadonlyMap<DescriptorId, string>;
 }
 
 interface CommandEntry {
@@ -22,6 +37,7 @@ interface CommandEntry {
 const COMMAND_DESCRIPTORS: readonly CommandDescriptor[] = DESCRIPTORS.filter(
   (descriptor): descriptor is CommandDescriptor => descriptor.kind === "command",
 );
+const EMPTY_UNAVAILABLE_REASONS: ReadonlyMap<DescriptorId, string> = new Map();
 
 function unavailableReason(key: CapabilityKey, capabilities: CapabilityMap): string {
   const status = capabilityStatus(capabilities, key);
@@ -39,38 +55,50 @@ function unavailableReason(key: CapabilityKey, capabilities: CapabilityMap): str
   }
 }
 
-function commandEntries(capabilities: CapabilityMap): readonly CommandEntry[] {
-  return COMMAND_DESCRIPTORS.map((descriptor) => {
-    const available = isDescriptorAvailable(descriptor, capabilities);
-    if (available) return { descriptor, available, reason: undefined };
-    const missing = descriptor.requires.find((key) => {
-      const state = capabilityStatus(capabilities, key)?.state;
-      return state !== "available" && state !== "fallback";
-    });
-    return {
-      descriptor,
-      available,
-      reason:
-        missing === undefined
-          ? "The current session has not confirmed that this command is available."
-          : unavailableReason(missing, capabilities),
-    };
-  });
+function commandEntries(
+  capabilities: CapabilityMap,
+  handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler>,
+  unavailableReasons: ReadonlyMap<DescriptorId, string>,
+): readonly CommandEntry[] {
+  return COMMAND_DESCRIPTORS.filter((descriptor) => handlers.has(descriptor.id)).map(
+    (descriptor) => {
+      const available = isDescriptorAvailable(descriptor, capabilities);
+      if (available) return { descriptor, available, reason: undefined };
+      const missing = descriptor.requires.find((key) => {
+        const state = capabilityStatus(capabilities, key)?.state;
+        return state !== "available" && state !== "fallback";
+      });
+      return {
+        descriptor,
+        available,
+        reason:
+          unavailableReasons.get(descriptor.id) ??
+          (missing === undefined
+            ? "The current session has not confirmed that this command is available."
+            : unavailableReason(missing, capabilities)),
+      };
+    },
+  );
 }
 
 function CommandPaletteDialog({
+  capabilities,
   close,
-  onCommandSelect,
+  handlers,
+  unavailableReasons,
 }: {
+  readonly capabilities: CapabilityMap;
   readonly close: (reason?: OverlayCloseReason) => void;
-  readonly onCommandSelect: (command: CommandDescriptor) => void;
+  readonly handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler>;
+  readonly unavailableReasons: ReadonlyMap<DescriptorId, string>;
 }) {
-  const capabilities = useCapabilities();
   const listId = useId();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const entries = commandEntries(capabilities);
+  const [isRunning, setIsRunning] = useState(false);
+  const activeAction = useRef<AbortController | null>(null);
+  const entries = commandEntries(capabilities, handlers, unavailableReasons);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleEntries = entries.filter(({ descriptor }) => {
     const searchable = `${descriptor.title} ${descriptor.slash?.name ?? ""}`.toLocaleLowerCase();
@@ -78,17 +106,37 @@ function CommandPaletteDialog({
   });
   const activeEntry = visibleEntries[activeIndex];
 
-  const select = (entry: CommandEntry | undefined) => {
-    if (entry === undefined || !entry.available) return;
+  useEffect(
+    () => () => {
+      activeAction.current?.abort();
+      activeAction.current = null;
+    },
+    [],
+  );
+
+  const select = async (entry: CommandEntry | undefined) => {
+    if (entry === undefined || !entry.available || isRunning) return;
     setError(null);
+    const controller = new AbortController();
+    activeAction.current = controller;
+    setIsRunning(true);
     try {
-      onCommandSelect(entry.descriptor);
-      close("programmatic");
+      const handler = handlers.get(entry.descriptor.id);
+      if (handler === undefined) return;
+      await handler(controller.signal);
+      if (activeAction.current === controller) {
+        activeAction.current = null;
+        close("programmatic");
+      }
     } catch {
-      setError("The command could not be started. Try again.");
+      if (!controller.signal.aborted) setError("The command could not be started. Try again.");
+    } finally {
+      if (activeAction.current === controller) {
+        activeAction.current = null;
+        setIsRunning(false);
+      }
     }
   };
-
   return (
     <section className="flex flex-col gap-(--space-sm)" aria-labelledby={`${listId}-title`}>
       <header className="flex items-start justify-between gap-(--space-sm)">
@@ -115,6 +163,7 @@ function CommandPaletteDialog({
         aria-describedby={`${listId}-help`}
         placeholder="Search commands"
         value={query}
+        disabled={isRunning}
         onChange={(event) => {
           setQuery(event.target.value);
           setActiveIndex(0);
@@ -130,7 +179,7 @@ function CommandPaletteDialog({
             setActiveIndex((index) => (index - 1 + visibleEntries.length) % visibleEntries.length);
           } else if (event.key === "Enter") {
             event.preventDefault();
-            select(activeEntry);
+            void select(activeEntry);
           }
         }}
       />
@@ -165,19 +214,20 @@ function CommandPaletteDialog({
                 type="button"
                 role="option"
                 tabIndex={-1}
+                disabled={isRunning || !entry.available}
                 aria-selected={activeIndex === index}
-                aria-disabled={!entry.available}
+                aria-disabled={!entry.available || isRunning}
                 aria-describedby={entry.reason === undefined ? undefined : reasonId}
                 variant={activeIndex === index ? "secondary" : "ghost"}
                 className={cn(
                   "h-auto w-full flex-col items-stretch justify-start whitespace-normal gap-(--space-2xs) px-(--space-sm) py-(--space-xs) text-start",
-                  entry.available
+                  entry.available && !isRunning
                     ? "cursor-pointer text-foreground"
                     : "cursor-not-allowed text-muted-foreground",
                 )}
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => select(entry)}
+                onClick={() => void select(entry)}
               >
                 <span className="flex w-full items-center justify-between gap-(--space-sm)">
                   <span className="truncate">{entry.descriptor.title}</span>
@@ -202,9 +252,15 @@ function CommandPaletteDialog({
 }
 
 /** Opens the descriptor-driven command palette on the registered, non-reserved global chord. */
-export function CommandPaletteHost({ onCommandSelect }: CommandPaletteHostProps) {
+export function CommandPaletteHost({
+  handlers,
+  capabilities,
+  unavailableReasons = EMPTY_UNAVAILABLE_REASONS,
+}: CommandPaletteHostProps) {
   const overlay = useOverlayHost();
   const shortcutRegistry = useShortcutRegistry();
+  const contextCapabilities = useCapabilities();
+  const paletteCapabilities = capabilities ?? contextCapabilities;
   const activeOverlay = useRef<OverlayOpenResult | null>(null);
   useShortcutScope("global");
 
@@ -224,7 +280,12 @@ export function CommandPaletteHost({ onCommandSelect }: CommandPaletteHostProps)
         width: "content",
         ...(returnFocus === undefined ? {} : { restoreFocus: returnFocus }),
         content: ({ close }) => (
-          <CommandPaletteDialog close={close} onCommandSelect={onCommandSelect} />
+          <CommandPaletteDialog
+            capabilities={paletteCapabilities}
+            close={close}
+            handlers={handlers}
+            unavailableReasons={unavailableReasons}
+          />
         ),
       });
       activeOverlay.current = opened;
@@ -232,7 +293,7 @@ export function CommandPaletteHost({ onCommandSelect }: CommandPaletteHostProps)
         if (activeOverlay.current === opened) activeOverlay.current = null;
       });
     });
-  }, [onCommandSelect, overlay, shortcutRegistry]);
+  }, [handlers, overlay, paletteCapabilities, shortcutRegistry, unavailableReasons]);
 
   return null;
 }

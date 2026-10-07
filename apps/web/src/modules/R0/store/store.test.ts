@@ -613,6 +613,65 @@ describe("OmpRuntimeStore", () => {
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 1044, needsRefetch: false });
   });
 
+  test("records a request omp is waiting on even across a gap or a refetch in flight", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const ask = (id: string, seq: number) =>
+      ingest(
+        store,
+        {
+          kind: "notification",
+          frame: {
+            type: "extension_ui_request",
+            id,
+            method: "confirm",
+            title: "Go on?",
+            message: "",
+          },
+        },
+        seq,
+      );
+    // A fresh chat's first events predate the browser's subscription, so the first one it sees is
+    // seq 6: a gap, and every ordinary event is dropped until history is refetched.
+    ingest(store, { kind: "process", status: "ready" }, 6);
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 0, needsRefetch: true });
+
+    // omp asks a question while the refetch is running. The refetch restores messages and state but
+    // never this, so the request must be kept or omp waits forever for an answer nobody was shown.
+    ask("ask-1", 7);
+    expect(store.getSnapshot().pending.extensionUi["ask-1"]?.request).toMatchObject({
+      method: "confirm",
+    });
+    // Ordinary events in the gap are still dropped: the refetch covers them.
+    ingest(store, { kind: "process", status: "running" }, 8);
+    expect(store.getSnapshot()).toMatchObject({
+      lastSeq: 0,
+      needsRefetch: true,
+      process: { status: "starting" },
+    });
+
+    // omp withdrawing a request inside the gap removes it, and a later one is recorded too.
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "cancel-1",
+          method: "cancel",
+          targetId: "ask-1",
+        },
+      },
+      9,
+    );
+    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    ask("ask-2", 10);
+
+    // Ending the gap moves the cursor and leaves the pending request alone.
+    store.resetSequence();
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 10, needsRefetch: false });
+    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ask-2"]);
+  });
+
   test("shows a reopened session's history on the active branch, oldest first", () => {
     const store = new OmpRuntimeStore({ threadId });
     const message = (id: string, parentId: string | null, role: string, text: string) => ({

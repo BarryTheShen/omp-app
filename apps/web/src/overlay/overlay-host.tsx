@@ -488,4 +488,31 @@ export function useOverlayHost(): OverlayHostApi {
   return context;
 }
 
+/**
+ * The overlay API with an identity that never changes. `useOverlayHost()` returns a new object
+ * every time any overlay opens, closes or updates, so a controller built from it (and disposed in
+ * an effect keyed on it) is torn down whenever anything else opens. Long-lived controllers, such as
+ * the dialog host and the extension-UI router, take this handle instead: each call goes to the
+ * latest API.
+ */
+export function useStableOverlayHost(): OverlayHostApi {
+  const overlay = useOverlayHost();
+  const latest = useRef(overlay);
+  useLayoutEffect(() => {
+    latest.current = overlay;
+  });
+  return useMemo<OverlayHostApi>(
+    () => ({
+      get overlays() {
+        return latest.current.overlays;
+      },
+      open: (options) => latest.current.open(options),
+      close: (id, reason) => latest.current.close(id, reason),
+      closeTopmost: (reason) => latest.current.closeTopmost(reason),
+      update: (id, patch) => latest.current.update(id, patch),
+    }),
+    [],
+  );
+}
+
 export { OVERLAY_KINDS };

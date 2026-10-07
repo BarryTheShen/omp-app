@@ -3,7 +3,13 @@ import { type ReactNode, StrictMode, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FocusScope } from "./focus-scope";
 import { OVERLAY_GRAMMAR, OVERLAY_Z_INDEX } from "./grammar";
-import { OverlayHost, type OverlayOpenResult, useOverlayHost } from "./overlay-host";
+import {
+  OverlayHost,
+  type OverlayHostApi,
+  type OverlayOpenResult,
+  useOverlayHost,
+  useStableOverlayHost,
+} from "./overlay-host";
 
 afterEach(() => {
   cleanup();
@@ -350,5 +356,40 @@ describe("reduced motion", () => {
     await waitFor(() => expect(surface.getAttribute("data-reduced-motion")).toBe("true"));
     const scope = document.querySelector("[data-focus-scope]");
     expect(document.activeElement).toBe(scope);
+  });
+});
+
+describe("useStableOverlayHost", () => {
+  test("keeps one identity while overlays open and close, and still reaches the live host", async () => {
+    // A long-lived controller (the dialog host, the extension-UI router) built from useOverlayHost()
+    // is rebuilt and disposed every time any overlay opens. The stable handle must not change.
+    const seen = new Set<OverlayHostApi>();
+    const regular = new Set<OverlayHostApi>();
+    let stableHandle: OverlayHostApi | undefined;
+    function Probe() {
+      const stable = useStableOverlayHost();
+      const live = useOverlayHost();
+      seen.add(stable);
+      regular.add(live);
+      stableHandle = stable;
+      return (
+        <button type="button" onClick={() => live.open({ kind: "popover", content: <p>First</p> })}>
+          Open first
+        </button>
+      );
+    }
+    renderHost(<Probe />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open first" }));
+    await screen.findByText("First");
+    // The regular handle changed because an overlay opened; the stable one did not.
+    expect(regular.size).toBeGreaterThan(1);
+    expect(seen.size).toBe(1);
+
+    // Calls through the stable handle reach the current host, after its API object has changed.
+    stableHandle?.open({ kind: "popover", content: <p>Second</p> });
+    await screen.findByText("Second");
+    expect(stableHandle?.overlays.length).toBe(2);
+    expect(seen.size).toBe(1);
   });
 });
