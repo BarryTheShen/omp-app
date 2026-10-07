@@ -1,7 +1,7 @@
 import type { MessageKey, OmpMessage, OmpStreamMessageId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { RuntimeMessage } from "../../../R0/store";
-import { copyText, TranscriptContentReader } from "../../copy";
+import { copyText, type RawTranscriptContent, TranscriptContentReader } from "../../copy";
 
 const messageKey = (value: string): MessageKey => value as MessageKey;
 const streamId = (value: string): OmpStreamMessageId => value as OmpStreamMessageId;
@@ -103,7 +103,7 @@ describe("raw transcript copy edge cases", () => {
 
     expect(bashRaw.parts.map((part) => part.type)).toEqual(["command", "code", "image"]);
     expect(bashRaw.plainText).toBe("printf ok\nok\nhttps://example.test/bash.png");
-    expect(bashRaw.markdown).toBe("printf ok\nok\n![](https://example.test/bash.png)");
+    expect(bashRaw.markdown).toBe("printf ok\nok\n![](<https://example.test/bash.png>)");
     expect(bashRaw.parts[2]?.source).toEqual(image);
     expect(bashRaw.plainText).not.toContain(image.data);
   });
@@ -203,8 +203,8 @@ describe("raw transcript copy edge cases", () => {
     expect(raw.parts[1]?.plainText).toBeUndefined();
     expect(raw.parts[2]?.markdown).toBeUndefined();
     expect(raw.parts[2]?.plainText).toBe("[image: image/jpeg]");
-    expect(copyText(raw)).toBe("Answer");
-    expect(copyText(raw, { includeReasoning: true })).toBe("Answer");
+    expect(copyText(raw)).toBe("Answer\n\n[image: image/jpeg]");
+    expect(copyText(raw, { includeReasoning: true })).toBe("Answer\n\n[image: image/jpeg]");
   });
 
   test("rechecks an object cache hit when the source message changes in place", () => {
@@ -298,5 +298,88 @@ describe("raw transcript copy edge cases", () => {
       type: "notice",
       source: { type: "notice", reason: "raw transcript source unavailable" },
     });
+  });
+  test("copyText preserves whitespace and copies non-assistant text parts", () => {
+    const raw: RawTranscriptContent = {
+      messageKey: "entry:copy:whitespace",
+      source: "omp",
+      markdown: "  npm install\n    npm test\n",
+      plainText: "  npm install\n    npm test\n",
+      parts: [
+        {
+          index: 0,
+          type: "text",
+          source: { type: "text", text: "  npm install\n    npm test\n" },
+          markdown: "  npm install\n    npm test\n",
+          plainText: "  npm install\n    npm test\n",
+        },
+        {
+          index: 1,
+          type: "command",
+          source: { command: "printf ok" },
+          markdown: "printf ok",
+          plainText: "printf ok",
+        },
+        {
+          index: 2,
+          type: "notice",
+          source: { summary: "Summary text" },
+          plainText: "Summary text",
+        },
+      ],
+    };
+    expect(copyText(raw)).toBe("  npm install\n    npm test\n\n\nprintf ok\n\nSummary text");
+  });
+
+  test("reuses array and row objects on a warm readMany call", () => {
+    const reader = new TranscriptContentReader();
+    const messages = [
+      runtimeMessage("entry:thread:one", assistantMessage([{ type: "text", text: "one" }], 31)),
+      runtimeMessage("entry:thread:two", assistantMessage([{ type: "text", text: "two" }], 32)),
+    ];
+    const first = reader.readMany(messages);
+    const second = reader.readMany(messages);
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+  });
+
+  test("copies inline images as Markdown placeholders and escapes image URLs", () => {
+    const reader = new TranscriptContentReader();
+    const inline = reader.read(
+      runtimeMessage(
+        "entry:thread:inline-image",
+        assistantMessage(
+          [
+            { type: "text", text: "see" },
+            { type: "image", data: "bytes", mimeType: "image/jpeg" },
+          ],
+          33,
+        ),
+      ),
+    );
+    expect(copyText(inline)).toBe("see\n\n[image: image/jpeg]");
+
+    const linked = reader.read(
+      runtimeMessage(
+        "entry:thread:linked-image",
+        assistantMessage(
+          [{ type: "image", url: "https://x.example/a b(1.png", mimeType: "image/png" }],
+          34,
+        ),
+      ),
+    );
+    expect(copyText(linked)).toBe("![](<https://x.example/a b(1.png>)");
+
+    const awkward = reader.read(
+      runtimeMessage(
+        "entry:thread:awkward-image",
+        assistantMessage(
+          [{ type: "image", url: "https://x.example/a<b>c\\d\ne.png", mimeType: "image/png" }],
+          35,
+        ),
+      ),
+    );
+    // CommonMark allows no unescaped angle bracket and no line break in a `<…>` destination.
+    expect(copyText(awkward)).toBe("![](<https://x.example/a\\<b\\>c\\\\d%0Ae.png>)");
   });
 });

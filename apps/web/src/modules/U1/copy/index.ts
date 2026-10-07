@@ -69,13 +69,17 @@ export interface CopyTextOptions {
 /** Returns copyable text without hidden reasoning unless the caller opts in explicitly. */
 export function copyText(raw: RawTranscriptContent, options: CopyTextOptions = {}): string {
   return raw.parts
-    .filter(
-      (part) =>
-        part.type === "text" || (options.includeReasoning === true && part.type === "reasoning"),
+    .filter((part) => {
+      if (part.type === "reasoning") return options.includeReasoning === true;
+      return part.type !== "tool-call";
+    })
+    .map((part) =>
+      part.type === "image"
+        ? (part.markdown ?? part.plainText ?? "")
+        : (part.plainText ?? part.markdown ?? ""),
     )
-    .map((part) => part.plainText ?? part.markdown ?? "")
-    .join("\n\n")
-    .trim();
+    .filter((text) => text.length > 0)
+    .join("\n\n");
 }
 
 type CachedRaw = {
@@ -309,6 +313,19 @@ function joinWithNewline(parts: readonly BuiltPart[], key: "markdown" | "plainTe
   return result;
 }
 
+/**
+ * A Markdown image whose destination is written between `<` and `>`, so spaces and parentheses in
+ * the address survive. CommonMark allows no unescaped `<` or `>` and no line break in that form.
+ */
+function markdownImageReference(url: string): string {
+  const safeUrl = url
+    .replaceAll("\\", "\\\\")
+    .replaceAll("<", "\\<")
+    .replaceAll(">", "\\>")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+  return `![](<${safeUrl}>)`;
+}
 function builtImagePart(index: number, source: unknown): BuiltPart {
   let reference: string | undefined;
   let mimeType: string | undefined;
@@ -321,7 +338,7 @@ function builtImagePart(index: number, source: unknown): BuiltPart {
     }
   }
   const plainText = reference ?? `[image: ${mimeType ?? "image"}]`;
-  const markdown = reference === undefined ? undefined : `![](${reference})`;
+  const markdown = reference === undefined ? undefined : markdownImageReference(reference);
   return rawPart(index, "image", source, plainText, markdown);
 }
 
@@ -630,7 +647,7 @@ export class TranscriptContentReader {
     }
     return Object.freeze(
       input.map((item, index) =>
-        this.readWithFallback(item, this.fallbackKeyFor(item, index), false),
+        this.readWithFallback(item, this.fallbackKeyFor(item, index), true),
       ),
     );
   }

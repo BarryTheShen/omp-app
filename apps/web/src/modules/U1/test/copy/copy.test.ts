@@ -86,8 +86,10 @@ describe("TranscriptContentReader", () => {
     expect(raw.messageKey).toBe("stream:proc:msg-1");
     expect(raw.markdown).toBe("before\n```ts\nconst x = 1;\n```\nafter");
     expect(raw.plainText).toBe(raw.markdown);
-    expect(copyText(raw)).toBe(raw.markdown);
-    expect(copyText(raw, { includeReasoning: true })).toBe(`${raw.markdown}\n\nprivate reasoning`);
+    expect(copyText(raw)).toBe(`${raw.markdown}\n\n![](<https://example.test/image.png>)`);
+    expect(copyText(raw, { includeReasoning: true })).toBe(
+      `${raw.markdown}\n\nprivate reasoning\n\n![](<https://example.test/image.png>)`,
+    );
     expect(raw.parts.map((part) => part.type)).toEqual(["text", "reasoning", "tool-call", "image"]);
     expect(raw.parts[0]?.source).toEqual({
       type: "text",
@@ -100,7 +102,7 @@ describe("TranscriptContentReader", () => {
       plainText: toolCall.rawBlock,
     });
     expect(raw.parts[3]?.plainText).toBe(image.url);
-    expect(raw.parts[3]?.markdown).toBe("![](https://example.test/image.png)");
+    expect(raw.parts[3]?.markdown).toBe("![](<https://example.test/image.png>)");
     expect(raw.parts[3]?.source).not.toBe(image);
     expect(Object.isFrozen(raw)).toBe(true);
     expect(Object.isFrozen(raw.parts)).toBe(true);
