@@ -38,6 +38,15 @@ function reply(request: Request): Reply {
       },
       thinking: "I need to ask.",
     };
+  if (prompt.includes("make_todos"))
+    return {
+      tool: "todo",
+      args: {
+        op: "init",
+        list: [{ phase: "Plan", items: ["Write the thing", "Test the thing"] }],
+      },
+      thinking: "I should track todos.",
+    };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
   return { text: "pong", thinking: "I will answer pong." };
