@@ -12,6 +12,7 @@ export type LayoutAreaName =
   | "panels"
   | "composerToolbar"
   | "composerFooter"
+  | "threadFooter"
   | "statusBar";
 
 /** Every placeable piece of UI, by a short stable id. */
@@ -25,6 +26,7 @@ export type SurfaceId =
   | "attach"
   | "mode"
   | "queue"
+  | "scrollFollow"
   | "context"
   | "theme";
 
@@ -41,6 +43,8 @@ export const LAYOUT: AppLayout = {
   composerToolbar: ["attach", "mode", "queue"],
   /** Under that row. */
   composerFooter: ["attachments"],
+  /** At the bottom of the transcript. */
+  threadFooter: ["scrollFollow"],
   /** The bottom bar, left to right. */
   statusBar: ["context"],
 };

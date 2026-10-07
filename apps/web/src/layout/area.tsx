@@ -23,11 +23,17 @@ const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   panels: "flex min-h-0 flex-1 flex-col",
   composerToolbar: "flex min-w-0 flex-wrap items-center gap-2 px-(--space-md) py-(--space-xs)",
   composerFooter: "flex min-w-0 flex-col",
+  threadFooter: "flex min-w-0 items-center justify-end gap-(--space-sm)",
   statusBar: "flex min-w-0 flex-1 items-center gap-3",
 };
 
 /** Areas that lay pieces out left to right; the rest stack top to bottom. */
-const ROW_AREAS: ReadonlySet<LayoutAreaName> = new Set(["header", "composerToolbar", "statusBar"]);
+const ROW_AREAS: Readonly<Partial<Record<LayoutAreaName, true>>> = {
+  header: true,
+  composerToolbar: true,
+  threadFooter: true,
+  statusBar: true,
+};
 function available(surface: Surface, capabilities: CapabilityMap | undefined): boolean {
   if (!surface.requires || surface.requires.length === 0) return true;
   return surface.requires.every((key) => capabilities?.[key]?.state === "available");
@@ -104,7 +110,7 @@ export function LayoutArea({
         <div
           className={cn(
             "min-w-0",
-            surface.grow && (ROW_AREAS.has(area) ? "flex-1" : "flex min-h-0 flex-1 flex-col"),
+            surface.grow && (ROW_AREAS[area] === true ? "flex-1" : "flex min-h-0 flex-1 flex-col"),
           )}
           data-surface={id}
           key={id}

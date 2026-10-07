@@ -15,6 +15,10 @@ const surfaces: SurfaceMap = {
     render: () => <span>Context</span>,
   },
   todo: { title: "Todo checklist", render: () => <p>Todo body</p> },
+  scrollFollow: {
+    title: "Transcript actions",
+    render: () => <button type="button">Jump to latest</button>,
+  },
   queue: { title: "Queued messages", render: () => <p>Queue body</p> },
 };
 
@@ -23,6 +27,9 @@ function layoutWith(patch: Partial<AppLayout>): AppLayout {
 }
 
 describe("LayoutArea", () => {
+  test("places transcript controls in the transcript footer", () => {
+    expect(areaSurfaces("threadFooter", surfaces).map(([id]) => id)).toEqual(["scrollFollow"]);
+  });
   test("renders an area's surfaces in layout order; moving an id moves the control", () => {
     const { container, rerender } = render(
       <LayoutArea

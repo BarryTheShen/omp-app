@@ -38,6 +38,8 @@ export interface ThreadShellProps {
   readonly store: OmpRuntimeStore;
   readonly onRetry?: () => Promise<void> | void;
   readonly slots?: ThreadRowSlots;
+  readonly autoScroll?: boolean;
+  readonly footer?: ReactNode;
 }
 
 interface RuntimeStateSurfaceProps {
@@ -214,7 +216,13 @@ function MessageRow({ message, slots }: { message: MessageState; slots?: ThreadR
  * Renders inside the caller's assistant-ui runtime provider and supplies stable message rows. The
  * composer is intentionally not included: U2 owns that surface and consumes this thread runtime.
  */
-export function ThreadShell({ store, onRetry, slots }: ThreadShellProps) {
+export function ThreadShell({
+  store,
+  onRetry,
+  slots,
+  autoScroll = true,
+  footer,
+}: ThreadShellProps) {
   const snapshot = useSyncExternalStore(
     (listener) => store.subscribe(listener),
     () => store.getSnapshot(),
@@ -228,17 +236,27 @@ export function ThreadShell({ store, onRetry, slots }: ThreadShellProps) {
       <ThreadPrimitive.Viewport
         data-slot="u1-thread-viewport"
         className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
-        turnAnchor="top"
+        role="region"
+        aria-label="Messages"
+        aria-live="off"
+        tabIndex={0}
+        autoScroll={autoScroll}
+        // R0 turns `isRunning` off and on at every turn boundary, so a "run start" also fires in the
+        // middle of an answer and would pull a reader who scrolled away down to the bottom. Sending
+        // scrolls explicitly instead (the app root calls followLatest when a message is sent).
+        scrollToBottomOnRunStart={false}
+        turnAnchor="bottom"
       >
-        <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) flex-1 flex-col">
+        <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
           <RuntimeStateSurface snapshot={snapshot} onRetry={onRetry} />
           <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
             <ThreadPrimitive.Messages>
               {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
             </ThreadPrimitive.Messages>
           </div>
-          <ThreadPrimitive.ViewportFooter className="mt-auto min-h-8 shrink-0 border-t border-border bg-background px-6 py-2">
+          <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 items-center justify-between gap-(--space-md) border-t border-border bg-background px-6 py-2">
             <RuntimeSettledStatus snapshot={snapshot} />
+            {footer}
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>

@@ -58,6 +58,7 @@ import {
 import { createNativeRemoteThreadListAdapter } from "@/modules/R1/remote";
 import { SessionCatalogSidebar } from "@/modules/R1/ui";
 import { MessageParts } from "@/modules/U1/parts";
+import { ScrollFollowControls, useThreadScrollController } from "@/modules/U1/scroll";
 import { ThreadShell } from "@/modules/U1/thread";
 import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
@@ -640,6 +641,8 @@ function ActiveThreadReady({
     send: rpc.send,
     capabilities,
   });
+  const transcriptRootRef = useRef<HTMLDivElement | null>(null);
+  const scrollController = useThreadScrollController(transcriptRootRef);
   const queueController = useMemo(
     () => createQueueController({ store, send: rpc.send, capabilities }),
     [capabilities, rpc.send, store],
@@ -683,12 +686,16 @@ function ActiveThreadReady({
     [client, threadId],
   );
   const submit = async (intent: PromptIntent): Promise<void> => {
+    // Sending shows the newest message, wherever the reader had scrolled to; the transcript then
+    // keeps following by itself because it is at the bottom.
+    scrollController.jumpToLatest();
     await draftController.submit(intent, (nextIntent) =>
       runtimeController.submitPrompt({
         ...nextIntent,
         attachmentRefs: attachmentManager.toDraftRefs(),
       }),
     );
+    scrollController.jumpToLatest();
   };
   const cancel = (): Promise<void> => runtimeController.cancel();
   const queueConnection = {
@@ -769,6 +776,15 @@ function ActiveThreadReady({
       grow: true,
       render: () => <SessionStatusBar client={client} store={store} threadId={threadId} />,
     },
+    scrollFollow: {
+      title: "Transcript actions",
+      render: () => (
+        <ScrollFollowControls
+          onFollowLatest={scrollController.followLatest}
+          onAtBottomChange={scrollController.onAtBottomChange}
+        />
+      ),
+    },
   };
   const area = (name: LayoutAreaName) => (
     <LayoutArea area={name} capabilities={capabilities} surfaces={threadSurfaces} />
@@ -805,14 +821,18 @@ function ActiveThreadReady({
         rightSidebar={area("panels")}
         transcript={
           store && threadId ? (
-            <ThreadShell
-              slots={{
-                renderMessage: (message) => (
-                  <MessageParts message={message} toolRenderers={toolRenderers} />
-                ),
-              }}
-              store={store}
-            />
+            <div className="h-full min-h-0" ref={transcriptRootRef}>
+              <ThreadShell
+                autoScroll
+                footer={area("threadFooter")}
+                slots={{
+                  renderMessage: (message) => (
+                    <MessageParts message={message} toolRenderers={toolRenderers} />
+                  ),
+                }}
+                store={store}
+              />
+            </div>
           ) : (
             <EmptyTranscript state={history} />
           )
