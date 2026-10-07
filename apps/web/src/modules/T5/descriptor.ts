@@ -1,6 +1,7 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
 import { HubToolRenderer } from "./hub";
+import { TaskToolRenderer } from "./task";
 import { WaitToolRenderer } from "./wait";
 
 /** T5 claims nine exact tool names; task also owns P1's compact read-only task row. */
@@ -23,7 +24,7 @@ export const T5_TOOL_DESCRIPTORS = [
     covers: ["T5.task", "P1.task-subagent-card"],
     requires: [],
     match: { by: "name", name: "task" },
-    renderer: ToolFallback,
+    renderer: TaskToolRenderer,
   },
   {
     kind: "tool",

@@ -1,6 +1,7 @@
 import { AppFailure, type CapabilityMap, validateRegistry } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { T5_TOOL_DESCRIPTORS } from "./descriptor";
+import { T5_REAL_RESULTS } from "./fixtures/real-results";
 import {
   decodeHubDetails,
   decodeTaskDetails,
@@ -10,7 +11,6 @@ import {
   decodeYieldDetails,
   hasT5Capability,
   T5CapabilityKeys,
-  TaskToolArgsSchema,
   toT5AppFailure,
   VibeKillArgsSchema,
   VibeListArgsSchema,
@@ -18,38 +18,87 @@ import {
   VibeSpawnArgsSchema,
   VibeWaitArgsSchema,
 } from "./models";
+import { alteredDetails, sampleNamed } from "./recorded-props";
 
-describe("T5 agent and coordination models", () => {
-  test("accepts every tool's released shape and preserves unknown detail fields", () => {
-    expect(decodeHubDetails({ op: "jobs", jobs: [], futureHubField: { raw: true } })).toMatchObject(
+/** Whether a recorded result's details decode with the schema of the tool that produced them. */
+function decodesAs(toolName: string, details: unknown): boolean {
+  if (toolName === "wait") return decodeWaitDetails(details).ok;
+  if (toolName === "hub") return decodeHubDetails(details).ok;
+  if (toolName === "task") return decodeTaskDetails(details).ok;
+  throw new Error(`No T5 decoder for ${toolName}`);
+}
+
+describe("T5 coordination and task details", () => {
+  test("every recorded wait, hub and task result decodes with its own schema", () => {
+    for (const sample of T5_REAL_RESULTS) {
+      expect(decodesAs(sample.toolName, sample.result.details), sample.name).toBe(true);
+    }
+  });
+
+  test("a launch service's log decodes: the logs op is a hub op, not a coordination op", () => {
+    expect(
+      decodeHubDetails(sampleNamed("hub: the log of a service that is ready").result.details),
+    ).toMatchObject({ ok: true, value: { op: "logs", state: "ready", cursor: 17608 } });
+  });
+
+  test("keeps fields omp adds later, raw", () => {
+    const details = Object.assign(
+      {},
+      sampleNamed("wait: a message from another agent").result.details,
       {
-        ok: true,
-        value: { futureHubField: { raw: true } },
+        futureWaitField: { raw: true },
       },
     );
+    expect(decodeWaitDetails(details)).toMatchObject({
+      ok: true,
+      value: { futureWaitField: { raw: true } },
+    });
+  });
+
+  test("rejects values outside omp's wire types, so the card shows a visible error", () => {
     expect(
-      decodeTaskDetails({
-        status: "running",
-        parentTaskId: "parent-task",
-        depth: 2,
-        progress: { percent: 40, currentTool: "read" },
-        futureTaskField: "raw",
-      }),
-    ).toMatchObject({ ok: true, value: { futureTaskField: "raw" } });
+      decodeWaitDetails(
+        alteredDetails("wait: a message from another agent", ["waited", "ts"], "now"),
+      ).ok,
+    ).toBe(false);
     expect(
-      decodeTaskDetails({
-        lifecycle: { status: "started", index: 0 },
-        events: [{ type: "subagent_progress", payload: { percent: 35 } }],
-        transcript: { depth: 1, messages: [], fromByte: 0, nextByte: 12 },
-      }),
-    ).toMatchObject({ ok: true });
+      decodeHubDetails(
+        alteredDetails("hub: a message delivered to one peer", ["receipts", 0, "outcome"], "lost"),
+      ).ok,
+    ).toBe(false);
     expect(
-      decodeHubDetails({
-        op: "send",
-        messages: [{ from: "agent-a", to: "agent-b", text: "ready" }],
-        receipts: [{ accepted: true, delivered: true }],
-      }),
-    ).toMatchObject({ ok: true });
+      decodeWaitDetails(
+        alteredDetails(
+          "wait: two running tasks and a finished command",
+          ["jobs", 0, "status"],
+          "paused",
+        ),
+      ).ok,
+    ).toBe(false);
+    expect(
+      decodeHubDetails(
+        alteredDetails("hub: a service that failed to start", ["daemon", "state"], "sleeping"),
+      ).ok,
+    ).toBe(false);
+    expect(
+      decodeTaskDetails(
+        alteredDetails(
+          "task: one agent started in the background",
+          ["progress", 0, "status"],
+          "paused",
+        ),
+      ).ok,
+    ).toBe(false);
+    expect(
+      decodeTaskDetails(
+        alteredDetails("task: one agent started in the background", ["async", "state"], "paused"),
+      ).ok,
+    ).toBe(false);
+  });
+});
+
+describe("T5 vibe and yield models", () => {
+  test("accepts vibe and yield details and keeps unknown fields", () => {
     expect(
       decodeVibeDetails({
         op: "wait",
@@ -63,18 +112,9 @@ describe("T5 agent and coordination models", () => {
       ok: true,
       value: { futureYieldField: 7 },
     });
-    expect(
-      decodeWaitDetails({
-        op: "wait",
-        jobs: [{ id: "job-1", status: "running" }],
-        sealed: true,
-        futureWaitField: false,
-      }),
-    ).toMatchObject({ ok: true, value: { futureWaitField: false } });
   });
 
-  test("validates task and vibe argument shapes without client execution", () => {
-    expect(TaskToolArgsSchema.safeParse({ prompt: "inspect", future: true }).success).toBe(true);
+  test("validates vibe argument shapes without client execution", () => {
     expect(
       VibeSpawnArgsSchema.safeParse({ cli: "fast", prompt: "inspect", name: "worker-a" }).success,
     ).toBe(true);

@@ -1,7 +1,5 @@
 import { AppErrorCode, AppFailure, CapabilityKey, type CapabilityMap } from "@omp-app/contracts";
 import { z } from "zod";
-import type { NestedTranscriptSource } from "../P1/contract/runtime";
-import { AgentRefSchema, AgentStatusSchema } from "../P1/contract/types";
 import { OutputMetaSchema } from "../U3/tool-card/output-meta";
 
 const OpenRecord = z.record(z.string(), z.unknown());
@@ -28,163 +26,195 @@ export const ToolIdentitySchema = z.looseObject({
   fromByte: z.number().int().nonnegative().optional(),
   nextByte: z.number().int().nonnegative().optional(),
 });
-export const NestedTranscriptSnapshotSchema = z.looseObject({
-  parentTaskId: OptionalText,
-  depth: z.number().int().nonnegative(),
-  messages: z.array(z.unknown()),
-  sessionFile: OptionalText,
-  fromByte: z.number().int().nonnegative().optional(),
-  nextByte: z.number().int().nonnegative().optional(),
-  reset: z.boolean().optional(),
-});
-export type NestedTranscriptSnapshot = z.infer<typeof NestedTranscriptSnapshotSchema>;
-export type { NestedTranscriptSource };
 
-export const TaskToolArgsSchema = z.looseObject({
-  prompt: OptionalText,
-  agent: OptionalText,
-  description: OptionalText,
-  assignment: OptionalText,
-  model: OptionalText,
-});
-export type TaskToolArgs = z.infer<typeof TaskToolArgsSchema>;
+// The shapes below are omp 18.6.1's wire types for the wait, hub and task tools:
+// `CoordinationDetails`, `IrcMessage`, `IrcDeliveryReceipt` and `JobSnapshot` in
+// `@oh-my-pi/pi-tui/tools/wait` and `tools/irc`; `TaskToolDetails`, `AgentProgress` and `SingleResult`
+// in `@oh-my-pi/pi-tui/tools/task`; `DaemonSnapshot` in `@oh-my-pi/pi-tui/tools/daemon`.
 
-export const TaskProgressSchema = z.looseObject({
-  percent: z.number().min(0).max(100).optional(),
-  phase: OptionalText,
-  currentWork: OptionalText,
-  currentTool: OptionalText,
-});
-export type TaskProgress = z.infer<typeof TaskProgressSchema>;
-export const TaskLifecycleSnapshotSchema = z.looseObject({
-  id: OptionalText,
-  status: z.enum(["started", "completed", "failed", "aborted"]).optional(),
-  agent: OptionalText,
-  index: z.number().int().nonnegative().optional(),
-  parentToolCallId: OptionalText,
-  sessionFile: OptionalText,
-  detached: z.boolean().optional(),
-  error: z.unknown().optional(),
-});
-export type TaskLifecycleSnapshot = z.infer<typeof TaskLifecycleSnapshotSchema>;
-
-export const TaskEventSnapshotSchema = z.looseObject({
-  id: OptionalText,
-  type: OptionalText,
-  toolCallId: OptionalText,
-  at: z.number().finite().optional(),
-  event: z.unknown().optional(),
-  payload: z.unknown().optional(),
-});
-export type TaskEventSnapshot = z.infer<typeof TaskEventSnapshotSchema>;
-
-export const JobSnapshotSchema = z.looseObject({
-  id: OptionalText,
-  type: z.enum(["bash", "task", "eval"]).optional(),
-  status: z.enum(["running", "completed", "failed", "cancelled"]).optional(),
-  label: OptionalText,
-  durationMs: z.number().nonnegative().optional(),
-  exitCode: z.number().int().optional(),
-  model: OptionalText,
-  thinking: OptionalText,
-  completion: z.number().min(0).max(100).optional(),
-  result: z.unknown().optional(),
-  structured: z.unknown().optional(),
-  structuredOutput: z.unknown().optional(),
-  error: z.unknown().optional(),
-  agentUrl: OptionalText,
-  meta: OpenRecord.optional(),
-});
-export type JobSnapshot = z.infer<typeof JobSnapshotSchema>;
-
+/** A peer message, as `wait` returns it in `details.waited` and as hub sends it. */
 export const IrcMessageSchema = z.looseObject({
-  id: OptionalText,
-  from: OptionalText,
-  to: OptionalText,
-  text: OptionalText,
-  message: OptionalText,
-  timestamp: z.number().finite().optional(),
-  status: OptionalText,
+  id: z.string().min(1),
+  from: z.string().min(1),
+  to: z.string().min(1),
+  body: z.string(),
+  ts: z.number().finite(),
+  replyTo: OptionalText,
+  wakeRelay: z.boolean().optional(),
 });
 export type IrcMessage = z.infer<typeof IrcMessageSchema>;
 
+/** Delivery outcome for one recipient of a hub send. */
 export const IrcReceiptSchema = z.looseObject({
-  id: OptionalText,
-  accepted: z.boolean().optional(),
-  delivered: z.boolean().optional(),
-  messageId: OptionalText,
-  error: z.unknown().optional(),
+  to: z.string().min(1),
+  outcome: z.enum(["injected", "woken", "revived", "failed"]),
+  error: OptionalText,
 });
 export type IrcReceipt = z.infer<typeof IrcReceiptSchema>;
 
-export const HubDetailsSchema = z.looseObject({
+/** A background job row in a wait, jobs or cancel result. */
+export const JobSnapshotSchema = z.looseObject({
+  id: z.string().min(1),
+  type: z.enum(["bash", "task", "eval"]),
+  status: z.enum(["running", "completed", "failed", "cancelled"]),
+  label: z.string(),
+  durationMs: z.number().nonnegative(),
+  exitCode: z.number().int().optional(),
+  resolvedModel: OptionalText,
+  resolvedModelIdentity: OptionalText,
+  resolvedThinkingLevel: OptionalText,
+  advisor: z.boolean().optional(),
+  completionPercent: z.number().min(0).max(100).optional(),
+  resultText: z.string().optional(),
+  errorText: z.string().optional(),
+  meta: OpenRecord.optional(),
+  artifactError: z.unknown().optional(),
+  structured: OpenRecord.optional(),
+  agentUrlId: OptionalText,
+});
+export type JobSnapshot = z.infer<typeof JobSnapshotSchema>;
+
+/** A cancel outcome for one job: `cancelled`, `not_found` or `already_completed`. */
+export const CancelOutcomeSchema = z.looseObject({
+  id: z.string().min(1),
+  status: z.enum(["cancelled", "not_found", "already_completed"]),
+});
+export type CancelOutcome = z.infer<typeof CancelOutcomeSchema>;
+
+/** A live subagent with no backing job row, as wait and jobs results list it. */
+export const AgentActivitySchema = z.looseObject({
+  id: z.string().min(1),
+  parentId: OptionalText,
+  activity: OptionalText,
+  ageMs: z.number().nonnegative(),
+  live: z.boolean(),
+  acceptedAt: z.number().optional(),
+});
+export type AgentActivity = z.infer<typeof AgentActivitySchema>;
+
+/** The details of the coordination ops: `send`, `wait`, `jobs` and `cancel` (`CoordinationDetails`). */
+export const CoordinationDetailsSchema = z.looseObject({
   ...ToolIdentitySchema.shape,
   op: OptionalText,
-  target: OptionalText,
-  status: OptionalText,
-  agents: z.array(AgentRefSchema).optional(),
-  jobs: z.array(JobSnapshotSchema).optional(),
-  messages: z.array(IrcMessageSchema).optional(),
+  meta: OpenRecord.optional(),
+  from: OptionalText,
+  to: OptionalText,
   receipts: z.array(IrcReceiptSchema).optional(),
-  receipt: IrcReceiptSchema.optional(),
-  waited: IrcMessageSchema.optional(),
-  durationMs: z.number().nonnegative().optional(),
-  partial: z.boolean().optional(),
-  result: z.unknown().optional(),
-  outputMeta: OutputMetaSchema.optional(),
-  error: z.unknown().optional(),
+  waited: IrcMessageSchema.nullable().optional(),
+  jobs: z.array(JobSnapshotSchema).optional(),
+  cancelled: z.array(CancelOutcomeSchema).optional(),
+  agents: z.array(AgentActivitySchema).optional(),
+  interrupted: z.boolean().optional(),
+});
+export type CoordinationDetails = z.infer<typeof CoordinationDetailsSchema>;
+
+/** A launch daemon, as the launch ops (`start`, `stop`, `logs`) report it (`DaemonSnapshot`). */
+export const DaemonSnapshotSchema = z.looseObject({
+  name: z.string().min(1),
+  id: OptionalText,
+  state: z.enum(["starting", "running", "ready", "restarting", "stopping", "exited", "failed"]),
+  exitCode: z.number().int().optional(),
+  restartCount: z.number().int().nonnegative().optional(),
+  outputBytes: z.number().nonnegative().optional(),
+});
+export type DaemonSnapshot = z.infer<typeof DaemonSnapshotSchema>;
+
+/** One agent in the roster the `list` op returns. */
+export const PeerSchema = z.looseObject({
+  id: z.string().min(1),
+  displayName: OptionalText,
+  kind: OptionalText,
+  status: z.string().min(1),
+  parentId: OptionalText,
+  unread: z.number().int().nonnegative().optional(),
+  lastActivity: z.number().optional(),
+});
+export type Peer = z.infer<typeof PeerSchema>;
+
+/** Hub results: the coordination ops, the roster (`list`) and the launch ops (`start`, `stop`, `logs`). */
+export const HubDetailsSchema = z.looseObject({
+  ...CoordinationDetailsSchema.shape,
+  daemon: DaemonSnapshotSchema.optional(),
+  timedOut: z.boolean().optional(),
+  cursor: z.number().int().nonnegative().optional(),
+  state: OptionalText,
+  terminalRows: z.array(z.string()).optional(),
+  peers: z.array(PeerSchema).optional(),
+  counts: OpenRecord.optional(),
 });
 export type HubDetails = z.infer<typeof HubDetailsSchema>;
 
+/** One subagent's live progress row, `AgentProgress`, as the task tool reports it while it runs. */
+export const AgentProgressSchema = z.looseObject({
+  index: z.number().int().nonnegative(),
+  id: z.string().min(1),
+  agent: z.string().min(1),
+  agentSource: OptionalText,
+  modelRole: OptionalText,
+  status: z.enum(["pending", "running", "completed", "failed", "aborted"]),
+  task: z.string().optional(),
+  assignment: z.string().optional(),
+  description: z.string().optional(),
+  lastIntent: z.string().optional(),
+  currentTool: OptionalText,
+  currentToolArgs: z.string().optional(),
+  recentOutput: z.array(z.string()).optional(),
+  toolCount: z.number().int().nonnegative().optional(),
+  requests: z.number().int().nonnegative().optional(),
+  tokens: z.number().nonnegative().optional(),
+  contextTokens: z.number().nonnegative().optional(),
+  contextWindow: z.number().nonnegative().optional(),
+  cost: z.number().nonnegative().optional(),
+  durationMs: z.number().nonnegative().optional(),
+  resolvedModel: OptionalText,
+  resolvedModelIdentity: OptionalText,
+  resolvedThinkingLevel: OptionalText,
+  completionPercent: z.number().min(0).max(100).optional(),
+});
+export type AgentProgress = z.infer<typeof AgentProgressSchema>;
+
+/** One finished subagent, `SingleResult`, as a task call that ran in the foreground returns it. */
+export const TaskResultSchema = z.looseObject({
+  index: z.number().int().nonnegative(),
+  id: z.string().min(1),
+  agent: z.string().min(1),
+  agentSource: OptionalText,
+  task: z.string().optional(),
+  assignment: z.string().optional(),
+  description: z.string().optional(),
+  exitCode: z.number().int(),
+  output: z.string(),
+  stderr: z.string(),
+  truncated: z.boolean(),
+  durationMs: z.number().nonnegative(),
+  tokens: z.number().nonnegative().optional(),
+  error: OptionalText,
+  aborted: z.boolean().optional(),
+  abortReason: OptionalText,
+  modelRole: OptionalText,
+  resolvedModel: OptionalText,
+  outputPath: OptionalText,
+});
+export type TaskResult = z.infer<typeof TaskResultSchema>;
+
+/** The task tool's details (`TaskToolDetails`): progress while agents run, results when they finish. */
 export const TaskDetailsSchema = z.looseObject({
   ...ToolIdentitySchema.shape,
-  status: AgentStatusSchema.optional(),
-  label: OptionalText,
-  task: OptionalText,
-  assignment: OptionalText,
-  progress: TaskProgressSchema.optional(),
-  lifecycle: TaskLifecycleSnapshotSchema.optional(),
-  events: z.array(TaskEventSnapshotSchema).optional(),
-  completionPercent: z.number().min(0).max(100).optional(),
-  agent: AgentRefSchema.optional(),
-  children: z.array(AgentRefSchema).optional(),
-  nested: z.unknown().optional(),
-  transcript: NestedTranscriptSnapshotSchema.optional(),
-  output: z.unknown().optional(),
-  outputMeta: OutputMetaSchema.optional(),
-  model: OptionalText,
-  effort: OptionalText,
-  thinking: OptionalText,
+  projectAgentsDir: z.string().nullable().optional(),
+  results: z.array(TaskResultSchema).optional(),
+  totalDurationMs: z.number().nonnegative().optional(),
+  progress: z.array(AgentProgressSchema).optional(),
+  async: z
+    .looseObject({
+      state: z.enum(["running", "completed", "failed"]),
+      jobId: z.string().min(1),
+      type: z.string().min(1),
+    })
+    .optional(),
   usage: OpenRecord.optional(),
-  cost: OpenRecord.optional(),
-  context: OpenRecord.optional(),
-  requests: z.number().int().nonnegative().optional(),
-  tokens: OpenRecord.optional(),
-  durationMs: z.number().nonnegative().optional(),
-  merge: OpenRecord.optional(),
-  error: z.unknown().optional(),
+  outputPaths: z.array(z.string()).optional(),
 });
 export type TaskDetails = z.infer<typeof TaskDetailsSchema>;
-
-export const CoordinationDetailsSchema = z.looseObject({
-  ...ToolIdentitySchema.shape,
-  op: z.enum(["send", "wait", "jobs", "cancel"]).optional(),
-  from: OptionalText,
-  to: OptionalText,
-  message: OptionalText,
-  messages: z.array(IrcMessageSchema).optional(),
-  receipts: z.array(IrcReceiptSchema).optional(),
-  receipt: IrcReceiptSchema.optional(),
-  waited: IrcMessageSchema.optional(),
-  jobs: z.array(JobSnapshotSchema).optional(),
-  cancelled: z.array(JobSnapshotSchema).optional(),
-  agents: z.array(AgentRefSchema).optional(),
-  interrupted: z.boolean().optional(),
-  meta: OpenRecord.optional(),
-  outputMeta: OutputMetaSchema.optional(),
-  error: z.unknown().optional(),
-});
-export type CoordinationDetails = z.infer<typeof CoordinationDetailsSchema>;
 
 export const VibeSpawnArgsSchema = z.looseObject({
   cli: z.enum(["fast", "good"]),
@@ -248,13 +278,6 @@ export const YieldDetailsSchema = z.looseObject({
 });
 export type YieldDetails = z.infer<typeof YieldDetailsSchema>;
 
-export const WaitDetailsSchema = z.looseObject({
-  ...CoordinationDetailsSchema.shape,
-  sealed: z.boolean().optional(),
-  summary: OpenRecord.optional(),
-});
-export type WaitDetails = z.infer<typeof WaitDetailsSchema>;
-
 export const T5ToolFailureSchema = z.looseObject({
   code: AppErrorCode.optional(),
   message: z.string().min(1).optional(),
@@ -290,8 +313,8 @@ export function decodeTaskDetails(raw: unknown): T5DetailDecode<TaskDetails> {
 export function decodeHubDetails(raw: unknown): T5DetailDecode<HubDetails> {
   return decode(HubDetailsSchema, raw, "hub");
 }
-export function decodeWaitDetails(raw: unknown): T5DetailDecode<WaitDetails> {
-  return decode(WaitDetailsSchema, raw, "wait");
+export function decodeWaitDetails(raw: unknown): T5DetailDecode<CoordinationDetails> {
+  return decode(CoordinationDetailsSchema, raw, "wait");
 }
 export function decodeVibeDetails(raw: unknown): T5DetailDecode<VibeDetails> {
   return decode(VibeDetailsSchema, raw, "vibe");

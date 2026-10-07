@@ -56,24 +56,25 @@ async function assertStyled(page: Page): Promise<void> {
   expect(background).not.toBe("rgba(0, 0, 0, 0)");
 }
 
-test.describe("T5.3 hub and wait coordination cards", () => {
-  test("captures light hub jobs and IRC details", async ({ page }) => {
+test.describe("T5 hub, wait and task cards on recorded results", () => {
+  test("captures light hub roster and wait jobs", async ({ page }) => {
     await page.goto(playground);
     await expect(page.getByTestId("t5-playground")).toBeVisible();
     await assertStyled(page);
-    await expect(page.getByText("alice → bob")).toBeVisible();
-    await expect(page.getByText("Analyze", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("t5-wait-card")).toContainText("2 running · 1 completed");
+    await expect(page.getByText("Agents · 1 running · 5 parked", { exact: true })).toBeVisible();
+    await expect(page.getByText("ReviewerTwo", { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(screenshots, "t5.3-light-hub.png"), fullPage: true });
   });
 
-  test("captures dark wait counts and sealed state", async ({ page }) => {
+  test("captures dark wait counts and task progress", async ({ page }) => {
     await page.addInitScript(() => document.documentElement.classList.add("dark"));
     await page.goto(`${playground}?theme=dark`);
     await expect(page.getByTestId("t5-playground")).toBeVisible();
     await expect(page.locator("html")).toHaveClass("dark");
     await assertStyled(page);
-    await expect(page.getByTestId("t5-wait-counts")).toContainText("Sealed; still running");
-    await expect(page.getByText("model-a", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("t5-wait-card")).toContainText("2 running · 1 completed");
+    await expect(page.getByTestId("t5-task-card")).toContainText("Running · 2 agents");
     await page.screenshot({ path: path.join(screenshots, "t5.3-dark-wait.png"), fullPage: true });
   });
 
@@ -84,6 +85,7 @@ test.describe("T5.3 hub and wait coordination cards", () => {
     await assertStyled(page);
     await expect(page.getByTestId("t5-hub-card")).toBeVisible();
     await expect(page.getByTestId("t5-wait-card")).toBeVisible();
+    await expect(page.getByTestId("t5-task-card")).toBeVisible();
     await page.screenshot({
       path: path.join(screenshots, "t5.3-narrow-coordination.png"),
       fullPage: true,
