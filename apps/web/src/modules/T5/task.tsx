@@ -1,3 +1,7 @@
+import type { ToolCallId } from "@omp-app/contracts";
+import { createContext, useContext } from "react";
+import type { AgentRef, NestedTranscriptSource } from "@/modules/P1/contract";
+import { NestedAgentTranscript } from "@/modules/P1/transcript";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
@@ -16,7 +20,21 @@ import {
 } from "./coordination";
 import { type AgentProgress, decodeTaskDetails, type TaskDetails, type TaskResult } from "./models";
 
-/** Compact task card: the agents omp started and the results they returned, read from the task details. */
+/** One worker a task call started: its roster reference and the read-only source of its transcript. */
+export interface TaskSubagent {
+  readonly agent: AgentRef;
+  readonly source: NestedTranscriptSource;
+}
+
+/**
+ * The workers a task call started, found by the call's id (never by position). P1's roster and client
+ * supply them. A task card with no lookup above it shows no transcript.
+ */
+export type TaskSubagentLookup = (parentToolCallId: ToolCallId) => readonly TaskSubagent[];
+
+export const TaskSubagentsContext = createContext<TaskSubagentLookup | undefined>(undefined);
+
+/** Compact task card: the agents omp started, their read-only transcripts, and the results they returned. */
 export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const normalized = normalizeToolRendererProps(rendererProps);
   const raw = rendererProps.result ?? normalized.result ?? normalized.partialResult;
@@ -25,6 +43,8 @@ export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRender
   const details = decoded?.ok === true ? decoded.value : undefined;
   const state =
     decoded?.ok === false ? malformedState(normalized, decoded.error.appError.message) : normalized;
+  const lookup = useContext(TaskSubagentsContext);
+  const subagents = lookup === undefined ? [] : lookup(normalized.toolCallId);
   return (
     <div className="min-w-0" data-slot="t5-task-card" data-testid="t5-task-card">
       <ToolCard
@@ -33,7 +53,14 @@ export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRender
         summary={taskSummary(details, state.isError)}
       />
       <RawDetails state={state} />
-      <TaskBody details={details} isError={state.isError} text={text} />
+      <TaskBody
+        depth={normalized.nested?.depth ?? 0}
+        details={details}
+        isError={state.isError}
+        parentTaskId={normalized.toolCallId}
+        subagents={subagents}
+        text={text}
+      />
     </div>
   );
 }
@@ -41,19 +68,28 @@ export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRender
 export const TaskToolRenderer: ToolRenderer = (props) => <TaskCard rendererProps={props} />;
 
 function TaskBody({
+  depth,
   details,
   isError,
+  parentTaskId,
+  subagents,
   text,
 }: {
+  readonly depth: number;
   readonly details: TaskDetails | undefined;
   readonly isError: boolean;
+  readonly parentTaskId: ToolCallId;
+  readonly subagents: readonly TaskSubagent[];
   readonly text: string;
 }) {
   const progress = details?.progress ?? [];
   const results = details?.results ?? [];
   if (
     details === undefined ||
-    (progress.length === 0 && results.length === 0 && details.async === undefined)
+    (progress.length === 0 &&
+      results.length === 0 &&
+      details.async === undefined &&
+      subagents.length === 0)
   ) {
     // No agent is in the details: the text omp returned says why (a preflight refusal, say).
     return isError || text === "" ? null : <TextOutput testId="t5-task-text" text={text} />;
@@ -74,13 +110,60 @@ function TaskBody({
           )}
         </div>
       )}
-      {progress.length > 0 && <AgentProgressRows progress={progress} />}
+      {progress.length > 0 && <AgentProgressRows progress={progress} subagents={subagents} />}
       {results.length > 0 && <AgentResultRows results={results} />}
+      {subagents.length > 0 && (
+        <TaskSubagentTranscripts depth={depth} parentTaskId={parentTaskId} subagents={subagents} />
+      )}
     </section>
   );
 }
 
-function AgentProgressRows({ progress }: { readonly progress: readonly AgentProgress[] }) {
+/** Each worker's transcript through P1's read-only view: the card never steers, edits or answers. */
+function TaskSubagentTranscripts({
+  depth,
+  parentTaskId,
+  subagents,
+}: {
+  readonly depth: number;
+  readonly parentTaskId: ToolCallId;
+  readonly subagents: readonly TaskSubagent[];
+}) {
+  return (
+    <section className="flex min-w-0 flex-col gap-2" data-slot="t5-task-transcripts">
+      <h3 className="text-xs font-medium text-muted-foreground">Worker transcripts</h3>
+      {subagents.map(({ agent, source }) => {
+        const name = agent.description?.trim() || agent.id;
+        return (
+          <div
+            className="bg-muted/30 flex min-w-0 flex-col gap-1 rounded"
+            data-slot="t5-task-transcript"
+            key={agent.id}
+          >
+            <p className="px-4 pt-3 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{name}</span> ·{" "}
+              {statusLabel(agent.status)} · Read only
+            </p>
+            <NestedAgentTranscript
+              depth={depth}
+              parentTaskId={parentTaskId}
+              source={source}
+              taskName={name}
+            />
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function AgentProgressRows({
+  progress,
+  subagents,
+}: {
+  readonly progress: readonly AgentProgress[];
+  readonly subagents: readonly TaskSubagent[];
+}) {
   const note = showingNote(progress.length);
   return (
     <section className="flex min-w-0 flex-col gap-1" data-slot="t5-task-progress">
@@ -96,7 +179,13 @@ function AgentProgressRows({ progress }: { readonly progress: readonly AgentProg
                 <span className="text-muted-foreground" title={agent.agent}>
                   {agent.agent}
                 </span>
-                <StatusChip value={agent.status} />
+                {/* The task result is a snapshot from when the call returned; the roster knows the live status. */}
+                <StatusChip
+                  value={
+                    subagents.find((item) => item.agent.id === agent.id)?.agent.status ??
+                    agent.status
+                  }
+                />
                 {agent.completionPercent !== undefined && (
                   <span className="text-muted-foreground">
                     {Math.round(agent.completionPercent)}% done

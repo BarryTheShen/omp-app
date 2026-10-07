@@ -1,9 +1,36 @@
+import { ThreadPrimitive } from "@assistant-ui/react";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { AgentRef, NestedTranscriptSource } from "@/modules/P1/contract";
+import { ReadOnlyThread } from "@/modules/P1/transcript";
+import { agentRef, transcriptPage, userMessage } from "@/modules/P1/transcript/test/fixtures";
 import { alteredResult, recorded } from "./recorded-props";
-import { TaskCard } from "./task";
+import { TaskCard, type TaskSubagentLookup, TaskSubagentsContext } from "./task";
+
+/** The thread a task card sits in within the app: the read-only thread with its viewport. */
+function InThread({ children }: { readonly children: ReactNode }) {
+  return (
+    <ReadOnlyThread messages={[]}>
+      <ThreadPrimitive.Root>
+        <ThreadPrimitive.Viewport>{children}</ThreadPrimitive.Viewport>
+      </ThreadPrimitive.Root>
+    </ReadOnlyThread>
+  );
+}
 
 afterEach(() => cleanup());
+
+/** A worker's read-only source that holds one message: the transcript a card shows inside itself. */
+function workerSource(agent: AgentRef, message: string): NestedTranscriptSource {
+  return {
+    agent,
+    read: async () =>
+      transcriptPage({ fromByte: 0, nextByte: 1, messages: [userMessage(message)] }),
+    subscribe: () => () => undefined,
+    readOnly: true,
+  };
+}
 
 describe("T5 task card on recorded results", () => {
   test("one agent started in the background shows its job, its status and its counts", () => {
@@ -48,5 +75,96 @@ describe("T5 task card on recorded results", () => {
     );
     render(<TaskCard rendererProps={props} />);
     expect(screen.getByRole("alert").textContent).toContain("Malformed task");
+  });
+});
+
+describe("T5.2 task card worker transcripts", () => {
+  const originalScrollTo = HTMLElement.prototype.scrollTo;
+
+  beforeEach(() => {
+    // The thread viewport observes its size and scrolls; jsdom has neither, so the view gets no-ops.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: originalScrollTo,
+    });
+  });
+
+  test("each worker the task call started shows its read-only transcript inside the card", async () => {
+    const agent = agentRef({ parentToolCallId: "task-call", description: "Nested probe" });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call"
+        ? [{ agent, source: workerSource(agent, "worker task text for the probe") }]
+        : [];
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={recorded("task: one agent started in the background")} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    expect(await screen.findByText("worker task text for the probe")).toBeTruthy();
+    const transcript = container.querySelector("[data-slot='t5-task-transcript']");
+    expect(transcript?.textContent).toContain("Nested probe");
+    expect(transcript?.textContent).toContain("Read only");
+  });
+
+  test("a card with no lookup shows no transcript", () => {
+    const { container } = render(
+      <TaskCard rendererProps={recorded("task: one agent started in the background")} />,
+    );
+    expect(container.querySelector("[data-slot='t5-task-transcripts']")).toBeNull();
+  });
+
+  test("a call with no workers of its own shows none, even when another call has workers", () => {
+    const agent = agentRef({ parentToolCallId: "another-call" });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "another-call"
+        ? [{ agent, source: workerSource(agent, "another call's worker") }]
+        : [];
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <TaskCard rendererProps={recorded("task: one agent started in the background")} />
+      </TaskSubagentsContext.Provider>,
+    );
+    expect(container.querySelector("[data-slot='t5-task-transcripts']")).toBeNull();
+  });
+
+  test("an agent row shows the worker's live status from the roster, not the spawn snapshot", () => {
+    const agent = agentRef({
+      id: "BuilderTwo",
+      parentToolCallId: "task-call",
+      status: "running",
+      description: "Build part two",
+    });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call"
+        ? [{ agent, source: workerSource(agent, "live worker text") }]
+        : [];
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={recorded("task: one agent started in the background")} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    const row = container.querySelector("[data-slot='t5-task-progress'] li");
+    expect(row?.textContent).toContain("Running");
+    expect(row?.textContent).not.toContain("Pending");
   });
 });
