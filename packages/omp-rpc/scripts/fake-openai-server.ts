@@ -21,8 +21,46 @@ function text(content: unknown): string {
     .join("");
 }
 
+/** `spawn_steerable_subagent` starts a worker whose task says `nested_steer_child`. That worker keeps taking
+ * one-second bash steps until a message that starts with `steer_probe:` reaches it, then yields. The task text
+ * itself never contains `steer_probe:`, so a repeated task message cannot count as the steer. It gives up after
+ * STEER_WAIT_STEPS steps on its own, so a run that never steers cannot hang the server. */
+const STEER_WAIT_STEPS = 90;
+
+function steerChildReply(messages: readonly Message[]): Reply | undefined {
+  const start = messages.findIndex(
+    (message) => message.role === "user" && text(message.content).includes("nested_steer_child"),
+  );
+  if (start < 0) return undefined;
+  const after = messages.slice(start + 1);
+  const steered = after.some(
+    (message) => message.role === "user" && text(message.content).includes("steer_probe:"),
+  );
+  if (steered)
+    return {
+      tool: "yield",
+      args: { data: { summary: "Steer received." } },
+      thinking: "The steer arrived, so I will submit.",
+    };
+  const steps = after.filter((message) => message.role === "tool").length;
+  if (steps >= STEER_WAIT_STEPS)
+    return {
+      tool: "yield",
+      args: { data: { summary: "No steer arrived." } },
+      thinking: "No steer came in time.",
+    };
+  return {
+    tool: "bash",
+    args: { command: `sleep 1; echo steer-wait-${steps}` },
+    id: `call_wait_${steps}`,
+    thinking: "I am waiting for a steer.",
+  };
+}
+
 function reply(request: Request): Reply {
   const messages = request.messages ?? [];
+  const steerChild = steerChildReply(messages);
+  if (steerChild !== undefined) return steerChild;
   const last = messages.at(-1);
   const lastUser = messages.findLastIndex((message) => message.role === "user");
   if (lastUser >= 0 && text(messages[lastUser]?.content).includes("long_loop")) {
@@ -34,6 +72,17 @@ function reply(request: Request): Reply {
   }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";
+  if (prompt.includes("spawn_steerable_subagent"))
+    return {
+      tool: "task",
+      args: {
+        name: "SteerProbe",
+        agent: "task",
+        task: "nested_steer_child: keep taking steps until a steer arrives from the parent, then yield.",
+        solutionSpace: "one tiny task: wait for a steer and return a short summary",
+      },
+      thinking: "I should start a worker that waits for a steer.",
+    };
   if (prompt.includes("spawn_subagent"))
     return {
       tool: "task",
