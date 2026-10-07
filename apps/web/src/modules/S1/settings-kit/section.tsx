@@ -243,6 +243,7 @@ function ControlInput({
     return (
       <label className="border-input bg-background has-focus-visible:ring-ring/50 flex min-h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-sm has-focus-visible:ring-2">
         <input
+          aria-label={control.label}
           type="checkbox"
           checked={value === "true"}
           onChange={(event) => onValue(String(event.target.checked))}
@@ -255,6 +256,7 @@ function ControlInput({
   if (control.kind === "enum" && control.options) {
     return (
       <select
+        aria-label={control.label}
         className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2"
         style={{ color: "var(--foreground)", WebkitTextFillColor: "var(--foreground)" }}
         value={value}
@@ -272,6 +274,7 @@ function ControlInput({
   if (control.kind === "multiline") {
     return (
       <Textarea
+        aria-label={control.label}
         className="text-foreground"
         style={{ color: "var(--foreground)", WebkitTextFillColor: "var(--foreground)" }}
         value={value}
@@ -282,6 +285,7 @@ function ControlInput({
   }
   return (
     <Input
+      aria-label={control.label}
       className="text-foreground"
       style={{ color: "var(--foreground)", WebkitTextFillColor: "var(--foreground)" }}
       type={control.kind === "number" || control.kind === "duration" ? "number" : "text"}

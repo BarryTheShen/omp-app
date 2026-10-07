@@ -13,6 +13,8 @@ export type AppearanceSettingsViewProps = {
   readonly model: AppearanceSettingsViewModel;
   readonly actions: AppearanceSettingsActions;
   readonly onClose: () => void;
+  /** Hide the standalone page heading when this view is embedded in another settings surface. */
+  readonly showHeader?: boolean;
 };
 
 function statusLabel(status: string): string {
@@ -86,7 +88,12 @@ function ActiveSectionView({
   );
 }
 
-export function AppearanceSettingsView({ model, actions, onClose }: AppearanceSettingsViewProps) {
+export function AppearanceSettingsView({
+  model,
+  actions,
+  onClose,
+  showHeader = true,
+}: AppearanceSettingsViewProps) {
   if (model.selector?.kind === "theme") {
     return (
       <section
@@ -141,22 +148,28 @@ export function AppearanceSettingsView({ model, actions, onClose }: AppearanceSe
 
   return (
     <section
-      className="bg-background text-foreground space-y-4 p-4 sm:p-6"
+      className={
+        showHeader
+          ? "bg-background text-foreground space-y-4 p-4 sm:p-6"
+          : "text-foreground space-y-4"
+      }
       data-s1-appearance-settings
     >
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 space-y-1">
-          <p className="text-muted-foreground text-sm">Settings</p>
-          <h1 className="text-2xl font-semibold tracking-tight">Appearance</h1>
-          <p className="text-muted-foreground text-sm">
-            Theme, composer, status line, display, and image behavior.
-          </p>
-          <p className="text-muted-foreground text-xs">{saveLocationText(model.layer)}</p>
-        </div>
-        <Button type="button" variant="outline" onClick={onClose} aria-label="Close settings">
-          Close
-        </Button>
-      </header>
+      {showHeader ? (
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <p className="text-muted-foreground text-sm">Settings</p>
+            <h1 className="text-2xl font-semibold tracking-tight">Appearance</h1>
+            <p className="text-muted-foreground text-sm">
+              Theme, composer, status line, display, and image behavior.
+            </p>
+            <p className="text-muted-foreground text-xs">{saveLocationText(model.layer)}</p>
+          </div>
+          <Button type="button" variant="outline" onClick={onClose} aria-label="Close settings">
+            Close
+          </Button>
+        </header>
+      ) : null}
 
       <div className="space-y-3">
         <label className="text-sm font-medium" htmlFor="s1-appearance-search">

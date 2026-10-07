@@ -3,7 +3,12 @@ import { AppFailure, ConfigWriteArgs } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { AppearanceSettingsView, useAppearanceSettingsController } from "../../../S1/settings";
-import type { ConfigChangeSource, ConfigStoreClient } from "../../../S1/settings-kit";
+import type {
+  ConfigChangeSource,
+  ConfigStoreClient,
+  SettingsSectionDescriptor,
+} from "../../../S1/settings-kit";
+import { COMPOSER_SETTINGS_SECTION } from "../../appearance";
 import { APP_THEME_PREVIEW_NOTE } from "../../appearance/descriptors";
 
 type FakeConfig = {
@@ -83,12 +88,28 @@ function fakeClient(state: FakeConfig): ConfigStoreClient {
   };
 }
 
-function AppearanceSettingsHarness({ client }: { readonly client: ConfigStoreClient }) {
+function AppearanceSettingsHarness({
+  client,
+  appearanceSections,
+  initialSectionId,
+  previewPalette,
+  applyThemePreview,
+}: {
+  readonly client: ConfigStoreClient;
+  readonly appearanceSections?: readonly SettingsSectionDescriptor[];
+  readonly initialSectionId?: string;
+  readonly previewPalette?: "light" | "dark";
+  readonly applyThemePreview?: boolean;
+}) {
   const { model, actions } = useAppearanceSettingsController({
+    appearanceSections,
+    applyThemePreview,
     client,
     changes,
     folder: null,
+    initialSectionId,
     layer: "global",
+    previewPalette,
   });
   return <AppearanceSettingsView model={model} actions={actions} onClose={() => undefined} />;
 }
@@ -158,5 +179,28 @@ describe("S1.3 appearance settings surface", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("img", { name: "Inline image preview" })).toBeTruthy();
     expect(state.writes).toHaveLength(0);
+  });
+  test("supports a registry-filtered embedded surface without changing the app palette", async () => {
+    const state: FakeConfig = {
+      entries: [...DEFAULT_ENTRIES],
+      revision: "revision-1",
+      writes: [],
+      failNextList: false,
+    };
+    const wasDark = document.documentElement.classList.contains("dark");
+    render(
+      <AppearanceSettingsHarness
+        appearanceSections={[COMPOSER_SETTINGS_SECTION]}
+        applyThemePreview={false}
+        client={fakeClient(state)}
+        initialSectionId={COMPOSER_SETTINGS_SECTION.id}
+        previewPalette="dark"
+      />,
+    );
+
+    expect(await screen.findByRole("tab", { name: "Composer" })).toBeTruthy();
+    expect(screen.queryByText("Dark Theme")).toBeNull();
+    expect(screen.getByLabelText("Appearance preview").getAttribute("data-palette")).toBe("dark");
+    expect(document.documentElement.classList.contains("dark")).toBe(wasDark);
   });
 });

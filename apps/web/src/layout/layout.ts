@@ -21,6 +21,7 @@ export type SurfaceId =
   | "sessions"
   | "title"
   | "model"
+  | "settings"
   | "todo"
   | "attachments"
   | "mode"
@@ -35,7 +36,7 @@ export const LAYOUT: AppLayout = {
   /** Left sidebar, top to bottom; the theme control sits at the bottom. */
   sidebar: ["folder", "sessions", "theme"],
   /** Above the conversation, left to right; the title takes the free space. */
-  header: ["title", "model"],
+  header: ["title", "model", "settings"],
   /** Right sidebar; with more than one panel they become tabs, in this order. */
   panels: ["todo"],
   /** The inline control row inside the composer, left to right. */

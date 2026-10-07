@@ -9,6 +9,7 @@ import {
 import {
   type AppearancePreviewModel,
   type AppearanceThemeKey,
+  type BrowserPalette,
   composerPreviewNote,
   previewOmpTheme,
 } from "../appearance/preview";
@@ -32,6 +33,14 @@ export type AppearanceSettingsControllerOptions = {
   readonly folder: FolderPath | null;
   readonly layer: ConfigWriteLayer;
   readonly onSecretAction?: (key: string, action: "set" | "unset") => void;
+  /** The registry-selected appearance sections to load and show. */
+  readonly appearanceSections?: readonly SettingsSectionDescriptor[];
+  /** The first section selected when the view opens. */
+  readonly initialSectionId?: string;
+  /** The app palette for previews when the terminal theme section is not shown. */
+  readonly previewPalette?: BrowserPalette;
+  /** Keep the legacy terminal-theme preview behavior for the standalone S1 surface. */
+  readonly applyThemePreview?: boolean;
 };
 
 export type AppearanceSettingsSectionModel = {
@@ -167,6 +176,7 @@ function previewModel(
   snapshots: readonly SettingsRuntimeSnapshot[],
   previewValues: Readonly<Record<string, JsonValue>>,
   activeThemeKey?: AppearanceThemeKey,
+  previewPalette?: BrowserPalette,
 ): AppearancePreviewModel {
   const preferredThemeKey: AppearanceThemeKey =
     activeThemeKey ?? (browserPrefersDark() ? "theme.dark" : "theme.light");
@@ -176,7 +186,10 @@ function previewModel(
     previewValues,
     preferredThemeKey === "theme.dark" ? "titanium" : "light",
   );
-  const theme = previewOmpTheme(preferredThemeKey, themeName);
+  const theme =
+    activeThemeKey || previewPalette === undefined
+      ? previewOmpTheme(preferredThemeKey, themeName)
+      : { palette: previewPalette };
   const composerShape = stringSetting(snapshots, "composer.shape", previewValues, "band");
   return {
     palette: theme.palette,
@@ -248,6 +261,10 @@ export function useAppearanceSettingsController({
   folder,
   layer,
   onSecretAction,
+  appearanceSections = S1_APPEARANCE_SECTIONS,
+  initialSectionId = appearanceSections[0]?.id ?? THEME_SETTINGS_SECTION.id,
+  previewPalette,
+  applyThemePreview = true,
 }: AppearanceSettingsControllerOptions): {
   readonly model: AppearanceSettingsViewModel;
   readonly actions: AppearanceSettingsActions;
@@ -256,7 +273,7 @@ export function useAppearanceSettingsController({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | undefined>();
   const [actionError, setActionError] = useState<string | undefined>();
-  const [activeSectionId, setActiveSectionId] = useState<string>(THEME_SETTINGS_SECTION.id);
+  const [activeSectionId, setActiveSectionId] = useState<string>(initialSectionId);
   const [search, setSearch] = useState("");
   const [selector, setSelector] = useState<SelectorState | undefined>();
   const [previewValues, setPreviewValues] = useState<Readonly<Record<string, JsonValue>>>({});
@@ -266,7 +283,7 @@ export function useAppearanceSettingsController({
 
   useEffect(() => {
     let mounted = true;
-    const next = S1_APPEARANCE_SECTIONS.map((descriptor) => ({
+    const next = appearanceSections.map((descriptor) => ({
       descriptor,
       runtime: new SettingsRuntime(client, changes, { descriptor, folder, layer }),
     }));
@@ -289,10 +306,10 @@ export function useAppearanceSettingsController({
         entry.runtime.dispose();
       }
     };
-  }, [client, changes, folder, layer]);
+  }, [appearanceSections, changes, client, folder, layer]);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
+    if (!applyThemePreview || typeof document === "undefined") return;
     if (originalDarkClass.current === undefined) {
       originalDarkClass.current = document.documentElement.classList.contains("dark");
     }
@@ -301,30 +318,30 @@ export function useAppearanceSettingsController({
         document.documentElement.classList.toggle("dark", originalDarkClass.current);
       }
     };
-  }, []);
+  }, [applyThemePreview]);
 
   const loaded =
-    snapshots.length === S1_APPEARANCE_SECTIONS.length &&
+    snapshots.length === appearanceSections.length &&
     snapshots.every((snapshot) => snapshot.config !== null);
-  const preview = previewModel(snapshots, previewValues, activeThemeKey);
+  const preview = previewModel(snapshots, previewValues, activeThemeKey, previewPalette);
 
   useEffect(() => {
-    if (loaded && typeof document !== "undefined") {
+    if (applyThemePreview && loaded && typeof document !== "undefined") {
       document.documentElement.classList.toggle("dark", preview.palette === "dark");
     }
-  }, [loaded, preview.palette]);
+  }, [applyThemePreview, loaded, preview.palette]);
 
   const visibleDescriptors = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    if (!query) return S1_APPEARANCE_SECTIONS;
-    return S1_APPEARANCE_SECTIONS.filter((descriptor) =>
+    if (!query) return appearanceSections;
+    return appearanceSections.filter((descriptor) =>
       descriptor.controls.some((control) =>
         `${control.key} ${control.label} ${control.description ?? ""}`
           .toLocaleLowerCase()
           .includes(query),
       ),
     );
-  }, [search]);
+  }, [appearanceSections, search]);
   const selectedSectionId = visibleDescriptors.some(({ id }) => id === activeSectionId)
     ? activeSectionId
     : visibleDescriptors[0]?.id;

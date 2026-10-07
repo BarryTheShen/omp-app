@@ -28,6 +28,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { AccessibilityProvider } from "@/a11y";
+import { Button } from "@/components/ui/button";
 import {
   AppConnectionGate,
   AppConnectionProvider,
@@ -91,6 +92,7 @@ import { ThemeApplier, ThemeButton } from "@/theme";
 import { reportClientError, setClientErrorSink } from "./client-errors";
 import { saveTextFile } from "./save-file";
 import { SessionModelControl, SessionStatusBar } from "./session-controls";
+import { SettingsScreen } from "./settings-screen";
 
 const FOLDER_KEY = "omp.app.root.folder";
 const THREAD_KEY = "omp.app.root.thread";
@@ -123,6 +125,13 @@ function folderLabel(folder: FolderPath | undefined): string {
   if (!folder) return "Choose folder…";
   const normalized = folder.replace(/\/+$/, "");
   return normalized.slice(normalized.lastIndexOf("/") + 1) || folder;
+}
+function SettingsButton({ onOpenSettings }: { readonly onOpenSettings: () => void }) {
+  return (
+    <Button type="button" size="sm" variant="outline" onClick={onOpenSettings}>
+      Settings
+    </Button>
+  );
 }
 
 function FolderSwitcher({
@@ -373,6 +382,7 @@ interface ActiveThreadProps {
   readonly history: SelectedThreadHistoryState;
   readonly capabilities: CapabilityMap;
   readonly catalog: SessionCatalogModel | null;
+  readonly onOpenSettings: () => void;
   readonly remote: ReturnType<typeof createNativeRemoteThreadListAdapter> | null;
   readonly openThread: (threadId: ThreadId) => Promise<void>;
   readonly leftSidebar: ReactNode;
@@ -391,6 +401,7 @@ function ActiveThreadReady({
   history,
   leftSidebar,
   openThread,
+  onOpenSettings,
   remote,
   title,
 }: ActiveThreadProps) {
@@ -747,6 +758,10 @@ function ActiveThreadReady({
         />
       ),
     },
+    settings: {
+      title: "Settings",
+      render: () => <SettingsButton onOpenSettings={onOpenSettings} />,
+    },
     todo: {
       title: "Todo checklist",
       grow: true,
@@ -877,9 +892,25 @@ function ConnectedApp({
   readonly launchFolder: FolderPath;
 }) {
   const connection = useAppConnection();
+  const overlay = useStableOverlayHost();
   const lastInstanceId = useRef<string | undefined>(undefined);
   const [folderText, setFolderText] = useState(() => readSessionValue(FOLDER_KEY, launchFolder));
   const folder = FolderPath.safeParse(folderText).success ? FolderPath.parse(folderText) : null;
+  const openSettings = useCallback(() => {
+    overlay.open({
+      kind: "modal",
+      label: "Settings",
+      width: "viewport",
+      content: ({ close }) => (
+        <SettingsScreen
+          capabilities={capabilities}
+          client={client}
+          folder={folder}
+          onClose={() => close("programmatic")}
+        />
+      ),
+    });
+  }, [capabilities, client, folder, overlay]);
   const [folderError, setFolderError] = useState<string | null>(null);
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
   const [title, setTitle] = useState("New conversation");
@@ -1066,6 +1097,22 @@ function ConnectedApp({
   const leftSidebar = (
     <LayoutArea area="sidebar" capabilities={capabilities} surfaces={sidebarSurfaces} />
   );
+  const emptyHeaderSurfaces: SurfaceMap = {
+    title: {
+      title: "Conversation",
+      grow: true,
+      render: () => (
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
+          <p className="text-muted-foreground truncate text-xs">New conversation</p>
+        </div>
+      ),
+    },
+    settings: {
+      title: "Settings",
+      render: () => <SettingsButton onOpenSettings={openSettings} />,
+    },
+  };
   if (history.store && history.threadId) {
     return (
       <ActiveThreadContent
@@ -1074,6 +1121,7 @@ function ConnectedApp({
         client={client}
         history={history}
         leftSidebar={leftSidebar}
+        onOpenSettings={openSettings}
         openThread={openThread}
         remote={remote}
         title={title}
@@ -1083,6 +1131,9 @@ function ConnectedApp({
   return (
     <div className="h-dvh" data-app-root="true">
       <AppShell
+        threadHeader={
+          <LayoutArea area="header" capabilities={capabilities} surfaces={emptyHeaderSurfaces} />
+        }
         leftSidebar={leftSidebar}
         rightSidebar={<div className="text-muted-foreground p-4 text-sm">No panel selected.</div>}
         transcript={<EmptyTranscript state={history} />}
