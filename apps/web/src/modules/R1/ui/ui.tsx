@@ -1,7 +1,7 @@
 import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import type { ThreadId } from "@omp-app/contracts";
 import { MoreHorizontalIcon, PinIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,6 +84,12 @@ function capabilityReason(
   return status?.detail ?? fallback;
 }
 
+/**
+ * Where each folder's list was scrolled to. The app rebuilds the sidebar each time a chat is
+ * opened, and the list should stay where the reader left it.
+ */
+const scrollPositions = new WeakMap<SessionCatalogModel, number>();
+
 export function SessionCatalogSidebar({
   catalog,
   remote,
@@ -100,7 +106,15 @@ export function SessionCatalogSidebar({
   const [editingId, setEditingId] = useState<ThreadId | undefined>();
   const [editingTitle, setEditingTitle] = useState("");
   const [menuSessionId, setMenuSessionId] = useState<ThreadId | undefined>();
-  const listRef = useRef<HTMLDivElement>(null);
+  const previousCatalog = useRef(catalog);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const attachList = useCallback(
+    (element: HTMLDivElement | null) => {
+      listRef.current = element;
+      if (element) element.scrollTop = scrollPositions.get(catalog) ?? 0;
+    },
+    [catalog],
+  );
   const renameStatus = useCapabilityStatus("omp.cmd.set_session_name");
   const deleteStatus = useCapabilityStatus("host.command-gateway");
   const archiveStatus = useCapabilityStatus("upstream.session-archive");
@@ -112,10 +126,20 @@ export function SessionCatalogSidebar({
   useEffect(() => {
     const unsubscribe = catalog.subscribe(() => {
       setCatalogRevision((revision) => revision + 1);
-      setFocusedIndex(0);
     });
-    void catalog.list({ filter: { ...catalog.getSnapshot().filter, query }, limit: 50 });
     return unsubscribe;
+  }, [catalog]);
+  useEffect(() => {
+    // The list is fetched when the sidebar first opens, when the folder changes and when the
+    // search changes. The app rebuilds the sidebar each time a chat is opened: a catalog that
+    // already has its list is then left alone and its rows stay on screen, so opening a chat
+    // fetches nothing and a refresh after a turn never shows placeholders.
+    const catalogChanged = previousCatalog.current !== catalog;
+    previousCatalog.current = catalog;
+    const current = catalog.getSnapshot();
+    if (!catalogChanged && current.isLoaded && current.filter.query === query) return;
+    if (catalogChanged || current.filter.query !== query) setFocusedIndex(0);
+    void catalog.list({ filter: { ...current.filter, query }, limit: 50 });
   }, [catalog, query]);
 
   useEffect(() => {
@@ -209,20 +233,25 @@ export function SessionCatalogSidebar({
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      {snapshot.isLoading && (
+      {snapshot.isLoading && !snapshot.isLoaded && (
         <div aria-label="Loading sessions" className="flex flex-col gap-2 p-3" role="status">
           <div className="bg-muted h-8 animate-pulse rounded-lg" />
           <div className="bg-muted h-8 animate-pulse rounded-lg" />
           <div className="bg-muted h-8 animate-pulse rounded-lg" />
         </div>
       )}
-      {!snapshot.isLoading && snapshot.error && (
+      {!snapshot.isLoading && snapshot.error && !snapshot.isLoaded && (
         <InlineError
           message={snapshot.error.message}
           onRetry={() => void catalog.list({ filter: snapshot.filter, limit: 50 })}
         />
       )}
-      {!snapshot.isLoading && !snapshot.error && sessions.length === 0 && (
+      {snapshot.error && snapshot.isLoaded && (
+        <p className="text-destructive px-3 py-1 text-xs leading-snug" role="status">
+          Couldn't refresh sessions. Showing the last list.
+        </p>
+      )}
+      {snapshot.isLoaded && sessions.length === 0 && (
         <EmptyState
           title="No sessions in this folder"
           hint="Start a new chat to create an omp session."
@@ -233,14 +262,15 @@ export function SessionCatalogSidebar({
           }
         />
       )}
-      {!snapshot.isLoading && !snapshot.error && sessions.length > 0 && (
+      {sessions.length > 0 && (
         <div
-          ref={listRef}
+          ref={attachList}
           aria-label="Session list"
           className="min-h-0 flex-1 overflow-y-auto p-2"
           role="listbox"
           tabIndex={0}
           onKeyDown={onListKeyDown}
+          onScroll={(event) => scrollPositions.set(catalog, event.currentTarget.scrollTop)}
         >
           {grouped.map(([cwd, groupedSessions]) => (
             <Section
@@ -429,33 +459,30 @@ export function SessionCatalogSidebar({
           ))}
         </div>
       )}
-      {!snapshot.isLoading &&
-        !snapshot.error &&
-        sessions.length > 0 &&
-        snapshot.nextCursor !== null && (
-          // Outside the listbox (a listbox holds only options) and pinned under it, so it is always
-          // in reach however far the list is scrolled.
-          <div className="border-sidebar-border flex shrink-0 flex-col gap-1 border-t p-2">
-            {snapshot.moreError ? (
-              <p className="text-destructive px-1 text-xs" role="alert">
-                Couldn't load older chats. {snapshot.moreError.message}
-              </p>
-            ) : null}
-            <Button
-              disabled={snapshot.isLoadingMore}
-              size="sm"
-              type="button"
-              variant="outline"
-              onClick={() => void catalog.loadMore()}
-            >
-              {snapshot.isLoadingMore
-                ? "Loading older chats…"
-                : snapshot.moreError
-                  ? "Try again"
-                  : "Show older chats"}
-            </Button>
-          </div>
-        )}
+      {!snapshot.isLoading && sessions.length > 0 && snapshot.nextCursor !== null && (
+        // Outside the listbox (a listbox holds only options) and pinned under it, so it is always
+        // in reach however far the list is scrolled.
+        <div className="border-sidebar-border flex shrink-0 flex-col gap-1 border-t p-2">
+          {snapshot.moreError ? (
+            <p className="text-destructive px-1 text-xs" role="alert">
+              Couldn't load older chats. {snapshot.moreError.message}
+            </p>
+          ) : null}
+          <Button
+            disabled={snapshot.isLoadingMore}
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={() => void catalog.loadMore()}
+          >
+            {snapshot.isLoadingMore
+              ? "Loading older chats…"
+              : snapshot.moreError
+                ? "Try again"
+                : "Show older chats"}
+          </Button>
+        </div>
+      )}
     </aside>
   );
 }

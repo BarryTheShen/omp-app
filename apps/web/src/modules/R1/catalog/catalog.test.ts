@@ -271,6 +271,33 @@ describe("SessionCatalogModel older pages", () => {
     expect(model.getSnapshot().nextCursor).toBeNull();
     expect(requests.map((request) => request.cursor)).toEqual([undefined, "50", "100"]);
   });
+  test("a loaded empty catalog stays ready during a background refresh", async () => {
+    const pendingRefresh = Promise.withResolvers<{ sessions: SessionFile[]; nextCursor: null }>();
+    let calls = 0;
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => {
+          calls += 1;
+          return calls === 1 ? { sessions: [], nextCursor: null } : pendingRefresh.promise;
+        },
+        readSession: async () => session("unused", "2026-10-01T00:00:00.000Z"),
+      },
+    });
+    const args = { filter: { scope, query: "" }, limit: 50 };
+
+    await model.list(args);
+    expect(model.getSnapshot().isLoaded).toBe(true);
+    const refresh = model.list(args);
+
+    expect(model.getSnapshot().isLoaded).toBe(true);
+    expect(model.getSnapshot().isLoading).toBe(false);
+    expect(model.getSnapshot().sessions).toEqual([]);
+
+    pendingRefresh.resolve({ sessions: [], nextCursor: null });
+    await refresh;
+    expect(model.getSnapshot().error).toBeNull();
+  });
 
   test("a different filter starts from the first page again", async () => {
     const { requests, sessionFiles } = pagedFolder(130);

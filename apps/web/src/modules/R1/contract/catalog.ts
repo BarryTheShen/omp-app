@@ -9,6 +9,8 @@ export interface SessionCatalogState {
   readonly nextCursor: Cursor | null;
   readonly selectedThreadId: ThreadId | null;
   readonly selectionRevision: number;
+  /** True after a full list has succeeded, even when the folder has no sessions. */
+  readonly isLoaded: boolean;
   readonly isLoading: boolean;
   /** True while `loadMore` fetches the next page; the list stays on screen meanwhile. */
   readonly isLoadingMore: boolean;

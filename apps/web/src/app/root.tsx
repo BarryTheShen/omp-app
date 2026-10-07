@@ -92,7 +92,9 @@ import { ThemeApplier, ThemeButton } from "@/theme";
 import { reportClientError, setClientErrorSink } from "./client-errors";
 import { saveTextFile } from "./save-file";
 import { SessionModelControl, SessionStatusBar } from "./session-controls";
+import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
+import { finishedAnswerAt } from "./turn-end";
 
 const FOLDER_KEY = "omp.app.root.folder";
 const THREAD_KEY = "omp.app.root.thread";
@@ -384,6 +386,8 @@ interface ActiveThreadProps {
   readonly catalog: SessionCatalogModel | null;
   readonly onOpenSettings: () => void;
   readonly remote: ReturnType<typeof createNativeRemoteThreadListAdapter> | null;
+  /** Called when the person sends a message (the sidebar's list is fetched again once it is answered). */
+  readonly onPromptSent: () => void;
   readonly openThread: (threadId: ThreadId) => Promise<void>;
   readonly leftSidebar: ReactNode;
   readonly title: string;
@@ -400,6 +404,7 @@ function ActiveThreadReady({
   catalog,
   history,
   leftSidebar,
+  onPromptSent,
   openThread,
   onOpenSettings,
   remote,
@@ -702,6 +707,7 @@ function ActiveThreadReady({
     [client, threadId],
   );
   const submit = async (intent: PromptIntent): Promise<void> => {
+    onPromptSent();
     // Sending shows the newest message, wherever the reader had scrolled to; the transcript then
     // keeps following by itself because it is at the bottom.
     scrollController.jumpToLatest();
@@ -914,19 +920,28 @@ function ConnectedApp({
   }, [capabilities, client, folder, overlay]);
   const [folderError, setFolderError] = useState<string | null>(null);
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
-  const [title, setTitle] = useState("New conversation");
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
+  // One catalog per folder for the life of the connection: going back to a folder shows its last
+  // list at once, and a new connection starts clean.
+  const catalogCache = useMemo(
+    () => ({ sessionFiles, models: new Map<FolderPath, SessionCatalogModel>() }),
+    [sessionFiles],
+  );
   const catalog = useMemo(() => {
     if (!folder) return null;
-    return new SessionCatalogModel({
+    const cached = catalogCache.models.get(folder);
+    if (cached) return cached;
+    const created = new SessionCatalogModel({
       scope: { kind: "folder", folder },
       sessionFiles: {
-        listSessions: sessionFiles.listSessions,
-        readSession: sessionFiles.readSession,
+        listSessions: catalogCache.sessionFiles.listSessions,
+        readSession: catalogCache.sessionFiles.readSession,
       },
     });
-  }, [folder, sessionFiles]);
+    catalogCache.models.set(folder, created);
+    return created;
+  }, [catalogCache, folder]);
   const controller = useMemo<SelectedThreadHistoryController | null>(() => {
     if (!folder) return null;
     return createSelectedThreadHistoryController({
@@ -974,21 +989,33 @@ function ConnectedApp({
     if (!saved.success) return;
     void controller.openExisting(saved.data).catch(() => writeSessionValue(THREAD_KEY, null));
   }, [controller]);
+  // The sidebar's list is fetched again after the person's message has been answered: omp writes a
+  // new chat's file during its first turn, and a chat's title and time change with each turn. The
+  // end of the answer is read from the messages, not from the prompt flags: a page that attaches
+  // just after the turn began never sees the flags change, but the answer is there at the end.
+  // Opening a chat, which loads its old answers, fetches nothing: only a sent message arms this.
+  const turnWatch = useRef<{ armed: boolean; before: number | undefined }>({
+    armed: false,
+    before: undefined,
+  });
+  const onPromptSent = useCallback(() => {
+    turnWatch.current = { armed: true, before: finishedAnswerAt(history.store?.getSnapshot()) };
+  }, [history.store]);
   useEffect(() => {
-    // omp writes a new session's file during its first turn, so list the folder again whenever a
-    // turn settles; the sidebar then shows the session it just created and its updated title.
     const store = history.store;
     if (!store || !catalog || !folder) return;
-    let settled = store.getSnapshot().prompt.sessionSettled;
-    return store.subscribe(() => {
-      const next = store.getSnapshot().prompt.sessionSettled;
-      if (next && !settled) {
-        void catalog
-          .list({ filter: { scope: { kind: "folder", folder }, query: "" }, limit: 100 })
-          .catch(() => undefined);
-      }
-      settled = next;
-    });
+    const look = () => {
+      const watch = turnWatch.current;
+      if (!watch.armed) return;
+      const answer = finishedAnswerAt(store.getSnapshot());
+      if (answer === undefined || answer === watch.before) return;
+      turnWatch.current = { armed: false, before: undefined };
+      void catalog
+        .list({ filter: catalog.getSnapshot().filter, limit: 100 })
+        .catch(() => undefined);
+    };
+    look();
+    return store.subscribe(look);
   }, [catalog, folder, history.store]);
   useEffect(() => {
     const instanceId = client.instanceId;
@@ -1006,28 +1033,7 @@ function ConnectedApp({
     () => (history.capabilities ? { ...capabilities, ...history.capabilities } : capabilities),
     [capabilities, history.capabilities],
   );
-  useEffect(() => {
-    if (!catalog || !history.threadId || !folder) {
-      setTitle("New conversation");
-      return;
-    }
-    let active = true;
-    void (async () => {
-      try {
-        await catalog.list({
-          filter: { scope: { kind: "folder", folder }, query: "" },
-          limit: 100,
-        });
-        const metadata = await catalog.fetch(history.threadId as ThreadId);
-        if (active) setTitle(metadata.title ?? "Conversation");
-      } catch {
-        if (active) setTitle("Conversation");
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [catalog, folder, history.threadId]);
+  const title = useSessionTitle(catalog, history.threadId);
   const selectFolder = (nextFolder: FolderPath): void => {
     if (nextFolder === folder) return;
     void controller?.close();
@@ -1123,6 +1129,7 @@ function ConnectedApp({
         history={history}
         leftSidebar={leftSidebar}
         onOpenSettings={openSettings}
+        onPromptSent={onPromptSent}
         openThread={openThread}
         remote={remote}
         title={title}

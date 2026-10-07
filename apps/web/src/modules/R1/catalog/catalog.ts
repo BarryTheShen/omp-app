@@ -151,6 +151,7 @@ export class SessionCatalogModel {
       nextCursor: null,
       selectedThreadId: null,
       selectionRevision: 0,
+      isLoaded: false,
       isLoading: false,
       isLoadingMore: false,
       error: null,
@@ -176,8 +177,8 @@ export class SessionCatalogModel {
     // their chat from this load's pages (a removal also supersedes the load).
     if (args.cursor === undefined) this.clearTombstonesBefore(operation);
     const filter = args.filter;
-    // A search looks through all chats. Refreshing the list that is already shown keeps as many
-    // chats on screen as it had, so a refresh after each turn never drops the older pages.
+    // A loaded catalog is refreshed in the background: the previous rows stay actionable until
+    // the new page set arrives, and even a previously empty result does not flash placeholders.
     const wanted =
       args.cursor !== undefined
         ? 0
@@ -186,7 +187,13 @@ export class SessionCatalogModel {
           : sameFilter(filter, this.snapshot.filter)
             ? this.snapshot.sessions.length
             : 0;
-    this.commit({ filter, isLoading: true, isLoadingMore: false, error: null, moreError: null });
+    this.commit({
+      filter,
+      isLoading: !this.snapshot.isLoaded,
+      isLoadingMore: false,
+      error: null,
+      moreError: null,
+    });
     try {
       const git = await this.readGit(filter.scope);
       const pins = await this.readPins();
@@ -211,6 +218,7 @@ export class SessionCatalogModel {
         filter,
         sessions,
         nextCursor,
+        isLoaded: true,
         isLoading: false,
         error: null,
         git,

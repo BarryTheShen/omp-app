@@ -1,6 +1,6 @@
 import type { SessionFile } from "@omp-app/contracts";
 import { SessionFilePath, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { SessionCatalogModel } from "../catalog";
@@ -91,6 +91,91 @@ describe("SessionCatalogSidebar", () => {
     expect(options[0]?.textContent).toContain("Newest chat");
     expect(options[1]?.textContent).toContain("Old chat");
     expect(calls).toEqual([]);
+  });
+
+  test("keeps loaded rows, scroll and the selected session during a background refresh", async () => {
+    const files = Array.from({ length: 40 }, (_, index) =>
+      session(
+        `chat-${String(index).padStart(2, "0")}`,
+        new Date(Date.UTC(2026, 9, 5) - index * 60_000).toISOString(),
+        `Chat ${index}`,
+      ),
+    );
+    const refreshResult = Promise.withResolvers<{ sessions: SessionFile[]; nextCursor: null }>();
+    let calls = 0;
+    const catalog = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => {
+          calls += 1;
+          return calls === 1 ? { sessions: files, nextCursor: null } : refreshResult.promise;
+        },
+        readSession: async ({ sessionFile }) => {
+          const file = files.find((item) => item.sessionFile === sessionFile);
+          if (!file) throw new Error("The session was not found");
+          return file;
+        },
+      },
+    });
+    renderSidebar({
+      catalog,
+      currentThreadId: ThreadIdSchema.parse("chat-20"),
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(40));
+    const list = screen.getByRole("listbox", { name: "Session list" });
+    const selected = within(list).getByRole("option", { name: /Chat 20/ });
+    list.scrollTop = 80;
+
+    let refresh: Promise<unknown> = Promise.resolve();
+    act(() => {
+      refresh = catalog.list({ filter: { scope, query: "" }, limit: 50 });
+    });
+
+    expect(catalog.getSnapshot().isLoading).toBe(false);
+    expect(screen.getByRole("listbox", { name: "Session list" })).toBe(list);
+    expect(list.scrollTop).toBe(80);
+    expect(selected.parentElement?.getAttribute("data-selected")).toBe("true");
+    expect(within(list).getAllByRole("option")).toHaveLength(40);
+    expect(screen.queryByRole("status", { name: "Loading sessions" })).toBeNull();
+
+    await act(async () => {
+      refreshResult.resolve({ sessions: files, nextCursor: null });
+      await refresh;
+    });
+    expect(screen.getByRole("listbox", { name: "Session list" })).toBe(list);
+    expect(list.scrollTop).toBe(80);
+    expect(selected.parentElement?.getAttribute("data-selected")).toBe("true");
+  });
+
+  test("keeps the previous list and reports a failed background refresh in one line", async () => {
+    const files = [session("one", "2026-10-03T00:00:00.000Z", "One chat")];
+    let failRefresh = false;
+    const catalog = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => {
+          if (failRefresh) throw new Error("disk busy");
+          return { sessions: files, nextCursor: null };
+        },
+        readSession: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
+      },
+    });
+    renderSidebar({ catalog });
+    await waitFor(() => expect(screen.getByRole("option", { name: /One chat/ })).toBeTruthy());
+    failRefresh = true;
+
+    let refresh: Promise<unknown> = Promise.resolve();
+    act(() => {
+      refresh = catalog.list({ filter: { scope, query: "" }, limit: 50 });
+    });
+    await act(async () => {
+      await expect(refresh).rejects.toThrow("disk busy");
+    });
+
+    expect(screen.getByRole("option", { name: /One chat/ })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe(
+      "Couldn't refresh sessions. Showing the last list.",
+    );
   });
 
   test("an untitled session shows its first prompt, then a generic name, never its id", async () => {
