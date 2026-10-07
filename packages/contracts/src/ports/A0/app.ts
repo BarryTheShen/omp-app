@@ -19,6 +19,8 @@ export const AppServerInfo = z
         protocolVersion: z.union(OMP_PROTOCOL_VERSIONS.map((version) => z.literal(version))),
       })
       .nullable(),
+    /** Where the app writes its debug log; absent when the app runs without one. */
+    logFile: z.string().min(1).optional(),
   })
   .strict();
 export type AppServerInfo = z.infer<typeof AppServerInfo>;

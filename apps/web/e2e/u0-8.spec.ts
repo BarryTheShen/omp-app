@@ -206,11 +206,19 @@ test("keeps retrying while the server is down, then connects without a reload", 
   await installStubWebSocket(page);
   await page.addInitScript(() => {
     (globalThis as typeof globalThis & { __stubSocketMode?: "down" }).__stubSocketMode = "down";
+    // The path the server reported the last time this browser connected to it.
+    window.localStorage.setItem("omp-app.log-file", "/home/user/.local/state/omp-app/omp-app.log");
   });
   await page.goto("/launch-playground.html#token=e2e-token");
   await expect(page.getByText(/Can't reach the app server at .* Retrying/i)).toBeVisible({
     timeout: 8_000,
   });
+  // The screen says where the log is, so a crash leaves a trail to attach.
+  const hint = page.locator("[data-log-hint='true']");
+  await expect(hint).toContainText("omp-app logs");
+  await expect(hint).toContainText("omp-app debug-report");
+  await expect(hint).toContainText("/home/user/.local/state/omp-app/omp-app.log");
+  await page.screenshot({ path: "../../.data/screenshots/u0-8-server-down.png", fullPage: true });
   await page.evaluate(() => {
     (globalThis as typeof globalThis & { __stubSocketMode?: "accept" }).__stubSocketMode = "accept";
   });

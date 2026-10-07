@@ -3,6 +3,7 @@ import { AppFailure } from "@omp-app/contracts";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { AppConnectionGate, AppConnectionProvider, useAppConnection } from "./app-connection";
+import { DEFAULT_LOG_FILE, rememberLogFile } from "./log-location";
 import type { LaunchLocationLike } from "./token";
 
 const pageLocation: LaunchLocationLike = {
@@ -117,5 +118,46 @@ describe("app connection launch gate", () => {
       await screen.findByRole("heading", { name: "Could not connect to omp-app" }),
     ).toBeTruthy();
     expect(screen.getByText("The launch token is invalid")).toBeTruthy();
+  });
+
+  test("the can't-connect screens say where the app's log is: its default first, then the path the server last reported", async () => {
+    window.localStorage.removeItem("omp-app.log-file");
+    const first = render(
+      <AppConnectionProvider
+        location={{ ...pageLocation, hash: "" }}
+        storage={{ getItem: () => null, setItem: () => undefined }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+    const hint = await screen.findByText(/The app keeps a log of what it does/);
+    expect(hint.textContent).toContain("omp-app logs");
+    expect(hint.textContent).toContain("omp-app debug-report");
+    expect(hint.textContent).toContain(DEFAULT_LOG_FILE);
+    first.unmount();
+
+    rememberLogFile("/var/state/omp-app/omp-app.log");
+    try {
+      render(
+        <AppConnectionProvider
+          createClient={() => {
+            throw new AppFailure({ code: "permission", message: "refused", retryable: false });
+          }}
+          location={pageLocation}
+          storage={{ getItem: () => null, setItem: () => undefined }}
+        >
+          <AppConnectionGate>
+            <Harness />
+          </AppConnectionGate>
+        </AppConnectionProvider>,
+      );
+      const second = await screen.findByText(/The app keeps a log of what it does/);
+      expect(second.textContent).toContain("/var/state/omp-app/omp-app.log");
+      expect(second.textContent).not.toContain(DEFAULT_LOG_FILE);
+    } finally {
+      window.localStorage.removeItem("omp-app.log-file");
+    }
   });
 });

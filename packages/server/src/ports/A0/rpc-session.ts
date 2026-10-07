@@ -43,6 +43,8 @@ export interface A0PortContext {
     readonly serverVersion: string;
     readonly launchFolder: FolderPath;
     readonly omp: { readonly version: string; readonly protocolVersion: 1 | 2 } | null;
+    /** Where the debug log is written; absent without one. */
+    readonly logFile?: string;
   };
   readonly health: { readonly status: "ok" | "degraded" | "unhealthy"; readonly detail?: string };
   /** Required catalog seam: A1 resolves the omp-authoritative session file and cwd for a ThreadId. */

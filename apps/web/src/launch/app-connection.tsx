@@ -7,6 +7,7 @@ import {
 } from "@omp-app/client";
 import { AppFailure } from "@omp-app/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { knownLogFile } from "./log-location";
 import {
   type LaunchLocationLike,
   readLaunchToken,
@@ -169,6 +170,12 @@ function LaunchStatusScreen({ state, reason }: Pick<AppConnectionSnapshot, "stat
             Start the app again to receive a fresh launch URL, then reload this page.
           </p>
         )}
+        <p className="text-muted-foreground text-sm" data-log-hint="true">
+          The app keeps a log of what it does. In a terminal, <code>omp-app logs</code> prints it
+          and <code>omp-app debug-report</code> saves a file to attach to a bug report. The log is
+          here:
+          <code className="mt-1 block [overflow-wrap:anywhere]">{knownLogFile()}</code>
+        </p>
       </section>
     </main>
   );

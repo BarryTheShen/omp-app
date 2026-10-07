@@ -39,7 +39,7 @@ import type { ToolRegistryDescriptor } from "../modules/U3/tool-card/contract";
 import { U4Descriptors } from "../modules/U4/descriptors";
 import { U5Descriptors } from "../modules/U5/descriptors";
 import { todoToolDescriptor } from "../modules/U5/todo/tool-card/tool-card";
-import { U0_COMMAND_PALETTE_SHORTCUT } from "../palette/descriptor";
+import { U0_COMMAND_PALETTE_SHORTCUT, U0_SAVE_DEBUG_LOG_COMMAND } from "../palette/descriptor";
 import { createRegistry, type RendererMap } from "../registry-core";
 
 /** T1's read card renders URL reads through T4's renderer; the seam keeps T1 from importing T4. */
@@ -90,6 +90,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...D1_DESCRIPTORS,
   U2_EXTERNAL_EDITOR_SHORTCUT,
   U0_COMMAND_PALETTE_SHORTCUT,
+  U0_SAVE_DEBUG_LOG_COMMAND,
   ...R1_DESCRIPTORS,
   ...D5_LIFECYCLE_COMMAND_DESCRIPTORS,
   ...N1_DESCRIPTORS,

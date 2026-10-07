@@ -1,6 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { InlineError } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
+import { knownLogFile } from "@/launch";
+import { reportClientError } from "./client-errors";
 
 export interface AppErrorBoundaryProps {
   readonly children: ReactNode;
@@ -38,6 +40,7 @@ function detailsText(error: Error, componentStack: string | undefined): string {
     componentStack ? `Component stack:\n${firstLines(componentStack, MAX_DETAIL_LINES)}` : "",
     `Page: ${window.location.origin}${window.location.pathname}`,
     `Browser: ${window.navigator.userAgent}`,
+    `omp app log: ${knownLogFile()} (run "omp-app debug-report" and attach the file)`,
   ]
     .filter((part) => part.length > 0)
     .join("\n");
@@ -60,6 +63,12 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   public override componentDidCatch(error: Error, info: ErrorInfo): void {
     this.setState({ componentStack: info.componentStack ?? undefined });
+    // The debug log gets it too, with the component stack that says which part of the page failed.
+    reportClientError({
+      kind: "render",
+      message: `${error.name}: ${error.message}`,
+      stack: `${error.stack ?? ""}\nComponent stack:${info.componentStack ?? ""}`,
+    });
     console.error("[omp-app] the page failed while rendering", error);
   }
 
@@ -115,6 +124,11 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
               </span>
             ) : null}
           </div>
+          <p className="text-muted-foreground px-4 text-sm" data-log-hint="true">
+            The app keeps a debug log. To attach it to a bug report, run{" "}
+            <code>omp-app debug-report</code> in a terminal: it saves one file. The log is here:
+            <code className="mt-1 block text-xs [overflow-wrap:anywhere]">{knownLogFile()}</code>
+          </p>
           <details className="text-muted-foreground px-4 text-xs">
             <summary className="cursor-pointer text-sm">Technical details</summary>
             <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words">

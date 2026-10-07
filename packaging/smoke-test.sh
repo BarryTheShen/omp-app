@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Unpacks a built package into a temporary folder and checks that the installed command works:
-# it prints its version, serves the web app and its scripts, a second launch finds the first, and
-# stopping it removes its record. No omp is needed; nothing outside the temporary folder is touched.
+# it prints its version, serves the web app and its scripts, a second launch finds the first, it
+# writes its debug log (private, without the launch token) and `omp-app logs` and
+# `omp-app debug-report` read it, and stopping it removes its record. No omp is needed; nothing
+# outside the temporary folder is touched.
 #
 #   packaging/smoke-test.sh dist/release/omp-app_0.1.451_amd64.deb
 set -euo pipefail
@@ -42,8 +44,27 @@ curl -sf -o /dev/null "$base$script" || { echo "FAIL: the app script $script is 
 second=$("$app" --no-open)
 grep -q 'already running' <<<"$second" || { echo "FAIL: a second launch did not find the first" >&2; echo "$second" >&2; exit 1; }
 
+# The debug log: written from the first moment, private, and never holding the launch token.
+logfile="$XDG_STATE_HOME/omp-app/omp-app.log"
+for _ in $(seq 1 25); do
+  grep -q 'listening port=' "$logfile" 2>/dev/null && break
+  sleep 0.2
+done
+grep -q ' start version=' "$logfile" || { echo "FAIL: the log has no start line" >&2; cat "$logfile" >&2; exit 1; }
+grep -q 'listening port=' "$logfile" || { echo "FAIL: the log has no listening line" >&2; cat "$logfile" >&2; exit 1; }
+[[ $(stat -c %a "$logfile") == 600 ]] || { echo "FAIL: the log is not private (mode 600)" >&2; exit 1; }
+token=${address##*#token=}
+[[ -n $token ]] && ! grep -q -F -- "$token" "$logfile" || { echo "FAIL: the launch token is in the log" >&2; exit 1; }
+logs=$("$app" logs --lines 5)
+grep -q -F "Log file: $logfile" <<<"$logs" || { echo "FAIL: 'omp-app logs' does not name the log file" >&2; echo "$logs" >&2; exit 1; }
+(cd "$work/folder" && "$app" debug-report >/dev/null)
+report=$(find "$work/folder" -maxdepth 1 -name 'omp-app-debug-*.log' | head -1)
+[[ -n $report ]] && grep -q 'omp app debug report' "$report" || { echo "FAIL: 'omp-app debug-report' wrote no report" >&2; exit 1; }
+! grep -q -F -- "$token" "$report" || { echo "FAIL: the launch token is in the debug report" >&2; exit 1; }
+
 kill "$pid"
 wait "$pid" 2>/dev/null || true
 pid=""
 [[ ! -e $XDG_STATE_HOME/omp-app/instance.json ]] || { echo "FAIL: the instance record was left behind" >&2; exit 1; }
-echo "smoke test passed: omp-app $expected serves its web app and manages its instance record"
+grep -q ' stop$' "$logfile" || { echo "FAIL: the log has no stop line after quitting" >&2; tail -5 "$logfile" >&2; exit 1; }
+echo "smoke test passed: omp-app $expected serves its web app, keeps its debug log and manages its instance record"

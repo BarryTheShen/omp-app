@@ -28,6 +28,8 @@ omp-app logs                  # where the log is, and its last 100 lines (--line
 omp-app debug-report          # writes omp-app-debug-<time>.log in this folder: attach it to a GitHub issue
 ```
 
+In the app, press `Ctrl+K` and choose "Save debug log" to download the same report from the page. Errors the page hits (an uncaught error, a failed render, a console error) go into the same log, and when the page cannot reach the app it says where the log is.
+
 A folder that is really named `logs` is opened with `omp-app ./logs`.
 
 ## Status

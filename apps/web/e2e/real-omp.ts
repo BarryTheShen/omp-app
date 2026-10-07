@@ -55,6 +55,8 @@ export interface RealApp {
   readonly log: () => string;
   /** This run's launch token (the secret in the page's address); it must never be logged. */
   readonly token: string;
+  /** For a test that breaks the page on purpose: problems matching this are expected; any other still fails the test. */
+  readonly allowProblem: (pattern: RegExp) => void;
 }
 
 /** Clicks "New chat" and waits for the composer; a new chat starts a real omp process. */
@@ -220,6 +222,7 @@ export const realTest = test.extend<{
     let server: { readonly process: ChildProcess; readonly url: string } | undefined;
     const pages: Page[] = [];
     const problems: string[] = [];
+    const allowed: RegExp[] = [];
     try {
       provider = await startProvider(agentDir, env);
       server = await startServer(root, env, { idleCloseMs, seedSessions });
@@ -255,8 +258,19 @@ export const realTest = test.extend<{
       const logFile = join(root, "logs", "omp-app.log");
       const log = (): string => (existsSync(logFile) ? readFileSync(logFile, "utf8") : "");
       const token = decodeURIComponent(new URL(url).hash.replace(/^#token=/, ""));
-      await use({ folder, otherFolder, open, problems, ompProcesses, log, token });
-      expect(problems).toEqual([]);
+      await use({
+        folder,
+        otherFolder,
+        open,
+        problems,
+        ompProcesses,
+        log,
+        token,
+        allowProblem: (pattern) => void allowed.push(pattern),
+      });
+      expect(
+        problems.filter((problem) => !allowed.some((pattern) => pattern.test(problem))),
+      ).toEqual([]);
     } finally {
       await Promise.all(pages.map((page) => page.close().catch(() => undefined)));
       await stopChild(server?.process);

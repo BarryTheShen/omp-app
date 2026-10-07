@@ -26,7 +26,13 @@ import {
   useSyncExternalStore,
 } from "react";
 import { AccessibilityProvider } from "@/a11y";
-import { AppConnectionGate, AppConnectionProvider, useAppConnection } from "@/launch";
+import {
+  AppConnectionGate,
+  AppConnectionProvider,
+  LaunchStatusScreen,
+  rememberLogFile,
+  useAppConnection,
+} from "@/launch";
 import { LayoutArea, type LayoutAreaName, type SurfaceMap } from "@/layout";
 import type {
   SessionCapabilitiesSource,
@@ -76,6 +82,8 @@ import { DESCRIPTORS, RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
 import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
+import { reportClientError, setClientErrorSink } from "./client-errors";
+import { saveTextFile } from "./save-file";
 import { SessionModelControl, SessionStatusBar } from "./session-controls";
 
 const FOLDER_KEY = "omp.app.root.folder";
@@ -586,9 +594,30 @@ function ActiveThreadReady({
         })
         .catch(() => setCommandError("Clearing the conversation is unavailable."));
     });
+    handlers.set("U0.saveDebugLog", () => {
+      setCommandError(null);
+      setCommandStatus("Saving the debug log…");
+      void client
+        .port(AppPort)
+        .debugReport({})
+        .then((report) => {
+          saveTextFile(report.fileName, report.text);
+          setCommandStatus(
+            `Saved ${report.fileName} to your downloads. Attach it to a bug report.`,
+          );
+        })
+        .catch((error: unknown) => {
+          setCommandStatus(null);
+          setCommandError(
+            error instanceof AppFailure
+              ? error.appError.message
+              : "The debug log could not be saved. Try again.",
+          );
+        });
+    });
     if (catalog && remote) handlers.set("R1.openSession", openSessionBrowser);
     return handlers;
-  }, [catalog, lifecycle, openSessionBrowser, openThread, remote]);
+  }, [catalog, client, lifecycle, openSessionBrowser, openThread, remote]);
   const clearReason =
     lifecycle?.getAvailability("clear").reason ??
     "Clearing the conversation only works in the omp terminal for now.";
@@ -1023,6 +1052,7 @@ function ConnectedRoot() {
   const client = connection.client;
   const [capabilities, setCapabilities] = useState<CapabilityMap>(EMPTY_CAPABILITIES);
   const [serverInfo, setServerInfo] = useState<AppServerInfo>();
+  const [startFailed, setStartFailed] = useState(false);
   const shortcutPreferences = useMemo<PreferenceStore>(
     () => ({
       get: (key) => window.localStorage.getItem(key) ?? undefined,
@@ -1035,17 +1065,38 @@ function ConnectedRoot() {
     if (!client) return;
     let active = true;
     const app = client.port(AppPort);
+    // From here on, errors in the page land in the app's debug log next to the server's own lines.
+    setClientErrorSink((report) => app.reportClientError(report));
+    setStartFailed(false);
     void Promise.all([app.capabilities({}), app.serverInfo({})])
       .then(([nextCapabilities, nextServerInfo]) => {
         if (!active) return;
+        rememberLogFile(nextServerInfo.logFile);
         setCapabilities(nextCapabilities);
         setServerInfo(nextServerInfo);
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!active) return;
+        // A blank page would say nothing: show what happened, and leave a line in the log.
+        reportClientError({
+          kind: "error",
+          message: `The app server's first answers failed: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        setStartFailed(true);
+      });
     return () => {
       active = false;
+      setClientErrorSink(undefined);
     };
   }, [client]);
+  if (client && !serverInfo && startFailed) {
+    return (
+      <LaunchStatusScreen
+        reason="The app server is running but did not answer the page's first questions. Reload the page; if it happens again, attach the app's log to a bug report."
+        state="closed"
+      />
+    );
+  }
   if (!client || !serverInfo) return null;
   return (
     <RegistryProvider capabilities={capabilities} registry={registry} renderers={RENDERERS}>

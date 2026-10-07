@@ -244,7 +244,13 @@ export async function createCompositionServer(
     replay,
     resolveThread,
     capabilities,
-    serverInfo: { instanceId, serverVersion, launchFolder: FolderPath.parse(launchFolder), omp },
+    serverInfo: {
+      instanceId,
+      serverVersion,
+      launchFolder: FolderPath.parse(launchFolder),
+      omp,
+      ...(options.logger === undefined ? {} : { logFile: logger.path }),
+    },
     health,
     logger,
     ...(options.logger === undefined
