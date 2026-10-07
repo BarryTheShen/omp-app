@@ -222,6 +222,17 @@ export class AttachmentManager implements AttachmentAdapter {
     this.error = null;
     this.notify();
   }
+  /**
+   * Drops attachments after a successful admission without deleting their blobs.
+   * The draft has been cleared, so the server's orphan cleanup owns their eventual reclamation.
+   */
+  public clearAfterSend(): void {
+    this.pending.clear();
+    this.complete.clear();
+    this.refs.clear();
+    this.error = null;
+    this.notify();
+  }
 
   public async restore(
     refs: readonly AttachmentRef[],

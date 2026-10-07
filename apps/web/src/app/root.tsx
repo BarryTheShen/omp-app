@@ -711,6 +711,7 @@ function ActiveThreadReady({
         attachmentRefs: attachmentManager.toDraftRefs(),
       }),
     );
+    attachmentManager.clearAfterSend();
     scrollController.jumpToLatest();
   };
   const cancel = (): Promise<void> => runtimeController.cancel();

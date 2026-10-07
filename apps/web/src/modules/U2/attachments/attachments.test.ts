@@ -66,6 +66,20 @@ describe("U2.3 AttachmentManager", () => {
     expect(manager.getState().complete).toHaveLength(0);
     expect(blobs.deleted).toEqual(["attachment-1"]);
   });
+  test("clears sent attachments from the next draft without deleting their stored blobs", async () => {
+    const blobs = new MemoryBlobStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const pending = await manager.add({
+      file: new File(["text"], "notes.txt", { type: "text/plain" }),
+    });
+    await manager.send(pending);
+
+    manager.clearAfterSend();
+
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [], error: null });
+    expect(manager.toDraftRefs()).toEqual([]);
+    expect(blobs.deleted).toEqual([]);
+  });
   test("does not upload an attachment twice when submission asks to send it again", async () => {
     const blobs = new MemoryBlobStore();
     const manager = new AttachmentManager({ blobStore: blobs });
