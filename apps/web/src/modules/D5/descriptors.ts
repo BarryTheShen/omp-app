@@ -1,7 +1,14 @@
 import type { Descriptor } from "@omp-app/contracts";
 import { SESSION_LIFECYCLE_CAPABILITIES } from "./lifecycle";
 
-/** D5-owned lifecycle commands; later D5 command surfaces reuse these registry entries. */
+/**
+ * D5-owned lifecycle commands; later D5 command surfaces reuse these registry entries.
+ *
+ * Only `/fresh` carries a slash name. Over omp's RPC, `/new` and `/clear` have no non-terminal
+ * handler, so omp sends them to the model as plain text (probed on omp 18.7.0): a user who typed
+ * what the palette shows would spend a model turn on the word "/new". They get a slash name back
+ * when the composer's slash catalog (D2.3) runs them through these app handlers instead.
+ */
 export const D5_LIFECYCLE_COMMAND_DESCRIPTORS = [
   {
     kind: "command",
@@ -10,7 +17,6 @@ export const D5_LIFECYCLE_COMMAND_DESCRIPTORS = [
     title: "New chat",
     covers: ["C2.new"],
     requires: [SESSION_LIFECYCLE_CAPABILITIES.new],
-    slash: { name: "new", source: "builtin" },
   },
   {
     kind: "command",
@@ -28,6 +34,5 @@ export const D5_LIFECYCLE_COMMAND_DESCRIPTORS = [
     title: "Clear conversation",
     covers: ["C2.clear"],
     requires: [SESSION_LIFECYCLE_CAPABILITIES.clear],
-    slash: { name: "clear", source: "builtin" },
   },
 ] as const satisfies readonly Descriptor[];

@@ -207,3 +207,28 @@ realTest("lists omp's todos in the checklist panel", async ({ realApp }) => {
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: join(screenshots, "app-root-todos.png"), fullPage: true });
 });
+
+realTest(
+  "refreshing the model connection from the palette keeps the app running and shows omp's own reply",
+  async ({ realApp }) => {
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await composer.focus();
+    await page.keyboard.press("Control+k");
+    await page.getByRole("option", { name: /Fresh connection to the model/ }).click();
+    const question = page.getByRole("dialog");
+    await expect(question).toContainText("Start a fresh connection to the model?");
+    await question.getByRole("button", { name: "Confirm" }).click();
+
+    // omp answers an idle `/fresh` with its own message and no `data` in the prompt response, which
+    // used to crash the whole server ("Can't reach the app server"). The app now says what omp said.
+    await expect(page.getByRole("status").filter({ hasText: /^omp: / })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText(/Can't reach the app server/)).toHaveCount(0);
+
+    // The server is still alive and the same chat still works.
+    await sendPrompt(composer, "Please run_bash and tell me what it printed.");
+    await expect(page.getByText("tool said: fixture-tool")).toBeVisible({ timeout: 45_000 });
+  },
+);

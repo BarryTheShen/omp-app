@@ -126,3 +126,37 @@ describe("ompSearchPath", () => {
     );
   });
 });
+
+describe("installUnhandledRejectionLogger", () => {
+  // `bun test` fails any test that leaves an unhandled rejection, so the behavior is proven in a
+  // child process: with the logger the child logs the error and keeps running; without it the
+  // process ends, which is how one chat's bug used to take every open chat down.
+  const launcherPath = join(import.meta.dir, "launcher.ts");
+  async function runChild(withLogger: boolean): Promise<{ code: number; out: string }> {
+    const script = `
+      import { installUnhandledRejectionLogger } from ${JSON.stringify(launcherPath)};
+      ${withLogger ? 'installUnhandledRejectionLogger((m) => console.log("LOGGED " + m.replaceAll("\\n", " | ")));' : ""}
+      void Promise.reject(new Error("a chat's bug"));
+      void Promise.reject("plain text reason");
+      setTimeout(() => { console.log("STILL RUNNING"); process.exit(0); }, 100);
+    `;
+    const child = Bun.spawn(["bun", "-e", script], { stdout: "pipe", stderr: "pipe" });
+    const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+    return { code, out };
+  }
+
+  test("logs each unhandled rejection in full and the process carries on", async () => {
+    const { code, out } = await runChild(true);
+    expect(code).toBe(0);
+    expect(out).toContain("STILL RUNNING");
+    expect(out).toContain("the app keeps running");
+    expect(out).toContain("a chat's bug");
+    expect(out).toContain("plain text reason");
+  });
+
+  test("without it the same rejection ends the process (the failure it guards against)", async () => {
+    const { code, out } = await runChild(false);
+    expect(code).not.toBe(0);
+    expect(out).not.toContain("STILL RUNNING");
+  });
+});

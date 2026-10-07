@@ -163,6 +163,49 @@ describe("OmpCommandGatewayService", () => {
     });
   });
 
+  test("a prompt response without data (omp's real reply to an idle /fresh) completes and crashes nothing", async () => {
+    // Captured from omp 18.7.0 (`prompt "/fresh"` on an idle session over `--mode rpc-ui`): the
+    // response is `{success: true}` with no `data`, then a prompt_result marked aborted.
+    // omp 18.6.1 sends the same data-less response for every normally admitted prompt
+    // (rpc-mode.ts: `return success(id, "prompt")`). The server used to read `ack.agentInvoked`
+    // from the missing object inside a promise callback, an unhandled rejection that killed the
+    // whole server and every open session with it.
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const { duplex, gateway } = await createHarness();
+      const future = gateway.run({ threadId, command: "/fresh" });
+      const afterAvailability = await answerAvailability(duplex, 0, ["fresh"]);
+      const promptWrite = writesAfter(duplex, afterAvailability)[0];
+      if (promptWrite?.type !== "prompt") throw new Error("expected a prompt write");
+      duplex.emit({
+        type: "command_output",
+        text: "Fresh provider session started (0 provider states pruned).",
+      });
+      duplex.emit({ type: "response", id: promptWrite.id, command: "prompt", success: true });
+      await flush();
+      await expect(future.admitted).resolves.toEqual({ agentInvoked: true });
+      duplex.emit({
+        type: "prompt_result",
+        id: promptWrite.id,
+        agentInvoked: true,
+        status: "aborted",
+        sessionSettled: true,
+      });
+      const result = await future;
+      expect(result).toMatchObject({
+        command: "/fresh",
+        agentInvoked: true,
+        outputs: [{ text: "Fresh provider session started (0 provider states pruned)." }],
+      });
+      await new Promise((done) => setTimeout(done, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   test("correlates command_output/session_info_update/config_update and ignores interleaved frames", async () => {
     const { duplex, gateway } = await createHarness();
     const future = gateway.run({ threadId, command: "/compact" });

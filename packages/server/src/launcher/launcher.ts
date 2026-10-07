@@ -155,3 +155,19 @@ export function ompSearchPath(
   );
   return [...parts, ...extra].join(":");
 }
+
+/**
+ * One chat's bug must not end every open chat: an unhandled promise rejection otherwise ends the
+ * server process (a crash in the gateway did exactly that). The error is logged in full, never
+ * hidden, and the server keeps running. Returns a function that removes the handler.
+ */
+export function installUnhandledRejectionLogger(log: (message: string) => void): () => void {
+  const handler = (reason: unknown) => {
+    const detail = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+    log(`omp-app: an unexpected error was caught and the app keeps running.\n${detail}`);
+  };
+  process.on("unhandledRejection", handler);
+  return () => {
+    process.off("unhandledRejection", handler);
+  };
+}

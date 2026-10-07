@@ -283,11 +283,22 @@ describe("SessionLifecycleController", () => {
     expect(run).toHaveBeenCalledWith({ threadId, command: "/fresh" }, undefined);
   });
 
-  test("maps an aborted typed gateway result to cancellation", async () => {
+  test("keeps omp's own message when omp marks an idle /fresh as aborted, and treats a cancelled call as cancelled", async () => {
+    // omp 18.7.0 answers an idle `/fresh` with its message and a prompt_result marked "aborted".
     const abortedResult: CommandRunResult = { ...freshResult, status: "aborted" };
     const run = vi.fn<SessionLifecycleGateway["run"]>(async () => abortedResult);
     const controller = createController({ gateway: { run } });
+    await expect(controller.fresh()).resolves.toEqual({
+      status: "completed",
+      value: abortedResult,
+    });
 
-    await expect(controller.fresh()).resolves.toEqual({ status: "cancelled" });
+    // The user cancelling (the call's own signal) is what reports "cancelled".
+    const cancelled = vi.fn<SessionLifecycleGateway["run"]>(async () => {
+      throw new AppFailure({ code: "cancelled", message: "Cancelled", retryable: false });
+    });
+    await expect(createController({ gateway: { run: cancelled } }).fresh()).resolves.toEqual({
+      status: "cancelled",
+    });
   });
 });

@@ -396,12 +396,16 @@ export class OmpCommandGatewayService {
       unsubscribe();
       throw toFailure(cause, "send command");
     }
+    // omp answers an admitted prompt (and a local command such as an idle `/fresh`) with
+    // `{ success: true }` and no `data`, so the acknowledgement can be `undefined`: "agentInvoked"
+    // then defaults to true, because the prompt reached the agent unless omp says otherwise.
     future.admitted.then(
-      (ack) => admittedDeferred.resolve({ agentInvoked: ack.agentInvoked ?? true }),
+      (ack: OmpWire.PromptAck | undefined) =>
+        admittedDeferred.resolve({ agentInvoked: ack?.agentInvoked ?? true }),
       admittedDeferred.reject,
     );
 
-    let ack: OmpWire.PromptAck;
+    let ack: OmpWire.PromptAck | undefined;
     try {
       ack = await future;
     } catch (cause) {
@@ -410,7 +414,7 @@ export class OmpCommandGatewayService {
     }
     unsubscribe();
 
-    const agentInvoked = ack.agentInvoked ?? true;
+    const agentInvoked = ack?.agentInvoked ?? true;
     const status: CommandRunResult["status"] =
       promptResult?.status === "aborted" ? "aborted" : "completed";
     const promptSettled = agentInvoked ? (promptResult?.sessionSettled ?? false) : true;

@@ -11,6 +11,7 @@ import { dirname, resolve } from "node:path";
 import {
   clearInstance,
   DEFAULT_PORT,
+  installUnhandledRejectionLogger,
   instanceFile,
   ompSearchPath,
   parseLauncherArgs,
@@ -95,6 +96,8 @@ if (args.command === "version") {
   console.log(version);
   process.exit(0);
 }
+
+installUnhandledRejectionLogger((message) => console.error(message));
 
 const home = homedir();
 const record = instanceFile(Bun.env, home);

@@ -400,6 +400,16 @@ function ActiveThreadReady({
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
+  // A header message about a palette command goes away on its own; an error that stayed until the
+  // next command left "could not be started" on screen long after the moment had passed.
+  useEffect(() => {
+    if (commandStatus === null && commandError === null) return;
+    const timer = window.setTimeout(() => {
+      setCommandStatus(null);
+      setCommandError(null);
+    }, 8_000);
+    return () => window.clearTimeout(timer);
+  }, [commandStatus, commandError]);
   // Stable, so the dialog host below isn't torn down (cancelling a dialog that was just presented)
   // when the command palette or any other overlay opens.
   const overlay = useStableOverlayHost();
@@ -536,9 +546,8 @@ function ActiveThreadReady({
     });
     handlers.set("D5.fresh", (signal) => {
       setCommandError(null);
-      setCommandStatus("Refreshing the model connection…");
+      setCommandStatus(null);
       if (!lifecycle) {
-        setCommandStatus(null);
         setCommandError("Refreshing the model connection is unavailable for this session.");
         return;
       }
@@ -547,11 +556,17 @@ function ActiveThreadReady({
         .then((outcome) => {
           if (outcome.status === "error" || outcome.status === "unavailable") {
             setCommandError(outcome.error.message);
+          } else if (outcome.status === "completed") {
+            // Say what omp said instead of claiming success: omp refuses while a reply is still
+            // streaming ("Wait for the current response to finish…") and answers in its own words.
+            const reply = outcome.value.outputs
+              .map((output) => output.text.trim())
+              .filter((text) => text !== "")
+              .join(" ");
+            setCommandStatus(reply === "" ? "omp had nothing to say about it." : `omp: ${reply}`);
           }
-          setCommandStatus(null);
         })
         .catch(() => {
-          setCommandStatus(null);
           setCommandError("The model connection could not be refreshed. Try again.");
         });
     });

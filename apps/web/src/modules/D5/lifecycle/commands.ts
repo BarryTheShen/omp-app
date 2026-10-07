@@ -136,7 +136,9 @@ export class SessionLifecycleController {
       if (latestGate) return latestGate;
       const callOptions = signal === undefined ? undefined : { signal };
       const result = await this.gateway.run({ threadId, command: "/fresh" }, callOptions);
-      if (result.status === "aborted") return { status: "cancelled" };
+      // omp ends an idle `/fresh` with a prompt_result marked "aborted" (observed on omp 18.7.0)
+      // after printing its own message, so that marker does not mean the user cancelled. The
+      // user's own cancellation arrives as an AppFailure("cancelled") from the call itself.
       return { status: "completed", value: result };
     } catch (error) {
       return failureOutcome(error, "Refreshing provider state failed.");
