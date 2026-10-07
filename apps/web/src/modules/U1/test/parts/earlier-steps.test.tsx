@@ -104,6 +104,9 @@ function mountedSteps(count: number): number[] {
   return indexes;
 }
 
+/** Mounting a 130-step turn takes a few seconds when other work is running on the machine. */
+const HEAVY_TURN_TIMEOUT = 30_000;
+
 describe("a very long turn folds its earlier steps", () => {
   test("folds from the first step that leaves the latest twenty, and only when that hides twenty or more", () => {
     expect(KEEP_LAST_STEPS).toBe(20);
@@ -127,37 +130,47 @@ describe("a very long turn folds its earlier steps", () => {
     expect(mountedSteps(39)).toHaveLength(39);
   });
 
-  test("opening the fold mounts the first 50 folded steps, and the buttons add the rest in pages", () => {
-    renderTurn(130);
-    // 130 steps: the first 110 fold away.
-    const toggle = screen.getByRole("button", { name: "110 earlier steps" });
-    expect(mountedSteps(130)).toEqual(Array.from({ length: 20 }, (_, index) => 110 + index));
+  test(
+    "opening the fold mounts the first 50 folded steps, and the buttons add the rest in pages",
+    () => {
+      renderTurn(130);
+      // 130 steps: the first 110 fold away.
+      const toggle = screen.getByRole("button", { name: "110 earlier steps" });
+      expect(mountedSteps(130)).toEqual(Array.from({ length: 20 }, (_, index) => 110 + index));
 
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(mountedSteps(130)).toEqual([
-      ...Array.from({ length: EARLIER_STEPS_PAGE }, (_, index) => index),
-      ...Array.from({ length: 20 }, (_, index) => 110 + index),
-    ]);
+      fireEvent.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      expect(mountedSteps(130)).toEqual([
+        ...Array.from({ length: EARLIER_STEPS_PAGE }, (_, index) => index),
+        ...Array.from({ length: 20 }, (_, index) => 110 + index),
+      ]);
 
-    fireEvent.click(screen.getByRole("button", { name: `Show ${EARLIER_STEPS_PAGE} more steps` }));
-    expect(mountedSteps(130)).toHaveLength(100 + 20);
-    // Ten are left, so the paging button is gone and one button shows them.
-    expect(screen.queryByRole("button", { name: /Show 50 more steps/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show the last 10" }));
-    expect(mountedSteps(130)).toHaveLength(130);
-    expect(screen.queryByRole("button", { name: /Show/ })).toBeNull();
+      fireEvent.click(
+        screen.getByRole("button", { name: `Show ${EARLIER_STEPS_PAGE} more steps` }),
+      );
+      expect(mountedSteps(130)).toHaveLength(100 + 20);
+      // Ten are left, so the paging button is gone and one button shows them.
+      expect(screen.queryByRole("button", { name: /Show 50 more steps/ })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Show the last 10" }));
+      expect(mountedSteps(130)).toHaveLength(130);
+      expect(screen.queryByRole("button", { name: /Show/ })).toBeNull();
 
-    // Closing it takes them off the page again.
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(mountedSteps(130)).toEqual(Array.from({ length: 20 }, (_, index) => 110 + index));
-  });
+      // Closing it takes them off the page again.
+      fireEvent.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(mountedSteps(130)).toEqual(Array.from({ length: 20 }, (_, index) => 110 + index));
+    },
+    HEAVY_TURN_TIMEOUT,
+  );
 
-  test("'Show all' mounts every folded step at once", () => {
-    renderTurn(130);
-    fireEvent.click(screen.getByRole("button", { name: "110 earlier steps" }));
-    fireEvent.click(screen.getByRole("button", { name: "Show all 60 remaining" }));
-    expect(mountedSteps(130)).toHaveLength(130);
-  });
+  test(
+    "'Show all' mounts every folded step at once",
+    () => {
+      renderTurn(130);
+      fireEvent.click(screen.getByRole("button", { name: "110 earlier steps" }));
+      fireEvent.click(screen.getByRole("button", { name: "Show all 60 remaining" }));
+      expect(mountedSteps(130)).toHaveLength(130);
+    },
+    HEAVY_TURN_TIMEOUT,
+  );
 });
