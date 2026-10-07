@@ -81,6 +81,9 @@ test("renders six model settings sections with session/default provenance", asyn
     await expect(
       page.getByTestId(`model-settings-${title.toLowerCase().replaceAll(" ", "-")}`),
     ).toBeVisible();
+  await expect(page.getByTestId("default-model-source")).toHaveText(
+    "Source: Saved for all projects",
+  );
   await assertStyled(page);
   await page.screenshot({
     path: "../../.data/screenshots/d1-5-model-settings-light.png",

@@ -414,11 +414,11 @@ describe("D1 CC4 and CC10 settings surfaces", () => {
     );
 
     expect(screen.getByTestId("defaultThinkingLevel-provenance").textContent).toBe(
-      "Source: project · overrides global, default",
+      "Source: Saved for this project · overrides settings for all projects, omp's default",
     );
     expect(screen.getByTestId("session-model").textContent).toBe("fixture-provider/reasoner-large");
     expect(screen.getByTestId("default-model").textContent).toBe("fixture-provider/fast-chat");
-    expect(screen.getByText("Source: project")).toBeTruthy();
+    expect(screen.getByText("Source: Saved for this project")).toBeTruthy();
     runtime.dispose();
   });
 });

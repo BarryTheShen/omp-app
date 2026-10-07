@@ -1,3 +1,4 @@
+import type { ConfigSource } from "@omp-app/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,6 +6,7 @@ import {
   SettingsSection,
   type SettingsSectionDescriptor,
   type StagedSettings,
+  settingSourceLabel,
 } from "@/modules/S1/settings-kit";
 import { type SettingsRuntime, useSettingsRuntime } from "../../S1/runtime";
 import type { ModelRef } from "../contract";
@@ -24,7 +26,7 @@ export type ModelSettingsSurfaceProps = {
   readonly sections: readonly ModelSettingsSectionProps[];
   readonly sessionModel: ModelRef | null;
   readonly defaultModel: ModelRef | null;
-  readonly defaultSource: string;
+  readonly defaultSource: ConfigSource;
   readonly presets?: ModelPresetController;
 };
 
@@ -198,7 +200,9 @@ export function ModelScopeSummary({
           <dd data-testid="default-model" className="mt-1 font-medium">
             {modelLabel(defaultModel)}
           </dd>
-          <p className="mt-1 text-xs text-muted-foreground">Source: {defaultSource}</p>
+          <p data-testid="default-model-source" className="mt-1 text-xs text-muted-foreground">
+            Source: {settingSourceLabel(defaultSource)}
+          </p>
         </div>
       </dl>
     </section>

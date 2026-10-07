@@ -80,7 +80,9 @@ test("Files settings render ConfigStore provenance and dependent read-only contr
   await expect(page.getByRole("heading", { name: "Files / Editing" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Files / Reading" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Files / Read Summaries" })).toBeVisible();
-  await expect(page.getByTestId("read.defaultLimit-provenance")).toContainText("Source: global");
+  await expect(page.getByTestId("read.defaultLimit-provenance")).toContainText(
+    "Source: Saved for all projects",
+  );
   await expect(page.getByText("Turn on Read Summaries to edit this setting.")).toHaveCount(6);
   await expectCardToken(page, false);
   await page.screenshot({ path: join(SCREENSHOTS, "s2.2-files-light.png"), fullPage: true });

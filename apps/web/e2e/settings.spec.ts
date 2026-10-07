@@ -205,6 +205,9 @@ test("settings section renders provenance and secret-safe controls", async ({ pa
   await expect(page.locator('input[type="number"]')).toHaveValue("5000");
   await expect(page.locator("body")).not.toContainText("value:");
   assertControlEvidence(await collectStyleEvidence(page), false);
+  await expect(page.getByTestId("appearance.showInlineImages-provenance")).toHaveText(
+    "Source: Saved for this project · overrides settings for all projects, omp's default",
+  );
   await page.screenshot({
     path: "../../.data/screenshots/s1-1-settings-light.png",
     fullPage: true,

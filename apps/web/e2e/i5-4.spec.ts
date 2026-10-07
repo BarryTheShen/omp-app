@@ -86,7 +86,9 @@ test("renders complete voice and speech settings with provenance in light mode",
   await expect(
     page.getByText("Language used for speech recognition, for example en."),
   ).toBeVisible();
-  await expect(page.getByTestId("live.voice-provenance")).toContainText("Source: global");
+  await expect(page.getByTestId("live.voice-provenance")).toContainText(
+    "Source: Saved for all projects",
+  );
   await expect(page.getByLabel("Provider name 1")).toHaveValue("openai");
   await expect(page.getByLabel("Request limit 1")).toHaveValue("4");
   await expect(page.getByText("i5-playground-revision")).toHaveCount(0);

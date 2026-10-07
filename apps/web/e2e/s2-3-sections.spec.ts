@@ -84,7 +84,7 @@ test("S2.3 sections render ConfigStore state and descriptor-backed apply reports
   await expect(reports.nth(0)).toContainText("Live: LSP, Shared Language Servers");
   await expect(reports.nth(1)).toContainText("Live: Bash, Allow Compound Commands");
   await expect(reports.nth(2)).toContainText("Live: Python Eval Backend");
-  await expect(page.getByText("Source: global").first()).toBeVisible();
+  await expect(page.getByText("Source: Saved for all projects").first()).toBeVisible();
   await expectCardToken(page, false);
   await page.screenshot({ path: join(SCREENSHOTS, "s2.3-sections-light.png"), fullPage: true });
 

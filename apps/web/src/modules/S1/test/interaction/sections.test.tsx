@@ -485,7 +485,9 @@ describe("S1.4 interaction settings sections", () => {
     expect(screen.getByLabelText("Policy 1")).toHaveProperty("value", "allow");
     expect(screen.getByLabelText("Tool name 2")).toHaveProperty("value", "task");
     expect(screen.getByLabelText("Policy 2")).toHaveProperty("value", "prompt");
-    expect(screen.getByText("Source: global · overrides default")).toBeTruthy();
+    expect(
+      screen.getByText("Source: Saved for all projects · overrides omp's default"),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add tool policy" }).hasAttribute("disabled")).toBe(
       false,
     );

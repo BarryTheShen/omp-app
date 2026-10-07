@@ -352,9 +352,36 @@ export function effectiveEntry(snapshot: ConfigSnapshot, key: string): ConfigEnt
   return snapshot.entries.find((entry) => entry.key === key);
 }
 
+const SOURCE_LABELS: Readonly<Record<ConfigEntry["source"], string>> = {
+  env: "Set in the environment",
+  runtime: "Set for this run",
+  overlay: "Set in an additional config file",
+  project: "Saved for this project",
+  global: "Saved for all projects",
+  default: "omp's default",
+  app: "Saved in this app only",
+};
+
+const OVERRIDE_LABELS: Readonly<Record<ConfigEntry["source"], string>> = {
+  env: "the environment",
+  runtime: "this run",
+  overlay: "an additional config file",
+  project: "project settings",
+  global: "settings for all projects",
+  default: "omp's default",
+  app: "this app",
+};
+
+export function settingSourceLabel(source: ConfigEntry["source"]): string {
+  return SOURCE_LABELS[source];
+}
+
 export function provenanceLabel(entry: ConfigEntry): string {
-  const source = entry.source;
-  const overrides = entry.overrides.length > 0 ? ` · overrides ${entry.overrides.join(", ")}` : "";
+  const source = settingSourceLabel(entry.source);
+  const overrides =
+    entry.overrides.length > 0
+      ? ` · overrides ${entry.overrides.map((layer) => OVERRIDE_LABELS[layer]).join(", ")}`
+      : "";
   return `${source}${overrides}`;
 }
 

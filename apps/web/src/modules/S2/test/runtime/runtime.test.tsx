@@ -522,7 +522,7 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     await screen.findByRole("heading", { name: "Shell / Eval & Runtimes" });
     expect(secretSummary(secretEntry)).toEqual({ isSecret: true, isSet: true, source: "env" });
     expect(screen.getByTestId("python.interpreter-provenance").textContent).toContain(
-      "Source: env",
+      "Source: Set in the environment",
     );
     expect(screen.queryByDisplayValue(hiddenValue)).toBeNull();
     expect(screen.queryByText(hiddenValue)).toBeNull();

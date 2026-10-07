@@ -241,7 +241,7 @@ describe("I1 Tools / Discovery & MCP settings", () => {
       />,
     );
     expect(screen.getByRole("heading", { name: "Tools / Discovery & MCP" })).toBeTruthy();
-    expect(screen.getAllByText("Source: default")).toHaveLength(8);
+    expect(screen.getAllByText("Source: omp's default")).toHaveLength(8);
     expect(screen.getByDisplayValue("250")).toBeTruthy();
     expect(screen.getAllByRole("checkbox").map((input) => input.matches(":checked"))).toEqual([
       true,

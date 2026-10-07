@@ -43,7 +43,9 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     render(<FilesHarness runtime={runtime} Section={FilesEditingSection} />);
 
     await screen.findByRole("heading", { name: "Files / Editing" });
-    expect(screen.getByTestId("edit.mode-provenance").textContent).toContain("Source: default");
+    expect(screen.getByTestId("edit.mode-provenance").textContent).toContain(
+      "Source: omp's default",
+    );
     expect(screen.getByRole("combobox")).toBeTruthy();
 
     expect(runtime.stage("edit.mode", { secret: false, value: "patch" }).ok).toBe(true);
@@ -98,7 +100,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     await screen.findByRole("heading", { name: "Files / Reading" });
     expect(runtime.getSnapshot().config?.folder).toBe(projectFolder);
     expect(screen.getByTestId("read.defaultLimit-provenance").textContent).toContain(
-      "Source: project · overrides global",
+      "Source: Saved for this project · overrides settings for all projects",
     );
     expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("500");
   });
@@ -130,7 +132,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(1);
     expect(screen.getByText("On")).toBeTruthy();
     expect(screen.getByTestId("read.summarize.prose-provenance").textContent).toContain(
-      "Source: project · overrides global",
+      "Source: Saved for this project · overrides settings for all projects",
     );
     const snapshot = runtime.getSnapshot().config;
     if (!snapshot) throw new Error("Read summaries were not loaded.");
@@ -156,7 +158,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     );
     await waitFor(() => expect(runtime.getSnapshot().phase).toBe("conflict"));
     expect(screen.getByRole("alert").textContent).toContain(
-      "Default Read Limit: 200 · Source: global",
+      "Default Read Limit: 200 · Source: Saved for all projects",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Keep mine" }));
@@ -201,7 +203,9 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     state.listError = null;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(runtime.getSnapshot().phase).toBe("ready"));
-    expect(screen.getByTestId("edit.mode-provenance").textContent).toContain("Source: default");
+    expect(screen.getByTestId("edit.mode-provenance").textContent).toContain(
+      "Source: omp's default",
+    );
   });
   test("does not display a secret payload returned for a non-secret setting", async () => {
     const hiddenValue = ["not", "visible", "runtime"].join("-");
@@ -225,7 +229,9 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     render(<FilesHarness runtime={runtime} Section={FilesReadingSection} />);
 
     await screen.findByRole("heading", { name: "Files / Reading" });
-    expect(screen.getByTestId("read.defaultLimit-provenance").textContent).toContain("Source: env");
+    expect(screen.getByTestId("read.defaultLimit-provenance").textContent).toContain(
+      "Source: Set in the environment",
+    );
     expect(screen.queryByDisplayValue(hiddenValue)).toBeNull();
     expect(screen.queryByText(hiddenValue)).toBeNull();
   });

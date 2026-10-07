@@ -102,7 +102,7 @@ describe("D1 model settings sections", () => {
     );
     expect(screen.getByTestId("session-model").textContent).toBe("alpha/reasoner-large");
     expect(screen.getByTestId("default-model").textContent).toBe("alpha/fast-chat");
-    expect(screen.getByText("Source: global")).toBeTruthy();
+    expect(screen.getByText("Source: Saved for all projects")).toBeTruthy();
   });
 
   test("renders all six sections and offers explicit conflict choices", () => {

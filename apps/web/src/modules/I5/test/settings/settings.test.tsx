@@ -192,7 +192,9 @@ describe("I5 settings panel", () => {
     expect((screen.getByLabelText("Provider name 1") as HTMLInputElement).value).toBe("openai");
     expect((screen.getByLabelText("Request limit 1") as HTMLInputElement).value).toBe("4");
     expect(screen.queryByDisplayValue('{"openai":4}')).toBeNull();
-    expect(screen.getByTestId("live.voice-provenance").textContent).toContain("Source: global");
+    expect(screen.getByTestId("live.voice-provenance").textContent).toContain(
+      "Source: Saved for all projects",
+    );
     expect(screen.getByText("Local TTS Voice")).toBeTruthy();
     expect(screen.queryByText("searxng.token")).toBeNull();
   });

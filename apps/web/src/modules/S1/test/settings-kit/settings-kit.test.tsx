@@ -199,9 +199,31 @@ describe("S1 settings grammar", () => {
     const entry = expectValue(
       snapshot.entries.find((candidate) => candidate.key === "provider.apiKey"),
     );
-    expect(provenanceLabel(entry)).toBe("global");
+    expect(provenanceLabel(entry)).toBe("Saved for all projects");
     expect(secretSummary(entry)).toEqual({ isSecret: true, isSet: true, source: "global" });
     expect("value" in entry).toBe(false);
+  });
+
+  test("uses plain English for every source and overridden layer", () => {
+    const entry = expectValue(
+      snapshot.entries.find((candidate) => candidate.key === "provider.apiKey"),
+    );
+    const sources: readonly [ConfigEntry["source"], string][] = [
+      ["env", "Set in the environment"],
+      ["runtime", "Set for this run"],
+      ["overlay", "Set in an additional config file"],
+      ["project", "Saved for this project"],
+      ["global", "Saved for all projects"],
+      ["default", "omp's default"],
+      ["app", "Saved in this app only"],
+    ];
+
+    for (const [source, label] of sources) {
+      expect(provenanceLabel({ ...entry, source, overrides: [] })).toBe(label);
+    }
+    expect(provenanceLabel({ ...entry, source: "project", overrides: ["global", "default"] })).toBe(
+      "Saved for this project · overrides settings for all projects, omp's default",
+    );
   });
 });
 
@@ -209,7 +231,9 @@ describe("S1 settings section", () => {
   test("renders every control type, provenance and secret set/unset only", () => {
     const { container } = render(<SettingsSection descriptor={descriptor} snapshot={snapshot} />);
     expect(screen.getByText("Theme settings")).toBeTruthy();
-    expect(screen.getByText("Source: global · overrides default")).toBeTruthy();
+    expect(
+      screen.getByText("Source: Saved for all projects · overrides omp's default"),
+    ).toBeTruthy();
     expect(screen.getByTestId("provider.apiKey-secret-status").textContent).toContain("Set");
     expect(screen.getByRole("button", { name: "Replace…" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Unset" })).toBeTruthy();
@@ -219,6 +243,11 @@ describe("S1 settings section", () => {
     expect(screen.getByRole("combobox")).toBeTruthy();
     expect(screen.getByRole("spinbutton")).toBeTruthy();
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
+  });
+
+  test("keeps the unconfigured source label unchanged", () => {
+    render(<SettingsSection descriptor={descriptor} snapshot={{ ...snapshot, entries: [] }} />);
+    expect(screen.getAllByText("Source: not configured")).toHaveLength(controls.length);
   });
 });
 
