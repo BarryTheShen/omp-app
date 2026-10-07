@@ -1,3 +1,4 @@
+import type { Logger } from "../../../logging";
 import type { ProviderAccountStoreService } from "../accounts";
 import type { AttachmentStoreService } from "../attachments";
 import type { CheckpointStoreService } from "../checkpoints";
@@ -39,4 +40,6 @@ export interface A1PortContext {
   readonly readHostMetadata?: typeof readHostMetadata;
   readonly watchStreamActivity: A1StreamActivity;
   readonly publish: A1EventPublisher;
+  /** The app's debug log; absent in tests and embeddings. */
+  readonly logger?: Logger;
 }

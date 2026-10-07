@@ -1,6 +1,8 @@
 import {
   type SessionFile as ContractSessionFile,
   type SubagentTranscript as ContractSubagentTranscript,
+  SessionFile,
+  SessionFilePath,
   SessionFileStore,
 } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
@@ -23,6 +25,16 @@ function mapSubagent(transcript: InternalSubagentTranscript): ContractSubagentTr
   };
 }
 
+/**
+ * omp writes a fork's `parentSession` as a session id (for example `01a11405-b2e2-...`), and older
+ * versions wrote the parent's file path. The contract holds a path: anything else is no parent
+ * rather than a reason to refuse the whole list.
+ */
+function parentSessionPath(value: string | undefined): ContractSessionFile["parentSession"] {
+  const parsed = SessionFilePath.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 function mapSession(file: InternalSessionFile): ContractSessionFile {
   return {
     id: file.id as ContractSessionFile["id"],
@@ -33,7 +45,7 @@ function mapSession(file: InternalSessionFile): ContractSessionFile {
     cwd: file.cwd as ContractSessionFile["cwd"],
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
-    parentSession: (file.parentSession ?? null) as ContractSessionFile["parentSession"],
+    parentSession: parentSessionPath(file.parentSession),
     messageCount: file.messageCount,
     assistantTurns: file.assistantTurns,
     sizeBytes: file.sizeBytes,
@@ -51,7 +63,25 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
       listSessions: async (args, handlerContext) => {
         assertNotAborted(handlerContext);
         const result = await context.sessionFileStore.listSessions(args);
-        return { sessions: result.sessions.map(mapSession), nextCursor: result.nextCursor };
+        const sessions: ContractSessionFile[] = [];
+        let skipped = 0;
+        let firstProblem: string | undefined;
+        for (const file of result.sessions) {
+          // One chat that does not fit the contract must not empty the whole list.
+          const mapped = SessionFile.safeParse(mapSession(file));
+          if (mapped.success) {
+            sessions.push(mapped.data);
+          } else {
+            skipped += 1;
+            const issue = mapped.error.issues[0];
+            firstProblem ??=
+              issue === undefined ? "invalid" : `${issue.path.join(".")}: ${issue.message}`;
+          }
+        }
+        if (skipped > 0) {
+          context.logger?.warn("sessions.skipped", { count: skipped, first_problem: firstProblem });
+        }
+        return { sessions, nextCursor: result.nextCursor };
       },
       listFolders: async (args, handlerContext) => {
         assertNotAborted(handlerContext);

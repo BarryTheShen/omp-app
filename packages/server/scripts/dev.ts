@@ -343,6 +343,7 @@ export async function createCompositionServer(
     readHostMetadata,
     publish,
     watchStreamActivity,
+    logger,
   };
   const registry: PortRegistry = createPortRegistry([
     ...a0Runtime.registrations,
