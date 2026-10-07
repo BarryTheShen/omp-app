@@ -10,7 +10,11 @@ export interface SessionCatalogState {
   readonly selectedThreadId: ThreadId | null;
   readonly selectionRevision: number;
   readonly isLoading: boolean;
+  /** True while `loadMore` fetches the next page; the list stays on screen meanwhile. */
+  readonly isLoadingMore: boolean;
   readonly error: AppError | null;
+  /** Why the last `loadMore` failed; the chats already shown are kept. Cleared by the next try. */
+  readonly moreError: AppError | null;
 }
 
 export interface SessionCatalog {

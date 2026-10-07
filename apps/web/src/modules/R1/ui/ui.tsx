@@ -429,6 +429,33 @@ export function SessionCatalogSidebar({
           ))}
         </div>
       )}
+      {!snapshot.isLoading &&
+        !snapshot.error &&
+        sessions.length > 0 &&
+        snapshot.nextCursor !== null && (
+          // Outside the listbox (a listbox holds only options) and pinned under it, so it is always
+          // in reach however far the list is scrolled.
+          <div className="border-sidebar-border flex shrink-0 flex-col gap-1 border-t p-2">
+            {snapshot.moreError ? (
+              <p className="text-destructive px-1 text-xs" role="alert">
+                Couldn't load older chats. {snapshot.moreError.message}
+              </p>
+            ) : null}
+            <Button
+              disabled={snapshot.isLoadingMore}
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => void catalog.loadMore()}
+            >
+              {snapshot.isLoadingMore
+                ? "Loading older chats…"
+                : snapshot.moreError
+                  ? "Try again"
+                  : "Show older chats"}
+            </Button>
+          </div>
+        )}
     </aside>
   );
 }

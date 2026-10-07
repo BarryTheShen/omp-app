@@ -166,4 +166,78 @@ describe("SessionCatalogSidebar", () => {
     fireEvent.click(buttons.at(-1) as HTMLElement);
     await waitFor(() => expect(calls).toEqual(["new"]));
   });
+
+  test("'Show older chats' loads the next page below the list, then goes away at the end", async () => {
+    const all = Array.from({ length: 70 }, (_, index) =>
+      session(
+        `chat-${String(index).padStart(2, "0")}`,
+        new Date(Date.UTC(2026, 9, 5) - index * 60_000).toISOString(),
+        `Chat number ${index}`,
+      ),
+    );
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async ({ cursor, limit }) => {
+          const start = cursor === undefined ? 0 : Number.parseInt(cursor, 10);
+          const end = Math.min(start + (limit ?? 100), all.length);
+          return {
+            sessions: all.slice(start, end),
+            nextCursor: end < all.length ? String(end) : null,
+          };
+        },
+        readSession: async () => all[0] as SessionFile,
+      },
+    });
+    renderSidebar({ catalog: model });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(50));
+    expect(screen.queryByText("Chat number 69")).toBeNull();
+
+    // The button sits outside the listbox (a listbox holds only options).
+    const button = screen.getByRole("button", { name: "Show older chats" });
+    expect(screen.getByRole("listbox", { name: "Session list" }).contains(button)).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(70));
+    expect(screen.getByText("Chat number 69")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /older chats/ })).toBeNull();
+  });
+
+  test("a failed 'Show older chats' says so in plain words, keeps the list, and Try again works", async () => {
+    const all = Array.from({ length: 60 }, (_, index) =>
+      session(
+        `chat-${String(index).padStart(2, "0")}`,
+        new Date(Date.UTC(2026, 9, 5) - index * 60_000).toISOString(),
+        `Chat number ${index}`,
+      ),
+    );
+    let failing = true;
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async ({ cursor, limit }) => {
+          if (failing && cursor === "50") throw new Error("the disk is busy");
+          const start = cursor === undefined ? 0 : Number.parseInt(cursor, 10);
+          const end = Math.min(start + (limit ?? 100), all.length);
+          return {
+            sessions: all.slice(start, end),
+            nextCursor: end < all.length ? String(end) : null,
+          };
+        },
+        readSession: async () => all[0] as SessionFile,
+      },
+    });
+    renderSidebar({ catalog: model });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(50));
+    fireEvent.click(screen.getByRole("button", { name: "Show older chats" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("Couldn't load older chats"),
+    );
+    expect(screen.getByRole("alert").textContent).toContain("the disk is busy");
+    expect(screen.getAllByRole("option")).toHaveLength(50);
+
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(60));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

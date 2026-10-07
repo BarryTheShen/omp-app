@@ -1,4 +1,5 @@
 import type {
+  Cursor,
   FolderPath,
   GitState,
   Revision,
@@ -100,6 +101,20 @@ function sameSession(left: SessionMetadata, right: SessionMetadata): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function sameFilter(left: SessionCatalogFilter, right: SessionCatalogFilter): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** A search looks through every chat it can load, up to this many... */
+const MAX_SEARCHED = 1_000;
+/** ...fetched in at most this many requests (the server gives at most 100 chats per request). */
+const MAX_PAGES = 20;
+
+interface FetchedSessions {
+  readonly sessions: readonly SessionMetadata[];
+  readonly nextCursor: Cursor | null;
+}
+
 function folderRoots(scope: SessionScope, git: GitState | null): readonly FolderPath[] {
   if (scope.kind === "folder") return [scope.folder];
   const roots = [scope.repositoryRoot, ...(git?.worktrees.map((worktree) => worktree.path) ?? [])];
@@ -122,6 +137,8 @@ export class SessionCatalogModel {
   private readonly tombstones = new Map<ThreadId, number>();
   private snapshot: CatalogSnapshot;
   private operation = 0;
+  /** Bumped by `list` only: a page `loadMore` fetched before a newer `list` began is dropped. */
+  private listGeneration = 0;
   private pins: ReadonlySet<ThreadId> = new Set();
 
   public constructor(options: CatalogModelOptions) {
@@ -135,7 +152,9 @@ export class SessionCatalogModel {
       selectedThreadId: null,
       selectionRevision: 0,
       isLoading: false,
+      isLoadingMore: false,
       error: null,
+      moreError: null,
       git: null,
       pinsRevision: null,
     });
@@ -152,31 +171,42 @@ export class SessionCatalogModel {
 
   public async list(args: SessionCatalogPageArgs): Promise<SessionCatalogPage> {
     const operation = ++this.operation;
+    const generation = ++this.listGeneration;
+    // Removals that happened before this full load began are settled by it; later ones still hide
+    // their chat from this load's pages (a removal also supersedes the load).
+    if (args.cursor === undefined) this.clearTombstonesBefore(operation);
     const filter = args.filter;
-    this.commit({ filter, isLoading: true, error: null });
+    // A search looks through all chats. Refreshing the list that is already shown keeps as many
+    // chats on screen as it had, so a refresh after each turn never drops the older pages.
+    const wanted =
+      args.cursor !== undefined
+        ? 0
+        : filter.query.trim().length > 0
+          ? MAX_SEARCHED
+          : sameFilter(filter, this.snapshot.filter)
+            ? this.snapshot.sessions.length
+            : 0;
+    this.commit({ filter, isLoading: true, isLoadingMore: false, error: null, moreError: null });
     try {
       const git = await this.readGit(filter.scope);
       const pins = await this.readPins();
-      const folders = folderRoots(filter.scope, git);
-      const pages = await Promise.all(
-        folders.map((folder) =>
-          this.options.sessionFiles.listSessions({
-            folder,
-            ...(args.cursor ? { cursor: args.cursor } : {}),
-            ...(args.limit ? { limit: args.limit } : {}),
-          }),
-        ),
-      );
-      if (operation !== this.operation) return this.pageFromSnapshot();
-      if (args.cursor === undefined) this.clearTombstonesBefore(operation);
-      const sessionsById = new Map<ThreadId, SessionMetadata>();
-      for (const session of pages.flatMap((page) => page.sessions)) {
-        if (this.tombstones.has(session.id)) continue;
-        const metadata = metadataFromFile(session, filter.scope, pins);
-        if (queryMatches(metadata, filter.query)) sessionsById.set(metadata.id, metadata);
+      const first = await this.fetchSessions(filter, git, pins, args);
+      const byId = new Map(first.sessions.map((session) => [session.id, session]));
+      let nextCursor = first.nextCursor;
+      for (
+        let pages = 1;
+        nextCursor !== null &&
+        byId.size < wanted &&
+        pages < MAX_PAGES &&
+        generation === this.listGeneration;
+        pages += 1
+      ) {
+        const more = await this.fetchSessions(filter, git, pins, { ...args, cursor: nextCursor });
+        for (const session of more.sessions) byId.set(session.id, session);
+        nextCursor = more.nextCursor;
       }
-      const sessions = [...sessionsById.values()].sort(compareSessions);
-      const nextCursor = pages.find((page) => page.nextCursor !== null)?.nextCursor ?? null;
+      if (operation !== this.operation) return this.pageFromSnapshot();
+      const sessions = [...byId.values()].sort(compareSessions);
       this.commit({
         filter,
         sessions,
@@ -191,6 +221,42 @@ export class SessionCatalogModel {
       const failure = internalFailure(error, "Loading the session catalog failed");
       if (operation === this.operation) this.commit({ isLoading: false, error: failure.appError });
       throw failure;
+    }
+  }
+
+  /**
+   * Adds the next page after the chats already shown; the list stays on screen while it loads and
+   * a failure is kept in `moreError`, never in `error`. A `list` that starts meanwhile has the newer
+   * truth, so the page is dropped.
+   */
+  public async loadMore(limit = 50): Promise<void> {
+    const cursor = this.snapshot.nextCursor;
+    if (cursor === null || this.snapshot.isLoading || this.snapshot.isLoadingMore) return;
+    const generation = this.listGeneration;
+    this.commit({ isLoadingMore: true, moreError: null });
+    try {
+      const pins = await this.readPins();
+      const fetched = await this.fetchSessions(this.snapshot.filter, this.snapshot.git, pins, {
+        filter: this.snapshot.filter,
+        cursor,
+        limit,
+      });
+      if (generation !== this.listGeneration) return;
+      const byId = new Map(this.snapshot.sessions.map((session) => [session.id, session]));
+      // A chat already shown may have been refreshed by an event: its copy stays.
+      for (const session of fetched.sessions)
+        if (!byId.has(session.id)) byId.set(session.id, session);
+      this.commit({
+        sessions: [...byId.values()].sort(compareSessions),
+        nextCursor: fetched.nextCursor,
+        isLoadingMore: false,
+      });
+    } catch (error) {
+      if (generation !== this.listGeneration) return;
+      this.commit({
+        isLoadingMore: false,
+        moreError: internalFailure(error, "Loading older chats failed").appError,
+      });
     }
   }
 
@@ -265,6 +331,34 @@ export class SessionCatalogModel {
       .map((session) => (session.id === sessionId ? { ...session, pinned } : session))
       .sort(compareSessions);
     this.commit({ sessions, pinsRevision: revision });
+  }
+
+  /** One request per folder for the given page; nothing is committed. */
+  private async fetchSessions(
+    filter: SessionCatalogFilter,
+    git: GitState | null,
+    pins: ReadonlySet<ThreadId>,
+    args: SessionCatalogPageArgs,
+  ): Promise<FetchedSessions> {
+    const pages = await Promise.all(
+      folderRoots(filter.scope, git).map((folder) =>
+        this.options.sessionFiles.listSessions({
+          folder,
+          ...(args.cursor ? { cursor: args.cursor } : {}),
+          ...(args.limit ? { limit: args.limit } : {}),
+        }),
+      ),
+    );
+    const sessions: SessionMetadata[] = [];
+    for (const session of pages.flatMap((page) => page.sessions)) {
+      if (this.tombstones.has(session.id)) continue;
+      const metadata = metadataFromFile(session, filter.scope, pins);
+      if (queryMatches(metadata, filter.query)) sessions.push(metadata);
+    }
+    return {
+      sessions,
+      nextCursor: pages.find((page) => page.nextCursor !== null)?.nextCursor ?? null,
+    };
   }
 
   private async readGit(scope: SessionScope): Promise<GitState | null> {

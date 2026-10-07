@@ -135,6 +135,163 @@ describe("SessionCatalogModel list/sort/filter", () => {
   });
 });
 
+/** A folder with `total` chats, newest first, paged by numeric cursors like the server's list. */
+function pagedFolder(total: number) {
+  const all = Array.from({ length: total }, (_, index) =>
+    session(
+      `chat-${String(index).padStart(3, "0")}`,
+      new Date(Date.UTC(2026, 9, 5) - index * 60_000).toISOString(),
+    ),
+  );
+  const requests: Array<{ cursor: string | undefined; limit: number | undefined }> = [];
+  const sessionFiles = {
+    listSessions: async ({
+      cursor,
+      limit,
+    }: {
+      folder: FolderPath;
+      cursor?: string;
+      limit?: number;
+    }) => {
+      requests.push({ cursor, limit });
+      const start = cursor === undefined ? 0 : Number.parseInt(cursor, 10);
+      const end = Math.min(start + (limit ?? 100), total);
+      return { sessions: all.slice(start, end), nextCursor: end < total ? String(end) : null };
+    },
+    readSession: async () => all[0] as SessionFile,
+  };
+  return { requests, sessionFiles };
+}
+
+describe("SessionCatalogModel older pages", () => {
+  test("loadMore adds the next page after the chats shown and stops when there are no more", async () => {
+    const { requests, sessionFiles } = pagedFolder(130);
+    const model = new SessionCatalogModel({ scope, sessionFiles });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    expect(model.getSnapshot().sessions).toHaveLength(50);
+    expect(model.getSnapshot().nextCursor).toBe("50");
+
+    await model.loadMore(50);
+    expect(model.getSnapshot().sessions).toHaveLength(100);
+    expect(model.getSnapshot().nextCursor).toBe("100");
+    await model.loadMore(50);
+    const snapshot = model.getSnapshot();
+    expect(snapshot.sessions).toHaveLength(130);
+    expect(snapshot.nextCursor).toBeNull();
+    expect(snapshot.isLoadingMore).toBe(false);
+    expect(snapshot.sessions.map((item) => item.id)).toEqual(
+      Array.from({ length: 130 }, (_, index) => `chat-${String(index).padStart(3, "0")}`),
+    );
+
+    const before = requests.length;
+    await model.loadMore(50);
+    expect(requests).toHaveLength(before);
+  });
+
+  test("a second loadMore while one is loading makes no second request", async () => {
+    const { requests, sessionFiles } = pagedFolder(120);
+    const model = new SessionCatalogModel({ scope, sessionFiles });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    const first = model.loadMore(50);
+    const second = model.loadMore(50);
+    await Promise.all([first, second]);
+    expect(requests.filter((request) => request.cursor === "50")).toHaveLength(1);
+    expect(model.getSnapshot().sessions).toHaveLength(100);
+  });
+
+  test("a failed loadMore keeps the chats shown, says why, and the next try clears it", async () => {
+    const { sessionFiles } = pagedFolder(120);
+    let failing = true;
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        ...sessionFiles,
+        listSessions: async (args) => {
+          if (failing && args.cursor === "50") {
+            throw new AppFailure({ code: "internal", message: "disk busy", retryable: true });
+          }
+          return sessionFiles.listSessions(args);
+        },
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    await model.loadMore(50);
+    let snapshot = model.getSnapshot();
+    expect(snapshot.sessions).toHaveLength(50);
+    expect(snapshot.moreError?.message).toBe("disk busy");
+    // The list itself did not fail: it stays on screen and `error` stays empty.
+    expect(snapshot.error).toBeNull();
+    expect(snapshot.isLoading).toBe(false);
+    expect(snapshot.isLoadingMore).toBe(false);
+
+    failing = false;
+    await model.loadMore(50);
+    snapshot = model.getSnapshot();
+    expect(snapshot.sessions).toHaveLength(100);
+    expect(snapshot.moreError).toBeNull();
+  });
+
+  test("a page that arrives after a newer list began is dropped", async () => {
+    const { sessionFiles } = pagedFolder(120);
+    const gate = Promise.withResolvers<void>();
+    let hold = false;
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        ...sessionFiles,
+        listSessions: async (args) => {
+          if (hold && args.cursor === "50") await gate.promise;
+          return sessionFiles.listSessions(args);
+        },
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    hold = true;
+    const more = model.loadMore(50);
+    hold = false;
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    gate.resolve();
+    await more;
+    expect(model.getSnapshot().sessions).toHaveLength(50);
+    expect(model.getSnapshot().nextCursor).toBe("50");
+    expect(model.getSnapshot().isLoadingMore).toBe(false);
+  });
+
+  test("refreshing the same list keeps as many chats on screen as it had", async () => {
+    const { requests, sessionFiles } = pagedFolder(130);
+    const model = new SessionCatalogModel({ scope, sessionFiles });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    await model.loadMore(50);
+    await model.loadMore(50);
+    expect(model.getSnapshot().sessions).toHaveLength(130);
+
+    requests.length = 0;
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    expect(model.getSnapshot().sessions).toHaveLength(130);
+    expect(model.getSnapshot().nextCursor).toBeNull();
+    expect(requests.map((request) => request.cursor)).toEqual([undefined, "50", "100"]);
+  });
+
+  test("a different filter starts from the first page again", async () => {
+    const { requests, sessionFiles } = pagedFolder(130);
+    const model = new SessionCatalogModel({ scope, sessionFiles });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    await model.loadMore(50);
+    requests.length = 0;
+    await model.list({ filter: { scope, query: "chat-0" }, limit: 50 });
+    // A search looks through every chat, so it pages to the end by itself.
+    expect(requests.map((request) => request.cursor)).toEqual([undefined, "50", "100"]);
+  });
+
+  test("a search finds a chat on a page that was never shown", async () => {
+    const { sessionFiles } = pagedFolder(130);
+    const model = new SessionCatalogModel({ scope, sessionFiles });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    const page = await model.list({ filter: { scope, query: "chat-129" }, limit: 50 });
+    expect(page.sessions.map((item) => item.id)).toEqual(["chat-129"]);
+  });
+});
+
 describe("SessionCatalogModel reconciliation", () => {
   test("updates a renamed session in place without changing its identity", async () => {
     const original = session("one", "2026-10-03T00:00:00.000Z");
