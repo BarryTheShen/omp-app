@@ -794,4 +794,108 @@ describe("OmpRuntimeStore", () => {
       revision: 2,
     });
   });
+
+  test("shows a custom_message entry as a persisted custom message, with its text, flag, details and time", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const noticeAt = "2026-10-05T00:00:03.000Z";
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "u1",
+          parentId: null,
+          timestamp: "2026-10-05T00:00:00.000Z",
+          message: { role: "user", content: "start two helpers", timestamp: 1 },
+        },
+        {
+          type: "custom_message",
+          id: "c1",
+          parentId: "u1",
+          timestamp: noticeAt,
+          customType: "async-result",
+          content: "<system-notice>\nBackground job Reviewer has completed.\n</system-notice>",
+          display: true,
+          details: { jobs: [{ jobId: "Reviewer", type: "task" }] },
+        },
+        { type: "model_change", id: "m1", parentId: "c1", timestamp: noticeAt },
+      ],
+      "m1" as EntryId,
+    );
+    const snapshot = store.getSnapshot();
+    expect(snapshot.messageOrder).toEqual([`entry:${threadId}:u1`, `entry:${threadId}:c1`]);
+    expect(snapshot.messages[`entry:${threadId}:c1` as MessageKey]).toMatchObject({
+      status: "persisted",
+      entryId: "c1",
+      parentId: "u1",
+      message: {
+        role: "custom",
+        customType: "async-result",
+        content: "<system-notice>\nBackground job Reviewer has completed.\n</system-notice>",
+        display: true,
+        details: { jobs: [{ jobId: "Reviewer", type: "task" }] },
+        timestamp: Date.parse(noticeAt),
+      },
+    });
+  });
+
+  test("a custom_message entry that lacks its kind or time is not a message", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages(
+      [
+        {
+          type: "custom_message",
+          id: "c1",
+          parentId: null,
+          timestamp: "not a time",
+          customType: "x",
+          content: "a",
+          display: true,
+        },
+        {
+          type: "custom_message",
+          id: "c2",
+          parentId: "c1",
+          timestamp: "2026-10-05T00:00:00.000Z",
+          content: "a",
+          display: true,
+        },
+      ],
+      "c2" as EntryId,
+    );
+    expect(store.getSnapshot().messageOrder).toEqual([]);
+  });
+
+  test("a live custom message pairs with its saved entry and shows once", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const noticeAt = Date.parse("2026-10-05T00:00:03.000Z");
+    const live = {
+      role: "custom",
+      customType: "irc:incoming",
+      content: "<irc>\nhello\n</irc>",
+      display: true,
+      details: { from: "Reviewer", message: "hello" },
+      timestamp: noticeAt,
+    };
+    omp(store, { type: "message_start", messageId: "m-irc", message: live }, 1);
+    omp(store, { type: "message_end", messageId: "m-irc", message: live }, 2);
+    expect(store.getSnapshot().messageOrder).toEqual([expect.stringMatching(/^stream:.*:m-irc$/)]);
+
+    store.pairEndedMessages(
+      [
+        {
+          type: "custom_message",
+          id: "c1",
+          parentId: null,
+          timestamp: new Date(noticeAt).toISOString(),
+          customType: "irc:incoming",
+          content: "<irc>\nhello\n</irc>",
+          display: true,
+          details: { from: "Reviewer", message: "hello" },
+        },
+      ],
+      "c1" as EntryId,
+    );
+    // One row, now keyed by its saved entry: no second copy from the history.
+    expect(store.getSnapshot().messageOrder).toEqual([`entry:${threadId}:c1`]);
+  });
 });

@@ -52,6 +52,14 @@ export interface SeedToolResults {
   readonly results: readonly SeedToolResult[];
 }
 
+/**
+ * The value of the `seedEntries` option: one chat made of these raw session entries (`type`, and the
+ * fields omp writes for it), in order. An object around the list for the same reason as above.
+ */
+export interface SeedEntries {
+  readonly entries: readonly Record<string, unknown>[];
+}
+
 export interface OpenOptions {
   /** Runs before the app loads, for example to add an init script; its result is ignored. */
   readonly beforeLoad?: (page: Page) => Promise<unknown>;
@@ -142,6 +150,7 @@ async function startServer(
     readonly seedSessions: number;
     readonly seedLongTurn: number;
     readonly seedToolResults: SeedToolResults | undefined;
+    readonly seedEntries: SeedEntries | undefined;
     readonly ompBinary: string | undefined;
   },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
@@ -231,6 +240,26 @@ if (samples.length > 0) {
   await writeFile(file, lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
   await utimes(file, when, when);
 }
+// One chat of raw session entries (the harness adds id and parentId, and a time to an entry without one).
+const seededEntries = ${JSON.stringify(options.seedEntries?.entries ?? [])};
+if (seededEntries.length > 0) {
+  const folder = ${JSON.stringify(join(root, "workspace"))};
+  const bucket = join(${JSON.stringify(join(root, "agent"))}, "sessions", sessionBucketName(folder, { home: ${JSON.stringify(join(root, "home"))} }));
+  await mkdir(bucket, { recursive: true });
+  const id = "01a33333-0000-7000-8000-000000000003";
+  const when = new Date(Date.UTC(2026, 9, 3));
+  const stamp = when.toISOString();
+  const lines = [{ type: "session", version: 3, id, timestamp: stamp, cwd: folder }];
+  let parent = null;
+  seededEntries.forEach((entry, index) => {
+    const entryId = "e" + String(index).padStart(6, "0");
+    lines.push({ ...entry, id: entryId, parentId: parent, timestamp: entry.timestamp ?? stamp });
+    parent = entryId;
+  });
+  const file = join(bucket, stamp.replace(/[:.]/g, "-") + "_" + id + ".jsonl");
+  await writeFile(file, lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
+  await utimes(file, when, when);
+}
 const server = await createCompositionServer({
   port: 0,
   cwd: ${JSON.stringify(join(root, "workspace"))},
@@ -276,8 +305,9 @@ const enabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
  * shorten how long an unwatched chat's omp process lives with `realTest.use({ idleCloseMs })`, and
  * start with that many old chats already in the folder with `realTest.use({ seedSessions })`, or with
  * one chat holding a single turn of that many steps with `realTest.use({ seedLongTurn })`, or with one
- * chat made of recorded tool results with `realTest.use({ seedToolResults: [...] })` (one turn each, in
- * order). A spec
+ * chat made of recorded tool results with `realTest.use({ seedToolResults: { results } })` (one turn
+ * each, in order), or with one made of raw session entries with `realTest.use({ seedEntries: {
+ * entries } })`. A spec
  * about omp being missing points the app at another binary with `realTest.use({ ompBinary })`.
  */
 export const realTest = test.extend<{
@@ -286,15 +316,17 @@ export const realTest = test.extend<{
   seedSessions: number;
   seedLongTurn: number;
   seedToolResults: SeedToolResults | undefined;
+  seedEntries: SeedEntries | undefined;
   ompBinary: string | undefined;
 }>({
   idleCloseMs: [undefined, { option: true }],
   seedSessions: [0, { option: true }],
   seedLongTurn: [0, { option: true }],
   seedToolResults: [undefined, { option: true }],
+  seedEntries: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
   realApp: async (
-    { browser, idleCloseMs, seedSessions, seedLongTurn, seedToolResults, ompBinary },
+    { browser, idleCloseMs, seedSessions, seedLongTurn, seedToolResults, seedEntries, ompBinary },
     use,
     testInfo,
   ) => {
@@ -328,6 +360,7 @@ export const realTest = test.extend<{
         seedSessions,
         seedLongTurn,
         seedToolResults,
+        seedEntries,
         ompBinary,
       });
       const url = server.url;

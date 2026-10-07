@@ -579,12 +579,34 @@ function activeBranch(transcript: TranscriptState): readonly EntryId[] {
   return path.reverse();
 }
 
-/** The message an omp `message` session entry carries, if any. */
+/**
+ * The message an omp session entry carries, if any: a `message` entry holds one, and a
+ * `custom_message` entry is one (omp stores a custom message's `customType`, `content`, `display`
+ * and `details` on the entry, and its time as ISO text: session/session-manager.ts:3446-3465).
+ */
 function messageFromEntry(entry: TranscriptEntry): OmpMessage | undefined {
-  if (entry.type !== "message" || !isRecord(entry.raw)) return undefined;
+  if (!isRecord(entry.raw)) return undefined;
+  if (entry.type === "custom_message") return customMessageFromEntry(entry.raw);
+  if (entry.type !== "message") return undefined;
   const message = entry.raw.message;
   if (!isRecord(message) || typeof message.role !== "string") return undefined;
   return cloneValue(message) as unknown as OmpMessage;
+}
+
+function customMessageFromEntry(raw: Record<string, unknown>): OmpMessage | undefined {
+  const { customType, content, timestamp } = raw;
+  if (typeof customType !== "string" || typeof timestamp !== "string") return undefined;
+  if (typeof content !== "string" && !Array.isArray(content)) return undefined;
+  const time = Date.parse(timestamp);
+  if (Number.isNaN(time)) return undefined;
+  return cloneValue({
+    role: "custom",
+    customType,
+    content,
+    display: raw.display === true,
+    timestamp: time,
+    ...(raw.details === undefined ? {} : { details: raw.details }),
+  }) as unknown as OmpMessage;
 }
 
 /**

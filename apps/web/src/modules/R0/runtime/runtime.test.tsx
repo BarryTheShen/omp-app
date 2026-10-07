@@ -73,6 +73,18 @@ function toolResultMessage(
   } as OmpMessage;
 }
 
+function customMessage(overrides: Record<string, unknown> = {}): OmpMessage {
+  return {
+    role: "custom",
+    customType: "async-result",
+    content: "<system-notice>\nBackground job Reviewer has completed.\n</system-notice>",
+    display: true,
+    details: { jobs: [{ jobId: "Reviewer", type: "task" }] },
+    timestamp: 1_759_600_000_010,
+    ...overrides,
+  } as OmpMessage;
+}
+
 function runtimeMessage(
   message: OmpMessage,
   key = "entry:runtime-test-thread:entry-1",
@@ -494,5 +506,60 @@ describe("R0.3 assistant-ui runtime", () => {
     const text = parts.find((part) => part.type === "text")?.text;
     const result = render(<div>{typeof text === "string" ? text : ""}</div>);
     expect(result.getByText("Unable to render this omp message.")).toBeTruthy();
+  });
+
+  test("converts omp's custom messages into note messages that assistant-ui accepts", () => {
+    for (const message of [customMessage(), customMessage({ role: "hookMessage" })]) {
+      const converted = convertMessage(
+        runtimeMessage(message, "entry:runtime-test-thread:note") as RuntimeMessageView["record"],
+      );
+      expect(converted.role).toBe("system");
+      expect(converted.metadata?.custom).toMatchObject({
+        ompRole: message.role,
+        ompCustomType: "async-result",
+        ompCustomDetails: { jobs: [{ jobId: "Reviewer", type: "task" }] },
+      });
+      expect(messageParts(converted)).toEqual([
+        expect.objectContaining({
+          type: "text",
+          text: "<system-notice>\nBackground job Reviewer has completed.\n</system-notice>",
+        }),
+      ]);
+      expect(() =>
+        fromThreadMessageLike(converted, "note", { type: "complete", reason: "unknown" }),
+      ).not.toThrow();
+    }
+  });
+
+  test("a custom message marked display:false is saved but never a row, and does not split a turn", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const call = assistantMessage([
+      { type: "toolCall", id: "t1", name: "bash", arguments: { command: "pwd" } },
+    ]);
+    const hidden = customMessage({
+      customType: "mid-run-todo-nudge",
+      display: false,
+      timestamp: 5,
+    });
+    const result = toolResultMessage("t1");
+    const shown = customMessage({ timestamp: 6 });
+    for (const [index, message] of [call, hidden, result, shown].entries()) {
+      ompEvent(store, { type: "message_start", messageId: `m${index}`, message }, index * 2 + 1);
+      ompEvent(store, { type: "message_end", messageId: `m${index}`, message }, index * 2 + 2);
+    }
+    const runtime = createOmpRuntime({
+      store,
+      send: (() => Promise.resolve()) as unknown as RpcSessionSend,
+    });
+    const views = runtime.messages();
+    // The hidden message is left out, and the tool result still belongs to the call before it.
+    expect(views.map((view) => view.record.message.role)).toEqual([
+      "assistant",
+      "toolResult",
+      "custom",
+    ]);
+    expect(views[1]?.toolResultMatched).toBe(true);
+    // It is still saved in the store: it is only left out of what the page shows.
+    expect(Object.keys(store.getSnapshot().messages)).toHaveLength(4);
   });
 });

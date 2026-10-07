@@ -422,6 +422,22 @@ function convertRecord(
         status,
         metadata,
       } as unknown as ThreadMessageLike;
+    case "custom":
+    case "hookMessage":
+      // omp's own notes into the chat: a finished job, a message from another agent, the advisor.
+      return {
+        role: "system",
+        id,
+        ...(createdAt ? { createdAt } : {}),
+        content: userContentParts(message.content),
+        metadata: {
+          custom: {
+            ...metadata.custom,
+            ompCustomType: message.customType,
+            ompCustomDetails: message.details,
+          },
+        },
+      } as unknown as ThreadMessageLike;
     default:
       return fallbackMessage(id);
   }
@@ -478,6 +494,14 @@ export function createMemoizedMessageConverter(): (
   };
 }
 
+/**
+ * A custom message omp marks `display: false` is for the model alone (a todo reminder, goal context,
+ * a device notice): it is saved in the session but never a row in the transcript.
+ */
+function isHiddenMessage(message: OmpMessage): boolean {
+  return (message.role === "custom" || message.role === "hookMessage") && message.display === false;
+}
+
 type ProjectedMessageMetadata = {
   readonly joinedAssistantEntryIds: readonly string[];
   readonly toolResultMatched: boolean | undefined;
@@ -505,7 +529,7 @@ function projectedMessageMetadata(
   };
   for (const key of snapshot.messageOrder) {
     const record = snapshot.messages[key];
-    if (!record) continue;
+    if (!record || isHiddenMessage(record.message)) continue;
     if (record.message.role !== "assistant" && record.message.role !== "toolResult") {
       flush();
       continue;
@@ -542,7 +566,7 @@ class RuntimeMessageProjector {
     const metadata = projectedMessageMetadata(snapshot);
     for (const key of snapshot.messageOrder) {
       const record = snapshot.messages[key];
-      if (!record) continue;
+      if (!record || isHiddenMessage(record.message)) continue;
       const projected = metadata[key] ?? {
         joinedAssistantEntryIds: [],
         toolResultMatched: undefined,

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownText } from "../markdown";
 import { ReasoningGroup } from "../reasoning";
 import { type ToolRendererMap, ToolSlot } from "../tool-slots";
+import { CustomNote, type CustomNoteSource } from "./custom-note";
 import { EarlierSteps, isTurnGroup, useTurnGroupBy } from "./earlier-steps";
 export interface MessagePartsProps {
   readonly message: MessageState;
@@ -111,11 +112,22 @@ function renderPart(
   }
 }
 
+/** One of omp's own messages (R0 marks it with its kind and details), or undefined for an ordinary one. */
+function customNoteOf(message: MessageState): CustomNoteSource | undefined {
+  const { ompCustomType, ompCustomDetails } = message.metadata.custom;
+  if (typeof ompCustomType !== "string") return undefined;
+  const texts: string[] = [];
+  for (const part of message.content) {
+    if (part.type === "text") texts.push(part.text);
+  }
+  return { customType: ompCustomType, details: ompCustomDetails, text: texts.join("\n\n") };
+}
 /** Renders one assistant-ui message with U1's role grammar and U3's tool boundary. */
 export function MessageParts({ message, toolRenderers, extra }: MessagePartsProps) {
   const role = message.role;
   const isUser = role === "user";
   const isSystem = role === "system";
+  const note = isSystem ? customNoteOf(message) : undefined;
   // A very long assistant turn folds its earlier steps away (see earlier-steps.tsx).
   const groupBy = useTurnGroupBy(!isUser && !isSystem);
   const className = isUser
@@ -139,16 +151,20 @@ export function MessageParts({ message, toolRenderers, extra }: MessagePartsProp
         className={className}
         data-message-surface={isUser ? "user-bubble" : isSystem ? "system-note" : "assistant-text"}
       >
-        <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="never">
-          {({ part, children }) => {
-            if (isTurnGroup(part, "group-earlier"))
-              return <EarlierSteps group={part}>{children}</EarlierSteps>;
-            if (isTurnGroup(part, "group-reasoning"))
-              return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
-            if (part.type === "indicator") return null;
-            return renderPart(part as EnrichedPartState, toolRenderers);
-          }}
-        </MessagePrimitive.GroupedParts>
+        {note !== undefined ? (
+          <CustomNote source={note} />
+        ) : (
+          <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="never">
+            {({ part, children }) => {
+              if (isTurnGroup(part, "group-earlier"))
+                return <EarlierSteps group={part}>{children}</EarlierSteps>;
+              if (isTurnGroup(part, "group-reasoning"))
+                return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
+              if (part.type === "indicator") return null;
+              return renderPart(part as EnrichedPartState, toolRenderers);
+            }}
+          </MessagePrimitive.GroupedParts>
+        )}
         {extra}
       </div>
     </MessagePrimitive.Root>
