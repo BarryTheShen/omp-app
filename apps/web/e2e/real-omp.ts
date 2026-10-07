@@ -118,7 +118,11 @@ async function startProvider(agentDir: string, env: Record<string, string>): Pro
 async function startServer(
   root: string,
   env: Record<string, string>,
-  options: { readonly idleCloseMs: number | undefined; readonly seedSessions: number },
+  options: {
+    readonly idleCloseMs: number | undefined;
+    readonly seedSessions: number;
+    readonly seedLongTurn: number;
+  },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
   const script = join(root, "app-root-server.ts");
   await writeFile(
@@ -146,6 +150,34 @@ if (seed > 0) {
     await writeFile(file, lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
     await utimes(file, when, when);
   }
+}
+// One chat with a single very long turn: a user prompt, then this many bash steps, then an answer.
+const longTurn = ${options.seedLongTurn};
+if (longTurn > 0) {
+  const folder = ${JSON.stringify(join(root, "workspace"))};
+  const bucket = join(${JSON.stringify(join(root, "agent"))}, "sessions", sessionBucketName(folder, { home: ${JSON.stringify(join(root, "home"))} }));
+  await mkdir(bucket, { recursive: true });
+  const id = "01a11111-0000-7000-8000-000000000001";
+  const when = new Date(Date.UTC(2026, 9, 1));
+  const stamp = when.toISOString();
+  const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  const lines = [{ type: "session", version: 3, id, timestamp: stamp, cwd: folder }];
+  let parent = null;
+  let count = 0;
+  const add = (message) => {
+    const entryId = "e" + String(count++).padStart(6, "0");
+    lines.push({ type: "message", id: entryId, parentId: parent, timestamp: stamp, message });
+    parent = entryId;
+  };
+  add({ role: "user", content: [{ type: "text", text: "Run the long job" }], timestamp: when.getTime() });
+  for (let step = 0; step < longTurn; step += 1) {
+    add({ role: "assistant", content: [{ type: "toolCall", id: "call_" + step, name: "bash", arguments: { command: "echo step-" + step } }], api: "openai-completions", provider: "fake", model: "fake-model", usage, stopReason: "toolUse", timestamp: when.getTime() });
+    add({ role: "toolResult", toolCallId: "call_" + step, toolName: "bash", content: [{ type: "text", text: "step-" + step }], isError: false, timestamp: when.getTime() });
+  }
+  add({ role: "assistant", content: [{ type: "text", text: "All " + longTurn + " steps are done." }], api: "openai-completions", provider: "fake", model: "fake-model", usage, stopReason: "stop", timestamp: when.getTime() });
+  const file = join(bucket, stamp.replace(/[:.]/g, "-") + "_" + id + ".jsonl");
+  await writeFile(file, lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
+  await utimes(file, when, when);
 }
 const server = await createCompositionServer({
   port: 0,
@@ -190,16 +222,19 @@ const enabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
 /**
  * A test with a `realApp` fixture: a fresh composed app per test, torn down afterwards. A spec can
  * shorten how long an unwatched chat's omp process lives with `realTest.use({ idleCloseMs })`, and
- * start with that many old chats already in the folder with `realTest.use({ seedSessions })`.
+ * start with that many old chats already in the folder with `realTest.use({ seedSessions })`, or with
+ * one chat holding a single turn of that many steps with `realTest.use({ seedLongTurn })`.
  */
 export const realTest = test.extend<{
   realApp: RealApp;
   idleCloseMs: number | undefined;
   seedSessions: number;
+  seedLongTurn: number;
 }>({
   idleCloseMs: [undefined, { option: true }],
   seedSessions: [0, { option: true }],
-  realApp: async ({ browser, idleCloseMs, seedSessions }, use, testInfo) => {
+  seedLongTurn: [0, { option: true }],
+  realApp: async ({ browser, idleCloseMs, seedSessions, seedLongTurn }, use, testInfo) => {
     testInfo.skip(!enabled, "needs OMP_APP_REAL_OMP=1 and omp installed");
     // Real omp starts a process per chat: a loaded machine needs more than the default 30 s.
     testInfo.slow();
@@ -225,7 +260,7 @@ export const realTest = test.extend<{
     const allowed: RegExp[] = [];
     try {
       provider = await startProvider(agentDir, env);
-      server = await startServer(root, env, { idleCloseMs, seedSessions });
+      server = await startServer(root, env, { idleCloseMs, seedSessions, seedLongTurn });
       const url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
         const page = await browser.newPage();

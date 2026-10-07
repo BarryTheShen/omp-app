@@ -4,8 +4,9 @@ import { File } from "@/components/assistant-ui/elements/file";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { cn } from "@/lib/utils";
 import { MarkdownText } from "../markdown";
-import { ReasoningGroup, reasoningGroupBy } from "../reasoning";
+import { ReasoningGroup } from "../reasoning";
 import { type ToolRendererMap, ToolSlot } from "../tool-slots";
+import { EarlierSteps, isTurnGroup, useTurnGroupBy } from "./earlier-steps";
 export interface MessagePartsProps {
   readonly message: MessageState;
   readonly toolRenderers?: ToolRendererMap;
@@ -115,6 +116,8 @@ export function MessageParts({ message, toolRenderers, extra }: MessagePartsProp
   const role = message.role;
   const isUser = role === "user";
   const isSystem = role === "system";
+  // A very long assistant turn folds its earlier steps away (see earlier-steps.tsx).
+  const groupBy = useTurnGroupBy(!isUser && !isSystem);
   const className = isUser
     ? "ms-auto max-w-[min(42rem,85%)] rounded-2xl bg-muted px-4 py-2.5"
     : isSystem
@@ -136,9 +139,11 @@ export function MessageParts({ message, toolRenderers, extra }: MessagePartsProp
         className={className}
         data-message-surface={isUser ? "user-bubble" : isSystem ? "system-note" : "assistant-text"}
       >
-        <MessagePrimitive.GroupedParts groupBy={reasoningGroupBy} indicator="never">
+        <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="never">
           {({ part, children }) => {
-            if (part.type === "group-reasoning")
+            if (isTurnGroup(part, "group-earlier"))
+              return <EarlierSteps group={part}>{children}</EarlierSteps>;
+            if (isTurnGroup(part, "group-reasoning"))
               return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
             if (part.type === "indicator") return null;
             return renderPart(part as EnrichedPartState, toolRenderers);

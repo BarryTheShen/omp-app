@@ -4,7 +4,10 @@ type Message = { role: string; content?: unknown };
 type Request = { messages?: Message[]; stream?: boolean };
 type Reply =
   | { text: string; thinking?: string }
-  | { tool: string; args: Record<string, unknown>; thinking?: string };
+  | { tool: string; args: Record<string, unknown>; thinking?: string; id?: string };
+
+/** `long_loop` makes the model run this many bash steps in one turn before it answers. */
+const LOOP_STEPS = 60;
 
 function text(content: unknown): string {
   if (typeof content === "string") return content;
@@ -19,7 +22,16 @@ function text(content: unknown): string {
 }
 
 function reply(request: Request): Reply {
-  const last = request.messages?.at(-1);
+  const messages = request.messages ?? [];
+  const last = messages.at(-1);
+  const lastUser = messages.findLastIndex((message) => message.role === "user");
+  if (lastUser >= 0 && text(messages[lastUser]?.content).includes("long_loop")) {
+    // One turn of many steps: a tool call per round, each with its own id, no thinking part.
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done < LOOP_STEPS)
+      return { tool: "bash", args: { command: `echo loop-${done}` }, id: `call_loop_${done}` };
+    return { text: "loop finished" };
+  }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";
   if (prompt.includes("make_it_big")) return { text: "a".repeat(1_100_000) };
@@ -118,7 +130,7 @@ const server = Bun.serve({
                   tool_calls: [
                     {
                       index: 0,
-                      id: `call_${value.tool}`,
+                      id: value.id ?? `call_${value.tool}`,
                       type: "function",
                       function: { name: value.tool, arguments: JSON.stringify(value.args) },
                     },
