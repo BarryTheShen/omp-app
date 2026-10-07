@@ -289,6 +289,46 @@ describe("A0.6 dispatcher", () => {
       },
     );
   });
+
+  test("tells every port which connection closed, exactly once, and a failing port stops no other", async () => {
+    const released: string[] = [];
+    const failing: PortRegistration = {
+      ...registration(),
+      onConnectionClosed: () => {
+        throw new Error("could not release");
+      },
+    };
+    const second: PortRegistration = {
+      port: { ...TestPort, name: "A0.second" as typeof TestPort.name },
+      handlers: registration().handlers,
+      onConnectionClosed: async (connectionId) => {
+        released.push(connectionId);
+      },
+    };
+    const registry = createPortRegistry([failing, second]);
+    const dispatcher = new Dispatcher({
+      registry,
+      replay: new EventReplayHub(2),
+      welcome: createWelcome(),
+    });
+    const errors: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+    try {
+      const session = dispatcher.open(createSocket("connection-7"));
+      hello(session);
+      session.close();
+      session.close();
+      await new Promise((done) => setTimeout(done, 20));
+    } finally {
+      console.error = original;
+    }
+    expect(released).toEqual(["connection-7"]);
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0]?.[0])).toContain("could not release a closed connection");
+  });
 });
 
 describe("A0.6 upgrade and static serving", () => {

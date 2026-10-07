@@ -248,4 +248,28 @@ describe("streaming session summary", () => {
     expect((await readSessionHeader(path.join(sessionsRoot, "-a", "two.jsonl")))?.cwd).toBe("/a");
     expect(await readSessionHeader(path.join(sessionsRoot, "-b", "bad.jsonl"))).toBeUndefined();
   });
+
+  test("finds a session by its id from the file name, then from headers, and says so when there is none", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    await mkdir(path.join(sessionsRoot, "-a"), { recursive: true });
+    // omp names a file "<timestamp>_<id>.jsonl"; the other file's name doesn't carry its id.
+    await writeFile(
+      path.join(sessionsRoot, "-a", "2026-10-04T12-00-00-000Z_named-id.jsonl"),
+      `${header("named-id", "/a")}\n${message("user", "the named one")}\n`,
+    );
+    await writeFile(
+      path.join(sessionsRoot, "-a", "renamed.jsonl"),
+      `${titleSlot("t")}${header("hidden-id", "/a")}\n${message("user", "the renamed one")}\n`,
+    );
+    await writeFile(path.join(sessionsRoot, "-a", "broken.jsonl"), "not a session\n");
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+    expect((await store.findSession("named-id"))?.firstPrompt).toBe("the named one");
+    expect((await store.findSession("hidden-id"))?.firstPrompt).toBe("the renamed one");
+    expect(await store.findSession("no-such-id")).toBeUndefined();
+  });
 });

@@ -838,10 +838,11 @@ function ConnectedApp({
         ? createNativeRemoteThreadListAdapter({
             catalog,
             open: rpc.open,
+            close: rpc.close,
             send: rpc.send,
           })
         : null,
-    [catalog, rpc.open, rpc.send],
+    [catalog, rpc.open, rpc.close, rpc.send],
   );
   useEffect(() => {
     let active = true;

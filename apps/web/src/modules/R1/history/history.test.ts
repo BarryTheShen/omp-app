@@ -7,7 +7,7 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createSelectedThreadHistoryController } from ".";
 
 const folder = "/workspace/project" as FolderPath;
@@ -282,5 +282,68 @@ describe("SelectedThreadHistoryController open and paging", () => {
     for (let index = 0; index < 20 && calls.length < 2; index += 1) await Promise.resolve();
     // get_state brings the model, context and usage; get_entries pairs the turn with its entries.
     expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
+  });
+
+  test("lets go of the chat on the server when it closes or switches away, and a failed release never blocks the next chat", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc((args) => ({
+      threadId: (args as { threadId?: ThreadId }).threadId ?? threadOne,
+      sessionFile: null,
+      capabilities: {},
+    }));
+    const released: ThreadId[] = [];
+    let failure: AppFailure | undefined;
+    let silent = false;
+    (rpc as unknown as { close: (args: { threadId: ThreadId }) => Promise<null> }).close = async ({
+      threadId,
+    }) => {
+      released.push(threadId);
+      if (silent) return await new Promise<null>(() => undefined);
+      if (failure) throw failure;
+      return null;
+    };
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+
+    await controller.openExisting(threadOne);
+    expect(released).toEqual([]);
+    await controller.openExisting(threadTwo);
+    expect(released).toEqual([threadOne]);
+    await controller.close();
+    expect(released).toEqual([threadOne, threadTwo]);
+    // Nothing is open any more, so closing again lets go of nothing.
+    await controller.close();
+    expect(released).toHaveLength(2);
+
+    // A chat the server already forgot (it restarted) is not a problem.
+    failure = new AppFailure({ code: "not_found", message: "gone", retryable: false });
+    await controller.openExisting(threadOne);
+    await expect(controller.close()).resolves.toBeUndefined();
+
+    // A server that never answers the release does not hold up the next chat.
+    silent = true;
+    await controller.openExisting(threadOne);
+    await controller.openExisting(threadTwo);
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
+    await controller.close();
+    silent = false;
+
+    // A failure that points at a bug is reported, and the next chat still opens.
+    failure = new AppFailure({ code: "internal", message: "boom", retryable: false });
+    const reported: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      reported.push(args);
+    };
+    try {
+      await controller.openExisting(threadOne);
+      await controller.openExisting(threadTwo);
+      await vi.waitFor(() => expect(reported).toHaveLength(1));
+    } finally {
+      console.error = original;
+    }
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
   });
 });

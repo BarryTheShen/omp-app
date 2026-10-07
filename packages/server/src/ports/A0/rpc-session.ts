@@ -131,6 +131,24 @@ function readSessionState(value: unknown): {
   }
 }
 
+/**
+ * Whether omp says it is idle: no turn running, nothing queued, no background work that could wake
+ * it. omp 18.6.1 (the supported floor) may not report `isSettled`, so the parts it does report are
+ * combined; a state that can't be read counts as not settled, so the process is kept.
+ */
+function readSettled(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  if ("isSettled" in value && typeof value.isSettled === "boolean") return value.isSettled;
+  const streaming = "isStreaming" in value && value.isStreaming === true;
+  const compacting = "isCompacting" in value && value.isCompacting === true;
+  const asyncWork = "hasPendingAsyncWork" in value && value.hasPendingAsyncWork === true;
+  const queued =
+    "queuedMessageCount" in value &&
+    typeof value.queuedMessageCount === "number" &&
+    value.queuedMessageCount > 0;
+  return !streaming && !compacting && !asyncWork && !queued;
+}
+
 /** A0's stateful bridge between the typed ports and one process/session per thread. */
 export class RpcSessionPortRuntime {
   readonly #context: A0PortContext;
@@ -139,6 +157,10 @@ export class RpcSessionPortRuntime {
 
   constructor(context: A0PortContext) {
     this.#context = context;
+    context.processRegistry.setIdleHooks({
+      isSettled: (threadId) => this.#isSettled(threadId),
+      stopping: (threadId, process) => this.#forgetStopped(threadId, process),
+    });
   }
 
   readonly handlers: Readonly<Record<string, PortHandler>> = {
@@ -168,6 +190,8 @@ export class RpcSessionPortRuntime {
       throw unavailable(this.#context.health.detail ?? "omp is unavailable");
     }
     const bootstrap = await this.#resolveBootstrap(args, call);
+    // A process the registry is stopping for this thread holds the session's lease until it exits.
+    await this.#context.processRegistry.whenStopped(bootstrap.threadId);
     const existing = this.#entryOrUndefined(bootstrap.threadId);
     if (existing !== undefined) {
       if (existing.bootstrap.folderPath !== bootstrap.folderPath) {
@@ -319,6 +343,39 @@ export class RpcSessionPortRuntime {
     return null;
   }
 
+  /**
+   * A browser connection closed (tab closed or reloaded, network lost): everything it was viewing
+   * is released, as if it had called `close` for each open it made. The browser used to call
+   * `close` for nothing, so every chat a tab ever opened kept its omp process (about 380 MB while
+   * idle) running until the server stopped. A process nobody watches any more is stopped by the
+   * process registry after its idle time, unless it is still running a turn.
+   */
+  async releaseConnection(connectionId: string): Promise<void> {
+    const stillWatched: ThreadEntry[] = [];
+    for (const entry of new Set(this.#entries.values())) {
+      const count = entry.viewers.get(connectionId) ?? 0;
+      if (count === 0) continue;
+      entry.viewers.delete(connectionId);
+      entry.preferences.delete(connectionId);
+      for (let opened = 0; opened < count; opened += 1) {
+        this.#context.processRegistry.release(entry.bootstrap.threadId);
+      }
+      if (entry.viewers.size > 0) stillWatched.push(entry);
+    }
+    // Another tab still watching a chat: its subscription level is recomputed without this one.
+    const results = await Promise.allSettled(
+      stillWatched.map((entry) => this.#arbitrate(entry, new AbortController().signal)),
+    );
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error(
+          "[omp-app] could not update a chat's subscription after a tab closed",
+          result.reason,
+        );
+      }
+    }
+  }
+
   async dispose(): Promise<void> {
     for (const entry of this.#entries.values()) entry.unsubscribeEvents();
     this.#entries.clear();
@@ -441,14 +498,36 @@ export class RpcSessionPortRuntime {
     entry.viewers.set(connectionId, (entry.viewers.get(connectionId) ?? 0) + 1);
   }
 
+  /** Forgets an entry whose open failed, and lets go of the process it acquired. */
   #dropEntry(entry: ThreadEntry): void {
+    this.#forget(entry);
+    this.#context.processRegistry.release(entry.bootstrap.threadId);
+  }
+
+  #forget(entry: ThreadEntry): void {
     entry.unsubscribeEvents();
     const current = entry.bootstrap.threadId;
     this.#entries.delete(current);
     for (const [alias, target] of this.#aliases) {
       if (alias === current || target === current) this.#aliases.delete(alias);
     }
-    this.#context.processRegistry.release(current);
+  }
+
+  /**
+   * The registry is stopping an unwatched thread's process: the entry that held it can't serve
+   * again, so the next open builds a fresh one (and resumes the session file) instead of finding
+   * a dead process.
+   */
+  #forgetStopped(threadId: ThreadId, process: OmpProcess): void {
+    const entry = this.#entryOrUndefined(threadId);
+    if (entry !== undefined && entry.process === process) this.#forget(entry);
+  }
+
+  /** Whether omp says the thread is idle; a thread nothing holds counts as idle. */
+  async #isSettled(threadId: ThreadId): Promise<boolean> {
+    const entry = this.#entryOrUndefined(threadId);
+    if (entry === undefined) return true;
+    return readSettled(await entry.session.send({ type: "get_state" }));
   }
 
   #preference(entry: ThreadEntry, connectionId: string): ViewerPreference {

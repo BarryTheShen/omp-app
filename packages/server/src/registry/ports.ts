@@ -20,6 +20,12 @@ export interface PortRegistration {
   readonly port: Port;
   readonly handlers: Readonly<Record<string, PortHandler>>;
   readonly context?: unknown;
+  /**
+   * Called once when a browser connection closes (tab closed or reloaded, network lost), with that
+   * connection's id, so the port can let go of whatever the connection held (for example the omp
+   * processes it was viewing). Errors are logged and never stop other ports from releasing.
+   */
+  readonly onConnectionClosed?: (connectionId: string) => void | Promise<void>;
 }
 
 export type PortRegistry = ReadonlyMap<PortName, PortRegistration>;

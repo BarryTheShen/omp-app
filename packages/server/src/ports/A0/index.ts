@@ -25,7 +25,12 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
   const rpc = createRpcSessionPortRuntime(context);
   return {
     registrations: [
-      { port: rpc.port, handlers: rpc.runtime.handlers, context: rpc.runtime },
+      {
+        port: rpc.port,
+        handlers: rpc.runtime.handlers,
+        context: rpc.runtime,
+        onConnectionClosed: (connectionId) => rpc.runtime.releaseConnection(connectionId),
+      },
       createAppPortRegistration(context),
     ],
     sessionFor: (threadId) => rpc.runtime.sessionFor(threadId),

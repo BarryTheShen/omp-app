@@ -49,6 +49,12 @@ function reply(request: Request): Reply {
     };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
+  if (prompt.includes("slow_tool"))
+    return {
+      tool: "bash",
+      args: { command: "sleep 7; echo slow-tool-done" },
+      thinking: "I should run something slow.",
+    };
   return { text: "pong", thinking: "I will answer pong." };
 }
 

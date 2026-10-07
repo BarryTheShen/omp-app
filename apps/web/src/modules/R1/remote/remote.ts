@@ -9,6 +9,7 @@ import type {
 } from "@omp-app/contracts";
 import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import type { SessionCatalogFilter, SessionCatalogPageArgs, SessionMetadata } from "../contract";
+import { type CloseThread, releaseThread } from "../release";
 
 type RemoteThreadListResponse = Awaited<ReturnType<RemoteThreadListAdapter["list"]>>;
 type RemoteThreadMetadata = Awaited<ReturnType<RemoteThreadListAdapter["fetch"]>>;
@@ -25,6 +26,12 @@ export interface RemoteThreadCatalogSource {
 export interface RemoteThreadListOptions {
   readonly catalog: RemoteThreadCatalogSource;
   readonly open: (args: OpenThreadArgs) => Promise<OpenThreadResult>;
+  /**
+   * Lets go of the hold `open` takes on a chat. The adapter's open only creates the chat or starts
+   * its omp: the selected-chat controller opens it again to view it, and that one hold is what
+   * keeps its process running. Without `close` the chat would be held twice and never released.
+   */
+  readonly close?: CloseThread;
   readonly send?: RpcSessionSend;
   /** A1.8's typed native `/delete` gateway; absent means the action is visibly unavailable. */
   readonly deleteThread?: (threadId: ThreadId) => Promise<void>;
@@ -201,6 +208,7 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
       const result = await this.options.open(args);
       const nextThreadId = ThreadIdSchema.parse(result.threadId);
       this.currentThreadId = nextThreadId;
+      if (this.options.close) void releaseThread(this.options.close, nextThreadId);
       this.options.onThreadIdChange?.(nextThreadId);
       return {
         remoteId: nextThreadId,

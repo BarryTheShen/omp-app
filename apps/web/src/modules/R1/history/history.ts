@@ -11,6 +11,7 @@ import type {
 import { AppFailure, RpcSessionPort as RpcSessionPortSchema } from "@omp-app/contracts";
 import { SessionHistoryLoader } from "@/modules/R0/history/history";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
+import { releaseThread } from "../release";
 
 interface EventSubscription {
   readonly stream: string;
@@ -145,6 +146,7 @@ export class SelectedThreadHistoryController {
     this.offEvents = undefined;
     const subscription = this.subscription;
     this.subscription = undefined;
+    const releasedThreadId = this.state.threadId;
     if (subscription) await subscription.unsubscribe();
     this.commit({
       threadId: undefined,
@@ -153,6 +155,15 @@ export class SelectedThreadHistoryController {
       isLoading: false,
       error: null,
     });
+    // Tell the server this view is gone. Without it every chat the tab ever opened kept its omp
+    // process (about 380 MB while idle) until the app quit. Not awaited: switching chats must not
+    // wait on the server, and `release` handles every failure itself.
+    if (releasedThreadId !== undefined) void this.release(releasedThreadId);
+  }
+
+  /** Best effort: see `releaseThread`. */
+  private release(threadId: ThreadId): Promise<void> {
+    return releaseThread(this.rpc.close, threadId);
   }
 
   private async open(args: OpenThreadArgs): Promise<OmpRuntimeStore> {

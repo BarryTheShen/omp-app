@@ -4,7 +4,11 @@ import type { RpcSessionTimer } from "@omp-app/omp-rpc";
 import type { OmpProcess, OmpProcessOptions } from "./omp-process";
 import { spawnOmpProcess } from "./omp-process";
 
-const DEFAULT_IDLE_CLOSE_MS = 10 * 60 * 1000;
+/**
+ * Each omp process holds about 380 MB while idle, so a chat nobody watches is stopped after two
+ * minutes: coming back to it restarts omp and replays its history (a couple of seconds).
+ */
+const DEFAULT_IDLE_CLOSE_MS = 2 * 60 * 1000;
 
 function defaultTimer(): RpcSessionTimer {
   return {
@@ -14,12 +18,27 @@ function defaultTimer(): RpcSessionTimer {
 }
 
 export interface OmpProcessRegistryOptions {
-  /** How long an unwatched, non-busy thread's process stays up before `stop()`. Default 10 minutes. */
+  /** How long an unwatched thread's process stays up before it is checked and stopped. Default 2 minutes. */
   readonly idleCloseMs?: number;
   /** Injectable for tests; defaults to `spawnOmpProcess` (a real `omp --mode rpc-ui` child). */
   readonly createProcess?: (options: OmpProcessOptions) => OmpProcess;
   /** Injectable for deterministic idle-close tests; defaults to the global timer. */
   readonly timer?: RpcSessionTimer;
+}
+
+/**
+ * What the registry asks of whoever holds a thread's session (A0's runtime), and tells it. Set once
+ * with `setIdleHooks`.
+ */
+export interface OmpProcessIdleHooks {
+  /**
+   * Asked when an unwatched thread has been quiet for `idleCloseMs`. False (omp is running a turn,
+   * or has queued messages or background work that can wake it) keeps the process and asks again
+   * after another period, so leaving a chat never kills work that is still going.
+   */
+  readonly isSettled: (threadId: ThreadId) => Promise<boolean>;
+  /** The registry is stopping this thread's process because nobody watches it: forget it. */
+  readonly stopping: (threadId: ThreadId, process: OmpProcess) => void;
 }
 
 interface Entry {
@@ -33,22 +52,39 @@ interface Entry {
 }
 
 /**
- * One `OmpProcess` per open thread. A thread stays up while it has a watcher or is busy; an idle,
- * unwatched thread's process is stopped after `idleCloseMs`. A process that exits on its own
- * (crash) stays registered, so `restart()` can bring the same logical thread back; a process this
- * registry (or its caller) intentionally `stop()`ped is forgotten, so the next `acquire()` for
- * that thread spawns a fresh one.
+ * One `OmpProcess` per open thread. A thread stays up while it has a watcher or is busy; an
+ * unwatched thread's process is stopped after `idleCloseMs`, but only once omp reports it is
+ * settled (see `OmpProcessIdleHooks`). A process that exits on its own (crash) stays registered, so
+ * `restart()` can bring the same logical thread back; a process this registry (or its caller)
+ * intentionally `stop()`ped is forgotten, so the next `acquire()` for that thread spawns a fresh
+ * one.
  */
 export class OmpProcessRegistry {
   readonly #idleCloseMs: number;
   readonly #createProcess: (options: OmpProcessOptions) => OmpProcess;
   readonly #timer: RpcSessionTimer;
   readonly #entries = new Map<ThreadId, Entry>();
+  readonly #stopping = new Map<ThreadId, Promise<void>>();
+  #idleHooks: OmpProcessIdleHooks | undefined;
 
   constructor(options: OmpProcessRegistryOptions = {}) {
     this.#idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
     this.#createProcess = options.createProcess ?? spawnOmpProcess;
     this.#timer = options.timer ?? defaultTimer();
+  }
+
+  /** Called once by whoever owns the threads' sessions. */
+  setIdleHooks(hooks: OmpProcessIdleHooks): void {
+    this.#idleHooks = hooks;
+  }
+
+  /**
+   * Resolves when the process this registry is stopping for a thread has exited (at once if it is
+   * stopping none). A thread opened again must wait: omp holds a lease on the session file until it
+   * exits, and a second omp on the same file would be refused.
+   */
+  whenStopped(threadId: ThreadId): Promise<void> {
+    return this.#stopping.get(threadId) ?? Promise.resolve();
   }
 
   /**
@@ -95,7 +131,7 @@ export class OmpProcessRegistry {
     const entry = this.#entries.get(threadId);
     if (entry === undefined) return;
     entry.watchers = Math.max(0, entry.watchers - 1);
-    this.#scheduleIdleIfNeeded(threadId, entry);
+    this.#scheduleIdleIfNeeded(entry);
   }
 
   /** A busy thread is never idle-closed, even with zero watchers (for example, a running prompt). */
@@ -104,7 +140,7 @@ export class OmpProcessRegistry {
     if (entry === undefined) return;
     entry.busy = busy;
     if (busy) this.#cancelIdle(entry);
-    else this.#scheduleIdleIfNeeded(threadId, entry);
+    else this.#scheduleIdleIfNeeded(entry);
   }
 
   get(threadId: ThreadId): OmpProcess | undefined {
@@ -170,15 +206,47 @@ export class OmpProcessRegistry {
     }
   }
 
-  #scheduleIdleIfNeeded(threadId: ThreadId, entry: Entry): void {
+  #scheduleIdleIfNeeded(entry: Entry): void {
     this.#cancelIdle(entry);
     if (entry.watchers > 0 || entry.busy) return;
     entry.idleTimer = this.#timer.setTimeout(() => {
       entry.idleTimer = undefined;
-      if (entry.watchers > 0 || entry.busy) return;
-      this.#entries.delete(threadId);
-      entry.unsubscribe();
-      void entry.process.stop();
+      void this.#closeIfIdle(entry);
     }, this.#idleCloseMs);
+  }
+
+  #stillUnwatched(entry: Entry): boolean {
+    return this.#entries.get(entry.key) === entry && entry.watchers === 0 && !entry.busy;
+  }
+
+  async #closeIfIdle(entry: Entry): Promise<void> {
+    if (!this.#stillUnwatched(entry)) return;
+    if (this.#idleHooks !== undefined) {
+      let settled: boolean;
+      try {
+        settled = await this.#idleHooks.isSettled(entry.key);
+      } catch {
+        // omp that has exited holds nothing; omp that is only slow to answer is left running.
+        settled = ["exited", "error", "stopped"].includes(entry.process.status);
+      }
+      if (!this.#stillUnwatched(entry)) return;
+      if (!settled) {
+        this.#scheduleIdleIfNeeded(entry);
+        return;
+      }
+    }
+    const threadId = entry.key;
+    this.#entries.delete(threadId);
+    entry.unsubscribe();
+    this.#idleHooks?.stopping(threadId, entry.process);
+    const stopping: Promise<void> = entry.process
+      .stop()
+      .catch((error: unknown) => {
+        console.error("[omp-app] could not stop an idle omp process", error);
+      })
+      .finally(() => {
+        if (this.#stopping.get(threadId) === stopping) this.#stopping.delete(threadId);
+      });
+    this.#stopping.set(threadId, stopping);
   }
 }

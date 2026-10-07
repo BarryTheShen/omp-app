@@ -236,4 +236,134 @@ describe("OmpProcessRegistry", () => {
     expect(registry.has(ThreadId.parse("thread-4"))).toBe(false);
     expect(registry.has(ThreadId.parse("thread-5"))).toBe(false);
   });
+
+  describe("idle hooks", () => {
+    function registryWith(timer: ManualTimer, created: StubProcess[]): OmpProcessRegistry {
+      return new OmpProcessRegistry({
+        timer,
+        idleCloseMs: 10,
+        createProcess: (processOptions) => {
+          const process = new StubProcess(processOptions);
+          created.push(process);
+          return process;
+        },
+      });
+    }
+
+    test("stops an unwatched thread only once the owner says it is settled, and tells the owner", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = registryWith(timer, created);
+      let settled = false;
+      const asked: ThreadId[] = [];
+      const told: Array<{ thread: ThreadId; process: OmpProcess }> = [];
+      registry.setIdleHooks({
+        isSettled: async (thread) => {
+          asked.push(thread);
+          return settled;
+        },
+        stopping: (thread, process) => {
+          told.push({ thread, process });
+        },
+      });
+      const thread = ThreadId.parse("thread-working");
+      registry.acquire(options(thread, "/workspace/working"));
+      const process = createdAt(created, 0);
+      registry.release(thread);
+
+      timer.fireAll();
+      await Bun.sleep(0);
+      expect(asked).toEqual([thread]);
+      expect(process.stopCalls).toBe(0);
+      expect(registry.has(thread)).toBe(true);
+      // It asks again after another idle period instead of giving up on the thread.
+      expect(timer.callbacks.size).toBe(1);
+
+      settled = true;
+      timer.fireAll();
+      await Bun.sleep(0);
+      expect(process.stopCalls).toBe(1);
+      expect(registry.has(thread)).toBe(false);
+      expect(told).toEqual([{ thread, process }]);
+    });
+
+    test("a viewer who arrives while omp is being asked keeps the process", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = registryWith(timer, created);
+      const answer = Promise.withResolvers<boolean>();
+      const told: ThreadId[] = [];
+      registry.setIdleHooks({
+        isSettled: () => answer.promise,
+        stopping: (thread) => {
+          told.push(thread);
+        },
+      });
+      const thread = ThreadId.parse("thread-returns");
+      registry.acquire(options(thread, "/workspace/returns"));
+      registry.release(thread);
+      timer.fireAll();
+
+      registry.acquire(options(thread, "/workspace/returns"));
+      answer.resolve(true);
+      await Bun.sleep(0);
+      expect(createdAt(created, 0).stopCalls).toBe(0);
+      expect(registry.has(thread)).toBe(true);
+      expect(told).toEqual([]);
+    });
+
+    test("an unanswered check keeps a running process but not one that already exited", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = registryWith(timer, created);
+      registry.setIdleHooks({
+        isSettled: async () => {
+          throw new Error("omp did not answer");
+        },
+        stopping: () => undefined,
+      });
+      const thread = ThreadId.parse("thread-silent");
+      registry.acquire(options(thread, "/workspace/silent"));
+      const process = createdAt(created, 0);
+      registry.release(thread);
+
+      timer.fireAll();
+      await Bun.sleep(0);
+      expect(process.stopCalls).toBe(0);
+      expect(timer.callbacks.size).toBe(1);
+
+      process.emit({ status: "exited", processId: process.processId });
+      timer.fireAll();
+      await Bun.sleep(0);
+      expect(process.stopCalls).toBe(1);
+      expect(registry.has(thread)).toBe(false);
+    });
+
+    test("whenStopped resolves only after the process the registry stopped has exited", async () => {
+      const timer = new ManualTimer();
+      const created: StubProcess[] = [];
+      const registry = registryWith(timer, created);
+      registry.setIdleHooks({ isSettled: async () => true, stopping: () => undefined });
+      const thread = ThreadId.parse("thread-exiting");
+      expect(await registry.whenStopped(thread)).toBeUndefined();
+
+      registry.acquire(options(thread, "/workspace/exiting"));
+      const process = createdAt(created, 0);
+      const exit = Promise.withResolvers<void>();
+      process.stop = () => exit.promise;
+      registry.release(thread);
+      timer.fireAll();
+      await Bun.sleep(0);
+
+      let waited = false;
+      const waiting = registry.whenStopped(thread).then(() => {
+        waited = true;
+      });
+      await Bun.sleep(0);
+      expect(waited).toBe(false);
+      exit.resolve();
+      await waiting;
+      expect(waited).toBe(true);
+    });
+  });
 });

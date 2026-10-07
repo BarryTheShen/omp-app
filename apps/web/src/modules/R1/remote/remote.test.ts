@@ -124,6 +124,56 @@ describe("NativeRemoteThreadListAdapter", () => {
     expect(adapter.getCurrentThreadId()).toBe(threadTwo);
   });
 
+  test("lets go of the hold its open takes, so the chat is held once (by the selected-chat controller)", async () => {
+    const calls: string[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => {
+        calls.push("threadId" in args ? `open ${args.threadId}` : "open new");
+        return openResult("threadId" in args ? args.threadId : threadOne);
+      },
+      close: async ({ threadId }) => {
+        calls.push(`close ${threadId}`);
+        return null;
+      },
+    });
+    await adapter.initialize("new");
+    await adapter.switchToThread(threadTwo);
+    expect(calls).toEqual([
+      "open new",
+      `close ${threadOne}`,
+      `open ${threadTwo}`,
+      `close ${threadTwo}`,
+    ]);
+  });
+
+  test("a failed open holds nothing, and a failing release never fails the open", async () => {
+    const released: ThreadId[] = [];
+    const failing = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async () => {
+        throw new AppFailure({ code: "permission", message: "denied", retryable: false });
+      },
+      close: async ({ threadId }) => {
+        released.push(threadId);
+        return null;
+      },
+    });
+    await expect(failing.initialize("new")).rejects.toMatchObject({
+      appError: { code: "permission" },
+    });
+    expect(released).toEqual([]);
+
+    const forgetful = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async () => openResult(threadOne),
+      close: async () => {
+        throw new AppFailure({ code: "not_found", message: "gone", retryable: false });
+      },
+    });
+    await expect(forgetful.initialize("new")).resolves.toMatchObject({ remoteId: threadOne });
+  });
+
   test("surfaces typed failures and gates unsupported archive/delete actions", async () => {
     const failure = new AppFailure({ code: "permission", message: "denied", retryable: false });
     const adapter = createNativeRemoteThreadListAdapter({

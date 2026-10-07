@@ -8,9 +8,10 @@
  * Run with `OMP_APP_REAL_OMP=1 bun run e2e -- e2e/<spec>.spec.ts` from `apps/web`. The fake model
  * answers by keyword in the last user message: `ask_user` makes omp ask "Which database?",
  * `run_bash` makes it run `echo fixture-tool`, `make_todos` makes it write a two-item todo list,
- * `abort_slow` streams slowly, and anything else is answered "pong".
+ * `abort_slow` streams slowly, `slow_tool` makes it run a shell command that takes 7 seconds, and
+ * anything else is answered "pong".
  */
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -46,6 +47,8 @@ export interface RealApp {
   readonly open: (options?: OpenOptions) => Promise<Page>;
   /** Console errors and uncaught page errors from every page opened so far. A test must end clean. */
   readonly problems: readonly string[];
+  /** The process ids of the omp processes the app's server has running right now. */
+  readonly ompProcesses: () => readonly number[];
 }
 
 /** Clicks "New chat" and waits for the composer; a new chat starts a real omp process. */
@@ -107,6 +110,7 @@ async function startProvider(agentDir: string, env: Record<string, string>): Pro
 async function startServer(
   root: string,
   env: Record<string, string>,
+  idleCloseMs: number | undefined,
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
   const script = join(root, "app-root-server.ts");
   await writeFile(
@@ -122,6 +126,7 @@ const server = await createCompositionServer({
   ompBin: ${JSON.stringify(REAL_OMP)},
   ompArgs: ["--model", "fake/fake-model"],
   staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
+  idleCloseMs: ${idleCloseMs === undefined ? "undefined" : idleCloseMs},
 });
 console.log("APP_ROOT_READY " + JSON.stringify({ url: server.url, token: server.token }));
 const stop = () => void server.stop().finally(() => process.exit(0));
@@ -149,9 +154,13 @@ async function stopChild(child: ChildProcess | undefined): Promise<void> {
 
 const enabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
 
-/** A test with a `realApp` fixture: a fresh composed app per test, torn down afterwards. */
-export const realTest = test.extend<{ realApp: RealApp }>({
-  realApp: async ({ browser }, use, testInfo) => {
+/**
+ * A test with a `realApp` fixture: a fresh composed app per test, torn down afterwards. A spec can
+ * shorten how long an unwatched chat's omp process lives with `realTest.use({ idleCloseMs })`.
+ */
+export const realTest = test.extend<{ realApp: RealApp; idleCloseMs: number | undefined }>({
+  idleCloseMs: [undefined, { option: true }],
+  realApp: async ({ browser, idleCloseMs }, use, testInfo) => {
     testInfo.skip(!enabled, "needs OMP_APP_REAL_OMP=1 and omp installed");
     // Real omp starts a process per chat: a loaded machine needs more than the default 30 s.
     testInfo.slow();
@@ -176,7 +185,7 @@ export const realTest = test.extend<{ realApp: RealApp }>({
     const problems: string[] = [];
     try {
       provider = await startProvider(agentDir, env);
-      server = await startServer(root, env);
+      server = await startServer(root, env, idleCloseMs);
       const url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
         const page = await browser.newPage();
@@ -190,7 +199,23 @@ export const realTest = test.extend<{ realApp: RealApp }>({
         await expect(page.locator("[data-app-root='true']")).toBeVisible();
         return page;
       };
-      await use({ folder, otherFolder, open, problems });
+      const serverPid = server.process.pid;
+      const ompProcesses = (): readonly number[] => {
+        if (serverPid === undefined) return [];
+        let listing: string;
+        try {
+          listing = execFileSync("ps", ["-o", "pid=,args=", "--ppid", String(serverPid)], {
+            encoding: "utf8",
+          });
+        } catch {
+          return []; // ps exits with status 1 when the server has no child processes
+        }
+        return listing
+          .split("\n")
+          .filter((line) => line.includes("--mode rpc-ui"))
+          .map((line) => Number.parseInt(line.trim(), 10));
+      };
+      await use({ folder, otherFolder, open, problems, ompProcesses });
       expect(problems).toEqual([]);
     } finally {
       await Promise.all(pages.map((page) => page.close().catch(() => undefined)));

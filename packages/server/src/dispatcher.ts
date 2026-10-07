@@ -168,6 +168,19 @@ export class DispatcherSession {
     this.#pending.clear();
     for (const dispose of this.#subscriptions.values()) dispose();
     this.#subscriptions.clear();
+    for (const registration of this.#registry.values()) {
+      const release = registration.onConnectionClosed;
+      if (release === undefined) continue;
+      const connectionId = this.#socket.id;
+      void Promise.resolve()
+        .then(() => release(connectionId))
+        .catch((error: unknown) => {
+          console.error(
+            `[omp-app] ${registration.port.name} could not release a closed connection`,
+            error,
+          );
+        });
+    }
     this.#onClose?.();
   }
 

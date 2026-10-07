@@ -44,6 +44,10 @@ class FakeProcess implements OmpProcess {
   readonly writes: Record<string, unknown>[] = [];
   identity: FakeIdentity;
   nextIdentity: FakeIdentity | undefined;
+  /** Extra fields the fake omp reports in `get_state` (for example `isStreaming: true`). */
+  extraState: Record<string, unknown> = {};
+  /** When set, `stop()` finishes only after this resolves, like a real omp flushing before exit. */
+  stopGate: Promise<void> | undefined;
   #status: OmpProcessEvent["status"] = "starting";
   #eventListeners = new Set<(event: OmpProcessEvent) => void>();
   #chunkListeners = new Set<(chunk: Uint8Array) => void>();
@@ -86,6 +90,7 @@ class FakeProcess implements OmpProcess {
   }
 
   async stop(): Promise<void> {
+    await this.stopGate;
     this.emitEvent({ status: "stopped", processId: this.processId });
     for (const listener of [...this.#closeListeners]) listener();
   }
@@ -110,7 +115,11 @@ class FakeProcess implements OmpProcess {
               : command === "branch"
                 ? { text: "", cancelled: false }
                 : command === "get_state"
-                  ? { sessionId: this.identity.threadId, sessionFile: this.identity.sessionFile }
+                  ? {
+                      sessionId: this.identity.threadId,
+                      sessionFile: this.identity.sessionFile,
+                      ...this.extraState,
+                    }
                   : {};
     this.emit({ type: "response", id: frame.id, command, success: true, data });
     if (command === "branch" && this.nextIdentity !== undefined) this.identity = this.nextIdentity;
@@ -220,6 +229,25 @@ function call(connectionId: string): ServerPortHandlerContext {
     requestId: RequestId.parse(`call-${connectionId}`),
     portContext: undefined,
   };
+}
+
+/** The A0 registrations over a process registry that stops unwatched chats after `idleCloseMs`. */
+function withIdleClose(created: FakeProcess[], idleCloseMs: number) {
+  const processRegistry = new OmpProcessRegistry({
+    idleCloseMs,
+    createProcess: (options: OmpProcessOptions) => {
+      const process = new FakeProcess(options, {
+        threadId: authorityThread,
+        sessionFile: authorityFile,
+      });
+      created.push(process);
+      return process;
+    },
+  });
+  const registration = createA0PortRegistrations({ ...context(created), processRegistry })[0];
+  if (registration === undefined) throw new Error("missing registration");
+  const handlers = registration.handlers as HandlerSet;
+  return { processRegistry, registration, open: getHandler(handlers, "open"), handlers };
 }
 
 describe("A0.7 RpcSessionPort handlers", () => {
@@ -358,6 +386,86 @@ describe("A0.7 RpcSessionPort handlers", () => {
       (frame) => frame.type === "set_subagent_subscription",
     );
     expect(commands?.map((frame) => frame.level)).toEqual(["progress", "events", "progress"]);
+  });
+
+  test("a closed connection releases every chat it opened, and the process stops once nobody watches it", async () => {
+    const created: FakeProcess[] = [];
+    const { processRegistry, registration, open } = withIdleClose(created, 25);
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    // The same tab opened the chat again (a reload that never said goodbye) and another tab watches it.
+    await open({ threadId: authorityThread }, call("one"));
+    await open({ threadId: authorityThread }, call("two"));
+
+    await registration.onConnectionClosed?.("one");
+    await Bun.sleep(80);
+    expect(processRegistry.has(authorityThread)).toBe(true);
+    expect(created[0]?.status).not.toBe("stopped");
+
+    await registration.onConnectionClosed?.("two");
+    await Bun.sleep(80);
+    expect(processRegistry.has(authorityThread)).toBe(false);
+    expect(created[0]?.status).toBe("stopped");
+
+    // A connection that never opened anything, or closes twice, changes nothing.
+    await registration.onConnectionClosed?.("two");
+    await registration.onConnectionClosed?.("never-opened");
+  });
+
+  test("an unwatched chat keeps its process while omp is still working, is stopped once settled, and opens again on a fresh process", async () => {
+    const created: FakeProcess[] = [];
+    const { processRegistry, registration, open, handlers } = withIdleClose(created, 20);
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    const first = created[0];
+    if (first === undefined) throw new Error("no process was started");
+    first.extraState = { isStreaming: true };
+
+    await registration.onConnectionClosed?.("one");
+    await Bun.sleep(120);
+    // Six idle periods passed and omp kept answering "streaming": the turn was never cut off.
+    expect(processRegistry.has(authorityThread)).toBe(true);
+    expect(first.status).not.toBe("stopped");
+
+    first.extraState = { isStreaming: false, hasPendingAsyncWork: true };
+    await Bun.sleep(80);
+    // Background work that can still wake the session counts as working too.
+    expect(first.status).not.toBe("stopped");
+
+    first.extraState = {};
+    await Bun.sleep(80);
+    expect(first.status).toBe("stopped");
+    expect(processRegistry.has(authorityThread)).toBe(false);
+
+    // The chat opens again on a new process, and commands reach that one, not the stopped one.
+    const writesToFirst = first.writes.length;
+    await open({ threadId: authorityThread }, call("two"));
+    expect(created).toHaveLength(2);
+    await getHandler(handlers, "send")(
+      { threadId: authorityThread, command: { type: "prompt", message: "hello again" } },
+      call("two"),
+    );
+    expect(created[1]?.writes.some((frame) => frame.type === "prompt")).toBe(true);
+    expect(first.writes).toHaveLength(writesToFirst);
+  });
+
+  test("opening a chat again while its old process is still exiting waits for it, so two omp never share a session file", async () => {
+    const created: FakeProcess[] = [];
+    const { registration, open } = withIdleClose(created, 20);
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    const first = created[0];
+    if (first === undefined) throw new Error("no process was started");
+    const exit = Promise.withResolvers<void>();
+    first.stopGate = exit.promise;
+
+    await registration.onConnectionClosed?.("one");
+    await Bun.sleep(80);
+    const reopened = open({ threadId: authorityThread }, call("two"));
+    await Bun.sleep(60);
+    expect(created).toHaveLength(1);
+
+    exit.resolve();
+    await reopened;
+    expect(created).toHaveLength(2);
+    expect(first.status).toBe("stopped");
   });
 
   test("routes UI/host answers and exposes a process crash as a replayed process event", async () => {

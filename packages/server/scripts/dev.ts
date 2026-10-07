@@ -46,6 +46,8 @@ export interface CompositionServerOptions {
   readonly appDataDir?: string;
   /** The version shown to the browser; the installed app passes its release version. */
   readonly serverVersion?: string;
+  /** How long a chat's omp process lives after the last tab leaves it; the default is 2 minutes. */
+  readonly idleCloseMs?: number;
   /** Test/embedding override for the process launch directory surfaced to the browser. */
   readonly cwd?: string;
 }
@@ -160,6 +162,7 @@ export async function createCompositionServer(
       ? { version: probe.version, protocolVersion }
       : null;
   const processRegistry = new OmpProcessRegistry({
+    ...(options.idleCloseMs === undefined ? {} : { idleCloseMs: options.idleCloseMs }),
     createProcess: (processOptions) =>
       spawnOmpProcess({
         ...processOptions,
@@ -174,8 +177,7 @@ export async function createCompositionServer(
     home: homeDir,
   });
   const resolveThread: A0PortContext["resolveThread"] = async (threadId, _signal) => {
-    const result = await sessionFileStore.listSessions();
-    const file = result.sessions.find((session) => session.id === threadId);
+    const file = await sessionFileStore.findSession(threadId);
     if (file === undefined) return undefined;
     return {
       threadId,

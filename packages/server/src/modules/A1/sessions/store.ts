@@ -310,6 +310,34 @@ export class SessionFileStore {
     };
   }
 
+  /**
+   * The session with this id, or undefined. omp names a file after its session id, so the files
+   * whose names contain the id are looked at first; if none is the one, every file's first lines
+   * are compared. Nothing is summarized except the match (opening a chat used to list, and read,
+   * every session on the machine).
+   */
+  async findSession(sessionId: string): Promise<SessionFile | undefined> {
+    const candidates = await this.#candidates(undefined, []);
+    const named = candidates.filter((candidate) =>
+      path.basename(candidate.file).includes(sessionId),
+    );
+    for (const candidate of named) {
+      const outcome = await this.#listingEntry(candidate);
+      if (outcome.file?.id === sessionId) return outcome.file;
+    }
+    const others = candidates.filter((candidate) => !named.includes(candidate));
+    const headers = await inBatches(others, async (candidate) => {
+      try {
+        return (await readSessionHeader(candidate.file))?.id === sessionId ? candidate : undefined;
+      } catch (error) {
+        if (fileErrorCode(error) === undefined) throw error;
+        return undefined;
+      }
+    });
+    const match = headers.find((candidate) => candidate !== undefined);
+    return match === undefined ? undefined : (await this.#listingEntry(match)).file;
+  }
+
   /** Read one session file and its nested transcript tree. */
   async readSession(args: ReadSessionArgs | string): Promise<SessionFile> {
     const sessionFile = normalizeSessionFile(typeof args === "string" ? args : args.sessionFile);
