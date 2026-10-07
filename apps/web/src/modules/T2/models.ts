@@ -1,5 +1,16 @@
 import { AppFailure } from "@omp-app/contracts";
 import { z } from "zod";
+import { OutputMetaSchema as SharedOutputMetaSchema } from "../U3/tool-card/output-meta";
+
+/**
+ * The shared output meta plus `total`, which the grep card reads for 'Showing N of M matches'. omp
+ * v18.6.1's grep never sends it (its details carry `matchCount` and `truncated`), so that text
+ * cannot appear on a real result; tracked in the tool cards parent issue (712).
+ */
+export const OutputMetaSchema = SharedOutputMetaSchema.extend({
+  total: z.number().int().nonnegative().optional(),
+});
+export type OutputMeta = z.infer<typeof OutputMetaSchema>;
 
 const OptionalText = z.string().optional();
 const OptionalNumber = z.number().finite().optional();
@@ -17,22 +28,6 @@ export const OutputRangeSchema = z.looseObject({
   snippet: OptionalText,
 });
 export type OutputRange = z.infer<typeof OutputRangeSchema>;
-
-export const OutputMetaSchema = z.looseObject({
-  truncation: z
-    .looseObject({
-      direction: z.enum(["head", "tail", "middle"]).optional(),
-      reason: z.string().optional(),
-      omitted: z.number().int().nonnegative().optional(),
-    })
-    .optional(),
-  total: z.number().int().nonnegative().optional(),
-  artifactId: OptionalText,
-  source: OptionalText,
-  diagnostics: z.array(z.unknown()).optional(),
-  limits: UnknownRecord.optional(),
-});
-export type OutputMeta = z.infer<typeof OutputMetaSchema>;
 
 export const PathLinkSchema = z.looseObject({
   path: z.string().optional(),

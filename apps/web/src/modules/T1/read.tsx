@@ -3,15 +3,10 @@ import { Icons } from "../../tokens";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { omittedOf, type TruncationMeta } from "../U3/tool-card/output-meta";
 import { splitToolResult } from "../U3/tool-card/result";
 import { TextOutput } from "../U3/tool-card/text-output";
-import {
-  decodeReadArgs,
-  decodeReadDetails,
-  omittedOf,
-  type ReadToolDetails,
-  type TruncationMeta,
-} from "./models";
+import { decodeReadArgs, decodeReadDetails, type ReadToolDetails } from "./models";
 import { dispatchReadUrl, type ReadUrlRenderer } from "./read-url-seam";
 
 export interface ReadGroupItem {

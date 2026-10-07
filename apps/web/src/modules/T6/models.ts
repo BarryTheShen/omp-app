@@ -1,22 +1,13 @@
 import type { CapabilityKey, CapabilityMap } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { z } from "zod";
+import { OutputMetaSchema } from "../U3/tool-card/output-meta";
 
 const MAX_MEMORY_TEXT = 4_000;
 
 export const T6_CAPABILITIES = {
   memoryEdit: "upstream.memory-edit" as CapabilityKey,
 } as const;
-
-export const OutputMetaSchema = z.looseObject({
-  truncation: z.unknown().optional(),
-  source: z.string().optional(),
-  artifactId: z.string().min(1).optional(),
-  artifactElidedBytes: z.int().nonnegative().optional(),
-  diagnostics: z.array(z.unknown()).optional(),
-  limits: z.array(z.unknown()).optional(),
-});
-export type OutputMeta = z.infer<typeof OutputMetaSchema>;
 
 export const MemoryRecallArgsSchema = z.looseObject({ query: z.string().optional() });
 export const MemoryReflectArgsSchema = z.looseObject({

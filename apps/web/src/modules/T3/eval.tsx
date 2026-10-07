@@ -85,7 +85,7 @@ function evalState(
   phase: ToolCardPhase,
   outputMeta: OutputMeta | undefined,
 ): ToolCardState {
-  const failure = failureFor(model, phase);
+  const failure = failureFor(model, phase, normalized.error?.message);
   return {
     ...normalized,
     phase,
@@ -99,7 +99,11 @@ function evalState(
   };
 }
 
-function failureFor(model: EvalModel, phase: ToolCardPhase): ToolCardState["error"] | undefined {
+function failureFor(
+  model: EvalModel,
+  phase: ToolCardPhase,
+  reason: string | undefined,
+): ToolCardState["error"] | undefined {
   if (phase === "cancelled") {
     return { code: "cancelled", message: "Evaluation cancelled.", retryable: false };
   }
@@ -123,7 +127,16 @@ function failureFor(model: EvalModel, phase: ToolCardPhase): ToolCardState["erro
     return { code: "omp_error", message, retryable: false };
   }
   if (rawError === undefined) {
-    return { message: "Evaluation reported an error.", retryable: false };
+    // omp's words for the failure are in the result's text. When a cell already shows them as its
+    // output, the banner stays short; otherwise (a run that never started) the banner carries them.
+    const cellsShowIt = model.details?.cells?.some(
+      (cell) => typeof cell.output === "string" && cell.output.length > 0,
+    );
+    return {
+      message:
+        cellsShowIt === true || reason === undefined ? "Evaluation reported an error." : reason,
+      retryable: false,
+    };
   }
   const failure = mapT3Failure(rawError, "eval");
   return {
@@ -376,6 +389,16 @@ function StructuredValue({ value }: { readonly value: unknown }) {
   if (object === undefined) {
     return <div className="text-muted-foreground text-xs">{structuredText(value)}</div>;
   }
+  // omp's real JSON output is `{ preview, truncated, totalBytes }`; the value itself is already in
+  // the cell's output above, so this says only how big it was.
+  if (typeof object.preview === "string" && typeof object.totalBytes === "number") {
+    return (
+      <div className="text-muted-foreground text-xs" data-testid="t3-eval-json-size">
+        Structured result, {object.totalBytes.toLocaleString("en-US")} bytes
+        {object.truncated === true ? " (shortened here)" : ""}
+      </div>
+    );
+  }
   const entries = Object.entries(object).slice(0, 32);
   return (
     <dl className="grid min-w-0 gap-1 text-xs" data-testid="t3-eval-json-rows">
@@ -426,9 +449,25 @@ function statusEventText(event: unknown): string {
   if (event === null || typeof event !== "object" || Array.isArray(event))
     return boundedText(event);
   const record = event as Record<string, unknown>;
-  const status = typeof record.status === "string" ? record.status : undefined;
-  const message = typeof record.message === "string" ? record.message : undefined;
-  return safeText([status, message].filter(Boolean).join(": ")) || boundedText(event);
+  // omp's real events are `{ op, detail }` (what the cell did: "browser: docs.evaluate(...)"), `{ op, path, chars }`
+  // and `{ op, error }`; `{ status, message }` is the older shape.
+  const kind =
+    typeof record.status === "string"
+      ? record.status
+      : typeof record.op === "string"
+        ? record.op
+        : undefined;
+  const what =
+    typeof record.message === "string"
+      ? record.message
+      : typeof record.detail === "string"
+        ? record.detail
+        : typeof record.path === "string"
+          ? record.path
+          : undefined;
+  const failed = typeof record.error === "string" ? record.error : undefined;
+  const line = [[kind, what].filter(Boolean).join(": "), failed].filter(Boolean).join(" · ");
+  return safeText(line) || boundedText(event);
 }
 
 function outputText(value: unknown): string {
@@ -475,11 +514,12 @@ function safeLanguage(language: string): string {
   return language.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 32) || "text";
 }
 
+/** Drops control characters (escape sequences, NUL, ...) but keeps tabs and line breaks: code and output are lines. */
 function safeText(value: string): string {
   let output = "";
   for (const character of value) {
     const code = character.charCodeAt(0);
-    if (code <= 31 || code === 127) continue;
+    if ((code <= 31 && code !== 9 && code !== 10) || code === 127) continue;
     output += character;
     if (output.length >= MAX_TEXT) break;
   }

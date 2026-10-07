@@ -2,6 +2,7 @@ import { AppErrorCode, AppFailure, CapabilityKey, type CapabilityMap } from "@om
 import { z } from "zod";
 import type { NestedTranscriptSource } from "../P1/contract/runtime";
 import { AgentRefSchema, AgentStatusSchema } from "../P1/contract/types";
+import { OutputMetaSchema } from "../U3/tool-card/output-meta";
 
 const OpenRecord = z.record(z.string(), z.unknown());
 const OptionalText = z.string().min(1).optional();
@@ -38,40 +39,6 @@ export const NestedTranscriptSnapshotSchema = z.looseObject({
 });
 export type NestedTranscriptSnapshot = z.infer<typeof NestedTranscriptSnapshotSchema>;
 export type { NestedTranscriptSource };
-
-export const OutputRangeSchema = z.looseObject({
-  start: z.number().int().nonnegative().optional(),
-  end: z.number().int().nonnegative().optional(),
-});
-export type OutputRange = z.infer<typeof OutputRangeSchema>;
-
-export const TruncationMetaSchema = z.looseObject({
-  direction: z.enum(["head", "tail", "middle"]).optional(),
-  reason: z.enum(["lines", "bytes", "middle"]).optional(),
-  totalLines: z.number().int().nonnegative().optional(),
-  shownLines: z.number().int().nonnegative().optional(),
-  totalBytes: z.number().int().nonnegative().optional(),
-  shownBytes: z.number().int().nonnegative().optional(),
-  shownHead: OutputRangeSchema.optional(),
-  shownTail: OutputRangeSchema.optional(),
-  omittedLines: z.number().int().nonnegative().optional(),
-  omittedBytes: z.number().int().nonnegative().optional(),
-  artifactId: OptionalText,
-  artifactElidedBytes: z.number().int().nonnegative().optional(),
-  partialLine: z.boolean().optional(),
-});
-export type TruncationMeta = z.infer<typeof TruncationMetaSchema>;
-
-export const OutputMetaSchema = z.looseObject({
-  truncation: TruncationMetaSchema.optional(),
-  source: OptionalText,
-  artifactId: OptionalText,
-  artifactElidedBytes: z.number().int().nonnegative().optional(),
-  artifactError: z.unknown().optional(),
-  diagnostics: z.array(z.unknown()).optional(),
-  limits: z.array(z.unknown()).optional(),
-});
-export type OutputMeta = z.infer<typeof OutputMetaSchema>;
 
 export const TaskToolArgsSchema = z.looseObject({
   prompt: OptionalText,

@@ -11,6 +11,7 @@ import type {
   ToolRendererProps,
 } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { omittedOf, type OutputMeta as ParsedOutputMeta } from "../U3/tool-card/output-meta";
 import { detailsSource, splitToolResult } from "../U3/tool-card/result";
 import type { ArtifactSlot, CopyKind } from "../U3/tool-card/slots";
 import { TextOutput } from "../U3/tool-card/text-output";
@@ -18,8 +19,6 @@ import {
   type Diagnostic,
   decodeWriteArgs,
   decodeWriteDetails,
-  omittedOf,
-  type OutputMeta as ParsedOutputMeta,
   type WriteToolDetails,
 } from "./models";
 

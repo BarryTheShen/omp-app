@@ -5,6 +5,7 @@ import { MarkdownContent } from "../U1/markdown";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolCardPhase, ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { splitToolResult } from "../U3/tool-card/result";
 import {
   type SearchCitation,
   type SearchRenderDetails,
@@ -30,12 +31,15 @@ export interface WebSearchCardProps {
 export function WebSearchCard({ rendererProps, onCopy }: WebSearchCardProps) {
   const normalized = normalizeToolRendererProps(rendererProps);
   const query = queryFromArgs(rendererProps.args);
-  const detailSource =
-    rendererProps.result ??
-    normalized.result ??
-    normalized.streamProjection ??
-    normalized.partialResult;
-  const rawResult = rawText(detailSource);
+  // omp's result is `{ content, details }`: the search is in `details.response`, its answer text is
+  // the fallback. While the call streams, R0's projection is shaped like the details.
+  const resultSource = rendererProps.result ?? normalized.result ?? normalized.partialResult;
+  const split = splitToolResult(resultSource);
+  const detailSource = split.isEnvelope
+    ? split.details
+    : (normalized.streamProjection ?? resultSource);
+  const rawResult = rawText(resultSource ?? normalized.streamProjection);
+  const fallbackText = split.text !== "" ? split.text : rawResult;
   const parsed =
     detailSource === undefined ? undefined : SearchRenderDetailsSchema.safeParse(detailSource);
   const details = parsed?.success === true ? parsed.data : undefined;
@@ -59,6 +63,19 @@ export function WebSearchCard({ rendererProps, onCopy }: WebSearchCardProps) {
     partialResult: undefined,
   };
 
+  // A failed call is its error banner (omp's own words say why); a body would only be empty.
+  if (normalized.phase === "error" && details === undefined) {
+    return (
+      <div data-slot="t4-web-search-card" data-testid="t4-web-search-card">
+        <ToolCard
+          className="[&_[data-slot='u3-tool-card-args']]:hidden"
+          rawResult={rawResult}
+          state={state}
+          summary={summary}
+        />
+      </div>
+    );
+  }
   if (parsed !== undefined && !parsed.success && isSettled(normalized.phase)) {
     return (
       <div data-slot="t4-web-search-card" data-testid="t4-web-search-card">
@@ -93,7 +110,7 @@ export function WebSearchCard({ rendererProps, onCopy }: WebSearchCardProps) {
       {!(details?.error !== undefined && state.phase === "error") && (
         <SearchBody
           details={details}
-          fallbackText={details === undefined ? rawResult : undefined}
+          fallbackText={details === undefined ? fallbackText : undefined}
           onCopy={onCopy}
           phase={state.phase}
           query={details?.query ?? query}

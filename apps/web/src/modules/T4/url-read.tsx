@@ -1,11 +1,12 @@
 import { AlertCircleIcon, ExternalLinkIcon, InfoIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { omittedOf, type ReadToolDetails } from "../T1/models";
+import type { ReadToolDetails } from "../T1/models";
 import type { ReadUrlRendererProps } from "../T1/read-url-seam";
 import { MarkdownContent } from "../U1/markdown";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolCardState } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { omittedOf } from "../U3/tool-card/output-meta";
 import { TextOutput } from "../U3/tool-card/text-output";
 import { safeRetrievalUrl } from "./models";
 

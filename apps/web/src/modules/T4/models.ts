@@ -1,6 +1,7 @@
 import { AppFailure } from "@omp-app/contracts";
 import { z } from "zod";
-import { OutputMetaSchema, ReadToolDetailsSchema } from "../T1/models";
+import { ReadToolDetailsSchema } from "../T1/models";
+import { OutputMetaSchema } from "../U3/tool-card/output-meta";
 
 const UnknownRecord = z.record(z.string(), z.unknown());
 

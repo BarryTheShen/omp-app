@@ -124,4 +124,75 @@ describe("EvalCard", () => {
     fireEvent.click(screen.getByText("Raw details"));
     expect(screen.getByTestId("t3-eval-raw-details").textContent).toContain("raw partial");
   });
+
+  test("keeps the line breaks and tabs of the code and the output, and drops other control characters", () => {
+    render(
+      <EvalCard
+        rendererProps={props({
+          result: {
+            content: [{ type: "text", text: "a" }],
+            details: {
+              language: "python",
+              cells: [
+                {
+                  index: 0,
+                  code: "x = 1\nif x:\n\tprint(x)",
+                  language: "python",
+                  output: "line one\nline two\u001b[31m red",
+                  status: "complete",
+                  exitCode: 0,
+                },
+              ],
+            },
+          },
+        })}
+      />,
+    );
+    const cell = screen.getByTestId("t3-eval-cell-0");
+    expect(cell.querySelector("[data-cell-code]")?.textContent).toBe("x = 1\nif x:\n\tprint(x)");
+    expect(cell.querySelector("[data-cell-output]")?.textContent).toBe(
+      "line one\nline two[31m red",
+    );
+  });
+
+  test("decodes arguments the model sent as null, as a real call did (reset: null)", () => {
+    render(
+      <EvalCard
+        rendererProps={props({
+          args: { language: "py", code: "print(1)", title: null, timeout: null, reset: null },
+          result: {
+            content: [{ type: "text", text: "1" }],
+            details: {
+              language: "python",
+              cells: [{ index: 0, code: "print(1)", output: "1", status: "complete" }],
+            },
+          },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("tool-card-eval-call").getAttribute("data-phase")).toBe("success");
+    expect(screen.queryByText(/malformed/i)).toBeNull();
+  });
+
+  test("a run that never started shows omp's own reason as the error", () => {
+    render(
+      <EvalCard
+        rendererProps={props({
+          isError: true,
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "Tool was not executed because the run was aborted: Request was aborted.",
+              },
+            ],
+            details: {},
+          },
+        })}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Tool was not executed because the run was aborted: Request was aborted.",
+    );
+  });
 });

@@ -1,6 +1,7 @@
 import type { CapabilityKey, CapabilityMap } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { z } from "zod";
+import { type OutputMeta, OutputMetaSchema } from "../U3/tool-card/output-meta";
 
 const UnknownRecord = z.record(z.string(), z.unknown());
 const MAX_PREVIEW = 4_000;
@@ -12,23 +13,12 @@ export const T3_CAPABILITIES = {
   inspectImage: "upstream.inspect-image" as CapabilityKey,
 } as const;
 
-export const OutputMetaSchema = z.looseObject({
-  truncation: z.unknown().optional(),
-  source: z.string().optional(),
-  artifactId: z.string().optional(),
-  artifactElidedBytes: z.int().nonnegative().optional(),
-  artifactError: UnknownRecord.optional(),
-  diagnostics: z.array(z.unknown()).optional(),
-  limits: z.array(z.unknown()).optional(),
-});
-export type OutputMeta = z.infer<typeof OutputMetaSchema>;
-
 export const EvalArgsSchema = z.looseObject({
-  language: z.enum(["py", "js"]).optional(),
-  code: z.string().optional(),
-  title: z.string().optional(),
-  timeout: z.number().nonnegative().optional(),
-  reset: z.boolean().optional(),
+  language: z.enum(["py", "js"]).nullish(),
+  code: z.string().nullish(),
+  title: z.string().nullish(),
+  timeout: z.number().nonnegative().nullish(),
+  reset: z.boolean().nullish(),
 });
 /** omp v18.6.1 `debug` parameters (packages/coding-agent/src/tools/debug.ts:69-138). */
 export const DebugArgsSchema = z.looseObject({
