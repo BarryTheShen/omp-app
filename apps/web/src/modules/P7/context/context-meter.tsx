@@ -10,8 +10,9 @@ export function useContextSnapshot(port: ContextUsagePort) {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+/** The real percent, even above 100: a session over its window should say so. */
 export function percentLabel(percent: number): string {
-  return `${Math.round(Math.max(0, Math.min(100, percent)))}%`;
+  return `${Math.round(Math.max(0, percent))}%`;
 }
 
 export function ContextMeter({ port }: { readonly port: ContextUsagePort }) {
@@ -47,7 +48,7 @@ export function ContextMeter({ port }: { readonly port: ContextUsagePort }) {
             aria-label={`Context used ${percentLabel(usage.percent)}`}
             aria-valuemax={100}
             aria-valuemin={0}
-            aria-valuenow={usage.percent}
+            aria-valuenow={Math.min(100, usage.percent)}
             className="bg-muted h-2 overflow-hidden rounded-full"
             role="progressbar"
           >

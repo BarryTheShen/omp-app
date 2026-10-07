@@ -55,6 +55,18 @@ describe("P7 context and compaction surfaces", () => {
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("80");
   });
 
+  test("a context over the window shows its real percent, with a full bar and a valid ARIA value", () => {
+    render(
+      <ContextMeter
+        port={contextPort({ tokens: 312_000, contextWindow: 100_000, percent: 312 })}
+      />,
+    );
+    expect(screen.getByText("312%")).toBeTruthy();
+    const bar = screen.getByRole("progressbar");
+    expect(bar.getAttribute("aria-valuenow")).toBe("100");
+    expect(bar.getAttribute("aria-label")).toBe("Context used 312%");
+  });
+
   test("routes manual and automatic compaction actions through the typed port", () => {
     const { port, calls } = compactionPort();
     render(<CompactionControls port={port} />);

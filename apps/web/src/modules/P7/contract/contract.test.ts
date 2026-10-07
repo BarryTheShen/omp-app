@@ -104,6 +104,22 @@ describe("P7 context and usage schemas", () => {
     for (const listener of listeners) listener();
     expect(port.getSnapshot().usage).toBeNull();
   });
+
+  test("a session over its model's window is projected as is, not thrown at the render", () => {
+    const snapshot: SessionContextProjection = {
+      threadId,
+      contextUsage: { tokens: 312_000, contextWindow: 100_000, percent: 312 },
+      isCompacting: false,
+      autoCompactionEnabled: true,
+      tokensPerSecond: null,
+      revision: "over",
+    };
+    const port = createContextUsagePort({
+      getSnapshot: () => snapshot,
+      subscribe: () => () => undefined,
+    });
+    expect(port.getSnapshot().usage?.percent).toBe(312);
+  });
 });
 
 describe("P7 typed RPC adapters", () => {

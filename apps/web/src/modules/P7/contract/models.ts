@@ -15,7 +15,11 @@ export type P7Capability = (typeof P7_CAPABILITIES)[number];
 export const ContextUsage = z.strictObject({
   tokens: z.number().int().nonnegative(),
   contextWindow: z.number().int().positive(),
-  percent: z.number().finite().min(0).max(100),
+  /**
+   * Can pass 100: a session can hold more than its model's window (after switching to a smaller
+   * model, or just before auto-compaction). Rejecting it threw while rendering and blanked the page.
+   */
+  percent: z.number().finite().min(0),
 });
 export type ContextUsage = z.infer<typeof ContextUsage>;
 

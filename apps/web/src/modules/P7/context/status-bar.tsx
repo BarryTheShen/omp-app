@@ -37,7 +37,7 @@ export function ContextStatusBar({
             aria-label={`Context used ${percentLabel(window.percent)}`}
             aria-valuemax={100}
             aria-valuemin={0}
-            aria-valuenow={window.percent}
+            aria-valuenow={Math.min(100, window.percent)}
             className="bg-muted h-1.5 w-20 shrink-0 overflow-hidden rounded-full"
             role="progressbar"
           >
