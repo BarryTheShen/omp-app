@@ -8,6 +8,7 @@ import { existsSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { probeOmp } from "../src/capabilities/omp-version";
 import {
   clearInstance,
   DEFAULT_PORT,
@@ -28,7 +29,7 @@ import {
   readLogTail,
   stateDirectory,
 } from "../src/logging";
-import { createCompositionServer, probeOmp } from "./dev";
+import { createCompositionServer } from "./dev";
 
 /** Replaced with the release version when `packaging/build-deb.sh` compiles this file. */
 declare const OMP_APP_VERSION: string | undefined;
@@ -186,7 +187,7 @@ await recordInstance(record, { pid: process.pid, url: address, version });
 console.log(`omp app ${version}\n\n  ${address}\n\nPress Ctrl+C or close this window to quit.`);
 if (server.health.status !== "ok") {
   console.warn(
-    `\nWarning: omp is not working (${server.health.detail ?? "unknown problem"}). Install omp and check that \`omp --version\` works, then start the app again. The app opens, but chats cannot start.`,
+    `\nWarning: ${server.health.detail ?? "omp is not working."} Check that \`omp --version\` works in this terminal, then start the app again. The app opens, but chats cannot start.`,
   );
 }
 if (args.open) openBrowser(address);

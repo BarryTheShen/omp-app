@@ -6,6 +6,9 @@ import {
   type CapabilityProbeResult,
   capabilitiesForProtocol,
   probeCapabilities,
+  probeCapabilitiesPatiently,
+  probeRanOutOfTime,
+  probeTimedOutEntirely,
   RPC_UNKNOWN_COMMAND_SOURCE,
 } from ".";
 
@@ -138,6 +141,9 @@ describe("probeCapabilities", () => {
     });
     expect(result.evidence).toHaveLength(OMP_COMMAND_NAMES.length);
     expect(result.protocolVersion).toBe(2);
+    // A probe that answered everything did not run out of time.
+    expect(probeRanOutOfTime(result)).toBe(false);
+    expect(probeTimedOutEntirely(result)).toBe(false);
   });
 
   test("keeps protocol v2 unavailable for a v1-only ready frame", async () => {
@@ -171,6 +177,61 @@ describe("probeCapabilities", () => {
       state: "unavailable",
       detail: expect.stringContaining("timed out"),
     });
+    expect(probeRanOutOfTime(result)).toBe(true);
+    expect(probeTimedOutEntirely(result)).toBe(true);
+  });
+
+  test("a slow start that ran out of the first wait is asked again with a longer one, and is answered", async () => {
+    const root = await temporaryDirectory("capability-probe-patient-");
+    const binary = await fakeOmp();
+    const retries: number[] = [];
+    const result = await probeCapabilitiesPatiently({
+      cwd: FolderPath.parse(join(root, "app-data")),
+      ompBin: binary,
+      // The fake answers after 100 ms: more than the first wait, well within the patient one.
+      env: { FAKE_DELAY: "1" },
+      ghBinary: join(root, "missing-gh"),
+      timeoutMs: 20,
+      deadlineMs: 20,
+      patient: { timeoutMs: 5_000, deadlineMs: 15_000 },
+      onRetry: (waited) => retries.push(waited),
+    });
+    expect(retries).toHaveLength(1);
+    expect(probeRanOutOfTime(result)).toBe(false);
+    expect(result.capabilities["omp.cmd.get_state"]).toEqual({ state: "available", via: "rpc" });
+  });
+
+  test("a probe that runs out of time even patiently stays timed out, after one retry", async () => {
+    const root = await temporaryDirectory("capability-probe-patient-fail-");
+    const binary = await fakeOmp();
+    const retries: number[] = [];
+    const result = await probeCapabilitiesPatiently({
+      cwd: FolderPath.parse(join(root, "app-data")),
+      ompBin: binary,
+      env: { FAKE_DELAY: "1" },
+      ghBinary: join(root, "missing-gh"),
+      timeoutMs: 20,
+      deadlineMs: 20,
+      patient: { timeoutMs: 30, deadlineMs: 30 },
+      onRetry: (waited) => retries.push(waited),
+    });
+    expect(retries).toHaveLength(1);
+    expect(probeTimedOutEntirely(result)).toBe(true);
+  });
+
+  test("a probe that answered everything the first time is not asked again", async () => {
+    const root = await temporaryDirectory("capability-probe-once-");
+    const binary = await fakeOmp();
+    const retries: number[] = [];
+    const result = await probeCapabilitiesPatiently({
+      cwd: FolderPath.parse(join(root, "app-data")),
+      ompBin: binary,
+      env: {},
+      ghBinary: join(root, "missing-gh"),
+      onRetry: (waited) => retries.push(waited),
+    });
+    expect(retries).toEqual([]);
+    expect(probeRanOutOfTime(result)).toBe(false);
   });
 
   test("keeps the probe isolated and removes its cwd after command probing", async () => {

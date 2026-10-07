@@ -17,8 +17,12 @@ import { type OmpProcess, type OmpProcessOptions, spawnOmpProcess } from "../pro
 const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
 const DEFAULT_GH_TIMEOUT_MS = 2_000;
 const DEFAULT_PROBE_DEADLINE_MS = 15_000;
+/** What a probe that ran out of time is retried with: a busy computer needs longer than a quiet one. */
+export const PATIENT_PROBE_TIMEOUT_MS = 20_000;
+export const PATIENT_PROBE_DEADLINE_MS = 60_000;
 const PROBE_TIMEOUT_REASON =
   "omp capability probe timed out before all capabilities were confirmed";
+const COMMAND_TIMEOUT_REASON = "omp did not return a command response before the probe timed out";
 const PROBE_OMP_ARGS = [
   "--no-session",
   "--no-title",
@@ -172,6 +176,21 @@ export interface CapabilityProbeResult {
   readonly evidence: readonly CapabilityProbeEvidenceResult[];
 }
 
+/** True when any answer of the probe came from running out of time, so the probe cannot be trusted. */
+export function probeRanOutOfTime(result: CapabilityProbeResult): boolean {
+  return result.evidence.some(
+    (entry) => entry.reason === PROBE_TIMEOUT_REASON || entry.reason === COMMAND_TIMEOUT_REASON,
+  );
+}
+
+/** True when the whole probe ran out of time before it confirmed one thing (every answer is a timeout). */
+export function probeTimedOutEntirely(result: CapabilityProbeResult): boolean {
+  return (
+    result.evidence.length > 0 &&
+    result.evidence.every((entry) => entry.reason === PROBE_TIMEOUT_REASON)
+  );
+}
+
 interface CommandProbeResult {
   readonly available: boolean;
   readonly reason?: string;
@@ -200,7 +219,7 @@ function commandFailureReason(cause: unknown): string {
     }
     return `probe failed with ${cause.appError.code}`;
   }
-  return "omp did not return a command response before the probe timed out";
+  return COMMAND_TIMEOUT_REASON;
 }
 
 function commandPayload(command: OmpCommandName): Record<string, unknown> {
@@ -499,6 +518,33 @@ export async function probeCapabilities(
     await session.close();
     await rm(probeCwd, { recursive: true, force: true });
   }
+}
+
+export interface PatientProbeOptions extends CapabilityProbeOptions {
+  /** What the one retry waits; the defaults are `PATIENT_PROBE_TIMEOUT_MS` and `PATIENT_PROBE_DEADLINE_MS`. */
+  readonly patient?: { readonly timeoutMs: number; readonly deadlineMs: number };
+  /** Called once, with how long the first attempt took, when it ran out of time and is retried. */
+  readonly onRetry?: (waitedMs: number) => void;
+}
+
+/**
+ * `probeCapabilities`, asked once more with longer waits when the first answer ran out of time.
+ * Without it a slow start (a busy computer) would leave every omp feature unavailable until the
+ * app is restarted.
+ */
+export async function probeCapabilitiesPatiently(
+  options: PatientProbeOptions,
+): Promise<CapabilityProbeResult> {
+  const { patient, onRetry, ...probeOptions } = options;
+  const started = performance.now();
+  const first = await probeCapabilities(probeOptions);
+  if (!probeRanOutOfTime(first)) return first;
+  onRetry?.(Math.round(performance.now() - started));
+  return probeCapabilities({
+    ...probeOptions,
+    timeoutMs: patient?.timeoutMs ?? PATIENT_PROBE_TIMEOUT_MS,
+    deadlineMs: patient?.deadlineMs ?? PATIENT_PROBE_DEADLINE_MS,
+  });
 }
 
 /** Applies a thread's negotiated protocol to an immutable copy of the server-wide map. */

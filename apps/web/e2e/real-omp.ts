@@ -38,6 +38,8 @@ export async function waitForFiniteAnimations(page: Page): Promise<void> {
 export interface OpenOptions {
   /** Runs before the app loads, for example to add an init script; its result is ignored. */
   readonly beforeLoad?: (page: Page) => Promise<unknown>;
+  /** Set to false to open a page that is not the app (a full-page screen such as 'omp isn't available'). */
+  readonly expectApp?: boolean;
 }
 
 export interface RealApp {
@@ -122,6 +124,7 @@ async function startServer(
     readonly idleCloseMs: number | undefined;
     readonly seedSessions: number;
     readonly seedLongTurn: number;
+    readonly ompBinary: string | undefined;
   },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
   const script = join(root, "app-root-server.ts");
@@ -186,7 +189,7 @@ const server = await createCompositionServer({
   homeDir: ${JSON.stringify(join(root, "home"))},
   agentDir: ${JSON.stringify(join(root, "agent"))},
   appDataDir: ${JSON.stringify(join(root, "app-data"))},
-  ompBin: ${JSON.stringify(REAL_OMP)},
+  ompBin: ${JSON.stringify(options.ompBinary ?? REAL_OMP)},
   ompArgs: ["--model", "fake/fake-model"],
   staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
   idleCloseMs: ${options.idleCloseMs === undefined ? "undefined" : options.idleCloseMs},
@@ -223,18 +226,25 @@ const enabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
  * A test with a `realApp` fixture: a fresh composed app per test, torn down afterwards. A spec can
  * shorten how long an unwatched chat's omp process lives with `realTest.use({ idleCloseMs })`, and
  * start with that many old chats already in the folder with `realTest.use({ seedSessions })`, or with
- * one chat holding a single turn of that many steps with `realTest.use({ seedLongTurn })`.
+ * one chat holding a single turn of that many steps with `realTest.use({ seedLongTurn })`. A spec
+ * about omp being missing points the app at another binary with `realTest.use({ ompBinary })`.
  */
 export const realTest = test.extend<{
   realApp: RealApp;
   idleCloseMs: number | undefined;
   seedSessions: number;
   seedLongTurn: number;
+  ompBinary: string | undefined;
 }>({
   idleCloseMs: [undefined, { option: true }],
   seedSessions: [0, { option: true }],
   seedLongTurn: [0, { option: true }],
-  realApp: async ({ browser, idleCloseMs, seedSessions, seedLongTurn }, use, testInfo) => {
+  ompBinary: [undefined, { option: true }],
+  realApp: async (
+    { browser, idleCloseMs, seedSessions, seedLongTurn, ompBinary },
+    use,
+    testInfo,
+  ) => {
     testInfo.skip(!enabled, "needs OMP_APP_REAL_OMP=1 and omp installed");
     // Real omp starts a process per chat: a loaded machine needs more than the default 30 s.
     testInfo.slow();
@@ -260,7 +270,7 @@ export const realTest = test.extend<{
     const allowed: RegExp[] = [];
     try {
       provider = await startProvider(agentDir, env);
-      server = await startServer(root, env, { idleCloseMs, seedSessions, seedLongTurn });
+      server = await startServer(root, env, { idleCloseMs, seedSessions, seedLongTurn, ompBinary });
       const url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
         const page = await browser.newPage();
@@ -271,7 +281,9 @@ export const realTest = test.extend<{
         page.on("pageerror", (error) => problems.push(`page error: ${error.message}`));
         await options.beforeLoad?.(page);
         await page.goto(url);
-        await expect(page.locator("[data-app-root='true']")).toBeVisible();
+        if (options.expectApp !== false) {
+          await expect(page.locator("[data-app-root='true']")).toBeVisible();
+        }
         return page;
       };
       const serverPid = server.process.pid;

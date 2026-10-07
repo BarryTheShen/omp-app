@@ -9,7 +9,12 @@ import {
 } from "@omp-app/contracts";
 import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
-import { probeCapabilities } from "../src/capabilities";
+import {
+  probeCapabilitiesPatiently,
+  probeRanOutOfTime,
+  probeTimedOutEntirely,
+} from "../src/capabilities";
+import { OMP_PROBLEM, type OmpProbe, probeOmpPatiently } from "../src/capabilities/omp-version";
 import {
   buildDebugReport,
   createNullLogger,
@@ -64,11 +69,6 @@ export interface CompositionServerOptions {
   readonly statsIntervalMs?: number;
 }
 
-interface OmpProbe {
-  readonly version: string | null;
-  readonly health: { readonly status: "ok" | "unhealthy"; readonly detail?: string };
-}
-
 export interface CompositionServer extends AppServer {
   readonly processRegistry: OmpProcessRegistry;
   readonly health: OmpProbe["health"];
@@ -86,48 +86,6 @@ function environmentWithOverrides(
     else environment[key] = value;
   }
   return environment;
-}
-
-export async function probeOmp(
-  binary: string,
-  env: Record<string, string>,
-  cwd: string,
-): Promise<OmpProbe> {
-  let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
-  try {
-    child = Bun.spawn([binary, "--version"], { cwd, env, stdout: "pipe", stderr: "pipe" });
-  } catch {
-    return { version: null, health: { status: "unhealthy", detail: "omp binary is unavailable" } };
-  }
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    try {
-      child.kill("SIGKILL");
-    } catch {
-      // The child may already have exited.
-    }
-  }, 5_000);
-  try {
-    const [exitCode, stdout] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    const version = stdout.match(/\d+\.\d+\.\d+/)?.[0] ?? null;
-    if (!timedOut && exitCode === 0 && version !== null) {
-      return { version, health: { status: "ok" } };
-    }
-    return {
-      version,
-      health: {
-        status: "unhealthy",
-        detail: timedOut ? "omp --version timed out" : "omp --version failed",
-      },
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 /** Builds the complete app composition without starting a server until all registrations exist. */
@@ -169,7 +127,10 @@ export async function createCompositionServer(
     log_file: logger.path,
   });
   const probeStarted = performance.now();
-  const probe = await probeOmp(ompBinary, env, launchFolder);
+  const probe = await probeOmpPatiently(ompBinary, env, launchFolder, {
+    // A busy computer can need longer than a quiet one: it is asked once more, patiently.
+    onRetry: (waitedMs) => logger.warn("omp.probe_retry", { waited_ms: waitedMs }),
+  });
   logger.info("omp.probe", {
     status: probe.health.status,
     version: probe.version,
@@ -182,24 +143,36 @@ export async function createCompositionServer(
   if (health.status === "ok") {
     const capabilityStarted = performance.now();
     try {
-      const capabilityProbe = await probeCapabilities({
+      const capabilityProbe = await probeCapabilitiesPatiently({
         cwd: FolderPath.parse(appDataDir),
         ompBin: ompBinary,
         env,
+        onRetry: (waitedMs) => logger.warn("capabilities.probe_retry", { waited_ms: waitedMs }),
       });
-      capabilities = capabilityProbe.capabilities;
-      protocolVersion = capabilityProbe.protocolVersion;
-      const states = Object.values(capabilities).flatMap((capability) =>
-        capability === undefined ? [] : [capability.state],
-      );
-      logger.info("capabilities.probe", {
-        protocol: protocolVersion,
-        available: states.filter((state) => state === "available").length,
-        unavailable: states.filter((state) => state !== "available").length,
-        ms: Math.round(performance.now() - capabilityStarted),
-      });
+      if (probeTimedOutEntirely(capabilityProbe)) {
+        // Reporting "ok" with every omp feature unavailable would cripple the app until a restart
+        // and say nothing about why.
+        health = { status: "unhealthy", detail: OMP_PROBLEM.checksTimedOut };
+        logger.error("capabilities.probe_failed", {
+          message: "the capability probe ran out of time twice",
+          ms: Math.round(performance.now() - capabilityStarted),
+        });
+      } else {
+        capabilities = capabilityProbe.capabilities;
+        protocolVersion = capabilityProbe.protocolVersion;
+        const states = Object.values(capabilities).flatMap((capability) =>
+          capability === undefined ? [] : [capability.state],
+        );
+        logger.info("capabilities.probe", {
+          protocol: protocolVersion,
+          available: states.filter((state) => state === "available").length,
+          unavailable: states.filter((state) => state !== "available").length,
+          partial_timeouts: probeRanOutOfTime(capabilityProbe),
+          ms: Math.round(performance.now() - capabilityStarted),
+        });
+      }
     } catch (error) {
-      health = { status: "unhealthy", detail: "omp capability probe failed" };
+      health = { status: "unhealthy", detail: OMP_PROBLEM.checksFailed };
       logger.error("capabilities.probe_failed", {
         message: error instanceof Error ? error.message : String(error),
         ms: Math.round(performance.now() - capabilityStarted),

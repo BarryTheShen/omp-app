@@ -1,6 +1,7 @@
 import { AssistantRuntimeProvider, useAui, useAuiState } from "@assistant-ui/react";
 import {
   AppFailure,
+  type AppHealth,
   AppPort,
   type AppServerInfo,
   AttachmentBlobStore,
@@ -30,6 +31,7 @@ import {
   AppConnectionGate,
   AppConnectionProvider,
   LaunchStatusScreen,
+  OmpUnavailableScreen,
   rememberLogFile,
   useAppConnection,
 } from "@/launch";
@@ -1047,6 +1049,7 @@ function ConnectedRoot() {
   const client = connection.client;
   const [capabilities, setCapabilities] = useState<CapabilityMap>(EMPTY_CAPABILITIES);
   const [serverInfo, setServerInfo] = useState<AppServerInfo>();
+  const [health, setHealth] = useState<AppHealth>();
   const [startFailed, setStartFailed] = useState(false);
   const shortcutPreferences = useMemo<PreferenceStore>(
     () => ({
@@ -1063,11 +1066,12 @@ function ConnectedRoot() {
     // From here on, errors in the page land in the app's debug log next to the server's own lines.
     setClientErrorSink((report) => app.reportClientError(report));
     setStartFailed(false);
-    void Promise.all([app.capabilities({}), app.serverInfo({})])
-      .then(([nextCapabilities, nextServerInfo]) => {
+    void Promise.all([app.capabilities({}), app.serverInfo({}), app.health({})])
+      .then(([nextCapabilities, nextServerInfo, nextHealth]) => {
         if (!active) return;
         rememberLogFile(nextServerInfo.logFile);
         setCapabilities(nextCapabilities);
+        setHealth(nextHealth);
         setServerInfo(nextServerInfo);
       })
       .catch((error: unknown) => {
@@ -1093,6 +1097,8 @@ function ConnectedRoot() {
     );
   }
   if (!client || !serverInfo) return null;
+  // Without omp no chat can open or start: say so, instead of showing an app that fails silently.
+  if (serverInfo.omp === null) return <OmpUnavailableScreen reason={health?.detail} />;
   return (
     <RegistryProvider capabilities={capabilities} registry={registry} renderers={RENDERERS}>
       <ShortcutRegistryProvider descriptors={DESCRIPTORS} preferenceStore={shortcutPreferences}>

@@ -35,7 +35,7 @@ realTest(
     // The omp probe and the capability probe, with timings.
     expect(log).toMatch(/ INFO {2}omp\.probe status=ok version=\d+\.\d+\.\d+ ms=\d+/);
     expect(log).toMatch(
-      / INFO {2}capabilities\.probe protocol=\d available=\d+ unavailable=\d+ ms=\d+/,
+      / INFO {2}capabilities\.probe protocol=\d available=\d+ unavailable=\d+ partial_timeouts=(?:true|false) ms=\d+/,
     );
     expect(log).toMatch(/ INFO {2}listening port=\d+ health=ok/);
     // The omp process: created, running with its pid.

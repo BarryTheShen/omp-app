@@ -8,6 +8,7 @@ export {
   useAppConnection,
 } from "./app-connection";
 export { DEFAULT_LOG_FILE, knownLogFile, rememberLogFile } from "./log-location";
+export { OmpUnavailableScreen, type OmpUnavailableScreenProps } from "./omp-unavailable";
 export {
   APP_TOKEN_STORAGE_KEY,
   type LaunchLocationLike,
