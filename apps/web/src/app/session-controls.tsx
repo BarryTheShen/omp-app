@@ -1,6 +1,7 @@
 import type { AppClient } from "@omp-app/client";
-import type { CapabilityMap, ThreadId } from "@omp-app/contracts";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import type { CapabilityMap, RpcSessionClient, ThreadId } from "@omp-app/contracts";
+import { RpcSessionPort } from "@omp-app/contracts";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { ThinkingLevel } from "@/modules/D1/contract";
 import {
@@ -14,6 +15,7 @@ import {
   type LiveThinkingState,
   ThinkingLevelsController,
   ThinkingSelector,
+  thinkingLevelLabel,
 } from "@/modules/D1/thinking";
 import { ContextStatusBar } from "@/modules/P7/context/status-bar";
 import {
@@ -24,6 +26,7 @@ import {
 } from "@/modules/P7/contract";
 import type { OmpRuntimeStore, SessionInfoState } from "@/modules/R0/store";
 import { useOverlayHost } from "@/overlay";
+import { reportClientError } from "./client-errors";
 
 interface SessionControlProps {
   readonly client: AppClient;
@@ -89,10 +92,31 @@ export function SessionModelControl({
   );
   useEffect(() => () => catalog.dispose(), [catalog]);
   useEffect(() => () => thinking.dispose(), [thinking]);
+  const rpc = useMemo(() => client.port(RpcSessionPort) as RpcSessionClient, [client]);
+  /**
+   * The header reads R0's copy of omp's state, which is read again at a turn's end. After the person
+   * changes the model or the thinking level, read it now so the header shows what omp uses.
+   */
+  const refreshSession = useCallback(() => {
+    void rpc
+      .send({ threadId, command: { type: "get_state" } })
+      .then((state) => store.applySessionState(state))
+      .catch((error: unknown) => {
+        reportClientError({
+          kind: "error",
+          message: `The session state could not be read after a change: ${
+            error instanceof Error ? error.message : "unknown error"
+          }`,
+        });
+      });
+  }, [rpc, store, threadId]);
   const modelName = session.model?.name ?? session.model?.id;
+  const parsedLevel = session.model?.reasoning
+    ? ThinkingLevel.safeParse(session.thinkingLevel)
+    : null;
   const level =
-    session.model?.reasoning && session.thinkingLevel && session.thinkingLevel !== "off"
-      ? session.thinkingLevel
+    parsedLevel?.success && parsedLevel.data !== "off"
+      ? thinkingLevelLabel(parsedLevel.data).toLowerCase()
       : null;
   const open = () => {
     void catalog.refresh().catch(() => undefined);
@@ -106,8 +130,8 @@ export function SessionModelControl({
         "h-[min(calc(100dvh-1rem),52rem)] w-[min(calc(100vw-1rem),48rem)] max-h-none max-w-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]",
       content: ({ close }) => (
         <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
-          <ModelPicker catalog={catalog} fill scope="session" />
-          <ThinkingSelector controller={thinking} />
+          <ModelPicker catalog={catalog} fill onApplied={refreshSession} scope="session" />
+          <ThinkingSelector controller={thinking} onApplied={refreshSession} />
           <Button className="self-end" onClick={() => close()} type="button" variant="outline">
             Done
           </Button>

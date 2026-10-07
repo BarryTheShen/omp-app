@@ -1,6 +1,7 @@
 import { Popover } from "@base-ui/react/popover";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
+import { zIndexTokens } from "@/tokens";
 import type { ThinkingLevel } from "../contract";
 import type { ThinkingLevelsController } from "./thinking";
 
@@ -25,19 +26,19 @@ function useThinkingSnapshot(controller: ThinkingLevelsController) {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-function label(level: ThinkingLevel): string {
+/** The level as the person reads it: `xhigh` is "Extra high", never the raw value. */
+export function thinkingLevelLabel(level: ThinkingLevel): string {
   const first = level[0] ?? "";
-  return level === "xhigh"
-    ? "Xhigh"
-    : level === "max"
-      ? "Max"
-      : first.toUpperCase() + level.slice(1);
+  return level === "xhigh" ? "Extra high" : first.toUpperCase() + level.slice(1);
 }
 
 export function ThinkingSelector({
   controller,
+  onApplied,
 }: {
   readonly controller: ThinkingLevelsController;
+  /** Called after omp has taken the new level (the header reads omp's state again). */
+  readonly onApplied?: () => void;
 }) {
   const snapshot = useThinkingSnapshot(controller);
   const unavailable = !snapshot.reasoning;
@@ -46,10 +47,13 @@ export function ThinkingSelector({
   }, [controller, snapshot.loadState]);
   const apply = (level: ThinkingLevel) => {
     if (!snapshot.levels.includes(level)) return;
-    void controller.apply({ level, scope: "session" }).catch(() => undefined);
+    void controller
+      .apply({ level, scope: "session" })
+      .then(() => onApplied?.())
+      .catch(() => undefined);
   };
   const currentLabel = snapshot.current
-    ? label(snapshot.current)
+    ? thinkingLevelLabel(snapshot.current)
     : snapshot.loadState === "loading"
       ? "Loading…"
       : "Unavailable";
@@ -108,7 +112,12 @@ export function ThinkingSelector({
               ) : null}
             </Popover.Trigger>
             <Popover.Portal>
-              <Popover.Positioner sideOffset={6} align="start">
+              {/* The list opens from inside a modal dialog: the popover layer is above the modal's. */}
+              <Popover.Positioner
+                sideOffset={6}
+                align="start"
+                style={{ zIndex: zIndexTokens.popover }}
+              >
                 <Popover.Popup
                   role="listbox"
                   aria-label="Thinking levels"
@@ -130,14 +139,14 @@ export function ThinkingSelector({
                         className="h-auto justify-between px-2 py-1.5 text-start"
                         title={
                           supported
-                            ? `Use ${label(level)}`
+                            ? `Use ${thinkingLevelLabel(level)}`
                             : level === "inherit"
-                              ? "Configured only; not a live session level"
+                              ? "Only available in omp's settings, not for one session"
                               : "Not supported by the current model"
                         }
                         onClick={() => apply(level)}
                       >
-                        <span>{label(level)}</span>
+                        <span>{thinkingLevelLabel(level)}</span>
                         {!supported ? (
                           <span className="text-xs text-muted-foreground">Unavailable</span>
                         ) : null}
@@ -150,7 +159,7 @@ export function ThinkingSelector({
           </Popover.Root>
           {snapshot.current ? (
             <p className="text-xs text-muted-foreground">
-              Current: {label(snapshot.current)}
+              Current: {thinkingLevelLabel(snapshot.current)}
               {snapshot.configured === "auto" ? " · Model default" : ""}
             </p>
           ) : null}

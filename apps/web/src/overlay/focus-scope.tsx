@@ -127,6 +127,11 @@ export function FocusScope({
     const handleFocusIn = (event: FocusEvent) => {
       const target = event.target;
       if (!(target instanceof Node) || root.contains(target)) return;
+      // A popup that something inside the dialog opened (a list, a popover) is rendered in a portal
+      // outside the dialog's markup. Focus inside it belongs to the dialog; pulling it back would
+      // close the popup the moment it opens. The page behind a modal is inert, so no other
+      // portal can take focus.
+      if (target instanceof Element && target.closest("[data-base-ui-portal]") !== null) return;
       focusFirst();
     };
     const handleKeyDown = (event: KeyboardEvent) => {

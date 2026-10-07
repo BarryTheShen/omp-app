@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { type ReactNode, StrictMode, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FocusScope } from "./focus-scope";
 import { OVERLAY_GRAMMAR, OVERLAY_Z_INDEX } from "./grammar";
@@ -323,6 +324,43 @@ describe("FocusScope", () => {
     await waitFor(() => expect(document.activeElement).toBe(close));
     fireEvent.click(close);
     await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  test("lets focus move into a popup the scope opened, and pulls it back from anywhere else", async () => {
+    function Fixture() {
+      const [popup, setPopup] = useState(false);
+      return (
+        <>
+          <button type="button">Page behind</button>
+          <FocusScope trapped>
+            <button type="button" onClick={() => setPopup(true)}>
+              Open list
+            </button>
+            {popup
+              ? createPortal(
+                  <div data-base-ui-portal="">
+                    <button type="button">Low</button>
+                  </div>,
+                  document.body,
+                )
+              : null}
+          </FocusScope>
+        </>
+      );
+    }
+
+    render(<Fixture />);
+    const open = screen.getByRole("button", { name: "Open list" });
+    await waitFor(() => expect(document.activeElement).toBe(open));
+    fireEvent.click(open);
+    const low = await screen.findByRole("button", { name: "Low" });
+    low.focus();
+    // Focus stays in the popup: it is the scope's own.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(document.activeElement).toBe(low);
+    // Focus on the page behind the scope is pulled back inside.
+    screen.getByRole("button", { name: "Page behind" }).focus();
+    await waitFor(() => expect(document.activeElement).toBe(open));
   });
 });
 

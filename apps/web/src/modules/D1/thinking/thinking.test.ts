@@ -1,5 +1,7 @@
 import { CapabilityStatus } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { ThinkingLevel } from "../contract";
+import { thinkingLevelLabel } from "./selector";
 import { ThinkingLevelsController } from "./thinking";
 
 const capabilities = {
@@ -69,5 +71,23 @@ describe("D1 thinking levels", () => {
     await controller.cycle("backward");
     expect(calls).toEqual(["cycle", "set:medium"]);
     controller.dispose();
+  });
+});
+
+describe("thinkingLevelLabel", () => {
+  test("reads every level as words, never the raw value", () => {
+    const labels = Object.fromEntries(
+      ThinkingLevel.options.map((level) => [level, thinkingLevelLabel(level)]),
+    );
+    expect(labels).toEqual({
+      inherit: "Inherit",
+      off: "Off",
+      minimal: "Minimal",
+      low: "Low",
+      medium: "Medium",
+      high: "High",
+      xhigh: "Extra high",
+      max: "Max",
+    });
   });
 });

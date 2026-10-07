@@ -66,7 +66,7 @@ test("renders model-supported thinking levels and session scope", async ({ page 
   await expect(page.getByRole("button", { name: /Thinking: Medium/ })).toBeVisible();
   await page.getByRole("button", { name: "Thinking: Medium Model default" }).click();
   await expect(page.getByRole("option", { name: "Medium" })).toBeVisible();
-  expect(await page.getByRole("option", { name: /Xhigh/ }).isDisabled()).toBe(true);
+  expect(await page.getByRole("option", { name: /Extra high/ }).isDisabled()).toBe(true);
   await page.screenshot({
     path: "../../.data/screenshots/d1-4-thinking-light.png",
     fullPage: true,
