@@ -68,7 +68,13 @@ export function shouldExitMode(mode: PromptMode, key: ModeExitKey, text: string)
 export function pythonModeAvailability(capabilities: CapabilityMap): PythonModeAvailability {
   const status = capabilityStatus(capabilities, "upstream.python-mode");
   if (status?.state === "available") return { available: true, reason: "" };
-  return { available: false, reason: status?.detail ?? UPSTREAM_UNAVAILABLE.detail ?? "" };
+  if (status === UPSTREAM_UNAVAILABLE) {
+    return { available: false, reason: "Python mode is not available in this version of omp." };
+  }
+  return {
+    available: false,
+    reason: status?.detail ?? "Python mode is not available in this version of omp.",
+  };
 }
 
 export async function submitModeInput(

@@ -23,7 +23,6 @@ export type SurfaceId =
   | "model"
   | "todo"
   | "attachments"
-  | "attach"
   | "mode"
   | "queue"
   | "scrollFollow"
@@ -39,8 +38,8 @@ export const LAYOUT: AppLayout = {
   header: ["title", "model"],
   /** Right sidebar; with more than one panel they become tabs, in this order. */
   panels: ["todo"],
-  /** The row under the message box, left to right. */
-  composerToolbar: ["attach", "mode", "queue"],
+  /** The inline control row inside the composer, left to right. */
+  composerToolbar: ["mode", "queue"],
   /** Under that row. */
   composerFooter: ["attachments"],
   /** At the bottom of the transcript. */

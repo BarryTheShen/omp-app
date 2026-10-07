@@ -1,6 +1,7 @@
 import type {
   AppendMessage,
   AssistantRuntime,
+  AttachmentAdapter,
   ExternalStoreAdapter,
   MessagePartStreamStatus,
   MessageStatus,
@@ -46,7 +47,8 @@ export interface OmpRuntimeOptions {
   readonly store: OmpRuntimeStore;
   readonly send: RpcSessionSend;
   readonly capabilities?: CapabilityMap;
-  /** R0.2 supplies history refetch without making R0.3 depend on its implementation. */
+  /** Supplies the file attachment adapter used by the composer. */
+  readonly attachments?: AttachmentAdapter;
   readonly onRefetchThread?: () => Promise<void>;
 }
 
@@ -776,7 +778,7 @@ export class OmpRuntimeController {
     if (intent.mode === "python") {
       throw unavailable(
         "upstream.python-mode",
-        "Python mode is unavailable until omp exposes a typed RPC capability",
+        "Python mode is not available in this version of omp.",
       );
     }
     if (intent.mode === "bash") {
@@ -880,7 +882,7 @@ export interface OmpRuntime {
 
 /** React hook that wires one OmpRuntimeStore to assistant-ui's ExternalStoreRuntime. */
 export function useOmpRuntime(options: OmpRuntimeOptions): OmpRuntime {
-  const { capabilities, onRefetchThread, send, store } = options;
+  const { attachments, capabilities, onRefetchThread, send, store } = options;
   const controller = useMemo(
     () =>
       new OmpRuntimeController({
@@ -913,8 +915,12 @@ export function useOmpRuntime(options: OmpRuntimeOptions): OmpRuntime {
       setMessages: _setMessages,
       ...base
     } = rawAdapter;
-    return { ...base, messages: joinedMessages };
-  }, [joinedMessages, rawAdapter]);
+    return {
+      ...base,
+      messages: joinedMessages,
+      ...(attachments ? { adapters: { ...base.adapters, attachments } } : {}),
+    };
+  }, [attachments, joinedMessages, rawAdapter]);
   const runtime = useExternalStoreRuntime(adapter);
   return { runtime, controller };
 }

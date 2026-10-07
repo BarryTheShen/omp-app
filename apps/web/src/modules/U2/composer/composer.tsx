@@ -27,6 +27,8 @@ export interface ComposerSurfaceProps {
   readonly policy?: SubmitPolicy;
   readonly autoFocus?: boolean;
   readonly disabled?: boolean;
+  readonly showAttachmentNames?: boolean;
+  readonly toolbar?: ReactNode;
   readonly children?: ReactNode;
 }
 
@@ -113,6 +115,8 @@ export function ComposerSurface({
   policy = defaultSubmitPolicy,
   autoFocus = true,
   disabled = false,
+  showAttachmentNames = true,
+  toolbar,
   children,
 }: ComposerSurfaceProps): ReactNode {
   const aui = useAui();
@@ -211,14 +215,17 @@ export function ComposerSurface({
           <div className="border-border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring/50 focus-within:ring-offset-2 data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-(--space-sm) rounded-(--radius) border p-(--space-sm) outline-none transition-[border-color,box-shadow] data-[dragging=true]:border-dashed" />
         }
       >
-        <ComposerPrimitive.Attachments>
-          {({ attachment }) => (
-            <span className="text-muted-foreground px-2 text-xs">{attachment.name}</span>
-          )}
-        </ComposerPrimitive.Attachments>
+        {showAttachmentNames && (
+          <ComposerPrimitive.Attachments>
+            {({ attachment }) => (
+              <span className="text-muted-foreground px-2 text-xs">{attachment.name}</span>
+            )}
+          </ComposerPrimitive.Attachments>
+        )}
         <ComposerPrimitive.Input
           ref={inputRef}
           aria-label="Message input"
+          data-focus-ring="parent"
           autoFocus={autoFocus}
           cancelOnEscape={false}
           disabled={disabled || isSubmitting}
@@ -232,7 +239,7 @@ export function ComposerSurface({
           placeholder="Send a message..."
           rows={1}
           submitMode="none"
-          className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
+          className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
         />
         {isStreaming && (
           <p
@@ -251,7 +258,7 @@ export function ComposerSurface({
             {error.message}
           </p>
         )}
-        <div className="relative flex items-center justify-between gap-(--space-xs)">
+        <div className="flex min-w-0 items-center gap-(--space-xs)">
           <ComposerPrimitive.AddAttachment
             render={
               <Button
@@ -265,7 +272,8 @@ export function ComposerSurface({
               </Button>
             }
           />
-          <div className="flex items-center gap-(--space-xs)">
+          {toolbar}
+          <div className="ms-auto flex shrink-0 items-center gap-(--space-xs)">
             {canCancel ? (
               <Button
                 type="button"

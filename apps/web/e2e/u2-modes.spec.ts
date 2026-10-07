@@ -86,7 +86,9 @@ test("shows bash mode and captures light, dark, and narrow states", async ({ pag
   expect(pageErrors).toEqual([]);
   expect(failedResources).toEqual([]);
   await expect(page.getByTestId("u2-modes-playground")).toBeVisible();
-  await expect(page.getByText("Python mode is not released")).toBeVisible();
+  // The reason Python is unavailable is a tooltip on the disabled button, not a line of text.
+  await expect(page.getByTitle("Python mode is not released")).toBeVisible();
+  await expect(page.getByText("Python mode is not released", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Bash" }).click();
   await expect(page.getByTestId("mode-label")).toHaveText("bash");
   const input = page.getByRole("textbox", { name: "Message input" });

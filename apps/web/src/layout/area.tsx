@@ -21,7 +21,7 @@ const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   sidebar: "flex min-h-0 flex-1 flex-col gap-(--space-md)",
   header: "flex min-w-0 flex-1 items-center gap-3",
   panels: "flex min-h-0 flex-1 flex-col",
-  composerToolbar: "flex min-w-0 flex-wrap items-center gap-2 px-(--space-md) py-(--space-xs)",
+  composerToolbar: "flex min-w-0 flex-wrap items-center gap-(--space-xs)",
   composerFooter: "flex min-w-0 flex-col",
   threadFooter: "flex min-w-0 items-center justify-end gap-(--space-sm)",
   statusBar: "flex min-w-0 flex-1 items-center gap-3",

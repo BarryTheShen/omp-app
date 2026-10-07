@@ -58,6 +58,20 @@ describe("U2.6 ModeIndicator", () => {
       "true",
     );
   });
+  test("keeps the unavailable Python reason in a tooltip", () => {
+    render(
+      <Provider>
+        <ComposerPrimitive.Input aria-label="Mode input" />
+        <ModeIndicator capabilities={capabilities} />
+      </Provider>,
+    );
+
+    const python = screen.getByRole("button", { name: "Python" });
+    expect(python.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByTitle("Python mode is not released")).toBeTruthy();
+    expect(screen.queryByText("Python mode is not released", { exact: true })).toBeNull();
+    expect(screen.getByRole("group", { name: "Input mode" })).toBeTruthy();
+  });
 
   test("typing ! immediately highlights Bash and deleting it returns Prompt", async () => {
     render(

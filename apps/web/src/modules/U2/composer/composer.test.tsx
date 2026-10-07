@@ -92,6 +92,27 @@ describe("U2.2 ComposerSurface", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Prompt rejected"));
     expect((input as HTMLTextAreaElement).value).toBe("do not lose me");
   });
+  test("renders toolbar controls in the action row and keeps the footer below", () => {
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface
+          cancel={() => undefined}
+          submitPrompt={async () => undefined}
+          toolbar={<button type="button">Prompt</button>}
+        >
+          <span data-testid="composer-footer">Attachments</span>
+        </ComposerSurface>
+      </RuntimeProvider>,
+    );
+
+    const row = screen.getByRole("button", { name: "Add attachment" }).parentElement;
+    const mode = screen.getByRole("button", { name: "Prompt" });
+    const send = screen.getByRole("button", { name: "Send message" });
+    const footer = screen.getByTestId("composer-footer");
+    expect(row?.contains(mode)).toBe(true);
+    expect(row?.contains(send)).toBe(true);
+    expect(row?.contains(footer)).toBe(false);
+  });
 
   test("maps the cancel button to R0.3 cancel", async () => {
     const cancel = vi.fn(async () => undefined);

@@ -63,7 +63,7 @@ describe("LayoutArea", () => {
   });
 
   test("leaves out surfaces whose capabilities are missing and ids with no surface", () => {
-    const layout = layoutWith({ statusBar: ["context", "attach"] });
+    const layout = layoutWith({ statusBar: ["context", "mode"] });
     expect(areaSurfaces("statusBar", surfaces, {}, layout)).toEqual([]);
     const capabilities: CapabilityMap = {
       "omp.cmd.get_session_stats": { state: "available", via: "rpc" },

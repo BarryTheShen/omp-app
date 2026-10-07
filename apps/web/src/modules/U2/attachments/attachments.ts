@@ -171,6 +171,8 @@ export class AttachmentManager implements AttachmentAdapter {
     options: { readonly signal?: AbortSignal } = {},
   ): Promise<CompleteAttachment> {
     if (isAbort(options.signal)) throw appFailure("cancelled", "Attachment upload cancelled");
+    const existing = this.complete.get(attachment.id);
+    if (existing) return existing;
     const current = this.pending.get(attachment.id) ?? attachment;
     try {
       const stored = await this.blobStore.put({

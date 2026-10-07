@@ -11,8 +11,10 @@ import {
 class MemoryBlobStore implements AttachmentBlobStore {
   readonly values = new Map<string, StoredAttachment>();
   readonly deleted: string[] = [];
+  readonly putIds: string[] = [];
 
   async put(input: { readonly id: string; readonly file: File }): Promise<StoredAttachment> {
+    this.putIds.push(input.id);
     const uri = `attachment://${input.id}`;
     const ref: AttachmentRef = {
       id: input.id,
@@ -63,6 +65,19 @@ describe("U2.3 AttachmentManager", () => {
     await manager.remove(complete);
     expect(manager.getState().complete).toHaveLength(0);
     expect(blobs.deleted).toEqual(["attachment-1"]);
+  });
+  test("does not upload an attachment twice when submission asks to send it again", async () => {
+    const blobs = new MemoryBlobStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const pending = await manager.add({
+      file: new File(["text"], "notes.txt", { type: "text/plain" }),
+    });
+
+    const first = await manager.send(pending);
+    const second = await manager.send(pending);
+
+    expect(second).toBe(first);
+    expect(blobs.putIds).toEqual([pending.id]);
   });
 
   test("rejects disallowed MIME types and oversized files with clear typed errors", async () => {

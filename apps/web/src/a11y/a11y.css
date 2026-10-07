@@ -1,5 +1,5 @@
-/* U0.8 accessibility baseline: every keyboard focus target gets the shared token ring. */
-:where(:focus-visible) {
+/* U0.8 accessibility baseline: the shared token ring is on the focused control unless its parent surface owns it. */
+:where(:focus-visible):not([data-focus-ring="parent"]) {
   outline: var(--border-width-strong) solid var(--ring);
   outline-offset: var(--space-3xs);
 }

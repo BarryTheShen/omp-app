@@ -1,7 +1,10 @@
 import {
+  AssistantRuntimeProvider,
+  type AttachmentAdapter,
   fromThreadMessageLike,
   type ThreadMessageLike,
   unstable_convertExternalMessages,
+  useAui,
 } from "@assistant-ui/react";
 import type {
   AppError,
@@ -13,7 +16,7 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
-import { render, renderHook } from "@testing-library/react";
+import { act, fireEvent, render, renderHook } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 import type { RuntimeMessage } from "../store/store";
 import { OmpRuntimeStore } from "../store/store";
@@ -26,6 +29,19 @@ import {
 } from "./runtime";
 
 const threadId = "runtime-test-thread" as ThreadId;
+function AttachmentAdder({ file, onAdded }: { readonly file: File; readonly onAdded: () => void }) {
+  const composer = useAui().composer;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void composer.addAttachment(file).then(onAdded);
+      }}
+    >
+      Attach test file
+    </button>
+  );
+}
 const baseUsage = {
   input: 1,
   output: 1,
@@ -469,6 +485,48 @@ describe("R0.3 assistant-ui runtime", () => {
     const result = renderHook(() => useOmpRuntime({ store, send, capabilities }));
     expect(result.result.current.runtime).toBeDefined();
     expect(result.result.current.controller).toBeInstanceOf(Object);
+    result.unmount();
+  });
+  test("installs the supplied attachment adapter in the external composer runtime", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const send: RpcSessionSend = async () => undefined as never;
+    const addedFiles: string[] = [];
+    const attachments: AttachmentAdapter = {
+      accept: "text/plain",
+      add: async ({ file }) => {
+        addedFiles.push(file.name);
+        return {
+          id: "runtime-test-attachment",
+          type: "file",
+          name: file.name,
+          contentType: file.type,
+          file,
+          status: { type: "requires-action", reason: "composer-send" },
+        };
+      },
+      send: async (attachment) => ({
+        ...attachment,
+        status: { type: "complete" },
+        content: [],
+      }),
+      remove: async () => undefined,
+    };
+    const result = renderHook(() => useOmpRuntime({ store, send, capabilities, attachments }));
+    const file = new File(["draft"], "notes.txt", { type: "text/plain" });
+    const added = Promise.withResolvers<void>();
+    const view = render(
+      <AssistantRuntimeProvider runtime={result.result.current.runtime}>
+        <AttachmentAdder file={file} onAdded={() => added.resolve()} />
+      </AssistantRuntimeProvider>,
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Attach test file" }));
+    await act(async () => {
+      await added.promise;
+    });
+
+    expect(addedFiles).toEqual(["notes.txt"]);
+    view.unmount();
     result.unmount();
   });
 

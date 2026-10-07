@@ -18,11 +18,15 @@ export const ModeIndicator: FC<ModeIndicatorProps> = ({ capabilities }) => {
     aui.composer.setText(textForMode(text, next));
   };
   return (
-    <div data-slot="u2-mode-indicator" className="flex items-center gap-(--space-xs)">
+    <fieldset
+      data-slot="u2-mode-indicator"
+      className="flex min-w-0 items-center gap-(--space-2xs) border-0 p-0"
+    >
+      <legend className="sr-only">Input mode</legend>
       <Button
         type="button"
         variant={mode === "prompt" ? "secondary" : "ghost"}
-        size="sm"
+        size="xs"
         aria-pressed={mode === "prompt"}
         onClick={() => changeMode("prompt")}
       >
@@ -31,24 +35,25 @@ export const ModeIndicator: FC<ModeIndicatorProps> = ({ capabilities }) => {
       <Button
         type="button"
         variant={mode === "bash" ? "secondary" : "ghost"}
-        size="sm"
+        size="xs"
         aria-pressed={mode === "bash"}
         onClick={() => changeMode("bash")}
       >
         Bash
       </Button>
-      <Button
-        type="button"
-        variant={mode === "python" ? "secondary" : "ghost"}
-        size="sm"
-        aria-pressed={mode === "python"}
-        disabled={!python.available}
-        title={python.available ? "Python mode" : python.reason}
-        onClick={() => changeMode("python")}
-      >
-        Python
-      </Button>
-      {!python.available && <span className="text-muted-foreground text-xs">{python.reason}</span>}
-    </div>
+      <span className="inline-flex" title={python.available ? undefined : python.reason}>
+        <Button
+          type="button"
+          variant={mode === "python" ? "secondary" : "ghost"}
+          size="xs"
+          aria-pressed={mode === "python"}
+          disabled={!python.available}
+          title={python.available ? "Python mode" : undefined}
+          onClick={() => changeMode("python")}
+        >
+          Python
+        </Button>
+      </span>
+    </fieldset>
   );
 };

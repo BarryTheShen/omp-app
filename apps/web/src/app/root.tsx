@@ -63,7 +63,7 @@ import { ThreadShell } from "@/modules/U1/thread";
 import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import { ComposerSurface } from "@/modules/U2/composer";
-import type { PromptIntent, SubmitPolicy } from "@/modules/U2/contract";
+import type { AttachmentAdapter, PromptIntent, SubmitPolicy } from "@/modules/U2/contract";
 import { createDraftStoreAdapter, DraftController } from "@/modules/U2/drafts";
 import { ModeIndicator } from "@/modules/U2/modes";
 import { createToolRegistry } from "@/modules/U3/tool-card/registry";
@@ -303,28 +303,6 @@ function RouterBridge({
   return null;
 }
 
-/** The "Add file" button: picks one file and uploads it as an attachment. */
-function AttachFileButton({ manager }: { readonly manager: AttachmentManager }) {
-  return (
-    <label className="text-muted-foreground cursor-pointer text-xs">
-      Add file
-      <input
-        className="sr-only"
-        type="file"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          void manager
-            .add({ file })
-            .then((pending) => manager.send(pending))
-            .catch(() => undefined);
-          event.target.value = "";
-        }}
-      />
-    </label>
-  );
-}
-
 function DraftComposer({
   controller,
   submit,
@@ -350,6 +328,13 @@ function DraftComposer({
     () => controller.getSnapshot(),
     () => controller.getSnapshot(),
   );
+  const attachmentState = useSyncExternalStore(
+    (listener) => manager.subscribe(listener),
+    () => manager.getState(),
+    () => manager.getState(),
+  );
+  const hasAttachmentOutput =
+    attachmentState.pending.length > 0 || attachmentState.complete.length > 0;
   const text = useAuiState((state) => state.composer.text);
   useEffect(() => {
     void controller.load();
@@ -373,9 +358,10 @@ function DraftComposer({
       disabled={snapshot.status === "error"}
       policy={policy}
       submitPrompt={submit}
+      toolbar={toolbar}
+      showAttachmentNames={false}
     >
-      {toolbar}
-      {footer}
+      {hasAttachmentOutput ? footer : null}
     </ComposerSurface>
   );
 }
@@ -636,10 +622,27 @@ function ActiveThreadReady({
       }),
     [client],
   );
+  const runtimeAttachments = useMemo<AttachmentAdapter>(
+    () => ({
+      accept: attachmentManager.accept,
+      add: async ({ file }) => {
+        const pending = await attachmentManager.add({ file });
+        const complete = await attachmentManager.send(pending);
+        return { ...pending, content: complete.content };
+      },
+      send: (attachment, options) => attachmentManager.send(attachment, options),
+      remove: (attachment) => attachmentManager.remove(attachment),
+      getState: () => attachmentManager.getState(),
+      subscribe: (listener) => attachmentManager.subscribe(listener),
+      toDraftRefs: () => attachmentManager.toDraftRefs(),
+    }),
+    [attachmentManager],
+  );
   const { controller: runtimeController, runtime } = useOmpRuntime({
     store,
     send: rpc.send,
     capabilities,
+    attachments: runtimeAttachments,
   });
   const transcriptRootRef = useRef<HTMLDivElement | null>(null);
   const scrollController = useThreadScrollController(transcriptRootRef);
@@ -761,7 +764,6 @@ function ActiveThreadReady({
         />
       ),
     },
-    attach: { title: "Add file", render: () => <AttachFileButton manager={attachmentManager} /> },
     mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
     queue: {
       title: "Queued messages",

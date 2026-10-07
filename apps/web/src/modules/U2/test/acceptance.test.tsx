@@ -46,8 +46,7 @@ import { ComposerShortcutScope, U2_EXTERNAL_EDITOR_SHORTCUT } from "../shortcuts
 
 afterEach(() => cleanup());
 
-const pythonUnavailableReason =
-  "Python mode is unavailable until omp exposes a typed RPC capability.";
+const pythonUnavailableReason = "Python mode is not available in this version of omp.";
 const capabilities: CapabilityMap = {
   "omp.cmd.prompt": { state: "available", via: "rpc" },
   "omp.cmd.bash": { state: "available", via: "rpc" },
@@ -603,7 +602,7 @@ describe("U2 composer CC6 acceptance", () => {
     await restored.dispose();
   });
 
-  test("routes Bash through R0 and visibly rejects Python until its upstream capability exists", async () => {
+  test("routes Bash through R0 and keeps Python's unavailable reason in its tooltip", async () => {
     const runtime = createRuntime();
     const submittedModes: PromptIntent[] = [];
     const submitByMode = async (intent: PromptIntent): Promise<void> => {
@@ -624,7 +623,8 @@ describe("U2 composer CC6 acceptance", () => {
     const input = screen.getByRole("textbox", { name: "Message input" });
     const python = screen.getByRole("button", { name: "Python" });
     expect((python as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(pythonUnavailableReason)).toBeTruthy();
+    expect(screen.getByTitle(pythonUnavailableReason)).toBeTruthy();
+    expect(screen.queryByText(pythonUnavailableReason, { exact: true })).toBeNull();
 
     fireEvent.change(input, { target: { value: "$ print(1)" } });
     fireEvent.keyDown(input, { key: "Enter" });
