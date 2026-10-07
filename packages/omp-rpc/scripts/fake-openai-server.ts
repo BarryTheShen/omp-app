@@ -4,7 +4,8 @@ type Message = { role: string; content?: unknown };
 type Request = { messages?: Message[]; stream?: boolean };
 type Reply =
   | { text: string; thinking?: string }
-  | { tool: string; args: Record<string, unknown>; thinking?: string; id?: string };
+  | { tool: string; args: Record<string, unknown>; thinking?: string; id?: string }
+  | { failure: string };
 
 /** `long_loop` makes the model run this many bash steps in one turn before it answers. */
 const LOOP_STEPS = 60;
@@ -100,6 +101,36 @@ function reply(request: Request): Reply {
       args: { data: { summary: "Nested probe completed." } },
       thinking: "I should submit the result.",
     };
+  if (prompt.includes("spawn_failing_subagent"))
+    return {
+      tool: "task",
+      args: {
+        name: "FailProbe",
+        agent: "task",
+        task: "fail_probe_child: fail on purpose so the hub shows a failed worker.",
+        solutionSpace: "one tiny task: fail",
+      },
+      thinking: "I should start one child task that fails.",
+    };
+  if (prompt.includes("fail_probe_child"))
+    return { failure: "fake provider failure for the failing subagent" };
+  if (prompt.includes("spawn_long_subagent"))
+    return {
+      tool: "task",
+      args: {
+        name: "LongProbe",
+        agent: "task",
+        task: "long_probe_child: run one slow step.",
+        solutionSpace: "one slow step",
+      },
+      thinking: "I should start one slow child task.",
+    };
+  if (prompt.includes("long_probe_child"))
+    return {
+      tool: "bash",
+      args: { command: "sleep 60; echo long-probe-done" },
+      thinking: "I should run the slow step.",
+    };
   if (prompt.includes("make_it_big")) return { text: "a".repeat(1_100_000) };
   if (prompt.includes("abort_slow")) return { text: "slow-stream", thinking: "working" };
   if (prompt.includes("ask_user"))
@@ -153,6 +184,11 @@ const server = Bun.serve({
       return new Response("not found", { status: 404 });
     const body = (await request.json()) as Request;
     const value = reply(body);
+    if ("failure" in value)
+      return Response.json(
+        { error: { message: value.failure, type: "invalid_request_error" } },
+        { status: 400 },
+      );
     if (!body.stream)
       return Response.json({
         id: "chatcmpl-fake",
