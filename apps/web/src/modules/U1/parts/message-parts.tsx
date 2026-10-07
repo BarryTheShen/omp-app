@@ -8,6 +8,7 @@ import { ReasoningGroup } from "../reasoning";
 import { type ToolRendererMap, ToolSlot } from "../tool-slots";
 import { CustomNote, type CustomNoteSource } from "./custom-note";
 import { EarlierSteps, isTurnGroup, useTurnGroupBy } from "./earlier-steps";
+import { endingOf, MessageEndingNote } from "./message-ending";
 export interface MessagePartsProps {
   readonly message: MessageState;
   readonly toolRenderers?: ToolRendererMap;
@@ -122,12 +123,14 @@ function customNoteOf(message: MessageState): CustomNoteSource | undefined {
   }
   return { customType: ompCustomType, details: ompCustomDetails, text: texts.join("\n\n") };
 }
+
 /** Renders one assistant-ui message with U1's role grammar and U3's tool boundary. */
 export function MessageParts({ message, toolRenderers, extra }: MessagePartsProps) {
   const role = message.role;
   const isUser = role === "user";
   const isSystem = role === "system";
   const note = isSystem ? customNoteOf(message) : undefined;
+  const ending = endingOf(message);
   // A very long assistant turn folds its earlier steps away (see earlier-steps.tsx).
   const groupBy = useTurnGroupBy(!isUser && !isSystem);
   const className = isUser
@@ -165,6 +168,7 @@ export function MessageParts({ message, toolRenderers, extra }: MessagePartsProp
             }}
           </MessagePrimitive.GroupedParts>
         )}
+        {ending !== undefined && <MessageEndingNote ending={ending} />}
         {extra}
       </div>
     </MessagePrimitive.Root>

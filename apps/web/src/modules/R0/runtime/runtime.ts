@@ -148,7 +148,13 @@ function messageStatus(runtime: RuntimeMessage | undefined, message: unknown): M
     return { type: "incomplete", reason: "cancelled" };
   }
   if (isRecord(message) && message.stopReason === "error") {
-    return { type: "incomplete", reason: "error" };
+    // omp retried this failed attempt and a later one answered (`retryRecovery`): the person does
+    // not need the failure, only the answer that followed it.
+    if (isRecord(message.retryRecovery) && message.retryRecovery.status === "recovered") {
+      return { type: "complete", reason: "unknown" };
+    }
+    const text = typeof message.errorMessage === "string" ? message.errorMessage.trim() : "";
+    return { type: "incomplete", reason: "error", ...(text === "" ? {} : { error: text }) };
   }
   if (isRecord(message) && message.role === "assistant" && message.stopReason === "length") {
     return { type: "incomplete", reason: "length" };

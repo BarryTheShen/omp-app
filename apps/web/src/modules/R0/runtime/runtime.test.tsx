@@ -562,4 +562,49 @@ describe("R0.3 assistant-ui runtime", () => {
     // It is still saved in the store: it is only left out of what the page shows.
     expect(Object.keys(store.getSnapshot().messages)).toHaveLength(4);
   });
+
+  test("an answer that ended in an error keeps omp's words on its status; an interruption and the length limit have their own", () => {
+    const status = (overrides: Record<string, unknown>) =>
+      convertMessage(
+        runtimeMessage(
+          { ...assistantMessage([]), ...overrides } as OmpMessage,
+          "entry:runtime-test-thread:ending",
+        ) as RuntimeMessageView["record"],
+      ) as { status?: unknown };
+    expect(status({ stopReason: "error", errorMessage: " 404 model not found " }).status).toEqual({
+      type: "incomplete",
+      reason: "error",
+      error: "404 model not found",
+    });
+    expect(status({ stopReason: "error" }).status).toEqual({ type: "incomplete", reason: "error" });
+    expect(status({ stopReason: "aborted", errorMessage: "Interrupted by user" }).status).toEqual({
+      type: "incomplete",
+      reason: "cancelled",
+    });
+    expect(status({ stopReason: "length" }).status).toEqual({
+      type: "incomplete",
+      reason: "length",
+    });
+  });
+
+  test("an error that omp retried and recovered from is a finished message, not a failure", () => {
+    const retried: Record<string, unknown> = {
+      ...assistantMessage([]),
+      stopReason: "error",
+      errorMessage: "stream stalled",
+      retryRecovery: {
+        kind: "auto-retry",
+        status: "recovered",
+        attempt: 1,
+        note: "error; retried",
+      },
+    };
+    const converted = convertMessage(
+      runtimeMessage(
+        retried as unknown as OmpMessage,
+        "entry:runtime-test-thread:retried",
+      ) as RuntimeMessageView["record"],
+    ) as { status?: unknown };
+    expect(converted.status).toEqual({ type: "complete", reason: "unknown" });
+  });
 });
