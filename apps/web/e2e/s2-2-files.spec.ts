@@ -83,6 +83,12 @@ test("Files settings render ConfigStore provenance and dependent read-only contr
   await expect(page.getByTestId("read.defaultLimit-provenance")).toContainText(
     "Source: Saved for all projects",
   );
+  await expect(
+    page.getByText("Prevent changes to files that appear to be generated."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("This preference only changes omp's terminal; the app does not use it."),
+  ).toBeVisible();
   await expect(page.getByText("Turn on Read Summaries to edit this setting.")).toHaveCount(6);
   await expectCardToken(page, false);
   await page.screenshot({ path: join(SCREENSHOTS, "s2.2-files-light.png"), fullPage: true });

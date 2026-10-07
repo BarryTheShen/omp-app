@@ -1,7 +1,7 @@
 import type { ConfigEntry, FolderPath } from "@omp-app/contracts";
-import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { SettingControl, SettingsSectionDescriptor } from "../../../S1/settings-kit";
+import { FILES_SETTING_DEFAULTS, hasFilesSettingDefault } from "../../files/defaults";
 import {
   selectFilesEditingPolicy,
   selectFilesReadingPolicy,
@@ -12,7 +12,7 @@ import {
   FILES_READ_SUMMARIES_SECTION,
   FILES_READING_SECTION,
 } from "../../sections";
-import { FILES_DEFAULTS, filesSnapshot } from "./fixtures";
+import { filesSnapshot } from "./fixtures";
 
 const FILES_SECTIONS = [
   FILES_EDITING_SECTION,
@@ -27,24 +27,24 @@ function controlFor(descriptor: SettingsSectionDescriptor, key: string): Setting
 }
 
 describe("S2.2 Files policy snapshots", () => {
-  test("covers exactly the registered Files keys with v18.6.1 kinds, defaults, and citations", () => {
+  test("covers exactly the registered Files keys with v18.6.1 kinds and defaults", () => {
     expect(
       FILES_SECTIONS.flatMap((descriptor) =>
         descriptor.controls.map((control) => control.key),
       ).sort(),
-    ).toEqual(FILES_DEFAULTS.map((item) => item.key).sort());
+    ).toEqual(Object.keys(FILES_SETTING_DEFAULTS).sort());
     for (const descriptor of FILES_SECTIONS) {
       const snapshot = filesSnapshot(descriptor);
       for (const entry of snapshot.entries) {
-        const fixture = FILES_DEFAULTS.find((candidate) => candidate.key === entry.key);
-        if (!fixture) throw new Error(`Missing v18.6.1 citation for ${entry.key}`);
+        if (!hasFilesSettingDefault(entry.key))
+          throw new Error(`Missing registered Files default for ${entry.key}`);
+        const fixture = FILES_SETTING_DEFAULTS[entry.key];
         const control = controlFor(descriptor, entry.key);
-        if (entry.secret)
-          throw new Error(`${entry.key}: ${fixture.citation} unexpectedly returned a secret.`);
-        expect(control.kind, `${entry.key}: ${fixture.citation}`).toBe(fixture.kind);
-        expect(entry.value, `${entry.key}: ${fixture.citation}`).toEqual(fixture.value);
-        expect(entry.source, `${entry.key}: ${fixture.citation}`).toBe("default");
-        expect(entry.overrides, `${entry.key}: ${fixture.citation}`).toEqual([]);
+        if (entry.secret) throw new Error(`${entry.key} unexpectedly returned a secret.`);
+        expect(control.kind, entry.key).toBe(fixture.kind);
+        expect(entry.value, entry.key).toEqual(fixture.value);
+        expect(entry.source, entry.key).toBe("default");
+        expect(entry.overrides, entry.key).toEqual([]);
       }
     }
   });
@@ -70,15 +70,15 @@ describe("S2.2 Files policy snapshots", () => {
       lineNumbers: false,
       defaultLimit: 300,
       renderMarkdown: false,
-      toolResultPreview: false,
     });
 
     const projectFolder = "/workspace/files-policy" as FolderPath;
     const summariesSnapshot = filesSnapshot(
       FILES_READ_SUMMARIES_SECTION,
       FILES_READ_SUMMARIES_SECTION.controls.map((control) => {
-        const fixture = FILES_DEFAULTS.find((candidate) => candidate.key === control.key);
-        if (!fixture) throw new Error(`Missing v18.6.1 citation for ${control.key}`);
+        if (!hasFilesSettingDefault(control.key))
+          throw new Error(`Missing registered Files default for ${control.key}`);
+        const fixture = FILES_SETTING_DEFAULTS[control.key];
         return {
           key: control.key,
           secret: false,
@@ -104,13 +104,25 @@ describe("S2.2 Files policy snapshots", () => {
     });
   });
 
+  test("uses omp defaults when ConfigStore returns no entries", () => {
+    expect(selectFilesEditingPolicy(filesSnapshot(FILES_EDITING_SECTION, [])).values).toEqual(
+      selectFilesEditingPolicy(filesSnapshot(FILES_EDITING_SECTION)).values,
+    );
+    expect(selectFilesReadingPolicy(filesSnapshot(FILES_READING_SECTION, [])).values).toEqual(
+      selectFilesReadingPolicy(filesSnapshot(FILES_READING_SECTION)).values,
+    );
+    expect(
+      selectFilesReadSummariesPolicy(filesSnapshot(FILES_READ_SUMMARIES_SECTION, [])).values,
+    ).toEqual(selectFilesReadSummariesPolicy(filesSnapshot(FILES_READ_SUMMARIES_SECTION)).values);
+  });
+
   test("rejects missing, secret, and invalid effective values without exposing them", () => {
     const baseline = filesSnapshot(FILES_EDITING_SECTION);
     const missing = {
       ...baseline,
       entries: baseline.entries.filter((entry) => entry.key !== "edit.mode"),
     };
-    expect(() => selectFilesEditingPolicy(missing)).toThrow(AppFailure);
+    expect(selectFilesEditingPolicy(missing).values.mode).toBe("hashline");
 
     const secretEntries = baseline.entries.map((entry) =>
       entry.key === "edit.mode"
@@ -132,6 +144,13 @@ describe("S2.2 Files policy snapshots", () => {
     );
     expect(() => selectFilesEditingPolicy({ ...baseline, entries: invalidEntries })).toThrow(
       "Enter a number from 0 to 1.",
+    );
+
+    const malformedEntries = baseline.entries.map((entry) =>
+      entry.key === "edit.fuzzyMatch" && !entry.secret ? { ...entry, value: "true" } : entry,
+    );
+    expect(() => selectFilesEditingPolicy({ ...baseline, entries: malformedEntries })).toThrow(
+      "A Files setting has an invalid value.",
     );
   });
 });

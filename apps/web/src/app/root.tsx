@@ -668,13 +668,8 @@ function ActiveThreadReady({
       ),
     [toolRegistry],
   );
-  useEffect(
-    () => () => {
-      queueAdapter.dispose();
-      todoStore.dispose();
-    },
-    [queueAdapter, todoStore],
-  );
+  useEffect(() => () => todoStore.dispose(), [todoStore]);
+  useEffect(() => () => queueAdapter.dispose(), [queueAdapter]);
   const draftController = useMemo(
     () =>
       new DraftController({

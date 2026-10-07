@@ -57,7 +57,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
       ["edit.mode", "revision-1"],
       ["edit.fuzzyMatch", "revision-2"],
     ]);
-    expect(runtime.getSnapshot().applyStatus).toBe("reload-required");
+    expect(runtime.getSnapshot().applyStatus).toBe("applied");
   });
 
   test("keeps invalid bounds local and never sends them to ConfigStore", async () => {
@@ -103,6 +103,13 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
       "Source: Saved for this project · overrides settings for all projects",
     );
     expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("500");
+    expect(
+      screen.getByText("Show read results inline in the transcript instead of as summary rows."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("This preference only changes omp's terminal; the app does not use it."),
+    ).toBeTruthy();
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
   });
 
   test("read summaries keep stored dependent values visible but read-only when disabled", async () => {
