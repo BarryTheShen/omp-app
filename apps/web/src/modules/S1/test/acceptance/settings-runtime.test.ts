@@ -1,11 +1,8 @@
 import type { ConfigChanged, ConfigEntry, ConfigWriteResult, Revision } from "@omp-app/contracts";
 import { AppFailure, ConfigWriteArgs } from "@omp-app/contracts";
 import { afterEach, describe, expect, test } from "vitest";
-import { modelSettingsSections } from "../../../D1/settings/descriptors";
-import { I1_SETTINGS_SECTIONS } from "../../../I1/settings/descriptors";
-import { I5_SETTINGS_SECTIONS } from "../../../I5/settings";
-import { S2_SETTINGS_SECTIONS, SHELL_EVAL_RUNTIMES_SECTION } from "../../../S2/sections";
-import { S3_SETTINGS_SECTIONS } from "../../../S3/sections";
+import { SETTINGS_SECTIONS } from "@/registry";
+import { SHELL_EVAL_RUNTIMES_SECTION } from "../../../S2/sections";
 import { THEME_SETTINGS_SECTION } from "../../appearance";
 import { S1_SETTINGS_SECTIONS } from "../../descriptors";
 import {
@@ -214,25 +211,17 @@ describe("S1.5 ConfigStore fixture and grammar gate", () => {
   });
 
   test("no config key or section id is owned by two settings sections across modules", () => {
-    // Every module builds its settings sections with the same S1.1 type (checked at compile time
-    // by this annotation). Two sections claiming one omp key would render two competing controls.
-    const sharedSections: readonly SettingsSectionDescriptor[] = [
-      ...S1_SETTINGS_SECTIONS,
-      ...S2_SETTINGS_SECTIONS,
-      ...S3_SETTINGS_SECTIONS,
-      ...I5_SETTINGS_SECTIONS,
-      ...I1_SETTINGS_SECTIONS,
-      ...modelSettingsSections,
-    ];
+    // The registry's one section list holds every module's sections: two sections claiming one
+    // omp key would render two competing controls.
     const owners = new Map<string, string[]>();
-    for (const section of sharedSections) {
+    for (const section of SETTINGS_SECTIONS) {
       for (const control of section.controls) {
         owners.set(control.key, [...(owners.get(control.key) ?? []), section.id]);
       }
     }
     const sharedKeys = [...owners].filter(([, ids]) => ids.length > 1);
     expect(sharedKeys).toEqual([]);
-    const ids = sharedSections.map((section) => section.id);
+    const ids = SETTINGS_SECTIONS.map((section) => section.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 

@@ -7,13 +7,20 @@
  */
 import type { Descriptor } from "@omp-app/contracts";
 import { D1_DESCRIPTORS } from "../modules/D1/descriptors";
+import { modelSettingsSections } from "../modules/D1/settings/descriptors";
 import { D2_TRIGGER_DESCRIPTORS } from "../modules/D2/contract";
 import { D5_LIFECYCLE_COMMAND_DESCRIPTORS } from "../modules/D5/descriptors";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
+import { I1_SETTINGS_SECTIONS } from "../modules/I1/settings/descriptors";
+import { I5_SETTINGS_SECTIONS } from "../modules/I5/settings";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
 import { P4_DESCRIPTORS } from "../modules/P4/contract";
 import { P6_DESCRIPTORS } from "../modules/P6";
 import { R1_DESCRIPTORS } from "../modules/R1/descriptors";
+import { S1_SETTINGS_SECTIONS } from "../modules/S1/descriptors";
+import type { SettingsSectionDescriptor } from "../modules/S1/settings-kit";
+import { S2_SETTINGS_SECTIONS } from "../modules/S2/sections";
+import { S3_SETTINGS_SECTIONS } from "../modules/S3/sections";
 import { T1_TOOL_DESCRIPTORS } from "../modules/T1/descriptor";
 import { createReadToolRenderer } from "../modules/T1/read";
 import { T2_MESSAGE_DESCRIPTORS, T2_TOOL_DESCRIPTORS } from "../modules/T2/descriptor";
@@ -51,6 +58,23 @@ export const TOOL_RENDERERS: readonly ToolRegistryDescriptor[] = [
   ...T5_TOOL_DESCRIPTORS,
   ...T6_TOOL_DESCRIPTORS,
   ...T7_TOOL_DESCRIPTORS,
+];
+
+/**
+ * Every settings section the app offers, once each: S1 (appearance, interaction), S2 (files, LSP,
+ * shell), S3 (tools, tasks), I5 (speech, providers), I1 (MCP) and D1 (model). The Settings screen
+ * reads this one list; no screen or module concatenates section lists of its own. The order is not
+ * presentation: the screen decides its own grouping and order. A section belongs here when its
+ * module merges (one import, one spread), and the ownership test fails when two sections claim one
+ * omp key.
+ */
+export const SETTINGS_SECTIONS: readonly SettingsSectionDescriptor[] = [
+  ...S1_SETTINGS_SECTIONS,
+  ...S2_SETTINGS_SECTIONS,
+  ...S3_SETTINGS_SECTIONS,
+  ...I5_SETTINGS_SECTIONS,
+  ...I1_SETTINGS_SECTIONS,
+  ...modelSettingsSections,
 ];
 
 /** A tool descriptor carries its renderer for U3.3's resolver; the registry holds the C0 part. */
