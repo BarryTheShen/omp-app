@@ -14,16 +14,16 @@ export type { RawTranscriptContent, RawTranscriptPart } from "../model";
 /**
  * Fidelity rules for this boundary:
  *
- * - Text and thinking retain their source strings, including Markdown punctuation and incomplete
- *   fences. The reader never sanitizes, truncates, joins with invented separators, or reads rendered
- *   DOM text.
+ * - Raw text and thinking parts retain their source strings, including Markdown punctuation and
+ *   incomplete fences. Assistant copy exposes text blocks only, separates them with blank lines,
+ *   and never reads rendered DOM.
  * - A tool call keeps the exact `rawBlock` when omp supplied one. When it did not, `source` remains
  *   the exact arguments object and `markdown`/`plainText` use deterministic JSON only as the
  *   documented string-copy fallback.
  * - Tool results keep the complete omp result message in `source`, including `details`, `isError`,
  *   and content blocks.
- * - Images keep their complete omp image object in `source`; a URL is copied as a reference, while
- *   inline bytes are never silently embedded into text copy.
+ * - Images keep their complete omp image object in `source`; URLs use Markdown image references,
+ *   while inline bytes receive a text placeholder and are never embedded into copied text.
  * - Data already redacted by omp remains redacted. No reader-side secret/path redaction is added.
  */
 
@@ -62,12 +62,34 @@ type BuiltContent = {
   readonly plainText: string;
 };
 
+export interface CopyTextOptions {
+  readonly includeReasoning?: boolean;
+}
+
+/** Returns copyable text without hidden reasoning unless the caller opts in explicitly. */
+export function copyText(raw: RawTranscriptContent, options: CopyTextOptions = {}): string {
+  return raw.parts
+    .filter(
+      (part) =>
+        part.type === "text" || (options.includeReasoning === true && part.type === "reasoning"),
+    )
+    .map((part) => part.plainText ?? part.markdown ?? "")
+    .join("\n\n")
+    .trim();
+}
+
 type CachedRaw = {
   readonly fingerprint: string;
   readonly raw: RawTranscriptContent;
 };
+type CachedObject = {
+  readonly fingerprint: string;
+  readonly fallbackKey: string;
+  readonly raw: RawTranscriptContent;
+};
 
 const UNKNOWN_MESSAGE_KEY = "omp:unknown";
+const MAX_IDENTITY_CACHE_ENTRIES = 128;
 
 function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   return (
@@ -233,7 +255,7 @@ function safeJson(value: unknown): string | undefined {
   }
 }
 
-function messageKeyFor(message: OmpMessage): string {
+function messageKeyFor(message: OmpMessage, fallbackKey: string): string {
   if (typeof message.timestamp === "number" && Number.isFinite(message.timestamp)) {
     const role = typeof message.role === "string" ? message.role : "unknown";
     if (
@@ -248,7 +270,7 @@ function messageKeyFor(message: OmpMessage): string {
     }
     return `omp:${role}:${message.timestamp}`;
   }
-  return UNKNOWN_MESSAGE_KEY;
+  return fallbackKey;
 }
 
 function cacheKeyFor(message: OmpMessage, key: string, streamMessageId?: string): string {
@@ -276,19 +298,31 @@ function rawPart(
   return { part: Object.freeze(part), plainText, markdown };
 }
 
+function joinWithNewline(parts: readonly BuiltPart[], key: "markdown" | "plainText"): string {
+  let result = "";
+  for (const part of parts) {
+    const next = part[key] ?? "";
+    if (!next) continue;
+    if (result && !result.endsWith("\n") && !next.startsWith("\n")) result += "\n";
+    result += next;
+  }
+  return result;
+}
+
 function builtImagePart(index: number, source: unknown): BuiltPart {
-  // Inline image bytes remain in `source`; only a supplied URL is included in text copy. This keeps
-  // text copy a reference to an image instead of silently embedding potentially large binary data.
-  const reference =
-    typeof source === "object" &&
-    source !== null &&
-    !Array.isArray(source) &&
-    "url" in source &&
-    typeof source.url === "string" &&
-    source.url.length > 0
-      ? source.url
-      : undefined;
-  return rawPart(index, "image", source, reference, reference);
+  let reference: string | undefined;
+  let mimeType: string | undefined;
+  if (typeof source === "object" && source !== null && !Array.isArray(source)) {
+    if ("url" in source && typeof source.url === "string" && source.url.length > 0) {
+      reference = source.url;
+    }
+    if ("mimeType" in source && typeof source.mimeType === "string" && source.mimeType.length > 0) {
+      mimeType = source.mimeType;
+    }
+  }
+  const plainText = reference ?? `[image: ${mimeType ?? "image"}]`;
+  const markdown = reference === undefined ? undefined : `![](${reference})`;
+  return rawPart(index, "image", source, plainText, markdown);
 }
 
 function contentParts(content: unknown, startIndex: number): BuiltContent {
@@ -335,16 +369,10 @@ function contentParts(content: unknown, startIndex: number): BuiltContent {
         );
         break;
       }
-      case "redactedThinking": {
-        // The source is already redacted by omp; never attempt to recover or reinterpret its data.
-        const data = "data" in item && typeof item.data === "string" ? item.data : undefined;
-        parts.push(
-          data === undefined
-            ? rawPart(index, "notice", item)
-            : rawPart(index, "reasoning", item, data, data),
-        );
+      case "redactedThinking":
+        // This payload is opaque data, not reasoning text. Keep it only in the raw source record.
+        parts.push(rawPart(index, "notice", item));
         break;
-      }
       case "image":
         parts.push(builtImagePart(index, item));
         break;
@@ -367,8 +395,17 @@ function contentParts(content: unknown, startIndex: number): BuiltContent {
   }
   return {
     parts,
-    markdown: parts.map((value) => value.markdown ?? "").join(""),
-    plainText: parts.map((value) => value.plainText ?? "").join(""),
+    markdown: joinWithNewline(parts, "markdown"),
+    plainText: joinWithNewline(parts, "plainText"),
+  };
+}
+function assistantTextContent(content: unknown, startIndex: number): BuiltContent {
+  const built = contentParts(content, startIndex);
+  const textParts = built.parts.filter((part) => part.part.type === "text");
+  return {
+    parts: built.parts,
+    markdown: textParts.map((part) => part.markdown ?? "").join("\n\n"),
+    plainText: textParts.map((part) => part.plainText ?? "").join("\n\n"),
   };
 }
 
@@ -377,9 +414,9 @@ function toolResultParts(
   index: number,
 ): BuiltContent {
   const nested = contentParts(message.content, index + 1);
-  const tool = rawPart(index, "tool-call", message, nested.plainText, nested.markdown);
+  const tool = rawPart(index, "tool-call", message);
   return {
-    parts: [tool],
+    parts: [tool, ...nested.parts],
     markdown: nested.markdown,
     plainText: nested.plainText,
   };
@@ -409,8 +446,8 @@ function commandParts(
   }
   return {
     parts,
-    markdown: parts.map((value) => value.markdown ?? "").join(""),
-    plainText: parts.map((value) => value.plainText ?? "").join(""),
+    markdown: joinWithNewline(parts, "markdown"),
+    plainText: joinWithNewline(parts, "plainText"),
   };
 }
 
@@ -443,16 +480,17 @@ function fileMentionParts(
   }
   return {
     parts,
-    markdown: parts.map((value) => value.markdown ?? "").join(""),
-    plainText: parts.map((value) => value.plainText ?? "").join(""),
+    markdown: joinWithNewline(parts, "markdown"),
+    plainText: joinWithNewline(parts, "plainText"),
   };
 }
 
 function messageContent(message: OmpMessage): BuiltContent {
   switch (message.role) {
+    case "assistant":
+      return assistantTextContent(message.content, 0);
     case "user":
     case "developer":
-    case "assistant":
     case "custom":
     case "hookMessage":
       return contentParts(message.content, 0);
@@ -487,7 +525,10 @@ function fallbackContent(key: string, source: unknown): RawTranscriptContent {
   });
 }
 
-function sourceForInput(input: TranscriptContentInput): {
+function sourceForInput(
+  input: TranscriptContentInput,
+  fallbackKey?: string,
+): {
   readonly key: string;
   readonly source: "omp" | "derived" | "host";
   readonly message?: OmpMessage;
@@ -544,7 +585,7 @@ function sourceForInput(input: TranscriptContentInput): {
     };
   }
   if (isOmpMessage(input)) {
-    const key = messageKeyFor(input);
+    const key = messageKeyFor(input, fallbackKey ?? UNKNOWN_MESSAGE_KEY);
     return {
       key,
       source: "omp",
@@ -561,8 +602,10 @@ function sourceForInput(input: TranscriptContentInput): {
  * static methods are provided for one-shot callers that do not need cross-call caching.
  */
 export class TranscriptContentReader {
-  private readonly objects = new WeakMap<object, RawTranscriptContent>();
+  private readonly objects = new WeakMap<object, CachedObject>();
+  private readonly anonymousKeys = new WeakMap<object, string>();
   private readonly identities = new Map<string, CachedRaw>();
+  private nextAnonymousKey = 0;
 
   public static read(input: TranscriptContentInput): RawTranscriptContent {
     return new TranscriptContentReader().read(input);
@@ -573,54 +616,7 @@ export class TranscriptContentReader {
   }
 
   public read(input: TranscriptContentInput): RawTranscriptContent {
-    if (typeof input === "object" && input !== null) {
-      const cached = this.objects.get(input);
-      if (cached !== undefined) return cached;
-    }
-
-    const resolved = sourceForInput(input);
-    if (resolved.raw !== undefined) {
-      const raw = cloneAndFreeze(resolved.raw);
-      this.remember(input, resolved.cacheKey, fingerprint(resolved.raw), raw);
-      return raw;
-    }
-
-    if (resolved.message === undefined) {
-      const fallbackSource = isTranscriptRow(input)
-        ? { type: "notice", reason: "raw transcript source unavailable" }
-        : input;
-      const raw = fallbackContent(resolved.key, fallbackSource);
-      this.remember(input, resolved.cacheKey, fingerprint(fallbackSource), raw);
-      return raw;
-    }
-
-    const sourceFingerprint = fingerprint(resolved.message);
-    const previous = this.identities.get(resolved.cacheKey);
-    if (previous?.fingerprint === sourceFingerprint) {
-      const previousRaw = previous.raw;
-      if (previousRaw.messageKey === resolved.key && previousRaw.source === resolved.source) {
-        this.remember(input, resolved.cacheKey, sourceFingerprint, previousRaw);
-        return previousRaw;
-      }
-      const remapped = Object.freeze({
-        ...previousRaw,
-        messageKey: resolved.key,
-        source: resolved.source,
-      });
-      this.remember(input, resolved.cacheKey, sourceFingerprint, remapped);
-      return remapped;
-    }
-
-    const built = messageContent(resolved.message);
-    const raw = Object.freeze({
-      messageKey: resolved.key,
-      source: resolved.source,
-      markdown: built.markdown,
-      plainText: built.plainText,
-      parts: Object.freeze(built.parts.map((value) => value.part)),
-    });
-    this.remember(input, resolved.cacheKey, sourceFingerprint, raw);
-    return raw;
+    return this.readWithFallback(input, this.fallbackKeyFor(input), true);
   }
 
   public readMany(input: TranscriptContentManyInput): readonly RawTranscriptContent[] {
@@ -632,7 +628,112 @@ export class TranscriptContentReader {
         }),
       );
     }
-    return Object.freeze(input.map((item) => this.read(item)));
+    return Object.freeze(
+      input.map((item, index) =>
+        this.readWithFallback(item, this.fallbackKeyFor(item, index), false),
+      ),
+    );
+  }
+
+  private fallbackKeyFor(input: TranscriptContentInput, index?: number): string | undefined {
+    if (!isOmpMessage(input)) return undefined;
+    if (typeof input.timestamp === "number" && Number.isFinite(input.timestamp)) return undefined;
+    if (index !== undefined) return `${UNKNOWN_MESSAGE_KEY}:${index}`;
+    const existing = this.anonymousKeys.get(input);
+    if (existing !== undefined) return existing;
+    const generated = `${UNKNOWN_MESSAGE_KEY}:${this.nextAnonymousKey}`;
+    this.nextAnonymousKey += 1;
+    this.anonymousKeys.set(input, generated);
+    return generated;
+  }
+
+  private readWithFallback(
+    input: TranscriptContentInput,
+    fallbackKey: string | undefined,
+    cacheObject: boolean,
+  ): RawTranscriptContent {
+    if (cacheObject && typeof input === "object" && input !== null) {
+      const cached = this.objects.get(input);
+      if (
+        cached !== undefined &&
+        cached.fallbackKey === (fallbackKey ?? "") &&
+        cached.fingerprint === fingerprint(input)
+      ) {
+        return cached.raw;
+      }
+    }
+
+    const resolved = sourceForInput(input, fallbackKey);
+    if (resolved.raw !== undefined) {
+      const raw = cloneAndFreeze(resolved.raw);
+      this.remember(
+        input,
+        resolved.cacheKey,
+        fingerprint(resolved.raw),
+        raw,
+        fallbackKey,
+        cacheObject,
+      );
+      return raw;
+    }
+
+    if (resolved.message === undefined) {
+      const fallbackSource = isTranscriptRow(input)
+        ? { type: "notice", reason: "raw transcript source unavailable" }
+        : input;
+      const raw = fallbackContent(resolved.key, fallbackSource);
+      this.remember(
+        input,
+        resolved.cacheKey,
+        fingerprint(fallbackSource),
+        raw,
+        fallbackKey,
+        cacheObject,
+      );
+      return raw;
+    }
+
+    const sourceFingerprint = fingerprint(resolved.message);
+    const previous = this.identities.get(resolved.cacheKey);
+    if (previous?.fingerprint === sourceFingerprint) {
+      const previousRaw = previous.raw;
+      if (previousRaw.messageKey === resolved.key && previousRaw.source === resolved.source) {
+        this.remember(
+          input,
+          resolved.cacheKey,
+          sourceFingerprint,
+          previousRaw,
+          fallbackKey,
+          cacheObject,
+        );
+        return previousRaw;
+      }
+      const remapped = Object.freeze({
+        ...previousRaw,
+        messageKey: resolved.key,
+        source: resolved.source,
+      });
+      this.remember(
+        input,
+        resolved.cacheKey,
+        sourceFingerprint,
+        remapped,
+        fallbackKey,
+        cacheObject,
+      );
+      return remapped;
+    }
+
+    const built = messageContent(resolved.message);
+    const raw = Object.freeze({
+      messageKey: resolved.key,
+      source: resolved.source,
+      markdown: built.markdown,
+      plainText: built.plainText,
+      parts: Object.freeze(built.parts.map((value) => value.part)),
+    });
+    this.remember(input, resolved.cacheKey, sourceFingerprint, raw, fallbackKey, cacheObject);
+    return raw;
   }
 
   private remember(
@@ -640,9 +741,23 @@ export class TranscriptContentReader {
     cacheKey: string,
     sourceFingerprint: string,
     raw: RawTranscriptContent,
+    fallbackKey: string | undefined,
+    cacheObject: boolean,
   ): void {
-    if (typeof input === "object" && input !== null) this.objects.set(input, raw);
+    if (cacheObject && typeof input === "object" && input !== null) {
+      this.objects.set(input, {
+        fingerprint: fingerprint(input),
+        fallbackKey: fallbackKey ?? "",
+        raw,
+      });
+    }
+    this.identities.delete(cacheKey);
     this.identities.set(cacheKey, { fingerprint: sourceFingerprint, raw });
+    while (this.identities.size > MAX_IDENTITY_CACHE_ENTRIES) {
+      const oldest = this.identities.keys().next().value;
+      if (oldest === undefined) break;
+      this.identities.delete(oldest);
+    }
   }
 }
 

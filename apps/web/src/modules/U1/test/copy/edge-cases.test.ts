@@ -1,7 +1,7 @@
 import type { MessageKey, OmpMessage, OmpStreamMessageId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { RuntimeMessage } from "../../../R0/store";
-import { TranscriptContentReader } from "../../copy";
+import { copyText, TranscriptContentReader } from "../../copy";
 
 const messageKey = (value: string): MessageKey => value as MessageKey;
 const streamId = (value: string): OmpStreamMessageId => value as OmpStreamMessageId;
@@ -92,7 +92,7 @@ describe("raw transcript copy edge cases", () => {
     };
     const bash = {
       role: "bashExecution",
-      command: "printf ok\n",
+      command: "printf ok",
       output: "ok\n",
       cancelled: false,
       truncated: false,
@@ -103,11 +103,45 @@ describe("raw transcript copy edge cases", () => {
 
     expect(bashRaw.parts.map((part) => part.type)).toEqual(["command", "code", "image"]);
     expect(bashRaw.plainText).toBe("printf ok\nok\nhttps://example.test/bash.png");
+    expect(bashRaw.markdown).toBe("printf ok\nok\n![](https://example.test/bash.png)");
     expect(bashRaw.parts[2]?.source).toEqual(image);
     expect(bashRaw.plainText).not.toContain(image.data);
   });
 
-  test("copies raw reasoning and full Markdown despite hidden or truncated display parts", () => {
+  test("separates assistant text blocks and excludes tool records from default copy", () => {
+    const toolCall = {
+      type: "toolCall",
+      id: "call-copy",
+      name: "read",
+      arguments: { path: "src/file.ts" },
+      rawBlock: '{"path":"src/file.ts"}',
+    };
+    const raw = new TranscriptContentReader().read(
+      runtimeMessage(
+        "entry:thread:blocks",
+        assistantMessage(
+          [
+            { type: "text", text: "First block" },
+            { type: "thinking", thinking: "private reasoning" },
+            { type: "text", text: "Second block" },
+            toolCall,
+          ],
+          24,
+        ),
+      ),
+    );
+
+    expect(raw.markdown).toBe("First block\n\nSecond block");
+    expect(raw.plainText).toBe(raw.markdown);
+    expect(copyText(raw)).toBe(raw.markdown);
+    expect(copyText(raw, { includeReasoning: true })).toBe(
+      "First block\n\nprivate reasoning\n\nSecond block",
+    );
+    expect(raw.parts[3]?.markdown).toBe(toolCall.rawBlock);
+    expect(raw.markdown).not.toContain(toolCall.rawBlock);
+  });
+
+  test("keeps hidden reasoning out of default assistant copy", () => {
     const reader = new TranscriptContentReader();
     const raw = reader.read(
       runtimeMessage(
@@ -132,15 +166,83 @@ describe("raw transcript copy edge cases", () => {
 
     const copied = reader.read(displayRow);
 
-    expect(copied.markdown).toBe(
-      "private reasoningFull **source** answer with a [link](https://example.test)",
-    );
+    expect(copied.markdown).toBe("Full **source** answer with a [link](https://example.test)");
     expect(copied.plainText).toBe(copied.markdown);
+    expect(copyText(copied)).toBe(copied.markdown);
+    expect(copyText(copied, { includeReasoning: true })).toBe(
+      "private reasoning\n\nFull **source** answer with a [link](https://example.test)",
+    );
     expect(copied.parts.map((part) => part.type)).toEqual(["reasoning", "text"]);
     expect(copied.parts[0]?.source).toMatchObject({
       type: "thinking",
       thinking: "private reasoning",
     });
+  });
+
+  test("keeps redacted thinking opaque and labels inline images in plain text", () => {
+    const redacted = { type: "redactedThinking", data: "opaque-encrypted-payload" };
+    const raw = new TranscriptContentReader().read(
+      runtimeMessage(
+        "entry:thread:redacted",
+        assistantMessage(
+          [
+            { type: "text", text: "Answer" },
+            redacted,
+            { type: "image", data: "synthetic-inline-image", mimeType: "image/jpeg" },
+          ],
+          22,
+        ),
+      ),
+    );
+
+    expect(raw.markdown).toBe("Answer");
+    expect(raw.plainText).toBe("Answer");
+    expect(raw.parts.map((part) => part.type)).toEqual(["text", "notice", "image"]);
+    expect(raw.parts[1]?.source).toEqual(redacted);
+    expect(raw.parts[1]?.markdown).toBeUndefined();
+    expect(raw.parts[1]?.plainText).toBeUndefined();
+    expect(raw.parts[2]?.markdown).toBeUndefined();
+    expect(raw.parts[2]?.plainText).toBe("[image: image/jpeg]");
+    expect(copyText(raw)).toBe("Answer");
+    expect(copyText(raw, { includeReasoning: true })).toBe("Answer");
+  });
+
+  test("rechecks an object cache hit when the source message changes in place", () => {
+    const reader = new TranscriptContentReader();
+    const message = assistantMessage([{ type: "text", text: "partial answer" }], 23);
+    const input = runtimeMessage("entry:thread:mutable", message);
+    const before = reader.read(input);
+    const mutable = message as unknown as {
+      content: Array<{ type: string; text: string }>;
+    };
+    const firstPart = mutable.content[0];
+    if (!firstPart) throw new Error("The fixture has no text block.");
+    firstPart.text = "partial answer, finished";
+
+    const after = reader.read(input);
+
+    expect(after.plainText).toBe("partial answer, finished");
+    expect(after).not.toBe(before);
+  });
+
+  test("bounds the source identity cache while keeping returned snapshots intact", () => {
+    const reader = new TranscriptContentReader();
+    const firstMessage = assistantMessage([{ type: "text", text: "first" }], 30);
+    const first = reader.read(runtimeMessage("entry:thread:first", firstMessage));
+
+    for (let index = 0; index < 128; index += 1) {
+      reader.read(
+        runtimeMessage(
+          `entry:thread:${index}`,
+          assistantMessage([{ type: "text", text: `message ${index}` }], 100 + index),
+        ),
+      );
+    }
+
+    const reread = reader.read(runtimeMessage("entry:thread:first", firstMessage));
+    expect(first.plainText).toBe("first");
+    expect(reread.plainText).toBe("first");
+    expect(reread.parts).not.toBe(first.parts);
   });
 
   test("preserves incomplete raw tool blocks and malformed open content safely", () => {
@@ -162,7 +264,7 @@ describe("raw transcript copy edge cases", () => {
     );
 
     expect(raw.parts.map((part) => part.type)).toEqual(["text", "tool-call", "notice"]);
-    expect(raw.markdown).toBe('before\n{"path": "');
+    expect(raw.markdown).toBe("before\n");
     expect(raw.parts[1]).toMatchObject({
       source: openToolCall,
       markdown: openToolCall.rawBlock,

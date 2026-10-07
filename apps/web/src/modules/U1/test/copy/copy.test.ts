@@ -1,7 +1,12 @@
 import type { EntryId, MessageKey, OmpMessage, OmpStreamMessageId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { RuntimeMessage, RuntimeSnapshot } from "../../../R0/store";
-import { type RawTranscriptContent, readTranscriptPart, TranscriptContentReader } from "../../copy";
+import {
+  copyText,
+  type RawTranscriptContent,
+  readTranscriptPart,
+  TranscriptContentReader,
+} from "../../copy";
 
 const messageKey = (value: string): MessageKey => value as MessageKey;
 const entryId = (value: string): EntryId => value as EntryId;
@@ -79,10 +84,10 @@ describe("TranscriptContentReader", () => {
     const raw = new TranscriptContentReader().read(runtime);
 
     expect(raw.messageKey).toBe("stream:proc:msg-1");
-    expect(raw.markdown).toBe(
-      'before\n```ts\nconst x = 1;\n```\nafterprivate reasoning{"path":"src/file.ts","lineEnd":4}https://example.test/image.png',
-    );
+    expect(raw.markdown).toBe("before\n```ts\nconst x = 1;\n```\nafter");
     expect(raw.plainText).toBe(raw.markdown);
+    expect(copyText(raw)).toBe(raw.markdown);
+    expect(copyText(raw, { includeReasoning: true })).toBe(`${raw.markdown}\n\nprivate reasoning`);
     expect(raw.parts.map((part) => part.type)).toEqual(["text", "reasoning", "tool-call", "image"]);
     expect(raw.parts[0]?.source).toEqual({
       type: "text",
@@ -94,8 +99,8 @@ describe("TranscriptContentReader", () => {
       markdown: toolCall.rawBlock,
       plainText: toolCall.rawBlock,
     });
-    expect(raw.parts[3]?.source).toEqual(image);
     expect(raw.parts[3]?.plainText).toBe(image.url);
+    expect(raw.parts[3]?.markdown).toBe("![](https://example.test/image.png)");
     expect(raw.parts[3]?.source).not.toBe(image);
     expect(Object.isFrozen(raw)).toBe(true);
     expect(Object.isFrozen(raw.parts)).toBe(true);
@@ -123,12 +128,19 @@ describe("TranscriptContentReader", () => {
       }),
     );
 
-    expect(raw.parts).toHaveLength(1);
-    expect(raw.parts[0]?.type).toBe("tool-call");
+    expect(raw.parts).toHaveLength(3);
+    expect(raw.parts.map((part) => part.type)).toEqual(["tool-call", "text", "image"]);
     expect(raw.parts[0]?.source).toEqual(result);
     expect(raw.parts[0]?.source).not.toBe(result);
-    expect(raw.parts[0]?.plainText).toBe("output line 1\noutput line 2");
+    expect(raw.parts[0]?.plainText).toBeUndefined();
+    expect(raw.parts[1]?.index).toBe(1);
+    expect(raw.parts[2]?.index).toBe(2);
+    expect(raw.parts[1]?.plainText).toBe("output line 1\noutput line 2");
+    expect(raw.parts[2]?.plainText).toBe("[image: image/png]");
+    expect(readTranscriptPart(raw, 1)?.plainText).toBe("output line 1\noutput line 2");
+    expect(readTranscriptPart(raw, 2)?.plainText).toBe("[image: image/png]");
     expect(raw.markdown).toBe("output line 1\noutput line 2");
+    expect(raw.plainText).toBe("output line 1\noutput line 2\n[image: image/png]");
     expect(raw.parts[0]?.source).toMatchObject({
       details: { exitCode: 1, provider: "opaque" },
     });
@@ -245,6 +257,19 @@ describe("TranscriptContentReader", () => {
     expect(raw.messageKey).toBe("entry:thread:keyed");
     expect(raw.source).toBe("omp");
     expect(raw.plainText).toBe("history source");
+  });
+
+  test("assigns distinct keys to source-less messages in a multi-message read", () => {
+    const reader = new TranscriptContentReader();
+    const message = {
+      role: "assistant",
+      content: [{ type: "text", text: "source-less answer" }],
+    } as unknown as OmpMessage;
+
+    const raw = reader.readMany([message, message]);
+
+    expect(raw.map((item) => item.messageKey)).toEqual(["omp:unknown:0", "omp:unknown:1"]);
+    expect(raw.map((item) => item.plainText)).toEqual(["source-less answer", "source-less answer"]);
   });
 
   test("never scrapes a converted message and returns a safe notice for malformed input", () => {
