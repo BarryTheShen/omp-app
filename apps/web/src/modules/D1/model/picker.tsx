@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { useCapabilityStatus } from "@/registry-core";
 import {
   MODEL_SCOPE_AP6_CAPABILITY,
@@ -17,6 +18,11 @@ export interface ModelPickerProps {
   readonly title?: string;
   readonly onApplied?: (model: ModelDescriptor) => void;
   readonly onProviderLogin?: (provider: string) => void;
+  /**
+   * The list takes whatever height its container gives it. Without it the list stops at 18rem,
+   * which suits a picker inside a page but wastes a tall dialog.
+   */
+  readonly fill?: boolean;
 }
 
 function useCatalogSnapshot(catalog: ModelCatalogModel) {
@@ -101,6 +107,7 @@ export function ModelPicker({
   title = scope === "reply" ? "This reply" : "This session",
   onApplied,
   onProviderLogin,
+  fill = false,
 }: ModelPickerProps) {
   const snapshot = useCatalogSnapshot(catalog);
   const [query, setQuery] = useState("");
@@ -186,7 +193,10 @@ export function ModelPicker({
   }
 
   return (
-    <section aria-label={`${title} model picker`} className="flex min-w-0 flex-col gap-3">
+    <section
+      aria-label={`${title} model picker`}
+      className={cn("flex min-w-0 flex-col gap-3", fill && "min-h-0 flex-1")}
+    >
       <header className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">{title}</h2>
@@ -232,7 +242,10 @@ export function ModelPicker({
       <div
         role="listbox"
         aria-label={`${title} models`}
-        className="flex max-h-72 min-h-16 flex-col gap-1 overflow-y-auto rounded-lg border border-border/70 p-1"
+        className={cn(
+          "flex min-h-16 flex-col gap-1 overflow-y-auto rounded-lg border border-border/70 p-1",
+          fill ? "flex-1" : "max-h-72",
+        )}
       >
         {snapshot.loadState === "loading" ? (
           <p role="status" className="px-3 py-4 text-sm text-muted-foreground">

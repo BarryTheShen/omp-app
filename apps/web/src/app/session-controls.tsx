@@ -99,9 +99,14 @@ export function SessionModelControl({
     overlay.open({
       kind: "modal",
       label: "Model and thinking",
+      // One size rule, no breakpoints: nearly the whole window when it is small, a roomy 48 by
+      // 52rem box when it is large. The content sets no width of its own, so it can never be
+      // wider than this frame (it used to ask for 36rem inside a 32rem frame and was cut off).
+      className:
+        "h-[min(calc(100dvh-1rem),52rem)] w-[min(calc(100vw-1rem),48rem)] max-h-none max-w-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]",
       content: ({ close }) => (
-        <div className="flex max-h-[80vh] w-[min(36rem,90vw)] flex-col gap-4 overflow-y-auto">
-          <ModelPicker catalog={catalog} scope="session" />
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
+          <ModelPicker catalog={catalog} fill scope="session" />
           <ThinkingSelector controller={thinking} />
           <Button className="self-end" onClick={() => close()} type="button" variant="outline">
             Done
