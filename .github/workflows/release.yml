@@ -1,0 +1,118 @@
+# Release (the owner, 2026-10-07): builds an installable package of main twice a day, and only when
+# the product changed since the last release. The package is a .deb (one self-contained command,
+# the built web app, a desktop entry); the release page lists what changed.
+#
+#   scheduled: 01:00 and 13:00 UTC (8 PM and 8 AM US Central in summer, 7 PM and 7 AM in winter)
+#   by hand:   gh workflow run release.yml            (add -f force=true to build without changes)
+#
+# "Changed" means a file under apps/, packages/ or packaging/, or bun.lock, package.json or
+# tsconfig.base.json, differs from the commit of the latest release. The version is
+# 0.1.<number of commits on main>, so it only goes up and names exactly one commit.
+# The workflow only ever builds main and writes only releases and tags (contents: write).
+name: release
+
+on:
+  schedule:
+    - cron: "0 1,13 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build even if nothing changed since the last release
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out main with its history and tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Decide whether anything changed since the last release
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          version="0.1.$(git rev-list --count HEAD)"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          last=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""')
+          echo "last=$last" >>"$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+            echo "v$version is already released."
+          elif [[ -z $last || $FORCE == true ]]; then
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+          elif git diff --quiet "$last^{commit}" HEAD -- apps packages packaging bun.lock package.json tsconfig.base.json; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+            echo "Nothing in the product changed since $last: no build."
+          else
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Bun
+        if: steps.changes.outputs.changed == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        if: steps.changes.outputs.changed == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Build the package
+        if: steps.changes.outputs.changed == 'true'
+        run: bash packaging/build-deb.sh "${{ steps.changes.outputs.version }}"
+
+      - name: Check that the package works
+        if: steps.changes.outputs.changed == 'true'
+        run: bash packaging/smoke-test.sh "dist/release/omp-app_${{ steps.changes.outputs.version }}_amd64.deb"
+
+      - name: Write the release notes
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.changes.outputs.version }}
+          LAST: ${{ steps.changes.outputs.last }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Install"
+            echo
+            echo '```'
+            echo "sudo apt install ./omp-app_${VERSION}_amd64.deb"
+            echo '```'
+            echo
+            echo 'Then run `omp-app`, or open "omp app" from the applications menu. omp must already be installed. Remove it with `sudo apt remove omp-app`.'
+            echo
+            if [[ -n $LAST ]]; then
+              echo "## What changed since $LAST"
+              echo
+              git log --pretty='- %s' "$LAST^{commit}..HEAD" -- apps packages packaging | head -80
+            else
+              echo "## What is in it"
+              echo
+              git log --pretty='- %s' -40 -- apps packages packaging
+            fi
+          } >dist/release/notes.md
+
+      - name: Publish the release
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.changes.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            "dist/release/omp-app_${VERSION}_amd64.deb" dist/release/SHA256SUMS \
+            --target "$GITHUB_SHA" --title "omp app $VERSION" --notes-file dist/release/notes.md

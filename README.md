@@ -4,12 +4,25 @@ A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent (oh-
 
 The floor version is omp **18.6.1**. Features are switched on by capabilities omp reports when a session starts, not by version numbers.
 
+## Install
+
+A package is built from `main` every 12 hours (01:00 and 13:00 UTC, which is 8 PM and 8 AM US Central in summer) when the product changed since the last one (`.github/workflows/release.yml`). The repository is private, so download from the [releases page](https://github.com/BarryTheShen/omp-app/releases) while signed in, or:
+
+```bash
+gh release download --repo BarryTheShen/omp-app --pattern '*.deb'   # the latest package
+sudo apt install ./omp-app_*_amd64.deb                              # install
+omp-app                                                             # start it; your browser opens
+sudo apt remove omp-app                                             # uninstall
+```
+
+`omp` must be installed separately; the app finds it on your `PATH` (it also looks in `~/.bun/bin` and `~/.local/bin`, which a desktop launch does not have). `omp-app [folder]` works in that folder, and a second `omp-app` opens the browser on the instance that is already running. "omp app" is in the applications menu too. Build one yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
+
 ## Status
 
-**Under construction (2026-10-06).** It is built in 42 modules and 8 waves, and every module is split into small "parts". As of this writing:
+**Under construction (2026-10-07).** It is built in 42 modules and 8 waves, and every module is split into small "parts". Work is ordered by what is used most (`PRIORITIES.md`). As of this writing:
 
 - All 42 module specs (the plans and part lists) are done.
-- 159 of 261 parts are merged: the infrastructure (waves W1 and W2), most of W3 (thread view, composer with drafts and attachments, queued messages, dialogs and approvals, panels and the todo checklist, the session catalog and sidebar, settings kit, shortcuts) and most of W4 (tool cards for read, edit, write, AST edit, grep, glob, find, ast_grep, lsp, eval, debug, bash, browser, GitHub, web search, security scan, checkpoint/rewind, goal, recall/reflect, resolve/reject), plus parts of W5–W7 (models, mentions and internal links, MCP lifecycle, notifications, context and usage, session commands, branch and fork, restore-point snapshots).
+- 172 of 261 parts are merged: the infrastructure (waves W1 and W2), most of W3 (thread view, composer with drafts and attachments, queued messages, dialogs and approvals, panels and the todo checklist, the session catalog and sidebar, settings kit, shortcuts) and most of W4 (tool cards for read, edit, write, AST edit, grep, glob, find, ast_grep, lsp, eval, debug, bash, browser, GitHub, web search, security scan, checkpoint/rewind, goal, recall/reflect, resolve/reject), plus parts of W5–W7 (models, mentions and internal links, MCP lifecycle, notifications, context and usage, session commands, branch and fork, restore-point snapshots).
 - `bun run dev` starts the real server against your omp and prints the app's link. The app works end to end on real omp: pick a folder, start or reopen a chat, send a prompt, watch tool calls and replies stream, change the model and thinking level, see context usage, reload and get the chat and the unsent draft back. Modules merged since the app root are being wired into the running app (#566).
 - The UI keeps its current stack and patterns (the owner, 2026-10-06), with omp's own default themes as the colors: `titanium` (dark) and `light` (`apps/web/src/styles/tokens.css`).
 

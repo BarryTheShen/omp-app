@@ -44,6 +44,8 @@ export interface CompositionServerOptions {
   readonly homeDir?: string;
   readonly agentDir?: string;
   readonly appDataDir?: string;
+  /** The version shown to the browser; the installed app passes its release version. */
+  readonly serverVersion?: string;
   /** Test/embedding override for the process launch directory surfaced to the browser. */
   readonly cwd?: string;
 }
@@ -152,7 +154,7 @@ export async function createCompositionServer(
     }
   }
   const instanceId = crypto.randomUUID();
-  const serverVersion = String(serverPackage.version);
+  const serverVersion = options.serverVersion ?? String(serverPackage.version);
   const omp =
     health.status === "ok" && probe.version !== null
       ? { version: probe.version, protocolVersion }

@@ -310,6 +310,13 @@ function addCapability(
   map[key] = status;
 }
 
+/**
+ * omp won't start without a default model, and a login lives in the user's own agent folder, which
+ * the probe never reads (it runs in an empty home). A placeholder key lets it start for anyone; it
+ * is never sent anywhere, because the probe sends no prompt.
+ */
+const PROBE_PLACEHOLDER_KEY = ["omp", "app", "capability", "probe"].join("-");
+
 function isolatedProbeEnvironment(
   base: Readonly<Record<string, string | undefined>>,
   probeCwd: string,
@@ -318,6 +325,7 @@ function isolatedProbeEnvironment(
   for (const [key, value] of Object.entries(base)) {
     if (value !== undefined) environment[key] = value;
   }
+  if (!environment.ANTHROPIC_API_KEY) environment.ANTHROPIC_API_KEY = PROBE_PLACEHOLDER_KEY;
   environment.HOME = join(probeCwd, "home");
   environment.PI_CODING_AGENT_DIR = join(probeCwd, "agent");
   environment.OMP_APP_DATA_DIR = join(probeCwd, "app-data");

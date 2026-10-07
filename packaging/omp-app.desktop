@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=omp app
+GenericName=Coding agent
+Comment=Browser app for the omp coding agent
+Exec=omp-app
+Icon=omp-app
+Terminal=true
+Categories=Development;
+Keywords=omp;agent;coding;chat;
+StartupNotify=false

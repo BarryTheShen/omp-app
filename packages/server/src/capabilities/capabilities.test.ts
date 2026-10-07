@@ -19,6 +19,7 @@ if (recordFile) {
     cwd: process.cwd(),
     home: Bun.env.HOME ?? "",
     agentDir: Bun.env.PI_CODING_AGENT_DIR ?? "",
+    anthropicKey: Bun.env.ANTHROPIC_API_KEY ?? "",
   }));
 }
 const supportsV2 = Bun.env.FAKE_SUPPORTS_V2 !== "0";
@@ -184,5 +185,20 @@ describe("probeCapabilities", () => {
     expect(record.cwd).toContain(".omp-capability-probe-");
     expect(record.home).toContain(`${record.cwd}/home`);
     expect(record.agentDir).toContain(`${record.cwd}/agent`);
+  });
+
+  test("gives omp a placeholder key so it starts without a login, and keeps the user's own key", async () => {
+    // omp exits with "No default model selected" in the probe's empty home unless some provider
+    // key is set; a user who signs in with a subscription has no key in the environment.
+    const readKey = async (overrides: Record<string, string | undefined>): Promise<string> => {
+      const { root } = await runProbe(overrides);
+      const record = JSON.parse(await readFile(join(root, "probe-record.json"), "utf8")) as {
+        readonly anthropicKey: string;
+      };
+      return record.anthropicKey;
+    };
+    expect(await readKey({})).not.toBe("");
+    expect(await readKey({ ANTHROPIC_API_KEY: "" })).not.toBe("");
+    expect(await readKey({ ANTHROPIC_API_KEY: "the-users-own-key" })).toBe("the-users-own-key");
   });
 });
