@@ -294,7 +294,7 @@ export function AppShell({
 
       <main
         aria-label="Conversation"
-        className="col-start-1 row-start-1 grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
+        className="col-start-1 row-start-1 grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
         data-shell-main="true"
         id="main-content"
         style={{ gridColumn: isNarrow ? "1" : "2" }}

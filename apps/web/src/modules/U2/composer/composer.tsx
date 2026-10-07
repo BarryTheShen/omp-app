@@ -239,7 +239,7 @@ export function ComposerSurface({
           placeholder="Send a message..."
           rows={1}
           submitMode="none"
-          className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-52 min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
+          className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
         />
         {isStreaming && (
           <p

@@ -49,9 +49,39 @@ async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Pr
     await composer.type("Second line");
     await expect(composer).toHaveValue("First line\nSecond line");
 
+    // The textarea resizes after the input event, so each height is polled until it settles.
+    const inputHeight = (): Promise<number> =>
+      composer.evaluate((input) => input.getBoundingClientRect().height);
+    // After a window resize the page lays out again (the sidebars fold at narrow widths); the width
+    // is settled once two samples 200 ms apart agree.
+    const settledWidth = async (): Promise<void> => {
+      let previous = -1;
+      await expect
+        .poll(
+          async () => {
+            const width = await composer.evaluate((input) =>
+              Math.round(input.getBoundingClientRect().width),
+            );
+            const stable = width === previous;
+            previous = width;
+            return stable;
+          },
+          { intervals: [200], timeout: 10_000 },
+        )
+        .toBe(true);
+    };
+
     for (const viewport of viewports) {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await composer.fill("");
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await settledWidth();
+      // A person who resizes and then types sees the right height at once. The empty box alone can
+      // keep the height it had before a resize (#773), so the spec types and clears once.
+      await composer.fill("x");
+      await composer.fill("");
+      await expect
+        .poll(inputHeight, { message: `${theme} ${viewport.name}px: empty input is one line` })
+        .toBeLessThanOrEqual(32);
       const emptyMetrics = await composer.evaluate((input) => {
         const card = input.parentElement;
         if (!card) throw new Error("Composer card is missing");
@@ -60,24 +90,18 @@ async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Pr
           cardHeight: card.getBoundingClientRect().height,
         };
       });
-      expect(
-        emptyMetrics.inputHeight,
-        `${theme} ${viewport.name}px: empty input is one line`,
-      ).toBeLessThanOrEqual(32);
       await composer.fill("First line");
-      const oneLineHeight = await composer.evaluate(
-        (input) => input.getBoundingClientRect().height,
-      );
+      const oneLineHeight = await inputHeight();
 
       await composer.fill(["First line", "Second line", "Third line", "Fourth line"].join("\n"));
-      const multipleLinesHeight = await composer.evaluate(
-        (input) => input.getBoundingClientRect().height,
-      );
-      expect(multipleLinesHeight, `${theme} ${viewport.name}px: multiline height`).toBeGreaterThan(
-        oneLineHeight + 24,
-      );
+      await expect
+        .poll(inputHeight, { message: `${theme} ${viewport.name}px: multiline height` })
+        .toBeGreaterThan(oneLineHeight + 24);
 
       await composer.fill(Array.from({ length: 12 }, (_, index) => `Line ${index + 1}`).join("\n"));
+      await expect
+        .poll(inputHeight, { message: `${theme} ${viewport.name}px: reaches its cap` })
+        .toBeGreaterThanOrEqual(200);
       const cappedInput = await composer.evaluate((input) => {
         const card = input.parentElement;
         if (!card) throw new Error("Composer card is missing");
@@ -103,6 +127,11 @@ async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Pr
         cappedInput.cardHeight,
         `${theme} ${viewport.name}px: card stays within the input growth cap`,
       ).toBeLessThanOrEqual(emptyMetrics.cardHeight + 208 - emptyMetrics.inputHeight + 2);
+      await waitForFiniteAnimations(page);
+      await page.screenshot({
+        path: join(screenshots, `composer-growth-capped-${theme}-${viewport.name}.png`),
+        fullPage: true,
+      });
 
       await composer.fill(["First line", "Second line", "Third line", "Fourth line"].join("\n"));
       await expect(composer).toBeVisible();
@@ -118,4 +147,34 @@ async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Pr
 realTest(
   "the composer grows with typed lines, then scrolls inside in both themes",
   runComposerGrowth,
+);
+
+realTest(
+  "on a short window the composer's cap leaves room for the conversation",
+  async ({ realApp }) => {
+    await mkdir(screenshots, { recursive: true });
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await page.setViewportSize({ width: 640, height: 400 });
+    await composer.fill(Array.from({ length: 12 }, (_, index) => `Line ${index + 1}`).join("\n"));
+    await expect
+      .poll(() => composer.evaluate((input) => input.getBoundingClientRect().height), {
+        message: "the input grows until it reaches its cap",
+      })
+      .toBeGreaterThanOrEqual(130);
+    const metrics = await composer.evaluate((input) => ({
+      height: input.getBoundingClientRect().height,
+      scrolls: input.scrollHeight > input.clientHeight,
+      windowHeight: window.innerHeight,
+    }));
+    expect(metrics.height, "the input is at most 35% of the window").toBeLessThanOrEqual(
+      metrics.windowHeight * 0.35 + 1,
+    );
+    expect(metrics.scrolls, "the rest of the text scrolls inside the input").toBe(true);
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "composer-growth-short-window.png"),
+      fullPage: true,
+    });
+  },
 );
