@@ -193,6 +193,19 @@ export class DraftController {
     this.setState({ status: "loading", error: null });
     try {
       const result = await this.store.get({ scope: this.scope });
+      if (this.snapshot.dirty) {
+        // The person typed while this was loading. Their text is newer than the stored draft, so it
+        // stays. The stored revision is adopted so the next save is not taken for a conflict.
+        const stored = result.draft;
+        this.setState({
+          status: "ready",
+          failedSends: stored === null ? [] : [...stored.failedSends],
+          revision: stored === null ? null : stored.revision,
+          conflict: null,
+          error: null,
+        });
+        return this.snapshot;
+      }
       if (result.draft === null) {
         this.setState({
           status: "ready",

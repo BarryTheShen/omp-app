@@ -116,6 +116,72 @@ describe("U2.4 DraftController", () => {
     expect(store.saves[0]?.draft).toMatchObject({ text: "hello", attachments: [attachment] });
   });
 
+  test("keeps text typed while the draft is still loading and saves against the stored revision", async () => {
+    const timers = new FakeTimers();
+    const store = new FakeDraftStore();
+    store.draft = {
+      scope,
+      text: "older draft",
+      attachments: [],
+      failedSends: [],
+      revision: "r0" as Revision,
+      updatedAt: new Date(1).toISOString(),
+    };
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const read = store.get.bind(store);
+    store.get = async () => {
+      await gate;
+      return read();
+    };
+    const controller = new DraftController({ store, scope, timers });
+    const loading = controller.load();
+    controller.setDraft("typed first", []);
+    release();
+    await loading;
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "ready",
+      text: "typed first",
+      dirty: true,
+      revision: "r0",
+      conflict: null,
+    });
+    await timers.runAll();
+    expect(store.saves).toHaveLength(1);
+    expect(store.saves[0]).toMatchObject({
+      expectedRevision: "r0",
+      draft: { text: "typed first" },
+    });
+    expect(controller.getSnapshot().conflict).toBeNull();
+  });
+
+  test("keeps text typed while the draft is loading when nothing is stored", async () => {
+    const timers = new FakeTimers();
+    const store = new FakeDraftStore();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const read = store.get.bind(store);
+    store.get = async () => {
+      await gate;
+      return read();
+    };
+    const controller = new DraftController({ store, scope, timers });
+    const loading = controller.load();
+    controller.setDraft("typed first", [attachment]);
+    release();
+    await loading;
+    expect(controller.getSnapshot()).toMatchObject({
+      text: "typed first",
+      attachments: [attachment],
+      dirty: true,
+      revision: null,
+    });
+  });
+
   test("flushes immediately on pagehide and ignores visible visibility changes", async () => {
     const timers = new FakeTimers();
     const lifecycle = new FakeLifecycle();
