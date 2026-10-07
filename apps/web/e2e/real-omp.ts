@@ -12,7 +12,7 @@
  * anything else is answered "pong".
  */
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -23,6 +23,7 @@ export const APP_ROOT = resolve(process.cwd(), "../..");
 const SERVER_SCRIPT = resolve(APP_ROOT, "packages/server/scripts/dev.ts");
 const FAKE_PROVIDER = resolve(APP_ROOT, "packages/omp-rpc/scripts/fake-openai-server.ts");
 const SESSION_PATHS = resolve(APP_ROOT, "packages/server/src/modules/A1/sessions/paths.ts");
+const LOGGING = resolve(APP_ROOT, "packages/server/src/logging/index.ts");
 export const screenshots = resolve(APP_ROOT, ".data/screenshots");
 
 export async function waitForFiniteAnimations(page: Page): Promise<void> {
@@ -50,6 +51,10 @@ export interface RealApp {
   readonly problems: readonly string[];
   /** The process ids of the omp processes the app's server has running right now. */
   readonly ompProcesses: () => readonly number[];
+  /** The app's debug log so far (the same text `omp-app logs` prints). */
+  readonly log: () => string;
+  /** This run's launch token (the secret in the page's address); it must never be logged. */
+  readonly token: string;
 }
 
 /** Clicks "New chat" and waits for the composer; a new chat starts a real omp process. */
@@ -119,6 +124,7 @@ async function startServer(
     `import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createCompositionServer } from ${JSON.stringify(SERVER_SCRIPT)};
+import { createLogger } from ${JSON.stringify(LOGGING)};
 import { sessionBucketName } from ${JSON.stringify(SESSION_PATHS)};
 // Old chats written the way omp writes them, before the app starts.
 const seed = ${options.seedSessions};
@@ -150,6 +156,8 @@ const server = await createCompositionServer({
   ompArgs: ["--model", "fake/fake-model"],
   staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
   idleCloseMs: ${options.idleCloseMs === undefined ? "undefined" : options.idleCloseMs},
+  logger: createLogger({ dir: ${JSON.stringify(join(root, "logs"))} }),
+  statsIntervalMs: 1000,
 });
 console.log("APP_ROOT_READY " + JSON.stringify({ url: server.url, token: server.token }));
 const stop = () => void server.stop().finally(() => process.exit(0));
@@ -244,7 +252,10 @@ export const realTest = test.extend<{
           .filter((line) => line.includes("--mode rpc-ui"))
           .map((line) => Number.parseInt(line.trim(), 10));
       };
-      await use({ folder, otherFolder, open, problems, ompProcesses });
+      const logFile = join(root, "logs", "omp-app.log");
+      const log = (): string => (existsSync(logFile) ? readFileSync(logFile, "utf8") : "");
+      const token = decodeURIComponent(new URL(url).hash.replace(/^#token=/, ""));
+      await use({ folder, otherFolder, open, problems, ompProcesses, log, token });
       expect(problems).toEqual([]);
     } finally {
       await Promise.all(pages.map((page) => page.close().catch(() => undefined)));

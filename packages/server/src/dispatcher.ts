@@ -11,6 +11,7 @@ import {
   type WelcomeFrame as WelcomeFrameSchema,
 } from "@omp-app/contracts";
 import { z } from "zod";
+import type { Logger } from "./logging";
 import type { PortHandlerContext, PortRegistration, PortRegistry } from "./registry/ports";
 import type { EventReplayHub, ReplayEventFrame } from "./replay";
 
@@ -26,6 +27,8 @@ export interface DispatcherOptions {
   readonly registry: PortRegistry;
   readonly replay: EventReplayHub;
   readonly welcome: DispatcherWelcome;
+  /** Where connections and failed calls are recorded; nothing is logged without one. */
+  readonly logger?: Logger;
 }
 
 interface PendingCall {
@@ -97,6 +100,7 @@ export class DispatcherSession {
   readonly #replay: EventReplayHub;
   readonly #welcome: DispatcherOptions["welcome"];
   readonly #onClose: (() => void) | undefined;
+  readonly #logger: Logger | undefined;
   readonly #pending = new Map<RequestId, PendingCall>();
   readonly #subscriptions = new Map<StreamKey, () => void>();
   #greeted = false;
@@ -108,6 +112,7 @@ export class DispatcherSession {
     this.#replay = options.replay;
     this.#welcome = options.welcome;
     this.#onClose = onClose;
+    this.#logger = options.logger;
   }
 
   receive(text: string | ArrayBuffer | Uint8Array): void {
@@ -164,6 +169,10 @@ export class DispatcherSession {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
+    this.#logger?.info("connection.close", {
+      id: this.#socket.id.slice(0, 8),
+      pending_calls: this.#pending.size,
+    });
     for (const pending of this.#pending.values()) pending.controller.abort("connection_closed");
     this.#pending.clear();
     for (const dispose of this.#subscriptions.values()) dispose();
@@ -270,6 +279,7 @@ export class DispatcherSession {
       if (!parsedResult.success) {
         // A handler that breaks its own result schema is a bug: say which one, never the payload.
         console.error(`[omp-app] ${label} returned a result that fails its schema`);
+        this.#logger?.error("port.bad_result", { call: label });
         this.#sendError(id, INTERNAL_ERROR);
         return;
       }
@@ -279,7 +289,22 @@ export class DispatcherSession {
       this.#pending.delete(id);
       // AppFailure is an expected, typed outcome; anything else is a bug the client only sees as
       // `internal`, so record it here (method name and error, never the call's arguments).
-      if (!(error instanceof AppFailure)) console.error(`[omp-app] ${label} failed`, error);
+      if (!(error instanceof AppFailure)) {
+        console.error(`[omp-app] ${label} failed`, error);
+        // The error text and stack only: never the call's arguments, which hold the user's words.
+        this.#logger?.error("port.crash", {
+          call: label,
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      } else {
+        this.#logger?.warn("port.error", {
+          call: label,
+          code: error.appError.code,
+          omp: error.appError.omp?.code,
+          message: error.appError.message,
+        });
+      }
       this.#sendError(id, appErrorFromUnknown(error));
     }
   }
@@ -330,6 +355,10 @@ export class Dispatcher {
     let session: DispatcherSession;
     session = new DispatcherSession(socket, this.#options, () => this.#sessions.delete(session));
     this.#sessions.add(session);
+    this.#options.logger?.info("connection.open", {
+      id: socket.id.slice(0, 8),
+      total: this.#sessions.size,
+    });
     return session;
   }
 

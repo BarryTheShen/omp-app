@@ -6,10 +6,13 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { stateDirectory } from "../logging";
 
 export const DEFAULT_PORT = 4317;
 
 export const USAGE = `Usage: omp-app [folder] [options]
+       omp-app logs [--lines <n>]
+       omp-app debug-report
 
 Starts the omp app and opens it in your browser. omp must be installed.
 
@@ -18,13 +21,20 @@ Starts the omp app and opens it in your browser. omp must be installed.
   --no-open      do not open the browser
   -v, --version  print the version
   -h, --help     print this help
+
+Problems? The app keeps a log of what it does (never your prompts, files or keys):
+  logs           print where the log is and its last lines (--lines sets how many, default 100)
+  debug-report   write omp-app-debug-<time>.log in this folder, ready to attach to a GitHub issue
+                 (to work in a folder that is really named logs, write ./logs)
 `;
 
 export type LauncherArgs = {
-  readonly command: "run" | "help" | "version";
+  readonly command: "run" | "help" | "version" | "logs" | "debug-report";
   readonly folder: string | undefined;
   readonly port: number | undefined;
   readonly open: boolean;
+  /** For `logs`: how many lines to print. */
+  readonly lines: number | undefined;
 };
 
 export type ParsedArgs =
@@ -42,12 +52,23 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
   let folder: string | undefined;
   let port: number | undefined;
   let open = true;
+  let lines: number | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? "";
     if (arg === "-h" || arg === "--help") command = "help";
     else if (arg === "-v" || arg === "--version") command = "version";
     else if (arg === "--no-open") open = false;
-    else if (arg === "--port" || arg.startsWith("--port=")) {
+    else if (arg === "--lines" || arg.startsWith("--lines=")) {
+      let text = arg.slice("--lines=".length);
+      if (arg === "--lines") {
+        index += 1;
+        text = argv[index] ?? "";
+      }
+      lines = /^[0-9]{1,6}$/.test(text) && Number(text) > 0 ? Number(text) : undefined;
+      if (lines === undefined) {
+        return { ok: false, message: `--lines needs a number above 0, not "${text}".` };
+      }
+    } else if (arg === "--port" || arg.startsWith("--port=")) {
       let text = arg.slice("--port=".length);
       if (arg === "--port") {
         index += 1;
@@ -59,10 +80,11 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
       }
     } else if (arg.startsWith("-")) {
       return { ok: false, message: `Unknown option ${arg}.` };
-    } else if (folder === undefined) folder = arg;
+    } else if (index === 0 && (arg === "logs" || arg === "debug-report")) command = arg;
+    else if (folder === undefined) folder = arg;
     else return { ok: false, message: "Only one folder can be given." };
   }
-  return { ok: true, args: { command, folder, port, open } };
+  return { ok: true, args: { command, folder, port, open, lines } };
 }
 
 const InstanceSchema = z.object({
@@ -77,10 +99,7 @@ export function instanceFile(
   env: Readonly<Record<string, string | undefined>>,
   home: string,
 ): string {
-  const state = env.XDG_STATE_HOME?.startsWith("/")
-    ? env.XDG_STATE_HOME
-    : join(home, ".local", "state");
-  return join(state, "omp-app", "instance.json");
+  return join(stateDirectory(env, home), "instance.json");
 }
 
 function isMissing(error: unknown): boolean {

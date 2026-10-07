@@ -4,7 +4,7 @@
  * at its address, and keeps one instance per user. `packaging/build-deb.sh` compiles this file into
  * the .deb; from a source checkout, run `bun run build && bun packages/server/scripts/omp-app.ts`.
  */
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -19,7 +19,16 @@ import {
   recordInstance,
   USAGE,
 } from "../src/launcher/launcher";
-import { createCompositionServer } from "./dev";
+import {
+  buildDebugReport,
+  createLogger,
+  debugReportFileName,
+  listProcesses,
+  logPath,
+  readLogTail,
+  stateDirectory,
+} from "../src/logging";
+import { createCompositionServer, probeOmp } from "./dev";
 
 /** Replaced with the release version when `packaging/build-deb.sh` compiles this file. */
 declare const OMP_APP_VERSION: string | undefined;
@@ -97,9 +106,51 @@ if (args.command === "version") {
   process.exit(0);
 }
 
-installUnhandledRejectionLogger((message) => console.error(message));
-
 const home = homedir();
+const logDir = stateDirectory(Bun.env, home);
+
+if (args.command === "logs") {
+  const tail = readLogTail(logDir, args.lines ?? 100);
+  console.log(`Log file: ${logPath(logDir)}\n`);
+  console.log(tail.length > 0 ? tail : "(the log is empty: start the app once first)");
+  process.exit(0);
+}
+if (args.command === "debug-report") {
+  const searchPath = ompSearchPath(home, Bun.env.PATH, existsSync);
+  const ompBin = Bun.env.OMP_BIN ?? Bun.which("omp", { PATH: searchPath }) ?? "omp";
+  const environment: Record<string, string> = {};
+  for (const [key, value] of Object.entries(Bun.env))
+    if (value !== undefined) environment[key] = value;
+  const probe = await probeOmp(ompBin, { ...environment, PATH: searchPath }, process.cwd());
+  const now = new Date();
+  const target = resolve(process.cwd(), debugReportFileName(now));
+  writeFileSync(
+    target,
+    buildDebugReport({
+      directory: logDir,
+      version,
+      now,
+      omp: { path: ompBin, version: probe.version },
+      processes: await listProcesses(),
+    }),
+    { mode: 0o600 },
+  );
+  console.log(`Wrote ${target}\n\nAttach this file to your GitHub issue.`);
+  process.exit(0);
+}
+
+const logger = createLogger({ dir: logDir });
+// A crash leaves its stack in the log: both the caught rejections and the exception that ends the app.
+installUnhandledRejectionLogger((message) => {
+  console.error(message);
+  logger.error("unhandled_rejection", { stack: message });
+});
+process.on("uncaughtException", (error) => {
+  logger.error("uncaught_exception", { message: error.message, stack: error.stack });
+  console.error(error);
+  process.exit(1);
+});
+
 const record = instanceFile(Bun.env, home);
 const running = await readRunningInstance(record, { alive: isAlive, responds });
 if (running) {
@@ -128,6 +179,7 @@ const server = await createCompositionServer({
   ompBin,
   env: { PATH: searchPath },
   serverVersion: version,
+  logger,
 });
 const address = `${server.url}/#token=${encodeURIComponent(server.token)}`;
 await recordInstance(record, { pid: process.pid, url: address, version });

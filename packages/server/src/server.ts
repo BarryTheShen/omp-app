@@ -7,6 +7,7 @@ import {
 } from "@omp-app/contracts";
 
 import { Dispatcher, type DispatcherSession } from "./dispatcher";
+import type { Logger } from "./logging";
 import type { PortRegistry } from "./registry/ports";
 import { PORT_REGISTRY } from "./registry/ports";
 import { EventReplayHub } from "./replay";
@@ -14,6 +15,8 @@ import { EventReplayHub } from "./replay";
 const DEFAULT_PORT = 4317;
 const DEFAULT_SERVER_VERSION = "0.0.0";
 const DEFAULT_REPLAY_LIMIT = 256;
+/** The most `stop()` waits for Bun to finish closing connections. */
+const STOP_WAIT_MS = 1_000;
 
 export interface AppServerOptions {
   readonly port?: number;
@@ -27,6 +30,8 @@ export interface AppServerOptions {
   readonly replay?: EventReplayHub;
   readonly staticRoot?: string;
   readonly registry?: PortRegistry;
+  /** Where connections and failed calls are recorded; nothing is logged without one. */
+  readonly logger?: Logger;
 }
 
 export interface AppServer {
@@ -164,6 +169,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     registry: options.registry ?? PORT_REGISTRY,
     replay,
     welcome,
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
   });
   const staticRoot = options.staticRoot ?? `${process.cwd()}/apps/web/dist`;
   const port = requestedPort(options);
@@ -187,7 +193,13 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           origins,
           port: bunServer.port ?? port,
         });
-        if (authorization instanceof Response) return authorization;
+        if (authorization instanceof Response) {
+          options.logger?.warn("connection.rejected", {
+            reason: "host",
+            origin: request.headers.get("origin") ?? "none",
+          });
+          return authorization;
+        }
         const upgraded = server.upgrade(request, {
           data: {
             id: randomId(),
@@ -204,6 +216,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     websocket: {
       open: (socket) => {
         if (socket.data.authFailure) {
+          options.logger?.warn("connection.rejected", { reason: socket.data.authFailure.reason });
           socket.close(socket.data.authFailure.closeCode, socket.data.authFailure.reason);
           return;
         }
@@ -235,7 +248,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       if (stopped) return;
       stopped = true;
       dispatcher.closeAll();
-      await bunServer.stop(true);
+      // Bun's stop(true) never resolves once the server itself has closed a socket (a rejected
+      // token, a protocol error): quitting then hung forever, for example after an old tab with a
+      // stale link had been turned away. It stops accepting at once, so waiting a moment is enough.
+      await Promise.race([bunServer.stop(true), Bun.sleep(STOP_WAIT_MS)]);
     },
   };
   return appServer;

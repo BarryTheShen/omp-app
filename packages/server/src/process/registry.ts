@@ -1,4 +1,4 @@
-import type { ThreadId } from "@omp-app/contracts";
+import type { ProcessStatus, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { RpcSessionTimer } from "@omp-app/omp-rpc";
 import type { OmpProcess, OmpProcessOptions } from "./omp-process";
@@ -149,6 +149,19 @@ export class OmpProcessRegistry {
 
   has(threadId: ThreadId): boolean {
     return this.#entries.has(threadId);
+  }
+
+  /** The processes held right now: what the debug log's periodic sample reports. */
+  list(): readonly {
+    readonly threadId: ThreadId;
+    readonly pid: number | undefined;
+    readonly status: ProcessStatus;
+  }[] {
+    return [...this.#entries.values()].map((entry) => ({
+      threadId: entry.key,
+      pid: entry.process.pid,
+      status: entry.process.status,
+    }));
   }
   /** Move a just-started process from a provisional key to omp's authoritative session id. */
   rekey(from: ThreadId, to: ThreadId): OmpProcess {

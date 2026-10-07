@@ -22,6 +22,7 @@ import {
 } from "@omp-app/contracts";
 import { type CommandFuture, RpcSession } from "@omp-app/omp-rpc";
 import { capabilitiesForProtocol } from "../../capabilities";
+import type { Logger } from "../../logging";
 import type { OmpProcess, OmpProcessOptions, OmpProcessRegistry } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { EventReplayHub } from "../../replay";
@@ -51,6 +52,10 @@ export interface A0PortContext {
   ) => Promise<ThreadBootstrap | undefined>;
   /** Test seam and process adapter seam; defaults to the merged A0.3 RpcSession. */
   readonly createSession?: (process: OmpProcess) => RpcSession;
+  /** The debug log; browser-reported errors are written to it. */
+  readonly logger?: Logger;
+  /** Builds the debug report the browser can save; absent when the app runs without a debug log. */
+  readonly debugReport?: () => Promise<{ readonly fileName: string; readonly text: string }>;
 }
 
 interface ViewerPreference {

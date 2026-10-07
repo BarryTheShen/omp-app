@@ -1,3 +1,4 @@
+export { logOmpProcess } from "./log";
 export {
   type OmpProcess,
   type OmpProcessBackoffOptions,

@@ -45,12 +45,11 @@ function titleSlot(title: string): string {
 
 /** Files that exercise every rule the old whole-file parse had: slot, bad lines, odd records, CRLF, no final newline. */
 const FIXTURES: Record<string, string> = {
-  plain:
-    [
-      header("a", "/w"),
-      message("user", "Hello  there\n friend"),
-      message("assistant", [{ type: "text", text: "hi" }]),
-    ].join("\n") + "\n",
+  plain: `${[
+    header("a", "/w"),
+    message("user", "Hello  there\n friend"),
+    message("assistant", [{ type: "text", text: "hi" }]),
+  ].join("\n")}\n`,
   titleSlot:
     titleSlot("A saved title") +
     [
@@ -65,43 +64,40 @@ const FIXTURES: Record<string, string> = {
     titleSlot("") +
     [header("c", "/w", { title: "header title" }), message("user", "q")].join("\n") +
     "\n",
-  malformed:
-    [
-      header("d", "/w"),
-      "{not json",
-      message("user", "q"),
-      "",
-      message("assistant", "a", { stopReason: "error" }),
-    ].join("\n") + "\n",
+  malformed: `${[
+    header("d", "/w"),
+    "{not json",
+    message("user", "q"),
+    "",
+    message("assistant", "a", { stopReason: "error" }),
+  ].join("\n")}\n`,
   partialLast: [
     header("e", "/w"),
     message("user", "q"),
     '{"type":"message","message":{"role":"assis',
   ].join("\n"),
-  crlf:
-    [
-      header("f", "/w"),
-      message("user", "windows"),
-      message("assistant", [{ type: "toolCall", name: "bash" }]),
-    ].join("\r\n") + "\r\n",
-  headerNotFirst:
-    [message("user", "early"), header("g", "/w"), message("toolResult", "r")].join("\n") + "\n",
-  noHeader: [message("user", "orphan")].join("\n") + "\n",
-  nonObjects:
-    [
-      header("h", "/w"),
-      "42",
-      '"text"',
-      "[1,2]",
-      "null",
-      message("assistant", "done", { stopReason: "aborted" }),
-    ].join("\n") + "\n",
-  longPrompt: [header("i", "/w"), message("user", "word ".repeat(100))].join("\n") + "\n",
-  otherRoles: [header("j", "/w"), message("user", "q"), message("system", "s")].join("\n") + "\n",
-  unicode:
-    [header("k", "/w"), message("user", "日本語のテスト ✓ 🎉"), message("assistant", "ok")].join(
-      "\n",
-    ) + "\n",
+  crlf: `${[
+    header("f", "/w"),
+    message("user", "windows"),
+    message("assistant", [{ type: "toolCall", name: "bash" }]),
+  ].join("\r\n")}\r\n`,
+  headerNotFirst: `${[message("user", "early"), header("g", "/w"), message("toolResult", "r")].join("\n")}\n`,
+  noHeader: `${[message("user", "orphan")].join("\n")}\n`,
+  nonObjects: `${[
+    header("h", "/w"),
+    "42",
+    '"text"',
+    "[1,2]",
+    "null",
+    message("assistant", "done", { stopReason: "aborted" }),
+  ].join("\n")}\n`,
+  longPrompt: `${[header("i", "/w"), message("user", "word ".repeat(100))].join("\n")}\n`,
+  otherRoles: `${[header("j", "/w"), message("user", "q"), message("system", "s")].join("\n")}\n`,
+  unicode: `${[
+    header("k", "/w"),
+    message("user", "日本語のテスト ✓ 🎉"),
+    message("assistant", "ok"),
+  ].join("\n")}\n`,
 };
 
 describe("streaming session summary", () => {

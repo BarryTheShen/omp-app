@@ -17,6 +17,19 @@ sudo apt remove omp-app                                             # uninstall
 
 `omp` must be installed separately; the app finds it on your `PATH` (it also looks in `~/.bun/bin` and `~/.local/bin`, which a desktop launch does not have). `omp-app [folder]` works in that folder, and a second `omp-app` opens the browser on the instance that is already running. "omp app" is in the applications menu too. Build one yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
 
+### When something goes wrong: the debug log
+
+The app writes a log of what it does to `~/.local/state/omp-app/omp-app.log` (or under `$XDG_STATE_HOME`); the previous part is in `omp-app.log.1`, and together they never pass 15 MB. It records: a header (app, system, Bun and omp versions, folders); the omp and capability checks with their timings; every omp process (start, pid, how long it ran, and its last stderr lines if it dies on its own); every browser connection (opened, closed, turned away); every failed call (which one, and why); uncaught errors and crashes with their stack; errors the page itself reports; and every 30 seconds the server's memory, the number and memory of omp processes, and how long the server was blocked at worst, so a freeze leaves numbers behind.
+
+It never holds your prompts, file contents, the access token in the launch link, or API keys: the code that writes it is never given them, and every line is also scrubbed for key and token shapes before it is saved. File paths and error messages can still appear, so look at a report before posting it publicly.
+
+```bash
+omp-app logs                  # where the log is, and its last 100 lines (--lines 500 for more)
+omp-app debug-report          # writes omp-app-debug-<time>.log in this folder: attach it to a GitHub issue
+```
+
+A folder that is really named `logs` is opened with `omp-app ./logs`.
+
 ## Status
 
 **Under construction (2026-10-07).** It is built in 42 modules and 8 waves, and every module is split into small "parts". Work is ordered by what is used most (`PRIORITIES.md`). As of this writing:

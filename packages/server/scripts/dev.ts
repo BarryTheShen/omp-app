@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { arch, cpus, homedir, platform, release, totalmem } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import {
   AppFailure,
   CapabilityMap,
@@ -10,6 +10,14 @@ import {
 import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
 import { probeCapabilities } from "../src/capabilities";
+import {
+  buildDebugReport,
+  createNullLogger,
+  debugReportFileName,
+  type Logger,
+  listProcesses,
+  startStatsSampler,
+} from "../src/logging";
 import { createProviderAccountStore } from "../src/modules/A1/accounts";
 import { AttachmentStoreService } from "../src/modules/A1/attachments";
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
@@ -30,7 +38,7 @@ import { createSessionImportStore } from "../src/modules/A1/session-import";
 import { createSessionFileStore } from "../src/modules/A1/sessions";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
-import { OmpProcessRegistry, spawnOmpProcess } from "../src/process";
+import { logOmpProcess, OmpProcessRegistry, spawnOmpProcess } from "../src/process";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
 import { EventReplayHub } from "../src/replay";
 import { type AppServer, createAppServer } from "../src/server";
@@ -50,6 +58,10 @@ export interface CompositionServerOptions {
   readonly idleCloseMs?: number;
   /** Test/embedding override for the process launch directory surfaced to the browser. */
   readonly cwd?: string;
+  /** The debug log; without one nothing is written (tests and embeddings). */
+  readonly logger?: Logger;
+  /** How often the memory and process figures are logged; the default is 30 seconds. */
+  readonly statsIntervalMs?: number;
 }
 
 interface OmpProbe {
@@ -138,11 +150,37 @@ export async function createCompositionServer(
   };
   const launchFolder = resolve(options.cwd ?? process.cwd());
   const ompBinary = options.ompBin ?? env.OMP_BIN ?? "omp";
+  const logger = options.logger ?? createNullLogger();
+  const serverVersion = options.serverVersion ?? String(serverPackage.version);
+  logger.info("start", {
+    version: serverVersion,
+    pid: process.pid,
+    platform: platform(),
+    os_release: release(),
+    arch: arch(),
+    bun: process.versions.bun,
+    cpus: cpus().length,
+    mem_total_mb: Math.round(totalmem() / 1_048_576),
+    folder: launchFolder,
+    home: homeDir,
+    agent_dir: agentDir,
+    app_data_dir: appDataDir,
+    omp_bin: ompBinary,
+    log_file: logger.path,
+  });
+  const probeStarted = performance.now();
   const probe = await probeOmp(ompBinary, env, launchFolder);
+  logger.info("omp.probe", {
+    status: probe.health.status,
+    version: probe.version,
+    detail: probe.health.detail,
+    ms: Math.round(performance.now() - probeStarted),
+  });
   let capabilities = CapabilityMap.parse({});
   let protocolVersion: 1 | 2 = 1;
   let health = probe.health;
   if (health.status === "ok") {
+    const capabilityStarted = performance.now();
     try {
       const capabilityProbe = await probeCapabilities({
         cwd: FolderPath.parse(appDataDir),
@@ -151,12 +189,24 @@ export async function createCompositionServer(
       });
       capabilities = capabilityProbe.capabilities;
       protocolVersion = capabilityProbe.protocolVersion;
-    } catch {
+      const states = Object.values(capabilities).flatMap((capability) =>
+        capability === undefined ? [] : [capability.state],
+      );
+      logger.info("capabilities.probe", {
+        protocol: protocolVersion,
+        available: states.filter((state) => state === "available").length,
+        unavailable: states.filter((state) => state !== "available").length,
+        ms: Math.round(performance.now() - capabilityStarted),
+      });
+    } catch (error) {
       health = { status: "unhealthy", detail: "omp capability probe failed" };
+      logger.error("capabilities.probe_failed", {
+        message: error instanceof Error ? error.message : String(error),
+        ms: Math.round(performance.now() - capabilityStarted),
+      });
     }
   }
   const instanceId = crypto.randomUUID();
-  const serverVersion = options.serverVersion ?? String(serverPackage.version);
   const omp =
     health.status === "ok" && probe.version !== null
       ? { version: probe.version, protocolVersion }
@@ -164,12 +214,15 @@ export async function createCompositionServer(
   const processRegistry = new OmpProcessRegistry({
     ...(options.idleCloseMs === undefined ? {} : { idleCloseMs: options.idleCloseMs }),
     createProcess: (processOptions) =>
-      spawnOmpProcess({
-        ...processOptions,
-        ompBin: options.ompBin ?? processOptions.ompBin,
-        args: [...(processOptions.args ?? []), ...(options.ompArgs ?? [])],
-        env: { ...env, ...processOptions.env },
-      }),
+      logOmpProcess(
+        spawnOmpProcess({
+          ...processOptions,
+          ompBin: options.ompBin ?? processOptions.ompBin,
+          args: [...(processOptions.args ?? []), ...(options.ompArgs ?? [])],
+          env: { ...env, ...processOptions.env },
+        }),
+        logger,
+      ),
   });
   const replay = new EventReplayHub();
   const sessionFileStore = createSessionFileStore({
@@ -185,6 +238,7 @@ export async function createCompositionServer(
       sessionFile: SessionFilePath.parse(file.sessionFile),
     };
   };
+  let launchToken = "";
   const a0Context: A0PortContext = {
     processRegistry,
     replay,
@@ -192,6 +246,25 @@ export async function createCompositionServer(
     capabilities,
     serverInfo: { instanceId, serverVersion, launchFolder: FolderPath.parse(launchFolder), omp },
     health,
+    logger,
+    ...(options.logger === undefined
+      ? {}
+      : {
+          debugReport: async () => {
+            const now = new Date();
+            return {
+              fileName: debugReportFileName(now),
+              text: buildDebugReport({
+                directory: dirname(logger.path),
+                version: serverVersion,
+                now,
+                omp: { path: ompBinary, version: probe.version },
+                processes: await listProcesses(),
+                secrets: [launchToken],
+              }),
+            };
+          },
+        }),
   };
   const a0Runtime = createA0Runtime(a0Context);
   const resolveSession = async (threadId: ThreadId): Promise<RpcSession> => {
@@ -306,6 +379,15 @@ export async function createCompositionServer(
     replay,
     staticRoot,
     registry,
+    logger,
+  });
+  launchToken = server.token;
+  logger.addSecret(server.token);
+  logger.info("listening", { port: server.port, health: health.status, detail: health.detail });
+  const stats = startStatsSampler({
+    logger,
+    processes: () => processRegistry.list(),
+    ...(options.statsIntervalMs === undefined ? {} : { intervalMs: options.statsIntervalMs }),
   });
   return {
     ...server,
@@ -313,6 +395,8 @@ export async function createCompositionServer(
     health,
     async stop() {
       try {
+        stats.stop();
+        logger.info("stop");
         await server.stop();
       } finally {
         try {

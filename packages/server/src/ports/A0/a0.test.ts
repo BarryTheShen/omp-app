@@ -11,6 +11,7 @@ import {
   ThreadId,
   UiRequestId,
 } from "@omp-app/contracts";
+import type { Logger } from "../../logging";
 import {
   type OmpProcess,
   type OmpProcessEvent,
@@ -555,5 +556,61 @@ describe("A0.7 AppPort handlers", () => {
     });
     expect(getHandler(app, "capabilities")({}, call("app"))).toEqual({});
     expect(getHandler(app, "health")({}, call("app"))).toEqual({ status: "ok" });
+  });
+
+  test("browser errors reach the debug log cut to size, and a page stuck in a loop cannot flood it", async () => {
+    const events: Array<{ level: string; event: string; fields: Record<string, unknown> }> = [];
+    const logger: Logger = {
+      path: "/log/omp-app.log",
+      info: (event, fields) => events.push({ level: "info", event, fields: { ...fields } }),
+      warn: (event, fields) => events.push({ level: "warn", event, fields: { ...fields } }),
+      error: (event, fields) => events.push({ level: "error", event, fields: { ...fields } }),
+      addSecret: () => undefined,
+      tail: () => "",
+    };
+    const created: FakeProcess[] = [];
+    const app = handlersFor({ ...context(created), logger }, 1);
+    const report = getHandler(app, "reportClientError");
+    expect(
+      report(
+        {
+          kind: "unhandledrejection",
+          message: "x".repeat(1_500),
+          stack: "s".repeat(4_000),
+          page: "http://127.0.0.1:4317/",
+        },
+        call("app"),
+      ),
+    ).toBeNull();
+    expect(events).toHaveLength(1);
+    expect(events[0]?.event).toBe("client.error");
+    expect(String(events[0]?.fields.message).length).toBeLessThan(530);
+    expect(String(events[0]?.fields.stack).length).toBeLessThan(2_030);
+    expect(events[0]?.fields.kind).toBe("unhandledrejection");
+
+    for (let index = 0; index < 100; index += 1) {
+      report({ kind: "console", message: `loop ${index}` }, call("app"));
+    }
+    // 30 a minute at most (the first report counts): the rest are dropped.
+    expect(events.filter((event) => event.event === "client.error")).toHaveLength(30);
+  });
+
+  test("the debug report comes from the composition's seam, and is unavailable without one", async () => {
+    const created: FakeProcess[] = [];
+    const without = handlersFor(context(created), 1);
+    await expect(getHandler(without, "debugReport")({}, call("app"))).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    const withSeam = handlersFor(
+      {
+        ...context(created),
+        debugReport: async () => ({ fileName: "omp-app-debug-x.log", text: "report text" }),
+      },
+      1,
+    );
+    expect(await getHandler(withSeam, "debugReport")({}, call("app"))).toEqual({
+      fileName: "omp-app-debug-x.log",
+      text: "report text",
+    });
   });
 });

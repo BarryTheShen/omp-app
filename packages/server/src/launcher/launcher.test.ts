@@ -25,14 +25,14 @@ describe("parseLauncherArgs", () => {
   test("defaults to running in the current folder and opening the browser", () => {
     expect(parseLauncherArgs([])).toEqual({
       ok: true,
-      args: { command: "run", folder: undefined, port: undefined, open: true },
+      args: { command: "run", folder: undefined, port: undefined, open: true, lines: undefined },
     });
   });
 
   test("reads a folder, a port in both spellings, and --no-open", () => {
     expect(parseLauncherArgs(["/work/app", "--port", "4400", "--no-open"])).toEqual({
       ok: true,
-      args: { command: "run", folder: "/work/app", port: 4400, open: false },
+      args: { command: "run", folder: "/work/app", port: 4400, open: false, lines: undefined },
     });
     expect(parseLauncherArgs(["--port=0"])).toMatchObject({ ok: true, args: { port: 0 } });
   });
@@ -54,6 +54,31 @@ describe("parseLauncherArgs", () => {
   test("help and version win over running", () => {
     expect(parseLauncherArgs(["--help"])).toMatchObject({ args: { command: "help" } });
     expect(parseLauncherArgs(["-v"])).toMatchObject({ args: { command: "version" } });
+  });
+
+  test("logs and debug-report are commands only as the first word, with --lines for logs", () => {
+    expect(parseLauncherArgs(["logs"])).toMatchObject({ ok: true, args: { command: "logs" } });
+    expect(parseLauncherArgs(["logs", "--lines", "250"])).toMatchObject({
+      ok: true,
+      args: { command: "logs", lines: 250 },
+    });
+    expect(parseLauncherArgs(["logs", "--lines=5"])).toMatchObject({ args: { lines: 5 } });
+    expect(parseLauncherArgs(["debug-report"])).toMatchObject({
+      ok: true,
+      args: { command: "debug-report" },
+    });
+    // A folder that is really called logs is written ./logs, or comes after another argument.
+    expect(parseLauncherArgs(["./logs"])).toMatchObject({
+      args: { command: "run", folder: "./logs" },
+    });
+    expect(parseLauncherArgs(["--no-open", "logs"])).toMatchObject({
+      args: { command: "run", folder: "logs" },
+    });
+    expect(parseLauncherArgs(["logs", "--lines", "many"])).toEqual({
+      ok: false,
+      message: '--lines needs a number above 0, not "many".',
+    });
+    expect(parseLauncherArgs(["logs", "--lines", "0"])).toMatchObject({ ok: false });
   });
 });
 
