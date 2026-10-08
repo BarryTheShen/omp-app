@@ -9,8 +9,8 @@ import {
 } from "./config-store";
 
 const DEFAULTS_TIMEOUT_MS = 5_000;
-const DEFAULTS_WARNING =
-  "omp setting defaults could not be loaded; continuing without registered defaults.";
+const LEFTOVER_FOLDER_WARNING =
+  "omp setting defaults loaded, but their temporary folder could not be removed.";
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
   z.union([
@@ -34,27 +34,41 @@ export interface OmpDefaultsProbeOptions {
   readonly onWarning?: (message: string) => void;
 }
 
+/** The defaults, or the reason they could not be loaded (a few words, no output from omp). */
+type Loaded = { readonly defaults: Readonly<Record<string, unknown>> } | { readonly cause: string };
+
+interface LoadResult {
+  readonly loaded: Loaded;
+  /** The temporary folder could not be removed; the defaults are unaffected. */
+  readonly leftover: boolean;
+}
+
+function defaultsWarning(cause: string): string {
+  return `omp setting defaults could not be loaded (${cause}); continuing without registered defaults.`;
+}
+
 /** Creates the server's ConfigStore with omp's registered defaults when available. */
 export async function createConfigStoreWithOmpDefaults(
   options: Omit<ConfigStoreOptions, "defaultValues">,
   probe: OmpDefaultsProbeOptions,
 ): Promise<ConfigStoreService> {
-  const defaultValues = await loadOmpDefaults(probe);
-  if (defaultValues === undefined) {
-    if (probe.onWarning) probe.onWarning(DEFAULTS_WARNING);
-    else console.warn(DEFAULTS_WARNING);
+  const { loaded, leftover } = await loadOmpDefaults(probe);
+  const messages: string[] = [];
+  if (!("defaults" in loaded)) messages.push(defaultsWarning(loaded.cause));
+  if (leftover) messages.push(LEFTOVER_FOLDER_WARNING);
+  for (const message of messages) {
+    if (probe.onWarning) probe.onWarning(message);
+    else console.warn(message);
   }
   return createConfigStore({
     ...options,
-    ...(defaultValues === undefined ? {} : { defaultValues }),
+    ...("defaults" in loaded ? { defaultValues: loaded.defaults } : {}),
   });
 }
 
-async function loadOmpDefaults(
-  options: OmpDefaultsProbeOptions,
-): Promise<Readonly<Record<string, unknown>> | undefined> {
+async function loadOmpDefaults(options: OmpDefaultsProbeOptions): Promise<LoadResult> {
   let temporaryRoot: string | undefined;
-  let defaultValues: Readonly<Record<string, unknown>> | undefined;
+  let loaded: Loaded;
   try {
     temporaryRoot = await mkdtemp(
       join(options.temporaryDirectoryBase ?? tmpdir(), "omp-app-config-defaults-"),
@@ -67,20 +81,19 @@ async function loadOmpDefaults(
       mkdir(agent, { recursive: true }),
       mkdir(temp, { recursive: true }),
     ]);
-
-    const output = await runConfigList(options, temporaryRoot, home, agent, temp);
-    if (output !== undefined) defaultValues = parseDefaults(output);
+    loaded = await runConfigList(options, temporaryRoot, home, agent, temp);
   } catch {
-    defaultValues = undefined;
+    loaded = { cause: "the temporary config folder could not be created" };
   }
+  let leftover = false;
   if (temporaryRoot !== undefined) {
     try {
       await rm(temporaryRoot, { recursive: true, force: true });
     } catch {
-      defaultValues = undefined;
+      leftover = true;
     }
   }
-  return defaultValues;
+  return { loaded, leftover };
 }
 
 async function runConfigList(
@@ -89,7 +102,7 @@ async function runConfigList(
   home: string,
   agent: string,
   temp: string,
-): Promise<string | undefined> {
+): Promise<Loaded> {
   const binary = resolveBinary(options.binary, options.launchDirectory);
   const env = {
     PATH: options.pathEnvironment,
@@ -105,54 +118,66 @@ async function runConfigList(
       env,
       stdout: "pipe",
       stderr: "pipe",
+      // Its own process group, so that a wrapper's children can be stopped with it.
+      detached: true,
     });
   } catch {
-    return undefined;
+    return { cause: "omp could not be started" };
   }
 
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    try {
-      child.kill("SIGKILL");
-    } catch {
-      // The process may have exited just before the timeout.
-    }
-  }, normalizeTimeout(options.timeoutMs));
+  const timeoutMs = normalizeTimeout(options.timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), timeoutMs);
+  });
+  // A wrapper's child can keep the output pipes open after omp is stopped, so the wait for the output
+  // is bounded by the deadline too, not only by the pipes closing.
+  const finished = Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]).then(
+    ([exitCode, stdout]) => ({ exitCode, stdout }),
+    () => undefined,
+  );
   try {
-    const [exitCode, stdout] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    return timedOut || exitCode !== 0 ? undefined : stdout;
-  } catch {
-    return undefined;
+    const outcome = await Promise.race([finished, deadline]);
+    if (outcome === "timeout") return { cause: `omp timed out after ${timeoutMs} ms` };
+    if (outcome === undefined) return { cause: "omp's output could not be read" };
+    if (outcome.exitCode !== 0) return { cause: `omp exited with code ${outcome.exitCode}` };
+    return parseDefaults(outcome.stdout);
   } finally {
-    clearTimeout(timeout);
-    try {
-      child.kill("SIGKILL");
-    } catch {
-      // The process has already exited.
-    }
+    clearTimeout(timer);
+    stopProcessGroup(child);
   }
 }
 
-function parseDefaults(output: string): Readonly<Record<string, unknown>> | undefined {
+/** Stops omp and whatever it started. A group that has already gone is not an error. */
+function stopProcessGroup(child: Bun.Subprocess<"pipe", "pipe", "pipe">): void {
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    // The group has already exited.
+  }
+}
+
+function parseDefaults(output: string): Loaded {
   let input: unknown;
   try {
     input = JSON.parse(output);
   } catch {
-    return undefined;
+    return { cause: "omp's output was not valid JSON" };
   }
   const parsed = ConfigListSchema.safeParse(input);
-  if (!parsed.success) return undefined;
+  if (!parsed.success) return { cause: "omp's output had an unexpected shape" };
 
   const entries: [string, unknown][] = [];
   for (const [key, setting] of Object.entries(parsed.data)) {
     if (setting.value !== undefined) entries.push([key, setting.value]);
   }
-  return entries.length === 0 ? undefined : Object.fromEntries(entries);
+  return entries.length === 0
+    ? { cause: "omp listed no settings" }
+    : { defaults: Object.fromEntries(entries) };
 }
 
 function normalizeTimeout(timeoutMs: number | undefined): number {

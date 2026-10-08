@@ -576,6 +576,10 @@ export class ConfigStoreService {
 
   /** A setting is secret when its key is credential-shaped or its value carries a credential. */
   private isSecretEntry(key: string, value: unknown): boolean {
+    if (this.secretKeys.has(key)) return true;
+    // A boolean or a number cannot carry a credential, so a name that only looks like one (secrets.enabled)
+    // does not make it secret.
+    if (typeof value === "boolean" || typeof value === "number") return false;
     return (
       this.isSecretKey(key) ||
       containsSecret(value, key, (candidate) => this.isSecretKey(candidate))

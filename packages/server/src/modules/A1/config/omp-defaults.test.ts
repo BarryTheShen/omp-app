@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { AppFailure } from "@omp-app/contracts";
 import type { ConfigStoreService } from "./config-store";
 import { createConfigStoreWithOmpDefaults } from "./omp-defaults";
@@ -122,5 +122,111 @@ describe("omp ConfigStore defaults", () => {
       '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64\nexec /bin/sleep 30',
       50,
     );
+  });
+});
+
+const LIST_GUARD = '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64';
+
+async function probeValue(store: ConfigStoreService, key: string): Promise<unknown> {
+  const entry = await store.read({ key, folder: null });
+  return "value" in entry ? entry.value : undefined;
+}
+
+async function leftoverDefaultsFolders(root: string): Promise<string[]> {
+  return (await readdir(root)).filter((name) => name.startsWith("omp-app-config-defaults-"));
+}
+
+async function warningFor(root: string, binary: string, timeoutMs?: number): Promise<string> {
+  const { warnings } = await serverStore(root, binary, timeoutMs);
+  expect(warnings).toHaveLength(1);
+  return warnings[0] ?? "";
+}
+
+describe("omp ConfigStore defaults: wrappers, isolation, cleanup and causes", () => {
+  test("a wrapper whose child keeps the output open cannot hold startup past the timeout", async () => {
+    const root = await temporaryRoot();
+    const binary = await fakeOmp(root, `${LIST_GUARD}\n/bin/sleep 3`);
+    const started = Date.now();
+    const { store, warnings } = await serverStore(root, binary, 200);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(warnings).toEqual([expect.stringContaining("timed out after 200 ms")]);
+    await expectNotFound(store, "model");
+  });
+
+  test("omp runs in its own home, agent, temporary and working folders, with no inherited environment", async () => {
+    const root = await temporaryRoot();
+    const previous = process.env.OMP_APP_PROBE_SECRET;
+    process.env.OMP_APP_PROBE_SECRET = "must-not-leak";
+    try {
+      const probe = String.raw`printf '{"probe.home":{"value":"%s"},"probe.agent":{"value":"%s"},"probe.temp":{"value":"%s"},"probe.cwd":{"value":"%s"},"probe.configDir":{"value":"%s"},"probe.leak":{"value":"%s"}}\n' "$HOME" "$PI_CODING_AGENT_DIR" "$TMPDIR" "$(pwd)" "$PI_CONFIG_DIR" "$OMP_APP_PROBE_SECRET"`;
+      const binary = await fakeOmp(root, `${LIST_GUARD}\n${probe}`);
+      const { store, warnings } = await serverStore(root, binary);
+      expect(warnings).toEqual([]);
+      const home = await probeValue(store, "probe.home");
+      expect(typeof home).toBe("string");
+      expect(home).not.toBe(process.env.HOME);
+      expect(String(home).startsWith(root)).toBe(true);
+      const base = dirname(String(home));
+      expect(await probeValue(store, "probe.cwd")).toBe(base);
+      expect(await probeValue(store, "probe.agent")).toBe(join(base, "agent"));
+      expect(await probeValue(store, "probe.temp")).toBe(join(base, "tmp"));
+      expect(await probeValue(store, "probe.configDir")).toBe(".omp");
+      expect(await probeValue(store, "probe.leak")).toBe("");
+    } finally {
+      if (previous === undefined) delete process.env.OMP_APP_PROBE_SECRET;
+      else process.env.OMP_APP_PROBE_SECRET = previous;
+    }
+  });
+
+  test("removes its temporary folder after success, a failed run and a timeout", async () => {
+    const root = await temporaryRoot();
+    await serverStore(
+      root,
+      await fakeOmp(root, `${LIST_GUARD}\nprintf '{"model":{"value":"x"}}\\n'`),
+    );
+    await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nexit 1`));
+    await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 3`), 100);
+    expect(await leftoverDefaultsFolders(root)).toEqual([]);
+  });
+
+  test("keeps the defaults that loaded when only the temporary folder cannot be removed", async () => {
+    const root = await temporaryRoot();
+    // omp makes its own folder read-only before it exits, so the folder's entries cannot be removed.
+    const binary = await fakeOmp(
+      root,
+      `${LIST_GUARD}\nprintf '{"model":{"value":"omp-default"}}\\n'\nchmod 555 "$(pwd)"`,
+    );
+    try {
+      const { store, warnings } = await serverStore(root, binary);
+      expect(await probeValue(store, "model")).toBe("omp-default");
+      expect(warnings).toEqual([expect.stringContaining("could not be removed")]);
+    } finally {
+      for (const name of await leftoverDefaultsFolders(root)) {
+        await chmod(join(root, name), 0o755);
+      }
+    }
+  });
+
+  test("the warning says why the defaults did not load", async () => {
+    const root = await temporaryRoot();
+    expect(await warningFor(root, join(root, "no-such-omp"))).toContain("could not be started");
+    expect(await warningFor(root, await fakeOmp(root, `${LIST_GUARD}\nexit 3`))).toContain(
+      "exited with code 3",
+    );
+    expect(
+      await warningFor(root, await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 3`), 200),
+    ).toContain("timed out after 200 ms");
+    expect(
+      await warningFor(
+        root,
+        await fakeOmp(root, `${LIST_GUARD}\nprintf 'a banner line\\n{"model":{"value":"x"}}\\n'`),
+      ),
+    ).toContain("not valid JSON");
+    expect(
+      await warningFor(
+        root,
+        await fakeOmp(root, `${LIST_GUARD}\nprintf '{"model":"omp-default"}\\n'`),
+      ),
+    ).toContain("unexpected shape");
   });
 });

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AppFailure } from "@omp-app/contracts";
-import { ConfigStoreService } from "./config-store";
+import { ConfigStoreService, createConfigStore } from "./config-store";
 
 const temporaryDirectories: string[] = [];
 
@@ -343,3 +343,22 @@ describe("ConfigStoreService", () => {
 });
 
 type ConfigChangedLike = { readonly key: string };
+
+describe("credential names and value types", () => {
+  test("a boolean under a credential-looking parent is a plain setting, and a string under it stays secret", async () => {
+    const root = await temporaryDirectory();
+    const store = createConfigStore({
+      agentDir: join(root, "agent"),
+      appDataDir: join(root, "app"),
+      defaultValues: { "secrets.enabled": false, "secrets.sharedValue": "plain-text" },
+    });
+    expect(await store.read({ key: "secrets.enabled", folder: null })).toMatchObject({
+      secret: false,
+      value: false,
+    });
+    expect(await store.read({ key: "secrets.sharedValue", folder: null })).toMatchObject({
+      secret: true,
+      isSet: true,
+    });
+  });
+});
