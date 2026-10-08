@@ -1,0 +1,212 @@
+import {
+  type CapabilityMap,
+  CapabilityStatus,
+  type CommandRunResult,
+  type ThreadId,
+} from "@omp-app/contracts";
+import { describe, expect, test } from "vitest";
+import { isD73Mode, modeCommand } from "./commands";
+import { ModeController } from "./controller";
+
+const threadId = "d7-mode-thread" as ThreadId;
+
+function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
+  return {
+    "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
+    "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    ...overrides,
+  };
+}
+
+function commandResult(
+  command: string,
+  status: "completed" | "aborted" = "completed",
+): CommandRunResult {
+  return {
+    command: command as CommandRunResult["command"],
+    status,
+    agentInvoked: false,
+    promptSettled: true,
+    sessionSettled: true,
+    outputs: [{ text: "This output is opaque to the mode controller." }],
+    sessionUpdates: [],
+    configUpdates: [],
+  };
+}
+
+describe("D7 mode command grammar", () => {
+  test("uses omp's exact browser and toggle command spellings", () => {
+    expect(modeCommand({ mode: "browser", visibility: "headless" })).toBe("/browser headless");
+    expect(modeCommand({ mode: "browser", visibility: "visible" })).toBe("/browser visible");
+    expect(modeCommand({ mode: "computer", requested: true })).toBe("/computer on");
+    expect(modeCommand({ mode: "extended-context", requested: false })).toBe(
+      "/extended-context off",
+    );
+    expect(modeCommand({ mode: "slow", requested: true })).toBe("/slow on");
+  });
+
+  test("does not invent a slash command for standard execution", () => {
+    expect(modeCommand({ mode: "default", requested: true })).toBeNull();
+  });
+
+  test("keeps force execution off the D7.3 surface", () => {
+    expect(isD73Mode("force")).toBe(false);
+  });
+});
+
+describe("ModeController", () => {
+  test("sends browser commands through the typed gateway; omp's reply is shown, not read as state", async () => {
+    const commands: string[] = [];
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      gateway: {
+        run: async ({ command }) => {
+          commands.push(command);
+          return commandResult(command);
+        },
+      },
+      fastRpc: {
+        getState: async () => ({
+          fastModeEnabled: false,
+          fastModeActive: false,
+          sessionId: "session",
+        }),
+        setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
+      },
+    });
+
+    const result = await controller.requestBrowserVisibility("visible");
+    expect(result).toMatchObject({
+      ok: true,
+      command: "/browser visible",
+      mode: "browser",
+      state: "requested",
+    });
+    expect(commands).toEqual(["/browser visible"]);
+    expect(controller.getBrowserVisibility()).toBe("visible");
+    expect(controller.getSnapshot().modes.browser).toMatchObject({
+      state: "requested",
+      requested: true,
+    });
+    controller.dispose();
+  });
+
+  test("keeps fast enabled and provider-active values separate", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      fastRpc: {
+        getState: async () => ({
+          fastModeEnabled: true,
+          fastModeActive: false,
+          sessionId: "session",
+        }),
+        setFastMode: async () => ({ enabled: true, active: false }),
+      },
+    });
+
+    const result = await controller.request({ mode: "fast", scope: "session", requested: true });
+    expect(result).toMatchObject({ ok: true, state: "known" });
+    expect(controller.getSnapshot().fast).toMatchObject({
+      enabled: true,
+      active: false,
+      state: "known",
+    });
+    await controller.refresh();
+    expect(controller.getSnapshot().fast.active).toBe(false);
+    controller.dispose();
+  });
+
+  test("does not call a missing command capability and reports a visible reason", async () => {
+    let called = false;
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities({
+        "host.command-gateway": CapabilityStatus.parse({
+          state: "unavailable",
+          via: "host",
+          detail: "The command service is offline.",
+        }),
+      }),
+      gateway: {
+        run: async ({ command }) => {
+          called = true;
+          return commandResult(command);
+        },
+      },
+    });
+
+    const result = await controller.request({
+      mode: "computer",
+      scope: "session",
+      requested: true,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      state: "unavailable",
+      capability: "host.command-gateway",
+    });
+    expect(called).toBe(false);
+    expect(result.reason).toBe("The command service is offline.");
+    controller.dispose();
+  });
+
+  test("turns an aborted command into a typed cancelled result", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      gateway: { run: async ({ command }) => commandResult(command, "aborted") },
+    });
+    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
+    expect(result).toMatchObject({ ok: false, error: { code: "cancelled" } });
+    expect(controller.getSnapshot().modes.slow).toMatchObject({ state: "unavailable" });
+    controller.dispose();
+  });
+
+  test("records a completed command as requested, shows omp's reply, and claims no enabled state", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      gateway: {
+        run: async ({ command }) => ({
+          ...commandResult(command),
+          outputs: [{ text: "Computer use is unavailable in this session." }],
+        }),
+      },
+    });
+
+    const result = await controller.request({
+      mode: "computer",
+      scope: "session",
+      requested: true,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      command: "/computer on",
+      state: "requested",
+      reason: "Computer use is unavailable in this session.",
+    });
+    const computer = controller.getSnapshot().modes.computer;
+    expect(computer).toMatchObject({ state: "requested", requested: true });
+    expect(computer?.enabled).toBeUndefined();
+    expect(computer?.active).toBeUndefined();
+    controller.dispose();
+  });
+
+  test("puts the browser visibility back when the command does not run", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      gateway: {
+        run: async ({ command }) => commandResult(command, "aborted"),
+      },
+    });
+
+    const result = await controller.requestBrowserVisibility("visible");
+    expect(result).toMatchObject({ ok: false, state: "unavailable" });
+    expect(controller.getBrowserVisibility()).toBeNull();
+    controller.dispose();
+  });
+});
