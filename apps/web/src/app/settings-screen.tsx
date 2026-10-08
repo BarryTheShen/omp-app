@@ -1,6 +1,6 @@
 import type { AppClient } from "@omp-app/client";
 import type { CapabilityMap, ConfigWriteLayer, FolderPath, SettingTab } from "@omp-app/contracts";
-import { SETTING_SECTIONS as OMP_SETTING_SECTIONS } from "@omp-app/contracts";
+import { SETTING_SECTIONS as OMP_SETTING_SECTIONS, SETTING_TABS } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   EmptyState,
@@ -46,15 +46,26 @@ export type SettingsScreenProps = {
   readonly onClose: () => void;
 };
 
-type CoreSettingsTab = Extract<SettingTab, "appearance" | "interaction" | "model">;
 type SettingsLayer = Extract<ConfigWriteLayer, "global" | "project">;
-type SettingsGroups = Readonly<Record<CoreSettingsTab, readonly SettingsSectionDescriptor[]>>;
+type SettingsGroups = Readonly<Record<SettingTab, readonly SettingsSectionDescriptor[]>>;
 
-const CORE_TAB_ORDER: readonly CoreSettingsTab[] = ["appearance", "interaction", "model"];
-const CORE_TAB_LABELS: Readonly<Record<CoreSettingsTab, string>> = {
+/** The tabs the screen has always opened with, in that order; the other omp tabs follow in omp's order. */
+const LEADING_TABS: readonly SettingTab[] = ["appearance", "interaction", "model"];
+const TAB_ORDER: readonly SettingTab[] = [
+  ...LEADING_TABS,
+  ...SETTING_TABS.filter((tab) => !LEADING_TABS.includes(tab)),
+];
+const TAB_LABELS: Readonly<Record<SettingTab, string>> = {
   appearance: "Appearance",
   interaction: "Interaction",
   model: "Model",
+  context: "Context",
+  memory: "Memory",
+  files: "Files",
+  shell: "Shell",
+  tools: "Tools",
+  tasks: "Tasks",
+  providers: "Providers",
 };
 const TERMINAL_THEME_SECTION_ID = "S1.appearanceTheme";
 
@@ -86,7 +97,7 @@ function sectionParts(descriptor: SettingsSectionDescriptor): {
   };
 }
 
-function orderedSections(tab: CoreSettingsTab): readonly SettingsSectionDescriptor[] {
+function orderedSections(tab: SettingTab): readonly SettingsSectionDescriptor[] {
   return SETTINGS_SECTIONS.filter((descriptor) => sectionParts(descriptor).tab === tab).sort(
     (left, right) => {
       const order = OMP_SETTING_SECTIONS[tab];
@@ -103,10 +114,17 @@ const SETTINGS_GROUPS: SettingsGroups = {
   ),
   interaction: orderedSections("interaction"),
   model: orderedSections("model"),
+  context: orderedSections("context"),
+  memory: orderedSections("memory"),
+  files: orderedSections("files"),
+  shell: orderedSections("shell"),
+  tools: orderedSections("tools"),
+  tasks: orderedSections("tasks"),
+  providers: orderedSections("providers"),
 };
 
 function firstSection(
-  tab: CoreSettingsTab,
+  tab: SettingTab,
   capabilities: CapabilityMap,
 ): SettingsSectionDescriptor | undefined {
   const sections = SETTINGS_GROUPS[tab];
@@ -487,15 +505,15 @@ function AppearanceSettingsPanel({
 }
 
 export function SettingsScreen({ client, capabilities, folder, onClose }: SettingsScreenProps) {
-  const [activeTab, setActiveTab] = useState<CoreSettingsTab>("appearance");
+  const [activeTab, setActiveTab] = useState<SettingTab>("appearance");
   const [layer, setLayer] = useState<SettingsLayer>("global");
   const [search, setSearch] = useState("");
-  const [selectedSections, setSelectedSections] = useState<
-    Partial<Record<CoreSettingsTab, string>>
-  >(() => ({
-    interaction: firstSection("interaction", capabilities)?.id,
-    model: firstSection("model", capabilities)?.id,
-  }));
+  const [selectedSections, setSelectedSections] = useState<Partial<Record<SettingTab, string>>>(
+    () => ({
+      interaction: firstSection("interaction", capabilities)?.id,
+      model: firstSection("model", capabilities)?.id,
+    }),
+  );
   const [dirtySections, setDirtySections] = useState<ReadonlySet<string>>(() => new Set());
   const pool = useMemo(() => new SettingsRuntimePool(client, folder), [client, folder]);
   useEffect(() => () => pool.dispose(), [pool]);
@@ -510,7 +528,20 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
   }, []);
   const configStatus = capabilities["host.config"]?.state;
   const configAvailable = configStatus === "available" || configStatus === "fallback";
-  const sections = SETTINGS_GROUPS[activeTab];
+  // A section the host or omp cannot serve is left out, not listed disabled.
+  const sections = useMemo(
+    () =>
+      SETTINGS_GROUPS[activeTab].filter(
+        (descriptor) => unavailableReason(descriptor, capabilities) === undefined,
+      ),
+    [activeTab, capabilities],
+  );
+  // The tabs with a section to show. A tab whose sections are all unavailable is left out.
+  const shownTabs = TAB_ORDER.filter((tab) =>
+    SETTINGS_GROUPS[tab].some(
+      (descriptor) => unavailableReason(descriptor, capabilities) === undefined,
+    ),
+  );
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const visibleSections = useMemo(() => {
     if (normalizedSearch.length === 0) return sections;
@@ -527,12 +558,9 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
   const selectedId = selectedSections[activeTab];
   const activeSection =
     visibleSections.find((section) => section.id === selectedId) ?? visibleSections[0];
-  const activeUnavailableReason = activeSection
-    ? unavailableReason(activeSection, capabilities)
-    : undefined;
   const hasDirtySections = dirtySections.size > 0;
 
-  const selectTab = (tab: CoreSettingsTab): void => {
+  const selectTab = (tab: SettingTab): void => {
     setActiveTab(tab);
     setSearch("");
   };
@@ -566,7 +594,7 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
   return (
     <Panel
       title="Settings"
-      description="Appearance, interaction, and model settings."
+      description="omp's settings, by tab."
       actions={closeButton}
       className="max-h-[80dvh] min-w-0"
       rootProps={{ "data-testid": "settings-screen" }}
@@ -606,7 +634,7 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
           </Toolbar>
         </SettingRow>
         <Toolbar ariaLabel="Settings categories">
-          {CORE_TAB_ORDER.map((tab) => (
+          {shownTabs.map((tab) => (
             <Button
               key={tab}
               type="button"
@@ -615,7 +643,7 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
               aria-pressed={activeTab === tab}
               onClick={() => selectTab(tab)}
             >
-              {CORE_TAB_LABELS[tab]}
+              {TAB_LABELS[tab]}
             </Button>
           ))}
         </Toolbar>
@@ -629,7 +657,7 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
             {appearance}
             {activeTab !== "appearance" ? (
               <div className="flex min-w-0 flex-col gap-4">
-                <Section heading={`${CORE_TAB_LABELS[activeTab]} sections`} variant="plain">
+                <Section heading={`${TAB_LABELS[activeTab]} sections`} variant="plain">
                   <div className="mb-2 flex flex-col gap-1 text-sm font-medium">
                     <label htmlFor="settings-section-search">Search sections</label>
                     <Input
@@ -643,19 +671,13 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
                   {visibleSections.length === 0 ? (
                     <EmptyState title="No settings match this search." variant="compact" />
                   ) : (
-                    <div
-                      role="listbox"
-                      aria-label={`${CORE_TAB_LABELS[activeTab]} settings sections`}
-                    >
+                    <div role="listbox" aria-label={`${TAB_LABELS[activeTab]} settings sections`}>
                       {visibleSections.map((descriptor) => {
-                        const reason = unavailableReason(descriptor, capabilities);
                         return (
                           <ListRow
                             key={descriptor.id}
                             title={descriptor.title}
-                            detail={reason}
                             selected={activeSection?.id === descriptor.id}
-                            disabled={reason !== undefined}
                             onSelect={() => selectSection(descriptor)}
                           />
                         );
@@ -663,16 +685,10 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
                     </div>
                   )}
                 </Section>
-                <section className="min-w-0" aria-label={`${CORE_TAB_LABELS[activeTab]} settings`}>
+                <section className="min-w-0" aria-label={`${TAB_LABELS[activeTab]} settings`}>
                   {!activeSection ? (
                     <EmptyState
                       title="No settings are available in this group."
-                      variant="compact"
-                    />
-                  ) : activeUnavailableReason ? (
-                    <EmptyState
-                      title="This section is unavailable."
-                      hint={activeUnavailableReason}
                       variant="compact"
                     />
                   ) : activeTab === "model" ? (
