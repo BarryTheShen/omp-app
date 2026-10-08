@@ -70,6 +70,8 @@ export type SessionStatus =
   | "pending"
   | "unknown";
 
+export type SubagentFinalStatus = "completed" | "failed" | "aborted" | "unknown";
+
 export interface SubagentTranscript {
   readonly key: string;
   readonly agentId: string;
@@ -81,6 +83,12 @@ export interface SubagentTranscript {
   readonly entries: readonly unknown[];
   readonly leafId: string | null;
   readonly aborted: boolean;
+  /** How the worker ended, from its own records; see `finalStatusOf` in `subagents.ts`. */
+  readonly status: SubagentFinalStatus;
+  /** When the transcript, or its abort marker, was last written; null while the status is unknown. */
+  readonly endedAt: string | null;
+  /** The agent type from the worker's `session_init` record; null when the file records none. */
+  readonly agent: string | null;
   readonly parseWarnings: readonly ParseWarning[];
 }
 

@@ -1,6 +1,6 @@
-import type { SubagentId, ThreadId } from "@omp-app/contracts";
+import type { SessionFilePath, SubagentId, ThreadId } from "@omp-app/contracts";
 import type { P1ClientNotification, SubagentClient } from "@/modules/P1/client";
-import type { AgentRef } from "@/modules/P1/contract";
+import type { AgentRef, SubagentTranscriptPage } from "@/modules/P1/contract";
 
 export interface AgentProgressMetrics {
   readonly percent?: number;
@@ -47,6 +47,7 @@ export interface AgentRosterStoreOptions {
   readonly threadId: ThreadId;
   readonly client: SubagentClient;
   readonly runtime?: RosterRuntimeSource;
+  readonly finished?: FinishedWorkerSource | undefined;
   readonly clock?: RosterClock;
   readonly tombstoneTtlMs?: number;
   readonly tombstoneLimit?: number;
@@ -55,3 +56,19 @@ export interface AgentRosterStoreOptions {
 export type RosterNotification = P1ClientNotification;
 
 export type RosterAgentKey = `${SubagentId}:${number}`;
+
+/** A worker that ended in this chat, found in its transcript rather than in omp's live roster. */
+export interface FinishedWorker {
+  readonly agent: AgentRef;
+  /** When the worker ended, in epoch milliseconds; its retention starts here. */
+  readonly endedAt: number;
+}
+
+/**
+ * The chat's finished workers and their transcripts, read from the chat's own files. omp forgets a
+ * worker once it finishes, so after a reload these files are the only record of it.
+ */
+export interface FinishedWorkerSource {
+  list(): Promise<readonly FinishedWorker[]>;
+  read(sessionFile: SessionFilePath, fromByte?: number): Promise<SubagentTranscriptPage>;
+}

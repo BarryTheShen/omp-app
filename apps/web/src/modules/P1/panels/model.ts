@@ -28,11 +28,31 @@ export function statusPresentation(status: AgentStatus): StatusPresentation {
   return STATUS_PRESENTATION[status];
 }
 
-const SOURCE_LABELS: Readonly<Record<RosterAgent["agentSource"], string>> = {
+/** Where a worker's agent type comes from. A worker found in its file records no source, so none is printed. */
+const SOURCE_LABELS: Readonly<Record<Exclude<RosterAgent["agentSource"], "unknown">, string>> = {
   bundled: "built in",
   user: "your agents",
   project: "this project",
 };
+
+/** A source's label, or null when the source is not known. */
+function sourceLabelOf(source: RosterAgent["agentSource"]): string | null {
+  return source === "unknown" ? null : SOURCE_LABELS[source];
+}
+
+/** The agent type with its source in brackets, keeping only the parts that are known. */
+function agentTypeLabel(agent: Pick<RosterAgent, "agent" | "agentSource">): string | null {
+  const source = sourceLabelOf(agent.agentSource);
+  if (agent.agent.length === 0) return source;
+  return source === null ? agent.agent : `${agent.agent} (${source})`;
+}
+
+/** The line under a worker's title: its agent type and source, only where they are known. */
+function subtitleOf(agent: Pick<RosterAgent, "agent" | "agentSource">): string {
+  return [agent.agent, sourceLabelOf(agent.agentSource)]
+    .filter((part): part is string => part !== null && part.length > 0)
+    .join(" · ");
+}
 
 const MAX_TEXT_LENGTH = 160;
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
@@ -278,8 +298,9 @@ function buildInspector(
   input: HubModelInput,
 ): HubInspector {
   const metrics = readWorkerMetrics(agent.metrics.raw);
+  const type = agentTypeLabel(agent);
   const facts: HubFact[] = [
-    { label: "Type", value: `${agent.agent} (${SOURCE_LABELS[agent.agentSource]})` },
+    ...(type === null ? [] : [{ label: "Type", value: type }]),
     { label: "Started from", value: parentLabel(agent, numbers) },
     { label: "Last update", value: formatClock(agent.lastUpdate) },
   ];
@@ -304,7 +325,7 @@ function buildInspector(
   return {
     key: agent.key,
     title: workerTitle(agent),
-    subtitle: `${agent.agent} · ${SOURCE_LABELS[agent.agentSource]}`,
+    subtitle: subtitleOf(agent),
     status: statusPresentation(agent.status),
     facts,
     progress,

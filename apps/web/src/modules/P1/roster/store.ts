@@ -11,6 +11,7 @@ import type {
   AgentRosterListener,
   AgentRosterStoreOptions,
   AgentRosterStoreSnapshot,
+  FinishedWorker,
   RosterAgent,
   RosterClock,
 } from "./types";
@@ -92,6 +93,7 @@ export class AgentRosterStore {
   private readonly threadId: ThreadId;
   private readonly client: AgentRosterStoreOptions["client"];
   private readonly runtime: AgentRosterStoreOptions["runtime"];
+  private readonly finished: AgentRosterStoreOptions["finished"];
   private readonly clock: RosterClock;
   private readonly tombstoneTtlMs: number;
   private readonly tombstoneLimit: number;
@@ -108,6 +110,7 @@ export class AgentRosterStore {
     this.threadId = options.threadId;
     this.client = options.client;
     this.runtime = options.runtime;
+    this.finished = options.finished;
     this.clock = options.clock ?? SYSTEM_CLOCK;
     this.tombstoneTtlMs = options.tombstoneTtlMs ?? DEFAULT_TOMBSTONE_TTL_MS;
     this.tombstoneLimit = options.tombstoneLimit ?? DEFAULT_TOMBSTONE_LIMIT;
@@ -140,6 +143,7 @@ export class AgentRosterStore {
       });
       this.progressLease = await this.client.acquireSubscription("progress");
       await this.refresh();
+      await this.adoptFinishedWorkers();
     } catch (error) {
       this.notificationUnsubscribe?.();
       this.notificationUnsubscribe = undefined;
@@ -154,6 +158,33 @@ export class AgentRosterStore {
     if (this.disposed) throw rosterFailure("cancelled", "Roster store is disposed");
     const agents = await this.client.getRoster();
     this.mergeSnapshot(agents);
+  }
+
+  /**
+   * Adds finished workers read from the chat's transcripts. Each keeps the moment it ended, so the
+   * same 24-hour and 100-entry retention as a live tombstone applies. A worker this connection
+   * already knows keeps its live record.
+   */
+  public adoptFinished(workers: readonly FinishedWorker[]): void {
+    if (this.disposed) return;
+    let changed = false;
+    for (const worker of workers) {
+      if (this.latestById.has(worker.agent.id)) continue;
+      const incarnation = this.incarnationById.get(worker.agent.id) ?? 0;
+      const key = this.makeKey(worker.agent.id, incarnation);
+      this.latestById.set(worker.agent.id, key);
+      this.incarnationById.set(worker.agent.id, incarnation);
+      const agent = createAgent(worker.agent, key, incarnation, worker.endedAt, null, null);
+      changed = this.insertAgent(agent) || changed;
+    }
+    changed = this.prune() || changed;
+    if (changed) this.commit(this.snapshot.lastSeq);
+  }
+
+  /** Lists the chat's finished workers once the live roster is in, so a reload still shows them. */
+  private async adoptFinishedWorkers(): Promise<void> {
+    if (this.finished === undefined) return;
+    this.adoptFinished(await this.finished.list());
   }
 
   /** Exposed for reconnect/hydration tests and for P1.3's future client adapter. */

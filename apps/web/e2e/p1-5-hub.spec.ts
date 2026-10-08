@@ -315,9 +315,7 @@ realTest(
     await running.click();
     const cancel = hub.getByRole("button", { name: /^Cancel / });
     await expect(cancel).toHaveCount(1);
-    await expect(
-      hub.getByText("The transcript view is not connected in this window yet."),
-    ).toBeVisible();
+    await expect(hub.getByRole("button", { name: "Open transcript" })).toBeEnabled();
     await cancel.click();
     await expect(hub.getByRole("option", { name: /Cancelled/ })).toHaveCount(1, {
       timeout: 60_000,
@@ -327,6 +325,61 @@ realTest(
     await hub.setViewportSize({ width: 390, height: 844 });
     await expectNoHorizontalOverflow(hub);
     await hub.screenshot({ path: join(screenshots, "p1.5-hub-live-narrow.png"), fullPage: true });
+    await hubContext.close();
+    expect(problems).toEqual([]);
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+realTest(
+  "real omp: a finished worker stays under Recent after a reload, and its transcript opens",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    buildPlaygrounds();
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await sendPrompt(composer, "pong");
+    await expect(page.getByText("pong").first()).toBeVisible({ timeout: 60_000 });
+    const readThread = () =>
+      page.evaluate(() => window.localStorage.getItem("omp.app.root.thread"));
+    await expect.poll(readThread, { timeout: 60_000 }).toBeTruthy();
+    const threadId = (await readThread()) ?? "";
+
+    const origin = new URL(page.url()).origin;
+    const browser = page.context().browser();
+    if (browser === null) throw new Error("The browser is not available for the Agent Hub page.");
+    const hubContext = await browser.newContext();
+    const hub = await hubContext.newPage();
+    const problems = captureProblems(hub);
+    await hub.goto(
+      `${origin}/p1-5-hub-live.html?thread=${encodeURIComponent(threadId)}#token=${encodeURIComponent(realApp.token)}`,
+    );
+    await expect(hub.getByRole("region", { name: "Agent Hub" })).toHaveAttribute(
+      "data-panel-lifecycle",
+      "empty",
+      { timeout: 90_000 },
+    );
+
+    await sendPrompt(composer, "spawn_subagent");
+    await expect(hub.getByRole("option", { name: /Finished.*NestedProbe/ })).toHaveCount(1, {
+      timeout: 120_000,
+    });
+
+    // omp forgets a finished worker, so the reloaded page can list it only from the chat's transcripts.
+    await hub.reload();
+    const recent = hub.getByRole("option", { name: /Finished.*NestedProbe/ });
+    await expect(recent).toHaveCount(1, { timeout: 120_000 });
+    await recent.click();
+    await hub.getByRole("button", { name: "Open transcript" }).click();
+    await expect(hub.getByTestId("p1-transcript-live")).toBeVisible();
+    await expect(hub.getByRole("region", { name: "Transcript of NestedProbe" })).toBeVisible();
+    await expect(
+      hub.getByText("nested_probe_child: return a short result by calling yield."),
+    ).toBeVisible();
+    await hub.screenshot({
+      path: join(screenshots, "p1.5-hub-finished-reload.png"),
+      fullPage: true,
+    });
     await hubContext.close();
     expect(problems).toEqual([]);
     expect(realApp.problems).toEqual([]);

@@ -22,6 +22,9 @@ function mapSubagent(transcript: InternalSubagentTranscript): ContractSubagentTr
     leafId: transcript.leafId,
     entryCount: transcript.entries.length,
     aborted: transcript.aborted,
+    status: transcript.status,
+    endedAt: transcript.endedAt,
+    agent: transcript.agent,
   };
 }
 
@@ -102,6 +105,11 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
           sessionFile: result.sessionFile as ContractSessionFile["sessionFile"],
           transcripts: result.transcripts.map(mapSubagent),
         };
+      },
+      readSubagent: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        const page = await context.sessionFileStore.readSubagent(args);
+        return { ...page, sessionFile: page.sessionFile as ContractSessionFile["sessionFile"] };
       },
     },
     context.publish,

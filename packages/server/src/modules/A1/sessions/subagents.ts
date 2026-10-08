@@ -2,7 +2,7 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isJsonObject, parseSessionContent } from "./parser";
-import type { ParseWarning, SubagentTranscript } from "./types";
+import type { ParseWarning, SubagentFinalStatus, SubagentTranscript } from "./types";
 
 function isAdvisorTranscriptName(name: string): boolean {
   return name === "__advisor.jsonl" || (name.startsWith("__advisor.") && name.endsWith(".jsonl"));
@@ -10,6 +10,67 @@ function isAdvisorTranscriptName(name: string): boolean {
 
 function tombstoneName(transcriptName: string): string {
   return `${transcriptName}.tombstone`;
+}
+
+/** A file the collector walks as a transcript: a `.jsonl` that is neither a backup nor an advisor. */
+export function isCollectedTranscriptName(name: string): boolean {
+  return name.endsWith(".jsonl") && !name.includes(".bak") && !isAdvisorTranscriptName(name);
+}
+
+/** The agent type omp records in a worker's `session_init` record; null when there is none. */
+function agentOf(entries: readonly unknown[]): string | null {
+  for (const entry of entries) {
+    if (isJsonObject(entry) && entry.type === "session_init" && typeof entry.agent === "string") {
+      return entry.agent.length > 0 ? entry.agent : null;
+    }
+  }
+  return null;
+}
+
+/** The message a `message` record carries; undefined for any other record. */
+function messageOf(entry: unknown): Record<string, unknown> | undefined {
+  if (!isJsonObject(entry) || entry.type !== "message") return undefined;
+  return isJsonObject(entry.message) ? entry.message : undefined;
+}
+
+/** A `yield` result that finished its worker: omp records it as a success and not as an error. */
+function isSuccessfulYield(entry: unknown): boolean {
+  const message = messageOf(entry);
+  if (message?.role !== "toolResult" || message.toolName !== "yield" || message.isError !== false) {
+    return false;
+  }
+  return isJsonObject(message.details) && message.details.status === "success";
+}
+
+/**
+ * How a worker ended, from its own records. A successful `yield` completed it. Otherwise the last
+ * assistant turn decides: omp records `error` and `aborted` stop reasons there, and a tombstone marks
+ * a worker omp cancelled. A worker that records none of these is `unknown`, including one that exits
+ * without `yield`: omp reports that verdict in its run result, and this reader only reads the file.
+ */
+function finalStatusOf(entries: readonly unknown[], aborted: boolean): SubagentFinalStatus {
+  if (entries.some(isSuccessfulYield)) return "completed";
+  let lastAssistant: Record<string, unknown> | undefined;
+  for (const entry of entries) {
+    const message = messageOf(entry);
+    if (message?.role === "assistant") lastAssistant = message;
+  }
+  if (lastAssistant?.stopReason === "error") return "failed";
+  if (aborted || lastAssistant?.stopReason === "aborted") return "aborted";
+  return "unknown";
+}
+
+/** The newest modification time among the files that exist, as an ISO string; null when none does. */
+async function lastWrittenAt(files: readonly string[]): Promise<string | null> {
+  let newest = 0;
+  for (const file of files) {
+    try {
+      newest = Math.max(newest, (await fs.stat(file)).mtimeMs);
+    } catch {
+      // A file that is not there, such as an abort marker, has no time to contribute.
+    }
+  }
+  return newest === 0 ? null : new Date(newest).toISOString();
 }
 
 export interface SubagentCollection {
@@ -49,8 +110,7 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
   );
 
   for (const name of files) {
-    if (!name.endsWith(".jsonl") || name.includes(".bak") || isAdvisorTranscriptName(name))
-      continue;
+    if (!isCollectedTranscriptName(name)) continue;
     const agentId = name.slice(0, -".jsonl".length);
     const key = context.parentKey ? `${context.parentKey}/${agentId}` : agentId;
     const sessionFile = path.join(context.root, name);
@@ -74,6 +134,8 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
       const leafEntry = [...entriesWithoutHeader].reverse().find((entry) => {
         return isJsonObject(entry) && typeof entry.id === "string";
       });
+      const aborted = files.includes(tombstoneName(name));
+      const status = finalStatusOf(entriesWithoutHeader, aborted);
       const transcript: SubagentTranscript = {
         key,
         agentId,
@@ -87,7 +149,13 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
           leafEntry && isJsonObject(leafEntry) && typeof leafEntry.id === "string"
             ? leafEntry.id
             : null,
-        aborted: files.includes(tombstoneName(name)),
+        aborted,
+        status,
+        endedAt:
+          status === "unknown"
+            ? null
+            : await lastWrittenAt([sessionFile, path.join(context.root, tombstoneName(name))]),
+        agent: agentOf(entriesWithoutHeader),
         parseWarnings: parsed.parseWarnings,
       };
       context.output.push(transcript);

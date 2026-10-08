@@ -10,6 +10,7 @@ import {
   sessionBucketName,
   sessionBucketPath,
 } from "./paths";
+import { readSubagentPage, type SubagentPage, subagentTranscriptPath } from "./subagent-read";
 import { collectSubagentTranscripts } from "./subagents";
 import { readSessionHeader, type SessionSummary, summarizeSessionFile } from "./summary";
 import type {
@@ -366,6 +367,15 @@ export class SessionFileStore {
     }
     const collection = await collectSubagentTranscripts(sessionFile);
     return { sessionFile, transcripts: collection.subagents };
+  }
+
+  /** One page of a worker transcript the chat's listing names, from a byte cursor. Read only. */
+  async readSubagent(args: {
+    readonly sessionFile: string;
+    readonly fromByte?: number;
+  }): Promise<SubagentPage> {
+    const file = await subagentTranscriptPath(this.sessionsRoot, args.sessionFile);
+    return readSubagentPage(file, args.fromByte ?? 0);
   }
 
   /** Lower-level helper useful to tests and adapters that need parse diagnostics. */

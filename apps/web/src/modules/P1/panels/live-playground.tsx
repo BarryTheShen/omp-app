@@ -5,15 +5,27 @@ import {
   AppPort,
   type CapabilityMap,
   RpcSessionPort,
+  SessionFilePath,
+  SessionFileStore,
   ThreadId,
 } from "@omp-app/contracts";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AccessibilityProvider } from "@/a11y/live-region";
+import { Button } from "@/components/ui/button";
 import { AppConnectionGate, AppConnectionProvider, useAppConnection } from "@/launch";
-import { createSubagentClient, type SubagentClient } from "@/modules/P1/client";
-import { P1CapabilityKeys } from "@/modules/P1/contract";
-import { AgentRosterStore } from "@/modules/P1/roster";
+import {
+  createSubagentClient,
+  type SubagentClient,
+  type SubagentSession,
+} from "@/modules/P1/client";
+import { type FocusedAgentRuntime, P1CapabilityKeys } from "@/modules/P1/contract";
+import {
+  AgentRosterStore,
+  createFinishedWorkerSource,
+  type FinishedWorkerSource,
+} from "@/modules/P1/roster";
+import { createFocusedAgentRuntime, FocusedAgentTranscript } from "@/modules/P1/transcript";
 import { createSelectedThreadHistoryController } from "@/modules/R1/history";
 import {
   type AgentHubActions,
@@ -27,10 +39,10 @@ import { useAgentHub } from "./use-agent-hub";
 /**
  * Test harness for the real-omp proof: the Agent Hub on one real chat. It opens the chat through
  * the app's own connection and store (R1 history, R0 store), then wires P1.2's subagent client and
- * P1.3's roster into the panel's callbacks. The app's layout does not place the panel yet; this
- * page is where the e2e drives it. The transcript stays unconnected until P1.4 lands.
+ * P1.3's roster into the panel's callbacks. The roster also lists the chat's finished workers from
+ * their transcripts, so a reload still shows them, and Open transcript shows the focused view. The
+ * app's layout does not place the panel yet; this page is where the e2e drives it.
  */
-const TRANSCRIPT_REASON = "The transcript view is not connected in this window yet.";
 
 interface LiveHub {
   readonly controller: AgentHubController;
@@ -55,18 +67,40 @@ function cancelFor(capabilities: CapabilityMap, subagents: SubagentClient): Canc
   return { state: "available", run: (agent) => subagents.cancel(agent.id) };
 }
 
-async function startHub(client: AppClient, threadId: ThreadId): Promise<LiveHub> {
+/**
+ * The chat's finished workers, read from its own files. Needs the session-files capability and the
+ * chat's file, which omp reports in its state; without either, only the live roster is shown.
+ */
+async function finishedWorkersOf(
+  client: AppClient,
+  session: SubagentSession,
+  threadId: ThreadId,
+  capabilities: CapabilityMap,
+): Promise<FinishedWorkerSource | undefined> {
+  if (capabilities["host.session-files"]?.state !== "available") return undefined;
+  const state = await session.send({ threadId, command: { type: "get_state" } });
+  const sessionFile = SessionFilePath.safeParse(state.sessionFile);
+  if (!sessionFile.success) return undefined;
+  return createFinishedWorkerSource({
+    threadId,
+    sessionFile: sessionFile.data,
+    files: client.port(SessionFileStore),
+  });
+}
+
+async function startHub(
+  client: AppClient,
+  threadId: ThreadId,
+  openTranscript: (runtime: FocusedAgentRuntime) => void,
+): Promise<LiveHub> {
   const app = client.port(AppPort);
   const [server, capabilities] = await Promise.all([app.serverInfo({}), app.capabilities({})]);
   const history = createSelectedThreadHistoryController({ client, folder: server.launchFolder });
   const store = await history.openExisting(threadId);
-  const subagents = createSubagentClient({
-    threadId,
-    session: client.port(RpcSessionPort),
-    runtime: store,
-    capabilities,
-  });
-  const roster = new AgentRosterStore({ threadId, client: subagents });
+  const rpc = client.port(RpcSessionPort);
+  const subagents = createSubagentClient({ threadId, session: rpc, runtime: store, capabilities });
+  const finished = await finishedWorkersOf(client, rpc, threadId, capabilities);
+  const roster = new AgentRosterStore({ threadId, client: subagents, finished });
   try {
     await roster.start();
   } catch (error) {
@@ -75,7 +109,11 @@ async function startHub(client: AppClient, threadId: ThreadId): Promise<LiveHub>
   }
   const actions: AgentHubActions = {
     cancel: cancelFor(capabilities, subagents),
-    openTranscript: { state: "unavailable", reason: TRANSCRIPT_REASON },
+    openTranscript: {
+      state: "available",
+      open: (agent) =>
+        openTranscript(createFocusedAgentRuntime({ agent, client: subagents, finished })),
+    },
   };
   const controller = createAgentHubController({
     roster,
@@ -111,10 +149,33 @@ function HubView({ controller }: { readonly controller: AgentHubController }) {
   );
 }
 
+/** One worker's focused transcript, with a way back to the Hub. */
+function TranscriptView({
+  runtime,
+  onBack,
+}: {
+  readonly runtime: FocusedAgentRuntime;
+  readonly onBack: () => void;
+}) {
+  return (
+    <div className="flex h-screen w-96 max-w-full flex-col" data-testid="p1-transcript-live">
+      <div className="p-2">
+        <Button onClick={onBack} size="sm" variant="outline">
+          Back to the Agent Hub
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <FocusedAgentTranscript runtime={runtime} onBack={onBack} />
+      </div>
+    </div>
+  );
+}
+
 function HubPage() {
   const connection = useAppConnection();
   const client = connection.client;
   const [setup, setSetup] = useState<Setup>({ state: "starting" });
+  const [transcript, setTranscript] = useState<FocusedAgentRuntime | null>(null);
   useEffect(() => {
     if (!client) return;
     const threadId = threadFromAddress();
@@ -131,7 +192,7 @@ function HubPage() {
     }
     let active = true;
     let started: LiveHub | undefined;
-    startHub(client, threadId).then(
+    startHub(client, threadId, setTranscript).then(
       (hub) => {
         if (!active) {
           void stopHub(hub);
@@ -163,6 +224,7 @@ function HubPage() {
       </p>
     );
   }
+  if (transcript) return <TranscriptView runtime={transcript} onBack={() => setTranscript(null)} />;
   return <HubView controller={setup.hub.controller} />;
 }
 

@@ -11,6 +11,7 @@ import {
   type P1SubagentEvent,
   type SubagentTranscriptPage,
 } from "@/modules/P1/contract";
+import type { FinishedWorkerSource } from "@/modules/P1/roster";
 import { asAppFailure } from "./failures";
 
 /** Receives a live-feed failure that happens after `subscribe` returned, such as the events level not being set. */
@@ -33,14 +34,35 @@ export interface TranscriptFeed {
 export interface TranscriptSourceOptions {
   readonly agent: AgentRef;
   readonly client: SubagentClient;
+  /** Reads a finished worker's file once omp no longer knows the worker, as after a reload. */
+  readonly finished?: Pick<FinishedWorkerSource, "read"> | undefined;
 }
 
-function readerFor(agent: AgentRef, client: SubagentClient): TranscriptFeed["read"] {
-  return (options) =>
-    client.readTranscript(agent.id, {
-      ...(agent.sessionFile === undefined ? {} : { sessionFile: agent.sessionFile }),
-      ...(options?.fromByte === undefined ? {} : { fromByte: options.fromByte }),
-    });
+function readerFor(
+  agent: AgentRef,
+  client: SubagentClient,
+  finished: TranscriptSourceOptions["finished"],
+): TranscriptFeed["read"] {
+  return async (options) => {
+    const fromByte = options?.fromByte;
+    try {
+      return await client.readTranscript(agent.id, {
+        ...(agent.sessionFile === undefined ? {} : { sessionFile: agent.sessionFile }),
+        ...(fromByte === undefined ? {} : { fromByte }),
+      });
+    } catch (error) {
+      // omp answers for a worker only while it still knows the worker. After a reload a finished
+      // worker is known only by its file, so that file is read instead.
+      if (finished === undefined || agent.sessionFile === undefined || !isFinished(agent)) {
+        throw error;
+      }
+      return finished.read(agent.sessionFile, fromByte);
+    }
+  };
+}
+
+function isFinished(agent: AgentRef): boolean {
+  return agent.status === "completed" || agent.status === "failed" || agent.status === "aborted";
 }
 
 /**
@@ -95,7 +117,7 @@ export function createNestedTranscriptSource(
   const { agent, client } = options;
   return Object.freeze({
     agent,
-    read: readerFor(agent, client),
+    read: readerFor(agent, client, options.finished),
     subscribe: subscriberFor(agent, client),
     readOnly: true as const,
   });
@@ -112,7 +134,7 @@ export function createFocusedAgentRuntime(
   const { agent, client } = options;
   return Object.freeze({
     agent,
-    read: readerFor(agent, client),
+    read: readerFor(agent, client, options.finished),
     subscribe: subscriberFor(agent, client),
     readOnly: false as const,
     cancel: async (): Promise<CancelAgentResult> => {

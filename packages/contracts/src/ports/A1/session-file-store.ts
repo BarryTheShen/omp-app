@@ -20,6 +20,10 @@ export const SessionLiveness = z.strictObject({
 });
 export type SessionLiveness = z.infer<typeof SessionLiveness>;
 
+/** How a worker ended, read from its own transcript: `unknown` when the file records no end. */
+export const SubagentFinalStatus = z.enum(["completed", "failed", "aborted", "unknown"]);
+export type SubagentFinalStatus = z.infer<typeof SubagentFinalStatus>;
+
 /** A discovered child transcript; entries stay in the session-file port, not the browser. */
 export const SubagentTranscript = z.strictObject({
   key: z.string().min(1),
@@ -29,6 +33,12 @@ export const SubagentTranscript = z.strictObject({
   leafId: z.string().min(1).nullable(),
   entryCount: z.int().nonnegative(),
   aborted: z.boolean(),
+  /** The end state the transcript records; `unknown` while it records none (the worker may still run). */
+  status: SubagentFinalStatus,
+  /** When the transcript or its abort marker was last written; null while the status is `unknown`. */
+  endedAt: Timestamp.nullable(),
+  /** The agent type omp recorded when the worker started; null when the file does not record one. */
+  agent: z.string().min(1).nullable(),
 });
 export type SubagentTranscript = z.infer<typeof SubagentTranscript>;
 
@@ -89,6 +99,24 @@ export const SessionSubagentsResult = z.strictObject({
 });
 export type SessionSubagentsResult = z.infer<typeof SessionSubagentsResult>;
 
+/** Arguments of `readSubagent`: one transcript the session's listing names, read from a byte cursor. */
+export const SubagentReadArgs = z.strictObject({
+  sessionFile: SessionFilePath,
+  fromByte: z.int().nonnegative().optional(),
+});
+export type SubagentReadArgs = z.infer<typeof SubagentReadArgs>;
+
+/** One page of a subagent transcript, shaped like omp's `get_subagent_messages` result. */
+export const SubagentReadResult = z.strictObject({
+  sessionFile: SessionFilePath,
+  fromByte: z.int().nonnegative(),
+  nextByte: z.int().nonnegative(),
+  reset: z.boolean(),
+  entries: z.array(z.record(z.string(), z.unknown())),
+  messages: z.array(z.record(z.string(), z.unknown())),
+});
+export type SubagentReadResult = z.infer<typeof SubagentReadResult>;
+
 export const SessionFileChanged = z.strictObject({
   folder: FolderPath,
   sessionFile: SessionFilePath,
@@ -118,6 +146,11 @@ export const SessionFileStore = definePort({
     listSubagents: {
       args: SessionReadArgs,
       result: SessionSubagentsResult,
+      capability: "host.session-files",
+    },
+    readSubagent: {
+      args: SubagentReadArgs,
+      result: SubagentReadResult,
       capability: "host.session-files",
     },
   },
