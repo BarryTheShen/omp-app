@@ -52,33 +52,12 @@ async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Pr
     // The textarea resizes after the input event, so each height is polled until it settles.
     const inputHeight = (): Promise<number> =>
       composer.evaluate((input) => input.getBoundingClientRect().height);
-    // After a window resize the page lays out again (the sidebars fold at narrow widths); the width
-    // is settled once two samples 200 ms apart agree.
-    const settledWidth = async (): Promise<void> => {
-      let previous = -1;
-      await expect
-        .poll(
-          async () => {
-            const width = await composer.evaluate((input) =>
-              Math.round(input.getBoundingClientRect().width),
-            );
-            const stable = width === previous;
-            previous = width;
-            return stable;
-          },
-          { intervals: [200], timeout: 10_000 },
-        )
-        .toBe(true);
-    };
 
     for (const viewport of viewports) {
       await composer.fill("");
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await settledWidth();
-      // A person who resizes and then types sees the right height at once. The empty box alone can
-      // keep the height it had before a resize (#773), so the spec types and clears once.
-      await composer.fill("x");
-      await composer.fill("");
+      // The window narrows while the sidebars are still open; the empty box must measure again once
+      // they fold, with nothing typed (#773).
       await expect
         .poll(inputHeight, { message: `${theme} ${viewport.name}px: empty input is one line` })
         .toBeLessThanOrEqual(32);

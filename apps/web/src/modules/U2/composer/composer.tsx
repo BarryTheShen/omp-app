@@ -20,6 +20,7 @@ import {
   type SubmitPolicyInput,
   type SubmitPolicyResult,
 } from "../contract";
+import { useRemeasureOnWidthChange } from "./remeasure";
 
 export interface ComposerSurfaceProps {
   readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
@@ -131,6 +132,7 @@ export function ComposerSurface({
   const [error, setError] = useState<AppError | null>(null);
   const composingRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  useRemeasureOnWidthChange(inputRef);
   const submit = useCallback(async () => {
     if (disabled || isSubmitting || !hasContent(text, attachments)) return;
 
