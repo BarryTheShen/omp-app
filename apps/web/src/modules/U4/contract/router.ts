@@ -18,6 +18,7 @@ export interface PendingRequestLike<Request> {
 export interface RouterContext {
   readonly threadId: ThreadId;
   readonly signal?: AbortSignal;
+  readonly sequence?: number;
 }
 
 export interface ExtensionUiRequestRouter {

@@ -1,4 +1,3 @@
-import type { OmpWire } from "@omp-app/contracts";
 import { NoticeSeverity, ThreadId } from "@omp-app/contracts";
 import { z } from "zod";
 
@@ -65,11 +64,9 @@ export const TodoReminderSchema = z.strictObject({
   attempt: z.number().int().nonnegative(),
   maxAttempts: z.number().int().positive(),
 });
-export type TodoReminder = z.infer<typeof TodoReminderSchema>;
 export const TodoAutoClearSchema = z.strictObject({
   type: z.literal("todo_auto_clear"),
 });
-export type TodoAutoClear = z.infer<typeof TodoAutoClearSchema>;
 
 export const SessionNoticeSchema = z.strictObject({
   type: z.literal("notice"),
@@ -128,15 +125,5 @@ export const StatusSegment = z.strictObject({
   value: StatusSegmentAvailability,
 });
 export type StatusSegment = z.infer<typeof StatusSegment>;
-
-/** Keep the source wire names available without making N1 parse wire JSON itself. */
-export type AutoRetryStartEvent = OmpWire.AutoRetryStartEvent;
-export type AutoRetryEndEvent = OmpWire.AutoRetryEndEvent;
-export type RetryFallbackAppliedEvent = OmpWire.RetryFallbackAppliedEvent;
-export type RetryFallbackSucceededEvent = OmpWire.RetryFallbackSucceededEvent;
-export type TtsrTriggeredEvent = OmpWire.TtsrTriggeredEvent;
-export type TodoReminderEvent = OmpWire.TodoReminderEvent;
-export type NoticeEvent = OmpWire.NoticeEvent;
-export type TodoAutoClearEvent = OmpWire.TodoAutoClearEvent;
 
 export type { PresentationHandoff } from "../../U4/contract";

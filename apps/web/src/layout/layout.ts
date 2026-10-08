@@ -31,6 +31,7 @@ export type SurfaceId =
   | "editHandoff"
   | "context"
   | "contextCard"
+  | "notifications"
   | "theme";
 
 export type AppLayout = Readonly<Record<LayoutAreaName, readonly SurfaceId[]>>;
@@ -49,5 +50,5 @@ export const LAYOUT: AppLayout = {
   /** At the bottom of the transcript. */
   threadFooter: ["editRun", "scrollFollow"],
   /** The bottom bar, left to right. */
-  statusBar: ["context"],
+  statusBar: ["notifications", "context"],
 };

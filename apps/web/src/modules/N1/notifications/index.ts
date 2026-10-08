@@ -3,13 +3,11 @@ export type {
   NotificationBusSnapshot,
   NotificationPublishResult,
 } from "./bus";
-export { NotificationBus, notificationKey } from "./bus";
+export { MAX_NOTIFICATIONS_PER_THREAD, NotificationBus, notificationKey } from "./bus";
 export type {
   NormalizedRuntimeEventSource,
   NotificationProjectionSnapshot,
   NotificationProjectorOptions,
-  NotificationRuntimeEvent,
-  OAuthHandoffProjection,
   PresentationContext,
   ProjectionEventContext,
   RuntimeSnapshotSource,

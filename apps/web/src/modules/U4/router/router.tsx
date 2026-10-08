@@ -3,12 +3,15 @@
 import type { HostCallId, OmpWire, UiRequestId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { useState } from "react";
+import { InlineError } from "@/components/blocks";
 import type { OverlayHostApi } from "@/overlay";
+import type { OmpRuntimeStore, RuntimeNotificationFrame } from "../../R0/store";
 import { classifyExtensionUiMethod, toDialogRequest } from "../contract/dialog";
 import type { DialogHost } from "../contract/dialog-host";
 import type { HostRequestAnswer, HostRequestAnswerAdapter } from "../contract/host-answers";
 import {
   type OpenUrlHandoff,
+  openUrlCopyTarget,
   type PresentationHandoff,
   toPresentationHandoff,
 } from "../contract/presentation";
@@ -20,7 +23,10 @@ import type {
 
 type CancellableDialogHost = DialogHost & { readonly cancel: (requestId: UiRequestId) => void };
 export interface PresentationSink {
-  readonly present: (handoff: PresentationHandoff, context: RouterContext) => void | Promise<void>;
+  readonly present: (
+    handoff: Exclude<PresentationHandoff, { readonly kind: "open_url" }>,
+    context: RouterContext,
+  ) => void | Promise<void>;
 }
 
 export interface RouterPendingSnapshot {
@@ -58,13 +64,16 @@ function safeHttpUrl(value: string): URL {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw invalid("Only http(s) authorization destinations can be opened.");
   }
+  if (parsed.username || parsed.password) {
+    throw invalid("Authorization destinations cannot contain embedded credentials.");
+  }
   return parsed;
 }
 
 function OAuthPrompt({ handoff, onDone }: OAuthPromptProps) {
   const [status, setStatus] = useState<string | null>(null);
   const destination = safeHttpUrl(handoff.url);
-  const copyTarget = handoff.launchUrl ? safeHttpUrl(handoff.launchUrl).toString() : handoff.url;
+  const copyTarget = openUrlCopyTarget(handoff);
 
   const open = () => {
     window.open(copyTarget, "_blank", "noopener,noreferrer");
@@ -130,6 +139,7 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
     "extension" | "host-tool" | "host-uri" | "presentation"
   >();
   private readonly presentationOverlays = new Map<string, string>();
+  private readonly failedPresentationIds = new Set<string>();
 
   public constructor(options: ExtensionUiRouterOptions) {
     this.dialogHost = options.dialogHost;
@@ -171,6 +181,17 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
     }
   }
 
+  /** Routes a non-modal request or cancellation from R0's notification-frame subscription. */
+  public async routeNotification(
+    frame: RuntimeNotificationFrame,
+    seq: number,
+    context: RouterContext,
+  ): Promise<void> {
+    if (frame.type !== "extension_ui_request") return;
+    if (classifyExtensionUiMethod(frame.method) === "modal") return;
+    await this.routeSafely({ request: frame, receivedSeq: seq }, { ...context, sequence: seq });
+  }
+
   public async routeHostRequest(
     pending: PendingRequestLike<OmpWire.HostToolCallRequest | OmpWire.HostUriRequest>,
     _context: RouterContext,
@@ -192,10 +213,7 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
     ].sort((left, right) => left.receivedSeq - right.receivedSeq);
     for (const pending of requests) {
       if (pending.request.type === "extension_ui_request") {
-        await this.routeExtensionUi(
-          pending as PendingRequestLike<OmpWire.ExtensionUiRequest>,
-          context,
-        );
+        await this.routeSafely(pending as PendingRequestLike<OmpWire.ExtensionUiRequest>, context);
       } else {
         await this.routeHostRequest(
           pending as PendingRequestLike<OmpWire.HostToolCallRequest | OmpWire.HostUriRequest>,
@@ -203,6 +221,38 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
         );
       }
     }
+  }
+
+  private async routeSafely(
+    pending: PendingRequestLike<OmpWire.ExtensionUiRequest>,
+    context: RouterContext,
+  ): Promise<void> {
+    try {
+      await this.routeExtensionUi(pending, context);
+    } catch {
+      this.showRoutingFailure(String(pending.request.id));
+    }
+  }
+
+  private showRoutingFailure(requestId: string): void {
+    if (this.presentationOverlays.has(requestId) || this.failedPresentationIds.has(requestId))
+      return;
+    this.failedPresentationIds.add(requestId);
+    const overlay = this.overlay.open({
+      kind: "toast",
+      content: (
+        <InlineError
+          heading="omp update unavailable"
+          message="An omp message could not be shown. Try again."
+          variant="compact"
+        />
+      ),
+    });
+    this.presentationOverlays.set(requestId, overlay.id);
+    void overlay.closed.then(() => {
+      if (this.presentationOverlays.get(requestId) === overlay.id)
+        this.presentationOverlays.delete(requestId);
+    });
   }
 
   public async answerHost(
@@ -235,7 +285,7 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
   }
 
   private async routePresentation(
-    handoff: PresentationHandoff,
+    handoff: Exclude<PresentationHandoff, { readonly kind: "open_url" }>,
     context: RouterContext,
     id: UiRequestId,
   ): Promise<void> {
@@ -273,6 +323,17 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
     if (overlayId) this.overlay.close(overlayId, "programmatic");
     this.presentationOverlays.delete(id);
   }
+}
+
+export function subscribeNonModalExtensionUi(
+  store: Pick<OmpRuntimeStore, "subscribeNotifications">,
+  router: ExtensionUiRequestRouterController,
+  context: RouterContext,
+): () => void {
+  return store.subscribeNotifications(
+    ["extension_ui_request"],
+    (frame, seq) => void router.routeNotification(frame, seq, context),
+  );
 }
 
 function presentationText(handoff: PresentationHandoff): string {

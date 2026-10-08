@@ -484,6 +484,37 @@ describe("OmpRuntimeStore", () => {
     expect(other).toEqual(["command_output"]);
   });
 
+  test("forwards only applied Omp events with their sequence after commit", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const received: Array<{ type: string; seq: number; committedSeq: number }> = [];
+    const starts: number[] = [];
+    const unsubscribe = store.subscribeOmpEvents(undefined, (event, seq) => {
+      received.push({ type: event.type, seq, committedSeq: store.getSnapshot().lastSeq });
+    });
+    const unsubscribeStarts = store.subscribeOmpEvents(["agent_start"], (_event, seq) => {
+      starts.push(seq);
+    });
+
+    omp(store, { type: "agent_start" }, 1);
+    omp(store, { type: "agent_end" }, 2);
+    ingest(store, { kind: "notification", frame: { type: "command_output", text: "output" } }, 3);
+    omp(store, { type: "agent_start" }, 2);
+    omp(store, { type: "agent_start" }, 5);
+
+    expect(received).toEqual([
+      { type: "agent_start", seq: 1, committedSeq: 1 },
+      { type: "agent_end", seq: 2, committedSeq: 2 },
+    ]);
+    expect(starts).toEqual([1]);
+    expect(store.getSnapshot().needsRefetch).toBe(true);
+
+    unsubscribe();
+    unsubscribeStarts();
+    store.resetSequence();
+    omp(store, { type: "agent_end" }, 6);
+    expect(received).toHaveLength(2);
+  });
+
   test("tracks queues, modes, todos, pending UI requests, and answers", async () => {
     const calls: unknown[] = [];
     const setTodoCalls: unknown[] = [];

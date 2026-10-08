@@ -1,11 +1,23 @@
-import type { HostCallId, OmpWire, ThreadId, UiRequestId } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import type {
+  HostCallId,
+  OmpWire,
+  RpcSessionEvent,
+  ThreadId,
+  UiRequestId,
+} from "@omp-app/contracts";
+import { describe, expect, test, vi } from "vitest";
 import type { OverlayHostApi, OverlayOpenOptions, OverlayOpenResult } from "@/overlay";
+import { NotificationProjector } from "../../N1/notifications";
+import { OmpRuntimeStore } from "../../R0/store";
 import type { DialogRequest } from "../contract/dialog";
 import type { DialogHost, DialogHostOpenOptions } from "../contract/dialog-host";
 import type { HostRequestAnswer, HostRequestAnswerAdapter } from "../contract/host-answers";
 import type { DialogResult, DialogResultFor } from "../contract/responses";
-import { ExtensionUiRequestRouterController, type PresentationSink } from "./router";
+import {
+  ExtensionUiRequestRouterController,
+  type PresentationSink,
+  subscribeNonModalExtensionUi,
+} from "./router";
 
 const threadId = "router-thread" as ThreadId;
 
@@ -116,6 +128,171 @@ describe("ExtensionUiRequestRouterController", () => {
       context,
     );
     expect(handoffs).toEqual(["notify"]);
+  });
+
+  test("bridges R0 non-modal extension requests to N1 with event ordering", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const editorTexts: string[] = [];
+    const projector = new NotificationProjector({
+      source: store,
+      onEditorText: (text) => editorTexts.push(text),
+    });
+    const overlay = new FakeOverlay();
+    const router = new ExtensionUiRequestRouterController({
+      dialogHost: new FakeDialogHost(),
+      overlay,
+      hostAnswers: new FakeHostAnswers(),
+      presentations: projector,
+    });
+    const unsubscribe = subscribeNonModalExtensionUi(store, router, { threadId });
+    const send = (request: OmpWire.ExtensionUiRequest, sequence: number) => {
+      store.ingest({ kind: "notification", frame: request } as RpcSessionEvent, sequence);
+    };
+
+    send(
+      {
+        type: "extension_ui_request",
+        id: "notice-1",
+        method: "notify",
+        message: "Build finished",
+        notifyType: "info",
+      },
+      1,
+    );
+    send(
+      {
+        type: "extension_ui_request",
+        id: "notice-2",
+        method: "notify",
+        message: "Build finished",
+        notifyType: "info",
+      },
+      2,
+    );
+    send(
+      {
+        type: "extension_ui_request",
+        id: "status-1",
+        method: "setStatus",
+        statusKey: "build",
+        statusText: "Running",
+      },
+      3,
+    );
+    send(
+      {
+        type: "extension_ui_request",
+        id: "widget-1",
+        method: "setWidget",
+        widgetKey: "build-output",
+        widgetLines: ["Compiling"],
+        widgetPlacement: "belowEditor",
+      },
+      4,
+    );
+    send(
+      {
+        type: "extension_ui_request",
+        id: "title-1",
+        method: "setTitle",
+        title: "Build session",
+      },
+      5,
+    );
+    send(
+      {
+        type: "extension_ui_request",
+        id: "editor-1",
+        method: "set_editor_text",
+        text: "draft",
+      },
+      6,
+    );
+    send(
+      {
+        type: "extension_ui_request",
+        id: "oauth-1",
+        method: "open_url",
+        url: "https://accounts.example/authorize",
+        launchUrl: "https://accounts.example/continue",
+      },
+      7,
+    );
+
+    const notifications = projector
+      .getBus()
+      .getSnapshot()
+      .notifications.filter((item) => item.source === "extension");
+    expect(notifications.map((item) => item.message)).toEqual(["Build finished", "Build finished"]);
+    expect(notifications[0]?.dedupeKey).not.toBe(notifications[1]?.dedupeKey);
+    expect(projector.getSnapshot().statuses).toEqual([
+      { statusKey: "build", statusText: "Running" },
+    ]);
+    expect(projector.getSnapshot().widgets).toEqual([
+      expect.objectContaining({
+        widgetKey: "build-output",
+        placement: "belowEditor",
+        lines: ["Compiling"],
+      }),
+    ]);
+    expect(projector.getSnapshot().title).toBe("Build session");
+    expect(editorTexts).toEqual(["draft"]);
+    expect(overlay.opened).toHaveLength(1);
+    unsubscribe();
+    projector.dispose();
+  });
+
+  test("continues routing later requests after a presentation failure", async () => {
+    const dialogHost = new FakeDialogHost();
+    const overlay = new FakeOverlay();
+    const router = new ExtensionUiRequestRouterController({
+      dialogHost,
+      overlay,
+      hostAnswers: new FakeHostAnswers(),
+      presentations: {
+        present: () => {
+          throw new Error("bad presentation");
+        },
+      },
+    });
+    const sync = router.sync(
+      {
+        extensionUi: {
+          title: {
+            request: {
+              type: "extension_ui_request",
+              id: "title-1",
+              method: "setTitle",
+              title: " ",
+            },
+            receivedSeq: 1,
+          },
+          confirm: {
+            request: {
+              type: "extension_ui_request",
+              id: "confirm-1",
+              method: "confirm",
+              title: "Continue?",
+              message: "Should the task continue?",
+            },
+            receivedSeq: 2,
+          },
+        },
+        hostTools: {},
+        hostUris: {},
+      },
+      { threadId },
+    );
+
+    await vi.waitFor(() => expect(dialogHost.opened).toHaveLength(1));
+    expect(dialogHost.opened[0]).toMatchObject({ kind: "confirm", id: "confirm-1" });
+    expect(overlay.opened).toHaveLength(1);
+    dialogHost.resolve("confirm-1", {
+      outcome: "cancelled",
+      kind: "confirm",
+      timedOut: false,
+    });
+    await sync;
   });
 
   test("rejects unsafe OAuth schemes and keeps valid full URLs out of the visible prompt", async () => {

@@ -1,17 +1,14 @@
-import type { AppError, OmpWire, RpcSessionEvent, ThreadId, UiRequestId } from "@omp-app/contracts";
+import type { AppError, OmpEvent, OmpWire, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { RuntimeSnapshot, TodoReminderState } from "../../R0/store";
 import type { PresentationHandoff } from "../../U4/contract";
-import { openUrlCopyTarget } from "../../U4/contract";
 import type {
   AutoRetryEnd,
   AutoRetryStart,
-  N1RuntimeEvent,
   Notification,
   RetryFallbackApplied,
   RetryFallbackSucceeded,
   SessionNotice,
-  TodoReminder,
 } from "../contract";
 import {
   N1RuntimeEventSchema,
@@ -20,14 +17,13 @@ import {
 } from "../contract";
 import { NotificationBus } from "./bus";
 
-export type NotificationRuntimeEvent = N1RuntimeEvent | TodoReminder;
-
-/** R0's normalized event seam. It carries the same typed envelope that `store.ingest` applies. */
 export interface NormalizedRuntimeEventSource {
-  readonly subscribe: (listener: (event: RpcSessionEvent, seq: number) => void) => () => void;
+  readonly subscribeOmpEvents: (
+    types: readonly string[] | undefined,
+    listener: (event: OmpEvent, seq: number) => void,
+  ) => () => void;
 }
 
-/** The normalized R0 snapshot fields consumed by N1. */
 export type RuntimeSnapshotSource = Pick<
   {
     readonly getSnapshot: () => RuntimeSnapshot;
@@ -43,7 +39,7 @@ export interface TranscriptNoticeSink {
 
 export interface PresentationContext {
   readonly threadId: ThreadId;
-  readonly requestId?: UiRequestId;
+  readonly sequence?: number;
 }
 
 export interface StatusHandoffProjection {
@@ -55,15 +51,6 @@ export interface WidgetHandoffProjection {
   readonly widgetKey: string;
   readonly placement: "aboveEditor" | "belowEditor";
   readonly lines: readonly string[];
-  readonly availability: "available" | "unavailable";
-  readonly reason?: string;
-}
-
-/** The full URL is retained only as the explicit action target; it is never put in notice text. */
-export interface OAuthHandoffProjection {
-  readonly copyTarget: string;
-  readonly host: string;
-  readonly instructions?: string;
 }
 
 export interface NotificationProjectionSnapshot {
@@ -73,7 +60,6 @@ export interface NotificationProjectionSnapshot {
   readonly statuses: readonly StatusHandoffProjection[];
   readonly widgets: readonly WidgetHandoffProjection[];
   readonly title: string | null;
-  readonly oauth: OAuthHandoffProjection | null;
   readonly error: AppError | null;
 }
 
@@ -89,14 +75,21 @@ export interface NotificationProjectorOptions {
 export interface ProjectionEventContext {
   readonly threadId: ThreadId;
   readonly sequence?: number;
-  readonly todoReminderIdentity?: string;
 }
 
 export const MAX_WIDGET_LINES = 10;
 const MAX_DISPLAY_TEXT = 360;
 const EMPTY_PROJECTION_STATUSES: readonly StatusHandoffProjection[] = Object.freeze([]);
 const EMPTY_PROJECTION_WIDGETS: readonly WidgetHandoffProjection[] = Object.freeze([]);
-const NOTIFICATION_EVENT_SCHEMA = N1RuntimeEventSchema.or(TodoReminderSchema);
+const KNOWN_N1_EVENT_TYPES: Readonly<Record<string, true>> = {
+  auto_retry_start: true,
+  auto_retry_end: true,
+  retry_fallback_applied: true,
+  retry_fallback_succeeded: true,
+  ttsr_triggered: true,
+  todo_auto_clear: true,
+  notice: true,
+};
 
 function invalidProjection(message: string): AppFailure {
   return new AppFailure({ code: "invalid_args", message, retryable: false });
@@ -159,6 +152,51 @@ function freezeWidget(widget: WidgetHandoffProjection): WidgetHandoffProjection 
   return Object.freeze({ ...widget, lines: Object.freeze([...widget.lines]) });
 }
 
+function sameStatuses(
+  left: readonly StatusHandoffProjection[],
+  right: readonly StatusHandoffProjection[],
+): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index];
+    const b = right[index];
+    if (
+      a === undefined ||
+      b === undefined ||
+      a.statusKey !== b.statusKey ||
+      a.statusText !== b.statusText
+    )
+      return false;
+  }
+  return true;
+}
+
+function sameWidgets(
+  left: readonly WidgetHandoffProjection[],
+  right: readonly WidgetHandoffProjection[],
+): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index];
+    const b = right[index];
+    if (
+      a === undefined ||
+      b === undefined ||
+      a.widgetKey !== b.widgetKey ||
+      a.placement !== b.placement ||
+      a.lines.length !== b.lines.length
+    ) {
+      return false;
+    }
+    for (let line = 0; line < a.lines.length; line += 1) {
+      if (a.lines[line] !== b.lines[line]) return false;
+    }
+  }
+  return true;
+}
+
 function projectionSnapshot(
   previous: NotificationProjectionSnapshot | undefined,
   next: {
@@ -167,7 +205,6 @@ function projectionSnapshot(
     readonly statuses?: readonly StatusHandoffProjection[];
     readonly widgets?: readonly WidgetHandoffProjection[];
     readonly title?: string | null;
-    readonly oauth?: OAuthHandoffProjection | null;
     readonly error?: AppError | null;
   },
 ): NotificationProjectionSnapshot {
@@ -180,7 +217,6 @@ function projectionSnapshot(
     statuses: Object.freeze([...statuses]),
     widgets: Object.freeze([...widgets]),
     title: next.title === undefined ? (previous?.title ?? null) : next.title,
-    oauth: next.oauth === undefined ? (previous?.oauth ?? null) : next.oauth,
     error: next.error === undefined ? (previous?.error ?? null) : next.error,
   });
 }
@@ -221,7 +257,7 @@ function retryStartNotification(
   return notification(threadId, {
     dedupeKey: "retry:active",
     severity: "warning",
-    placement: "transcript",
+    placement: "banner",
     message: `Retrying (${event.attempt}/${event.maxAttempts}) in ${retryDelay(event.delayMs)}${detail}`,
     source: "omp.retry",
     expiresAt: now() + event.delayMs,
@@ -229,17 +265,8 @@ function retryStartNotification(
   });
 }
 
-function retryEndNotification(threadId: ThreadId, event: AutoRetryEnd): Notification {
-  if (event.success) {
-    return notification(threadId, {
-      dedupeKey: "retry:result",
-      severity: "success",
-      placement: "transcript",
-      message: `Recovered after retry (${event.attempt})`,
-      source: "omp.retry",
-      live: "off",
-    });
-  }
+function retryEndNotification(threadId: ThreadId, event: AutoRetryEnd): Notification | undefined {
+  if (event.success) return undefined;
   const error = cleanOptionalText(event.finalError);
   return notification(threadId, {
     dedupeKey: "retry:result",
@@ -307,19 +334,19 @@ function ttsrNotification(
 
 function todoReminderNotification(
   threadId: ThreadId,
-  event: TodoReminder,
-  identity?: string,
+  reminder: TodoReminderState,
+  identity: string,
 ): Notification {
-  const lines = event.todos.slice(0, 50).map((todo) => {
+  const lines = reminder.todos.slice(0, 50).map((todo) => {
     const task = cleanText(todo.content || "Unnamed task", 180);
     return `• ${task}`;
   });
-  const suffix = event.todos.length > 50 ? `\n• … ${event.todos.length - 50} more` : "";
+  const suffix = reminder.todos.length > 50 ? `\n• … ${reminder.todos.length - 50} more` : "";
   return notification(threadId, {
-    dedupeKey: `todo-reminder:${event.attempt}${identity === undefined ? "" : `:${hashText(identity)}`}`,
+    dedupeKey: `todo-reminder:${reminder.attempt}:${hashText(identity)}`,
     severity: "warning",
     placement: "transcript",
-    message: `Todo reminder (${event.attempt}/${event.maxAttempts})${lines.length > 0 ? `\n${lines.join("\n")}${suffix}` : ""}`,
+    message: `Todo reminder (${reminder.attempt}/${reminder.maxAttempts})${lines.length > 0 ? `\n${lines.join("\n")}${suffix}` : ""}`,
     source: "omp.todo",
     live: "polite",
   });
@@ -357,7 +384,11 @@ function sessionChanges(
       ),
     );
   }
-  if (previous.sessionName !== next.sessionName && next.sessionName) {
+  if (
+    previous.sessionName !== null &&
+    previous.sessionName !== next.sessionName &&
+    next.sessionName
+  ) {
     notices.push(
       sessionNotice(threadId, "session:name", `Session renamed to ${cleanText(next.sessionName)}`),
     );
@@ -377,46 +408,20 @@ function identityForReminder(reminder: TodoReminderState): string {
   return `${reminderContentIdentity(reminder.attempt, reminder.maxAttempts, reminder.todos)}:${reminder.afterMessage ?? "root"}`;
 }
 
-function toReminderEvent(reminder: TodoReminderState): TodoReminder {
-  return {
-    type: "todo_reminder",
-    todos: reminder.todos.map((todo) => ({
-      content: todo.content,
-      status: todo.status,
-      ...(todo.blocker === undefined ? {} : { blocker: todo.blocker }),
-      ...(todo.details === undefined ? {} : { details: todo.details }),
-      ...(todo.notes === undefined ? {} : { notes: [...todo.notes] }),
-    })),
-    attempt: reminder.attempt,
-    maxAttempts: reminder.maxAttempts,
-  };
-}
-
-function safeHttpUrl(value: string): URL {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw invalidProjection("The authorization destination is not a valid URL.");
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw invalidProjection("Only http(s) authorization destinations can be opened.");
-  }
-  if (parsed.username || parsed.password) {
-    throw invalidProjection("Authorization destinations cannot contain embedded credentials.");
-  }
-  return parsed;
-}
-
 function handoffNotification(
-  handoff: PresentationHandoff,
+  handoff: Exclude<PresentationHandoff, { readonly kind: "open_url" }>,
   context: PresentationContext,
 ): Notification | undefined {
   switch (handoff.kind) {
     case "notify": {
       const severity = severityForNotify(handoff.notifyType);
+      const fingerprint = hashText(`${handoff.notifyType ?? "info"}:${handoff.message}`);
+      const dedupeKey =
+        context.sequence === undefined
+          ? `extension:notify:${fingerprint}`
+          : `extension:notify:${context.sequence}:${fingerprint}`;
       return notification(context.threadId, {
-        dedupeKey: `extension:notify:${hashText(`${handoff.notifyType ?? "info"}:${handoff.message}`)}`,
+        dedupeKey,
         severity,
         placement: "toast",
         message: cleanText(handoff.message),
@@ -424,17 +429,6 @@ function handoffNotification(
         live: liveForSeverity(severity),
       });
     }
-    case "open_url":
-      safeHttpUrl(handoff.url);
-      safeHttpUrl(openUrlCopyTarget(handoff));
-      return notification(context.threadId, {
-        dedupeKey: context.requestId ? `extension:oauth:${context.requestId}` : "extension:oauth",
-        severity: "info",
-        placement: "toast",
-        message: "Sign-in is ready to continue",
-        source: "extension.oauth",
-        live: "polite",
-      });
     case "setStatus":
     case "setWidget":
     case "setTitle":
@@ -458,7 +452,6 @@ export class NotificationProjector {
   private readonly now: () => number;
   private readonly listeners = new Set<(snapshot: NotificationProjectionSnapshot) => void>();
   private readonly seenReminders = new Set<string>();
-  private readonly seenReminderEvents = new Set<string>();
   private readonly stopSource: () => void;
   private readonly stopEvents: (() => void) | undefined;
   private runtimeSnapshot: RuntimeSnapshot;
@@ -468,7 +461,6 @@ export class NotificationProjector {
   private statuses = new Map<string, StatusHandoffProjection>();
   private widgets = new Map<string, WidgetHandoffProjection>();
   private title: string | null = null;
-  private oauth: OAuthHandoffProjection | null = null;
 
   public constructor(options: NotificationProjectorOptions) {
     this.source = options.source;
@@ -486,16 +478,11 @@ export class NotificationProjector {
       statuses: EMPTY_PROJECTION_STATUSES,
       widgets: EMPTY_PROJECTION_WIDGETS,
       title: null,
-      oauth: null,
       error: null,
     });
     this.stopSource = this.source.subscribe(this.onRuntimeSnapshot);
-    this.stopEvents = options.events?.subscribe((event, seq) => {
-      if (event.kind !== "omp") return;
-      this.ingest(event.event as NotificationRuntimeEvent, {
-        threadId: this.source.getSnapshot().threadId,
-        sequence: seq,
-      });
+    this.stopEvents = options.events?.subscribeOmpEvents(undefined, (event, seq) => {
+      this.ingest(event, { threadId: this.runtimeSnapshot.threadId, sequence: seq });
     });
   }
 
@@ -515,42 +502,61 @@ export class NotificationProjector {
   public dispose(): void {
     this.stopSource();
     this.stopEvents?.();
+    this.bus.clearForThread(this.snapshot.threadId);
     this.listeners.clear();
   }
 
-  /** Apply one typed event already normalized by R0. */
-  public ingest(
-    event: NotificationRuntimeEvent,
-    context: ProjectionEventContext,
-  ): readonly Notification[] {
+  /** Apply one raw Omp event; unrelated Omp event kinds are silently ignored. */
+  public ingest(event: unknown, context: ProjectionEventContext): readonly Notification[] {
+    const eventType =
+      typeof event === "object" &&
+      event !== null &&
+      !Array.isArray(event) &&
+      "type" in event &&
+      typeof event.type === "string"
+        ? event.type
+        : undefined;
+    const knownEvent = eventType !== undefined && Object.hasOwn(KNOWN_N1_EVENT_TYPES, eventType);
     if (context.sequence !== undefined) {
       if (!Number.isSafeInteger(context.sequence) || context.sequence < 1) {
-        const failure = invalidProjection("The normalized event sequence is invalid.");
-        this.recordFailure(failure, context.threadId);
+        if (knownEvent) {
+          this.recordFailure(
+            invalidProjection("omp sent an update this app could not read."),
+            context.threadId,
+          );
+        }
         return [];
       }
       if (context.sequence <= this.lastEventSequence) return [];
       this.lastEventSequence = context.sequence;
     }
 
-    const parsed = NOTIFICATION_EVENT_SCHEMA.safeParse(event);
+    if (eventType !== "ttsr_triggered") this.ttsrRules = [];
+    if (!knownEvent) return [];
+
+    const parsed = N1RuntimeEventSchema.safeParse(event);
     if (!parsed.success) {
-      const failure = invalidProjection("The normalized notification event is malformed.");
-      this.recordFailure(failure, context.threadId);
+      this.ttsrRules = [];
+      this.recordFailure(
+        invalidProjection("omp sent an update this app could not read."),
+        context.threadId,
+      );
       return [];
     }
-    const normalized = parsed.data as NotificationRuntimeEvent;
-    const notifications: Notification[] = [];
-    if (normalized.type !== "ttsr_triggered") this.ttsrRules = [];
+    this.clearFailure(context.threadId);
 
+    const normalized = parsed.data;
+    const notifications: Notification[] = [];
     switch (normalized.type) {
       case "auto_retry_start":
         notifications.push(retryStartNotification(context.threadId, normalized, this.now));
         break;
-      case "auto_retry_end":
+      case "auto_retry_end": {
         this.bus.dismiss(context.threadId, "retry:active");
-        notifications.push(retryEndNotification(context.threadId, normalized));
+        const retryResult = retryEndNotification(context.threadId, normalized);
+        if (retryResult) notifications.push(retryResult);
         break;
+      }
       case "retry_fallback_applied":
       case "retry_fallback_succeeded":
         notifications.push(fallbackNotification(context.threadId, normalized));
@@ -568,18 +574,12 @@ export class NotificationProjector {
         notifications.push(ttsrNotification(context.threadId, this.ttsrRules));
         break;
       }
-      case "todo_reminder": {
-        this.seenReminderEvents.add(
-          reminderContentIdentity(normalized.attempt, normalized.maxAttempts, normalized.todos),
-        );
-        const identity =
-          context.todoReminderIdentity ??
-          (context.sequence === undefined ? undefined : `event:${context.sequence}`);
-        notifications.push(todoReminderNotification(context.threadId, normalized, identity));
-        break;
-      }
       case "notice":
-        notifications.push(this.noticeEventNotification(context.threadId, normalized));
+        if (normalized.level !== "error") {
+          notifications.push(
+            this.noticeEventNotification(context.threadId, normalized, context.sequence),
+          );
+        }
         break;
       case "todo_auto_clear":
         break;
@@ -587,73 +587,65 @@ export class NotificationProjector {
 
     const published: Notification[] = [];
     for (const next of notifications) {
-      const result = this.bus.publish(next);
-      if (result !== "deduplicated") {
-        published.push(next);
-        if (next.placement === "transcript") this.writeTranscript(next);
-      }
+      if (this.publishNotification(next)) published.push(next);
     }
-    this.commit({ error: null });
     return published;
   }
 
   /** Implements U4's non-modal presentation sink without answering or correlating requests. */
-  public present(handoff: PresentationHandoff, context: PresentationContext): void {
+  public present(
+    handoff: Exclude<PresentationHandoff, { readonly kind: "open_url" }>,
+    context: PresentationContext,
+  ): void {
+    const projectionContext = { ...context, threadId: this.snapshot.threadId };
     try {
       switch (handoff.kind) {
-        case "setStatus":
-          if (handoff.statusText === undefined) this.statuses.delete(handoff.statusKey);
-          else {
-            this.statuses.set(
-              handoff.statusKey,
-              freezeStatus({
-                statusKey: handoff.statusKey,
-                statusText: cleanText(handoff.statusText),
-              }),
-            );
+        case "setStatus": {
+          const statusText =
+            handoff.statusText === undefined ? undefined : cleanText(handoff.statusText);
+          const current = this.statuses.get(handoff.statusKey);
+          const changed =
+            statusText === undefined ? current !== undefined : current?.statusText !== statusText;
+          this.clearFailure(projectionContext.threadId);
+          if (changed) {
+            if (statusText === undefined) this.statuses.delete(handoff.statusKey);
+            else {
+              this.statuses.set(
+                handoff.statusKey,
+                freezeStatus({ statusKey: handoff.statusKey, statusText }),
+              );
+            }
+            this.commit({ statuses: [...this.statuses.values()] });
           }
-          this.commit({ error: null });
           return;
+        }
         case "setWidget":
-          this.applyWidget(handoff.widgetKey, handoff.widgetLines, handoff.widgetPlacement);
-          this.commit({ error: null });
+          this.clearFailure(projectionContext.threadId);
+          if (this.applyWidget(handoff.widgetKey, handoff.widgetLines, handoff.widgetPlacement)) {
+            this.commit({ widgets: [...this.widgets.values()] });
+          }
           return;
         case "setTitle": {
           const title = cleanText(handoff.title);
           if (!title) throw invalidProjection("The extension title is empty.");
-          this.title = title;
-          this.commit({ error: null });
+          this.clearFailure(projectionContext.threadId);
+          if (title !== this.title) {
+            this.title = title;
+            this.commit({ title });
+          }
           return;
         }
         case "set_editor_text":
           if (!this.onEditorText) {
-            throw unavailableProjection(
-              "Editor text handoffs are unavailable in this presentation host.",
-            );
+            throw unavailableProjection("This editor update is unavailable right now.");
           }
-          this.onEditorText(handoff.text, context);
-          this.commit({ error: null });
+          this.onEditorText(handoff.text, projectionContext);
+          this.clearFailure(projectionContext.threadId);
           return;
-        case "notify":
-        case "open_url": {
-          const next = handoffNotification(handoff, context);
-          if (handoff.kind === "open_url") {
-            const target = safeHttpUrl(openUrlCopyTarget(handoff));
-            this.oauth = Object.freeze({
-              copyTarget: target.toString(),
-              host: target.host,
-              ...(handoff.instructions === undefined
-                ? {}
-                : { instructions: cleanText(handoff.instructions) }),
-            });
-          }
-          if (next) {
-            const result = this.bus.publish(next);
-            if (result !== "deduplicated" && next.placement === "transcript") {
-              this.writeTranscript(next);
-            }
-          }
-          this.commit({ error: null });
+        case "notify": {
+          const next = handoffNotification(handoff, projectionContext);
+          this.clearFailure(projectionContext.threadId);
+          if (next) this.publishNotification(next);
           return;
         }
       }
@@ -661,72 +653,84 @@ export class NotificationProjector {
       const failure =
         error instanceof AppFailure
           ? error
-          : internalProjection("The presentation handoff could not be applied.", error);
-      this.recordFailure(failure, context.threadId);
-      throw failure;
+          : internalProjection("An omp update could not be shown.", error);
+      this.recordFailure(failure, projectionContext.threadId);
     }
   }
 
   private readonly onRuntimeSnapshot = (next: RuntimeSnapshot): void => {
     const previous = this.runtimeSnapshot;
+    const sessionWasLoaded =
+      previous.session.model !== null ||
+      previous.session.thinkingLevel !== null ||
+      previous.session.sessionName !== null;
     this.runtimeSnapshot = next;
-    if (next.threadId !== previous.threadId) {
-      this.seenReminders.clear();
-      this.seenReminderEvents.clear();
-      for (const reminder of next.todoReminders)
-        this.seenReminders.add(identityForReminder(reminder));
+
+    if (previous.needsRefetch && !next.needsRefetch) {
+      this.bus.dismiss(next.threadId, "retry:active");
       this.ttsrRules = [];
-      this.commit({
-        threadId: next.threadId,
-        session: next.session,
-        statuses: [],
-        widgets: [],
-        title: null,
-        oauth: null,
-        error: null,
-      });
-      return;
     }
 
-    for (const notice of sessionChanges(next.threadId, previous.session, next.session)) {
-      const result = this.bus.publish(notice);
-      if (result !== "deduplicated" && notice.placement === "transcript")
-        this.writeTranscript(notice);
+    if (next.session !== previous.session && this.snapshot.session !== next.session) {
+      this.commit({ session: next.session });
     }
-    for (const reminder of next.todoReminders) {
-      const identity = identityForReminder(reminder);
-      if (this.seenReminders.has(identity)) continue;
-      const contentIdentity = reminderContentIdentity(
-        reminder.attempt,
-        reminder.maxAttempts,
-        reminder.todos,
-      );
-      if (this.seenReminderEvents.delete(contentIdentity)) {
+
+    if (sessionWasLoaded) {
+      const changes = sessionChanges(next.threadId, previous.session, next.session);
+      if (changes.length > 0) this.clearFailure(next.threadId);
+      for (const notice of changes) this.publishNotification(notice);
+    }
+    if (next.todoReminders !== previous.todoReminders) {
+      const currentIdentities = new Set<string>();
+      for (const reminder of next.todoReminders) {
+        const parsed = TodoReminderSchema.safeParse({
+          type: "todo_reminder",
+          todos: reminder.todos,
+          attempt: reminder.attempt,
+          maxAttempts: reminder.maxAttempts,
+        });
+        if (!parsed.success) {
+          this.recordFailure(
+            invalidProjection("omp sent a todo reminder this app could not read."),
+            next.threadId,
+          );
+          continue;
+        }
+        const validReminder: TodoReminderState = {
+          ...parsed.data,
+          afterMessage: reminder.afterMessage,
+        };
+        const identity = identityForReminder(validReminder);
+        currentIdentities.add(identity);
+        if (this.seenReminders.has(identity)) continue;
         this.seenReminders.add(identity);
-        continue;
+        this.clearFailure(next.threadId);
+        this.publishNotification(todoReminderNotification(next.threadId, validReminder, identity));
       }
-      this.seenReminders.add(identity);
-      this.ingest(toReminderEvent(reminder), {
-        threadId: next.threadId,
-        todoReminderIdentity: identity,
-      });
+      for (const identity of this.seenReminders) {
+        if (!currentIdentities.has(identity)) this.seenReminders.delete(identity);
+      }
     }
-    this.commit({ session: next.session, error: null });
   };
 
   private readonly noticeEventNotification = (
     threadId: ThreadId,
     event: SessionNotice,
+    sequence?: number,
   ): Notification => {
     const severity = event.level;
+    const source = cleanOptionalText(event.source, 120);
+    const fingerprint = hashText(`${source ?? "omp"}:${event.message}`);
+    const dedupeKey =
+      sequence === undefined
+        ? `session:notice:${fingerprint}`
+        : `session:notice:${sequence}:${fingerprint}`;
     return notification(threadId, {
-      dedupeKey: `session:notice:${hashText(`${event.source ?? "omp"}:${event.message}`)}`,
+      dedupeKey,
       severity,
       placement: severity === "error" ? "banner" : "toast",
       message: cleanText(event.message),
-      ...(cleanOptionalText(event.source) === undefined
-        ? {}
-        : { source: cleanText(event.source as string, 120) }),
+      ...(source === undefined ? {} : { source }),
       live: severity === "error" ? "assertive" : "polite",
     });
   };
@@ -735,33 +739,35 @@ export class NotificationProjector {
     widgetKey: string,
     lines: readonly string[] | undefined,
     placement: "aboveEditor" | "belowEditor" | undefined,
-  ): void => {
-    if (lines === undefined) {
-      this.widgets.set(
-        widgetKey,
-        freezeWidget({
-          widgetKey,
-          placement: placement ?? "belowEditor",
-          lines: [],
-          availability: "unavailable",
-          reason: "This extension widget has no portable text representation.",
-        }),
-      );
-      return;
-    }
+  ): boolean => {
+    if (lines === undefined) return this.widgets.delete(widgetKey);
     const cleaned = lines.slice(0, MAX_WIDGET_LINES).map((line) => cleanText(line, 180));
     if (lines.length > MAX_WIDGET_LINES) {
       cleaned[MAX_WIDGET_LINES - 1] = `… ${lines.length - MAX_WIDGET_LINES + 1} more`;
     }
-    this.widgets.set(
+    const next = freezeWidget({
       widgetKey,
-      freezeWidget({
-        widgetKey,
-        placement: placement ?? "belowEditor",
-        lines: cleaned,
-        availability: "available",
-      }),
-    );
+      placement: placement ?? "aboveEditor",
+      lines: cleaned,
+    });
+
+    const previous = this.widgets.get(widgetKey);
+    if (
+      previous &&
+      previous.placement === next.placement &&
+      previous.lines.length === next.lines.length &&
+      previous.lines.every((line, index) => line === next.lines[index])
+    ) {
+      return false;
+    }
+    this.widgets.set(widgetKey, next);
+    return true;
+  };
+
+  private readonly publishNotification = (next: Notification): boolean => {
+    if (this.bus.publish(next) === "deduplicated") return false;
+    if (next.placement === "transcript") this.writeTranscript(next);
+    return true;
   };
 
   private readonly writeTranscript = (next: Notification): void => {
@@ -770,54 +776,74 @@ export class NotificationProjector {
       this.transcript.upsert(next);
     } catch (error) {
       this.recordFailure(
-        internalProjection("The transcript notice could not be inserted.", error),
+        internalProjection("This update could not be added to the conversation.", error),
         next.threadId,
       );
     }
   };
 
+  private readonly clearFailure = (threadId: ThreadId): void => {
+    if (threadId !== this.snapshot.threadId) return;
+    this.bus.dismiss(threadId, "projection:error");
+    if (this.snapshot.error !== null) this.commit({ error: null });
+  };
+
   private readonly recordFailure = (failure: AppFailure, threadId: ThreadId): void => {
-    this.commit({ threadId, error: freezeProjectionError(failure) });
-    const next = notification(threadId, {
-      dedupeKey: "projection:error",
-      severity: "error",
-      placement: "banner",
-      message: cleanText(failure.appError.message),
-      source: "N1",
-      live: "assertive",
-    });
-    this.bus.publish(next);
+    this.commit({ error: freezeProjectionError(failure) });
+    this.bus.publish(
+      notification(threadId, {
+        dedupeKey: "projection:error",
+        severity: "error",
+        placement: "banner",
+        message: cleanText(failure.appError.message),
+        source: "N1",
+        live: "assertive",
+      }),
+    );
   };
 
   private readonly commit = (changes: {
-    readonly threadId?: ThreadId;
     readonly session?: RuntimeSnapshot["session"];
     readonly statuses?: readonly StatusHandoffProjection[];
     readonly widgets?: readonly WidgetHandoffProjection[];
     readonly title?: string | null;
-    readonly oauth?: OAuthHandoffProjection | null;
     readonly error?: AppError | null;
   }): void => {
-    const statuses = changes.statuses
-      ? [...changes.statuses].sort((left, right) => left.statusKey.localeCompare(right.statusKey))
-      : [...this.statuses.values()].sort((left, right) =>
-          left.statusKey.localeCompare(right.statusKey),
-        );
-    const widgets = changes.widgets
-      ? [...changes.widgets].sort((left, right) => left.widgetKey.localeCompare(right.widgetKey))
-      : [...this.widgets.values()].sort((left, right) =>
-          left.widgetKey.localeCompare(right.widgetKey),
-        );
-    this.statuses = new Map(statuses.map((status) => [status.statusKey, status]));
-    this.widgets = new Map(widgets.map((widget) => [widget.widgetKey, widget]));
+    const statuses =
+      changes.statuses === undefined
+        ? this.snapshot.statuses
+        : [...changes.statuses].sort((left, right) =>
+            left.statusKey.localeCompare(right.statusKey),
+          );
+    const widgets =
+      changes.widgets === undefined
+        ? this.snapshot.widgets
+        : [...changes.widgets].sort((left, right) => left.widgetKey.localeCompare(right.widgetKey));
+    const session = changes.session ?? this.runtimeSnapshot.session;
+    const title = changes.title === undefined ? this.title : changes.title;
+    const error = changes.error === undefined ? this.snapshot.error : changes.error;
+    if (
+      this.snapshot.session === session &&
+      sameStatuses(this.snapshot.statuses, statuses) &&
+      sameWidgets(this.snapshot.widgets, widgets) &&
+      this.snapshot.title === title &&
+      this.snapshot.error === error
+    ) {
+      return;
+    }
+    if (changes.statuses !== undefined) {
+      this.statuses = new Map(statuses.map((status) => [status.statusKey, status]));
+    }
+    if (changes.widgets !== undefined) {
+      this.widgets = new Map(widgets.map((widget) => [widget.widgetKey, widget]));
+    }
     this.snapshot = projectionSnapshot(this.snapshot, {
-      threadId: changes.threadId ?? this.runtimeSnapshot.threadId,
-      session: changes.session ?? this.runtimeSnapshot.session,
+      threadId: this.snapshot.threadId,
+      session,
       statuses,
       widgets,
-      title: changes.title === undefined ? this.title : changes.title,
-      oauth: changes.oauth === undefined ? this.oauth : changes.oauth,
-      ...(changes.error === undefined ? {} : { error: changes.error }),
+      title,
+      error,
     });
     for (const listener of this.listeners) listener(this.snapshot);
   };

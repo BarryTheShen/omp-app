@@ -12,6 +12,7 @@ export type NotificationBusListener = (snapshot: NotificationBusSnapshot) => voi
 export type NotificationPublishResult = "published" | "replaced" | "deduplicated";
 
 const EMPTY_NOTIFICATIONS: readonly Notification[] = Object.freeze([]);
+export const MAX_NOTIFICATIONS_PER_THREAD = 256;
 
 /**
  * The stable key used by the feedback chrome. A thread id and a producer-owned dedupe key are
@@ -30,7 +31,7 @@ function invalidNotification(): AppFailure {
 }
 
 function freezeNotification(value: Notification): Notification {
-  return Object.freeze({
+  const frozen: Notification = {
     threadId: value.threadId,
     dedupeKey: value.dedupeKey,
     severity: value.severity,
@@ -39,8 +40,9 @@ function freezeNotification(value: Notification): Notification {
     ...(value.source === undefined ? {} : { source: value.source }),
     ...(value.expiresAt === undefined ? {} : { expiresAt: value.expiresAt }),
     live: value.live,
-    focus: "preserve" as const,
-  }) as Notification;
+    focus: "preserve",
+  };
+  return Object.freeze(frozen);
 }
 
 function sameNotification(left: Notification, right: Notification): boolean {
@@ -100,6 +102,7 @@ export class NotificationBus {
 
     const result: NotificationPublishResult = previous ? "replaced" : "published";
     this.notices.set(key, frozen);
+    this.trimThread(frozen.threadId);
     this.commit();
     return result;
   }
@@ -130,6 +133,20 @@ export class NotificationBus {
     }
     if (removed > 0) this.commit();
     return removed;
+  }
+
+  private trimThread(threadId: ThreadId): void {
+    let count = 0;
+    for (const notice of this.notices.values()) {
+      if (notice.threadId === threadId) count += 1;
+    }
+    if (count <= MAX_NOTIFICATIONS_PER_THREAD) return;
+    for (const [key, notice] of this.notices) {
+      if (notice.threadId !== threadId) continue;
+      this.notices.delete(key);
+      count -= 1;
+      if (count <= MAX_NOTIFICATIONS_PER_THREAD) return;
+    }
   }
 
   private commit(): void {

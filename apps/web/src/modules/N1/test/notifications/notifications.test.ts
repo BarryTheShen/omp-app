@@ -1,12 +1,12 @@
-import type { OmpWire, RpcSessionEvent, UiRequestId } from "@omp-app/contracts";
+import type { OmpWire, RpcSessionEvent } from "@omp-app/contracts";
 import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "../../../R0/store";
 import type { Notification } from "../../contract";
 import {
+  MAX_NOTIFICATIONS_PER_THREAD,
   NotificationBus,
   NotificationProjector,
-  type NotificationRuntimeEvent,
 } from "../../notifications";
 
 const threadId = ThreadIdSchema.parse("thread-n1-notifications");
@@ -32,20 +32,6 @@ function model(id: string, name: string): OmpWire.ModelInfo {
     contextWindow: 128_000,
     maxTokens: 8_192,
   };
-}
-
-class NormalizedEvents {
-  private readonly listeners = new Set<(event: RpcSessionEvent, seq: number) => void>();
-
-  public subscribe(listener: (event: RpcSessionEvent, seq: number) => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  public emit(event: NotificationRuntimeEvent, seq: number): void {
-    const envelope = { kind: "omp", event } as unknown as RpcSessionEvent;
-    for (const listener of this.listeners) listener(envelope, seq);
-  }
 }
 
 function notice(overrides: Partial<Notification> = {}): Notification {
@@ -96,21 +82,50 @@ describe("NotificationBus", () => {
     const bus = new NotificationBus();
     expect(() => bus.publish({ ...notice(), focus: "move" } as never)).toThrow(AppFailure);
   });
+  test("expires notifications at their deadline and bounds each thread", () => {
+    const bus = new NotificationBus();
+    bus.publish(notice({ dedupeKey: "expiring", expiresAt: 100 }));
+    expect(bus.expire(99)).toBe(0);
+    expect(bus.expire(100)).toBe(1);
+    expect(bus.get(threadId, "expiring")).toBeUndefined();
+
+    for (let index = 0; index < MAX_NOTIFICATIONS_PER_THREAD + 10; index += 1) {
+      bus.publish(notice({ dedupeKey: `notice-${index}`, message: `notice ${index}` }));
+    }
+    expect(
+      bus.getSnapshot().notifications.filter((notification) => notification.threadId === threadId),
+    ).toHaveLength(MAX_NOTIFICATIONS_PER_THREAD);
+    expect(bus.get(threadId, "notice-0")).toBeUndefined();
+    expect(bus.get(threadId, `notice-${MAX_NOTIFICATIONS_PER_THREAD + 9}`)).toBeDefined();
+  });
+
+  test("keeps at most 256 notifications per thread after 20,000 notices", () => {
+    const bus = new NotificationBus();
+    for (let index = 0; index < 20_000; index += 1) {
+      bus.publish(notice({ dedupeKey: `notice-${index}`, message: `notice ${index}` }));
+    }
+    const kept = bus
+      .getSnapshot()
+      .notifications.filter((notification) => notification.threadId === threadId);
+    expect(kept.length).toBeLessThanOrEqual(MAX_NOTIFICATIONS_PER_THREAD);
+    expect(kept.at(-1)?.dedupeKey).toBe("notice-19999");
+    expect(bus.get(threadId, "notice-0")).toBeUndefined();
+  });
 });
 
 describe("NotificationProjector", () => {
-  test("projects retry lifecycle and fallback replacement with severity and politeness", () => {
+  test("projects retries as transient banners and keeps only retry failures in the transcript", () => {
     const store = new OmpRuntimeStore({ threadId });
-    const events = new NormalizedEvents();
     const transcript: Notification[] = [];
     const projector = new NotificationProjector({
       source: store,
-      events,
+      events: store,
       now: () => 1_000,
       transcript: { upsert: (notification) => transcript.push(notification) },
     });
 
-    events.emit(
+    publishRuntimeEvent(
+      store,
       {
         type: "auto_retry_start",
         attempt: 1,
@@ -122,34 +137,33 @@ describe("NotificationProjector", () => {
     );
     expect(projector.getBus().get(threadId, "retry:active")).toMatchObject({
       severity: "warning",
-      placement: "transcript",
+      placement: "banner",
       live: "polite",
       message: "Retrying (1/3) in 1.5s: temporary provider failure",
     });
-    events.emit(
-      {
-        type: "auto_retry_start",
-        attempt: 1,
-        maxAttempts: 3,
-        delayMs: 1_500,
-        errorMessage: "temporary provider failure",
-      },
-      1,
-    );
-    expect(transcript).toHaveLength(1);
+    expect(transcript).toHaveLength(0);
 
-    events.emit(
-      { type: "auto_retry_end", success: false, attempt: 3, finalError: "provider down" },
+    publishRuntimeEvent(
+      store,
+      {
+        type: "auto_retry_end",
+        success: false,
+        attempt: 3,
+        finalError: "provider down",
+      },
       2,
     );
     expect(projector.getBus().get(threadId, "retry:active")).toBeUndefined();
     expect(projector.getBus().get(threadId, "retry:result")).toMatchObject({
       severity: "error",
+      placement: "transcript",
       live: "assertive",
       message: "Retry failed after 3 attempts: provider down",
     });
+    expect(transcript).toHaveLength(1);
 
-    events.emit(
+    publishRuntimeEvent(
+      store,
       { type: "retry_fallback_applied", from: "provider/a", to: "provider/b", role: "main" },
       3,
     );
@@ -158,7 +172,11 @@ describe("NotificationProjector", () => {
       .getSnapshot()
       .notifications.find((notification) => notification.source === "omp.fallback");
     expect(appliedFallback?.message).toContain("Fallback:");
-    events.emit({ type: "retry_fallback_succeeded", model: "provider/b", role: "main" }, 4);
+    publishRuntimeEvent(
+      store,
+      { type: "retry_fallback_succeeded", model: "provider/b", role: "main" },
+      4,
+    );
     const fallback = projector
       .getBus()
       .getSnapshot()
@@ -168,45 +186,102 @@ describe("NotificationProjector", () => {
 
     projector.dispose();
   });
-
-  test("merges consecutive TTSR rules and resets the merge after another event", () => {
+  test("ignores unrelated omp events without creating projection errors or revisions", () => {
     const store = new OmpRuntimeStore({ threadId });
-    const projector = new NotificationProjector({ source: store });
+    const projector = new NotificationProjector({ source: store, events: store });
+    const initialRevision = projector.getSnapshot().revision;
 
-    projector.ingest(
-      { type: "ttsr_triggered", rules: [{ name: "rules/a", content: "first" }] },
-      { threadId, sequence: 1 },
-    );
-    projector.ingest(
-      { type: "ttsr_triggered", rules: [{ name: "rules/b", content: "second" }] },
-      { threadId, sequence: 2 },
-    );
-    const merged = projector.getBus().get(threadId, "ttsr");
-    expect(merged?.message).toContain("rules/a");
-    expect(merged?.message).toContain("rules/b");
-    expect(merged?.placement).toBe("banner");
+    publishRuntimeEvent(store, { type: "agent_start" }, 1);
+    publishRuntimeEvent(store, { type: "agent_end" }, 2);
 
-    projector.ingest(
-      {
-        type: "notice",
-        level: "info",
-        message: "turn continues",
-      },
-      { threadId, sequence: 3 },
+    expect(projector.getBus().getSnapshot().notifications).toEqual([]);
+    expect(projector.getSnapshot().error).toBeNull();
+    expect(projector.getSnapshot().revision).toBe(initialRevision);
+    projector.dispose();
+  });
+
+  test("clears malformed-event errors and keeps repeated notices distinct by sequence", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const projector = new NotificationProjector({ source: store, events: store });
+
+    publishRuntimeEvent(store, { type: "auto_retry_start" }, 1);
+    expect(projector.getSnapshot().error?.code).toBe("invalid_args");
+    expect(projector.getBus().get(threadId, "projection:error")).toBeDefined();
+    publishRuntimeEvent(store, { type: "agent_start" }, 2);
+    expect(projector.getSnapshot().error?.code).toBe("invalid_args");
+    expect(projector.getBus().get(threadId, "projection:error")).toBeDefined();
+
+    publishRuntimeEvent(store, { type: "notice", level: "info", message: "Build finished" }, 3);
+    publishRuntimeEvent(store, { type: "notice", level: "info", message: "Build finished" }, 4);
+
+    const notices = projector
+      .getBus()
+      .getSnapshot()
+      .notifications.filter((item) => item.message === "Build finished");
+    expect(notices).toHaveLength(2);
+    expect(notices[0]?.dedupeKey).not.toBe(notices[1]?.dedupeKey);
+    expect(projector.getSnapshot().error).toBeNull();
+    expect(projector.getBus().get(threadId, "projection:error")).toBeUndefined();
+    projector.dispose();
+  });
+
+  test("dispose clears only its thread and stops both runtime subscriptions", () => {
+    const otherThreadId = ThreadIdSchema.parse("thread-other");
+    const store = new OmpRuntimeStore({ threadId });
+    const otherStore = new OmpRuntimeStore({ threadId: otherThreadId });
+    const bus = new NotificationBus();
+    const projector = new NotificationProjector({ source: store, events: store, bus });
+    const otherProjector = new NotificationProjector({
+      source: otherStore,
+      events: otherStore,
+      bus,
+    });
+    publishRuntimeEvent(store, { type: "notice", level: "info", message: "Before dispose" }, 1);
+    publishRuntimeEvent(
+      otherStore,
+      { type: "notice", level: "info", message: "Keep other thread" },
+      1,
     );
-    projector.ingest(
-      { type: "ttsr_triggered", rules: [{ name: "rules/c" }] },
-      { threadId, sequence: 4 },
-    );
+    expect(bus.getSnapshot().notifications).toHaveLength(2);
+    const revision = projector.getSnapshot().revision;
+
+    projector.dispose();
+    expect(bus.getSnapshot().notifications).toEqual([
+      expect.objectContaining({ threadId: otherThreadId, message: "Keep other thread" }),
+    ]);
+    store.applySessionState({ sessionName: "After dispose" });
+    publishRuntimeEvent(store, { type: "notice", level: "info", message: "After dispose" }, 2);
+
+    expect(bus.getSnapshot().notifications).toEqual([
+      expect.objectContaining({ threadId: otherThreadId, message: "Keep other thread" }),
+    ]);
+    expect(projector.getSnapshot().revision).toBe(revision);
+    otherProjector.dispose();
+    expect(bus.getSnapshot().notifications).toEqual([]);
+  });
+
+  test("merges adjacent TTSR events and resets after every other Omp event", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const projector = new NotificationProjector({ source: store, events: store });
+
+    publishRuntimeEvent(store, { type: "ttsr_triggered", rules: [{ name: "rules/a" }] }, 1);
+    publishRuntimeEvent(store, { type: "ttsr_triggered", rules: [{ name: "rules/b" }] }, 2);
+    expect(projector.getBus().get(threadId, "ttsr")?.message).toContain("rules/a");
+    expect(projector.getBus().get(threadId, "ttsr")?.message).toContain("rules/b");
+
+    publishRuntimeEvent(store, { type: "agent_start" }, 3);
+    publishRuntimeEvent(store, { type: "agent_end" }, 4);
+    publishRuntimeEvent(store, { type: "ttsr_triggered", rules: [{ name: "rules/c" }] }, 5);
     const reset = projector.getBus().get(threadId, "ttsr");
     expect(reset?.message).not.toContain("rules/a");
+    expect(reset?.message).not.toContain("rules/b");
     expect(reset?.message).toContain("rules/c");
     projector.dispose();
   });
 
   test("projects R0 todo reminder snapshots without replacing canonical todo state", () => {
     const store = new OmpRuntimeStore({ threadId });
-    const projector = new NotificationProjector({ source: store });
+    const projector = new NotificationProjector({ source: store, events: store });
     store.applySessionState({
       todoPhases: [{ name: "Build", tasks: [{ content: "ship", status: "pending" }] }],
     });
@@ -252,14 +327,25 @@ describe("NotificationProjector", () => {
     ).toHaveLength(1);
     projector.dispose();
   });
-
-  test("projects snapshot.session changes and does not announce a revision-only refresh", () => {
+  test("does not announce initial session hydration as user changes", () => {
     const store = new OmpRuntimeStore({ threadId });
     const projector = new NotificationProjector({ source: store });
     store.applySessionState({
       model: model("model-a", "Model A"),
       thinkingLevel: "low",
       sessionName: "Build session",
+    });
+    expect(
+      projector
+        .getBus()
+        .getSnapshot()
+        .notifications.filter((notification) => notification.source === "session"),
+    ).toEqual([]);
+
+    store.applySessionState({
+      model: model("model-b", "Model B"),
+      thinkingLevel: "high",
+      sessionName: "Renamed session",
     });
     const notices = projector
       .getBus()
@@ -270,7 +356,12 @@ describe("NotificationProjector", () => {
       "session:thinking",
       "session:name",
     ]);
-    expect(notices.every((notification) => notification.live === "off")).toBe(true);
+    expect(notices.map((notification) => notification.message)).toEqual([
+      "Model changed to Model B",
+      "Thinking level changed to high",
+      "Session renamed to Renamed session",
+    ]);
+
     const before = projector.getBus().getSnapshot().revision;
     store.applySessionState({ contextUsage: { tokens: 10, contextWindow: 100, percent: 10 } });
     expect(projector.getBus().getSnapshot().revision).toBe(before);
@@ -278,7 +369,7 @@ describe("NotificationProjector", () => {
     projector.dispose();
   });
 
-  test("accepts every non-modal U4 handoff through a typed presentation seam", () => {
+  test("projects non-modal U4 handoffs and contains projection failures", () => {
     const store = new OmpRuntimeStore({ threadId });
     const editor: Array<{ text: string; context: string }> = [];
     const projector = new NotificationProjector({
@@ -310,21 +401,11 @@ describe("NotificationProjector", () => {
     );
     projector.present({ kind: "setTitle", title: "Safe title" }, { threadId });
     projector.present({ kind: "set_editor_text", text: "draft" }, { threadId });
-    projector.present(
-      {
-        kind: "open_url",
-        url: "https://accounts.example/authorize?token=secret",
-        launchUrl: "https://localhost/callback",
-        instructions: "Return after signing in.",
-      },
-      { threadId, requestId: "oauth-1" as UiRequestId },
-    );
 
     expect(projector.getSnapshot().statuses).toEqual([
       { statusKey: "build", statusText: "Running" },
     ]);
     expect(projector.getSnapshot().widgets[0]).toMatchObject({
-      availability: "available",
       lines: [
         "line-0",
         "line-1",
@@ -340,33 +421,86 @@ describe("NotificationProjector", () => {
     });
     expect(projector.getSnapshot().title).toBe("Safe title");
     expect(editor).toEqual([{ text: "draft", context: String(threadId) }]);
-    expect(projector.getSnapshot().oauth).toMatchObject({
-      copyTarget: "https://localhost/callback",
-      host: "localhost",
-    });
-    expect(projector.getBus().get(threadId, "extension:oauth:oauth-1")?.message).toBe(
-      "Sign-in is ready to continue",
-    );
-    expect(projector.getBus().getSnapshot().notifications[1]?.message).not.toContain("secret");
 
-    expect(() =>
-      projector.present({ kind: "open_url", url: "javascript:alert(1)" }, { threadId }),
-    ).toThrow(AppFailure);
+    expect(() => projector.present({ kind: "setTitle", title: " " }, { threadId })).not.toThrow();
     expect(projector.getSnapshot().error?.code).toBe("invalid_args");
+    expect(projector.getBus().get(threadId, "projection:error")).toMatchObject({
+      severity: "error",
+      placement: "banner",
+    });
+    projector.present(
+      { kind: "notify", message: "Extension recovered", notifyType: "info" },
+      { threadId },
+    );
+    expect(projector.getSnapshot().error).toBeNull();
+    expect(projector.getBus().get(threadId, "projection:error")).toBeUndefined();
     projector.dispose();
   });
 
-  test("represents unsupported component widgets as unavailable instead of successful text", () => {
+  test("reports editor handoffs as unavailable when no composer host is attached", () => {
+    const projector = new NotificationProjector({ source: new OmpRuntimeStore({ threadId }) });
+    projector.present({ kind: "set_editor_text", text: "draft" }, { threadId });
+
+    expect(projector.getSnapshot().error?.code).toBe("unavailable");
+    expect(projector.getBus().get(threadId, "projection:error")).toMatchObject({
+      severity: "error",
+      placement: "banner",
+    });
+    projector.dispose();
+  });
+
+  test("removes a widget when omp sends an empty widget handoff", () => {
     const store = new OmpRuntimeStore({ threadId });
     const projector = new NotificationProjector({ source: store });
-    projector.present({ kind: "setWidget", widgetKey: "component" }, { threadId });
+    projector.present(
+      { kind: "setWidget", widgetKey: "component", widgetLines: ["ready"] },
+      { threadId },
+    );
     expect(projector.getSnapshot().widgets).toEqual([
-      expect.objectContaining({
-        widgetKey: "component",
-        availability: "unavailable",
-        lines: [],
-      }),
+      { widgetKey: "component", placement: "aboveEditor", lines: ["ready"] },
     ]);
+
+    projector.present({ kind: "setWidget", widgetKey: "component" }, { threadId });
+    expect(projector.getSnapshot().widgets).toEqual([]);
+    expect(projector.getSnapshot().error).toBeNull();
+    projector.dispose();
+  });
+  test("clears retry state after a refetch and keeps projection on its store thread", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const projector = new NotificationProjector({ source: store, events: store });
+    publishRuntimeEvent(
+      store,
+      {
+        type: "auto_retry_start",
+        attempt: 1,
+        maxAttempts: 3,
+        delayMs: 1_000,
+        errorMessage: "temporary",
+      },
+      1,
+    );
+    expect(projector.getBus().get(threadId, "retry:active")).toBeDefined();
+
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    store.resetSequence(3);
+    expect(projector.getBus().get(threadId, "retry:active")).toBeUndefined();
+
+    publishRuntimeEvent(store, { type: "notice", level: "error", message: "already shown" }, 4);
+    expect(projector.getBus().getSnapshot().notifications).not.toContainEqual(
+      expect.objectContaining({ message: "already shown" }),
+    );
+    const otherThread = ThreadIdSchema.parse("thread-other");
+    projector.present(
+      { kind: "notify", message: "on the right thread", notifyType: "info" },
+      { threadId: otherThread },
+    );
+    expect(
+      projector
+        .getBus()
+        .getSnapshot()
+        .notifications.find((notification) => notification.message === "on the right thread")
+        ?.threadId,
+    ).toBe(threadId);
     projector.dispose();
   });
 });

@@ -190,6 +190,12 @@ export interface RuntimeSnapshot {
 export type RuntimeStoreListener = (snapshot: RuntimeSnapshot) => void;
 export type RuntimeNotificationFrame = RpcSessionNotification;
 export type RuntimeNotificationListener = (frame: RuntimeNotificationFrame, seq: number) => void;
+export type RuntimeOmpEventListener = (event: OmpEvent, seq: number) => void;
+
+interface OmpEventSubscription {
+  readonly types: ReadonlySet<string> | undefined;
+  readonly listener: RuntimeOmpEventListener;
+}
 
 interface NotificationSubscription {
   readonly types: ReadonlySet<string>;
@@ -713,6 +719,7 @@ export class OmpRuntimeStore {
   private readonly listeners = new Set<RuntimeStoreListener>();
   private readonly transport: OmpRuntimeTransport;
   private readonly notificationSubscriptions = new Set<NotificationSubscription>();
+  private readonly ompEventSubscriptions = new Set<OmpEventSubscription>();
   private readonly streamKeys = new Map<string, ProvisionalMessageKey>();
   private generatedMessageNumber = 0;
   /** The highest seq ever passed to `ingest`, including events dropped during a gap. */
@@ -755,6 +762,22 @@ export class OmpRuntimeStore {
     };
     this.notificationSubscriptions.add(subscription);
     return () => this.notificationSubscriptions.delete(subscription);
+  }
+
+  /**
+   * Forward selected Omp events only after their contiguous event has been committed to this store.
+   * `undefined` subscribes to every applied Omp event; an empty list subscribes to none.
+   */
+  public subscribeOmpEvents(
+    types: readonly string[] | undefined,
+    listener: RuntimeOmpEventListener,
+  ): () => void {
+    const subscription: OmpEventSubscription = {
+      types: types === undefined ? undefined : new Set(types),
+      listener,
+    };
+    this.ompEventSubscriptions.add(subscription);
+    return () => this.ompEventSubscriptions.delete(subscription);
   }
 
   /**
@@ -810,9 +833,8 @@ export class OmpRuntimeStore {
     }
     next.lastSeq = seq;
     this.commit(next);
-    if (eventValue.kind === "notification") {
-      this.forwardNotification(eventValue.frame, seq);
-    }
+    if (event.kind === "omp") this.forwardOmpEvent(event.event, seq);
+    if (event.kind === "notification") this.forwardNotification(event.frame, seq);
   }
 
   /**
@@ -825,7 +847,16 @@ export class OmpRuntimeStore {
    */
   private ingestAcrossGap(eventValue: Record<string, unknown>, seq: number): void {
     const next = mutableSnapshot(this.snapshot);
-    if (eventValue.kind === "notification") this.reduceNotification(next, eventValue.frame, seq);
+    const rawFrame = eventValue.frame;
+    const isExtensionCancel =
+      eventValue.kind === "notification" &&
+      isRecord(rawFrame) &&
+      rawFrame.type === "extension_ui_request" &&
+      rawFrame.method === "cancel";
+    if (eventValue.kind === "notification") {
+      this.reduceNotification(next, rawFrame, seq);
+      if (isExtensionCancel) this.forwardNotification(rawFrame, seq);
+    }
     const recorded = next.pending !== this.snapshot.pending || next.error !== this.snapshot.error;
     if (this.snapshot.needsRefetch && !recorded) return;
     next.needsRefetch = true;
@@ -1071,6 +1102,14 @@ export class OmpRuntimeStore {
     for (const subscription of this.notificationSubscriptions) {
       if (subscription.types.has(rawFrame.type)) {
         subscription.listener(rawFrame as unknown as RuntimeNotificationFrame, seq);
+      }
+    }
+  }
+
+  private forwardOmpEvent(event: OmpEvent, seq: number): void {
+    for (const subscription of this.ompEventSubscriptions) {
+      if (subscription.types === undefined || subscription.types.has(event.type)) {
+        subscription.listener(event, seq);
       }
     }
   }

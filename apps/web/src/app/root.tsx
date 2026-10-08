@@ -45,6 +45,8 @@ import type {
 } from "@/modules/D5/contract";
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { SessionInfoModel } from "@/modules/D5/session/info";
+import { NotificationFeedback } from "@/modules/N1/feedback";
+import { NotificationProjector } from "@/modules/N1/notifications";
 import {
   createP3Runs,
   P3EditSurface,
@@ -88,7 +90,10 @@ import {
 } from "@/modules/U4/contract/host-answers";
 import { renderDialogRequest } from "@/modules/U4/dialogs";
 import { DialogHostController } from "@/modules/U4/host";
-import { ExtensionUiRequestRouterController } from "@/modules/U4/router";
+import {
+  ExtensionUiRequestRouterController,
+  subscribeNonModalExtensionUi,
+} from "@/modules/U4/router";
 import { PanelShell } from "@/modules/U5/panel/shell";
 import { TodoChecklist } from "@/modules/U5/todo/checklist/checklist";
 import { projectTodoSnapshot } from "@/modules/U5/todo/model";
@@ -119,6 +124,32 @@ const EMPTY_HISTORY: SelectedThreadHistoryState = {
   error: null,
 };
 const EMPTY_CAPABILITIES: CapabilityMap = Object.freeze({});
+function useNotificationProjector(
+  store: OmpRuntimeStore,
+  onEditorText: (text: string, context: { readonly threadId: ThreadId }) => void,
+): NotificationProjector {
+  const projectorRef = useRef<NotificationProjector | null>(null);
+  const generationRef = useRef(0);
+  if (projectorRef.current === null) {
+    projectorRef.current = new NotificationProjector({
+      source: store,
+      events: store,
+      onEditorText,
+    });
+  }
+  useEffect(() => {
+    const projector = projectorRef.current;
+    const generation = ++generationRef.current;
+    return () => {
+      queueMicrotask(() => {
+        if (generationRef.current !== generation || projectorRef.current !== projector) return;
+        projector?.dispose();
+        projectorRef.current = null;
+      });
+    };
+  }, []);
+  return projectorRef.current;
+}
 
 /** The app's tool claims. The chat's exact-name map and the prefix resolver below both read it. */
 const toolRegistry = createToolRegistry(TOOL_RENDERERS);
@@ -267,11 +298,13 @@ function RouterBridge({
   threadId,
   queueController,
   dialogHost,
+  notificationProjector,
 }: {
   readonly store: OmpRuntimeStore;
   readonly threadId: ThreadId;
   readonly queueController: QueueController;
   readonly dialogHost: DialogHostController;
+  readonly notificationProjector: NotificationProjector;
 }) {
   // Stable: the router must not be rebuilt every time some overlay opens or closes.
   const overlay = useStableOverlayHost();
@@ -319,8 +352,9 @@ function RouterBridge({
         dialogHost,
         overlay,
         hostAnswers,
+        presentations: notificationProjector,
       }),
-    [dialogHost, hostAnswers, overlay],
+    [dialogHost, hostAnswers, notificationProjector, overlay],
   );
   useEffect(() => {
     const sync = () => {
@@ -334,14 +368,23 @@ function RouterBridge({
           },
           { threadId },
         )
-        .catch(() => undefined);
+        .catch(() =>
+          notificationProjector.present(
+            { kind: "notify", message: "An omp update could not be shown.", notifyType: "error" },
+            { threadId },
+          ),
+        );
     };
     const unsubscribe = store.subscribe(sync);
     sync();
     return () => {
       unsubscribe();
     };
-  }, [router, store, threadId]);
+  }, [router, store, threadId, notificationProjector.present]);
+  useEffect(
+    () => subscribeNonModalExtensionUi(store, router, { threadId }),
+    [router, store, threadId],
+  );
   return null;
 }
 
@@ -774,6 +817,11 @@ function ActiveThreadReady({
       }),
     [client, threadId],
   );
+  const setEditorText = useCallback(
+    (text: string) => draftController.setDraft(text, attachmentManager.toDraftRefs()),
+    [attachmentManager, draftController],
+  );
+  const notificationProjector = useNotificationProjector(store, setEditorText);
   const submit = async (intent: PromptIntent): Promise<void> => {
     onPromptSent();
     // Sending shows the newest message, wherever the reader had scrolled to; the transcript then
@@ -901,6 +949,10 @@ function ActiveThreadReady({
         />
       ),
     },
+    notifications: {
+      title: "Notifications",
+      render: () => <NotificationFeedback projector={notificationProjector} />,
+    },
   };
   const area = (name: LayoutAreaName) => (
     <LayoutArea area={name} capabilities={capabilities} surfaces={threadSurfaces} />
@@ -928,6 +980,7 @@ function ActiveThreadReady({
       />
       <RouterBridge
         dialogHost={dialogHost}
+        notificationProjector={notificationProjector}
         queueController={queueController}
         store={store}
         threadId={threadId}
