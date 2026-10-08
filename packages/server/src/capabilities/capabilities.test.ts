@@ -123,11 +123,17 @@ describe("probeCapabilities", () => {
     expect(result.capabilities["omp.host-uris"]).toEqual({ state: "available", via: "rpc" });
     expect(result.capabilities["omp.subagent-events"]).toEqual({ state: "available", via: "rpc" });
     expect(result.capabilities["omp.live-voice"]).toEqual({ state: "available", via: "rpc" });
+    expect(result.capabilities["upstream.mcp-reconnect"]).toEqual({
+      state: "unavailable",
+      via: "upstream",
+      detail: "Reconnect this MCP server in the omp terminal; this app cannot reconnect it.",
+    });
     for (const key of [
       "host.config",
       "host.workspace-state",
       "host.attachments",
       "host.session-import",
+      "host.mcp",
     ] as const) {
       expect(result.capabilities[key]).toEqual({ state: "available", via: "host" });
     }

@@ -1,11 +1,13 @@
-import { AppFailure, CapabilityKey } from "@omp-app/contracts";
+import { AppFailure, CapabilityKey, McpCommandRemoteUrl } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import {
+  HostToolDefinition,
   HostToolName,
   HostUriScheme,
   I1_CAPABILITIES,
   McpPromptInvokeArgs,
   McpServerConfig,
+  McpServerName,
   McpServerSummary,
   McpSettingsSection,
   McpUrlOrigin,
@@ -17,12 +19,24 @@ describe("I1 browser contracts", () => {
   test("publishes the host and client capability gates", () => {
     expect(I1_CAPABILITIES).toEqual({
       mcp: "host.mcp",
+      mcpReconnect: "upstream.mcp-reconnect",
       mcpSettings: "client.mcp-settings",
       hostTools: "omp.host-tools",
       hostUris: "omp.host-uris",
     });
     for (const capability of Object.values(I1_CAPABILITIES)) {
       expect(CapabilityKey.safeParse(capability).success).toBe(true);
+    }
+  });
+
+  test("allows safe HTTP(S) server paths but rejects URL credentials, queries and fragments", () => {
+    expect(McpCommandRemoteUrl.safeParse("https://mcp.example.test/api/v1").success).toBe(true);
+    for (const value of [
+      "https://user:password@mcp.example.test/api/v1",
+      "https://mcp.example.test/api/v1?token=secret",
+      "https://mcp.example.test/api/v1#token",
+    ]) {
+      expect(McpCommandRemoteUrl.safeParse(value).success).toBe(false);
     }
   });
 
@@ -94,6 +108,20 @@ describe("I1 browser contracts", () => {
 
   test("validates host names, schemes and prompt argument shapes", () => {
     expect(HostToolName.safeParse("mcp.filesystem").success).toBe(true);
+    for (const name of ["cloudflare:cloudflare-api", "_internal", ".hidden", "-dash"]) {
+      expect(McpServerName.safeParse(name).success).toBe(true);
+    }
+    expect(McpServerName.safeParse("MaaS Slack").success).toBe(false);
+    expect(
+      HostToolDefinition.safeParse({ name: "mcp.no-description", inputSchema: {} }).success,
+    ).toBe(false);
+    expect(
+      HostToolDefinition.safeParse({
+        name: "mcp.blank-description",
+        description: " ",
+        inputSchema: {},
+      }).success,
+    ).toBe(false);
     expect(HostToolName.safeParse("mcp filesystem").success).toBe(false);
     expect(HostUriScheme.safeParse("mcp+resource").success).toBe(true);
     expect(HostUriScheme.safeParse("MCP").success).toBe(false);

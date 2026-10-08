@@ -12,6 +12,7 @@ import {
   ThreadId,
   UiRequestId,
 } from "@omp-app/contracts";
+import { z } from "zod";
 import type { Logger } from "../../logging";
 import {
   type OmpProcess,
@@ -32,6 +33,18 @@ const bootstrap: ThreadBootstrap = {
   folderPath: folder,
   sessionFile: authorityFile,
 };
+const HostTools = z.array(z.object({ name: z.string() }).passthrough());
+const HostUriSchemes = z.array(z.object({ scheme: z.string() }).passthrough());
+
+function registeredToolNames(value: unknown): string[] {
+  const parsed = HostTools.safeParse(value);
+  return parsed.success ? parsed.data.map((tool) => tool.name) : [];
+}
+
+function registeredUriSchemes(value: unknown): string[] {
+  const parsed = HostUriSchemes.safeParse(value);
+  return parsed.success ? parsed.data.map((scheme) => scheme.scheme) : [];
+}
 
 interface FakeIdentity {
   readonly threadId: ThreadId;
@@ -114,15 +127,19 @@ class FakeProcess implements OmpProcess {
             ? { level: frame.level }
             : command === "set_event_filter"
               ? { events: frame.events, messageUpdates: frame.messageUpdates }
-              : command === "branch"
-                ? { text: "", cancelled: false }
-                : command === "get_state"
-                  ? {
-                      sessionId: this.identity.threadId,
-                      sessionFile: this.identity.sessionFile,
-                      ...this.extraState,
-                    }
-                  : {};
+              : command === "set_host_tools"
+                ? { toolNames: registeredToolNames(frame.tools) }
+                : command === "set_host_uri_schemes"
+                  ? { schemes: registeredUriSchemes(frame.schemes) }
+                  : command === "branch"
+                    ? { text: "", cancelled: false }
+                    : command === "get_state"
+                      ? {
+                          sessionId: this.identity.threadId,
+                          sessionFile: this.identity.sessionFile,
+                          ...this.extraState,
+                        }
+                      : {};
     this.emit({ type: "response", id: frame.id, command, success: true, data });
     if (command === "branch" && this.nextIdentity !== undefined) this.identity = this.nextIdentity;
     if (command === "prompt" || command === "abort_and_prompt") {
@@ -476,6 +493,135 @@ describe("A0.7 RpcSessionPort handlers", () => {
       (frame) => frame.type === "set_subagent_subscription",
     );
     expect(commands?.map((frame) => frame.level)).toEqual(["progress", "events", "progress"]);
+  });
+  test("merges host registrations by connection and restores them after restart", async () => {
+    const created: FakeProcess[] = [];
+    const { processRegistry, registration, open, handlers } = withIdleClose(created, 1_000);
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    await open({ threadId: authorityThread }, call("two"));
+    const send = getHandler(handlers, "send");
+    const firstTool = {
+      name: "tab_one",
+      label: "tab_one",
+      description: "First tab tool",
+      parameters: { type: "object" },
+    };
+    const secondTool = {
+      name: "tab_two",
+      label: "tab_two",
+      description: "Second tab tool",
+      parameters: { type: "object" },
+    };
+    const firstScheme = { scheme: "tabone", writable: false };
+    const secondScheme = { scheme: "tabtwo", writable: false };
+
+    await expect(
+      send(
+        {
+          threadId: authorityThread,
+          registrationOwner: "owner-one",
+          command: { type: "set_host_tools", tools: [firstTool] },
+        },
+        call("one"),
+      ),
+    ).resolves.toEqual({ toolNames: ["tab_one"] });
+    await expect(
+      send(
+        {
+          threadId: authorityThread,
+          registrationOwner: "owner-two",
+          command: { type: "set_host_tools", tools: [secondTool] },
+        },
+        call("two"),
+      ),
+    ).resolves.toEqual({ toolNames: ["tab_two"] });
+    await send(
+      {
+        threadId: authorityThread,
+        registrationOwner: "owner-one",
+        command: { type: "set_host_uri_schemes", schemes: [firstScheme] },
+      },
+      call("one"),
+    );
+    await send(
+      {
+        threadId: authorityThread,
+        registrationOwner: "owner-two",
+        command: { type: "set_host_uri_schemes", schemes: [secondScheme] },
+      },
+      call("two"),
+    );
+
+    await getHandler(handlers, "restart")({ threadId: authorityThread }, call("one"));
+    let process = created.at(-1);
+    if (process === undefined) throw new Error("missing fake process");
+    const restartedTools = process.writes.filter((frame) => frame.type === "set_host_tools").at(-1);
+    const restartedSchemes = process.writes
+      .filter((frame) => frame.type === "set_host_uri_schemes")
+      .at(-1);
+    expect(restartedTools?.tools).toEqual([firstTool, secondTool]);
+    expect(restartedSchemes?.schemes).toEqual([firstScheme, secondScheme]);
+
+    await getHandler(handlers, "close")({ threadId: authorityThread }, call("one"));
+    process = created.at(-1);
+    if (process === undefined) throw new Error("missing fake process");
+    const remainingTools = process.writes.filter((frame) => frame.type === "set_host_tools").at(-1);
+    const remainingSchemes = process.writes
+      .filter((frame) => frame.type === "set_host_uri_schemes")
+      .at(-1);
+    expect(remainingTools?.tools).toEqual([secondTool]);
+    expect(remainingSchemes?.schemes).toEqual([secondScheme]);
+
+    await registration.onConnectionClosed?.("two");
+    const clearedTools = process.writes.filter((frame) => frame.type === "set_host_tools").at(-1);
+    const clearedSchemes = process.writes
+      .filter((frame) => frame.type === "set_host_uri_schemes")
+      .at(-1);
+    expect(clearedTools?.tools).toEqual([]);
+    expect(clearedSchemes?.schemes).toEqual([]);
+    await processRegistry.closeAll();
+  });
+
+  test("refuses host registrations from a connection that never opened the thread", async () => {
+    const created: FakeProcess[] = [];
+    const { processRegistry, open, handlers } = withIdleClose(created, 1_000);
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    const send = getHandler(handlers, "send");
+    const stranger = {
+      name: "tab_stranger",
+      label: "tab_stranger",
+      description: "Never released",
+      parameters: { type: "object" },
+    };
+    await expect(
+      send(
+        {
+          threadId: authorityThread,
+          registrationOwner: "owner-two",
+          command: { type: "set_host_tools", tools: [stranger] },
+        },
+        call("two"),
+      ),
+    ).rejects.toMatchObject({ appError: { code: "not_found" } });
+    await expect(
+      send(
+        {
+          threadId: authorityThread,
+          registrationOwner: "owner-two",
+          command: {
+            type: "set_host_uri_schemes",
+            schemes: [{ scheme: "tabtwo", writable: false }],
+          },
+        },
+        call("two"),
+      ),
+    ).rejects.toMatchObject({ appError: { code: "not_found" } });
+    const registrations =
+      created[0]?.writes.filter(
+        (frame) => frame.type === "set_host_tools" || frame.type === "set_host_uri_schemes",
+      ) ?? [];
+    expect(registrations).toHaveLength(0);
+    await processRegistry.closeAll();
   });
 
   test("a closed connection releases every chat it opened, and the process stops once nobody watches it", async () => {

@@ -23,6 +23,11 @@ import {
   DraftStore,
   GitState,
   GitStatePort,
+  McpCommandActionArgs,
+  McpCommandPromptListResult,
+  McpCommandResourceListResult,
+  McpCommandServerListResult,
+  McpCommandServerName,
   OmpCommandGateway,
   RestorePlan,
   RestoreResult,
@@ -493,5 +498,37 @@ describe("A1 OmpCommandGateway", () => {
     expect(CommandOutputEvent.safeParse({ threadId, output: { text: "Renamed" } }).success).toBe(
       true,
     );
+  });
+});
+describe("A1 MCP command summaries", () => {
+  test("accepts omp server names and defaults catalog truncation metadata", () => {
+    for (const name of ["cloudflare:cloudflare-api", "_internal", ".hidden", "-dash"]) {
+      expect(McpCommandServerName.safeParse(name).success).toBe(true);
+    }
+    expect(McpCommandServerName.safeParse("two  spaces").success).toBe(false);
+    expect(McpCommandServerName.safeParse("MaaS Slack").success).toBe(false);
+    expect(McpCommandServerListResult.parse({ servers: [], revision: "mcp-empty" })).toMatchObject({
+      truncated: false,
+      skippedCount: 0,
+    });
+    expect(McpCommandPromptListResult.parse({ prompts: [], revision: "mcp-empty" })).toMatchObject({
+      truncated: false,
+      skippedCount: 0,
+    });
+    expect(
+      McpCommandResourceListResult.parse({ resources: [], revision: "mcp-empty" }),
+    ).toMatchObject({ truncated: false, skippedCount: 0 });
+  });
+
+  test("keeps reconnect out of the server command port", () => {
+    expect(
+      McpCommandActionArgs.safeParse({
+        threadId,
+        operation: "reconnect",
+        operationId: "reconnect-1",
+        name: "remote",
+        scope: "user",
+      }).success,
+    ).toBe(false);
   });
 });

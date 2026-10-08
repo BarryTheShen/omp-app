@@ -78,11 +78,23 @@ export const SendCommandArgs = z
   .object({
     threadId: ThreadId,
     command: OmpCommandSchema,
+    registrationOwner: z.string().min(1).max(128).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ command, registrationOwner }) =>
+      (command.type === "set_host_tools" || command.type === "set_host_uri_schemes") ===
+      (registrationOwner !== undefined),
+    "registrationOwner must be present only for host registration commands",
+  );
 export type SendCommandArgs<K extends OmpCommandName = OmpCommandName> = {
   threadId: ThreadId;
   command: OmpCommand<K>;
+  /**
+   * Required by the runtime schema for set_host_tools and set_host_uri_schemes; optional here so
+   * callers that carry an OmpCommand union remain assignable.
+   */
+  registrationOwner?: string;
 };
 
 export const SubscribeArgs = z

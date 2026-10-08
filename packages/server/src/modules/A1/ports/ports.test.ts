@@ -16,6 +16,7 @@ import {
   GithubRefsPort,
   GitStatePort,
   HostMetadataPort,
+  McpCommandsPort,
   MemoryStore,
   OmpCommandGateway,
   PlanDocumentStore,
@@ -48,7 +49,7 @@ type FakeCommandResult = {
   readonly agentInvoked: boolean;
   readonly promptSettled: boolean;
   readonly sessionSettled: boolean;
-  readonly outputs: readonly [];
+  readonly outputs: readonly { readonly text: string }[];
   readonly sessionUpdates: readonly [];
   readonly configUpdates: readonly [];
 };
@@ -108,14 +109,14 @@ function hello(session: { receive(frame: string): void }): void {
   );
 }
 
-function commandResult(command: string): FakeCommandResult {
+function commandResult(command: string, text = ""): FakeCommandResult {
   return {
     command,
     status: "completed",
     agentInvoked: false,
     promptSettled: true,
     sessionSettled: true,
-    outputs: [],
+    outputs: text.length === 0 ? [] : [{ text }],
     sessionUpdates: [],
     configUpdates: [],
   };
@@ -198,7 +199,10 @@ function createContext(
     },
     ompCommandGateway: {
       run: async (args: { command: string }, _options?: { signal?: AbortSignalLike }) =>
-        commandResult(args.command),
+        commandResult(
+          args.command,
+          args.command === "/mcp list" ? "No MCP servers configured." : "",
+        ),
       onOutput: () => () => undefined,
     },
     sessionPinStore: {
@@ -355,6 +359,7 @@ describe("A1.9 port registrations", () => {
     const session = dispatcher.open(socket);
     hello(session);
     const calls: Array<[string, string, unknown]> = [
+      ["A1.mcpCommands", "servers", { threadId: "session-1" }],
       ["A1.sessionFileStore", "listSessions", { folder: "/workspace" }],
       ["A1.configStore", "list", { folder: null }],
       ["A1.draftStore", "get", { scope: { kind: "thread", threadId: "session-1" } }],
@@ -397,6 +402,7 @@ describe("A1.9 port registrations", () => {
       GitStatePort,
       HostMetadataPort,
       MemoryStore,
+      McpCommandsPort,
       OmpCommandGateway,
       PlanDocumentStore,
       AttachmentBlobStore,

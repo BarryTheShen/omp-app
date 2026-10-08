@@ -72,6 +72,8 @@ export interface RealApp {
   readonly folder: string;
   /** A second, empty folder for tests that switch folders. */
   readonly otherFolder: string;
+  /** This harness run's isolated user-level MCP configuration. */
+  readonly mcpConfigPath: string;
   /** Opens the app in a new browser page, signed in, and waits for it to render. */
   readonly open: (options?: OpenOptions) => Promise<Page>;
   /** Console errors and uncaught page errors from every page opened so far. A test must end clean. */
@@ -298,7 +300,7 @@ async function stopChild(child: ChildProcess | undefined): Promise<void> {
   await promise;
 }
 
-const enabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
+export const realOmpEnabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
 
 /**
  * A test with a `realApp` fixture: a fresh composed app per test, torn down afterwards. A spec can
@@ -342,7 +344,7 @@ export const realTest = test.extend<{
     use,
     testInfo,
   ) => {
-    testInfo.skip(!enabled, "needs OMP_APP_REAL_OMP=1 and omp installed");
+    testInfo.skip(!realOmpEnabled, "needs OMP_APP_REAL_OMP=1 and omp installed");
     // Real omp starts a process per chat: a loaded machine needs more than the default 30 s.
     testInfo.slow();
     await mkdir(resolve(APP_ROOT, ".data"), { recursive: true });
@@ -419,6 +421,7 @@ export const realTest = test.extend<{
       await use({
         folder,
         otherFolder,
+        mcpConfigPath: join(agentDir, "mcp.json"),
         open,
         problems,
         ompProcesses,

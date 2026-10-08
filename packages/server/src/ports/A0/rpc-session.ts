@@ -7,6 +7,7 @@ import {
   AppFailure,
   type CapabilityMap,
   type FolderPath,
+  type OmpWire,
   type OpenThreadArgs,
   type RpcSessionEvent,
   RpcSessionPort,
@@ -21,6 +22,7 @@ import {
   ThreadId,
 } from "@omp-app/contracts";
 import { type CommandFuture, RpcSession } from "@omp-app/omp-rpc";
+import { z } from "zod";
 import { capabilitiesForProtocol } from "../../capabilities";
 import type { Logger } from "../../logging";
 import type { OmpProcess, OmpProcessOptions, OmpProcessRegistry } from "../../process";
@@ -75,6 +77,9 @@ interface ThreadEntry {
   readonly viewers: Map<string, number>;
   readonly preferences: Map<string, ViewerPreference>;
   readonly startupEvents: RpcSessionEvent[];
+  hostToolRegistrations: Map<string, Map<string, readonly OmpWire.HostToolDefinition[]>>;
+  hostUriRegistrations: Map<string, Map<string, readonly OmpWire.HostUriSchemeDefinition[]>>;
+  hostRegistrationQueue: Promise<void>;
   rekeyed: boolean;
   appliedLevel?: ViewerPreference["level"];
   appliedEvents?: string[] | null;
@@ -94,6 +99,31 @@ const SESSION_SWITCH_COMMANDS: Record<string, true> = {
   open_session: true,
   fork: true,
 };
+const HostToolNamesResult = z.strictObject({ toolNames: z.array(z.string()) });
+const HostUriSchemesResult = z.strictObject({ schemes: z.array(z.string()) });
+function mergeHostTools(
+  registrations: Map<string, Map<string, readonly OmpWire.HostToolDefinition[]>>,
+): OmpWire.HostToolDefinition[] {
+  const merged = new Map<string, OmpWire.HostToolDefinition>();
+  for (const owners of registrations.values()) {
+    for (const tools of owners.values()) {
+      for (const tool of tools) merged.set(tool.name, tool);
+    }
+  }
+  return [...merged.values()];
+}
+
+function mergeHostUriSchemes(
+  registrations: Map<string, Map<string, readonly OmpWire.HostUriSchemeDefinition[]>>,
+): OmpWire.HostUriSchemeDefinition[] {
+  const merged = new Map<string, OmpWire.HostUriSchemeDefinition>();
+  for (const owners of registrations.values()) {
+    for (const schemes of owners.values()) {
+      for (const scheme of schemes) merged.set(scheme.scheme, scheme);
+    }
+  }
+  return [...merged.values()];
+}
 
 function notFound(message: string): AppFailure {
   return new AppFailure({ code: "not_found", message, retryable: false });
@@ -225,6 +255,9 @@ export class RpcSessionPortRuntime {
       viewers: new Map(),
       preferences: new Map(),
       startupEvents: [],
+      hostToolRegistrations: new Map(),
+      hostUriRegistrations: new Map(),
+      hostRegistrationQueue: Promise.resolve(),
       rekeyed: false,
       arbitration: Promise.resolve(),
     };
@@ -263,6 +296,36 @@ export class RpcSessionPortRuntime {
     call: PortHandlerContext,
   ): Promise<unknown> {
     const entry = this.#entry(args.threadId);
+    if (args.command.type === "set_host_tools") {
+      const owner = args.registrationOwner;
+      if (owner === undefined) {
+        throw new AppFailure({
+          code: "invalid_args",
+          message: "A host registration owner is required.",
+          retryable: false,
+        });
+      }
+      this.#requireViewer(entry, call.connectionId);
+      return this.#setHostTools(entry, call.connectionId, owner, args.command.tools, call.signal);
+    }
+    if (args.command.type === "set_host_uri_schemes") {
+      const owner = args.registrationOwner;
+      if (owner === undefined) {
+        throw new AppFailure({
+          code: "invalid_args",
+          message: "A host registration owner is required.",
+          retryable: false,
+        });
+      }
+      this.#requireViewer(entry, call.connectionId);
+      return this.#setHostUriSchemes(
+        entry,
+        call.connectionId,
+        owner,
+        args.command.schemes,
+        call.signal,
+      );
+    }
     const future = entry.session.send(args.command, { signal: call.signal }) as CommandFuture<
       unknown,
       unknown
@@ -273,6 +336,138 @@ export class RpcSessionPortRuntime {
       await this.#refreshIdentity(entry, call.signal);
     }
     return admitted;
+  }
+  #setHostTools(
+    entry: ThreadEntry,
+    connectionId: string,
+    owner: string,
+    tools: readonly OmpWire.HostToolDefinition[],
+    signal: AbortSignalLike,
+  ): Promise<{ readonly toolNames: string[] }> {
+    return this.#serializeHostRegistrations(entry, async () => {
+      const next = new Map(entry.hostToolRegistrations);
+      const owners = new Map(next.get(connectionId) ?? []);
+      owners.set(owner, tools);
+      next.set(connectionId, owners);
+      const registeredNames = await this.#writeHostTools(entry, next, signal);
+      entry.hostToolRegistrations = next;
+      const ownerNames = new Set(tools.map((tool) => tool.name));
+      return { toolNames: registeredNames.filter((name) => ownerNames.has(name)) };
+    });
+  }
+
+  #setHostUriSchemes(
+    entry: ThreadEntry,
+    connectionId: string,
+    owner: string,
+    schemes: readonly OmpWire.HostUriSchemeDefinition[],
+    signal: AbortSignalLike,
+  ): Promise<{ readonly schemes: string[] }> {
+    return this.#serializeHostRegistrations(entry, async () => {
+      const next = new Map(entry.hostUriRegistrations);
+      const owners = new Map(next.get(connectionId) ?? []);
+      owners.set(owner, schemes);
+      next.set(connectionId, owners);
+      const registeredSchemes = await this.#writeHostUriSchemes(entry, next, signal);
+      entry.hostUriRegistrations = next;
+      const ownerSchemes = new Set(schemes.map((scheme) => scheme.scheme));
+      return { schemes: registeredSchemes.filter((scheme) => ownerSchemes.has(scheme)) };
+    });
+  }
+
+  async #writeHostTools(
+    entry: ThreadEntry,
+    registrations: Map<string, Map<string, readonly OmpWire.HostToolDefinition[]>>,
+    signal: AbortSignalLike,
+  ): Promise<string[]> {
+    const future = entry.session.send(
+      { type: "set_host_tools", tools: mergeHostTools(registrations) },
+      { signal },
+    ) as CommandFuture<unknown, unknown>;
+    void future.catch(() => undefined);
+    const result = HostToolNamesResult.safeParse(await future.admitted);
+    if (!result.success) {
+      throw new AppFailure({
+        code: "internal",
+        message: "omp returned an invalid host tool registration result.",
+        retryable: false,
+      });
+    }
+    return result.data.toolNames;
+  }
+
+  async #writeHostUriSchemes(
+    entry: ThreadEntry,
+    registrations: Map<string, Map<string, readonly OmpWire.HostUriSchemeDefinition[]>>,
+    signal: AbortSignalLike,
+  ): Promise<string[]> {
+    const future = entry.session.send(
+      { type: "set_host_uri_schemes", schemes: mergeHostUriSchemes(registrations) },
+      { signal },
+    ) as CommandFuture<unknown, unknown>;
+    void future.catch(() => undefined);
+    const result = HostUriSchemesResult.safeParse(await future.admitted);
+    if (!result.success) {
+      throw new AppFailure({
+        code: "internal",
+        message: "omp returned an invalid host URI registration result.",
+        retryable: false,
+      });
+    }
+    return result.data.schemes;
+  }
+
+  #serializeHostRegistrations<T>(entry: ThreadEntry, operation: () => Promise<T>): Promise<T> {
+    const current = entry.hostRegistrationQueue.then(operation, operation);
+    entry.hostRegistrationQueue = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    return current;
+  }
+  #releaseHostRegistrations(
+    entry: ThreadEntry,
+    connectionId: string,
+    signal: AbortSignalLike,
+  ): Promise<void> {
+    return this.#serializeHostRegistrations(entry, async () => {
+      const hasTools = entry.hostToolRegistrations.has(connectionId);
+      const hasSchemes = entry.hostUriRegistrations.has(connectionId);
+      if (!hasTools && !hasSchemes) return;
+
+      const tools = new Map(entry.hostToolRegistrations);
+      const schemes = new Map(entry.hostUriRegistrations);
+      tools.delete(connectionId);
+      schemes.delete(connectionId);
+      entry.hostToolRegistrations = tools;
+      entry.hostUriRegistrations = schemes;
+
+      const updates: Promise<unknown>[] = [];
+      if (hasTools) updates.push(this.#writeHostTools(entry, tools, signal));
+      if (hasSchemes) updates.push(this.#writeHostUriSchemes(entry, schemes, signal));
+      const results = await Promise.allSettled(updates);
+      for (const result of results) {
+        if (result.status === "rejected") {
+          console.error(
+            "[omp-app] could not remove a closed connection's host registrations",
+            result.reason,
+          );
+        }
+      }
+    });
+  }
+
+  #reapplyHostRegistrations(entry: ThreadEntry, signal: AbortSignalLike): Promise<void> {
+    return this.#serializeHostRegistrations(entry, async () => {
+      const updates: Promise<unknown>[] = [];
+      if (entry.hostToolRegistrations.size > 0) {
+        updates.push(this.#writeHostTools(entry, entry.hostToolRegistrations, signal));
+      }
+      if (entry.hostUriRegistrations.size > 0) {
+        updates.push(this.#writeHostUriSchemes(entry, entry.hostUriRegistrations, signal));
+      }
+      await Promise.all(updates);
+    });
   }
 
   subscribe(args: SubscribeArgs, _call: PortHandlerContext) {
@@ -319,7 +514,7 @@ export class RpcSessionPortRuntime {
     };
   }
 
-  async restart(args: { threadId: ThreadId }, _call: PortHandlerContext): Promise<null> {
+  async restart(args: { threadId: ThreadId }, call: PortHandlerContext): Promise<null> {
     const entry = this.#entry(args.threadId);
     const viewerCount = [...entry.viewers.values()].reduce((total, count) => total + count, 0);
     entry.unsubscribeEvents();
@@ -336,6 +531,7 @@ export class RpcSessionPortRuntime {
     });
     await process.start();
     await replacement.start();
+    await this.#reapplyHostRegistrations(entry, call.signal);
     return null;
   }
 
@@ -343,8 +539,10 @@ export class RpcSessionPortRuntime {
     const entry = this.#entry(args.threadId);
     const count = entry.viewers.get(call.connectionId) ?? 0;
     if (count > 0) {
-      if (count === 1) entry.viewers.delete(call.connectionId);
-      else entry.viewers.set(call.connectionId, count - 1);
+      if (count === 1) {
+        await this.#releaseHostRegistrations(entry, call.connectionId, call.signal);
+        entry.viewers.delete(call.connectionId);
+      } else entry.viewers.set(call.connectionId, count - 1);
       entry.preferences.delete(call.connectionId);
       this.#context.processRegistry.release(entry.bootstrap.threadId);
       await this.#arbitrate(entry, call.signal);
@@ -364,6 +562,7 @@ export class RpcSessionPortRuntime {
     for (const entry of new Set(this.#entries.values())) {
       const count = entry.viewers.get(connectionId) ?? 0;
       if (count === 0) continue;
+      await this.#releaseHostRegistrations(entry, connectionId, new AbortController().signal);
       entry.viewers.delete(connectionId);
       entry.preferences.delete(connectionId);
       for (let opened = 0; opened < count; opened += 1) {
@@ -411,6 +610,14 @@ export class RpcSessionPortRuntime {
     const entry = this.#entryOrUndefined(threadId);
     if (entry === undefined) throw notFound(`No open thread ${threadId}`);
     return entry;
+  }
+
+  /** Host registrations are released through a connection's viewer count, so only a viewer may make one. */
+  #requireViewer(entry: ThreadEntry, connectionId: string): void {
+    if ((entry.viewers.get(connectionId) ?? 0) > 0) return;
+    throw notFound(
+      "Open this chat on this connection before registering host tools or URI schemes.",
+    );
   }
 
   async #resolveBootstrap(

@@ -40,6 +40,12 @@ export const RPC_UNKNOWN_COMMAND_SOURCE =
 export const RPC_INVALID_ARGUMENT_SOURCE =
   "omp-v18.6.1:packages/coding-agent/src/modes/rpc/rpc-mode.ts:1760-1765,2400-2402; docs/rpc.md:114-119,283-290";
 
+const MCP_RECONNECT_UNAVAILABLE: CapabilityStatus = {
+  state: "unavailable",
+  via: "upstream",
+  detail: "Reconnect this MCP server in the omp terminal; this app cannot reconnect it.",
+};
+
 /**
  * Host seams that are registered by the A1 bridge and do not require an omp probe. Every `host.*`
  * capability an A1 port registration declares must be listed here (except `host.github-refs`, which
@@ -56,6 +62,7 @@ export const DEFAULT_HOST_CAPABILITIES = [
   "host.file-search",
   "host.git-state",
   "host.metadata",
+  "host.mcp",
   "host.memory-store",
   "host.plan-documents",
   "host.provider-accounts",
@@ -335,6 +342,9 @@ function addCapability(
  * is never sent anywhere, because the probe sends no prompt.
  */
 const PROBE_PLACEHOLDER_KEY = ["omp", "app", "capability", "probe"].join("-");
+function addUnavailableUpstreamCapabilities(map: Record<string, CapabilityStatus>): void {
+  addCapability(map, "upstream.mcp-reconnect", MCP_RECONNECT_UNAVAILABLE);
+}
 
 function isolatedProbeEnvironment(
   base: Readonly<Record<string, string | undefined>>,
@@ -384,6 +394,7 @@ function timedOutProbeResult(
         : available("host"),
     );
   }
+  addUnavailableUpstreamCapabilities(capabilities);
   return { capabilities: CapabilityMap.parse(capabilities), protocolVersion: 1, evidence };
 }
 
@@ -509,6 +520,7 @@ export async function probeCapabilities(
               "gh --version is unavailable; GitHub references use their explicit fallback path.",
           },
     );
+    addUnavailableUpstreamCapabilities(capabilities);
     return {
       capabilities: CapabilityMap.parse(capabilities),
       protocolVersion: session.protocolVersion,

@@ -61,7 +61,7 @@ export const I1_MCP_SERVER_DESCRIPTORS = [
     owner: "I1",
     title: "Reconnect MCP server",
     covers: ["C4.mcp-reconnect"],
-    requires: ["host.command-gateway", "host.mcp"],
+    requires: ["host.command-gateway", "host.mcp", "upstream.mcp-reconnect"],
   },
   {
     kind: "command",

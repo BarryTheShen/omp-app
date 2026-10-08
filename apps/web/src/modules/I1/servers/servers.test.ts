@@ -1,50 +1,97 @@
 import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
-  type CommandRunResult,
-  OmpCommandGateway,
+  McpCommandActionResult,
+  McpCommandPromptListResult,
+  McpCommandResourceListResult,
+  McpCommandServerListResult,
+  McpCommandServerSummary,
+  McpCommandsPort,
   type PortClient,
-  type SlashCommand,
   ThreadId,
   validateRegistry,
 } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   createMcpServerPort,
   I1_MCP_SERVER_DESCRIPTORS,
   type McpAddServerArgs,
   type McpServerLifecyclePort,
-  parseMcpServerActionOutput,
-  parseMcpServerListOutput,
 } from ".";
 
 const threadId = ThreadId.parse("thread-i1-mcp");
-const listOutput = [
-  "filesystem | stdio | enabled | npx [project]",
-  "remote | http | disabled | https://mcp.example.test/api [user]",
-].join("\n");
 
-function commandResult(
-  command: SlashCommand,
-  output: string,
-  status: CommandRunResult["status"] = "completed",
-): CommandRunResult {
-  return {
-    command,
-    status,
-    agentInvoked: false,
-    promptSettled: true,
-    sessionSettled: true,
-    outputs: output === "" ? [] : [{ text: output }],
-    sessionUpdates: [],
-    configUpdates: [],
-  };
+type Commands = PortClient<typeof McpCommandsPort>;
+
+function serverSummary() {
+  return McpCommandServerSummary.parse({
+    name: "demo",
+    scope: "project",
+    transport: "stdio",
+    enabled: true,
+    status: "configured",
+    command: "demo-server",
+    auth: "unknown",
+    source: { origin: "project", reloadRequired: true },
+  });
 }
 
-function fakeClient(run: PortClient<typeof OmpCommandGateway>["run"]): AppClient {
+function addSummary(args: Extract<Parameters<Commands["action"]>[0], { operation: "add" }>) {
+  const transport = args.transport ?? (args.url === undefined ? "stdio" : "http");
+  return McpCommandServerSummary.parse({
+    name: args.name,
+    scope: args.scope,
+    transport,
+    enabled: true,
+    status: "configured",
+    ...(args.url === undefined ? {} : { url: new URL(args.url).origin }),
+    ...(args.command === undefined ? {} : { command: args.command.trim().split(/\s+/, 1)[0] }),
+    auth: "none",
+    source: { origin: args.scope, reloadRequired: true },
+  });
+}
+
+function commandPort(overrides: Partial<Commands> = {}): {
+  readonly calls: Parameters<Commands["action"]>[0][];
+  readonly commands: Commands;
+} {
+  const calls: Parameters<Commands["action"]>[0][] = [];
+  const defaults: Commands = {
+    async servers() {
+      return McpCommandServerListResult.parse({ servers: [serverSummary()], revision: "mcp-r1" });
+    },
+    async prompts() {
+      return McpCommandPromptListResult.parse({ prompts: [], revision: "mcp-p1" });
+    },
+    async resources() {
+      return McpCommandResourceListResult.parse({ resources: [], revision: "mcp-r1" });
+    },
+    async action(args) {
+      calls.push(args);
+      const status =
+        args.operation === "test"
+          ? "ready"
+          : args.operation === "disable" || args.operation === "remove"
+            ? "disabled"
+            : "configured";
+      return McpCommandActionResult.parse({
+        operationId: args.operationId,
+        status,
+        server: args.operation === "add" ? addSummary(args) : null,
+        message: "The MCP server command completed.",
+      });
+    },
+    async help() {
+      return { lines: ["MCP server commands", "  /mcp list"] };
+    },
+  };
+  return { calls, commands: { ...defaults, ...overrides } };
+}
+
+function fakeClient(commands: Commands): AppClient {
   return {
-    port(port: typeof OmpCommandGateway) {
-      if (port === OmpCommandGateway) return { run };
+    port(port: typeof McpCommandsPort) {
+      if (port === McpCommandsPort) return commands;
       throw new Error("unexpected port");
     },
   } as unknown as AppClient;
@@ -62,7 +109,7 @@ function actionArgs(overrides: Partial<Parameters<McpServerLifecyclePort["remove
 const addArgs: McpAddServerArgs = {
   ...actionArgs({ operationId: "add-1" }),
   transport: "http",
-  url: "https://mcp.example.test",
+  url: "https://mcp.example.test/api/v1",
 };
 
 describe("I1 MCP lifecycle descriptors", () => {
@@ -83,216 +130,122 @@ describe("I1 MCP lifecycle descriptors", () => {
     expect(new Set(covers).size).toBe(covers.length);
   });
 
-  test("claims only I1's /mcp namespace and gates the typed gateway", () => {
+  test("gates server commands on the host and reconnect on upstream support", () => {
     expect(validateRegistry(I1_MCP_SERVER_DESCRIPTORS)).toEqual([]);
     expect(I1_MCP_SERVER_DESCRIPTORS[0]).toMatchObject({
       id: "I1.mcp",
       slash: { name: "mcp", source: "builtin" },
       requires: ["host.command-gateway", "host.mcp"],
     });
+    expect(
+      I1_MCP_SERVER_DESCRIPTORS.find((descriptor) => descriptor.id === "I1.mcpReconnect"),
+    ).toMatchObject({ requires: ["host.command-gateway", "host.mcp", "upstream.mcp-reconnect"] });
   });
 });
 
-describe("I1 MCP output parsers", () => {
-  test("parses the exact v18.6.1 list rows into redacted summaries", () => {
-    const result = parseMcpServerListOutput(listOutput);
-    expect(result.servers).toEqual([
-      {
-        name: "filesystem",
-        scope: "project",
-        transport: "stdio",
-        enabled: true,
-        status: "configured",
-        command: "npx",
-        auth: "unknown",
-        source: { origin: "project", reloadRequired: true },
-      },
-      {
-        name: "remote",
-        scope: "user",
-        transport: "http",
-        enabled: false,
-        status: "disabled",
-        url: "https://mcp.example.test",
-        auth: "unknown",
-        source: { origin: "user", reloadRequired: true },
-      },
-    ]);
-  });
+describe("I1 typed MCP command adapter", () => {
+  test("uses A1's validated summaries and action methods for lifecycle operations", async () => {
+    const fixture = commandPort();
+    const port = createMcpServerPort(fakeClient(fixture.commands), threadId);
 
-  test("recognizes the exact empty-list output", () => {
-    const result = parseMcpServerListOutput("No MCP servers configured.");
-    expect(result.servers).toEqual([]);
-  });
-
-  test("does not guess malformed output and redacts raw failure text", () => {
-    expect(() =>
-      parseMcpServerListOutput("not a server row https://mcp.example.test/?token=secret-value"),
-    ).toThrowError(/couldn't read this output safely/);
-    try {
-      parseMcpServerListOutput("not a server row https://mcp.example.test/?token=secret-value");
-    } catch (error) {
-      expect(error).toMatchObject({
-        appError: {
-          code: "internal",
-          message: expect.stringContaining("Raw output:"),
-        },
-      });
-      expect((error as AppFailure).appError.message).not.toContain("secret-value");
-      expect((error as AppFailure).appError.message).toContain("<redacted>");
-    }
-  });
-
-  test("preserves omp's real failure reason and capability-gated reconnect state", () => {
-    expect(() =>
-      parseMcpServerActionOutput(
-        "test",
-        actionArgs(),
-        'Connection to "demo" failed: ECONNREFUSED 127.0.0.1:7331',
-      ),
-    ).toThrowError(/ECONNREFUSED/);
-    try {
-      parseMcpServerActionOutput(
-        "reconnect",
-        actionArgs(),
-        "/mcp reconnect requires OAuth or browser flows only available in the TUI client.",
-      );
-    } catch (error) {
-      expect(error).toMatchObject({ appError: { code: "unavailable" } });
-      expect((error as AppFailure).appError.message).toContain("OAuth or browser flows");
-    }
-  });
-
-  test("parses add, toggle, test, reconnect and reload confirmations exactly", () => {
-    expect(
-      parseMcpServerActionOutput("add", addArgs, 'Added MCP server "demo" (project).', addArgs),
-    ).toMatchObject({
-      operationId: "add-1",
-      status: "configured",
-      server: { name: "demo", transport: "http", url: "https://mcp.example.test" },
+    expect(port.capability).toBe("host.mcp");
+    expect(await port.list({ scope: "project" })).toMatchObject({
+      servers: [{ name: "demo", scope: "project", command: "demo-server" }],
+      revision: "mcp-r1",
     });
-    expect(
-      parseMcpServerActionOutput("enable", actionArgs(), 'Server "demo" enabled (project config).'),
-    ).toMatchObject({ status: "configured" });
-    expect(
-      parseMcpServerActionOutput(
-        "disable",
-        actionArgs({ confirmed: true }),
-        'Server "demo" disabled (project config).',
-      ),
-    ).toMatchObject({ status: "disabled" });
-    expect(
-      parseMcpServerActionOutput(
-        "test",
-        actionArgs(),
-        'Server "demo" connected (2 tools).\n  - read\n  - write',
-      ),
-    ).toMatchObject({ status: "ready" });
-    expect(
-      parseMcpServerActionOutput("reconnect", actionArgs(), 'Reconnected to "demo"\n  Tools: 2'),
-    ).toMatchObject({ status: "ready" });
-    expect(
-      parseMcpServerActionOutput(
-        "reload",
-        actionArgs({ name: "reload" }),
-        "MCP runtime reload requested.",
-      ),
-    ).toMatchObject({ status: "configured" });
-  });
-});
-
-describe("I1 MCP typed command gateway adapter", () => {
-  test("sends every lifecycle operation through A1.8 with v18.6.1 grammar", async () => {
-    const commands: string[] = [];
-    const outputByCommand: Record<string, string> = {
-      "/mcp list": listOutput,
-      "/mcp add demo --scope project --url https://mcp.example.test --transport http":
-        'Added MCP server "demo" (project).',
-      "/mcp remove demo --scope project": 'Removed server "demo" from project config.',
-      "/mcp disable demo": 'Server "demo" disabled (project config).',
-      "/mcp test demo": 'Server "demo" connected (0 tools).',
-      "/mcp reconnect demo": 'Reconnected to "demo"\n  Tools: 0',
-      "/mcp reload": "MCP runtime reload requested.",
-      "/mcp help": "MCP server management (ACP mode)\n  /mcp list",
-    };
-    const client = fakeClient(async ({ threadId: calledThread, command }) => {
-      expect(calledThread).toBe(threadId);
-      commands.push(command);
-      return commandResult(command, outputByCommand[command] ?? "");
-    });
-    const port = createMcpServerPort(client, threadId);
-
-    await port.list();
     await port.add(addArgs);
     await port.remove(actionArgs({ confirmed: true }));
-    await port.toggle(
-      { ...actionArgs({ confirmed: true }), enabled: false },
-      { signal: undefined },
-    );
+    await port.disable(actionArgs({ confirmed: true }));
+    await port.enable(actionArgs());
     await port.test(actionArgs());
-    await port.reconnect(actionArgs());
-    await port.reload(actionArgs({ name: "reload" }));
-    expect(await port.help()).toEqual(["MCP server management (ACP mode)", "  /mcp list"]);
-    expect(commands).toEqual([
-      "/mcp list",
-      "/mcp add demo --scope project --url https://mcp.example.test --transport http",
-      "/mcp remove demo --scope project",
-      "/mcp disable demo",
-      "/mcp test demo",
-      "/mcp reconnect demo",
-      "/mcp reload",
-      "/mcp help",
+    await port.reload(actionArgs());
+    expect(await port.help()).toEqual(["MCP server commands", "  /mcp list"]);
+
+    expect(fixture.calls.map((call) => call.operation)).toEqual([
+      "add",
+      "remove",
+      "disable",
+      "enable",
+      "test",
+      "reload",
     ]);
+    expect(fixture.calls[0]).toMatchObject({
+      operation: "add",
+      operationId: "add-1",
+      url: "https://mcp.example.test/api/v1",
+      scope: "project",
+    });
+    expect(fixture.calls[0]?.operation === "add" ? fixture.calls[0].url : null).toBe(
+      "https://mcp.example.test/api/v1",
+    );
+    expect(fixture.calls[1]).toMatchObject({ operation: "remove", confirmed: true });
+    expect(fixture.calls[2]).toMatchObject({ operation: "disable", confirmed: true });
+    expect(fixture.calls[5]).toEqual({ threadId, operation: "reload", operationId: "op-1" });
   });
 
-  test("requires confirmation for destructive operations before gateway admission", async () => {
-    let calls = 0;
-    const port = createMcpServerPort(
-      fakeClient(async () => {
-        calls += 1;
-        return commandResult("/mcp remove demo" as SlashCommand, "");
-      }),
-      threadId,
-    );
+  test("refuses destructive operations without confirmation before calling A1", async () => {
+    const fixture = commandPort();
+    const port = createMcpServerPort(fakeClient(fixture.commands), threadId);
+
     await expect(port.remove(actionArgs())).rejects.toMatchObject({
       appError: { code: "invalid_args" },
     });
     await expect(port.disable(actionArgs())).rejects.toMatchObject({
       appError: { code: "invalid_args" },
     });
-    expect(calls).toBe(0);
+    expect(fixture.calls).toHaveLength(0);
   });
 
-  test("preserves typed gateway failures and maps unknown transport failures safely", async () => {
-    const typed = new AppFailure({ code: "permission", message: "denied", retryable: false });
-    const typedPort = createMcpServerPort(
-      fakeClient(async () => {
-        throw typed;
-      }),
-      threadId,
+  test("rejects unsupported scopes before calling A1", async () => {
+    const servers = vi.fn(async () =>
+      McpCommandServerListResult.parse({ servers: [], revision: "mcp-r1" }),
     );
-    await expect(typedPort.list()).rejects.toBe(typed);
+    const fixture = commandPort({ servers });
+    const port = createMcpServerPort(fakeClient(fixture.commands), threadId);
 
-    const failedPort = createMcpServerPort(
-      fakeClient(async () => {
+    await expect(port.list({ scope: "foreign" })).rejects.toMatchObject({
+      appError: { code: "invalid_args" },
+    });
+    expect(servers).not.toHaveBeenCalled();
+  });
+
+  test("preserves typed A1 failures and maps unexpected transport failures safely", async () => {
+    const typed = new AppFailure({ code: "permission", message: "denied", retryable: false });
+    const typedPort = commandPort({
+      async servers() {
+        throw typed;
+      },
+    });
+    const typedAdapter = createMcpServerPort(fakeClient(typedPort.commands), threadId);
+    await expect(typedAdapter.list()).rejects.toBe(typed);
+
+    const failed = commandPort({
+      async servers() {
         throw new Error("private path and secret-token");
-      }),
-      threadId,
-    );
-    await expect(failedPort.list()).rejects.toMatchObject({
+      },
+    });
+    const failedAdapter = createMcpServerPort(fakeClient(failed.commands), threadId);
+    await expect(failedAdapter.list()).rejects.toMatchObject({
       appError: {
         code: "unavailable",
-        message: "MCP list command gateway is unavailable.",
+        message: "MCP server details are unavailable.",
         capability: "host.mcp",
+        retryable: false,
       },
     });
   });
 
-  test("surfaces an aborted typed gateway result as cancellation", async () => {
-    const port = createMcpServerPort(
-      fakeClient(async ({ command }) => commandResult(command, "", "aborted")),
-      threadId,
-    );
-    await expect(port.list()).rejects.toMatchObject({ appError: { code: "cancelled" } });
+  test("keeps the visible reconnect reason tied to upstream support", async () => {
+    const fixture = commandPort();
+    const port = createMcpServerPort(fakeClient(fixture.commands), threadId);
+
+    await expect(port.reconnect(actionArgs())).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        capability: "upstream.mcp-reconnect",
+        message: "Reconnect this MCP server in the omp terminal; this app cannot reconnect it.",
+      },
+    });
+    expect(fixture.calls).toHaveLength(0);
   });
 });

@@ -14,7 +14,6 @@ import { renderDialogRequest } from "../../U4/dialogs";
 import { DialogHostController } from "../../U4/host";
 import { McpServerSummary } from "../contract";
 import type { McpAddServerArgs, McpServerLifecyclePort } from "../servers";
-import { parseMcpServerListOutput } from "../servers";
 import {
   getMcpAuthAvailability,
   getMcpServerAuthViewModel,
@@ -232,11 +231,17 @@ describe("I1 MCP auth capability gate", () => {
     }
   });
 
-  test("renders only auth type and connection status from the typed MCP list", () => {
-    const [server] = parseMcpServerListOutput(
-      "remote | http | enabled | https://mcp.example.test [user]",
-    ).servers;
-    if (!server) throw new Error("The typed lifecycle list should contain the remote server.");
+  test("renders only auth type and connection status from the typed MCP summary", () => {
+    const server = McpServerSummary.parse({
+      name: "remote",
+      scope: "user",
+      transport: "http",
+      enabled: true,
+      status: "configured",
+      url: "https://mcp.example.test",
+      auth: "unknown",
+      source: { origin: "user", reloadRequired: true },
+    });
     const viewModel = getMcpServerAuthViewModel(server, {});
     expect(viewModel).toEqual({
       authenticationType: "Not reported",
@@ -262,7 +267,7 @@ describe("I1 MCP auth capability gate", () => {
 describe("I1 MCP add wizard", () => {
   test("adds a safe stdio config through I1.3 and tests it after saving", async () => {
     const dialog = dialogHarness([
-      { kind: "select", value: "Local process (stdio)" },
+      { kind: "select", value: "Local process" },
       { kind: "input", value: "filesystem" },
       { kind: "select", value: "Project" },
       { kind: "input", value: "node" },
@@ -313,8 +318,8 @@ describe("I1 MCP add wizard", () => {
     const server = serverHarness();
     const wizard = runMcpAddWizard({ dialogs, servers: server.servers, threadId });
 
-    await screen.findByRole("option", { name: /Local process \(stdio\)/ });
-    fireEvent.click(screen.getByRole("option", { name: /Local process \(stdio\)/ }));
+    await screen.findByRole("option", { name: /Local process/ });
+    fireEvent.click(screen.getByRole("option", { name: /Local process/ }));
     fireEvent.click(screen.getByRole("button", { name: "Choose" }));
     const name = await screen.findByRole("textbox", { name: "MCP server name" });
     fireEvent.change(name, { target: { value: "filesystem" } });
@@ -340,13 +345,13 @@ describe("I1 MCP add wizard", () => {
     expect(state.answerExtensionUi).toEqual([]);
   });
 
-  test("rejects unsafe HTTP URLs and retries without putting URL credentials in the DTO", async () => {
+  test("rejects unsafe HTTP addresses, accepts paths and keeps query data out of the summary", async () => {
     const dialog = dialogHarness([
-      { kind: "select", value: "Remote HTTP" },
+      { kind: "select", value: "Remote web server" },
       { kind: "input", value: "remote" },
       { kind: "select", value: "User" },
       { kind: "input", value: "https://mcp.example.test/path?view=1" },
-      { kind: "input", value: "https://mcp.example.test" },
+      { kind: "input", value: "https://mcp.example.test/api/mcp" },
     ]);
     const server = serverHarness();
     const result = requireAdded(
@@ -365,14 +370,14 @@ describe("I1 MCP add wizard", () => {
         .map((request) => request.title),
     ).toEqual([
       "MCP server name",
-      "MCP server origin",
-      "MCP server origin — Enter an HTTP(S) origin without credentials, path or query data.",
+      "MCP server address",
+      "MCP server address — Enter an HTTP(S) server address without credentials, query strings or fragments.",
     ]);
     expect(server.state.addArgs[0]).toMatchObject({
       name: "remote",
       scope: "user",
       transport: "http",
-      url: "https://mcp.example.test",
+      url: "https://mcp.example.test/api/mcp",
     });
     expect(JSON.stringify(server.state.addArgs[0])).not.toContain("view=1");
   });
@@ -386,7 +391,7 @@ describe("I1 MCP add wizard", () => {
     expect(cancelledServer.state.addArgs).toHaveLength(0);
     expect(cancelledServer.state.testArgs).toHaveLength(0);
     const timeoutDialog = dialogHarness([
-      { kind: "select", value: "Local process (stdio)" },
+      { kind: "select", value: "Local process" },
       { kind: "cancelled", timedOut: true },
     ]);
     const timeoutServer = serverHarness();
@@ -398,7 +403,7 @@ describe("I1 MCP add wizard", () => {
 
     const deniedDialog = dialogHarness(
       [
-        { kind: "select", value: "Remote server-sent events (SSE)" },
+        { kind: "select", value: "Remote event stream" },
         { kind: "input", value: "events" },
         { kind: "select", value: "Project" },
         { kind: "input", value: "https://events.example.test" },
@@ -415,7 +420,7 @@ describe("I1 MCP add wizard", () => {
 
   test("keeps a saved server visible when its typed connection test fails", async () => {
     const dialog = dialogHarness([
-      { kind: "select", value: "Remote HTTP" },
+      { kind: "select", value: "Remote web server" },
       { kind: "input", value: "remote" },
       { kind: "select", value: "Project" },
       { kind: "input", value: "https://mcp.example.test" },

@@ -5,9 +5,5 @@ export {
 export {
   createMcpServerPort,
   type McpAddServerArgs,
-  type McpServerActionRequest,
-  type McpServerLifecycleOperation,
   type McpServerLifecyclePort,
-  parseMcpServerActionOutput,
-  parseMcpServerListOutput,
 } from "./port";

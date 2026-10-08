@@ -1,5 +1,5 @@
 import type { AppError, ThreadId } from "@omp-app/contracts";
-import { AppFailure, UiRequestId } from "@omp-app/contracts";
+import { AppFailure, McpCommandRemoteUrl, UiRequestId } from "@omp-app/contracts";
 import type {
   ConfirmDialogRequest,
   DialogHost,
@@ -9,13 +9,7 @@ import type {
   SelectDialogRequest,
 } from "../../U4/contract";
 import type { McpServerSummary } from "../contract";
-import {
-  I1_CAPABILITIES,
-  McpServerName,
-  McpTransport,
-  McpUrlOrigin,
-  toI1Failure,
-} from "../contract";
+import { I1_CAPABILITIES, McpServerName, McpTransport, toI1Failure } from "../contract";
 import type { McpAddServerArgs, McpServerLifecyclePort } from "../servers";
 
 const ADD_WIZARD_TIMEOUT_MS = 300_000;
@@ -23,18 +17,18 @@ const ADD_WIZARD_TIMEOUT_MS = 300_000;
 const TRANSPORT_OPTIONS = [
   {
     value: "stdio",
-    label: "Local process (stdio)",
+    label: "Local process",
     description: "Run an MCP server process on this machine.",
   },
   {
     value: "http",
-    label: "Remote HTTP",
-    description: "Connect to a remote Streamable HTTP server.",
+    label: "Remote web server",
+    description: "Connect to a remote server that responds to web requests.",
   },
   {
     value: "sse",
-    label: "Remote server-sent events (SSE)",
-    description: "Connect to a remote server using legacy SSE transport.",
+    label: "Remote event stream",
+    description: "Connect to a server that streams updates.",
   },
 ] as const;
 
@@ -113,18 +107,11 @@ function serverNameInput(value: string): TextValidation<string> {
 }
 
 function serverUrlInput(value: string): TextValidation<string> {
-  const parsed = McpUrlOrigin.safeParse(value.trim());
+  const parsed = McpCommandRemoteUrl.safeParse(value.trim());
   if (!parsed.success) {
     return {
       valid: false,
-      message: "Enter an HTTP(S) origin without credentials, path or query data.",
-    };
-  }
-  const protocol = new URL(parsed.data).protocol;
-  if (protocol !== "http:" && protocol !== "https:") {
-    return {
-      valid: false,
-      message: "Use an HTTP(S) server origin without credentials, path or query data.",
+      message: "Enter an HTTP(S) server address without credentials, query strings or fragments.",
     };
   }
   return { valid: true, value: parsed.data };
@@ -209,7 +196,7 @@ export async function runMcpAddWizard({
       {
         kind: "select",
         id: nextDialogId(),
-        title: "Choose an MCP server transport",
+        title: "How should the MCP server connect?",
         options: TRANSPORT_OPTIONS.map((option) => option.label),
         optionDetails: TRANSPORT_OPTIONS.map((option) => ({ description: option.description })),
         timeoutMs: ADD_WIZARD_TIMEOUT_MS,
@@ -298,8 +285,8 @@ export async function runMcpAddWizard({
       const urlResult = await promptValidatedInput(
         dialogs,
         dialogContext,
-        "MCP server origin",
-        "For example: https://mcp.example.test",
+        "MCP server address",
+        "For example: https://mcp.example.test/api/mcp",
         serverUrlInput,
       );
       if (urlResult.status === "cancelled") return urlResult;

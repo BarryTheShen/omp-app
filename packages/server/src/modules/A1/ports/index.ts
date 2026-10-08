@@ -8,6 +8,7 @@ import { createExtensionCatalogRegistration } from "./extension-catalog";
 import { createFileSearchRegistration } from "./file-search";
 import { createGithubRefsRegistration } from "./github-refs";
 import { createHostMetadataRegistration } from "./host-metadata";
+import { createMcpCommandsRegistration } from "./mcp-commands";
 import { createMemoryStoreRegistration } from "./memory-store";
 import { createOmpCommandGatewayRegistration } from "./omp-command-gateway";
 import { createPlanDocumentRegistration } from "./plan-documents";
@@ -19,7 +20,7 @@ import { createSessionPinStoreRegistration } from "./session-pin-store";
 import { createUrlCatalogRegistration } from "./url-catalog";
 import { createGitStateRegistration, createWorkspaceStateRegistration } from "./workspace-state";
 
-/** All A1 registrations currently backed by merged stores. Main composes this into PORT_REGISTRY. */
+/** All merged A1 registrations. Main composes these into PORT_REGISTRY. */
 export function createA1PortRegistrations(context: A1PortContext): readonly PortRegistration[] {
   return [
     createSessionFileStoreRegistration(context),
@@ -28,6 +29,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createCheckpointStoreRegistration(context),
     createWorkspaceStateRegistration(context),
     createGitStateRegistration(context),
+    createMcpCommandsRegistration(context),
     createOmpCommandGatewayRegistration(context),
     createSessionPinStoreRegistration(context),
     createAttachmentStoreRegistration(context),

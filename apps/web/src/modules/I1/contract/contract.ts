@@ -1,5 +1,12 @@
-import type { CapabilityKey } from "@omp-app/contracts";
-import { AppFailure } from "@omp-app/contracts";
+import {
+  AppFailure,
+  type CapabilityKey,
+  McpCommandAuthKind,
+  McpCommandScope,
+  McpCommandServerName,
+  McpCommandServerStatus,
+  McpCommandTransport,
+} from "@omp-app/contracts";
 import { z } from "zod";
 
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -7,21 +14,22 @@ const URI_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*$/;
 
 export const I1_CAPABILITIES = {
   mcp: "host.mcp",
+  mcpReconnect: "upstream.mcp-reconnect",
   mcpSettings: "client.mcp-settings",
   hostTools: "omp.host-tools",
   hostUris: "omp.host-uris",
 } as const satisfies Record<string, CapabilityKey>;
 
-export const McpScope = z.enum(["user", "project", "foreign"]);
+export const McpScope = z.enum([...McpCommandScope.options, "foreign"]);
 export type McpScope = z.infer<typeof McpScope>;
 
-export const McpTransport = z.enum(["stdio", "http", "sse"]);
+export const McpTransport = z.enum(McpCommandTransport.options);
 export type McpTransport = z.infer<typeof McpTransport>;
 
-export const McpServerStatus = z.enum(["configured", "connecting", "ready", "error", "disabled"]);
+export const McpServerStatus = z.enum(McpCommandServerStatus.options);
 export type McpServerStatus = z.infer<typeof McpServerStatus>;
 
-export const McpAuthKind = z.enum(["none", "oauth", "api-key", "unknown"]);
+export const McpAuthKind = z.enum(McpCommandAuthKind.options);
 export type McpAuthKind = z.infer<typeof McpAuthKind>;
 
 export const McpAuthStatus = z.enum([
@@ -34,11 +42,7 @@ export const McpAuthStatus = z.enum([
 ]);
 export type McpAuthStatus = z.infer<typeof McpAuthStatus>;
 
-export const McpServerName = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(NAME_PATTERN, "invalid MCP server name");
+export const McpServerName = z.string().pipe(McpCommandServerName);
 export type McpServerName = z.infer<typeof McpServerName>;
 
 export const McpSource = z.strictObject({
@@ -105,6 +109,8 @@ export type McpServerListArgs = z.infer<typeof McpServerListArgs>;
 export const McpServerListResult = z.strictObject({
   servers: z.array(McpServerSummary).max(256),
   revision: z.string().min(1),
+  truncated: z.boolean().default(false),
+  skippedCount: z.number().int().nonnegative().default(0),
 });
 export type McpServerListResult = z.infer<typeof McpServerListResult>;
 
@@ -191,7 +197,7 @@ export type HostToolName = z.infer<typeof HostToolName>;
 
 export const HostToolDefinition = z.strictObject({
   name: HostToolName,
-  description: z.string().max(2_048).optional(),
+  description: z.string().trim().min(1).max(2_048),
   inputSchema: z.record(z.string(), z.unknown()),
 });
 export type HostToolDefinition = z.infer<typeof HostToolDefinition>;

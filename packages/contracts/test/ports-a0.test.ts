@@ -54,12 +54,15 @@ describe("RpcSessionPort", () => {
     ).toBe(false);
   });
 
-  test("send accepts every known command and rejects unknown or incomplete envelopes", () => {
+  test("send requires per-owner metadata only for host registration commands", () => {
     for (const command of OMP_COMMAND_NAMES) {
+      const registrationCommand =
+        command === "set_host_tools" || command === "set_host_uri_schemes";
       expect(
         RpcSessionPort.methods.send.args.safeParse({
           threadId,
           command: { type: command },
+          ...(registrationCommand ? { registrationOwner: "test-owner" } : {}),
         }).success,
       ).toBe(true);
     }
@@ -77,6 +80,26 @@ describe("RpcSessionPort", () => {
     expect(
       SendCommandArgs.safeParse({ threadId, command: { type: "prompt", id: "" } }).success,
     ).toBe(false);
+    expect(
+      SendCommandArgs.safeParse({
+        threadId,
+        command: { type: "set_host_tools", tools: [] },
+      }).success,
+    ).toBe(false);
+    expect(
+      SendCommandArgs.safeParse({
+        threadId,
+        registrationOwner: "test-owner",
+        command: { type: "prompt" },
+      }).success,
+    ).toBe(false);
+    expect(
+      SendCommandArgs.safeParse({
+        threadId,
+        registrationOwner: "test-owner",
+        command: { type: "set_host_tools", tools: [] },
+      }).success,
+    ).toBe(true);
   });
 
   test("keeps normalized event kinds and omp completion notifications distinct", () => {

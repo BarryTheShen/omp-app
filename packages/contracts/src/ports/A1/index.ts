@@ -6,6 +6,7 @@ export * from "./extension-catalog";
 export * from "./file-search";
 export * from "./github-refs";
 export * from "./host-metadata";
+export * from "./mcp-commands";
 export * from "./memory-store";
 export * from "./omp-command-gateway";
 export * from "./plan-documents";
