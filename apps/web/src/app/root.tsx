@@ -100,6 +100,7 @@ import { AppShell } from "@/shell";
 import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
 import { ThemeApplier, ThemeButton } from "@/theme";
 import { reportClientError, setClientErrorSink } from "./client-errors";
+import { ComposerTriggers } from "./composer-triggers";
 import { saveTextFile } from "./save-file";
 import { SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
@@ -408,6 +409,7 @@ interface ActiveThreadProps {
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly history: SelectedThreadHistoryState;
   readonly capabilities: CapabilityMap;
+  readonly folder: FolderPath | null;
   readonly catalog: SessionCatalogModel | null;
   readonly onOpenSettings: () => void;
   readonly remote: ReturnType<typeof createNativeRemoteThreadListAdapter> | null;
@@ -427,6 +429,7 @@ function ActiveThreadContent(props: ActiveThreadProps) {
 function ActiveThreadReady({
   client,
   capabilities,
+  folder,
   catalog,
   history,
   leftSidebar,
@@ -881,16 +884,18 @@ function ActiveThreadReady({
     <LayoutArea area={name} capabilities={capabilities} surfaces={threadSurfaces} />
   );
   const composer = (
-    <DraftComposer
-      cancel={cancel}
-      controller={draftController}
-      footer={area("composerFooter")}
-      footerOpen={editing !== null}
-      manager={attachmentManager}
-      policy={resolveQueueSubmitPolicy}
-      submit={submit}
-      toolbar={area("composerToolbar")}
-    />
+    <ComposerTriggers capabilities={capabilities} client={client} folder={folder}>
+      <DraftComposer
+        cancel={cancel}
+        controller={draftController}
+        footer={area("composerFooter")}
+        footerOpen={editing !== null}
+        manager={attachmentManager}
+        policy={resolveQueueSubmitPolicy}
+        submit={submit}
+        toolbar={area("composerToolbar")}
+      />
+    </ComposerTriggers>
   );
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -1203,6 +1208,7 @@ function ConnectedApp({
         capabilities={activeCapabilities}
         catalog={catalog}
         client={client}
+        folder={folder}
         history={history}
         leftSidebar={leftSidebar}
         onOpenSettings={openSettings}

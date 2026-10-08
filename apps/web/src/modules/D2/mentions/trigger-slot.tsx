@@ -3,8 +3,9 @@ import {
   type Unstable_DirectiveFormatter,
   type Unstable_TriggerItem,
   unstable_useLiveCompletionAdapter,
+  useAuiState,
 } from "@assistant-ui/react";
-import { type KeyboardEvent, useCallback, useMemo, useRef } from "react";
+import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
 import type {
   ComposerTriggerCandidate,
   ComposerTriggerProvider,
@@ -105,12 +106,17 @@ function TriggerPopoverView({
   readonly onSelect: (candidate: TriggerCandidate) => void;
 }) {
   const candidateMap = useRef<ReadonlyMap<string, TriggerCandidate>>(new Map());
+  // A `#` token whose text runs on past a space ("ticket #12 is open") and finds nothing is prose.
+  const [emptyQuery, setEmptyQuery] = useState<string | null>(null);
+  // Only the # popover reads the composer text; an @ list must not re-render on each keystroke.
+  const composerText = useAuiState((state) => (trigger === "#" ? state.composer.text : ""));
   const fetcher = useCallback(
     async (query: string): Promise<readonly Unstable_TriggerItem[]> => {
       if (!provider) return [];
       const result = await provider.searchTyped(query);
       const next = resultItems(result, trigger);
       candidateMap.current = next.candidates;
+      if (trigger === "#") setEmptyQuery(next.candidates.size === 0 ? query : null);
       return next.items;
     },
     [provider, trigger],
@@ -129,13 +135,21 @@ function TriggerPopoverView({
     },
     [onSelect],
   );
+  // The `#` token at the caret. D2's matcher ends the token at the first space, but the trigger
+  // keeps running on, so a space after the token with nothing found for it means prose: close.
+  const hash = trigger === "#" ? hashMatcher(composerText, "#", composerText.length) : null;
+  const prose =
+    hash !== null &&
+    /\s/.test(composerText.slice(hash.offset + 1, hash.endOffset)) &&
+    emptyQuery === hash.query;
+  if (!provider) return null;
   return (
     <ComposerPrimitive.Unstable_TriggerPopover
       char={trigger}
       matcher={trigger === "#" ? hashMatcher : undefined}
-      adapter={completion.adapter}
+      adapter={prose ? undefined : completion.adapter}
       isLoading={completion.isLoading}
-      aria-label={`${trigger} suggestions`}
+      aria-label={trigger === "@" ? "File suggestions" : "GitHub suggestions"}
       className="absolute bottom-full left-0 z-30 mb-2"
     >
       <ComposerPrimitive.Unstable_TriggerPopover.Directive

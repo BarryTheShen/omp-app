@@ -161,13 +161,16 @@ function LocalTriggerPopover({
     },
     [onSelect],
   );
+  if (!provider) return null;
+  // A trigger the provider does not serve (issue:// without GitHub) opens no list: no search, no message.
+  const served = provider.serves?.(trigger) ?? true;
   return (
     <ComposerPrimitive.Unstable_TriggerPopover
       char={trigger}
       matcher={(text, _char, cursorPosition) => triggerMatcher(text, trigger, cursorPosition)}
-      adapter={completion.adapter}
+      adapter={served ? completion.adapter : undefined}
       isLoading={completion.isLoading}
-      aria-label={`${trigger} suggestions`}
+      aria-label={trigger === ":" ? "Emoji suggestions" : "Link suggestions"}
       className="absolute bottom-full left-0 z-30 mb-2"
     >
       <ComposerPrimitive.Unstable_TriggerPopover.Directive

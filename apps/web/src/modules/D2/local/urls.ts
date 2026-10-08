@@ -194,6 +194,13 @@ export function createInternalUrlProvider(options: InternalUrlProviderOptions): 
     source: "a1.url-catalog",
     search: async (query) => (await searchTyped(query)).candidates,
     searchTyped: (query, position) => searchTyped(query, position),
+    // issue:// and pr:// are answered by GitHub only. Without a GitHub provider they offer nothing,
+    // and that is known here, before any search runs, so no list opens for them.
+    serves: (trigger) => {
+      const scheme = trigger.slice(0, -INTERNAL_URL_SCHEME_SEPARATOR.length);
+      const githubScheme = BUILTIN_SCHEMES.some((builtin) => builtin === scheme);
+      return !githubScheme || options.githubProvider !== undefined;
+    },
   };
 }
 

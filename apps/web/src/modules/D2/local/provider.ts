@@ -8,6 +8,8 @@ export interface LocalProvider extends Omit<ComposerTriggerProvider, "trigger" |
   readonly kind: Extract<TriggerKind, "emoji" | "internal-url">;
   readonly source: Extract<TriggerSource, "client" | "a1.url-catalog">;
   readonly search: ComposerTriggerProvider["search"];
+  /** Whether this provider answers a trigger at all. A trigger it does not serve opens no list, decided before any search. */
+  readonly serves?: (trigger: LocalTrigger) => boolean;
   readonly searchTyped: (
     query: string,
     position?: import("../contract").TriggerPosition,
