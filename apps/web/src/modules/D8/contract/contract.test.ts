@@ -1,28 +1,26 @@
 import { describe, expect, test } from "vitest";
 import {
   AP6_UNAVAILABLE_REASONS,
-  continuationPolicy,
+  continuationStatus,
   D8_AP6_CAPABILITIES,
+  type Goal,
   GoalCreateRequestSchema,
   GoalRpcArgsSchema,
   GoalStateSchema,
-  goalStateFromEvent,
-  goalStateFromResult,
   unavailableAutonomy,
   WorkerDispatchRequestSchema,
   WorkerObservationSchema,
 } from ".";
 
-const goal = {
+const goal: Goal = {
   id: "goal-1",
   objective: "Keep the test suite green",
-  status: "active" as const,
+  status: "active",
   tokensUsed: 120,
   timeUsedSeconds: 30,
   createdAt: 1,
   updatedAt: 2,
   tokenBudget: 1_000,
-  continuationModes: ["rpc"],
 };
 
 describe("D8 autonomy contracts", () => {
@@ -42,38 +40,26 @@ describe("D8 autonomy contracts", () => {
     expect(state.futureState).toEqual({ retained: true });
   });
 
-  test("maps goal_updated without inferring continuation from command text", () => {
-    const state = goalStateFromEvent({
-      type: "goal_updated",
-      goal,
-      state: { enabled: true, mode: "active", goal },
-    });
-    expect(state.source).toBe("event");
-    expect(continuationPolicy(state).mode).toBe("rpc");
-
-    const paused = goalStateFromResult(
-      {
-        goal: { ...goal, status: "paused" },
-        state: { enabled: true, mode: "active", goal: { ...goal, status: "paused" } },
-      },
-      "rpc",
-      true,
+  test("says what omp does with an open goal, from its own setting", () => {
+    expect(continuationStatus(goal, ["rpc"])?.label).toBe(
+      "omp keeps working on this goal by itself.",
     );
-    expect(continuationPolicy(paused)).toMatchObject({ mode: "rpc", canResume: true });
+    expect(continuationStatus({ ...goal, status: "paused" }, ["rpc"])?.label).toBe("Paused");
+    expect(continuationStatus(goal, ["interactive"])?.label).toBe(
+      "omp will not continue this goal by itself. Add rpc to Goal Continuation Modes in Settings, Tasks, to let it.",
+    );
+    expect(continuationStatus(goal, null)?.label).toBe(
+      "The app cannot tell whether omp continues this goal by itself.",
+    );
   });
 
-  test("makes missing typed continuation explicit instead of resubmitting prompts", () => {
-    const unavailable = GoalStateSchema.parse({
-      goal: { ...goal, continuationModes: undefined },
-      state: { enabled: true, mode: "active", goal: { ...goal, continuationModes: undefined } },
-      source: "rpc",
-      sessionSettled: true,
-    });
-    expect(continuationPolicy(unavailable)).toMatchObject({
-      mode: "unavailable",
-      canPause: false,
-      reason: expect.stringContaining("typed RPC"),
-    });
+  test("shows no continuation status for a goal that is finished, dropped, or absent", () => {
+    expect(continuationStatus(null, ["rpc"])).toBeNull();
+    expect(continuationStatus({ ...goal, status: "complete" }, ["rpc"])).toBeNull();
+    expect(continuationStatus({ ...goal, status: "dropped" }, ["rpc"])).toBeNull();
+  });
+
+  test("keeps the AP6 capabilities unavailable with their reasons", () => {
     expect(D8_AP6_CAPABILITIES.loop).toBe("upstream.loop");
     expect(AP6_UNAVAILABLE_REASONS.loop).toContain("not resubmitted");
     expect(

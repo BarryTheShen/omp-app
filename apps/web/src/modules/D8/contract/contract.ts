@@ -27,8 +27,6 @@ export const GoalSchema = z.looseObject({
   createdAt: z.number().finite(),
   updatedAt: z.number().finite(),
   tokenBudget: z.number().finite().positive().optional(),
-  /** Present in newer omp builds; absent at the 18.6.1 wire floor. */
-  continuationModes: z.array(z.string()).optional(),
 });
 export type Goal = z.infer<typeof GoalSchema>;
 
@@ -85,60 +83,39 @@ export const D8_AP6_CAPABILITIES = {
 
 export type D8Ap6Capability = (typeof D8_AP6_CAPABILITIES)[keyof typeof D8_AP6_CAPABILITIES];
 
-export const ContinuationModeSchema = z.enum(["manual", "rpc", "unavailable"]);
-export type ContinuationMode = z.infer<typeof ContinuationModeSchema>;
-
-export interface ContinuationPolicy {
-  readonly mode: ContinuationMode;
+/** What omp does with an open goal once a turn ends, as a plain sentence. */
+export interface ContinuationStatus {
   readonly label: string;
-  readonly canPause: boolean;
-  readonly canResume: boolean;
-  readonly reason?: string;
 }
 
-/** Projects typed goal state and settlement into the controls the UI may honestly expose. */
-export function continuationPolicy(
-  state: GoalState,
-  sessionSettled: boolean = state.sessionSettled,
-): ContinuationPolicy {
-  const goal = state.goal;
-  if (goal === null || goal.status === "complete" || goal.status === "dropped") {
-    return {
-      mode: "manual",
-      label: "Manual continuation",
-      canPause: false,
-      canResume: false,
-    };
+/**
+ * omp decides this from its own setting, `goal.continuationModes`: a goal continues for an RPC host
+ * only when the list includes "rpc". `modes` is that value, or `null` when the app cannot read it.
+ * A finished or dropped goal has nothing to continue, so it has no status.
+ */
+export function continuationStatus(
+  goal: Goal | null,
+  modes: readonly string[] | null,
+): ContinuationStatus | null {
+  if (goal === null || goal.status === "complete" || goal.status === "dropped") return null;
+  if (modes === null) {
+    return { label: "The app cannot tell whether omp continues this goal by itself." };
   }
-  const supportsRpc = goal.continuationModes?.includes("rpc") === true;
-  if (!supportsRpc) {
+  if (!modes.includes("rpc")) {
     return {
-      mode: "unavailable",
-      label: "Autonomous continuation unavailable",
-      canPause: false,
-      canResume: false,
-      reason: "This omp release does not report typed RPC goal continuation.",
-    };
-  }
-  if (goal.status === "paused") {
-    return {
-      mode: "rpc",
-      label: sessionSettled ? "Goal paused" : "Goal pausing",
-      canPause: false,
-      canResume: true,
+      label:
+        "omp will not continue this goal by itself. Add rpc to Goal Continuation Modes in Settings, Tasks, to let it.",
     };
   }
   return {
-    mode: "rpc",
-    label: sessionSettled ? "Goal will continue through omp" : "Goal is settling",
-    canPause: true,
-    canResume: false,
+    label: goal.status === "paused" ? "Paused" : "omp keeps working on this goal by itself.",
   };
 }
 
 export interface AutonomyPort {
   goal(threadId: ThreadId, args: GoalRpcArgs, options?: PortCallOptions): Promise<GoalRpcResult>;
-  subscribeGoal(threadId: ThreadId, listener: (event: GoalUpdatedEvent) => void): () => void;
+  /** `null` marks an update omp sent that this app could not read; the caller should read the goal again. */
+  subscribeGoal(threadId: ThreadId, listener: (event: GoalUpdatedEvent | null) => void): () => void;
 }
 
 export const WorkerKindSchema = z.enum(["tan", "vibe", "subagent"]);
