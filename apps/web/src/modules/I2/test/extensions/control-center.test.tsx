@@ -94,4 +94,35 @@ describe("ExtensionControlCenter", () => {
     await waitFor(() => expect(screen.getByTestId("extension-unavailable")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Reload extension catalog" })).toBeNull();
   });
+
+  test("the inspector asks for an item, not a provider, when nothing is selected", async () => {
+    const fake = catalog();
+    render(
+      <ExtensionControlCenter
+        catalog={fake.catalog}
+        folder={folder}
+        capabilities={{ "host.extension-catalog": { state: "available", via: "host" } }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Select an item to see its details.")).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Select a provider/)).toBeNull();
+  });
+
+  test("the open provider tab reports aria-selected and the others report false", () => {
+    const fake = catalog();
+    render(
+      <ExtensionControlCenter
+        catalog={fake.catalog}
+        folder={folder}
+        capabilities={{ "host.extension-catalog": { state: "available", via: "host" } }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    expect(screen.getByTestId("extension-tab-plugins").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("extension-tab-extensions").getAttribute("aria-selected")).toBe(
+      "false",
+    );
+  });
 });

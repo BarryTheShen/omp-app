@@ -43,6 +43,7 @@ import {
 } from "@/modules/S1/settings-kit";
 import { SETTINGS_SECTIONS } from "@/registry";
 import { DARK_QUERY, resolveTheme, useThemePreference } from "@/theme";
+import { ExtensionCenterSection, extensionCenterAvailable } from "./extension-center-section";
 import { ProviderLoginSection, providerLoginAvailable } from "./provider-login-section";
 import { layerFolder } from "./settings-scope";
 
@@ -672,6 +673,13 @@ export function SettingsScreen({
             {appearance}
             {activeTab !== "appearance" ? (
               <div className="flex min-w-0 flex-col gap-4">
+                {activeTab === "tools" && extensionCenterAvailable(capabilities) ? (
+                  <ExtensionCenterSection
+                    capabilities={capabilities}
+                    client={client}
+                    folder={folder}
+                  />
+                ) : null}
                 {activeTab === "providers" && providerLoginAvailable(capabilities) ? (
                   <ProviderLoginSection
                     capabilities={capabilities}

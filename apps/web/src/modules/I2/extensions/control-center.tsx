@@ -243,6 +243,7 @@ export function ExtensionControlCenter({
                     data-testid={`extension-tab-${entry.id}`}
                     key={entry.id}
                     role="tab"
+                    aria-selected={tab === entry.id}
                     size="sm"
                     type="button"
                     variant={tab === entry.id ? "secondary" : "ghost"}
@@ -337,7 +338,6 @@ export function ExtensionControlCenter({
           )}
         </section>
       }
-      onOpenChange={() => undefined}
       state={{
         open: true,
         lifecycle,
@@ -366,7 +366,7 @@ function Inspector({
   if (!item)
     return (
       <div className="border-border rounded-lg border p-3 text-sm text-muted-foreground">
-        Select a provider to inspect metadata.
+        Select an item to see its details.
       </div>
     );
   return (

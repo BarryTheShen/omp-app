@@ -309,6 +309,7 @@ const enabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
  * each, in order), or with one made of raw session entries with `realTest.use({ seedEntries: {
  * entries } })`. A spec
  * about omp being missing points the app at another binary with `realTest.use({ ompBinary })`.
+ * Fake files in the agent's `extensions` folder appear in omp's extension catalog: `realTest.use({ seedExtensions: { "name.ts": source } })`.
  */
 export const realTest = test.extend<{
   realApp: RealApp;
@@ -317,6 +318,7 @@ export const realTest = test.extend<{
   seedLongTurn: number;
   seedToolResults: SeedToolResults | undefined;
   seedEntries: SeedEntries | undefined;
+  seedExtensions: Readonly<Record<string, string>>;
   ompBinary: string | undefined;
 }>({
   idleCloseMs: [undefined, { option: true }],
@@ -324,9 +326,19 @@ export const realTest = test.extend<{
   seedLongTurn: [0, { option: true }],
   seedToolResults: [undefined, { option: true }],
   seedEntries: [undefined, { option: true }],
+  seedExtensions: [{}, { option: true }],
   ompBinary: [undefined, { option: true }],
   realApp: async (
-    { browser, idleCloseMs, seedSessions, seedLongTurn, seedToolResults, seedEntries, ompBinary },
+    {
+      browser,
+      idleCloseMs,
+      seedSessions,
+      seedLongTurn,
+      seedToolResults,
+      seedEntries,
+      seedExtensions,
+      ompBinary,
+    },
     use,
     testInfo,
   ) => {
@@ -341,6 +353,13 @@ export const realTest = test.extend<{
     const folder = join(root, "workspace");
     const otherFolder = join(root, "other-workspace");
     await Promise.all([home, agentDir, appDataDir, folder, otherFolder].map((path) => mkdir(path)));
+    // Fake files for omp's extension catalog: a file in `<agent>/extensions` is listed as an extension.
+    if (Object.keys(seedExtensions).length > 0) {
+      await mkdir(join(agentDir, "extensions"));
+      for (const [name, source] of Object.entries(seedExtensions)) {
+        await writeFile(join(agentDir, "extensions", name), source);
+      }
+    }
     const env = {
       ...process.env,
       HOME: home,
