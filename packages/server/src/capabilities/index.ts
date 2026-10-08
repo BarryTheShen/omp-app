@@ -264,6 +264,9 @@ async function probeCommand(
     await session.send(payload, { signal: controller.signal });
     return { available: true };
   } catch (cause) {
+    // Our own wait ran out: omp did not answer in time. That is a timeout, which the patient probe
+    // asks again; the cancelled failure it raises would read as a verdict and never be retried.
+    if (controller.signal.aborted) return { available: false, reason: COMMAND_TIMEOUT_REASON };
     return {
       available:
         cause instanceof AppFailure &&

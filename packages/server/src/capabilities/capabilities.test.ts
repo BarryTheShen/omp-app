@@ -27,6 +27,8 @@ if (recordFile) {
 }
 const supportsV2 = Bun.env.FAKE_SUPPORTS_V2 !== "0";
 const unknownCommand = Bun.env.FAKE_UNKNOWN_COMMAND;
+const slowCommand = Bun.env.FAKE_SLOW_COMMAND;
+const slowMs = Number(Bun.env.FAKE_SLOW_MS ?? 0);
 const ready = {
   type: "ready",
   protocolVersion: 1,
@@ -62,7 +64,9 @@ for await (const chunk of Bun.stdin.stream()) {
   pending = lines.pop() ?? "";
   for (const line of lines) {
     if (!line.trim()) continue;
-    respond(JSON.parse(line));
+    const command = JSON.parse(line);
+    if (command.type === slowCommand) setTimeout(() => respond(command), slowMs);
+    else respond(command);
   }
 }
 `;
@@ -239,6 +243,48 @@ describe("probeCapabilities", () => {
     expect(retries).toEqual([]);
     expect(probeRanOutOfTime(result)).toBe(false);
   });
+
+  // Real waits on purpose: the delay runs in the spawned fake omp, out of fake timers' reach.
+  test("a command that outruns its own wait is a timeout, and the probe says so", async () => {
+    const root = await temporaryDirectory("capability-probe-command-timeout-");
+    const binary = await fakeOmp();
+    const result = await probeCapabilities({
+      cwd: FolderPath.parse(join(root, "app-data")),
+      ompBin: binary,
+      // set_model answers after 2 s, past its 1 s wait; every other command answers at once.
+      env: { FAKE_SLOW_COMMAND: "set_model", FAKE_SLOW_MS: "2000" },
+      ghBinary: join(root, "missing-gh"),
+      timeoutMs: 1_000,
+      deadlineMs: 60_000,
+    });
+    expect(result.capabilities["omp.cmd.set_model"]).toMatchObject({
+      state: "unavailable",
+      detail: expect.stringContaining("timed out"),
+    });
+    expect(probeRanOutOfTime(result)).toBe(true);
+    expect(probeTimedOutEntirely(result)).toBe(false);
+  }, 20_000);
+
+  // Real waits on purpose: the delay runs in the spawned fake omp, out of fake timers' reach.
+  test("a command that outruns its wait is asked again with the patient wait, and is answered", async () => {
+    const root = await temporaryDirectory("capability-probe-command-patient-");
+    const binary = await fakeOmp();
+    const retries: number[] = [];
+    const result = await probeCapabilitiesPatiently({
+      cwd: FolderPath.parse(join(root, "app-data")),
+      ompBin: binary,
+      // set_model answers after 2 s: past the 1 s wait, well within the patient 10 s one.
+      env: { FAKE_SLOW_COMMAND: "set_model", FAKE_SLOW_MS: "2000" },
+      ghBinary: join(root, "missing-gh"),
+      timeoutMs: 1_000,
+      deadlineMs: 60_000,
+      patient: { timeoutMs: 10_000, deadlineMs: 60_000 },
+      onRetry: (waited) => retries.push(waited),
+    });
+    expect(retries).toHaveLength(1);
+    expect(probeRanOutOfTime(result)).toBe(false);
+    expect(result.capabilities["omp.cmd.set_model"]).toEqual({ state: "available", via: "rpc" });
+  }, 20_000);
 
   test("keeps the probe isolated and removes its cwd after command probing", async () => {
     const { root } = await runProbe();
