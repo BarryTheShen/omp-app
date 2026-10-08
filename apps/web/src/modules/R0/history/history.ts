@@ -4,9 +4,13 @@ import type {
   OmpWire,
   PortCallOptions,
   RpcSessionSend,
+  SessionEntryOutputArgs,
+  SessionEntryOutputResult,
+  SessionEntryWindow,
+  SessionEntryWindowArgs,
   ThreadId,
 } from "@omp-app/contracts";
-import { AppFailure } from "@omp-app/contracts";
+import { AppFailure, SessionFilePath } from "@omp-app/contracts";
 import type { OmpRuntimeStore } from "../store/store";
 
 type AbortSignalLike = NonNullable<PortCallOptions["signal"]>;
@@ -21,8 +25,23 @@ interface InFlight {
 const SUPERSEDED_MESSAGE = "A newer history request superseded this one";
 const CANCELLED_MESSAGE = "The history request was cancelled";
 
+/** Reads one window of a session file's branch: the A1 `readEntryWindow` method. */
+export type SessionWindowReader = (
+  args: SessionEntryWindowArgs,
+  options: { readonly signal: AbortSignalLike },
+) => Promise<SessionEntryWindow>;
+
+/** Reads one entry of a session file in full: the A1 `readEntryOutput` method. */
+export type SessionOutputReader = (
+  args: SessionEntryOutputArgs,
+  options: { readonly signal: AbortSignalLike },
+) => Promise<SessionEntryOutputResult>;
+
 export interface SessionHistoryLoaderOptions {
   readonly send: RpcSessionSend;
+  readonly readWindow: SessionWindowReader;
+  /** Reads one entry in full; a loader without it cannot load full tool outputs. */
+  readonly readOutput?: SessionOutputReader;
   readonly threadId: ThreadId;
   readonly store: OmpRuntimeStore;
   /** Called when an automatic (`watchNeedsRefetch`) refetch fails; cancellations are never reported. */
@@ -49,36 +68,48 @@ function asEntryIdOrNull(value: string | null): EntryId | null {
 export function isUnknownSinceError(error: unknown): boolean {
   return error instanceof AppFailure && error.appError.omp?.code === "unknown_since";
 }
+
 /**
- * Loads one open thread's history from omp (`get_state` and `get_entries`) and feeds it to R0.1's
- * `OmpRuntimeStore`. `get_tree` is not called: it returns the same entries as `get_entries`, nested
- * instead of flat, so on the largest real chat (17,099 entries) it sent the same 48 MB twice.
+ * Loads one open thread's history and feeds it to R0.1's `OmpRuntimeStore`. A thread's history is
+ * not read whole: the newest window of the branch omp is on comes from its session file (A1's
+ * `readEntryWindow`, bounded in bytes), omp confirms the leaf with a `get_entries since` on the
+ * window's last entry, and older windows are read on demand (`loadOlder`). Without a session file
+ * (an in-memory session) omp's `get_entries` supplies the entries. `get_tree` is not called: it
+ * returns the same entries nested.
  * `refetch` drives the store's own `needsRefetch` → refetch → `resetSequence` cycle;
  * `watchNeedsRefetch` arms that cycle automatically. Exactly one load or refetch is in flight at a
  * time: starting a new one cancels whichever is already running, and every rejection is a typed
- * `AppFailure`.
+ * `AppFailure`. Older pages run beside them, one at a time.
  */
 export class SessionHistoryLoader {
   private readonly send: RpcSessionSend;
+  private readonly windows: SessionWindowReader;
+  private readonly outputs: SessionOutputReader | undefined;
   private readonly threadId: ThreadId;
   private readonly store: OmpRuntimeStore;
   private readonly onRefetchError: ((error: AppFailure) => void) | undefined;
   private inFlight: InFlight | undefined;
+  /** The open thread's session file, from `get_state`: where windows are read. */
+  private sessionFile: SessionFilePath | undefined;
+  private olderLoad: Promise<void> | undefined;
+  private olderController: AbortController | undefined;
 
   public constructor(options: SessionHistoryLoaderOptions) {
     this.send = options.send;
+    this.windows = options.readWindow;
+    this.outputs = options.readOutput;
     this.threadId = options.threadId;
     this.store = options.store;
     this.onRefetchError = options.onRefetchError;
   }
 
-  /** The thread's full history, for a freshly opened store. */
+  /** The newest part of the thread's history, for a freshly opened store. */
   public async loadInitial(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
     await this.run("refetch", options?.signal, async (signal) => {
       await this.applyState(signal);
       // Entries last, right before the cursor moves: anything persisted after this read arrives as a
       // live event once the gap is cleared.
-      await this.applyEntries(undefined, signal);
+      await this.applyWindow(signal);
       this.store.resetSequence();
     });
   }
@@ -104,6 +135,63 @@ export class SessionHistoryLoader {
   }
 
   /**
+   * Loads the page of entries older than the oldest one loaded on the branch the transcript shows.
+   * A page already loading is shared by every caller; `dispose()` cancels it.
+   */
+  public loadOlder(): Promise<void> {
+    this.olderLoad ??= this.fetchOlder().finally(() => {
+      this.olderLoad = undefined;
+    });
+    return this.olderLoad;
+  }
+
+  /**
+   * Loads the full text of one tool output the store shows shortened: omp's entry is read from the
+   * session file and replaces the shortened one. A thread without a session file has no entry to read.
+   */
+  public async loadFullOutput(toolCallId: string): Promise<void> {
+    const sessionFile = this.sessionFile;
+    const entryId = this.toolResultEntryId(toolCallId);
+    const outputs = this.outputs;
+    if (outputs === undefined) {
+      throw new AppFailure({
+        code: "unavailable",
+        message: "Full tool outputs are unavailable for this thread",
+        retryable: false,
+        capability: "host.session-files",
+      });
+    }
+    if (sessionFile === undefined || entryId === undefined) {
+      throw new AppFailure({
+        code: "not_found",
+        message: "This tool output is not in the loaded history",
+        retryable: false,
+      });
+    }
+    try {
+      const full = await outputs(
+        { sessionFile, entryId },
+        { signal: new AbortController().signal },
+      );
+      this.store.replaceHistoryEntry(full.entry);
+    } catch (error) {
+      throw toAppFailure(error, "Loading the full output failed");
+    }
+  }
+
+  /** The entry of the tool result the store shows for one tool call. */
+  private toolResultEntryId(toolCallId: string): EntryId | undefined {
+    const snapshot = this.store.getSnapshot();
+    for (const key of snapshot.messageOrder) {
+      const record = snapshot.messages[key];
+      if (record?.message.role === "toolResult" && record.message.toolCallId === toolCallId) {
+        return record.entryId;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Starts watching the store for `needsRefetch`; each transition to `true` triggers exactly one
    * `refetch()`. Returns a function that stops watching; an already-running operation keeps going.
    */
@@ -122,36 +210,112 @@ export class SessionHistoryLoader {
     return unsubscribe;
   }
 
-  /** Cancels any in-flight request; safe to call repeatedly. */
+  /** Cancels any in-flight request or older page; safe to call repeatedly. */
   public dispose(): void {
     this.inFlight?.controller.abort(SUPERSEDED_MESSAGE);
     this.inFlight = undefined;
+    this.olderController?.abort(CANCELLED_MESSAGE);
+    this.olderController = undefined;
   }
 
   private async applyState(signal: AbortSignalLike): Promise<void> {
-    const state = await this.send(
+    const state = (await this.send(
       { threadId: this.threadId, command: { type: "get_state" } },
       { signal },
-    );
-    this.store.applySessionState(state as SessionState);
+    )) as SessionState;
+    this.store.applySessionState(state);
+    const file = SessionFilePath.safeParse(state.sessionFile);
+    this.sessionFile = file.success ? file.data : undefined;
   }
 
-  private async applyEntries(since: EntryId | undefined, signal: AbortSignalLike): Promise<void> {
-    const result = await this.getEntriesWithFallback(since, signal);
-    this.store.pairEndedMessages(result.entries, asEntryIdOrNull(result.leafId));
-  }
-
-  private async getEntriesWithFallback(
-    since: EntryId | undefined,
-    signal: AbortSignalLike,
-  ): Promise<SessionEntriesResult> {
-    if (since === undefined) return this.getEntries(undefined, signal);
-    try {
-      return await this.getEntries(since, signal);
-    } catch (error) {
-      if (!isUnknownSinceError(error)) throw error;
-      return this.getEntries(undefined, signal);
+  /**
+   * The newest window of the branch omp is on. The session file supplies the window; omp confirms
+   * its leaf and adds whatever was written after the window's last entry, so the store starts from
+   * what omp holds. When omp is on another leaf than the window walked, the window is read again
+   * from that leaf.
+   */
+  private async applyWindow(signal: AbortSignalLike): Promise<void> {
+    const sessionFile = this.sessionFile;
+    if (sessionFile === undefined) {
+      await this.applyEntries(undefined, signal);
+      this.store.setHasOlder(false);
+      return;
     }
+    let newest: SessionEntryWindow;
+    try {
+      newest = await this.windows({ sessionFile }, { signal });
+    } catch (error) {
+      // omp writes a new chat's session file with its first entry: until then the session store does
+      // not list it, and omp's own entries are the whole history.
+      if (!(error instanceof AppFailure) || error.appError.code !== "not_found") throw error;
+      await this.applyEntries(undefined, signal);
+      this.store.setHasOlder(false);
+      return;
+    }
+    const live = await this.getEntries(newest.fileLastId ?? undefined, signal);
+    const leafId = asEntryIdOrNull(live.leafId);
+    if (leafId === null) {
+      this.store.pairEndedMessages(live.entries, null);
+      this.store.setHasOlder(false);
+      return;
+    }
+    const window =
+      leafId === newest.leafId ? newest : await this.windows({ sessionFile, leafId }, { signal });
+    this.store.pairEndedMessages([...window.entries, ...live.entries], leafId);
+    this.store.setHasOlder(window.hasOlder);
+  }
+
+  /**
+   * Applies the entries after `since`, the latest one the store knows. When omp no longer knows that
+   * entry (the session was rewritten under it), the newest window is read again instead: never the
+   * whole history.
+   */
+  private async applyEntries(since: EntryId | undefined, signal: AbortSignalLike): Promise<void> {
+    try {
+      const result = await this.getEntries(since, signal);
+      this.store.pairEndedMessages(result.entries, asEntryIdOrNull(result.leafId));
+    } catch (error) {
+      if (since === undefined || !isUnknownSinceError(error)) throw error;
+      await this.applyWindow(signal);
+    }
+  }
+
+  private async fetchOlder(): Promise<void> {
+    const sessionFile = this.sessionFile;
+    const { transcript } = this.store.getSnapshot();
+    const before = this.oldestLoadedBranchEntry();
+    if (sessionFile === undefined || transcript.head === null || before === undefined) return;
+    if (!transcript.hasOlder) return;
+    const controller = new AbortController();
+    this.olderController = controller;
+    try {
+      const page = await this.windows(
+        { sessionFile, leafId: transcript.head, before },
+        { signal: controller.signal },
+      );
+      this.store.prependHistoryEntries(page.entries, page.hasOlder);
+    } catch (error) {
+      if (controller.signal.aborted) throw cancelledFailure(CANCELLED_MESSAGE);
+      throw toAppFailure(error, "Loading older session history failed");
+    } finally {
+      if (this.olderController === controller) this.olderController = undefined;
+    }
+  }
+
+  /** The oldest loaded entry on the branch from the transcript's head: the paging cursor. */
+  private oldestLoadedBranchEntry(): EntryId | undefined {
+    const { transcript } = this.store.getSnapshot();
+    const seen = new Set<EntryId>();
+    let oldest: EntryId | undefined;
+    let current = transcript.head;
+    while (current !== null && !seen.has(current)) {
+      const entry = transcript.entries[current];
+      if (entry === undefined) break;
+      seen.add(current);
+      oldest = current;
+      current = entry.parentId;
+    }
+    return oldest;
   }
 
   private async getEntries(

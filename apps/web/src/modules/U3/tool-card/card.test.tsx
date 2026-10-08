@@ -1,5 +1,5 @@
 import type { ToolCallId } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ToolCard } from "./card";
 import type { ToolCardPhase, ToolCardState } from "./contract";
@@ -104,6 +104,41 @@ describe("ToolCard state grammar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
     fireEvent.click(screen.getByRole("button", { name: "Copy raw result" }));
     expect(onCopy).toHaveBeenCalledWith("raw result", "result");
+  });
+
+  test("says only the shown part was copied when the output is cut", async () => {
+    const onCopy = vi.fn(async () => {});
+    render(
+      <ToolCard
+        onCopy={onCopy}
+        state={{
+          ...state("success", "cut"),
+          result: { outputCut: { shownBytes: 4, totalBytes: 40 } },
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw result" }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Copied the shown part of the output. Load the full output to copy all of it.",
+          { exact: true },
+        ),
+      ).toBeTruthy(),
+    );
+  });
+
+  test("says raw output was copied when the output was not cut", async () => {
+    const onCopy = vi.fn(async () => {});
+    render(
+      <ToolCard onCopy={onCopy} state={{ ...state("success", "whole"), result: "raw result" }} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw result" }));
+    await waitFor(() =>
+      expect(screen.getByText("Copied raw output", { exact: true })).toBeTruthy(),
+    );
   });
   test("does not echo raw JSON arguments when no renderer summary is supplied", () => {
     render(<ToolCard state={state("success", "summary")} />);

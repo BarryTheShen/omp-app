@@ -63,6 +63,8 @@ export interface TranscriptState {
   readonly entries: Readonly<Record<EntryId, TranscriptEntry>>;
   readonly order: readonly EntryId[];
   readonly head: EntryId | null;
+  /** True when the session file holds entries older than the first one loaded on this branch. */
+  readonly hasOlder: boolean;
 }
 
 export type ToolCallStatus = "running" | "partial" | "success" | "error" | "cancelled";
@@ -413,7 +415,7 @@ function makeInitialSnapshot(threadId: ThreadId): RuntimeSnapshot {
     revision: 0,
     lastSeq: 0,
     needsRefetch: false,
-    transcript: { entries: {}, order: [], head: null },
+    transcript: { entries: {}, order: [], head: null, hasOlder: false },
     messages: {},
     streaming: {},
     messageOrder: [],
@@ -560,7 +562,7 @@ function recordTranscriptEntry(next: MutableSnapshot, entry: TranscriptEntry): v
     previous?.messageKey !== undefined && entry.messageKey === undefined
       ? { ...entry, messageKey: previous.messageKey }
       : entry;
-  next.transcript = { entries, order, head: entry.id };
+  next.transcript = { ...next.transcript, entries, order, head: entry.id };
 }
 function mergeEntryMessageKey(next: MutableSnapshot, entryId: EntryId, key: MessageKey): void {
   const current = next.transcript.entries[entryId];
@@ -886,6 +888,55 @@ export class OmpRuntimeStore {
     for (const entry of parsed) recordTranscriptEntry(next, entry);
     if (leafId !== undefined) next.transcript = { ...next.transcript, head: leafId };
     this.pairEndedInDraft(next, entries);
+    hydratePersistedMessages(next);
+    this.commit(next);
+  }
+
+  /**
+   * Adds older history entries in front of the transcript: the window before its first entry. The
+   * branch head stays where it is, and the view is rebuilt from the branch.
+   */
+  public prependHistoryEntries(entries: readonly unknown[], hasOlder: boolean): void {
+    const next = mutableSnapshot(this.snapshot);
+    const transcriptEntries = next.transcript.entries as Record<string, TranscriptEntry>;
+    const older = entriesFromUnknown(entries).filter(
+      (entry) => transcriptEntries[entry.id] === undefined,
+    );
+    for (const entry of older) transcriptEntries[entry.id] = entry;
+    next.transcript = {
+      ...next.transcript,
+      order: [...older.map((entry) => entry.id), ...next.transcript.order],
+      hasOlder,
+    };
+    hydratePersistedMessages(next);
+    this.commit(next);
+  }
+
+  /** Records whether the session file holds entries older than the transcript's first one. */
+  public setHasOlder(hasOlder: boolean): void {
+    const next = mutableSnapshot(this.snapshot);
+    next.transcript = { ...next.transcript, hasOlder };
+    this.commit(next);
+  }
+
+  /**
+   * Replaces one history entry with its full form (a tool output loaded in full). The entry keeps its
+   * place and message key; its message is rebuilt from the full entry and the view is rebuilt from it.
+   */
+  public replaceHistoryEntry(entry: unknown): void {
+    const [parsed] = entriesFromUnknown([entry]);
+    if (parsed === undefined) return;
+    const next = mutableSnapshot(this.snapshot);
+    const transcriptEntries = next.transcript.entries as Record<string, TranscriptEntry>;
+    const previous = transcriptEntries[parsed.id];
+    if (previous === undefined) return;
+    transcriptEntries[parsed.id] = { ...parsed, messageKey: previous.messageKey };
+    const key = previous.messageKey;
+    const message = messageFromEntry(parsed);
+    const record = key === undefined ? undefined : next.messages[key];
+    if (key !== undefined && record !== undefined && message !== undefined) {
+      addOrReplaceMessage(next, key, { ...record, message });
+    }
     hydratePersistedMessages(next);
     this.commit(next);
   }

@@ -12,7 +12,7 @@ import {
 } from "@assistant-ui/react";
 import type { AppError, DescriptorId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
-import { type ReactNode, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { File } from "@/components/assistant-ui/elements/file";
 import { Image } from "@/components/assistant-ui/elements/image";
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
@@ -20,6 +20,12 @@ import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui";
 import { useDescriptor, useRenderer } from "@/registry-core";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
+import { FullOutputProvider } from "../../U3/tool-card/full-output";
+import {
+  captureVisibleMessageAnchor,
+  type MessageScrollAnchor,
+  retainVisibleMessageAnchor,
+} from "../scroll/anchor";
 
 const MESSAGE_DESCRIPTOR_BY_ROLE = {
   user: "U1.userMessage",
@@ -47,6 +53,10 @@ export interface ThreadShellProps {
   readonly slots?: ThreadRowSlots;
   readonly autoScroll?: boolean;
   readonly footer?: ReactNode;
+  /** Loads the page of messages older than the ones shown; the control is offered while the store holds older history. */
+  readonly onLoadOlder?: () => Promise<void>;
+  /** Loads the full text of a tool output the thread shows shortened (the card offers it when set). */
+  readonly onLoadFullOutput?: (toolCallId: string) => Promise<void>;
 }
 
 interface RuntimeStateSurfaceProps {
@@ -219,6 +229,57 @@ function MessageRow({ message, slots }: { message: MessageState; slots?: ThreadR
   return <DescriptorMessageBoundary descriptorId={descriptorId} fallback={fallback} />;
 }
 
+/** A click on "Show earlier messages": the row the reader was on, kept until the older rows land. */
+interface PendingEarlierLoad {
+  readonly button: HTMLElement;
+  readonly hadFocus: boolean;
+  readonly viewport: HTMLElement;
+  readonly anchor: MessageScrollAnchor | null;
+  readonly firstMessage: string | undefined;
+}
+
+function EarlierMessagesControl({
+  onLoad,
+}: {
+  readonly onLoad: (button: HTMLElement) => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const load = async (button: HTMLElement): Promise<void> => {
+    setLoading(true);
+    setError(undefined);
+    try {
+      await onLoad(button);
+    } catch (cause) {
+      setError(
+        cause instanceof AppFailure ? cause.appError.message : "Loading earlier messages failed",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="flex flex-col items-center gap-1 px-6 py-3" data-slot="u1-earlier-messages">
+      <button
+        aria-disabled={loading || undefined}
+        className="border-border bg-background hover:bg-muted rounded-md border px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:cursor-wait aria-disabled:opacity-60"
+        type="button"
+        onClick={(event) => {
+          // aria-disabled, not disabled: a disabled button drops focus, and the reader's focus must stay on it.
+          if (!loading) void load(event.currentTarget);
+        }}
+      >
+        {loading ? "Loading earlier messages…" : "Show earlier messages"}
+      </button>
+      {error !== undefined && (
+        <p className="text-danger text-sm" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Renders inside the caller's assistant-ui runtime provider and supplies stable message rows. The
  * composer is intentionally not included: U2 owns that surface and consumes this thread runtime.
@@ -229,45 +290,92 @@ export function ThreadShell({
   slots,
   autoScroll = true,
   footer,
+  onLoadOlder,
+  onLoadFullOutput,
 }: ThreadShellProps) {
   const snapshot = useSyncExternalStore(
     (listener) => store.subscribe(listener),
     () => store.getSnapshot(),
     () => store.getSnapshot(),
   );
+  const pendingEarlier = useRef<PendingEarlierLoad | null>(null);
+  const firstMessage = snapshot.messageOrder[0];
+  // Older rows land above the first one: re-anchor the reader's row once they are in the DOM.
+  useLayoutEffect(() => {
+    const pending = pendingEarlier.current;
+    if (pending === null || pending.firstMessage === firstMessage) return;
+    pendingEarlier.current = null;
+    retainVisibleMessageAnchor(pending.viewport, pending.anchor);
+    // The control held focus and is gone because nothing older is left: keep a keyboard reader in the transcript.
+    if (pending.hadFocus && !pending.button.isConnected)
+      pending.viewport.focus({ preventScroll: true });
+    // The layout can still settle after this commit (the control leaves; the viewport follows its own
+    // turn anchor). Retain once more on the next frame, from where the first pass left the reader.
+    if (pending.anchor === null) return;
+    const { anchor, viewport } = pending;
+    const frame = requestAnimationFrame(() =>
+      retainVisibleMessageAnchor(viewport, { ...anchor, scrollTop: viewport.scrollTop }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [firstMessage]);
+  const loadEarlier = async (button: HTMLElement): Promise<void> => {
+    if (onLoadOlder === undefined) return;
+    const before = store.getSnapshot().messageOrder[0];
+    const viewport = button.closest<HTMLElement>('[data-slot="u1-thread-viewport"]');
+    if (viewport !== null) {
+      pendingEarlier.current = {
+        button,
+        hadFocus: document.activeElement === button,
+        viewport,
+        anchor: captureVisibleMessageAnchor(viewport),
+        firstMessage: before,
+      };
+    }
+    try {
+      await onLoadOlder();
+    } finally {
+      // No older row arrived, so nothing will re-anchor: the capture is dropped.
+      if (store.getSnapshot().messageOrder[0] === before) pendingEarlier.current = null;
+    }
+  };
   return (
-    <ThreadPrimitive.Root
-      className="aui-u1-thread bg-background flex h-full min-h-0 min-w-0 flex-col"
-      data-slot="u1-thread-root"
-    >
-      <ThreadPrimitive.Viewport
-        data-slot="u1-thread-viewport"
-        className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
-        role="region"
-        aria-label="Messages"
-        aria-live="off"
-        tabIndex={0}
-        autoScroll={autoScroll}
-        // R0 turns `isRunning` off and on at every turn boundary, so a "run start" also fires in the
-        // middle of an answer and would pull a reader who scrolled away down to the bottom. Sending
-        // scrolls explicitly instead (the app root calls followLatest when a message is sent).
-        scrollToBottomOnRunStart={false}
-        turnAnchor="bottom"
+    <FullOutputProvider value={onLoadFullOutput}>
+      <ThreadPrimitive.Root
+        className="aui-u1-thread bg-background flex h-full min-h-0 min-w-0 flex-col"
+        data-slot="u1-thread-root"
       >
-        <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
-          <RuntimeStateSurface snapshot={snapshot} onRetry={onRetry} />
-          <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
-            <ThreadPrimitive.Messages>
-              {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
-            </ThreadPrimitive.Messages>
+        <ThreadPrimitive.Viewport
+          data-slot="u1-thread-viewport"
+          className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
+          role="region"
+          aria-label="Messages"
+          aria-live="off"
+          tabIndex={0}
+          autoScroll={autoScroll}
+          // R0 turns `isRunning` off and on at every turn boundary, so a "run start" also fires in the
+          // middle of an answer and would pull a reader who scrolled away down to the bottom. Sending
+          // scrolls explicitly instead (the app root calls followLatest when a message is sent).
+          scrollToBottomOnRunStart={false}
+          turnAnchor="bottom"
+        >
+          <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
+            <RuntimeStateSurface snapshot={snapshot} onRetry={onRetry} />
+            <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
+              {onLoadOlder !== undefined && snapshot.transcript.hasOlder && (
+                <EarlierMessagesControl onLoad={loadEarlier} />
+              )}
+              <ThreadPrimitive.Messages>
+                {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
+              </ThreadPrimitive.Messages>
+            </div>
+            <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 items-center justify-between gap-(--space-md) border-t border-border bg-background px-6 py-2">
+              <RuntimeSettledStatus snapshot={snapshot} />
+              {footer}
+            </ThreadPrimitive.ViewportFooter>
           </div>
-          <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 items-center justify-between gap-(--space-md) border-t border-border bg-background px-6 py-2">
-            <RuntimeSettledStatus snapshot={snapshot} />
-            {footer}
-          </ThreadPrimitive.ViewportFooter>
-        </div>
-      </ThreadPrimitive.Viewport>
-    </ThreadPrimitive.Root>
+        </ThreadPrimitive.Viewport>
+      </ThreadPrimitive.Root>
+    </FullOutputProvider>
   );
 }
 

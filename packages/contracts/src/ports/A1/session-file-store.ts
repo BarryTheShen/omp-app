@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { definePort } from "../../core/envelope";
-import { FolderPath, SessionFilePath, ThreadId } from "../../core/ids";
+import { EntryId, FolderPath, SessionFilePath, ThreadId } from "../../core/ids";
 import { Cursor, Timestamp } from "./shared";
 
 export const SessionStatus = z.enum([
@@ -116,6 +116,42 @@ export const SubagentReadResult = z.strictObject({
   messages: z.array(z.record(z.string(), z.unknown())),
 });
 export type SubagentReadResult = z.infer<typeof SubagentReadResult>;
+/** The newest entries of one branch, read from the session file (omp's stream sends all of them). */
+export const SessionEntryWindowArgs = z.strictObject({
+  sessionFile: SessionFilePath,
+  /** The leaf to walk from (omp's leaf from `get_entries`). Omit it to walk from the file's last entry. */
+  leafId: EntryId.optional(),
+  /** Only entries strictly older than this one on the same branch: the next window back. */
+  before: EntryId.optional(),
+  /** The budget for the serialized entries, in bytes: 4 MB by default, 8 MB at most. */
+  byteBudget: z.int().min(1024).max(8_388_608).optional(),
+});
+export type SessionEntryWindowArgs = z.infer<typeof SessionEntryWindowArgs>;
+
+export const SessionEntryWindow = z.strictObject({
+  sessionFile: SessionFilePath,
+  /** The leaf the window walked from, and the file's last entry (for omp's `since` check). */
+  leafId: EntryId.nullable(),
+  fileLastId: EntryId.nullable(),
+  /** Raw session entries of this branch, oldest first. A tool output over the cut limit is shortened and marked `outputCut`. */
+  entries: z.array(z.record(z.string(), z.unknown())),
+  /** Pass as `before` for the next older window; null when this window is empty. */
+  oldestId: EntryId.nullable(),
+  hasOlder: z.boolean(),
+});
+export type SessionEntryWindow = z.infer<typeof SessionEntryWindow>;
+
+export const SessionEntryOutputArgs = z.strictObject({
+  sessionFile: SessionFilePath,
+  entryId: EntryId,
+});
+export type SessionEntryOutputArgs = z.infer<typeof SessionEntryOutputArgs>;
+
+/** The whole entry as omp wrote it, with no output cut: what "Load full output" shows. */
+export const SessionEntryOutputResult = z.strictObject({
+  entry: z.record(z.string(), z.unknown()),
+});
+export type SessionEntryOutputResult = z.infer<typeof SessionEntryOutputResult>;
 
 export const SessionFileChanged = z.strictObject({
   folder: FolderPath,
@@ -151,6 +187,16 @@ export const SessionFileStore = definePort({
     readSubagent: {
       args: SubagentReadArgs,
       result: SubagentReadResult,
+      capability: "host.session-files",
+    },
+    readEntryWindow: {
+      args: SessionEntryWindowArgs,
+      result: SessionEntryWindow,
+      capability: "host.session-files",
+    },
+    readEntryOutput: {
+      args: SessionEntryOutputArgs,
+      result: SessionEntryOutputResult,
       capability: "host.session-files",
     },
   },

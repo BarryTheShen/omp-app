@@ -472,6 +472,10 @@ function DraftComposer({
 interface ActiveThreadProps {
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly history: SelectedThreadHistoryState;
+  /** Loads the page of messages older than the ones shown; the thread offers it while history is older. */
+  readonly onLoadOlder?: () => Promise<void>;
+  /** Loads the full text of a tool output the thread shows shortened. */
+  readonly onLoadFullOutput?: (toolCallId: string) => Promise<void>;
   readonly capabilities: CapabilityMap;
   readonly folder: FolderPath | null;
   readonly catalog: SessionCatalogModel | null;
@@ -503,6 +507,8 @@ function ActiveThreadReady({
   remote,
   title,
   p3Runs,
+  onLoadOlder,
+  onLoadFullOutput,
 }: ActiveThreadProps) {
   const store = history.store as OmpRuntimeStore;
   const threadId = history.threadId as ThreadId;
@@ -1010,6 +1016,8 @@ function ActiveThreadReady({
                 <ThreadShell
                   autoScroll
                   footer={area("threadFooter")}
+                  onLoadOlder={onLoadOlder}
+                  onLoadFullOutput={onLoadFullOutput}
                   slots={{
                     renderMessage: (message, renderNested) => (
                       <MessageParts
@@ -1303,6 +1311,8 @@ function ConnectedApp({
         client={client}
         folder={folder}
         history={history}
+        onLoadOlder={controller === null ? undefined : () => controller.loadOlder()}
+        onLoadFullOutput={controller === null ? undefined : (id) => controller.loadFullOutput(id)}
         leftSidebar={leftSidebar}
         onOpenSettings={openSettings}
         onPromptSent={onPromptSent}

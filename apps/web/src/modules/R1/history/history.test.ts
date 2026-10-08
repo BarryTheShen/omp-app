@@ -6,8 +6,9 @@ import type {
   RpcSessionEvent,
   ThreadId,
 } from "@omp-app/contracts";
-import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
+import { AppFailure, SessionFileStore, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
+import { SessionHistoryLoader } from "@/modules/R0/history/history";
 import { createSelectedThreadHistoryController } from ".";
 
 const folder = "/workspace/project" as FolderPath;
@@ -83,30 +84,67 @@ function fakeClient(rpc: RpcSessionClient, subscriptions: SubscriptionRecord[]):
 }
 
 describe("SelectedThreadHistoryController open and paging", () => {
-  test("opens existing, loads the newest page, then delegates older pages on demand", async () => {
+  test("opens existing, loads the newest page, then pages older history through the thread's loader", async () => {
     const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc(
       (_args) => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
       calls,
     );
-    const older: ThreadId[] = [];
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions),
       folder,
-      loadOlder: async (threadId) => {
-        older.push(threadId);
-      },
     });
+    const older = vi
+      .spyOn(SessionHistoryLoader.prototype, "loadOlder")
+      .mockResolvedValue(undefined);
+    try {
+      const store = await controller.openExisting(threadOne);
+      expect(controller.getSnapshot().capabilities).toEqual({});
+      await controller.loadOlder();
 
-    const store = await controller.openExisting(threadOne);
-    expect(controller.getSnapshot().capabilities).toEqual({});
-    await controller.loadOlder();
+      expect(store.getSnapshot().threadId).toBe(threadOne);
+      expect(older).toHaveBeenCalledTimes(1);
+      expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
+      expect(subscriptions).toHaveLength(1);
+    } finally {
+      older.mockRestore();
+    }
+  });
 
-    expect(store.getSnapshot().threadId).toBe(threadOne);
-    expect(older).toEqual([threadOne]);
-    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
-    expect(subscriptions).toHaveLength(1);
+  test("reads the newest window from the thread's session file through the file-store port", async () => {
+    const sessionFile = "/workspace/project/thread-one.jsonl";
+    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const rpc = {
+      ...base,
+      send: async (args: { command: { type: string } }) =>
+        args.command.type === "get_state"
+          ? { sessionId: "s1", sessionFile }
+          : { entries: [], leafId: null },
+    } as unknown as RpcSessionClient;
+    const windowArgs: unknown[] = [];
+    const sessionFiles = {
+      readEntryWindow: async (args: unknown) => {
+        windowArgs.push(args);
+        return {
+          sessionFile,
+          leafId: null,
+          fileLastId: null,
+          entries: [],
+          oldestId: null,
+          hasOlder: false,
+        };
+      },
+    };
+    const client = {
+      ...fakeClient(rpc, []),
+      port: (schema: unknown) => (schema === SessionFileStore ? sessionFiles : rpc),
+    } as unknown as AppClient;
+    const controller = createSelectedThreadHistoryController({ client, folder });
+
+    await controller.openExisting(threadOne);
+
+    expect(windowArgs).toEqual([{ sessionFile }]);
   });
 
   test("opens new and latest sessions with explicit folder start intents", async () => {

@@ -11,6 +11,7 @@ import type {
   ToolRenderer,
   ToolRendererProps,
 } from "./contract";
+import { type OutputCut, OutputCutNote, outputCutOf } from "./full-output";
 import { normalizeToolRendererProps } from "./normalize";
 
 const MAX_OUTPUT_LINES = 12;
@@ -47,7 +48,12 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
         summary={summary}
       />
       <BashCommand command={command} cwd={cwd} onCopy={onCopy} />
-      <BashOutput result={result} state={state} onCancel={onCancel} />
+      <BashOutput
+        cut={outputCutOf(rendererProps.result)}
+        result={result}
+        state={state}
+        onCancel={onCancel}
+      />
     </div>
   );
 }
@@ -313,12 +319,14 @@ function BashCommand({
 }
 
 function BashOutput({
+  cut,
   result,
   state,
   onCancel,
 }: {
   readonly result: BashResult | undefined;
   readonly state: ToolCardState;
+  readonly cut?: OutputCut;
   readonly onCancel?: () => void | Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -375,6 +383,7 @@ function BashOutput({
           Show more
         </Button>
       )}
+      {cut !== undefined && <OutputCutNote cut={cut} toolCallId={state.toolCallId} />}
       {onCancel !== undefined && (state.phase === "running" || state.phase === "partial") && (
         <Button
           aria-label="Stop turn"

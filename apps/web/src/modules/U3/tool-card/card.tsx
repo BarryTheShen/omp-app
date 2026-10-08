@@ -8,6 +8,7 @@ import {
 } from "../../../components/ui/collapsible";
 import { Icons } from "../../../tokens";
 import type { OutputMeta, ToolCardPhase, ToolCardState } from "./contract";
+import { OutputCutNote, outputCutOf } from "./full-output";
 import type { CopyKind, CopySlot } from "./slots";
 
 const MAX_REMEMBERED_DISCLOSURES = 256;
@@ -67,7 +68,9 @@ export function ToolCard({
   const remembered = rememberedDisclosure.get(state.toolCallId);
   const [open, setOpen] = useState(remembered ?? state.defaultOpen);
   const [expandedOutput, setExpandedOutput] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "copiedShown" | "failed">(
+    "idle",
+  );
   const [activeToolCallId, setActiveToolCallId] = useState(state.toolCallId);
   const userOverride = useRef(remembered !== undefined);
   const previousPhase = useRef(state.phase);
@@ -91,6 +94,7 @@ export function ToolCard({
 
   const argsRaw = state.argsText;
   const resultRaw = rawResult ?? formatRaw(state.result ?? state.partialResult);
+  const cut = outputCutOf(state.result ?? state.partialResult);
   const output = previewOutput(resultRaw, state.outputMeta, expandedOutput);
   const summary = suppliedSummary ?? summarize(state);
 
@@ -113,7 +117,7 @@ export function ToolCard({
       } else if (typeof navigator !== "undefined" && navigator.clipboard !== undefined) {
         await navigator.clipboard.writeText(raw);
       }
-      setCopyStatus("copied");
+      setCopyStatus(kind === "result" && cut !== undefined ? "copiedShown" : "copied");
     } catch {
       setCopyStatus("failed");
     }
@@ -234,15 +238,27 @@ export function ToolCard({
               </div>
             )}
           </details>
+          {cut !== undefined && <OutputCutNote cut={cut} toolCallId={state.toolCallId} />}
           {copyStatus !== "idle" && (
             <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
-              {copyStatus === "copied" ? "Copied raw output" : "Copy unavailable"}
+              {copyStatusText(copyStatus)}
             </span>
           )}
         </div>
       </CollapsibleContent>
     </Collapsible>
   );
+}
+
+function copyStatusText(status: "copied" | "copiedShown" | "failed"): string {
+  switch (status) {
+    case "copied":
+      return "Copied raw output";
+    case "copiedShown":
+      return "Copied the shown part of the output. Load the full output to copy all of it.";
+    case "failed":
+      return "Copy unavailable";
+  }
 }
 
 function ToolRawBlock({

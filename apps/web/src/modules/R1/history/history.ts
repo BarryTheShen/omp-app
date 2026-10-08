@@ -4,12 +4,21 @@ import type {
   CapabilityMap,
   FolderPath,
   OpenThreadArgs,
+  PortClient,
   RpcSessionClient,
   RpcSessionEvent,
   ThreadId,
 } from "@omp-app/contracts";
-import { AppFailure, RpcSessionPort as RpcSessionPortSchema } from "@omp-app/contracts";
-import { SessionHistoryLoader } from "@/modules/R0/history/history";
+import {
+  AppFailure,
+  RpcSessionPort as RpcSessionPortSchema,
+  SessionFileStore,
+} from "@omp-app/contracts";
+import {
+  SessionHistoryLoader,
+  type SessionOutputReader,
+  type SessionWindowReader,
+} from "@/modules/R0/history/history";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import { releaseThread } from "../release";
 
@@ -38,8 +47,6 @@ export interface SelectedThreadHistoryOptions {
     session: RpcSessionClient,
     store: OmpRuntimeStore,
   ) => SessionHistoryLoader;
-  /** Older entry pages are delegated to R0/R1 history; no whole-file browser fallback is invented. */
-  readonly loadOlder?: (threadId: ThreadId, store: OmpRuntimeStore) => Promise<void>;
 }
 
 function asFailure(error: unknown, fallback: string): AppFailure {
@@ -73,6 +80,7 @@ export class SelectedThreadHistoryController {
   private readonly options: SelectedThreadHistoryOptions;
   private readonly client: AppClient;
   private readonly rpc: RpcSessionClient;
+  private readonly sessionFiles: PortClient<typeof SessionFileStore>;
   private state: SelectedThreadHistoryState = Object.freeze({
     threadId: undefined,
     store: undefined,
@@ -91,6 +99,7 @@ export class SelectedThreadHistoryController {
     this.options = options;
     this.client = options.client;
     this.rpc = this.client.port(RpcSessionPortSchema);
+    this.sessionFiles = this.client.port(SessionFileStore);
   }
 
   public getSnapshot(): SelectedThreadHistoryState {
@@ -123,15 +132,27 @@ export class SelectedThreadHistoryController {
     await this.attachSubscription(threadId, store, afterSeq);
   }
 
-  /** Loads older history through R0/R1's injected paging seam, never by reading session files here. */
-  public async loadOlder(): Promise<void> {
-    const threadId = this.state.threadId;
-    const store = this.state.store;
-    if (!threadId || !store) throw unavailable("No selected thread is open");
-    if (!this.options.loadOlder)
-      throw unavailable("Older history paging is unavailable for this thread");
+  /** Loads the full text of a tool output the thread shows shortened; the loader reads the entry from the session file. */
+  public async loadFullOutput(toolCallId: string): Promise<void> {
+    const loader = this.loader;
+    if (!this.state.threadId || !this.state.store || !loader) {
+      throw unavailable("No selected thread is open");
+    }
     try {
-      await this.options.loadOlder(threadId, store);
+      await loader.loadFullOutput(toolCallId);
+    } catch (error) {
+      throw asFailure(error, "Loading the full output failed");
+    }
+  }
+
+  /** Loads the page of history older than the one shown; the loader reads it from the session file. */
+  public async loadOlder(): Promise<void> {
+    const loader = this.loader;
+    if (!this.state.threadId || !this.state.store || !loader) {
+      throw unavailable("No selected thread is open");
+    }
+    try {
+      await loader.loadOlder();
     } catch (error) {
       throw asFailure(error, "Loading older session history failed");
     }
@@ -227,7 +248,17 @@ export class SelectedThreadHistoryController {
   }
 
   private defaultLoader(threadId: ThreadId, store: OmpRuntimeStore): SessionHistoryLoader {
-    return new SessionHistoryLoader({ threadId, send: this.rpc.send, store });
+    const readWindow: SessionWindowReader = (args, options) =>
+      this.sessionFiles.readEntryWindow(args, options);
+    const readOutput: SessionOutputReader = (args, options) =>
+      this.sessionFiles.readEntryOutput(args, options);
+    return new SessionHistoryLoader({
+      threadId,
+      send: this.rpc.send,
+      store,
+      readWindow,
+      readOutput,
+    });
   }
 
   private async attachSubscription(

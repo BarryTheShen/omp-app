@@ -1,5 +1,5 @@
 import type { CapabilityMap, EntryId, RpcSessionSend, ThreadId } from "@omp-app/contracts";
-import { AppFailure, persistedMessageKey } from "@omp-app/contracts";
+import { AppFailure, persistedMessageKey, SessionFilePath } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { createOmpBranchingController } from "@/modules/R0/branching/branching";
 import { SessionHistoryLoader } from "@/modules/R0/history/history";
@@ -57,7 +57,10 @@ function rpc(
       return { sessionId: targetThread, sessionFile: "/workspace/target.jsonl" } as never;
     }
     if (command.type === "get_entries") {
-      return { entries: [entry(sourceEntry, null, "source text")], leafId: sourceEntry } as never;
+      return {
+        entries: command.since === undefined ? [entry(sourceEntry, null, "source text")] : [],
+        leafId: sourceEntry,
+      } as never;
     }
     throw new Error(`Unexpected transition history command: ${command.type}`);
   }) as RpcSessionSend;
@@ -92,7 +95,19 @@ function activeHistoryController(
       activeThreadId = threadId;
       activeStore = new OmpRuntimeStore({ threadId });
       onStore?.(activeStore);
-      activeLoader = new SessionHistoryLoader({ send, threadId, store: activeStore });
+      activeLoader = new SessionHistoryLoader({
+        send,
+        threadId,
+        store: activeStore,
+        readWindow: async () => ({
+          sessionFile: SessionFilePath.parse("/workspace/target.jsonl"),
+          leafId: sourceEntry,
+          fileLastId: sourceEntry,
+          entries: [entry(sourceEntry, null, "source text")],
+          oldestId: sourceEntry,
+          hasOlder: false,
+        }),
+      });
     },
     reloadHistory: async () => {
       if (!activeLoader) throw new Error("No selected session history loader");

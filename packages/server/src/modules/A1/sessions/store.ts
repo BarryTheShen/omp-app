@@ -1,7 +1,13 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { AppFailure } from "@omp-app/contracts";
+import {
+  AppFailure,
+  type SessionEntryOutputArgs,
+  type SessionEntryOutputResult,
+  type SessionEntryWindow,
+  type SessionEntryWindowArgs,
+} from "@omp-app/contracts";
 import { detectSessionLiveness } from "./liveness";
 import { isJsonObject, parseSessionContent } from "./parser";
 import {
@@ -28,6 +34,10 @@ import type {
   SessionStatus,
   SubagentListResult,
 } from "./types";
+import {
+  readEntryOutput as readOutputFromFile,
+  readEntryWindow as readWindowFromFile,
+} from "./window";
 
 interface SessionFileStat {
   readonly size: number;
@@ -337,6 +347,35 @@ export class SessionFileStore {
     });
     const match = headers.find((candidate) => candidate !== undefined);
     return match === undefined ? undefined : (await this.#listingEntry(match)).file;
+  }
+
+  /**
+   * The newest entries of one branch, from a session file this store lists. Any other path, including
+   * one outside the sessions folders, is refused before the file is read.
+   */
+  async readEntryWindow(args: SessionEntryWindowArgs): Promise<SessionEntryWindow> {
+    const sessionFile = await this.#listedSessionFile(args.sessionFile);
+    const window = await readWindowFromFile(sessionFile, {
+      ...(args.leafId === undefined ? {} : { leafId: args.leafId }),
+      ...(args.before === undefined ? {} : { before: args.before }),
+      ...(args.byteBudget === undefined ? {} : { byteBudget: args.byteBudget }),
+    });
+    return { sessionFile: args.sessionFile, ...window };
+  }
+
+  /** One entry as omp wrote it, from a session file this store lists. */
+  async readEntryOutput(args: SessionEntryOutputArgs): Promise<SessionEntryOutputResult> {
+    const sessionFile = await this.#listedSessionFile(args.sessionFile);
+    return { entry: await readOutputFromFile(sessionFile, args.entryId) };
+  }
+
+  async #listedSessionFile(value: string): Promise<string> {
+    const sessionFile = normalizeSessionFile(value);
+    const candidates = await this.#candidates(undefined, []);
+    if (!candidates.some((candidate) => candidate.file === sessionFile)) {
+      throw appFailure("not_found", "Session file is not listed", false);
+    }
+    return sessionFile;
   }
 
   /** Read one session file and its nested transcript tree. */

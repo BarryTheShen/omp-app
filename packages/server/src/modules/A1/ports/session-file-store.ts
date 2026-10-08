@@ -111,6 +111,14 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
         const page = await context.sessionFileStore.readSubagent(args);
         return { ...page, sessionFile: page.sessionFile as ContractSessionFile["sessionFile"] };
       },
+      readEntryWindow: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        return context.sessionFileStore.readEntryWindow(args);
+      },
+      readEntryOutput: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        return context.sessionFileStore.readEntryOutput(args);
+      },
     },
     context.publish,
     [],

@@ -1,12 +1,14 @@
 import { AssistantRuntimeProvider, type ThreadMessageLike } from "@assistant-ui/react";
 import type {
   CapabilityMap,
+  EntryId,
   OmpMessage,
   RpcSessionEvent,
   RpcSessionSend,
   ThreadId,
 } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { AppFailure } from "@omp-app/contracts";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createRegistry, RegistryProvider, registerRenderers } from "@/registry-core";
 import { useOmpRuntime } from "../../../R0/runtime";
@@ -230,5 +232,96 @@ describe("descriptor and nested row slots", () => {
     const region = screen.getByRole("group", { name: "1 message in nested transcript" });
     expect(region.getAttribute("data-read-only")).toBe("true");
     expect(region.querySelector("button")).toBeNull();
+  });
+});
+
+function historyMessage(
+  id: string,
+  parentId: string | null,
+  text: string,
+): Record<string, unknown> {
+  return {
+    type: "message",
+    id,
+    parentId,
+    timestamp: "2026-10-05T00:00:00.000Z",
+    message: { role: "user", content: text, timestamp: 1 },
+  };
+}
+
+describe("ThreadShell earlier messages", () => {
+  test("pages older history in on click and removes the control once nothing is older", async () => {
+    const store = readyStore();
+    store.pairEndedMessages([historyMessage("newer", "older", "newest text")], "newer" as EntryId);
+    store.setHasOlder(true);
+    const loadOlder = vi.fn(async () => {
+      store.prependHistoryEntries([historyMessage("older", null, "oldest text")], false);
+    });
+    renderThread(store, { onLoadOlder: loadOlder });
+
+    expect(screen.queryByText("newest text")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show earlier messages" }));
+    await waitFor(() => expect(screen.queryByText("oldest text")).not.toBeNull());
+
+    expect(loadOlder).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Show earlier messages" })).toBeNull();
+  });
+
+  test("stays hidden while the store holds no older history", () => {
+    const store = readyStore();
+    store.pairEndedMessages([historyMessage("only", null, "only text")], "only" as EntryId);
+    renderThread(store, { onLoadOlder: vi.fn(async () => {}) });
+
+    expect(screen.queryByRole("button", { name: "Show earlier messages" })).toBeNull();
+  });
+
+  test("stays hidden when the shell has no way to load older history", () => {
+    const store = readyStore();
+    store.pairEndedMessages([historyMessage("only", null, "only text")], "only" as EntryId);
+    store.setHasOlder(true);
+    renderThread(store);
+
+    expect(screen.queryByRole("button", { name: "Show earlier messages" })).toBeNull();
+  });
+
+  test("reports a failed page to the reader and keeps the control available", async () => {
+    const store = readyStore();
+    store.pairEndedMessages([historyMessage("newer", "older", "newest text")], "newer" as EntryId);
+    store.setHasOlder(true);
+    renderThread(store, {
+      onLoadOlder: async () => {
+        throw new AppFailure({
+          code: "omp_error",
+          message: "The older page could not be read",
+          retryable: true,
+        });
+      },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Show earlier messages" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("The older page could not be read"),
+    );
+    expect(screen.getByRole("button", { name: "Show earlier messages" })).toBeTruthy();
+  });
+
+  test("moves focus to the transcript when the last older page loads", async () => {
+    const store = readyStore();
+    store.pairEndedMessages([historyMessage("newer", "older", "newest text")], "newer" as EntryId);
+    store.setHasOlder(true);
+    renderThread(store, {
+      onLoadOlder: async () => {
+        store.prependHistoryEntries([historyMessage("older", null, "oldest text")], false);
+      },
+    });
+
+    const button = screen.getByRole("button", { name: "Show earlier messages" });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Show earlier messages" })).toBeNull(),
+    );
+
+    expect(document.activeElement).toBe(screen.getByRole("region", { name: "Messages" }));
   });
 });

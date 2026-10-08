@@ -327,9 +327,12 @@ function toolResultPart(
  */
 function toolResultFromMessage(message: Record<string, unknown>): unknown {
   if (message.content === undefined) return undefined;
-  return message.details === undefined
-    ? { content: message.content }
-    : { content: message.content, details: message.details };
+  return {
+    content: message.content,
+    ...(message.details === undefined ? {} : { details: message.details }),
+    // A shortened output says how much is missing; the card offers the full text.
+    ...(message.outputCut === undefined ? {} : { outputCut: message.outputCut }),
+  };
 }
 export type ExternalMessage =
   | ThreadMessageLike

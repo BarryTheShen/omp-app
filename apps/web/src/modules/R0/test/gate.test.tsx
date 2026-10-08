@@ -318,6 +318,9 @@ describe("R0 W2 recorded fixture runtime gate", () => {
       send,
       threadId: store.getSnapshot().threadId,
       store,
+      readWindow: async () => {
+        throw new Error("this test has no session file");
+      },
     });
     const unsubscribe = loader.watchNeedsRefetch();
     try {
