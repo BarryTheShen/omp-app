@@ -15,4 +15,4 @@ export type {
   TranscriptNoticeSink,
   WidgetHandoffProjection,
 } from "./projection";
-export { MAX_WIDGET_LINES, NotificationProjector } from "./projection";
+export { MAX_WIDGET_LINES, NotificationProjector, PROJECTION_ERROR_KEY } from "./projection";

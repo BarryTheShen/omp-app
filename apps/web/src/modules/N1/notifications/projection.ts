@@ -78,6 +78,8 @@ export interface ProjectionEventContext {
 }
 
 export const MAX_WIDGET_LINES = 10;
+/** The dedupe key of the projection's own error. The feedback strip shows it once, as an inline alert. */
+export const PROJECTION_ERROR_KEY = "projection:error";
 const MAX_DISPLAY_TEXT = 360;
 const EMPTY_PROJECTION_STATUSES: readonly StatusHandoffProjection[] = Object.freeze([]);
 const EMPTY_PROJECTION_WIDGETS: readonly WidgetHandoffProjection[] = Object.freeze([]);
@@ -784,7 +786,7 @@ export class NotificationProjector {
 
   private readonly clearFailure = (threadId: ThreadId): void => {
     if (threadId !== this.snapshot.threadId) return;
-    this.bus.dismiss(threadId, "projection:error");
+    this.bus.dismiss(threadId, PROJECTION_ERROR_KEY);
     if (this.snapshot.error !== null) this.commit({ error: null });
   };
 
@@ -792,7 +794,7 @@ export class NotificationProjector {
     this.commit({ error: freezeProjectionError(failure) });
     this.bus.publish(
       notification(threadId, {
-        dedupeKey: "projection:error",
+        dedupeKey: PROJECTION_ERROR_KEY,
         severity: "error",
         placement: "banner",
         message: cleanText(failure.appError.message),
