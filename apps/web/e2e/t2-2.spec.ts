@@ -49,11 +49,11 @@ test("renders grouped grep matches and style-linked results in light mode", asyn
   await page.goto("/t2-grep-playground.html");
   await expect(page.getByRole("heading", { name: "Grep results" })).toBeVisible();
   await expect(page.getByLabel("Grep matches by file")).toContainText("src/main.tsx");
-  await expect(page.getByLabel("Grep matches by file")).toContainText("12");
-  await expect(page.getByLabel("Grep matches by file")).toContainText("24");
-  await expect(page.getByLabel("Grep matches by file")).toContainText("context before");
+  await expect(page.locator("[data-t2-grep-lines]")).toContainText("TODO: wire");
+  await expect(page.locator("[data-t2-grep-lines]")).toContainText("TODO: remove");
+  await expect(page.getByLabel("Grep matches by file")).toContainText("2 matches");
   await expect(page.getByText("case-sensitive")).toBeVisible();
-  await expect(page.getByText("Showing 3 of 47 matches")).toBeVisible();
+  await expect(page.getByText("TODO in src · 3 matches")).toBeVisible();
   expect(await page.locator('link[rel="stylesheet"]').count()).toBeGreaterThan(0);
   const screenshot = await page.screenshot({
     path: "../../.data/screenshots/t2-2-light.png",

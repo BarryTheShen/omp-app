@@ -44,6 +44,7 @@ function toolModel(state: ToolCardState, props: ToolRendererProps) {
 function summaryFor(model: ReturnType<typeof toolModel>, state: ToolCardState): string {
   if (model === null) {
     if (state.phase === "running" || state.phase === "partial") return "Updating todos";
+    if (state.error !== undefined) return "Todo call skipped";
     return "No todo phases returned";
   }
   return `Updated todos: ${model.progress.done} of ${model.progress.total} done`;

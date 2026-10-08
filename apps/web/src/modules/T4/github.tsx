@@ -40,7 +40,7 @@ export function GithubCard({ rendererProps }: GithubCardProps) {
   return (
     <div data-slot="t4-github-card" data-testid={`t4-github-card-${normalized.toolCallId}`}>
       <ToolCard
-        className="[&_[data-slot='u3-tool-card-args']]:hidden"
+        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={state}
         summary={summaryFor(operation, repository, details)}
       />

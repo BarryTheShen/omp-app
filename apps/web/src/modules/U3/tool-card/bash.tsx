@@ -66,6 +66,36 @@ export const U3_BASH_DESCRIPTOR = {
   renderer: BashToolRenderer,
 } as const satisfies ToolRegistryDescriptor;
 
+/**
+ * omp's own reason for a failed command: a timeout, its exit code, or else the reason it wrote last
+ * (`[Command aborted]`, `Command failed: …`), or the first line it printed (omp sends no exit code
+ * for a command that never ran, such as one whose directory is missing).
+ */
+export function failureMessage(result: BashResult): string {
+  if (result.timedOut === true) return "Command timed out.";
+  if (result.exitCode !== undefined) return `Command exited with code ${result.exitCode}.`;
+  const lines = ansiTokens(result.output)
+    .map((token) => token.text)
+    .join("")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  const reason =
+    lines.findLast((line) => line.startsWith("[Command ") || line.startsWith("Command failed")) ??
+    lines[0];
+  if (reason === undefined) return "Command failed without printing a reason.";
+  return reason.length > 160 ? `${reason.slice(0, 157)}…` : reason;
+}
+
+/** A failure whose whole output is its banner sentence: the output block would only repeat it. */
+function repeatsBanner(result: BashResult): boolean {
+  return (
+    result.exitCode === undefined &&
+    result.timedOut !== true &&
+    result.output.trim() === failureMessage(result)
+  );
+}
+
 function bashState(
   state: ToolCardState,
   result: BashResult | undefined,
@@ -81,10 +111,7 @@ function bashState(
     phase === "error"
       ? {
           code: "timeout" as const,
-          message:
-            result.timedOut === true
-              ? "Command timed out."
-              : `Command exited with code ${result.exitCode ?? "unknown"}.`,
+          message: failureMessage(result),
           retryable: false,
           timeout: result.timedOut === true,
         }
@@ -144,7 +171,7 @@ const BashCommandResultSchema = z.looseObject({
 const WALL_TIME_SUFFIX = /\n*Wall time: [\d.]+ seconds?\s*$/;
 
 /** Reads bash output from either the agent's bash tool or the RPC bash command. */
-function decodeBashResult(value: unknown): BashResult | undefined {
+export function decodeBashResult(value: unknown): BashResult | undefined {
   const tool = BashToolResultSchema.safeParse(value);
   if (tool.success) return decodeBashToolResult(tool.data);
   const command = BashCommandResultSchema.safeParse(value);
@@ -302,6 +329,7 @@ function BashOutput({
       </div>
     );
   }
+  if (state.phase === "error" && repeatsBanner(result)) return null;
   const output = expanded ? result.output : previewOutput(result.output);
   const stderr = result.stderr?.trim() ?? "";
   return (

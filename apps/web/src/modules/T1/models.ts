@@ -46,6 +46,14 @@ export const ReadDisplayContentSchema = z.looseObject({
 });
 export type ReadDisplayContent = z.infer<typeof ReadDisplayContentSchema>;
 
+/** omp's structural summary of a large source file: the lines shown and the spans left out. */
+export const ReadSummarySchema = z.looseObject({
+  lines: z.int().nonnegative(),
+  elidedSpans: z.int().nonnegative(),
+  elidedLines: z.int().nonnegative(),
+});
+export type ReadSummary = z.infer<typeof ReadSummarySchema>;
+
 export const ReadToolDetailsSchema = z.looseObject({
   kind: z.enum(["file", "url"]).optional(),
   displayTarget: z.string().optional(),
@@ -62,7 +70,7 @@ export const ReadToolDetailsSchema = z.looseObject({
   fileSize: z.number().nonnegative().optional(),
   totalLines: z.int().nonnegative().optional(),
   displayContent: ReadDisplayContentSchema.optional(),
-  summary: z.string().optional(),
+  summary: ReadSummarySchema.optional(),
   conflictCount: z.int().nonnegative().optional(),
   displayReadTargets: z.array(z.string()).optional(),
   displayReadTargetLinks: z.array(z.string()).optional(),

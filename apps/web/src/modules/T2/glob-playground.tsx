@@ -37,11 +37,7 @@ function GlobPlayground() {
         <GlobCard
           rendererProps={props("glob-success", {
             fileCount: 3,
-            files: [
-              { path: "src/app.ts", target: "src/app.ts" },
-              { path: "src/index.ts", target: "src/index.ts" },
-              { path: "src/lib/util.ts", target: "src/lib/util.ts" },
-            ],
+            files: ["src/app.ts", "src/index.ts", "src/lib/util.ts"],
           })}
         />
         <GlobCard
@@ -49,12 +45,9 @@ function GlobPlayground() {
             "glob-limit",
             {
               fileCount: 57,
-              files: Array.from({ length: 20 }, (_, index) => ({
-                path: `src/generated-${index + 1}.ts`,
-                target: `src/generated-${index + 1}.ts`,
-              })),
+              files: Array.from({ length: 20 }, (_, index) => `src/generated-${index + 1}.ts`),
               missingPaths: ["packages/missing"],
-              resultLimitReached: true,
+              resultLimitReached: 20,
             },
             { type: "complete" },
             "**/*.ts",

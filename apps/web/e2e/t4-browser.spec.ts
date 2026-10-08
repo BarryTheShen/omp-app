@@ -47,6 +47,7 @@ test("renders browser action, observations, screenshot and raw toggle in light C
   await expect(page.getByRole("heading", { name: "Browser screenshot 1" })).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "browser: Complete" }).click();
+  await page.getByText("Raw details").click();
   await expect(page.getByText("Result")).toBeVisible();
   await page.screenshot({ path: "../../.data/screenshots/t4.3-browser-light.png", fullPage: true });
 });

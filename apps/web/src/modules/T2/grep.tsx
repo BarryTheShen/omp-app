@@ -211,6 +211,14 @@ export function GrepCard(props: ToolRendererProps): ReactNode {
           ))}
         </ul>
       )}
+      {details?.displayContent && (
+        <pre
+          className="text-foreground m-0 max-h-80 overflow-auto text-xs whitespace-pre-wrap"
+          data-t2-grep-lines
+        >
+          {details.displayContent}
+        </pre>
+      )}
       {details && files.length === 0 && details.matchCount === 0 && (
         <p className="text-muted-foreground text-sm" data-t2-grep-empty>
           No matches found.

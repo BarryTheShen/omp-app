@@ -77,7 +77,7 @@ export function DebugCard({ rendererProps }: { readonly rendererProps: ToolRende
       <ToolCard
         className={
           resultRepeatsBanner
-            ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden"
+            ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
             : "[&_[data-slot='u3-tool-card-args']]:hidden"
         }
         rawResult={rawText(result)}

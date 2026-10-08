@@ -11,23 +11,19 @@ const props = {
   result: {
     content: [{ type: "text", text: "Found matches" }],
     details: {
+      scopePath: "src",
+      searchPath: "/repo/src",
+      cwd: "/repo",
       matchCount: 3,
       fileCount: 2,
-      meta: { total: 47 },
+      files: ["src/main.tsx", "src/utils.ts"],
       fileMatches: [
-        {
-          path: "src/main.tsx",
-          count: 2,
-          matches: [
-            { line: 12, snippet: "TODO: wire" },
-            { line: 24, snippet: "TODO: remove" },
-          ],
-          snippets: [{ line: 11, snippet: "context before" }],
-        },
-        { path: "src/utils.ts", count: 1, matches: [{ line: 4, snippet: "TODO: remove" }] },
+        { path: "src/main.tsx", count: 2 },
+        { path: "src/utils.ts", count: 1 },
       ],
-      truncated: true,
-      fileLimitReached: false,
+      displayContent:
+        "# src/\n## main.tsx\n*12│TODO: wire\n*24│TODO: remove\n## utils.ts\n*4│TODO: remove",
+      truncated: false,
     },
   },
   status: { type: "complete", reason: "stop" },

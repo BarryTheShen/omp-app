@@ -174,8 +174,8 @@ export const T7ToolFallback: ToolRenderer = (props) => {
     unavailable !== undefined ? "Unavailable" : (correlation ?? "Recorded tool result");
   const cardClassName =
     unavailable === undefined
-      ? "[&_[data-slot='u3-tool-card-args']]:hidden"
-      : "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-status']]:hidden";
+      ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
+      : "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-status']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden";
   return (
     <div data-testid={`t7-fallback-${state.toolCallId}`} data-tool-name={state.toolName}>
       <ToolCard className={cardClassName} state={shellState} summary={summary} />

@@ -27,7 +27,7 @@ describe("GlobCard", () => {
       <GlobCard
         rendererProps={props({
           fileCount: 2,
-          files: [{ path: "src/a.ts", target: "src/a.ts" }, { path: "src/b.ts" }],
+          files: ["src/a.ts", "src/b.ts"],
         })}
       />,
     );
@@ -45,7 +45,7 @@ describe("GlobCard", () => {
           fileCount: 20,
           files: [],
           missingPaths: ["missing/dir"],
-          resultLimitReached: true,
+          resultLimitReached: 20,
         })}
       />,
     );
@@ -58,7 +58,7 @@ describe("GlobCard", () => {
       <GlobCard
         rendererProps={props({
           content: [{ type: "text", text: "src/a.ts" }],
-          details: { fileCount: 1, files: [{ path: "src/a.ts", target: "src/a.ts" }] },
+          details: { fileCount: 1, files: ["src/a.ts"] },
         })}
       />,
     );

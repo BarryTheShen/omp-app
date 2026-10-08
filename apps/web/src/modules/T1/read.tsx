@@ -221,7 +221,9 @@ function ReadBody({
         </div>
       ) : (
         <div className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground">
-          {details.summary ?? "No displayable content"}
+          {details.summary === undefined
+            ? "No displayable content"
+            : `${details.summary.lines} lines shown; ${details.summary.elidedLines} lines in ${details.summary.elidedSpans} omitted spans.`}
         </div>
       )}
       {details.suffixResolution && (

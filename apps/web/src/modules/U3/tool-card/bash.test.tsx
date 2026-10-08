@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { BashCard } from "./bash";
+import { BashCard, decodeBashResult, failureMessage } from "./bash";
 import type { ToolRendererProps } from "./contract";
 
 afterEach(() => cleanup());
@@ -108,5 +108,33 @@ describe("BashCard", () => {
 
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("line 1");
     expect(screen.queryByText("Waiting for bash output…")).toBeNull();
+  });
+});
+
+describe("failureMessage", () => {
+  function reasonFor(output: string): string {
+    const decoded = decodeBashResult(result({ output }));
+    if (decoded === undefined) throw new Error("the bash result did not decode");
+    return failureMessage(decoded);
+  }
+
+  test("names the reason omp wrote last, after the output it printed", () => {
+    expect(reasonFor("fatal: cannot read\n[Command aborted]")).toBe("[Command aborted]");
+  });
+
+  test("names a `Command failed` reason that omp appended", () => {
+    expect(reasonFor("step one\nCommand failed: missing exit status")).toBe(
+      "Command failed: missing exit status",
+    );
+  });
+
+  test("falls back to the first printed line when omp appended no reason", () => {
+    expect(reasonFor("no such directory: /tmp/missing\nmore output")).toBe(
+      "no such directory: /tmp/missing",
+    );
+  });
+
+  test("says so when the command printed nothing", () => {
+    expect(reasonFor("")).toBe("Command failed without printing a reason.");
   });
 });

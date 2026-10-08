@@ -56,19 +56,19 @@ export type GrepFileMatch = z.infer<typeof GrepFileMatchSchema>;
 
 export const GrepToolDetailsSchema = z.looseObject({
   truncation: OutputMetaSchema.shape.truncation,
-  fileLimitReached: z.boolean().optional(),
-  perFileLimitReached: z.boolean().optional(),
+  fileLimitReached: z.number().int().nonnegative().optional(),
+  perFileLimitReached: z.number().int().nonnegative().optional(),
   linesTruncated: z.boolean().optional(),
   meta: OutputMetaSchema.optional(),
   scopePath: OptionalText,
   matchCount: z.number().int().nonnegative().optional(),
   fileCount: z.number().int().nonnegative().optional(),
-  files: z.array(PathLinkSchema).optional(),
+  files: z.array(z.string()).optional(),
   fileMatches: z.array(GrepFileMatchSchema).optional(),
   truncated: z.boolean().optional(),
   error: OptionalText,
   displayContent: OptionalText,
-  displayTargets: z.array(PathLinkSchema).optional(),
+  displayTargets: z.record(z.string(), z.string()).optional(),
   searchPath: OptionalText,
   cwd: OptionalText,
   missingPaths: z.array(z.string()).optional(),
@@ -86,11 +86,16 @@ export type GlobToolArgs = z.infer<typeof GlobToolArgsSchema>;
 
 export const GlobToolDetailsSchema = z.looseObject({
   truncation: OutputMetaSchema.shape.truncation,
-  resultLimitReached: z.boolean().optional(),
+  resultLimitReached: z
+    .number()
+    .int()
+    .nonnegative()
+    .transform((count) => count > 0)
+    .optional(),
   meta: OutputMetaSchema.optional(),
   scopePath: OptionalText,
   fileCount: z.number().int().nonnegative().optional(),
-  files: z.array(PathLinkSchema).optional(),
+  files: z.array(z.string().min(1)).optional(),
   truncated: z.boolean().optional(),
   error: OptionalText,
   cwd: OptionalText,

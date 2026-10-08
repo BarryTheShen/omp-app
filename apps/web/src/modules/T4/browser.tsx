@@ -3,6 +3,8 @@ import { MarkdownContent } from "../U1/markdown";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolCardState, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { splitToolResult } from "../U3/tool-card/result";
+import { TextOutput } from "../U3/tool-card/text-output";
 import {
   type BrowserPreludeDetails,
   BrowserPreludeDetailsSchema,
@@ -33,6 +35,11 @@ export function BrowserToolCard(rendererProps: ToolRendererProps) {
     partialResult: undefined,
   };
   const rawResult = rawText(rendererProps.result ?? normalized.result ?? normalized.partialResult);
+  // The answer a call returned (a script's value, a close report) is what the person came for: show its text.
+  const returnedText =
+    state.phase === "success"
+      ? splitToolResult(rendererProps.result ?? normalized.result).text
+      : "";
   const action = args?.action ?? details?.action ?? "browser";
   const name = args?.name ?? details?.name;
   const url = args?.url ?? details?.url;
@@ -58,6 +65,7 @@ export function BrowserToolCard(rendererProps: ToolRendererProps) {
           </a>
         )}
         {args?.code || args?.fn ? <JavascriptCell code={args.code ?? args.fn ?? ""} /> : null}
+        {returnedText !== "" && <TextOutput testId="t4-browser-returned" text={returnedText} />}
         {observations.length > 0 && (
           <div
             className="bg-muted/30 max-h-56 overflow-auto rounded-lg p-3 text-xs"

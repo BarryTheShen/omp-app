@@ -19,7 +19,7 @@ export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRen
 
   const hideRawDetails =
     state.phase === "running" || state.phase === "partial"
-      ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden"
+      ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
       : undefined;
 
   return (

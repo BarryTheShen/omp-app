@@ -70,7 +70,7 @@ export function WriteCard({ rendererProps, artifactSlot, onCopy, onOpenArtifact 
   return (
     <div data-slot="t1-write-card" data-testid="t1-write-card">
       <ToolCard
-        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-truncation']]:hidden"
+        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-truncation']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         rawResult={rawResult}
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={middleEllipsis(displayTarget)}

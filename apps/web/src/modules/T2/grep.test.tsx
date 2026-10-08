@@ -17,7 +17,7 @@ function props(result: unknown): ToolRendererProps {
 afterEach(cleanup);
 
 describe("T2 GrepCard", () => {
-  test("groups matches by file, links safe targets and shows flags/limits", () => {
+  test("names the match count and shows the matched lines omp displayed", () => {
     render(
       <GrepCard
         {...props({
@@ -25,40 +25,20 @@ describe("T2 GrepCard", () => {
           details: {
             matchCount: 3,
             fileCount: 1,
-            meta: { total: 47 },
-            fileMatches: [
-              {
-                path: "src/main.ts",
-                count: 2,
-                matches: [
-                  { line: 4, snippet: "TODO first" },
-                  { line: 8, snippet: "TODO second" },
-                ],
-                snippets: [{ line: 3, snippet: "before context" }],
-              },
-            ],
-            truncated: true,
-            fileLimitReached: true,
+            files: ["src/main.ts"],
+            fileMatches: [{ path: "src/main.ts", count: 3 }],
+            displayContent: "# src/\n## main.ts\n*4│TODO first\n*8│TODO second\n 3│before context",
+            truncated: false,
           },
         })}
       />,
     );
+    expect(screen.getByText("TODO in src · 3 matches")).toBeTruthy();
     expect(screen.getByLabelText("Grep matches by file")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "src/main.ts" }).getAttribute("href")).toBe(
-      "src/main.ts",
-    );
-    expect(screen.getByText("case-sensitive")).toBeTruthy();
-    expect(screen.getByText("gitignore")).toBeTruthy();
-    expect(screen.getByText("TODO in src · 47 matches")).toBeTruthy();
-    expect(document.querySelectorAll("[data-t2-grep-match-row]")).toHaveLength(2);
-    expect(document.querySelectorAll("[data-t2-grep-context-row]")).toHaveLength(1);
-    expect(
-      [...document.querySelectorAll("[data-t2-grep-line]")].map((row) =>
-        row.getAttribute("data-t2-grep-line"),
-      ),
-    ).toEqual(["3", "4", "8"]);
-    expect(document.querySelectorAll("mark")).toHaveLength(2);
-    expect(screen.getByText("Showing 3 of 47 matches")).toBeTruthy();
+    expect(screen.getByText("(3 matches)")).toBeTruthy();
+    const lines = document.querySelector("[data-t2-grep-lines]")?.textContent ?? "";
+    expect(lines).toContain("TODO first");
+    expect(lines).toContain("TODO second");
   });
 
   test("shows no matches explicitly and malformed details remain visible", () => {

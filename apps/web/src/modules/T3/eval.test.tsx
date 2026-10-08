@@ -121,7 +121,9 @@ describe("EvalCard", () => {
 
     expect(screen.getByTestId("tool-card-eval-call").getAttribute("data-phase")).toBe("error");
     expect(screen.getByRole("alert").textContent).toContain("malformed");
-    fireEvent.click(screen.getByText("Raw details"));
+    fireEvent.click(
+      screen.getByTestId("t3-eval-raw-details").querySelector("summary") as HTMLElement,
+    );
     expect(screen.getByTestId("t3-eval-raw-details").textContent).toContain("raw partial");
   });
 

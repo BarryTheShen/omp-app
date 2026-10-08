@@ -31,7 +31,15 @@ describe("T2 search and code-intelligence models", () => {
     expect(grepDetails.ok && grepDetails.value.fileMatches?.[0]?.futureMatch).toBe("kept");
 
     expect(decodeGlobArgs({ path: "src", hidden: true, limit: 20 }).ok).toBe(true);
-    expect(decodeGlobDetails({ files: [{ path: "src/a.ts", target: "src/a.ts" }] }).ok).toBe(true);
+    expect(decodeGlobDetails({ files: ["src/a.ts"], resultLimitReached: 5 }).ok).toBe(true);
+    expect(
+      decodeGrepDetails({
+        matchCount: 2,
+        files: ["src/a.ts"],
+        fileLimitReached: 5,
+        displayTargets: { "omp://x": "/repo/x" },
+      }).ok,
+    ).toBe(true);
   });
 
   test("decodes semantic find exactly as query plus lexical keywords", () => {

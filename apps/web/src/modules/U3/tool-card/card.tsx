@@ -177,13 +177,6 @@ export function ToolCard({
       </CollapsibleTrigger>
       <CollapsibleContent id={contentId} data-slot="u3-tool-card-content">
         <div className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4">
-          <ToolRawBlock
-            copySlot={copySlot}
-            kind="args"
-            onCopy={copy}
-            raw={argsRaw}
-            title="Arguments"
-          />
           {state.error !== undefined && (
             <div
               aria-live="assertive"
@@ -198,28 +191,49 @@ export function ToolCard({
               {state.error.retryable && <p className="mt-1 text-xs">Retry is available.</p>}
             </div>
           )}
-          {resultRaw !== "" && (
+          {state.phase === "partial" && resultRaw !== "" && (
             <ToolRawBlock
               copySlot={copySlot}
               kind="result"
               onCopy={copy}
               raw={output.text}
-              title={state.phase === "partial" ? "Output so far" : "Result"}
+              title="Output so far"
             />
           )}
-          {output.truncated && (
-            <div
-              className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-              data-slot="u3-tool-card-truncation"
-            >
-              <span>{truncationLabel(state.outputMeta)}</span>
-              {!expandedOutput && (
-                <Button size="xs" type="button" variant="outline" onClick={() => void showMore()}>
-                  Show more
-                </Button>
+          <details className="min-w-0 text-xs" data-slot="u3-tool-card-raw">
+            <summary className="cursor-pointer text-muted-foreground">Raw details</summary>
+            <div className="mt-2 flex min-w-0 flex-col gap-3">
+              <ToolRawBlock
+                copySlot={copySlot}
+                kind="args"
+                onCopy={copy}
+                raw={argsRaw}
+                title="Arguments"
+              />
+              {state.phase !== "partial" && resultRaw !== "" && (
+                <ToolRawBlock
+                  copySlot={copySlot}
+                  kind="result"
+                  onCopy={copy}
+                  raw={output.text}
+                  title="Result"
+                />
               )}
             </div>
-          )}
+            {output.truncated && (
+              <div
+                className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                data-slot="u3-tool-card-truncation"
+              >
+                <span>{truncationLabel(state.outputMeta)}</span>
+                {!expandedOutput && (
+                  <Button size="xs" type="button" variant="outline" onClick={() => void showMore()}>
+                    Show more
+                  </Button>
+                )}
+              </div>
+            )}
+          </details>
           {copyStatus !== "idle" && (
             <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
               {copyStatus === "copied" ? "Copied raw output" : "Copy unavailable"}

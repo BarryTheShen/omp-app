@@ -25,7 +25,7 @@ export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRender
     rendererProps.args,
   );
   const hideRawDetails =
-    "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden";
+    "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden";
   const files = parsedDetails?.files ?? [];
   const shownFiles = files.slice(0, 100);
   const totalFiles = parsedDetails?.fileCount ?? files.length;
@@ -51,8 +51,7 @@ export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRender
         )}
         {shownFiles.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2" data-testid="t2-glob-files">
-            {shownFiles.map((file, index) => {
-              const target = file.target ?? file.path ?? `match-${index + 1}`;
+            {shownFiles.map((target) => {
               return (
                 <a
                   className="border-border bg-muted/40 hover:bg-muted focus-visible:ring-ring max-w-full truncate rounded-md border px-2 py-1 text-xs underline-offset-2 hover:underline focus-visible:ring-2"
@@ -72,6 +71,7 @@ export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRender
             )}
           </div>
         ) : (
+          !state.isError &&
           parsedDetails && <p className="text-muted-foreground mt-3 text-xs">No matches.</p>
         )}
         {parsedDetails?.missingPaths && parsedDetails.missingPaths.length > 0 && (

@@ -37,7 +37,7 @@ export function HubCard({ rendererProps }: { readonly rendererProps: ToolRendere
   return (
     <div className="min-w-0" data-slot="t5-hub-card" data-testid="t5-hub-card">
       <ToolCard
-        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden"
+        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={hubSummary(details, state.isError)}
       />

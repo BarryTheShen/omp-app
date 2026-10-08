@@ -26,7 +26,7 @@ export function WaitCard({ rendererProps }: { readonly rendererProps: ToolRender
   return (
     <div className="min-w-0" data-slot="t5-wait-card" data-testid="t5-wait-card">
       <ToolCard
-        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden"
+        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={waitSummary(details, state.isError)}
       />

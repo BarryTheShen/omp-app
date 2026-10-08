@@ -43,7 +43,7 @@ export function EvalCard({ rendererProps }: EvalCardProps) {
   return (
     <div data-slot="t3-eval-card" data-testid={`t3-eval-card-${normalized.toolCallId}`}>
       <ToolCard
-        className="[&_[data-slot='u3-tool-card-args']]:hidden"
+        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={state}
         summary={summaryFor(language, details, state.phase)}
       />
