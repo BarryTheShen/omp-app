@@ -30,6 +30,7 @@ export type SurfaceId =
   | "editRun"
   | "editHandoff"
   | "context"
+  | "contextCard"
   | "theme";
 
 export type AppLayout = Readonly<Record<LayoutAreaName, readonly SurfaceId[]>>;
@@ -40,7 +41,7 @@ export const LAYOUT: AppLayout = {
   /** Above the conversation, left to right; the title takes the free space. */
   header: ["title", "model", "settings"],
   /** Right sidebar; with more than one panel they become tabs, in this order. */
-  panels: ["todo"],
+  panels: ["todo", "contextCard"],
   /** The inline control row inside the composer, left to right. */
   composerToolbar: ["mode", "queue"],
   /** Under that row. */

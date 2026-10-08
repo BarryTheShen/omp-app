@@ -101,6 +101,7 @@ import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
 import { ThemeApplier, ThemeButton } from "@/theme";
 import { reportClientError, setClientErrorSink } from "./client-errors";
 import { ComposerTriggers } from "./composer-triggers";
+import { SessionContextPanel } from "./context-panel";
 import { saveTextFile } from "./save-file";
 import { SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
@@ -838,6 +839,11 @@ function ActiveThreadReady({
           }}
         />
       ),
+    },
+    contextCard: {
+      title: "Context",
+      requires: ["omp.cmd.get_state", "omp.cmd.compact", "omp.cmd.set_auto_compaction"],
+      render: () => <SessionContextPanel client={client} store={store} threadId={threadId} />,
     },
     mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
     queue: {
