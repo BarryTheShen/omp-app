@@ -32,7 +32,9 @@ export type SurfaceId =
   | "context"
   | "contextCard"
   | "notifications"
-  | "theme";
+  | "theme"
+  | "rewind"
+  | "agents";
 
 export type AppLayout = Readonly<Record<LayoutAreaName, readonly SurfaceId[]>>;
 
@@ -41,8 +43,11 @@ export const LAYOUT: AppLayout = {
   sidebar: ["folder", "sessions", "theme"],
   /** Above the conversation, left to right; the title takes the free space. */
   header: ["title", "model", "settings"],
-  /** Right sidebar; with more than one panel they become tabs, in this order. */
-  panels: ["todo", "contextCard"],
+  /**
+   * Right sidebar; with more than one panel they become tabs, in this order. An on-demand panel
+   * (`Surface.open`) is listed only while it is open.
+   */
+  panels: ["todo", "contextCard", "agents", "rewind"],
   /** The inline control row inside the composer, left to right. */
   composerToolbar: ["mode", "queue"],
   /** Under that row. */

@@ -1,5 +1,5 @@
-export type { AppShellProps } from "./app-shell";
-export { AppShell } from "./app-shell";
+export type { AppShellProps, RightSidebar } from "./app-shell";
+export { AppShell, useRightSidebar } from "./app-shell";
 export type {
   ShellPersistenceStatus,
   ShellPreferences,

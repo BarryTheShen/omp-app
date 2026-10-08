@@ -5,12 +5,18 @@ import type {
   CommandDescriptor,
   DescriptorId,
 } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { type ReactNode, useEffect } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { OverlayHost } from "@/overlay";
 import { DESCRIPTORS, RENDERERS, registry } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
-import { MemoryPreferenceStore, ShortcutRegistry, ShortcutRegistryProvider } from "@/shortcuts";
+import {
+  MemoryPreferenceStore,
+  ShortcutRegistry,
+  ShortcutRegistryProvider,
+  useShortcutRegistry,
+} from "@/shortcuts";
 import {
   type CommandPaletteHandler,
   CommandPaletteHost,
@@ -80,6 +86,7 @@ function renderPalette(
   capabilities: CapabilityMap = {},
   handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler> = new Map(),
   unavailableReasons: ReadonlyMap<DescriptorId, string> = new Map(),
+  extra: ReactNode = null,
 ) {
   const shortcutDescriptors = [
     ...DESCRIPTORS.filter((descriptor) => descriptor.id !== U0_COMMAND_PALETTE_SHORTCUT.id),
@@ -96,6 +103,7 @@ function renderPalette(
           <textarea aria-label="Composer input" />
           <CommandPaletteHost handlers={handlers} unavailableReasons={unavailableReasons} />
         </OverlayHost>
+        {extra}
       </ShortcutRegistryProvider>
     </RegistryProvider>,
   );
@@ -290,5 +298,42 @@ describe("U0 command palette", () => {
     await expectPaletteClosed();
     expect(signal?.aborted).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** The palette's own command list is the handlers it was given plus the commands features register. */
+const TREE = commandById("P4.tree");
+
+/** Registers a command the way a mounted feature does, while the palette is on screen. */
+function CommandRegistrar({ run }: { readonly run: () => void }) {
+  const shortcuts = useShortcutRegistry();
+  useEffect(
+    () => shortcuts.registerCommand(TREE.id, { run, shortcut: "P4.sessionTree" }),
+    [run, shortcuts],
+  );
+  return null;
+}
+
+describe("U0 command palette: commands a feature registers", () => {
+  test("lists a registered command with the chord that runs it, and runs it", async () => {
+    const run = vi.fn<() => void>();
+    renderPalette(
+      capabilitiesFor([TREE], "available"),
+      new Map(),
+      new Map(),
+      <CommandRegistrar run={run} />,
+    );
+    await openPalette();
+    const option = optionFor(TREE);
+    expect(within(option).getByText("Mod+Shift+H")).toBeTruthy();
+    fireEvent.click(option);
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await expectPaletteClosed();
+  });
+
+  test("does not list a command that no feature registered", async () => {
+    renderPalette(capabilitiesFor([TREE], "available"));
+    await openPalette();
+    expect(screen.queryByRole("option", { name: /Conversation tree/ })).toBeNull();
   });
 });

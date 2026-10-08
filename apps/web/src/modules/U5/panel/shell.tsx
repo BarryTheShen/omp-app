@@ -10,7 +10,8 @@ import { usePanelScroll } from "./scroll";
 
 export interface PanelShellViewProps extends Omit<PanelShellProps<ReactNode>, "onOpenChange"> {
   readonly actions?: ReactNode;
-  readonly onOpenChange: (open: boolean, reason: PanelOpenReason) => void;
+  /** Without it the panel draws no Close control and Escape does nothing: it is a tab that cannot close. */
+  readonly onOpenChange?: (open: boolean, reason: PanelOpenReason) => void;
   readonly onRetry?: () => void | Promise<void>;
   readonly className?: string;
 }
@@ -86,7 +87,7 @@ export function PanelShell({
     open: state.open,
     invokingFocus,
     restoreFocus,
-    onEscape: () => onOpenChange(false, "escape"),
+    onEscape: () => onOpenChange?.(false, "escape"),
   });
   const errorMessage =
     state.error?.message ??
@@ -117,15 +118,17 @@ export function PanelShell({
         <Toolbar ariaLabel={`${state.title} actions`}>
           {toolbar}
           {actions}
-          <Button
-            aria-label={`Close ${state.title}`}
-            size="icon-sm"
-            title={`Close ${state.title}`}
-            variant="ghost"
-            onClick={() => onOpenChange(false, "close-button")}
-          >
-            <Icons.close aria-hidden="true" />
-          </Button>
+          {onOpenChange && (
+            <Button
+              aria-label={`Close ${state.title}`}
+              size="icon-sm"
+              title={`Close ${state.title}`}
+              variant="ghost"
+              onClick={() => onOpenChange(false, "close-button")}
+            >
+              <Icons.close aria-hidden="true" />
+            </Button>
+          )}
         </Toolbar>
       }
       status={<StateNotice lifecycle={state.lifecycle} message={errorMessage} onRetry={onRetry} />}

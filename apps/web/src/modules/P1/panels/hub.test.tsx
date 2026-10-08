@@ -306,3 +306,14 @@ describe("AgentHub live roster", () => {
     expect(screen.getByRole("listbox", { name: "Recent" })).toBeTruthy();
   });
 });
+
+describe("AgentHubPanel close control", () => {
+  test("draws its Close control only when it is given an onOpenChange", () => {
+    const { rerender } = render(
+      <AgentHubPanel {...panelProps(emptyModel({}), { onOpenChange: undefined })} />,
+    );
+    expect(screen.queryByRole("button", { name: /^Close / })).toBeNull();
+    rerender(<AgentHubPanel {...panelProps(emptyModel({}))} />);
+    expect(screen.getByRole("button", { name: "Close Agent Hub" })).toBeTruthy();
+  });
+});

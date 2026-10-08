@@ -1,4 +1,5 @@
 import type { EntryId } from "@omp-app/contracts";
+import type { ReactNode } from "react";
 import type { PanelFocusToken, PanelOpenReason, PanelState } from "@/modules/U5/panel/contract";
 import { PanelShell } from "@/modules/U5/panel/shell";
 import { Icons } from "@/tokens";
@@ -21,6 +22,7 @@ export interface P4TreePanelViewProps extends P4TreePanelContentProps {
   readonly invokingFocus?: PanelFocusToken;
   readonly restoreFocus?: (token: PanelFocusToken) => void;
   readonly onRetry?: () => void | Promise<void>;
+  readonly footer?: ReactNode;
 }
 
 export interface P4TreePanelStateOptions {
@@ -85,6 +87,7 @@ export function P4TreePanelView({
   invokingFocus,
   restoreFocus,
   onRetry,
+  footer,
 }: P4TreePanelViewProps) {
   return (
     <PanelShell
@@ -101,6 +104,7 @@ export function P4TreePanelView({
       invokingFocus={invokingFocus}
       onOpenChange={onOpenChange}
       onRetry={onRetry}
+      footer={footer}
       restoreFocus={restoreFocus}
       state={state}
       toolbar={

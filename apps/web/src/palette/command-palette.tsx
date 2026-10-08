@@ -12,6 +12,7 @@ import { type OverlayCloseReason, type OverlayOpenResult, useOverlayHost } from 
 import { DESCRIPTORS } from "@/registry";
 import { capabilityStatus, isDescriptorAvailable, useCapabilities } from "@/registry-core";
 import { useShortcutRegistry, useShortcutScope } from "@/shortcuts";
+import type { ShortcutRegistry } from "@/shortcuts/registry";
 import { U0_COMMAND_PALETTE_SHORTCUT } from "./descriptor";
 
 /**
@@ -32,6 +33,7 @@ interface CommandEntry {
   readonly descriptor: CommandDescriptor;
   readonly available: boolean;
   readonly reason: string | undefined;
+  readonly shortcut: string | undefined;
 }
 
 const COMMAND_DESCRIPTORS: readonly CommandDescriptor[] = DESCRIPTORS.filter(
@@ -59,11 +61,14 @@ function commandEntries(
   capabilities: CapabilityMap,
   handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler>,
   unavailableReasons: ReadonlyMap<DescriptorId, string>,
+  shortcuts: ReadonlyMap<DescriptorId, string>,
 ): readonly CommandEntry[] {
   return COMMAND_DESCRIPTORS.filter((descriptor) => handlers.has(descriptor.id)).map(
     (descriptor) => {
       const available = isDescriptorAvailable(descriptor, capabilities);
-      if (available) return { descriptor, available, reason: undefined };
+      if (available) {
+        return { descriptor, available, reason: undefined, shortcut: shortcuts.get(descriptor.id) };
+      }
       const missing = descriptor.requires.find((key) => {
         const state = capabilityStatus(capabilities, key)?.state;
         return state !== "available" && state !== "fallback";
@@ -76,20 +81,46 @@ function commandEntries(
           (missing === undefined
             ? "The current session has not confirmed that this command is available."
             : unavailableReason(missing, capabilities)),
+        shortcut: shortcuts.get(descriptor.id),
       };
     },
   );
+}
+
+/**
+ * The commands the palette can run: the handlers it was given, plus any command a mounted feature
+ * registered on the shortcut registry. A command shows the chord of the shortcut that runs it.
+ */
+function paletteCommands(
+  handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler>,
+  registry: ShortcutRegistry,
+): {
+  readonly handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler>;
+  readonly shortcuts: ReadonlyMap<DescriptorId, string>;
+} {
+  const runnable = new Map(handlers);
+  const shortcuts = new Map<DescriptorId, string>();
+  for (const descriptor of COMMAND_DESCRIPTORS) {
+    const command = registry.commandFor(descriptor.id);
+    if (command === undefined) continue;
+    if (!runnable.has(descriptor.id)) runnable.set(descriptor.id, () => command.run());
+    const chord = registry.bindings().find((binding) => binding.id === command.shortcut)?.chord;
+    if (chord !== undefined) shortcuts.set(descriptor.id, chord);
+  }
+  return { handlers: runnable, shortcuts };
 }
 
 function CommandPaletteDialog({
   capabilities,
   close,
   handlers,
+  shortcuts,
   unavailableReasons,
 }: {
   readonly capabilities: CapabilityMap;
   readonly close: (reason?: OverlayCloseReason) => void;
   readonly handlers: ReadonlyMap<DescriptorId, CommandPaletteHandler>;
+  readonly shortcuts: ReadonlyMap<DescriptorId, string>;
   readonly unavailableReasons: ReadonlyMap<DescriptorId, string>;
 }) {
   const listId = useId();
@@ -98,7 +129,7 @@ function CommandPaletteDialog({
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const activeAction = useRef<AbortController | null>(null);
-  const entries = commandEntries(capabilities, handlers, unavailableReasons);
+  const entries = commandEntries(capabilities, handlers, unavailableReasons, shortcuts);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleEntries = entries.filter(({ descriptor }) => {
     const searchable = `${descriptor.title} ${descriptor.slash?.name ?? ""}`.toLocaleLowerCase();
@@ -231,11 +262,18 @@ function CommandPaletteDialog({
               >
                 <span className="flex w-full items-center justify-between gap-(--space-sm)">
                   <span className="truncate">{entry.descriptor.title}</span>
-                  {entry.descriptor.slash && (
-                    <span className="text-muted-foreground shrink-0 text-xs">
-                      /{entry.descriptor.slash.name}
-                    </span>
-                  )}
+                  <span className="flex shrink-0 items-center gap-(--space-xs)">
+                    {entry.shortcut === undefined ? null : (
+                      <kbd className="border-border text-muted-foreground rounded-md border px-1.5 text-xs">
+                        {entry.shortcut}
+                      </kbd>
+                    )}
+                    {entry.descriptor.slash && (
+                      <span className="text-muted-foreground text-xs">
+                        /{entry.descriptor.slash.name}
+                      </span>
+                    )}
+                  </span>
                 </span>
                 {entry.reason !== undefined && (
                   <span id={reasonId} className="text-muted-foreground text-xs">
@@ -272,6 +310,7 @@ export function CommandPaletteHost({
       return;
     return shortcutRegistry.registerAction(U0_COMMAND_PALETTE_SHORTCUT.id, () => {
       if (activeOverlay.current !== null) return;
+      const commands = paletteCommands(handlers, shortcutRegistry);
       const returnFocus =
         document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
       const opened = overlay.open({
@@ -283,7 +322,8 @@ export function CommandPaletteHost({
           <CommandPaletteDialog
             capabilities={paletteCapabilities}
             close={close}
-            handlers={handlers}
+            handlers={commands.handlers}
+            shortcuts={commands.shortcuts}
             unavailableReasons={unavailableReasons}
           />
         ),

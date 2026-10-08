@@ -170,3 +170,20 @@ describe("PanelShell scroll and responsive behavior", () => {
     ).toBe("drawer");
   });
 });
+
+describe("PanelShell close control", () => {
+  test("draws no Close control without an onOpenChange, and Escape does nothing", () => {
+    render(<PanelShell body={<p>Tasks</p>} state={state()} />);
+    expect(screen.queryByRole("button", { name: /^Close / })).toBeNull();
+    const region = screen.getByRole("region", { name: "Todo panel" });
+    fireEvent.keyDown(region, { key: "Escape" });
+    expect(region.getAttribute("data-panel-open")).toBe("true");
+  });
+
+  test("draws Close when given an onOpenChange, and Close reports the close button", () => {
+    const onOpenChange = vi.fn();
+    render(<PanelShell body={<p>Tasks</p>} state={state()} onOpenChange={onOpenChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Close Todo panel" }));
+    expect(onOpenChange).toHaveBeenCalledWith(false, "close-button");
+  });
+});

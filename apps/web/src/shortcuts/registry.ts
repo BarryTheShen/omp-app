@@ -1,4 +1,9 @@
-import type { Descriptor, DescriptorId, ShortcutDescriptor } from "@omp-app/contracts";
+import type {
+  CapabilityKey,
+  Descriptor,
+  DescriptorId,
+  ShortcutDescriptor,
+} from "@omp-app/contracts";
 import { normalizeChord } from "@omp-app/contracts";
 
 export type ShortcutScope = "global" | "composer" | "transcript" | "dialog" | `panel:${string}`;
@@ -60,6 +65,7 @@ export interface ShortcutBinding {
   readonly defaultChord: string;
   readonly chord: string;
   readonly normalizedChord: string;
+  readonly requires: readonly CapabilityKey[];
 }
 
 export interface ShortcutConflict {
@@ -148,6 +154,7 @@ function bindingFor(descriptor: ShortcutDescriptor, chord: string): ShortcutBind
     defaultChord: descriptor.chord,
     chord,
     normalizedChord: normalizeChord(chord),
+    requires: descriptor.requires,
   };
 }
 function isReservedChord(chord: string, scope: string): boolean {
@@ -187,6 +194,12 @@ function parseOverrides(raw: string | undefined): ParsedOverrides {
   }
 }
 
+/** What a palette command runs. See `ShortcutRegistry.registerCommand`. */
+export interface CommandAction {
+  readonly run: ShortcutAction;
+  readonly shortcut?: DescriptorId;
+}
+
 /** C0 shortcut descriptors plus app-owned overrides, actions, dispatch, and conflict checks. */
 export class ShortcutRegistry {
   private readonly descriptors: ReadonlyMap<DescriptorId, RegisteredShortcutDescriptor>;
@@ -194,6 +207,7 @@ export class ShortcutRegistry {
   private readonly preferenceKey: string;
   private readonly overrides: Map<string, string>;
   private readonly actions = new Map<DescriptorId, ShortcutAction>();
+  private readonly commands = new Map<DescriptorId, CommandAction>();
   private readonly listeners = new Set<() => void>();
   private errorSnapshot: ShortcutError | undefined;
   private preferenceErrorSnapshot: ShortcutPreferenceError | undefined;
@@ -285,6 +299,21 @@ export class ShortcutRegistry {
     return () => {
       if (this.actions.get(id) === action) this.actions.delete(id);
     };
+  }
+
+  /**
+   * A palette command a mounted feature can run. `shortcut` names the shortcut that runs the same
+   * action; the palette shows that shortcut's current chord beside the command.
+   */
+  public registerCommand(id: DescriptorId, command: CommandAction): () => void {
+    this.commands.set(id, command);
+    return () => {
+      if (this.commands.get(id) === command) this.commands.delete(id);
+    };
+  }
+
+  public commandFor(id: DescriptorId): CommandAction | undefined {
+    return this.commands.get(id);
   }
 
   public dispatch(event: KeyboardEvent, scope: string): DispatchResult {

@@ -149,3 +149,28 @@ describe("ShortcutSheet", () => {
     expect(screen.queryByRole("button", { name: "Reset Toggle thinking" })).toBeNull();
   });
 });
+
+describe("ShortcutSheet capability gating", () => {
+  test("does not offer a shortcut whose omp command is missing, but offers the others", () => {
+    const gated: Descriptor = {
+      id: "P4.gated",
+      owner: "P4",
+      title: "Gated conversation shortcut",
+      kind: "shortcut",
+      chord: "Mod+Shift+G",
+      scope: "global",
+      covers: [],
+      requires: ["omp.cmd.get_tree"],
+    };
+    render(
+      <ShortcutRegistryProvider
+        descriptors={[...descriptors, gated]}
+        preferenceStore={new MemoryPreferenceStore()}
+      >
+        <ShortcutSheet open onOpenChange={() => undefined} />
+      </ShortcutRegistryProvider>,
+    );
+    expect(screen.getByText("Send message")).toBeTruthy();
+    expect(screen.queryByText("Gated conversation shortcut")).toBeNull();
+  });
+});

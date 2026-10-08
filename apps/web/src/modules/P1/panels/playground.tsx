@@ -149,7 +149,6 @@ function ScenarioPanel({ controller }: { readonly controller: AgentHubController
       <AgentHubPanel
         model={state.model}
         onCancel={(key) => void controller.cancel(key)}
-        onOpenChange={() => undefined}
         onOpenTranscript={() => undefined}
         onRetry={() => controller.setLoad({ state: "ready" })}
         onSelect={(key) => controller.select(key)}

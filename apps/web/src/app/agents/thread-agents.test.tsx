@@ -1,0 +1,170 @@
+import type { CapabilityMap } from "@omp-app/contracts";
+import { ThreadId, ToolCallId } from "@omp-app/contracts";
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { useContext } from "react";
+import { afterEach, describe, expect, test } from "vitest";
+import type { SubagentSession } from "@/modules/P1/client";
+import { OmpRuntimeStore } from "@/modules/R0/store";
+import { TaskSubagentsContext } from "@/modules/T5/task";
+import { AGENT_CAPABILITIES } from "./agents-tab";
+import { createThreadAgents } from "./thread-agents";
+import { TaskSubagentsScope, useThreadAgents } from "./thread-agents-scope";
+
+afterEach(() => {
+  cleanup();
+});
+
+const threadA = ThreadId.parse("thread-a");
+const threadB = ThreadId.parse("thread-b");
+
+function allCapabilities(): CapabilityMap {
+  const capabilities: CapabilityMap = {};
+  for (const key of AGENT_CAPABILITIES) capabilities[key] = { state: "available", via: "rpc" };
+  return capabilities;
+}
+
+// Memoized: the hook keys its chat on these inputs, so a fresh object each render would remake the chat.
+const CAPABILITIES = allCapabilities();
+
+/** A fake omp: one worker that the task call "call-1" started, and every subscription level it is asked for. */
+function fakeOmp() {
+  const levels: Array<{ readonly threadId: string; readonly level: string }> = [];
+  const session = {
+    send: async (args: { command: { type: string } }) => {
+      if (args.command.type === "get_subagents") {
+        return {
+          subagents: [
+            {
+              id: "worker-1",
+              index: 0,
+              agent: "worker",
+              agentSource: "project",
+              status: "running",
+              lastUpdate: 1_759_600_000_000,
+              task: "work",
+              progress: { phase: "working" },
+              sessionFile: "/workspace/.omp/worker-1.jsonl",
+              parentToolCallId: "call-1",
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected command ${args.command.type}`);
+    },
+    setSubagentSubscription: async (args: { threadId: string; level: string }) => {
+      levels.push({ threadId: args.threadId, level: args.level });
+      return { level: args.level };
+    },
+  } as unknown as SubagentSession;
+  return { session, levels };
+}
+
+describe("ThreadAgents", () => {
+  test("nothing is subscribed until the first start, and later starts wait for that one", async () => {
+    const omp = fakeOmp();
+    const agents = createThreadAgents({
+      threadId: threadA,
+      store: new OmpRuntimeStore({ threadId: threadA }),
+      session: omp.session,
+      capabilities: CAPABILITIES,
+    });
+    expect(omp.levels).toEqual([]);
+    const first = agents.start();
+    expect(agents.start()).toBe(first);
+    await first;
+    expect(omp.levels).toEqual([{ threadId: threadA, level: "progress" }]);
+    await agents.dispose();
+  });
+
+  test("a task call finds its workers in the roster, with one source per worker", async () => {
+    const omp = fakeOmp();
+    const agents = createThreadAgents({
+      threadId: threadA,
+      store: new OmpRuntimeStore({ threadId: threadA }),
+      session: omp.session,
+      capabilities: CAPABILITIES,
+    });
+    await agents.start();
+    const found = agents.subagentsFor(ToolCallId.parse("call-1"));
+    expect(found.map(({ agent }) => agent.id)).toEqual(["worker-1"]);
+    expect(agents.subagentsFor(ToolCallId.parse("call-1"))[0]?.source).toBe(found[0]?.source);
+    expect(agents.subagentsFor(ToolCallId.parse("call-2"))).toEqual([]);
+    await agents.dispose();
+  });
+
+  test("disposing releases the progress subscription once, and a second dispose does nothing", async () => {
+    const omp = fakeOmp();
+    const agents = createThreadAgents({
+      threadId: threadA,
+      store: new OmpRuntimeStore({ threadId: threadA }),
+      session: omp.session,
+      capabilities: CAPABILITIES,
+    });
+    await agents.start();
+    await agents.dispose();
+    await agents.dispose();
+    expect(omp.levels).toEqual([
+      { threadId: threadA, level: "progress" },
+      { threadId: threadA, level: "off" },
+    ]);
+  });
+});
+
+/** A task card's lookup as the transcript gives it: it prints the ids of the workers the call started. */
+function Card() {
+  const lookup = useContext(TaskSubagentsContext);
+  const found = lookup?.(ToolCallId.parse("call-1")) ?? [];
+  return <p data-testid="workers">{found.map(({ agent }) => agent.id).join(",")}</p>;
+}
+
+function Chat({
+  threadId,
+  store,
+  session,
+  withCard,
+}: {
+  readonly threadId: ThreadId;
+  readonly store: OmpRuntimeStore;
+  readonly session: SubagentSession;
+  readonly withCard: boolean;
+}) {
+  const agents = useThreadAgents({ threadId, store, session, capabilities: CAPABILITIES });
+  return (
+    <TaskSubagentsScope agents={agents}>{withCard ? <Card /> : <p>No cards</p>}</TaskSubagentsScope>
+  );
+}
+
+describe("the chat's subagents in the transcript", () => {
+  test("no subscription until a task card asks for its workers", async () => {
+    const omp = fakeOmp();
+    render(
+      <Chat
+        session={omp.session}
+        store={new OmpRuntimeStore({ threadId: threadA })}
+        threadId={threadA}
+        withCard={false}
+      />,
+    );
+    await waitFor(() => expect(omp.levels).toEqual([]));
+  });
+
+  test("the first card to ask starts the roster; switching or closing the chat releases it", async () => {
+    const omp = fakeOmp();
+    const storeA = new OmpRuntimeStore({ threadId: threadA });
+    const storeB = new OmpRuntimeStore({ threadId: threadB });
+    const view = render(<Chat session={omp.session} store={storeA} threadId={threadA} withCard />);
+    await waitFor(() =>
+      expect(omp.levels).toContainEqual({ threadId: threadA, level: "progress" }),
+    );
+    await waitFor(() => expect(view.getByTestId("workers").textContent).toBe("worker-1"));
+
+    view.rerender(<Chat session={omp.session} store={storeB} threadId={threadB} withCard />);
+    await waitFor(() => expect(omp.levels).toContainEqual({ threadId: threadA, level: "off" }));
+    await waitFor(() =>
+      expect(omp.levels).toContainEqual({ threadId: threadB, level: "progress" }),
+    );
+
+    view.unmount();
+    await waitFor(() => expect(omp.levels).toContainEqual({ threadId: threadB, level: "off" }));
+  });
+});

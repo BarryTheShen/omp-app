@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { capabilityStatus, useCapabilities } from "@/registry-core";
 import {
   useShortcutBindings,
   useShortcutError,
@@ -31,18 +32,25 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
   const bindings = useShortcutBindings();
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
+  const capabilities = useCapabilities();
   const [conflict, setConflict] = useState<string | undefined>(undefined);
   const normalizedQuery = query.trim().toLowerCase();
+  // A shortcut whose omp command or host feature is missing is not offered, as the palette does not
+  // offer a command it cannot run.
   const visible = useMemo(
     () =>
       bindings.filter(
         (binding) =>
-          normalizedQuery.length === 0 ||
-          `${binding.title} ${binding.scope} ${binding.chord}`
-            .toLowerCase()
-            .includes(normalizedQuery),
+          binding.requires.every((key) => {
+            const state = capabilityStatus(capabilities, key)?.state;
+            return state === "available" || state === "fallback";
+          }) &&
+          (normalizedQuery.length === 0 ||
+            `${binding.title} ${binding.scope} ${binding.chord}`
+              .toLowerCase()
+              .includes(normalizedQuery)),
       ),
-    [bindings, normalizedQuery],
+    [bindings, capabilities, normalizedQuery],
   );
   const groups = new Map<string, typeof visible>();
   for (const binding of visible)

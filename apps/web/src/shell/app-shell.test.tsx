@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { AppShell } from "./index";
+import { AppShell, type RightSidebar, useRightSidebar } from "./index";
 import { SHELL_PREFERENCES_STORAGE_KEY } from "./preferences";
 
 afterEach(() => {
@@ -40,6 +40,36 @@ describe("AppShell regions", () => {
       "Panels",
       "Status",
     ]);
+  });
+});
+
+describe("right sidebar requests", () => {
+  test("a panel can show the right sidebar it is in after the sidebar was collapsed", () => {
+    const seen: { current: RightSidebar | null } = { current: null };
+    function Panel() {
+      seen.current = useRightSidebar();
+      return <p>Panel body</p>;
+    }
+    render(<AppShell rightSidebar={<Panel />} />);
+    const panels = screen.getByRole("complementary", { name: "Panels" });
+    fireEvent.click(screen.getByRole("button", { name: "Collapse panels sidebar" }));
+    expect(panels.getAttribute("data-open")).toBe("false");
+    expect(seen.current?.open).toBe(false);
+    act(() => {
+      seen.current?.show();
+    });
+    expect(panels.getAttribute("data-open")).toBe("true");
+    expect(seen.current?.open).toBe(true);
+  });
+
+  test("outside a shell there is no right sidebar to show", () => {
+    const seen: { current: RightSidebar | null | undefined } = { current: undefined };
+    function Probe() {
+      seen.current = useRightSidebar();
+      return null;
+    }
+    render(<Probe />);
+    expect(seen.current).toBeNull();
   });
 });
 

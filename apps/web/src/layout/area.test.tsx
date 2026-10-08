@@ -26,6 +26,19 @@ function layoutWith(patch: Partial<AppLayout>): AppLayout {
   return { ...LAYOUT, ...patch };
 }
 
+/** The todo panel plus an on-demand history panel, open or closed, optionally revealed again. */
+function panelsWith(open: boolean, reveal?: number): SurfaceMap {
+  return {
+    ...surfaces,
+    rewind: {
+      title: "History",
+      open,
+      ...(reveal === undefined ? {} : { reveal }),
+      render: () => <p>History body</p>,
+    },
+  };
+}
+
 describe("LayoutArea", () => {
   test("places transcript controls in the transcript footer", () => {
     expect(areaSurfaces("threadFooter", surfaces).map(([id]) => id)).toEqual(["scrollFollow"]);
@@ -85,5 +98,33 @@ describe("LayoutArea", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Queued messages" }));
     expect(screen.getByText("Queue body")).toBeTruthy();
     expect(screen.queryByText("Todo body")).toBeNull();
+  });
+
+  test("lists an on-demand panel only while it is open", () => {
+    const layout = layoutWith({ panels: ["todo", "rewind"] });
+    expect(areaSurfaces("panels", panelsWith(false), {}, layout).map(([id]) => id)).toEqual([
+      "todo",
+    ]);
+    expect(areaSurfaces("panels", panelsWith(true), {}, layout).map(([id]) => id)).toEqual([
+      "todo",
+      "rewind",
+    ]);
+  });
+
+  test("a panel that opens becomes the tab shown, and a reveal brings it forward again", () => {
+    const layout = layoutWith({ panels: ["todo", "rewind"] });
+    const { rerender } = render(
+      <LayoutArea area="panels" layout={layout} surfaces={panelsWith(false)} />,
+    );
+    expect(screen.getByText("Todo body")).toBeTruthy();
+    rerender(<LayoutArea area="panels" layout={layout} surfaces={panelsWith(true, 1)} />);
+    expect(screen.getByText("History body")).toBeTruthy();
+    expect(screen.queryByText("Todo body")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Todo checklist" }));
+    expect(screen.getByText("Todo body")).toBeTruthy();
+    rerender(<LayoutArea area="panels" layout={layout} surfaces={panelsWith(true, 1)} />);
+    expect(screen.getByText("Todo body")).toBeTruthy();
+    rerender(<LayoutArea area="panels" layout={layout} surfaces={panelsWith(true, 2)} />);
+    expect(screen.getByText("History body")).toBeTruthy();
   });
 });

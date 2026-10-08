@@ -4,7 +4,15 @@
  * shared OverlayHost. All regions are slots so U1/U2/U5/N1 can compose into this shell without
  * changing its landmarks or geometry.
  */
-import { type ReactNode, useEffect, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Icons, spacingTokens, zIndexTokens } from "@/tokens";
@@ -24,6 +32,19 @@ export interface AppShellProps {
   readonly composer?: ReactNode;
   readonly rightSidebar?: ReactNode;
   readonly statusBar?: ReactNode;
+}
+
+/** The right sidebar as a panel rendered inside it sees it: whether it is open, and how to open it. */
+export interface RightSidebar {
+  readonly open: boolean;
+  readonly show: () => void;
+}
+
+const RightSidebarContext = createContext<RightSidebar | null>(null);
+
+/** The right sidebar of the shell that renders the caller; null when rendered outside a shell. */
+export function useRightSidebar(): RightSidebar | null {
+  return useContext(RightSidebarContext);
 }
 
 function DefaultLeftSidebar() {
@@ -186,6 +207,14 @@ export function AppShell({
     useShellPreferences();
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const showRightSidebar = useCallback(() => {
+    if (isNarrow) setLeftOpen(false);
+    setRightOpen(true);
+  }, [isNarrow]);
+  const rightSidebarControl = useMemo<RightSidebar>(
+    () => ({ open: rightOpen, show: showRightSidebar }),
+    [rightOpen, showRightSidebar],
+  );
 
   useEffect(() => {
     if (!isNarrow) return;
@@ -344,7 +373,9 @@ export function AppShell({
         }}
       >
         <SidebarHeader side="right" open={rightOpen} onToggle={() => setRightOpen(false)} />
-        <div className="flex min-h-0 flex-1 flex-col">{rightSidebar}</div>
+        <RightSidebarContext.Provider value={rightSidebarControl}>
+          <div className="flex min-h-0 flex-1 flex-col">{rightSidebar}</div>
+        </RightSidebarContext.Provider>
         {!isNarrow && rightOpen && (
           <ResizeHandle
             maximum={MAX_SIDEBAR_WIDTH}

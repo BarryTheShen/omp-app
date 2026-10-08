@@ -23,6 +23,7 @@ function fakeClient(
     readonly capabilities?: CapabilityMap;
     readonly cancelled?: boolean;
     readonly levels?: string[];
+    readonly appliedLevel?: "off" | "progress" | "events";
     readonly sent?: Array<{ type: string; args: unknown }>;
   } = {},
 ): { client: SubagentClient; runtime: OmpRuntimeStore; session: SubagentSession } {
@@ -68,7 +69,7 @@ function fakeClient(
   };
   const setSubagentSubscription = async (args: { level: "off" | "progress" | "events" }) => {
     levels.push(args.level);
-    return { level: args.level };
+    return { level: options.appliedLevel ?? args.level };
   };
   const session = { send, setSubagentSubscription } as SubagentSession;
   const client = createSubagentClient({
@@ -136,6 +137,18 @@ describe("P1 subscription arbitration and R0 notification handoff", () => {
     expect(levels).toEqual(["progress", "events", "progress"]);
     await progress.release();
     expect(levels).toEqual(["progress", "events", "progress", "off"]);
+    await client.dispose();
+  });
+
+  test("accepts the higher level omp applies when another viewer of the chat already asks for it", async () => {
+    const { client } = fakeClient({ appliedLevel: "events" });
+    expect(await client.setSubscriptionLevel("progress")).toBe("events");
+    await client.dispose();
+  });
+
+  test("still fails when omp applies a lower level than the one asked for", async () => {
+    const { client } = fakeClient({ appliedLevel: "off" });
+    await expect(client.setSubscriptionLevel("progress")).rejects.toThrow();
     await client.dispose();
   });
 

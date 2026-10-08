@@ -1,6 +1,7 @@
 import type { Descriptor } from "@omp-app/contracts";
 import { normalizeChord } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
+import { P4_DESCRIPTORS } from "@/modules/P4/contract";
 import { MemoryPreferenceStore, ShortcutRegistry } from "./registry";
 
 const descriptors: readonly Descriptor[] = [
@@ -272,5 +273,55 @@ describe("ShortcutRegistry", () => {
     expect(registry.bindings().find((binding) => binding.id === "U0.send")?.chord).toBe(
       "Mod+Enter",
     );
+  });
+});
+
+describe("ShortcutRegistry commands and capability-gated shortcuts", () => {
+  test("keeps a command registration until its own cleanup runs", () => {
+    const registry = new ShortcutRegistry(descriptors, {
+      preferenceStore: new MemoryPreferenceStore(),
+    });
+    const first = { run: () => undefined };
+    const second = { run: () => undefined };
+    const cleanupFirst = registry.registerCommand("U0.sheet", first);
+    const cleanupSecond = registry.registerCommand("U0.sheet", second);
+    cleanupFirst();
+    expect(registry.commandFor("U0.sheet")).toBe(second);
+    cleanupSecond();
+    expect(registry.commandFor("U0.sheet")).toBeUndefined();
+  });
+
+  test("a command names the shortcut that runs the same action", () => {
+    const registry = new ShortcutRegistry(descriptors, {
+      preferenceStore: new MemoryPreferenceStore(),
+    });
+    registry.registerCommand("U0.sheet", { run: () => undefined, shortcut: "U0.send" });
+    expect(registry.commandFor("U0.sheet")?.shortcut).toBe("U0.send");
+  });
+
+  test("the rewind chord is free, carries the capabilities it needs, and runs from the composer", () => {
+    const registry = new ShortcutRegistry(P4_DESCRIPTORS, {
+      preferenceStore: new MemoryPreferenceStore(),
+    });
+    expect(registry.problems().map((problem) => problem.id)).not.toContain("P4.sessionTree");
+    const binding = registry.bindings().find((candidate) => candidate.id === "P4.sessionTree");
+    expect(binding?.chord).toBe("Mod+Shift+H");
+    expect(binding?.requires).toEqual(["omp.cmd.get_tree", "omp.cmd.branch"]);
+    const action = vi.fn();
+    const cleanup = registry.registerAction("P4.sessionTree", action);
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+    const event = new KeyboardEvent("keydown", {
+      key: "H",
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(event);
+    expect(registry.dispatch(event, "global").handled).toBe(true);
+    expect(action).toHaveBeenCalledTimes(1);
+    cleanup();
+    composer.remove();
   });
 });

@@ -140,7 +140,6 @@ function HubView({ controller }: { readonly controller: AgentHubController }) {
       <AgentHubPanel
         model={state.model}
         onCancel={(key) => void controller.cancel(key)}
-        onOpenChange={() => undefined}
         onOpenTranscript={(key) => controller.openTranscript(key)}
         onSelect={(key) => controller.select(key)}
         onViewChange={(view) => controller.setView(view)}

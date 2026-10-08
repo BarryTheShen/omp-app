@@ -9,7 +9,7 @@ import { RosterList } from "./roster";
 export interface AgentHubPanelProps {
   readonly model: HubModel;
   readonly open?: boolean;
-  readonly onOpenChange: (open: boolean, reason: PanelOpenReason) => void;
+  readonly onOpenChange?: (open: boolean, reason: PanelOpenReason) => void;
   readonly onViewChange: (view: HubView) => void;
   readonly onSelect: (key: string) => void;
   readonly onCancel: (key: string) => void;

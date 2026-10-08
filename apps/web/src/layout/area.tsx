@@ -1,5 +1,5 @@
 import type { CapabilityKey, CapabilityMap } from "@omp-app/contracts";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { type AppLayout, LAYOUT, type LayoutAreaName, type SurfaceId } from "./layout";
 
@@ -9,6 +9,16 @@ export interface Surface {
   readonly title: string;
   /** Capabilities it needs; without them the surface is left out of its area. */
   readonly requires?: readonly CapabilityKey[];
+  /**
+   * An on-demand panel is listed in its area only while it is open. The default is open, so a
+   * surface that does not say otherwise is always listed.
+   */
+  readonly open?: boolean;
+  /**
+   * Change this number to bring an open panel to the front of its tabs, for example when a command
+   * opens a panel that is already open.
+   */
+  readonly reveal?: number;
   /** In a row area, take the free space (e.g. the header title). */
   readonly grow?: boolean;
   readonly render: () => ReactNode;
@@ -34,12 +44,13 @@ const ROW_AREAS: Readonly<Partial<Record<LayoutAreaName, true>>> = {
   threadFooter: true,
   statusBar: true,
 };
+
 function available(surface: Surface, capabilities: CapabilityMap | undefined): boolean {
   if (!surface.requires || surface.requires.length === 0) return true;
   return surface.requires.every((key) => capabilities?.[key]?.state === "available");
 }
 
-/** The surfaces an area shows, in layout order: known ids whose capabilities are available. */
+/** The surfaces an area shows, in layout order: known ids that are open and whose capabilities are available. */
 export function areaSurfaces(
   area: LayoutAreaName,
   surfaces: SurfaceMap,
@@ -48,19 +59,56 @@ export function areaSurfaces(
 ): readonly (readonly [SurfaceId, Surface])[] {
   return layout[area].flatMap((id) => {
     const surface = surfaces[id];
-    return surface && available(surface, capabilities) ? [[id, surface] as const] : [];
+    return surface && surface.open !== false && available(surface, capabilities)
+      ? [[id, surface] as const]
+      : [];
   });
 }
 
-function PanelTabs({ panels }: { readonly panels: readonly (readonly [SurfaceId, Surface])[] }) {
-  const [active, setActive] = useState<SurfaceId | undefined>(panels[0]?.[0]);
+function surfaceClass(area: LayoutAreaName, surface: Surface): string {
+  return cn(
+    "min-w-0",
+    surface.grow && (ROW_AREAS[area] === true ? "flex-1" : "flex min-h-0 flex-1 flex-col"),
+  );
+}
+
+type ListedPanels = readonly (readonly [SurfaceId, Surface])[];
+
+/**
+ * The right sidebar's panels: one fills the area, several become tabs. A panel listed for the first
+ * time, or revealed again, becomes the tab shown; the other panels keep the tab they had.
+ * The tabs wrap onto more rows, so no number of them runs past the sidebar's edge.
+ */
+function PanelArea({ panels }: { readonly panels: ListedPanels }) {
+  const [active, setActive] = useState<SurfaceId | undefined>(undefined);
+  const previous = useRef<ReadonlyMap<SurfaceId, number | undefined> | null>(null);
+  useLayoutEffect(() => {
+    const before = previous.current;
+    previous.current = new Map(panels.map(([id, surface]) => [id, surface.reveal]));
+    if (before === null) return;
+    const opened = panels.find(
+      ([id, surface]) =>
+        !before.has(id) || (surface.reveal !== undefined && surface.reveal !== before.get(id)),
+    );
+    if (opened) setActive(opened[0]);
+  });
+
   const current = panels.find(([id]) => id === active) ?? panels[0];
   if (!current) return null;
+  if (panels.length === 1) {
+    return (
+      <div className={AREA_CLASSES.panels} data-layout-area="panels">
+        <div className={surfaceClass("panels", current[1])} data-surface={current[0]}>
+          {current[1].render()}
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col" data-layout-area="panels">
       <div
         aria-label="Panels"
-        className="border-border flex gap-1 border-b px-2 py-1"
+        className="border-border flex flex-wrap gap-1 border-b px-2 py-1"
         role="tablist"
       >
         {panels.map(([id, surface]) => (
@@ -103,18 +151,11 @@ export function LayoutArea({
 }) {
   const shown = areaSurfaces(area, surfaces, capabilities, layout);
   if (shown.length === 0) return null;
-  if (area === "panels" && shown.length > 1) return <PanelTabs panels={shown} />;
+  if (area === "panels") return <PanelArea panels={shown} />;
   return (
     <div className={AREA_CLASSES[area]} data-layout-area={area}>
       {shown.map(([id, surface]) => (
-        <div
-          className={cn(
-            "min-w-0",
-            surface.grow && (ROW_AREAS[area] === true ? "flex-1" : "flex min-h-0 flex-1 flex-col"),
-          )}
-          data-surface={id}
-          key={id}
-        >
+        <div className={surfaceClass(area, surface)} data-surface={id} key={id}>
           {surface.render()}
         </div>
       ))}

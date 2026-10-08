@@ -28,6 +28,9 @@ import {
   useSyncExternalStore,
 } from "react";
 import { AccessibilityProvider } from "@/a11y";
+import { agentsSurface } from "@/app/agents/agents-tab";
+import { TaskSubagentsScope, useThreadAgents } from "@/app/agents/thread-agents-scope";
+import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { Button } from "@/components/ui/button";
 import {
   AppConnectionGate,
@@ -505,6 +508,7 @@ function ActiveThreadReady({
   const threadId = history.threadId as ThreadId;
   const connection = useAppConnection();
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
+  const agents = useThreadAgents({ threadId, store, session: rpc, capabilities });
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
   // The message being edited, and the row button that opened the editor (focus returns to it on cancel).
@@ -891,7 +895,6 @@ function ActiveThreadReady({
       render: () => (
         <PanelShell
           body={todoModel.phases.length === 0 ? null : <TodoChecklist model={todoModel} />}
-          onOpenChange={() => undefined}
           state={{
             open: true,
             lifecycle: todoModel.phases.length === 0 ? "empty" : "populated",
@@ -909,6 +912,15 @@ function ActiveThreadReady({
       requires: ["omp.cmd.get_state", "omp.cmd.compact", "omp.cmd.set_auto_compaction"],
       render: () => <SessionContextPanel client={client} store={store} threadId={threadId} />,
     },
+    agents: agentsSurface({ agents }),
+    rewind: useRewindPanel({
+      threadId,
+      store,
+      send: rpc.send,
+      capabilities,
+      submitPrompt: runtimeController.submitPrompt,
+      switchThread: openThread,
+    }),
     mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
     queue: {
       title: "Queued messages",
@@ -985,53 +997,55 @@ function ActiveThreadReady({
         store={store}
         threadId={threadId}
       />
-      <AppShell
-        composer={composer}
-        leftSidebar={leftSidebar}
-        statusBar={area("statusBar")}
-        threadHeader={area("header")}
-        rightSidebar={area("panels")}
-        transcript={
-          store && threadId ? (
-            <div className="h-full min-h-0" ref={transcriptRootRef}>
-              <ThreadShell
-                autoScroll
-                footer={area("threadFooter")}
-                slots={{
-                  renderMessage: (message, renderNested) => (
-                    <MessageParts
-                      message={message}
-                      actions={rowActions(message)}
-                      renderNested={(part) =>
-                        part.messages === undefined
-                          ? undefined
-                          : renderNested?.(part.messages, part.toolCallId, part.toolName)
-                      }
-                      toolRenderers={toolRenderers}
-                    />
-                  ),
-                  renderNested: (messages, taskId, toolName) => {
-                    const parsedTaskId = ToolCallId.safeParse(taskId);
-                    return (
-                      <NestedTranscript
-                        depth={0}
-                        key={taskId}
-                        messages={messages}
-                        parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
-                        taskName={toolName}
+      <TaskSubagentsScope agents={agents}>
+        <AppShell
+          composer={composer}
+          leftSidebar={leftSidebar}
+          statusBar={area("statusBar")}
+          threadHeader={area("header")}
+          rightSidebar={area("panels")}
+          transcript={
+            store && threadId ? (
+              <div className="h-full min-h-0" ref={transcriptRootRef}>
+                <ThreadShell
+                  autoScroll
+                  footer={area("threadFooter")}
+                  slots={{
+                    renderMessage: (message, renderNested) => (
+                      <MessageParts
+                        message={message}
+                        actions={rowActions(message)}
+                        renderNested={(part) =>
+                          part.messages === undefined
+                            ? undefined
+                            : renderNested?.(part.messages, part.toolCallId, part.toolName)
+                        }
                         toolRenderers={toolRenderers}
                       />
-                    );
-                  },
-                }}
-                store={store}
-              />
-            </div>
-          ) : (
-            <EmptyTranscript state={history} />
-          )
-        }
-      />
+                    ),
+                    renderNested: (messages, taskId, toolName) => {
+                      const parsedTaskId = ToolCallId.safeParse(taskId);
+                      return (
+                        <NestedTranscript
+                          depth={0}
+                          key={taskId}
+                          messages={messages}
+                          parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
+                          taskName={toolName}
+                          toolRenderers={toolRenderers}
+                        />
+                      );
+                    },
+                  }}
+                  store={store}
+                />
+              </div>
+            ) : (
+              <EmptyTranscript state={history} />
+            )
+          }
+        />
+      </TaskSubagentsScope>
     </AssistantRuntimeProvider>
   );
 }

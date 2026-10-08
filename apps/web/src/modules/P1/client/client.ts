@@ -90,6 +90,13 @@ function parseSessionFile(value: string): SessionFilePath {
   return SessionFilePath.parse(value);
 }
 
+/** omp's subscription levels, lowest first: a viewer asking for a level is served by any level at or above it. */
+const LEVEL_RANK: Record<"off" | "progress" | "events", number> = {
+  off: 0,
+  progress: 1,
+  events: 2,
+};
+
 class SubagentClientImpl implements SubagentClient {
   private readonly threadId: ThreadId;
   private readonly session: SubagentSession;
@@ -240,8 +247,11 @@ class SubagentClientImpl implements SubagentClient {
         { threadId: this.threadId, level },
         options,
       );
-      if (result.level !== level) throw failure("internal", "Subscription level was not applied");
-      this.subscriptionLevel = result.level;
+      // omp applies the highest level any viewer of this chat asked for, so a higher level serves this request.
+      if (LEVEL_RANK[result.level] < LEVEL_RANK[level]) {
+        throw failure("internal", "Subscription level was not applied");
+      }
+      this.subscriptionLevel = level;
       return result.level;
     } catch (error) {
       throw asP1Failure(error, failure("omp_error", "Subagent subscription request failed", true));

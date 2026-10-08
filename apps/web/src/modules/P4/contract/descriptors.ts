@@ -1,4 +1,7 @@
-import type { Descriptor } from "@omp-app/contracts";
+import type { Descriptor, ShortcutDescriptor } from "@omp-app/contracts";
+
+/** A shortcut that also fires while focus is in the composer: the app's opt-in (shortcuts/registry.ts). */
+type EditableShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable: true };
 
 /** P4 owns durable session-tree/fork rows only; P3 assistant-ui rows stay outside this list. */
 export const P4_DESCRIPTORS = [
@@ -59,9 +62,10 @@ export const P4_DESCRIPTORS = [
     owner: "P4",
     title: "Open conversation tree",
     covers: ["P3.app-session-tree"],
-    requires: ["omp.cmd.get_tree"],
-    chord: "Mod+T",
+    requires: ["omp.cmd.get_tree", "omp.cmd.branch"],
+    chord: "Mod+Shift+H",
     scope: "global",
+    allowInEditable: true,
   },
   {
     kind: "shortcut",
@@ -83,4 +87,4 @@ export const P4_DESCRIPTORS = [
     chord: "ArrowRight",
     scope: "tree",
   },
-] as const satisfies readonly Descriptor[];
+] as const satisfies readonly (Descriptor | EditableShortcutDescriptor)[];
