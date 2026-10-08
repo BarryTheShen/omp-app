@@ -95,20 +95,20 @@ export class SessionActionsController {
         error: unavailable("host.dialogs", "Deleting a session requires a confirmation dialog."),
       };
     }
-    const appConfirmationId = confirmationId.startsWith("app-")
-      ? confirmationId
-      : `app-${confirmationId}`;
-    const confirmed = await this.options.dialogs.confirm(
-      {
-        kind: "confirm",
-        id: UiRequestIdSchema.parse(appConfirmationId),
-        title: "Delete session",
-        message: `Delete ${session.title ?? session.id}? omp will remove only this native session.`,
-      },
-      { threadId: this.options.threadId, origin: "app" },
-    );
-    if (!confirmed) return { status: "cancelled" };
     try {
+      const appConfirmationId = confirmationId.startsWith("app-")
+        ? confirmationId
+        : `app-${confirmationId}`;
+      const confirmed = await this.options.dialogs.confirm(
+        {
+          kind: "confirm",
+          id: UiRequestIdSchema.parse(appConfirmationId),
+          title: "Delete session",
+          message: `Delete ${session.title ?? session.id}? omp will remove only this native session.`,
+        },
+        { threadId: this.options.threadId, origin: "app" },
+      );
+      if (!confirmed) return { status: "cancelled" };
       await this.options.remote.delete(session.id);
       return { status: "completed", value: undefined };
     } catch (error) {

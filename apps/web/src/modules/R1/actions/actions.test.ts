@@ -106,3 +106,22 @@ describe("SessionActionsController", () => {
     });
   });
 });
+
+describe("SessionActionsController delete failures", () => {
+  test("a confirmation that cannot be shown is an outcome, not a rejection", async () => {
+    const adapter = remote();
+    const confirm = vi.fn<DialogHost["confirm"]>(async () => {
+      throw new AppFailure({
+        code: "unavailable",
+        message: "That chat is not open, so this dialog cannot be shown here.",
+        retryable: false,
+      });
+    });
+    const dialogs = { confirm } as unknown as DialogHost;
+    const controller = new SessionActionsController({ remote: adapter, dialogs, threadId });
+    await expect(
+      controller.delete({ id: "session-1" as ThreadId, title: "Chat" }),
+    ).resolves.toMatchObject({ status: "unavailable" });
+    expect(adapter.delete).not.toHaveBeenCalled();
+  });
+});

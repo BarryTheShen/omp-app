@@ -1,7 +1,7 @@
 import type { CapabilityMap, OmpWire, ThreadId, UiRequestId } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef } from "react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { OverlayHost, type OverlayHostApi, useOverlayHost } from "@/overlay";
 import type { DialogHostOpenOptions, DialogRequest, DialogResponse } from "../contract";
 import { DialogHostController } from "./dialog-host";
@@ -333,5 +333,39 @@ describe("DialogHostController", () => {
     lazy.dispose();
     await expect(shown).resolves.toMatchObject({ outcome: "cancelled" });
     controller.dispose();
+  });
+});
+
+describe("DialogHostController ownership", () => {
+  test("an app dialog for a chat the host is not showing is refused, not left waiting", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    open(controller, request("confirm", "shown"), threadA);
+    const refused = open(controller, request("confirm", "app-elsewhere"), threadB, {
+      origin: "app",
+    }).then(
+      () => "resolved",
+      (error: unknown) => error,
+    );
+    const outcome = await Promise.race([
+      refused,
+      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 50)),
+    ]);
+    expect(outcome).toMatchObject({ appError: { code: "unavailable" } });
+  });
+
+  test("a request whose signal is already aborted arms no timeout", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    try {
+      void open(controller, request("confirm", "app-aborted", 10_000), threadA, {
+        origin: "app",
+        signal: AbortSignal.abort(),
+      });
+      expect(timers.mock.calls.filter(([, delay]) => delay === 10_000)).toHaveLength(0);
+    } finally {
+      timers.mockRestore();
+    }
   });
 });

@@ -93,7 +93,7 @@ import {
   type HostRequestAnswer,
 } from "@/modules/U4/contract/host-answers";
 import { renderDialogRequest } from "@/modules/U4/dialogs";
-import { DialogHostController } from "@/modules/U4/host";
+import { DialogHostController, useDisposeWhenReplaced } from "@/modules/U4/host";
 import {
   ExtensionUiRequestRouterController,
   subscribeNonModalExtensionUi,
@@ -578,7 +578,7 @@ function ActiveThreadReady({
       }),
     [overlay, threadId],
   );
-  useEffect(() => () => dialogHost.dispose(), [dialogHost]);
+  useDisposeWhenReplaced(dialogHost);
   const runtimeSource = useMemo<SessionInfoRuntimeSource>(
     () => ({
       getSnapshot: () => ({ threadId, session: store.getSnapshot().session }),

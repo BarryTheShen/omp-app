@@ -125,6 +125,13 @@ export class DialogHostController implements DialogHost {
         failure("invalid_args", "App dialog request ids must start with app-."),
       );
     }
+    // An app dialog belongs to the chat it was opened in. A host that shows another chat cannot present
+    // it, and nothing switches this host to that chat, so it is refused now instead of waiting forever.
+    if (origin === "app" && this.activeThread !== null && this.activeThread !== options.threadId) {
+      return Promise.reject(
+        failure("unavailable", "That chat is not open, so this dialog cannot be shown here."),
+      );
+    }
     if (this.entries.has(parsed.data.id)) {
       return Promise.reject(conflict("A dialog with this request id is already open."));
     }
@@ -151,7 +158,7 @@ export class DialogHostController implements DialogHost {
       queue.push(entry);
       this.queues.set(key, queue);
       this.installAbort(entry);
-      this.installTimeout(entry);
+      if (entry.state === "queued") this.installTimeout(entry);
       if (this.activeThread === null) this.activeThread = entryOptions.threadId;
       if (this.activeThread === entryOptions.threadId) this.startNext(entryOptions.threadId);
     });
