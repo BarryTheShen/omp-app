@@ -11,7 +11,7 @@ function oneLine(value: string): string {
 function resultLines(value: string): readonly string[] {
   return value
     .split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/^- /, ""))
     .filter((line) => line.length > 0)
     .slice(0, 8);
 }

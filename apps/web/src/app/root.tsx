@@ -72,6 +72,7 @@ import { SessionCatalogSidebar } from "@/modules/R1/ui";
 import { MessageParts } from "@/modules/U1/parts";
 import { ScrollFollowControls, useThreadScrollController } from "@/modules/U1/scroll";
 import { ThreadShell } from "@/modules/U1/thread";
+import { type ToolRendererResolver, ToolRendererResolverContext } from "@/modules/U1/tool-slots";
 import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import { ComposerSurface } from "@/modules/U2/composer";
@@ -118,6 +119,16 @@ const EMPTY_HISTORY: SelectedThreadHistoryState = {
   error: null,
 };
 const EMPTY_CAPABILITIES: CapabilityMap = Object.freeze({});
+
+/** The app's tool claims. The chat's exact-name map and the prefix resolver below both read it. */
+const toolRegistry = createToolRegistry(TOOL_RENDERERS);
+
+/**
+ * U1 asks this for a tool name its exact-name map lacks. A prefix claim (an MCP tool's name) gets its
+ * card; a name nothing claims gets T7's fallback card, which shows its arguments and result text.
+ */
+const resolveToolRenderer: ToolRendererResolver = (toolName) =>
+  toolRegistry.resolve(toolName).renderer;
 
 function readSessionValue(key: string, fallback: string): string {
   try {
@@ -741,7 +752,6 @@ function ActiveThreadReady({
     () => todoStore.getSnapshot(),
   );
   const todoModel = useMemo(() => projectTodoSnapshot(todoSnapshot), [todoSnapshot]);
-  const toolRegistry = useMemo(() => createToolRegistry(TOOL_RENDERERS), []);
   const toolRenderers = useMemo(
     () =>
       Object.fromEntries(
@@ -751,7 +761,7 @@ function ActiveThreadReady({
             : [],
         ),
       ),
-    [toolRegistry],
+    [],
   );
   useEffect(() => () => todoStore.dispose(), [todoStore]);
   useEffect(() => () => queueAdapter.dispose(), [queueAdapter]);
@@ -1306,17 +1316,19 @@ function ConnectedRoot() {
   // Without omp no chat can open or start: say so, instead of showing an app that fails silently.
   if (serverInfo.omp === null) return <OmpUnavailableScreen reason={health?.detail} />;
   return (
-    <RegistryProvider capabilities={capabilities} registry={registry} renderers={RENDERERS}>
-      <ShortcutRegistryProvider descriptors={DESCRIPTORS} preferenceStore={shortcutPreferences}>
-        <OverlayHost>
-          <ConnectedApp
-            capabilities={capabilities}
-            client={client}
-            launchFolder={serverInfo.launchFolder}
-          />
-        </OverlayHost>
-      </ShortcutRegistryProvider>
-    </RegistryProvider>
+    <ToolRendererResolverContext.Provider value={resolveToolRenderer}>
+      <RegistryProvider capabilities={capabilities} registry={registry} renderers={RENDERERS}>
+        <ShortcutRegistryProvider descriptors={DESCRIPTORS} preferenceStore={shortcutPreferences}>
+          <OverlayHost>
+            <ConnectedApp
+              capabilities={capabilities}
+              client={client}
+              launchFolder={serverInfo.launchFolder}
+            />
+          </OverlayHost>
+        </ShortcutRegistryProvider>
+      </RegistryProvider>
+    </ToolRendererResolverContext.Provider>
   );
 }
 

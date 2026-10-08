@@ -1,4 +1,4 @@
-import { AlertCircleIcon, ExternalLinkIcon, InfoIcon } from "lucide-react";
+import { ExternalLinkIcon, InfoIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ReadToolDetails } from "../T1/models";
 import type { ReadUrlRendererProps } from "../T1/read-url-seam";
@@ -26,6 +26,11 @@ export function T4ReadUrlRenderer({
   // A real URL read carries its page in the text omp returned; `displayContent` is for line selections.
   const content = details.displayContent?.text;
   const returned = text.trim() === "" ? undefined : text;
+  // A failed read says why in the banner; when the text is that same error, no text block repeats it.
+  const errorIsText =
+    returned !== undefined &&
+    normalized.phase === "error" &&
+    returned.trim() === normalized.error?.message;
   const shown = content ?? returned;
   const target = details.finalUrl ?? details.url ?? details.displayTarget ?? "URL read";
   const redirect = redirectLabel(details.url, details.finalUrl);
@@ -68,17 +73,21 @@ export function T4ReadUrlRenderer({
             <span className="rounded border border-border px-2 py-0.5">{details.method}</span>
           )}
           {lineCount !== undefined && (
-            <span className="rounded border border-border px-2 py-0.5">{lineCount} lines</span>
+            <span className="rounded border border-border px-2 py-0.5">
+              {lineCount} {lineCount === 1 ? "line" : "lines"}
+            </span>
           )}
           {characterCount !== undefined && (
-            <span className="rounded border border-border px-2 py-0.5">{characterCount} chars</span>
+            <span className="rounded border border-border px-2 py-0.5">
+              {characterCount} {characterCount === 1 ? "char" : "chars"}
+            </span>
           )}
         </div>
         {catalog.length > 0 && <CatalogMetadata items={catalog} />}
         {screenshots.length > 0 && <ScreenshotStrip screenshots={screenshots} />}
         {content !== undefined ? (
           <MarkdownPreview text={content} />
-        ) : returned !== undefined ? (
+        ) : errorIsText ? null : returned !== undefined ? (
           <TextOutput text={returned} testId="t4-url-text" />
         ) : (
           <p className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground">
@@ -98,12 +107,6 @@ export function T4ReadUrlRenderer({
           >
             <InfoIcon aria-hidden="true" className="size-3.5" />
             <span>{truncationText(details.truncation)}</span>
-          </div>
-        )}
-        {normalized.error && (
-          <div className="text-danger flex items-center gap-2 text-xs" role="alert">
-            <AlertCircleIcon aria-hidden="true" className="size-3.5" />
-            <span>{normalized.error.message}</span>
           </div>
         )}
       </section>

@@ -3,8 +3,8 @@ import { describe, expect, test } from "vitest";
 import { T7_TOOL_DESCRIPTORS } from "./descriptor";
 
 describe("T7 descriptors", () => {
-  test("claims exactly eight inventory rows with one fallback", () => {
-    expect(T7_TOOL_DESCRIPTORS).toHaveLength(8);
+  test("claims eight inventory rows, one fallback, and two MCP name prefixes", () => {
+    expect(T7_TOOL_DESCRIPTORS).toHaveLength(10);
     expect(
       T7_TOOL_DESCRIPTORS.filter((descriptor) => descriptor.match.by === "fallback"),
     ).toHaveLength(1);
@@ -14,16 +14,26 @@ describe("T7 descriptors", () => {
     ).toBe(true);
   });
 
-  test("keeps exact tool names and owner-prefixed ids stable", () => {
+  test("keeps exact tool names, MCP prefixes and owner-prefixed ids stable", () => {
     expect(T7_TOOL_DESCRIPTORS.map((descriptor) => descriptor.id)).toEqual([
       "T7.checkpoint",
       "T7.goal",
       "T7.host-custom-mcp-tool-fallback",
+      "T7.mcp",
+      "T7.xdMcp",
       "T7.reject",
       "T7.resolve",
       "T7.rewind",
       "T7.securityScan",
       "T7.think",
+    ]);
+    expect(
+      T7_TOOL_DESCRIPTORS.filter((descriptor) => descriptor.match.by === "prefix").map(
+        (descriptor) => descriptor.match,
+      ),
+    ).toEqual([
+      { by: "prefix", prefix: "mcp__" },
+      { by: "prefix", prefix: "xd__mcp__" },
     ]);
     expect(
       T7_TOOL_DESCRIPTORS.find((descriptor) => descriptor.id === "T7.securityScan")?.match,

@@ -65,4 +65,23 @@ describe("T6 retain renderer", () => {
     expect(screen.getByText("Stored 1 of 2 memories")).toBeTruthy();
     expect(screen.getByText("backend rejected item 2")).toBeTruthy();
   });
+
+  test("a call that failed says so and shows omp's message, not a count", () => {
+    const failed: ToolRendererProps = {
+      ...props(
+        { items: '[{"content": "remember this"}]' },
+        {
+          content: [
+            { type: "text", text: "[shaken ~19 tokens — recover: artifact://501 (region 65)]" },
+          ],
+          details: { isError: true, error: "Tool xd__retain not found. Did you mean retain?" },
+        },
+      ),
+      isError: true,
+    };
+    render(<RetainRenderer {...failed} />);
+    expect(screen.getByText("Retain failed")).toBeTruthy();
+    expect(screen.getByText("Tool xd__retain not found. Did you mean retain?")).toBeTruthy();
+    expect(screen.queryByText("No memories stored")).toBeNull();
+  });
 });

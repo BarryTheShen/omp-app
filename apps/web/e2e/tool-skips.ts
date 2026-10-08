@@ -1,19 +1,15 @@
 /**
- * Tools whose card is built by an unmerged part, with that part's issue. The real-omp tool-card tests
+ * Tool names with no card of their own, each with the reason. The real-omp tool-card tests
  * (`all-tools-real-results.spec.ts` and the own-history test in `tool-cards-real-results.spec.ts`) skip
- * these and report the reason, so they stay honest until those parts merge. Remove a line when its card
- * merges and its real sample is recorded in the module's fixtures.
+ * these and report the reason, so they stay honest. A name whose part has not merged is listed until its
+ * card merges and its real sample is recorded in the module's fixtures. The three below are not omp tools:
+ * a direct call under them fails as not found and shows on T7's fallback card.
  */
 export const NOT_YET_BUILT: Readonly<Record<string, string>> = {
-  ask: "#717 (ask card)",
-  web_fetch: "#717 (web_fetch card)",
-  vibe_spawn: "#717 (vibe card)",
-  recall: "#717 (memory cards)",
-  retain: "#717 (memory cards)",
-  xd_recall: "#717 (memory cards)",
-  xd___recall: "#717 (memory cards)",
-  xd__retain: "#717 (memory cards)",
-  retain_placeholder: "#717 (memory cards)",
-  xd__mcp__notion_search: "#717 (MCP cards)",
-  xd__mcp__notion_fetch: "#717 (MCP cards)",
+  xd_recall:
+    "omp has no tool by this name; a direct call fails as not found and shows on T7's fallback card. Memory calls go through write to xd://recall, which the write card shows",
+  xd___recall:
+    "omp has no tool by this name; a direct call fails as not found and shows on T7's fallback card. Memory calls go through write to xd://recall, which the write card shows",
+  retain_placeholder:
+    "omp has no tool by this name; its one recorded call fails as not found and shows on T7's fallback card",
 };

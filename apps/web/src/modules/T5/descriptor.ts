@@ -2,8 +2,8 @@ import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
 import { ToolFallback } from "../U3/tool-card/fallback";
 import { HubToolRenderer } from "./hub";
 import { TaskToolRenderer } from "./task";
+import { VIBE_SPAWN_DESCRIPTOR } from "./vibe-spawn";
 import { WaitToolRenderer } from "./wait";
-
 /** T5 claims nine exact tool names; task also owns P1's compact read-only task row. */
 export const T5_TOOL_DESCRIPTORS = [
   {
@@ -56,16 +56,7 @@ export const T5_TOOL_DESCRIPTORS = [
     match: { by: "name", name: "vibe_send" },
     renderer: ToolFallback,
   },
-  {
-    kind: "tool",
-    id: "T5.vibeSpawn",
-    owner: "T5",
-    title: "Spawn vibe worker",
-    covers: ["T5.vibe-spawn"],
-    requires: [],
-    match: { by: "name", name: "vibe_spawn" },
-    renderer: ToolFallback,
-  },
+  VIBE_SPAWN_DESCRIPTOR,
   {
     kind: "tool",
     id: "T5.vibeWait",

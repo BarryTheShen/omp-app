@@ -8,9 +8,16 @@ import { decodeHostTool, decodeHostUri } from "./models";
 
 const LONG_STRING_LIMIT = 240;
 
+/** Name prefixes of MCP tools: omp v18.6.1 mints `mcp__<server>_<tool>` (`packages/tui/src/tools/mcp.ts`); sessions also record `xd__mcp__`. */
+const MCP_TOOL_NAME_PREFIXES = ["mcp__", "xd__mcp__"] as const;
+
 function safeLabel(state: ToolCardState): string {
   if (state.toolName === "host_tool" || state.toolName === "host_uri") return "Host request";
-  if (state.toolName === "mcp") return "MCP tool";
+  if (
+    state.toolName === "mcp" ||
+    MCP_TOOL_NAME_PREFIXES.some((prefix) => state.toolName.startsWith(prefix))
+  )
+    return "MCP tool";
   return state.label || "Custom tool";
 }
 
@@ -171,7 +178,9 @@ export const T7ToolFallback: ToolRenderer = (props) => {
         : { ...normalized, label: safeLabel(normalized) };
   const shellState = { ...state, argsText: "", result: undefined, partialResult: undefined };
   const summary =
-    unavailable !== undefined ? "Unavailable" : (correlation ?? "Recorded tool result");
+    unavailable !== undefined
+      ? "Unavailable"
+      : (correlation ?? (state.phase === "success" ? "Finished" : ""));
   const cardClassName =
     unavailable === undefined
       ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"

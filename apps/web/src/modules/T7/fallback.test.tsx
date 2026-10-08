@@ -47,4 +47,55 @@ describe("T7 fallback", () => {
     expect(screen.getByTestId("tool-state-chip-cancelled").textContent).toContain("Cancelled");
     expect(screen.getByTestId("t7-fallback-details")).toBeTruthy();
   });
+
+  test("labels omp's MCP tool names as MCP tools", () => {
+    render(
+      <T7ToolFallback
+        {...props({
+          content: [{ type: "text", text: "MCP result" }],
+          details: { value: "ok" },
+        })}
+        toolName="mcp__notion_search"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "MCP tool: Complete" })).toBeTruthy();
+  });
+
+  test("labels omp's xd__mcp__ tool names as MCP tools too", () => {
+    render(
+      <T7ToolFallback
+        {...props({
+          content: [{ type: "text", text: "MCP result" }],
+          details: { value: "ok" },
+        })}
+        toolName="xd__mcp__notion_search"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "MCP tool: Complete" })).toBeTruthy();
+  });
+
+  test("a finished result is summarised as Finished, and a failed call has no summary", () => {
+    const finished = props({
+      content: [{ type: "text", text: "MCP result" }],
+      details: { value: "ok" },
+    });
+    const { unmount } = render(<T7ToolFallback {...finished} toolName="mcp__notion_search" />);
+    expect(screen.getByText("Finished")).toBeTruthy();
+    unmount();
+    const failed: ToolRendererProps = {
+      ...props({
+        content: [{ type: "text", text: "Tool mcp__notion_search not found" }],
+        details: { isError: true, error: "Tool mcp__notion_search not found" },
+      }),
+      isError: true,
+    };
+    render(<T7ToolFallback {...failed} toolName="mcp__notion_search" />);
+    expect(screen.queryByText("Recorded tool result")).toBeNull();
+    expect(screen.queryByText("Finished")).toBeNull();
+    expect(
+      screen
+        .getAllByRole("alert")
+        .some((alert) => alert.textContent?.includes("Tool mcp__notion_search not found") === true),
+    ).toBe(true);
+  });
 });

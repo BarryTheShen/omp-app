@@ -27,6 +27,7 @@ import { T2_MESSAGE_DESCRIPTORS, T2_TOOL_DESCRIPTORS } from "../modules/T2/descr
 import { T3_TOOL_DESCRIPTORS } from "../modules/T3/descriptor";
 import { T4_TOOL_DESCRIPTORS } from "../modules/T4/descriptor";
 import { T4ReadUrlRenderer } from "../modules/T4/url-read";
+import { WEB_FETCH_DESCRIPTOR } from "../modules/T4/web-fetch";
 import { T5_TOOL_DESCRIPTORS } from "../modules/T5/descriptor";
 import { T6_TOOL_DESCRIPTORS } from "../modules/T6/descriptor";
 import { T7_TOOL_DESCRIPTORS } from "../modules/T7/descriptor";
@@ -37,6 +38,7 @@ import { U2_EXTERNAL_EDITOR_SHORTCUT } from "../modules/U2/shortcuts/shortcuts";
 import { U3_BASH_DESCRIPTOR } from "../modules/U3/tool-card/bash";
 import type { ToolRegistryDescriptor } from "../modules/U3/tool-card/contract";
 import { U4Descriptors } from "../modules/U4/descriptors";
+import { ASK_TOOL_DESCRIPTOR } from "../modules/U4/dialogs/ask-result";
 import { U5Descriptors } from "../modules/U5/descriptors";
 import { todoToolDescriptor } from "../modules/U5/todo/tool-card/tool-card";
 import { U0_COMMAND_PALETTE_SHORTCUT, U0_SAVE_DEBUG_LOG_COMMAND } from "../palette/descriptor";
@@ -55,9 +57,11 @@ export const TOOL_RENDERERS: readonly ToolRegistryDescriptor[] = [
   ...T2_TOOL_DESCRIPTORS,
   ...T3_TOOL_DESCRIPTORS,
   ...T4_TOOL_DESCRIPTORS,
+  WEB_FETCH_DESCRIPTOR,
   ...T5_TOOL_DESCRIPTORS,
   ...T6_TOOL_DESCRIPTORS,
   ...T7_TOOL_DESCRIPTORS,
+  ASK_TOOL_DESCRIPTOR,
 ];
 
 /**
@@ -98,7 +102,8 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...P6_DESCRIPTORS,
   ...I1_MCP_SERVER_DESCRIPTORS,
   ...D2_TRIGGER_DESCRIPTORS,
-  ...U4Descriptors,
+  // ASK_TOOL_DESCRIPTOR (TOOL_RENDERERS above) carries U4.ask's row, so U4's copy is left out.
+  ...U4Descriptors.filter((descriptor) => descriptor.id !== ASK_TOOL_DESCRIPTOR.id),
   ...U5Descriptors,
   ...T2_MESSAGE_DESCRIPTORS,
   ...TOOL_RENDERERS.map(withoutRenderer),

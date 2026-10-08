@@ -5,7 +5,10 @@ import { MemoryEditRenderer } from "./memory-edit";
 import { RecallRenderer } from "./recall";
 import { ReflectRenderer } from "./reflect";
 import { RetainRenderer } from "./retain";
-/** Exactly the six T6 memory/learning rows; no descriptor claims a checkpoint or memory backend row. */
+/**
+ * The six T6 memory/learning inventory rows. Two more claims name memory calls as the sessions
+ * recorded them (`xd__recall`, `xd__retain`); they cover no inventory row.
+ */
 export const T6_INVENTORY_COVERS = [
   "T6.learn",
   "T6.manage-skill",
@@ -57,6 +60,18 @@ export const T6_TOOL_DESCRIPTORS = [
     match: { by: "name", name: "recall" },
     renderer: RecallRenderer,
   },
+  // The issue names this call. No recorded session has this exact name; the near misses
+  // (xd_recall, xd___recall) failed with "not found".
+  {
+    kind: "tool",
+    id: "T6.xdRecall",
+    owner: "T6",
+    title: "Recall memory",
+    covers: [],
+    requires: [],
+    match: { by: "name", name: "xd__recall" },
+    renderer: RecallRenderer,
+  },
   {
     kind: "tool",
     id: "T6.reflect",
@@ -75,6 +90,17 @@ export const T6_TOOL_DESCRIPTORS = [
     covers: ["T6.retain"],
     requires: [],
     match: { by: "name", name: "retain" },
+    renderer: RetainRenderer,
+  },
+  // Recorded sessions made this call; omp answered "Tool xd__retain not found".
+  {
+    kind: "tool",
+    id: "T6.xdRetain",
+    owner: "T6",
+    title: "Retain memory",
+    covers: [],
+    requires: [],
+    match: { by: "name", name: "xd__retain" },
     renderer: RetainRenderer,
   },
 ] as const satisfies readonly ToolRegistryDescriptor[];

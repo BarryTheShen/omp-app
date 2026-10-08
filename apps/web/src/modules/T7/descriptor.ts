@@ -6,7 +6,10 @@ import { ResolveToolRenderer } from "./resolve";
 import { SecurityScanToolRenderer } from "./security";
 import { ThinkToolRenderer } from "./think";
 
-/** T7 owns exactly eight miscellaneous/host/domain renderer claims; the main agent composes them. */
+/**
+ * T7 owns eight miscellaneous/host/domain inventory claims, one fallback, and two MCP name prefixes.
+ * The main agent composes them.
+ */
 export const T7_TOOL_DESCRIPTORS = [
   {
     kind: "tool",
@@ -36,6 +39,26 @@ export const T7_TOOL_DESCRIPTORS = [
     covers: ["T7.host-custom-mcp-tool-fallback"],
     requires: [],
     match: { by: "fallback" },
+    renderer: T7ToolFallback,
+  },
+  {
+    kind: "tool",
+    id: "T7.mcp",
+    owner: "T7",
+    title: "MCP tool",
+    covers: [],
+    requires: [],
+    match: { by: "prefix", prefix: "mcp__" },
+    renderer: T7ToolFallback,
+  },
+  {
+    kind: "tool",
+    id: "T7.xdMcp",
+    owner: "T7",
+    title: "MCP tool",
+    covers: [],
+    requires: [],
+    match: { by: "prefix", prefix: "xd__mcp__" },
     renderer: T7ToolFallback,
   },
   {

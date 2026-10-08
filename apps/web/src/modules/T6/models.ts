@@ -275,8 +275,19 @@ export function normalizeReflect(args: unknown, result: unknown): ReflectModel {
   };
 }
 
+/** The model often passes `items` as JSON text; the list it names is the same either way. */
+function parsedRetainItems(args: unknown): unknown {
+  const text = z.looseObject({ items: z.string() }).safeParse(args);
+  if (!text.success) return args;
+  try {
+    return { ...text.data, items: JSON.parse(text.data.items) };
+  } catch {
+    return args;
+  }
+}
+
 export function normalizeRetain(args: unknown, result: unknown): RetainModel {
-  const decoded = decodeMemoryRetainArgs(args);
+  const decoded = decodeMemoryRetainArgs(parsedRetainItems(args));
   const record = result && typeof result === "object" ? result : {};
   const details = decode(
     RetainDetailsSchema,
