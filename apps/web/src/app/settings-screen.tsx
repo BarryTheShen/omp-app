@@ -1,5 +1,11 @@
 import type { AppClient } from "@omp-app/client";
-import type { CapabilityMap, ConfigWriteLayer, FolderPath, SettingTab } from "@omp-app/contracts";
+import type {
+  CapabilityMap,
+  ConfigWriteLayer,
+  FolderPath,
+  SettingTab,
+  ThreadId,
+} from "@omp-app/contracts";
 import { SETTING_SECTIONS as OMP_SETTING_SECTIONS, SETTING_TABS } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
@@ -37,6 +43,7 @@ import {
 } from "@/modules/S1/settings-kit";
 import { SETTINGS_SECTIONS } from "@/registry";
 import { DARK_QUERY, resolveTheme, useThemePreference } from "@/theme";
+import { ProviderLoginSection, providerLoginAvailable } from "./provider-login-section";
 import { layerFolder } from "./settings-scope";
 
 export type SettingsScreenProps = {
@@ -44,6 +51,8 @@ export type SettingsScreenProps = {
   readonly capabilities: CapabilityMap;
   readonly folder: FolderPath | null;
   readonly onClose: () => void;
+  /** The open chat, whose omp session runs provider login; null when no chat is open. */
+  readonly threadId: ThreadId | null;
 };
 
 type SettingsLayer = Extract<ConfigWriteLayer, "global" | "project">;
@@ -504,7 +513,13 @@ function AppearanceSettingsPanel({
   );
 }
 
-export function SettingsScreen({ client, capabilities, folder, onClose }: SettingsScreenProps) {
+export function SettingsScreen({
+  client,
+  capabilities,
+  folder,
+  onClose,
+  threadId,
+}: SettingsScreenProps) {
   const [activeTab, setActiveTab] = useState<SettingTab>("appearance");
   const [layer, setLayer] = useState<SettingsLayer>("global");
   const [search, setSearch] = useState("");
@@ -657,6 +672,13 @@ export function SettingsScreen({ client, capabilities, folder, onClose }: Settin
             {appearance}
             {activeTab !== "appearance" ? (
               <div className="flex min-w-0 flex-col gap-4">
+                {activeTab === "providers" && providerLoginAvailable(capabilities) ? (
+                  <ProviderLoginSection
+                    capabilities={capabilities}
+                    client={client}
+                    threadId={threadId}
+                  />
+                ) : null}
                 <Section heading={`${TAB_LABELS[activeTab]} sections`} variant="plain">
                   <div className="mb-2 flex flex-col gap-1 text-sm font-medium">
                     <label htmlFor="settings-section-search">Search sections</label>

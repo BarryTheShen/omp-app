@@ -140,9 +140,15 @@ function folderLabel(folder: FolderPath | undefined): string {
   const normalized = folder.replace(/\/+$/, "");
   return normalized.slice(normalized.lastIndexOf("/") + 1) || folder;
 }
-function SettingsButton({ onOpenSettings }: { readonly onOpenSettings: () => void }) {
+function SettingsButton({
+  onOpenSettings,
+  threadId,
+}: {
+  readonly onOpenSettings: (threadId: ThreadId | null) => void;
+  readonly threadId: ThreadId | null;
+}) {
   return (
-    <Button type="button" size="sm" variant="outline" onClick={onOpenSettings}>
+    <Button type="button" size="sm" variant="outline" onClick={() => onOpenSettings(threadId)}>
       Settings
     </Button>
   );
@@ -412,7 +418,7 @@ interface ActiveThreadProps {
   readonly capabilities: CapabilityMap;
   readonly folder: FolderPath | null;
   readonly catalog: SessionCatalogModel | null;
-  readonly onOpenSettings: () => void;
+  readonly onOpenSettings: (threadId: ThreadId | null) => void;
   readonly remote: ReturnType<typeof createNativeRemoteThreadListAdapter> | null;
   /** Called when the person sends a message (the sidebar's list is fetched again once it is answered). */
   readonly onPromptSent: () => void;
@@ -819,7 +825,7 @@ function ActiveThreadReady({
     },
     settings: {
       title: "Settings",
-      render: () => <SettingsButton onOpenSettings={onOpenSettings} />,
+      render: () => <SettingsButton onOpenSettings={onOpenSettings} threadId={threadId} />,
     },
     todo: {
       title: "Todo checklist",
@@ -981,21 +987,25 @@ function ConnectedApp({
   const lastInstanceId = useRef<string | undefined>(undefined);
   const [folderText, setFolderText] = useState(() => readSessionValue(FOLDER_KEY, launchFolder));
   const folder = FolderPath.safeParse(folderText).success ? FolderPath.parse(folderText) : null;
-  const openSettings = useCallback(() => {
-    overlay.open({
-      kind: "modal",
-      label: "Settings",
-      width: "viewport",
-      content: ({ close }) => (
-        <SettingsScreen
-          capabilities={capabilities}
-          client={client}
-          folder={folder}
-          onClose={() => close("programmatic")}
-        />
-      ),
-    });
-  }, [capabilities, client, folder, overlay]);
+  const openSettings = useCallback(
+    (threadId: ThreadId | null) => {
+      overlay.open({
+        kind: "modal",
+        label: "Settings",
+        width: "viewport",
+        content: ({ close }) => (
+          <SettingsScreen
+            capabilities={capabilities}
+            client={client}
+            folder={folder}
+            threadId={threadId}
+            onClose={() => close("programmatic")}
+          />
+        ),
+      });
+    },
+    [capabilities, client, folder, overlay],
+  );
   const [folderError, setFolderError] = useState<string | null>(null);
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
@@ -1205,7 +1215,7 @@ function ConnectedApp({
     },
     settings: {
       title: "Settings",
-      render: () => <SettingsButton onOpenSettings={openSettings} />,
+      render: () => <SettingsButton onOpenSettings={openSettings} threadId={null} />,
     },
   };
   if (history.store && history.threadId) {

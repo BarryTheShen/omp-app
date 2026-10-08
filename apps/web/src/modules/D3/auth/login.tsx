@@ -152,7 +152,7 @@ export function ProviderLoginPanel({ auth }: ProviderLoginPanelProps) {
             key={provider.id}
           >
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{provider.name}</div>
+              <div className="text-sm font-medium">{provider.name}</div>
               <div className="text-muted-foreground text-xs">
                 {provider.authenticated
                   ? "Authenticated"
