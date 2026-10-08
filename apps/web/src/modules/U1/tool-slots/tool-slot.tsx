@@ -21,15 +21,24 @@ export const ToolRendererResolverContext = createContext<ToolRendererResolver | 
 );
 
 /**
+ * Whether the run that owns the tool calls below is still active: the chat's run, or a worker that is live.
+ * A call with no result and no state while its run is active has not started yet; once the run has ended no
+ * result can arrive. Undefined (no run is known) counts as ended.
+ */
+export const ToolRunActiveContext = createContext<boolean | undefined>(undefined);
+
+/**
  * U1's tool boundary passes an assistant-ui tool part to U3 by tool name: the exact-name map first,
  * then the resolver the app provides. Without a resolver, a name the map lacks keeps the copied generic
  * fallback, which keeps the call visible and inert; U1 never invents a tool lifecycle or executes a call.
  */
 export function ToolSlot({ part, renderers }: ToolSlotProps) {
-  const state = normalizeToolRendererProps(part);
+  const runActive = useContext(ToolRunActiveContext);
+  const props = { ...part, runActive };
+  const state = normalizeToolRendererProps(props);
   const resolve = useContext(ToolRendererResolverContext);
   const Renderer = renderers?.[part.toolName] ?? resolve?.(part.toolName);
-  if (Renderer !== undefined) return <Renderer {...part} />;
+  if (Renderer !== undefined) return <Renderer {...props} />;
 
   return (
     <div
@@ -38,7 +47,7 @@ export function ToolSlot({ part, renderers }: ToolSlotProps) {
       data-tool-name={state.toolName}
       data-slot="u1-tool-slot"
     >
-      <ToolFallback {...part} />
+      <ToolFallback {...props} />
     </div>
   );
 }

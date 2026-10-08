@@ -44,3 +44,25 @@ export function toReadonlyThreadMessages(messages: readonly ThreadMessageLike[])
     fromThreadMessageLike(message, `p1-transcript-${index}`, COMPLETE_UNKNOWN),
   );
 }
+
+/**
+ * A live worker's last assistant message is still being written, so a call in it with no result is still
+ * running. A finished worker's messages stay complete, so a call with no result in them is unrecorded. Only
+ * that message's status changes; the messages are the same.
+ */
+export function withLiveStatus(
+  messages: readonly ThreadMessageLike[],
+  live: boolean,
+): readonly ThreadMessageLike[] {
+  if (!live) return messages;
+  let last = -1;
+  for (const [index, message] of messages.entries()) {
+    if (message.role === "assistant") last = index;
+  }
+  if (last === -1) return messages;
+  return messages.map((message, index) =>
+    index === last && message.role === "assistant"
+      ? { ...message, status: { type: "running" as const } }
+      : message,
+  );
+}

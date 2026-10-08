@@ -1,6 +1,8 @@
+import type { ThreadMessageLike } from "@assistant-ui/react";
 import { AppFailure } from "@omp-app/contracts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TranscriptTail } from "../controller";
+import { withLiveStatus } from "../messages";
 import {
   agentRef,
   assistantMessage,
@@ -211,5 +213,57 @@ describe("the transcript tail", () => {
     await settle();
     expect(tail.getView()).toBe(shown);
     tail.stop();
+  });
+});
+
+describe("a worker's live status in its transcript view", () => {
+  test("a live worker's last assistant message is running, and a finished worker's messages stay complete", async () => {
+    const liveFeed = new FakeFeed(agentRef({ status: "running" }));
+    const live = tailFor(liveFeed);
+    live.start();
+    await settle();
+    liveFeed.answer(
+      transcriptPage({
+        fromByte: 0,
+        nextByte: 80,
+        messages: [userMessage("one"), assistantMessage("two")],
+      }),
+    );
+    await settle();
+    expect(live.getView().messages.map((message) => message.status)).toEqual([
+      undefined,
+      { type: "running" },
+    ]);
+
+    const doneFeed = new FakeFeed(agentRef({ status: "completed" }));
+    const done = tailFor(doneFeed);
+    done.start();
+    await settle();
+    doneFeed.answer(
+      transcriptPage({
+        fromByte: 0,
+        nextByte: 80,
+        messages: [userMessage("one"), assistantMessage("two")],
+      }),
+    );
+    await settle();
+    expect(done.getView().messages.at(-1)?.status).toMatchObject({ type: "complete" });
+  });
+
+  test("withLiveStatus marks only the last assistant message, and changes nothing once the worker is not live", () => {
+    const complete = { type: "complete", reason: "unknown" } as const;
+    const messages: ThreadMessageLike[] = [
+      { role: "user", content: [{ type: "text", text: "a" }] },
+      { role: "assistant", content: [{ type: "text", text: "b" }], status: complete },
+      { role: "user", content: [{ type: "text", text: "c" }] },
+      { role: "assistant", content: [{ type: "text", text: "d" }], status: complete },
+    ];
+    expect(withLiveStatus(messages, true).map((message) => message.status)).toEqual([
+      undefined,
+      complete,
+      undefined,
+      { type: "running" },
+    ]);
+    expect(withLiveStatus(messages, false)).toBe(messages);
   });
 });

@@ -2,11 +2,22 @@ import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Icons } from "../../tokens";
 import { ToolCard } from "../U3/tool-card/card";
-import type { ToolCardState, ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
+import type {
+  ToolCardPhase,
+  ToolCardState,
+  ToolRenderer,
+  ToolRendererProps,
+} from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { decodeHostTool, decodeHostUri } from "./models";
 
 const LONG_STRING_LIMIT = 240;
+
+/** The one line the fallback card gives a settled call: a success, or one with no result recorded. */
+const SETTLED_SUMMARY: Partial<Record<ToolCardPhase, string>> = {
+  success: "Finished",
+  unrecorded: "No result recorded",
+};
 
 /** Name prefixes of MCP tools: omp v18.6.1 mints `mcp__<server>_<tool>` (`packages/tui/src/tools/mcp.ts`); sessions also record `xd__mcp__`. */
 const MCP_TOOL_NAME_PREFIXES = ["mcp__", "xd__mcp__"] as const;
@@ -178,9 +189,7 @@ export const T7ToolFallback: ToolRenderer = (props) => {
         : { ...normalized, label: safeLabel(normalized) };
   const shellState = { ...state, argsText: "", result: undefined, partialResult: undefined };
   const summary =
-    unavailable !== undefined
-      ? "Unavailable"
-      : (correlation ?? (state.phase === "success" ? "Finished" : ""));
+    unavailable !== undefined ? "Unavailable" : (correlation ?? SETTLED_SUMMARY[state.phase] ?? "");
   const cardClassName =
     unavailable === undefined
       ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"

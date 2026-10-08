@@ -33,6 +33,7 @@ export function normalizeToolRendererProps(
     toolState: source.toolState ?? props.toolState,
     outputMeta: source.outputMeta ?? props.outputMeta,
     nested: source.nested ?? props.nested,
+    runActive: props.runActive,
   });
 }
 
@@ -46,13 +47,19 @@ export function normalizeToolCall(input: NormalizeToolCallInput): ToolCardState 
   }
 
   const phase = resolvePhase(input);
+  // A call its complete message holds, with no result and no state, while its run is active: omp has not started it.
+  const queued =
+    phase === "partial" &&
+    input.status?.type === "complete" &&
+    input.runActive === true &&
+    input.toolState === undefined;
   const timedOut = isTimedOut(input.toolState?.result) || isTimedOut(input.result);
   const error = resolveError(input, phase, timedOut);
   const partialResult = resolvePartialResult(input, phase);
   const result = resolveFinalResult(input, phase);
   const isError = input.toolState?.isError === true || phase === "error";
   const argsComplete = resolveArgsComplete(input);
-  const executionStarted = input.toolState !== undefined || phase !== "running";
+  const executionStarted = input.toolState !== undefined || (phase !== "running" && !queued);
 
   return {
     toolCallId,
@@ -63,6 +70,7 @@ export function normalizeToolCall(input: NormalizeToolCallInput): ToolCardState 
     argsText: input.argsText ?? serializeArgs(input.args),
     argsComplete,
     executionStarted,
+    ...(queued ? { queued: true } : {}),
     ...(partialResult === undefined ? {} : { partialResult }),
     ...(input.toolState?.streamProjection === undefined
       ? {}
@@ -126,6 +134,10 @@ function resolvePhase(input: NormalizeToolCallInput): ToolCardPhase {
     return status.reason === "cancelled" ? "cancelled" : "error";
   }
   if (input.result !== undefined) return isTimedOut(input.result) ? "error" : "success";
+  // The message is complete and holds no result for this call. While its run is active omp may simply not have
+  // started it yet (an exclusive call waits for the calls before it), so it is queued. Once the run has ended no
+  // result can arrive, so the call is unrecorded.
+  if (status?.type === "complete") return input.runActive === true ? "partial" : "unrecorded";
   return "partial";
 }
 

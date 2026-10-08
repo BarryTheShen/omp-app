@@ -99,3 +99,12 @@ describe("T7 fallback", () => {
     ).toBe(true);
   });
 });
+
+describe("T7 fallback for a finished call with no result", () => {
+  test("reads as finished and says no result was recorded, never Streaming", () => {
+    render(<T7ToolFallback {...{ ...props(undefined), toolName: "yield" }} />);
+    expect(screen.getByTestId("tool-state-chip-unrecorded").textContent).toContain("Finished");
+    expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Streaming")).toBeNull();
+  });
+});

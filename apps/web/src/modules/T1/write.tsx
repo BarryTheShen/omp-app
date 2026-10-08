@@ -84,7 +84,7 @@ export function WriteCard({ rendererProps, artifactSlot, onCopy, onOpenArtifact 
         outputMeta={outputMeta}
         returnedText={returnedText}
         source={source}
-        waiting={state.phase === "running" || state.phase === "partial"}
+        waiting={(state.phase === "running" || state.phase === "partial") && state.queued !== true}
       />
     </div>
   );

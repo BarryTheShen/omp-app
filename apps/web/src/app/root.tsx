@@ -31,6 +31,7 @@ import { AccessibilityProvider } from "@/a11y";
 import { agentsSurface } from "@/app/agents/agents-tab";
 import { TaskSubagentsScope, useThreadAgents } from "@/app/agents/thread-agents-scope";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
+import { ToolRunScope } from "@/app/tool-run-scope";
 import { Button } from "@/components/ui/button";
 import {
   AppConnectionGate,
@@ -1003,57 +1004,59 @@ function ActiveThreadReady({
         store={store}
         threadId={threadId}
       />
-      <TaskSubagentsScope agents={agents}>
-        <AppShell
-          composer={composer}
-          leftSidebar={leftSidebar}
-          statusBar={area("statusBar")}
-          threadHeader={area("header")}
-          rightSidebar={area("panels")}
-          transcript={
-            store && threadId ? (
-              <div className="h-full min-h-0" ref={transcriptRootRef}>
-                <ThreadShell
-                  autoScroll
-                  footer={area("threadFooter")}
-                  onLoadOlder={onLoadOlder}
-                  onLoadFullOutput={onLoadFullOutput}
-                  slots={{
-                    renderMessage: (message, renderNested) => (
-                      <MessageParts
-                        message={message}
-                        actions={rowActions(message)}
-                        renderNested={(part) =>
-                          part.messages === undefined
-                            ? undefined
-                            : renderNested?.(part.messages, part.toolCallId, part.toolName)
-                        }
-                        toolRenderers={toolRenderers}
-                      />
-                    ),
-                    renderNested: (messages, taskId, toolName) => {
-                      const parsedTaskId = ToolCallId.safeParse(taskId);
-                      return (
-                        <NestedTranscript
-                          depth={0}
-                          key={taskId}
-                          messages={messages}
-                          parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
-                          taskName={toolName}
+      <ToolRunScope store={store}>
+        <TaskSubagentsScope agents={agents}>
+          <AppShell
+            composer={composer}
+            leftSidebar={leftSidebar}
+            statusBar={area("statusBar")}
+            threadHeader={area("header")}
+            rightSidebar={area("panels")}
+            transcript={
+              store && threadId ? (
+                <div className="h-full min-h-0" ref={transcriptRootRef}>
+                  <ThreadShell
+                    autoScroll
+                    footer={area("threadFooter")}
+                    onLoadOlder={onLoadOlder}
+                    onLoadFullOutput={onLoadFullOutput}
+                    slots={{
+                      renderMessage: (message, renderNested) => (
+                        <MessageParts
+                          message={message}
+                          actions={rowActions(message)}
+                          renderNested={(part) =>
+                            part.messages === undefined
+                              ? undefined
+                              : renderNested?.(part.messages, part.toolCallId, part.toolName)
+                          }
                           toolRenderers={toolRenderers}
                         />
-                      );
-                    },
-                  }}
-                  store={store}
-                />
-              </div>
-            ) : (
-              <EmptyTranscript state={history} />
-            )
-          }
-        />
-      </TaskSubagentsScope>
+                      ),
+                      renderNested: (messages, taskId, toolName) => {
+                        const parsedTaskId = ToolCallId.safeParse(taskId);
+                        return (
+                          <NestedTranscript
+                            depth={0}
+                            key={taskId}
+                            messages={messages}
+                            parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
+                            taskName={toolName}
+                            toolRenderers={toolRenderers}
+                          />
+                        );
+                      },
+                    }}
+                    store={store}
+                  />
+                </div>
+              ) : (
+                <EmptyTranscript state={history} />
+              )
+            }
+          />
+        </TaskSubagentsScope>
+      </ToolRunScope>
     </AssistantRuntimeProvider>
   );
 }

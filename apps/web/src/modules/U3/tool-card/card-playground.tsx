@@ -55,9 +55,11 @@ function CardPlayground() {
           </div>
         </header>
         <section className="mx-auto mt-6 flex w-full max-w-4xl flex-col gap-2 rounded-xl border border-border bg-card p-3 shadow-xs sm:p-5">
-          {(["running", "partial", "success", "error", "cancelled"] as const).map((phase) => (
-            <ToolCard key={phase} state={cardState(phase, `playground-${phase}`)} />
-          ))}
+          {(["running", "partial", "success", "error", "cancelled", "unrecorded"] as const).map(
+            (phase) => (
+              <ToolCard key={phase} state={cardState(phase, `playground-${phase}`)} />
+            ),
+          )}
         </section>
       </main>
     </div>

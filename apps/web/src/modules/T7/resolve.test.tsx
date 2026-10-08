@@ -78,3 +78,11 @@ describe("ResolveCard", () => {
     ).toBe(true);
   });
 });
+
+describe("ResolveCard with no result recorded", () => {
+  test("says no result was recorded and never reports an approval nobody gave", () => {
+    render(<ResolveCard rendererProps={props("resolve", undefined)} />);
+    expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Approved")).toBeNull();
+  });
+});

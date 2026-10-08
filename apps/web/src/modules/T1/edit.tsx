@@ -111,6 +111,7 @@ export function EditCard({ rendererProps, onCopy }: EditCardProps) {
         fallbackText={fallbackText}
         onCopy={onCopy}
         phase={cardState.phase}
+        queued={cardState.queued === true}
         target={target}
       />
     </div>
@@ -126,6 +127,7 @@ function EditBody({
   fallbackText,
   onCopy,
   phase,
+  queued,
   target,
 }: {
   readonly args?: EditToolArgs;
@@ -133,6 +135,7 @@ function EditBody({
   readonly fallbackText?: string;
   readonly onCopy?: EditCopyHandler;
   readonly phase: ToolCardPhase;
+  readonly queued: boolean;
   readonly target: string;
 }) {
   const perFileResults = details?.perFileResults;
@@ -143,7 +146,7 @@ function EditBody({
   const copyText = copySource(args, details, fallbackText);
   const stats = statsFor(args, details);
   const operation = operationFor(args, details);
-  const status = editStatus(phase, args, details, diff, perFileResults);
+  const status = editStatus(phase, queued, args, details, diff, perFileResults);
   const diagnostics = details?.diagnostics;
   const conflict = conflictNotice(details);
   const snapshotsPruned = details?.snapshotsPruned === true;
@@ -734,6 +737,7 @@ function operationLabel(operation: string | undefined): string {
 
 function editStatus(
   phase: ToolCardPhase,
+  queued: boolean,
   args: EditToolArgs | undefined,
   details: EditToolDetails | undefined,
   diff: string | undefined,
@@ -742,6 +746,7 @@ function editStatus(
   if (phase === "error" || detailsFailed(details) || perFileResults?.some(fileFailure))
     return "Apply failed";
   if (phase === "cancelled") return "Cancelled";
+  if (queued) return "Waiting to start";
   if (phase === "running" || phase === "partial") return "Streaming";
   if (operationFor(args, details) === "create") return "Created";
   if (operationFor(args, details) === "delete") return "Deleted";

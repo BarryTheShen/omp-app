@@ -175,3 +175,68 @@ describe("U3 tool-call normalizer", () => {
     expect(state.nested?.depth).toBe(3);
   });
 });
+
+describe("U3 tool-call phase of a call with no result", () => {
+  test("is unrecorded when its message is finished, running while it is still written, and in flight without a status", () => {
+    const finished = normalizeToolCall({
+      toolCallId: "yield-1",
+      toolName: "yield",
+      status: { type: "complete" },
+    });
+    expect(finished.phase).toBe("unrecorded");
+
+    const live = normalizeToolCall({
+      toolCallId: "bash-1",
+      toolName: "bash",
+      status: { type: "running" },
+    });
+    expect(live.phase).toBe("running");
+
+    const unknown = normalizeToolCall({ toolCallId: "bash-2", toolName: "bash" });
+    expect(unknown.phase).toBe("partial");
+  });
+});
+
+describe("U3 tool-call queued state", () => {
+  test("a call its complete message holds, with no result, is queued while its run is active and unrecorded once the run has ended", () => {
+    const queued = normalizeToolCall({
+      toolCallId: "queued-1",
+      toolName: "bash",
+      status: { type: "complete" },
+      runActive: true,
+    });
+    expect(queued.phase).toBe("partial");
+    expect(queued.queued).toBe(true);
+    expect(queued.executionStarted).toBe(false);
+
+    const ended = normalizeToolCall({
+      toolCallId: "ended-1",
+      toolName: "bash",
+      status: { type: "complete" },
+      runActive: false,
+    });
+    expect(ended.phase).toBe("unrecorded");
+    expect(ended.queued).toBeUndefined();
+  });
+
+  test("a call that has started, or whose message is still being written, is never queued", () => {
+    const started = normalizeToolCall({
+      toolCallId: "started-1",
+      toolName: "bash",
+      status: { type: "complete" },
+      runActive: true,
+      toolState: toolState("started-1", "running"),
+    });
+    expect(started.phase).toBe("running");
+    expect(started.queued).toBeUndefined();
+
+    const writing = normalizeToolCall({
+      toolCallId: "writing-1",
+      toolName: "bash",
+      status: { type: "running" },
+      runActive: true,
+    });
+    expect(writing.phase).toBe("running");
+    expect(writing.queued).toBeUndefined();
+  });
+});

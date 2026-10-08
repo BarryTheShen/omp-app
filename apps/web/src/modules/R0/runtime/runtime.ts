@@ -238,7 +238,7 @@ function toolPart(
           status: state.status,
           partialResult: state.partialResult,
           streamProjection: state.streamProjection,
-          ompToolState: state,
+          toolState: state,
         }),
     ...(status.type === "running" && state === undefined ? { isPreliminary: true } : {}),
   };
@@ -316,7 +316,7 @@ function toolResultPart(
           status: state.status,
           partialResult: state.partialResult,
           streamProjection: state.streamProjection,
-          ompToolState: state,
+          toolState: state,
         }),
   };
 }

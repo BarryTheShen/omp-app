@@ -28,6 +28,7 @@ describe("ToolCard state grammar", () => {
     ["success", "Complete", "bg-success-surface"],
     ["error", "Error", "bg-danger-surface"],
     ["cancelled", "Cancelled", "bg-muted"],
+    ["unrecorded", "Finished", "bg-muted"],
   ] as const)("renders %s with its tokenized chip", (phase, label, surface) => {
     render(<ToolCard state={state(phase)} />);
     const chip = screen.getByTestId(`tool-state-chip-${phase}`);
@@ -160,5 +161,25 @@ describe("ToolCard state grammar", () => {
     expect(
       screen.getByRole("button", { name: "Run bash: Error" }).getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+});
+
+describe("ToolCard with no result recorded", () => {
+  test("says so in plain words where a finished call has no result, and never says Streaming", () => {
+    render(<ToolCard state={state("unrecorded")} />);
+    expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Streaming")).toBeNull();
+  });
+});
+
+describe("ToolCard queued call", () => {
+  test("a queued call reads Waiting in its chip and summary, and never Streaming, Finished or No result recorded", () => {
+    render(<ToolCard state={{ ...state("partial", "queued-card"), queued: true }} />);
+    expect(screen.getByTestId("tool-state-chip-partial").textContent).toContain("Waiting");
+    expect(screen.getByText("Waiting to start")).toBeTruthy();
+    expect(screen.queryByText("Streaming")).toBeNull();
+    expect(screen.queryByText("Finished")).toBeNull();
+    expect(screen.queryByText("No result recorded")).toBeNull();
+    expect(screen.getByTestId("tool-card-queued-card").getAttribute("data-queued")).toBe("true");
   });
 });

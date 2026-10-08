@@ -29,7 +29,11 @@ const VISUAL_BY_PHASE: Record<ToolCardPhase, VisualState> = {
   success: { label: "Complete", tone: "success", icon: Icons.success },
   error: { label: "Error", tone: "danger", icon: Icons.error },
   cancelled: { label: "Cancelled", tone: "muted", icon: Icons.warning },
+  unrecorded: { label: "Finished", tone: "muted", icon: Icons.info },
 };
+
+/** A call omp has not started yet (ToolCardState.queued): its run is active, and it waits for its turn. */
+const QUEUED_VISUAL: VisualState = { label: "Waiting", tone: "muted", icon: Icons.loading };
 
 const TONE_CLASSES: Record<VisualState["tone"], string> = {
   info: "border-info/30 bg-info-surface text-info-surface-foreground",
@@ -61,7 +65,7 @@ export function ToolCard({
   className,
 }: ToolCardProps) {
   const contentId = useId();
-  const visual = VISUAL_BY_PHASE[state.phase];
+  const visual = state.queued === true ? QUEUED_VISUAL : VISUAL_BY_PHASE[state.phase];
   const status = state.timedOut
     ? { ...visual, label: "Timed out", tone: "warning" as const }
     : visual;
@@ -133,6 +137,7 @@ export function ToolCard({
     <Collapsible
       className={cn("w-full min-w-0", className)}
       data-phase={state.phase}
+      data-queued={state.queued === true ? "true" : undefined}
       data-slot="u3-tool-card"
       data-testid={`tool-card-${state.toolCallId}`}
       open={open}
@@ -153,10 +158,12 @@ export function ToolCard({
           )}
           data-slot="u3-tool-card-icon"
         />
-        <span className="min-w-0 flex-1 truncate font-medium text-foreground">{state.label}</span>
+        <span className="min-w-0 truncate font-medium text-foreground">{state.label}</span>
         <span
           className={cn(
-            "min-w-0 flex-1 truncate text-xs",
+            "min-w-0 flex-1 text-xs",
+            // A call with no result says so in full, so its one line wraps rather than being cut off.
+            state.phase === "unrecorded" ? "break-words" : "truncate",
             summaryClassName ?? "text-muted-foreground",
           )}
           title={summary}
@@ -303,6 +310,8 @@ function ToolRawBlock({
 function summarize(state: ToolCardState): string {
   if (state.error !== undefined) return oneLine(state.error.message);
   if (state.phase === "cancelled") return "Tool call cancelled";
+  if (state.phase === "unrecorded") return "No result recorded";
+  if (state.queued === true) return "Waiting to start";
   if (state.phase === "partial" || state.phase === "running") return "Working…";
   return "";
 }

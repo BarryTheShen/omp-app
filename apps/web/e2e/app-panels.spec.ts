@@ -311,3 +311,73 @@ realTest(
     expect(realApp.problems).toEqual([]);
   },
 );
+
+realTest(
+  "a finished worker's yield reads as finished with no result, and a live worker's pending call reads as running",
+  async ({ realApp }) => {
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await page.getByRole("tab", { name: "Agents" }).click();
+    const hub = page.getByRole("region", { name: "Agent Hub" });
+    await expect(hub).toHaveAttribute("data-panel-lifecycle", "empty", { timeout: 90_000 });
+
+    // The steerable worker takes a steer and then yields. omp ends a worker with yield, so the yield has no result.
+    await sendPrompt(composer, "spawn_steerable_subagent start the worker and wait for it");
+    await expect(hub.getByRole("option", { name: /Running/ })).toHaveCount(1, { timeout: 120_000 });
+    await hub.getByRole("option", { name: /Running/ }).click();
+    await hub.getByRole("button", { name: "Open transcript" }).click();
+    const transcript = page.getByRole("region", { name: /^Transcript of / });
+    await expect(transcript).toBeVisible({ timeout: 60_000 });
+    const editor = page.getByRole("textbox", { name: "Message to this worker" });
+    await expect(editor).toBeEnabled({ timeout: 60_000 });
+    await editor.fill("steer_probe: wrap up now");
+    await editor.press("Enter");
+    await expect(page.getByText("Finished · read-only")).toBeVisible({ timeout: 180_000 });
+
+    // Finished: its yield calls read as finished with no result recorded, and none reads as Streaming.
+    await expect(transcript.locator('[data-phase="unrecorded"]').first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(transcript.getByText("No result recorded").first()).toBeVisible();
+    await expect(transcript.locator('[data-phase="partial"]')).toHaveCount(0);
+    await expect(transcript.getByText("Streaming", { exact: true })).toHaveCount(0);
+    await settle(page);
+    await page.screenshot({ path: join(screenshots, "yield-finished-light.png"), fullPage: true });
+    await darkLook(page);
+    await page.screenshot({ path: join(screenshots, "yield-finished-dark.png"), fullPage: true });
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
+    await page.getByRole("button", { name: "Back" }).click();
+
+    // Live: the long worker's pending bash call is still running, so it reads as Running, never as Streaming.
+    await sendPrompt(composer, "spawn_long_subagent");
+    const running = hub.getByRole("option", { name: /Running/ });
+    await expect(running).toHaveCount(1, { timeout: 120_000 });
+    await running.click();
+    await hub.getByRole("button", { name: "Open transcript" }).click();
+    const live = page.getByRole("region", { name: /^Transcript of / });
+    await expect(live.locator('[data-phase="running"]').first()).toBeVisible({ timeout: 60_000 });
+    await expect(live.locator('[data-phase="unrecorded"]')).toHaveCount(0);
+    await expect(live.getByText("Streaming", { exact: true })).toHaveCount(0);
+    await settle(page);
+    await page.screenshot({ path: join(screenshots, "yield-live-light.png"), fullPage: true });
+    await page.getByRole("button", { name: "Back" }).click();
+    await hub.getByRole("button", { name: /^Cancel / }).click();
+    await expect(hub.getByRole("option", { name: /Cancelled/ })).toHaveCount(1, {
+      timeout: 60_000,
+    });
+
+    // The finished worker again, in the narrow drawer: the panel is shown, and its yields still read as finished.
+    await page.setViewportSize(NARROW);
+    await expect(page.locator('[data-shell-layout="narrow"]')).toHaveCount(1);
+    await expectPanelsOpen(page, false);
+    await page.getByRole("button", { name: /show panels sidebar/i }).click();
+    await hub.getByRole("option", { name: /SteerProbe/ }).click();
+    await hub.getByRole("button", { name: "Open transcript" }).click();
+    await expect(transcript).toBeVisible();
+    await expect(transcript.locator('[data-phase="unrecorded"]').first()).toBeVisible();
+    await expect(transcript.locator('[data-phase="partial"]')).toHaveCount(0);
+    await settle(page);
+    await page.screenshot({ path: join(screenshots, "yield-finished-narrow.png"), fullPage: true });
+    expect(realApp.problems).toEqual([]);
+  },
+);

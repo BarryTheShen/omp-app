@@ -3,7 +3,7 @@ import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { decodeResolve } from "./models";
 
-type ResolveStatus = "approved" | "rejected" | "pending";
+type ResolveStatus = "approved" | "rejected" | "pending" | "unrecorded";
 
 export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const state = normalizeToolRendererProps(rendererProps);
@@ -67,23 +67,27 @@ function resolveStatus(
 ): ResolveStatus {
   if (phase === "running" || phase === "partial") return "pending";
   if (phase === "error" || phase === "cancelled") return "rejected";
+  if (phase === "unrecorded") return "unrecorded";
   return rejectedTool || action === "discard" ? "rejected" : "approved";
 }
 
 function statusLabel(status: ResolveStatus): string {
   if (status === "pending") return "Pending decision";
+  if (status === "unrecorded") return "No result recorded";
   return status === "approved" ? "Approved" : "Rejected";
 }
 
 function statusTone(status: ResolveStatus): string {
   if (status === "pending") return "border-warning/40";
   if (status === "approved") return "border-success/40";
+  if (status === "unrecorded") return "border-border";
   return "border-destructive/40";
 }
 
 function statusTextTone(status: ResolveStatus): string {
   if (status === "pending") return "text-warning";
   if (status === "approved") return "text-success";
+  if (status === "unrecorded") return "text-muted-foreground";
   return "text-destructive";
 }
 

@@ -1,6 +1,6 @@
 import type { ToolCallId } from "@omp-app/contracts";
 import { EmptyState, InlineError } from "@/components/blocks";
-import type { ToolRendererMap } from "@/modules/U1/tool-slots";
+import { type ToolRendererMap, ToolRunActiveContext } from "@/modules/U1/tool-slots";
 import { NestedTranscript } from "@/modules/U3/tool-card/nested";
 import type { TranscriptView } from "./controller";
 import { transcriptFailureMessage } from "./failures";
@@ -65,13 +65,15 @@ export function AgentTranscriptBody({
         />
       ) : null}
       {messages.length > 0 ? (
-        <NestedTranscript
-          depth={depth}
-          messages={messages}
-          parentTaskId={parentTaskId}
-          taskName={taskName}
-          toolRenderers={toolRenderers}
-        />
+        <ToolRunActiveContext.Provider value={working}>
+          <NestedTranscript
+            depth={depth}
+            messages={messages}
+            parentTaskId={parentTaskId}
+            taskName={taskName}
+            toolRenderers={toolRenderers}
+          />
+        </ToolRunActiveContext.Provider>
       ) : null}
     </div>
   );

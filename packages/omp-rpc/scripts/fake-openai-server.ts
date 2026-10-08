@@ -2,10 +2,20 @@ import * as path from "node:path";
 
 type Message = { role: string; content?: unknown };
 type Request = { messages?: Message[]; stream?: boolean };
+/** One tool call an assistant message makes. */
+type ToolCall = { tool: string; args: Record<string, unknown>; id?: string };
 type Reply =
   | { text: string; thinking?: string }
-  | { tool: string; args: Record<string, unknown>; thinking?: string; id?: string }
+  | (ToolCall & { thinking?: string })
+  | { tools: readonly ToolCall[]; thinking?: string }
   | { failure: string };
+
+/** The calls a tool reply makes: one call, or several in one assistant message. */
+function toolCallsOf(
+  value: Exclude<Reply, { text: string } | { failure: string }>,
+): readonly ToolCall[] {
+  return "tools" in value ? value.tools : [value];
+}
 
 /** `long_loop` makes the model run this many bash steps in one turn before it answers. */
 const LOOP_STEPS = 60;
@@ -158,6 +168,19 @@ function reply(request: Request): Reply {
       },
       thinking: "I should track todos.",
     };
+  // A bash call, then a write, in one message: write is exclusive, so omp starts it only after the bash.
+  if (prompt.includes("run_queued_pair"))
+    return {
+      tools: [
+        { tool: "bash", args: { command: "sleep 20; echo first" }, id: "call_queued_bash" },
+        {
+          tool: "write",
+          args: { path: "queued-pair.txt", content: "second\n" },
+          id: "call_queued_write",
+        },
+      ],
+      thinking: "I should run bash, then write.",
+    };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
   if (prompt.includes("slow_tool"))
@@ -229,9 +252,14 @@ const server = Bun.serve({
               ],
             },
           ]),
-      "text" in value
-        ? { ...base, choices: [{ index: 0, delta: { content: value.text }, finish_reason: null }] }
-        : {
+      ...("text" in value
+        ? [
+            {
+              ...base,
+              choices: [{ index: 0, delta: { content: value.text }, finish_reason: null }],
+            },
+          ]
+        : toolCallsOf(value).map((call, index) => ({
             ...base,
             choices: [
               {
@@ -239,17 +267,17 @@ const server = Bun.serve({
                 delta: {
                   tool_calls: [
                     {
-                      index: 0,
-                      id: value.id ?? `call_${value.tool}`,
+                      index,
+                      id: call.id ?? `call_${call.tool}`,
                       type: "function",
-                      function: { name: value.tool, arguments: JSON.stringify(value.args) },
+                      function: { name: call.tool, arguments: JSON.stringify(call.args) },
                     },
                   ],
                 },
                 finish_reason: null,
               },
             ],
-          },
+          }))),
       {
         ...base,
         choices: [{ index: 0, delta: {}, finish_reason: "text" in value ? "stop" : "tool_calls" }],

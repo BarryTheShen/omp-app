@@ -2,6 +2,7 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { AppFailure } from "@omp-app/contracts";
 import type { AgentRef, AgentStatus, FocusedTranscriptEvent } from "@/modules/P1/contract";
 import { asAppFailure } from "./failures";
+import { withLiveStatus } from "./messages";
 import type { TranscriptFeed } from "./source";
 import {
   applyTranscriptPage,
@@ -251,7 +252,7 @@ export class TranscriptTail {
 
   private buildView(): TranscriptView {
     return Object.freeze({
-      messages: this.state.messages,
+      messages: withLiveStatus(this.state.messages, isLive(this.feed.agent)),
       loading: this.state.revision === 0 && this.failure === undefined,
       failure: this.failure,
       liveFailure: this.liveFailure,

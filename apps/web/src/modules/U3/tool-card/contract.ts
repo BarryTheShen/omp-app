@@ -7,7 +7,17 @@ import type {
 import type { AppError, ToolCallId, ToolDescriptor } from "@omp-app/contracts";
 import type { ToolCallState } from "@/modules/R0/store/store";
 
-export type ToolCardPhase = "running" | "partial" | "success" | "error" | "cancelled";
+/**
+ * `unrecorded`: the call's message is finished and no result was recorded (an omp `yield` ends its
+ * worker, so it has none). It is settled, not in flight. A call whose message is still being written is `running`.
+ */
+export type ToolCardPhase =
+  | "running"
+  | "partial"
+  | "success"
+  | "error"
+  | "cancelled"
+  | "unrecorded";
 
 export interface ToolCardError {
   readonly code?: AppError["code"];
@@ -80,6 +90,11 @@ export interface ToolCardState {
   readonly outputMeta?: OutputMeta;
   readonly messages?: readonly ThreadMessageLike[];
   readonly nested?: NestedTranscriptSource;
+  /**
+   * omp has not started this call yet: its run is still active and it has no result or state. The phase
+   * stays in flight, so each card keeps its in-flight look; the generic card says Waiting.
+   */
+  readonly queued?: boolean;
   /** A passive default; a later user override is kept separately by the card shell. */
   readonly defaultOpen: boolean;
   readonly userOpen?: boolean;
@@ -93,6 +108,8 @@ export type ToolRendererProps<TArgs = unknown, TResult = unknown> = ToolCallMess
   readonly toolState?: ToolCallState;
   readonly outputMeta?: OutputMeta;
   readonly nested?: NestedTranscriptSource;
+  /** Whether the run that owns this call is still active: the chat's run, or a worker that is live. */
+  readonly runActive?: boolean;
 };
 
 export type ToolRenderer<TArgs = unknown, TResult = unknown> = ToolCallMessagePartComponent<
@@ -119,4 +136,6 @@ export interface NormalizeToolCallInput {
   readonly outputMeta?: OutputMeta;
   readonly nested?: NestedTranscriptSource;
   readonly label?: string;
+  /** Whether the run that owns this call is still active (see ToolRendererProps.runActive). */
+  readonly runActive?: boolean;
 }
