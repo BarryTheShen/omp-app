@@ -1,0 +1,217 @@
+import { AppFailure, type CapabilityMap, ThreadId } from "@omp-app/contracts";
+import { describe, expect, test, vi } from "vitest";
+import type { McpPromptCatalog, McpPromptSummary } from "../../I1/contract";
+import { createSlashCommandCatalog } from "./catalog";
+import { createSlashCommandProvider } from "./provider";
+import type { SlashAppCommand } from "./routing";
+import { completedRun, fakeSlashClient, REAL_COMMAND_LIST } from "./test-support";
+
+const threadId = ThreadId.parse("thread-d23-provider");
+const available: CapabilityMap = {
+  "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
+};
+const newChat: SlashAppCommand = {
+  name: "new",
+  description: "Start a new chat",
+  run: async () => ({ message: "Started a new chat." }),
+};
+
+function promptList(
+  prompts: readonly McpPromptSummary[],
+  list: () => Promise<readonly McpPromptSummary[]> = async () => prompts,
+): McpPromptCatalog {
+  return {
+    list,
+    invoke: async () => {
+      throw new Error("the slash provider never invokes MCP prompts");
+    },
+  };
+}
+
+describe("D2.3 slash provider", () => {
+  test("a submit waits for the first read, so a known command routes before the list has loaded", async () => {
+    const fake = fakeSlashClient();
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+
+    expect(provider.catalog.getSnapshot().state).toBe("idle");
+    await expect(provider.route("/usage")).resolves.toEqual({ kind: "omp", command: "/usage" });
+    expect(fake.sent).toEqual(["get_available_commands"]);
+    provider.dispose();
+  });
+
+  test("the app's commands are read at each route, so a new handler applies without a new provider", async () => {
+    const fake = fakeSlashClient();
+    let apps: readonly SlashAppCommand[] = [];
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => apps,
+    });
+
+    await expect(provider.route("/new")).resolves.toBeNull();
+    apps = [newChat];
+    await expect(provider.route("/new")).resolves.toEqual({ kind: "app", command: newChat });
+    provider.dispose();
+  });
+
+  test("execute runs a slash command through the gateway, and refuses text that is not one before any run", async () => {
+    const fake = fakeSlashClient({
+      run: async (command) => completedRun(command, "Usage: 0 tokens"),
+    });
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+
+    const result = await provider.execute("/usage");
+    expect(fake.runs).toEqual(["/usage"]);
+    expect(result.outputs[0]?.text).toBe("Usage: 0 tokens");
+    await expect(provider.execute("usage")).rejects.toMatchObject({
+      appError: { code: "invalid_args" },
+    });
+    expect(fake.runs).toEqual(["/usage"]);
+    provider.dispose();
+  });
+
+  test("an MCP prompt omp already lists shows once, and a new one is added", async () => {
+    const fake = fakeSlashClient({
+      commands: async () => ({
+        commands: [...REAL_COMMAND_LIST, { name: "github:review", source: "mcp_prompt" }],
+      }),
+    });
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+      promptCatalog: promptList([
+        { id: "p1", server: "github", name: "review" },
+        { id: "p2", server: "docs", name: "summarize" },
+      ]),
+    });
+
+    const review = (await provider.searchTyped("github:review")).candidates.filter(
+      (candidate) => candidate.id === "slash:mcp_prompt:github:review",
+    );
+    const summarize = (await provider.searchTyped("docs:summ")).candidates;
+    expect(review).toHaveLength(1);
+    expect(summarize.map((candidate) => candidate.id)).toEqual(["slash:mcp_prompt:docs:summarize"]);
+    provider.dispose();
+  });
+
+  test("a failed MCP prompt read counts as no prompts, and is not retried on every search", async () => {
+    const list = vi.fn(async () => {
+      throw new AppFailure({ code: "unavailable", message: "MCP is off.", retryable: false });
+    });
+    const fake = fakeSlashClient();
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+      promptCatalog: promptList([], list),
+    });
+
+    await provider.searchTyped("a");
+    await provider.searchTyped("ab");
+    expect(list).toHaveBeenCalledTimes(1);
+    provider.dispose();
+  });
+
+  test("when omp's list is unavailable, the app's own command is still offered, with the reason", async () => {
+    const fake = fakeSlashClient();
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => ({}),
+      appCommands: () => [newChat],
+    });
+
+    const result = await provider.searchTyped("");
+    expect(result.state).toBe("unavailable");
+    expect(result.candidates.map((candidate) => candidate.label)).toEqual(["/new"]);
+    expect(result.error?.error.message).toBe("Slash commands are unavailable in this omp session.");
+    provider.dispose();
+  });
+
+  test("dispose releases the catalog the provider made, and never an injected one", async () => {
+    const fake = fakeSlashClient();
+    const owned = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+    await owned.route("/usage");
+    owned.dispose();
+    expect(fake.unsubscribed()).toBe(1);
+
+    const injected = createSlashCommandCatalog({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+    const dispose = vi.spyOn(injected, "dispose");
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      catalog: injected,
+    });
+    provider.dispose();
+    expect(dispose).not.toHaveBeenCalled();
+    injected.dispose();
+  });
+
+  test("an app command replaces omp's command of the same name, so the name is listed once", async () => {
+    const fake = fakeSlashClient();
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [
+        {
+          name: "fresh",
+          description: "Start a fresh connection to the model",
+          run: async () => ({}),
+        },
+      ],
+    });
+    const freshes = (await provider.searchTyped("fresh")).candidates.filter(
+      (candidate) => candidate.label === "/fresh",
+    );
+    expect(freshes).toHaveLength(1);
+    expect(freshes[0]?.metadata).toMatchObject({ sourceLabel: "App" });
+    provider.dispose();
+  });
+
+  test("a list that failed to load is read again on the next search, and a ready list is not", async () => {
+    let calls = 0;
+    const fake = fakeSlashClient({
+      commands: async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new AppFailure({
+            code: "internal",
+            message: "omp did not answer.",
+            retryable: true,
+          });
+        }
+        return { commands: REAL_COMMAND_LIST };
+      },
+    });
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+    expect((await provider.searchTyped("us")).state).toBe("error");
+    const recovered = await provider.searchTyped("us");
+    expect(recovered.candidates.map((candidate) => candidate.label)).toContain("/usage");
+    await provider.searchTyped("us");
+    expect(fake.sent).toEqual(["get_available_commands", "get_available_commands"]);
+    provider.dispose();
+  });
+});

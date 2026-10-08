@@ -116,6 +116,13 @@ import { saveTextFile } from "./save-file";
 import { SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
+import {
+  freshSlashCommand,
+  newChatSlashCommand,
+  routeSubmit,
+  runSlashRoute,
+  useSlashCommands,
+} from "./slash-commands";
 import { finishedAnswerAt } from "./turn-end";
 
 const FOLDER_KEY = "omp.app.root.folder";
@@ -833,16 +840,40 @@ function ActiveThreadReady({
     [attachmentManager, draftController],
   );
   const notificationProjector = useNotificationProjector(store, setEditorText);
+  // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
+  const appSlashCommands = useMemo(
+    () => [newChatSlashCommand({ lifecycle, openThread }), freshSlashCommand({ lifecycle })],
+    [lifecycle, openThread],
+  );
+  const slashProvider = useSlashCommands({
+    client,
+    threadId,
+    capabilities,
+    appCommands: appSlashCommands,
+  });
   const submit = async (intent: PromptIntent): Promise<void> => {
     onPromptSent();
     // Sending shows the newest message, wherever the reader had scrolled to; the transcript then
     // keeps following by itself because it is at the bottom.
     scrollController.jumpToLatest();
+    // A known slash command goes to omp's command gateway; any other text is a prompt, as before.
+    const route = await routeSubmit({
+      intent,
+      hasAttachments: attachmentManager.toDraftRefs().length > 0,
+      provider: slashProvider,
+    });
     await draftController.submit(intent, (nextIntent) =>
-      runtimeController.submitPrompt({
-        ...nextIntent,
-        attachmentRefs: attachmentManager.toDraftRefs(),
-      }),
+      route === null
+        ? runtimeController.submitPrompt({
+            ...nextIntent,
+            attachmentRefs: attachmentManager.toDraftRefs(),
+          })
+        : runSlashRoute({
+            route,
+            intent: nextIntent,
+            provider: slashProvider,
+            showStatus: setCommandStatus,
+          }),
     );
     attachmentManager.clearAfterSend();
     scrollController.jumpToLatest();
@@ -977,7 +1008,12 @@ function ActiveThreadReady({
     <LayoutArea area={name} capabilities={capabilities} surfaces={threadSurfaces} />
   );
   const composer = (
-    <ComposerTriggers capabilities={capabilities} client={client} folder={folder}>
+    <ComposerTriggers
+      capabilities={capabilities}
+      client={client}
+      folder={folder}
+      slash={slashProvider}
+    >
       <DraftComposer
         cancel={cancel}
         controller={draftController}

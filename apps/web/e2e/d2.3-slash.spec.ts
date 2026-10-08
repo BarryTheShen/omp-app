@@ -1,0 +1,128 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import type { Locator, Page } from "@playwright/test";
+import {
+  expect,
+  realTest,
+  screenshots,
+  sendPrompt,
+  startChat,
+  waitForFiniteAnimations,
+} from "./real-omp";
+
+/** The list of omp's commands above the composer (its listbox). */
+function commandList(page: Page): Locator {
+  return page.getByRole("listbox", { name: "Slash commands" });
+}
+
+/** The painted surface inside the list: the element that carries the popover's background and border. */
+function commandSurface(page: Page): Locator {
+  return commandList(page).locator("div.bg-popover").first();
+}
+
+/** The header line that says what a command printed. */
+function commandResult(page: Page): Locator {
+  return page.getByRole("status").filter({ hasText: "omp: Usage" });
+}
+
+realTest(
+  "typing / lists omp's own commands; Enter inserts one, and Enter again runs it without the model",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const page = await realApp.open();
+    const composer = await startChat(page);
+
+    await composer.fill("/us");
+    await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
+    const usage = commandList(page).getByRole("option", { name: /^\/usage/ });
+    await expect(usage).toContainText("Built-in");
+    await expect(usage).toContainText("Show token usage");
+    await expect(usage).toContainText("Arguments: [show|reset");
+
+    // Enter on the highlighted command inserts it, with one trailing space.
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("/usage ");
+    // Its subcommands are offered next; Escape closes them and the message is unchanged.
+    await expect(commandList(page).getByRole("option", { name: /^\/usage show/ })).toBeVisible();
+    await composer.press("Escape");
+    await expect(commandList(page)).toBeHidden();
+    await expect(composer).toHaveValue("/usage ");
+
+    // Enter now sends. omp runs /usage itself: its printed totals show, and the model never answers.
+    await composer.press("Enter");
+    await expect(commandResult(page)).toContainText("Input tokens: 0", { timeout: 60_000 });
+    await expect(composer).toHaveValue("");
+    await expect(page.getByText("pong", { exact: true })).toHaveCount(0);
+  },
+);
+
+realTest(
+  "text that is not a known command still goes to the model",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const page = await realApp.open();
+    const composer = await startChat(page);
+
+    // A path, an unknown word and a message that starts with a space are plain prompts.
+    for (const text of ["/etc/hosts", "/nosuchcommand", " /usage"]) {
+      await sendPrompt(composer, text);
+      await expect(composer).toHaveValue("");
+      await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 60_000 });
+    }
+    await expect(page.getByText("pong").first()).toBeVisible({ timeout: 60_000 });
+    await expect(commandResult(page)).toHaveCount(0);
+  },
+);
+
+realTest("the command list reads in light mode", async ({ realApp }, testInfo) => {
+  testInfo.setTimeout(180_000);
+  const page = await realApp.open();
+  const composer = await startChat(page);
+  await composer.fill("/us");
+  await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
+  // The list draws with the app's own surface, not the browser's default: a transparent background would mean no styles loaded.
+  expect(
+    await commandSurface(page).evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).not.toBe("rgba(0, 0, 0, 0)");
+  await waitForFiniteAnimations(page);
+  await mkdir(screenshots, { recursive: true });
+  await page.screenshot({ path: join(screenshots, "d2.3-slash-light.png"), fullPage: true });
+});
+
+realTest("the command list reads in dark mode", async ({ realApp }, testInfo) => {
+  testInfo.setTimeout(180_000);
+  const page = await realApp.open();
+  await page.evaluate(() => window.localStorage.setItem("omp-app.theme", "dark"));
+  await page.reload();
+  const composer = await startChat(page);
+  await composer.fill("/us");
+  await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  expect(
+    await commandSurface(page).evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).not.toBe("rgba(0, 0, 0, 0)");
+  await waitForFiniteAnimations(page);
+  await page.screenshot({ path: join(screenshots, "d2.3-slash-dark.png"), fullPage: true });
+});
+
+realTest(
+  "the command list stays inside the screen at 200% zoom (640 px) and at 390 px",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await composer.fill("/us");
+    await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
+    for (const width of [640, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const box = await commandSurface(page).boundingBox();
+      expect(box, `${width} px`).not.toBeNull();
+      expect(box?.x ?? -1, `${width} px left edge`).toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 0), `${width} px right edge`).toBeLessThanOrEqual(
+        width,
+      );
+      await waitForFiniteAnimations(page);
+    }
+    await page.screenshot({ path: join(screenshots, "d2.3-slash-narrow.png"), fullPage: true });
+  },
+);

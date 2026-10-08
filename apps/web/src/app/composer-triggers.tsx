@@ -13,6 +13,7 @@ import {
   createGithubMentionProvider,
   MentionTriggerSlot,
 } from "@/modules/D2/mentions";
+import { type SlashCommandProvider, SlashComposerSlot } from "@/modules/D2/slash";
 
 export interface ComposerTriggerProviders {
   readonly mention: readonly MentionProvider[];
@@ -24,6 +25,8 @@ export interface ComposerTriggersProps {
   /** The folder the open chat belongs to; file and GitHub lookups need it. */
   readonly folder: FolderPath | null;
   readonly capabilities: CapabilityMap;
+  /** The open chat's slash-command provider; `/` opens its command list when present. */
+  readonly slash?: SlashCommandProvider | null | undefined;
   readonly children: ReactNode;
 }
 
@@ -62,14 +65,15 @@ export function composerTriggerProviders({
 function keepInsertedText(): void {}
 
 /**
- * Wraps the composer in D2's trigger slots: `@` files and `#` GitHub references (mentions), `:`
- * emoji and scheme links such as `issue://` (local). The caret, keyboard and Escape behavior belong
- * to the slots; this file only chooses which providers the open chat gets.
+ * Wraps the composer in D2's trigger slots: `/` omp commands and app commands (slash), `@` files and `#`
+ * GitHub references (mentions), `:` emoji and scheme links such as `issue://` (local). The caret,
+ * keyboard and Escape behavior belong to the slots; this file only chooses which providers the open chat gets.
  */
 export function ComposerTriggers({
   client,
   folder,
   capabilities,
+  slash,
   children,
 }: ComposerTriggersProps) {
   const providers = useMemo(
@@ -79,7 +83,10 @@ export function ComposerTriggers({
   return (
     <LocalTriggerSlot onSelect={keepInsertedText} providers={providers.local}>
       <MentionTriggerSlot onSelect={keepInsertedText} providers={providers.mention}>
-        {children}
+        {/* Inside the mention root, not its own: the composer reads the open list's highlight from its nearest root. */}
+        <SlashComposerSlot onSelect={keepInsertedText} providers={slash ? [slash] : []}>
+          {children}
+        </SlashComposerSlot>
       </MentionTriggerSlot>
     </LocalTriggerSlot>
   );
