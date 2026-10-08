@@ -284,4 +284,29 @@ describe("SessionHistoryLoader.watchNeedsRefetch", () => {
     await expect(manual).resolves.toBeUndefined();
     unsubscribe();
   });
+
+  test("a gap that opens during a settled-turn refresh still gets its refetch", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const heldState = createDeferred<unknown>();
+    let stateCalls = 0;
+    const { send } = makeSend({
+      get_state: () => {
+        stateCalls += 1;
+        return stateCalls === 1 ? heldState.promise : { sessionId: "s2" };
+      },
+      get_entries: () => ({ entries: [], leafId: null }),
+    });
+    const loader = new SessionHistoryLoader({ send, threadId, store });
+    const unsubscribe = loader.watchNeedsRefetch();
+
+    // The refresh that follows a settled turn is still in flight when the stream reports a gap.
+    const refresh = loader.refreshAfterTurn();
+    store.ingest(processEvent("ready"), 5);
+    heldState.resolve({ sessionId: "s1" });
+    await refresh.catch(() => undefined);
+    await flushMicrotasks(50);
+
+    expect(store.getSnapshot().needsRefetch).toBe(false);
+    unsubscribe();
+  });
 });

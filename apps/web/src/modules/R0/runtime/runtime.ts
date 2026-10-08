@@ -50,6 +50,12 @@ export interface OmpRuntimeOptions {
   /** Supplies the file attachment adapter used by the composer. */
   readonly attachments?: AttachmentAdapter;
   readonly onRefetchThread?: () => Promise<void>;
+  /**
+   * assistant-ui's edit and regenerate handlers, supplied by the composition. The runtime offers
+   * them only while omp can branch (`omp.cmd.branch`).
+   */
+  readonly onEdit?: NonNullable<ExternalStoreAdapter<RuntimeMessageView>["onEdit"]>;
+  readonly onReload?: NonNullable<ExternalStoreAdapter<RuntimeMessageView>["onReload"]>;
 }
 
 /** A stable external-store item; only the affected item is replaced when a tool changes. */
@@ -708,6 +714,19 @@ function textForAppend(message: AppendMessage): string {
     .join("");
 }
 
+/** The text, images and attachment refs an assistant-ui append carries, as omp and U2 receive them. */
+export function promptFromAppend(
+  message: AppendMessage,
+): Pick<PromptIntent, "text" | "images" | "attachmentRefs"> {
+  const images = imagesForAppend(message);
+  const attachmentRefs = attachmentRefsForAppend(message);
+  return {
+    text: textForAppend(message),
+    ...(images ? { images } : {}),
+    ...(attachmentRefs ? { attachmentRefs } : {}),
+  };
+}
+
 function promptCommand(intent: PromptIntent): OmpCommand {
   const images = intent.images && intent.images.length > 0 ? [...intent.images] : undefined;
   return {
@@ -726,17 +745,15 @@ export class OmpRuntimeController {
   private readonly converter = createMemoizedMessageConverter();
   private capabilities: CapabilityMap;
   private onRefetchThread: (() => Promise<void>) | undefined;
+  private onEdit: OmpRuntimeOptions["onEdit"];
+  private onReload: OmpRuntimeOptions["onReload"];
   private bashRunning = false;
 
   private readonly onNew = async (message: AppendMessage): Promise<void> => {
     const current = this.store.getSnapshot();
-    const images = imagesForAppend(message);
-    const attachmentRefs = attachmentRefsForAppend(message);
     await this.submitPrompt({
       mode: "prompt",
-      text: textForAppend(message),
-      ...(images ? { images } : {}),
-      ...(attachmentRefs ? { attachmentRefs } : {}),
+      ...promptFromAppend(message),
       delivery: current.prompt.streaming ? (message.steer === true ? "steer" : "followUp") : "new",
     });
   };
@@ -746,11 +763,17 @@ export class OmpRuntimeController {
     this.send = options.send;
     this.capabilities = options.capabilities ?? EMPTY_CAPABILITIES;
     this.onRefetchThread = options.onRefetchThread;
+    this.onEdit = options.onEdit;
+    this.onReload = options.onReload;
   }
 
-  public update(options: Pick<OmpRuntimeOptions, "capabilities" | "onRefetchThread">): void {
+  public update(
+    options: Pick<OmpRuntimeOptions, "capabilities" | "onEdit" | "onRefetchThread" | "onReload">,
+  ): void {
     this.capabilities = options.capabilities ?? EMPTY_CAPABILITIES;
     this.onRefetchThread = options.onRefetchThread;
+    this.onEdit = options.onEdit;
+    this.onReload = options.onReload;
   }
 
   public getSnapshot(): RuntimeSnapshot {
@@ -867,6 +890,11 @@ export class OmpRuntimeController {
       adapter.onCancel = this.onCancel;
     }
     if (this.onRefetchThread && canRefetch) adapter.onRefetchThread = this.onRefetchThread;
+    // Edit and regenerate branch the chat with omp's `branch` command, so they wait for it.
+    if (capabilityAvailable(this.capabilities, "omp.cmd.branch")) {
+      if (this.onEdit) adapter.onEdit = this.onEdit;
+      if (this.onReload) adapter.onReload = this.onReload;
+    }
     return adapter;
   }
 }
@@ -882,18 +910,20 @@ export interface OmpRuntime {
 
 /** React hook that wires one OmpRuntimeStore to assistant-ui's ExternalStoreRuntime. */
 export function useOmpRuntime(options: OmpRuntimeOptions): OmpRuntime {
-  const { attachments, capabilities, onRefetchThread, send, store } = options;
+  const { attachments, capabilities, onEdit, onRefetchThread, onReload, send, store } = options;
   const controller = useMemo(
     () =>
       new OmpRuntimeController({
         capabilities,
+        onEdit,
         onRefetchThread,
+        onReload,
         send,
         store,
       }),
-    [capabilities, onRefetchThread, send, store],
+    [capabilities, onEdit, onRefetchThread, onReload, send, store],
   );
-  controller.update({ capabilities, onRefetchThread });
+  controller.update({ capabilities, onEdit, onRefetchThread, onReload });
   const subscribe = useCallback(
     (listener: (snapshot: RuntimeSnapshot) => void): (() => void) => controller.subscribe(listener),
     [controller],

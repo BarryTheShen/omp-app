@@ -383,6 +383,37 @@ describe("R0.3 assistant-ui runtime", () => {
     expect(unavailable.unstable_enableToolInvocations).toBe(false);
   });
 
+  test("offers edit and regenerate only while omp can branch", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const send: RpcSessionSend = async () => undefined as never;
+    const onEdit = async () => undefined;
+    const onReload = async () => undefined;
+    const branchable = {
+      ...capabilities,
+      "omp.cmd.branch": { state: "available" as const, via: "rpc" as const },
+    };
+
+    const offered = createOmpRuntime({
+      store,
+      send,
+      capabilities: branchable,
+      onEdit,
+      onReload,
+    }).createAdapter();
+    expect(offered.onEdit).toBe(onEdit);
+    expect(offered.onReload).toBe(onReload);
+
+    const withheld = createOmpRuntime({
+      store,
+      send,
+      capabilities,
+      onEdit,
+      onReload,
+    }).createAdapter();
+    expect(withheld.onEdit).toBeUndefined();
+    expect(withheld.onReload).toBeUndefined();
+  });
+
   test("rejects slash commands while streaming instead of steering their text", async () => {
     const store = new OmpRuntimeStore({ threadId });
     ompEvent(store, { type: "agent_start" }, 1);

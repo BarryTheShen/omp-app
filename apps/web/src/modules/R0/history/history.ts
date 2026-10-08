@@ -12,6 +12,11 @@ import type { OmpRuntimeStore } from "../store/store";
 type AbortSignalLike = NonNullable<PortCallOptions["signal"]>;
 type SessionState = OmpWire.SessionState;
 type SessionEntriesResult = OmpWire.SessionEntries;
+type OperationKind = "refetch" | "sync";
+interface InFlight {
+  readonly controller: AbortController;
+  readonly kind: OperationKind;
+}
 
 const SUPERSEDED_MESSAGE = "A newer history request superseded this one";
 const CANCELLED_MESSAGE = "The history request was cancelled";
@@ -58,7 +63,7 @@ export class SessionHistoryLoader {
   private readonly threadId: ThreadId;
   private readonly store: OmpRuntimeStore;
   private readonly onRefetchError: ((error: AppFailure) => void) | undefined;
-  private controller: AbortController | undefined;
+  private inFlight: InFlight | undefined;
 
   public constructor(options: SessionHistoryLoaderOptions) {
     this.send = options.send;
@@ -69,7 +74,7 @@ export class SessionHistoryLoader {
 
   /** The thread's full history, for a freshly opened store. */
   public async loadInitial(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
-    await this.run(options?.signal, async (signal) => {
+    await this.run("refetch", options?.signal, async (signal) => {
       await this.applyState(signal);
       // Entries last, right before the cursor moves: anything persisted after this read arrives as a
       // live event once the gap is cleared.
@@ -80,7 +85,7 @@ export class SessionHistoryLoader {
 
   /** Reloads history after the store reports `needsRefetch`, then clears the gap. */
   public async refetch(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
-    await this.run(options?.signal, async (signal) => {
+    await this.run("refetch", options?.signal, async (signal) => {
       await this.applyState(signal);
       await this.applyEntries(this.latestKnownEntryId(), signal);
       this.store.resetSequence();
@@ -92,7 +97,7 @@ export class SessionHistoryLoader {
    * its messages pair with their entries. No cursor move: the stream had no gap.
    */
   public async refreshAfterTurn(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
-    await this.run(options?.signal, async (signal) => {
+    await this.run("sync", options?.signal, async (signal) => {
       await this.applyState(signal);
       await this.applyEntries(this.latestKnownEntryId(), signal);
     });
@@ -104,7 +109,8 @@ export class SessionHistoryLoader {
    */
   public watchNeedsRefetch(): () => void {
     const trigger = (): void => {
-      if (!this.store.getSnapshot().needsRefetch || this.controller !== undefined) return;
+      // A sync request keeps the gap open, so a gap during one starts a refetch that supersedes it.
+      if (!this.store.getSnapshot().needsRefetch || this.inFlight?.kind === "refetch") return;
       this.refetch().catch((error: unknown) => {
         const failure = toAppFailure(error, "The automatic history refetch failed");
         if (failure.appError.code === "cancelled") return;
@@ -116,10 +122,10 @@ export class SessionHistoryLoader {
     return unsubscribe;
   }
 
-  /** Cancels any in-flight load or refetch; safe to call repeatedly. */
+  /** Cancels any in-flight request; safe to call repeatedly. */
   public dispose(): void {
-    this.controller?.abort(SUPERSEDED_MESSAGE);
-    this.controller = undefined;
+    this.inFlight?.controller.abort(SUPERSEDED_MESSAGE);
+    this.inFlight = undefined;
   }
 
   private async applyState(signal: AbortSignalLike): Promise<void> {
@@ -169,12 +175,14 @@ export class SessionHistoryLoader {
   }
 
   private async run(
+    kind: OperationKind,
     externalSignal: AbortSignalLike | undefined,
     task: (signal: AbortSignalLike) => Promise<void>,
   ): Promise<void> {
-    this.controller?.abort(SUPERSEDED_MESSAGE);
+    this.inFlight?.controller.abort(SUPERSEDED_MESSAGE);
     const controller = new AbortController();
-    this.controller = controller;
+    const operation: InFlight = { controller, kind };
+    this.inFlight = operation;
     const forwardAbort = (): void => controller.abort(externalSignal?.reason);
     if (externalSignal?.aborted) controller.abort(externalSignal.reason);
     else externalSignal?.addEventListener("abort", forwardAbort, { once: true });
@@ -186,7 +194,7 @@ export class SessionHistoryLoader {
       throw toAppFailure(error, "The history request failed");
     } finally {
       externalSignal?.removeEventListener("abort", forwardAbort);
-      if (this.controller === controller) this.controller = undefined;
+      if (this.inFlight === operation) this.inFlight = undefined;
     }
   }
 }

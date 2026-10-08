@@ -13,6 +13,8 @@ export interface MessagePartsProps {
   readonly message: MessageState;
   readonly toolRenderers?: ToolRendererMap;
   readonly extra?: ReactNode;
+  /** Controls drawn under the bubble, inside the row: the edit and regenerate actions. */
+  readonly actions?: ReactNode;
   /** Use compact rows and let each tool call place its nested transcript directly below the card. */
   readonly nested?: boolean;
   readonly renderNested?: (
@@ -149,6 +151,7 @@ export function MessageParts({
   message,
   toolRenderers,
   extra,
+  actions,
   nested = false,
   renderNested,
 }: MessagePartsProps) {
@@ -198,6 +201,7 @@ export function MessageParts({
         {ending !== undefined && <MessageEndingNote ending={ending} />}
         {extra}
       </div>
+      {actions}
     </MessagePrimitive.Root>
   );
 }

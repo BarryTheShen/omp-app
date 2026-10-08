@@ -58,6 +58,8 @@ function steerChildReply(messages: readonly Message[]): Reply | undefined {
   };
 }
 
+/** `count_reply` turns are counted across the whole fake server, so an answer given again is visibly new. */
+let countedReplies = 0;
 function reply(request: Request): Reply {
   const messages = request.messages ?? [];
   const steerChild = steerChildReply(messages);
@@ -164,6 +166,12 @@ function reply(request: Request): Reply {
       args: { command: "sleep 7; echo slow-tool-done" },
       thinking: "I should run something slow.",
     };
+  if (prompt.includes("count_reply")) {
+    countedReplies += 1;
+    // The word after the keyword names the turn; omp's own preamble in the prompt is not echoed.
+    const word = /count_reply\s+(\S+)/.exec(prompt)?.[1] ?? "";
+    return { text: `count-${countedReplies} ${word}`, thinking: "I will count this turn." };
+  }
   return { text: "pong", thinking: "I will answer pong." };
 }
 

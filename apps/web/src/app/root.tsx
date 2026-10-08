@@ -45,6 +45,16 @@ import type {
 } from "@/modules/D5/contract";
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { SessionInfoModel } from "@/modules/D5/session/info";
+import {
+  createP3Runs,
+  P3EditSurface,
+  type P3EditTarget,
+  P3MessageActions,
+  P3RunStatusSurface,
+  type P3Runs,
+  storedEntryId,
+  useP3RunHandlers,
+} from "@/modules/P3/runs";
 import { QueueLaneBar } from "@/modules/P6/bar/bar";
 import { resolveQueueSubmitPolicy } from "@/modules/P6/composer/composer";
 import { createQueueAdapter } from "@/modules/P6/contract";
@@ -323,6 +333,7 @@ function DraftComposer({
   policy,
   toolbar,
   footer,
+  footerOpen,
   manager,
 }: {
   readonly controller: DraftController;
@@ -332,10 +343,13 @@ function DraftComposer({
   /** The composer's areas from the layout (`composerToolbar`, `composerFooter`). */
   readonly toolbar: ReactNode;
   readonly footer: ReactNode;
+  readonly footerOpen: boolean;
   readonly manager: AttachmentManager;
 }) {
   const aui = useAui();
-  const hydrated = useRef(false);
+  // The controller this composer last loaded its draft for. A thread switch can keep this composer
+  // mounted (a branch re-keys the chat), so a new controller clears the text and loads its own draft.
+  const hydratedFor = useRef<DraftController | null>(null);
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
@@ -356,13 +370,24 @@ function DraftComposer({
     };
   }, [controller]);
   useEffect(() => {
-    if (snapshot.status !== "ready" || hydrated.current) return;
-    hydrated.current = true;
+    if (hydratedFor.current !== controller) aui.composer.setText("");
+  }, [aui.composer, controller]);
+  useEffect(() => {
+    if (snapshot.status !== "ready" || hydratedFor.current === controller) return;
+    hydratedFor.current = controller;
     if (snapshot.text !== text) aui.composer.setText(snapshot.text);
     void manager.restore(snapshot.attachments).catch(() => undefined);
-  }, [aui.composer, manager, snapshot.attachments, snapshot.status, snapshot.text, text]);
+  }, [
+    aui.composer,
+    controller,
+    manager,
+    snapshot.attachments,
+    snapshot.status,
+    snapshot.text,
+    text,
+  ]);
   useEffect(() => {
-    if (!hydrated.current) return;
+    if (hydratedFor.current !== controller) return;
     controller.setDraft(text, manager.toDraftRefs());
   }, [controller, manager, text]);
   return (
@@ -374,7 +399,7 @@ function DraftComposer({
       toolbar={toolbar}
       showAttachmentNames={false}
     >
-      {hasAttachmentOutput ? footer : null}
+      {hasAttachmentOutput || footerOpen ? footer : null}
     </ComposerSurface>
   );
 }
@@ -391,6 +416,7 @@ interface ActiveThreadProps {
   readonly openThread: (threadId: ThreadId) => Promise<void>;
   readonly leftSidebar: ReactNode;
   readonly title: string;
+  readonly p3Runs: P3Runs;
 }
 
 function ActiveThreadContent(props: ActiveThreadProps) {
@@ -409,6 +435,7 @@ function ActiveThreadReady({
   onOpenSettings,
   remote,
   title,
+  p3Runs,
 }: ActiveThreadProps) {
   const store = history.store as OmpRuntimeStore;
   const threadId = history.threadId as ThreadId;
@@ -416,6 +443,20 @@ function ActiveThreadReady({
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
+  // The message being edited, and the row button that opened the editor (focus returns to it on cancel).
+  const [editing, setEditing] = useState<P3EditTarget | null>(null);
+  // Edit and Regenerate need omp's branch command, and a row omp has saved: a streaming row has no entry yet.
+  const branchAvailable = capabilities["omp.cmd.branch"]?.state === "available";
+  const rowActions = (row: { readonly id: string; readonly role: string }): ReactNode => {
+    if (!branchAvailable) return undefined;
+    const entryId = storedEntryId(store, row.id);
+    if (entryId === null) return undefined;
+    return (
+      <P3MessageActions
+        onEdit={row.role === "user" ? (trigger) => setEditing({ entryId, trigger }) : undefined}
+      />
+    );
+  };
   // A header message about a palette command goes away on its own; an error that stayed until the
   // next command left "could not be started" on screen long after the moment had passed.
   useEffect(() => {
@@ -656,12 +697,19 @@ function ActiveThreadReady({
     }),
     [attachmentManager],
   );
+  const p3Handlers = useP3RunHandlers({ store, send: rpc.send, openThread, runs: p3Runs });
   const { controller: runtimeController, runtime } = useOmpRuntime({
     store,
     send: rpc.send,
     capabilities,
     attachments: runtimeAttachments,
+    onEdit: p3Handlers.onEdit,
+    onReload: p3Handlers.onReload,
   });
+  useEffect(
+    () => p3Runs.handoff.attach(threadId, runtimeController),
+    [p3Runs, runtimeController, threadId],
+  );
   const transcriptRootRef = useRef<HTMLDivElement | null>(null);
   const scrollController = useThreadScrollController(transcriptRootRef);
   const queueController = useMemo(
@@ -802,12 +850,29 @@ function ActiveThreadReady({
       grow: true,
       render: () => <SessionStatusBar client={client} store={store} threadId={threadId} />,
     },
+    editHandoff: {
+      title: "Edit message",
+      render: () => (
+        <P3EditSurface onClose={() => setEditing(null)} store={store} target={editing} />
+      ),
+    },
     scrollFollow: {
       title: "Transcript actions",
       render: () => (
         <ScrollFollowControls
           onFollowLatest={scrollController.followLatest}
           onAtBottomChange={scrollController.onAtBottomChange}
+        />
+      ),
+    },
+    editRun: {
+      title: "Edit status",
+      render: () => (
+        <P3RunStatusSurface
+          onOpenSource={openThread}
+          onRetry={p3Handlers.retry}
+          runs={p3Runs}
+          threadId={threadId}
         />
       ),
     },
@@ -820,6 +885,7 @@ function ActiveThreadReady({
       cancel={cancel}
       controller={draftController}
       footer={area("composerFooter")}
+      footerOpen={editing !== null}
       manager={attachmentManager}
       policy={resolveQueueSubmitPolicy}
       submit={submit}
@@ -855,6 +921,7 @@ function ActiveThreadReady({
                   renderMessage: (message, renderNested) => (
                     <MessageParts
                       message={message}
+                      actions={rowActions(message)}
                       renderNested={(part) =>
                         part.messages === undefined
                           ? undefined
@@ -1001,6 +1068,16 @@ function ConnectedApp({
   const onPromptSent = useCallback(() => {
     turnWatch.current = { armed: true, before: finishedAnswerAt(history.store?.getSnapshot()) };
   }, [history.store]);
+  // Edit and regenerate run state outlives the chat that started a run, because a branch switches chats.
+  const p3Runs = useMemo(
+    () =>
+      createP3Runs({
+        onAdmitted: () => {
+          turnWatch.current = { armed: true, before: undefined };
+        },
+      }),
+    [],
+  );
   useEffect(() => {
     const store = history.store;
     if (!store || !catalog || !folder) return;
@@ -1133,6 +1210,7 @@ function ConnectedApp({
         openThread={openThread}
         remote={remote}
         title={title}
+        p3Runs={p3Runs}
       />
     );
   }

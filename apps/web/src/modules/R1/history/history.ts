@@ -85,7 +85,7 @@ export class SelectedThreadHistoryController {
   private loader: SessionHistoryLoader | undefined;
   private stopRefetchWatch: (() => void) | undefined;
   private listeners = new Set<(state: SelectedThreadHistoryState) => void>();
-  private rekeying: Promise<void> | undefined;
+  private transitions: Promise<void> = Promise.resolve();
 
   public constructor(options: SelectedThreadHistoryOptions) {
     this.options = options;
@@ -137,7 +137,11 @@ export class SelectedThreadHistoryController {
     }
   }
 
-  public async close(): Promise<void> {
+  public close(): Promise<void> {
+    return this.serialize(() => this.closeNow());
+  }
+
+  private async closeNow(): Promise<void> {
     this.loader?.dispose();
     this.stopRefetchWatch?.();
     this.loader = undefined;
@@ -166,8 +170,12 @@ export class SelectedThreadHistoryController {
     return releaseThread(this.rpc.close, threadId);
   }
 
-  private async open(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
-    await this.close();
+  private open(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
+    return this.serialize(() => this.openNow(args));
+  }
+
+  private async openNow(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
+    await this.closeNow();
     this.commit({ isLoading: true, error: null });
     try {
       const result = await this.rpc.open(args);
@@ -202,7 +210,7 @@ export class SelectedThreadHistoryController {
       return store;
     } catch (error) {
       const failure = asFailure(error, "Opening the selected thread failed");
-      await this.close();
+      await this.closeNow();
       this.commit({ isLoading: false, error: failure.appError });
       throw failure;
     }
@@ -272,17 +280,25 @@ export class SelectedThreadHistoryController {
     return frame.sessionId as ThreadId;
   }
 
-  private async rekeyInProcess(threadId: ThreadId): Promise<void> {
-    if (this.rekeying) return this.rekeying;
-    this.rekeying = this.rekey(threadId).finally(() => {
-      this.rekeying = undefined;
-    });
-    return this.rekeying;
+  private rekeyInProcess(threadId: ThreadId): Promise<void> {
+    return this.serialize(() => this.rekey(threadId));
+  }
+
+  /** Runs thread transitions one at a time, so an open, a close and a re-key never interleave. */
+  private serialize<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.transitions.then(task);
+    this.transitions = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   private async rekey(threadId: ThreadId): Promise<void> {
     const store = this.state.store;
     if (!store) return;
+    // The chat already moved here (an earlier re-key or an open of this id): nothing to re-key.
+    if (this.state.threadId === threadId) return;
     this.loader?.dispose();
     this.stopRefetchWatch?.();
     this.loader = undefined;

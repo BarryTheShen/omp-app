@@ -1,6 +1,7 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import type { OmpMessage, RpcSessionEvent, RpcSessionSend, ThreadId } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
@@ -67,7 +68,13 @@ function send(): RpcSessionSend {
   return async () => undefined as never;
 }
 const testSend = send();
-function RuntimeThread({ store }: { readonly store: OmpRuntimeStore }) {
+function RuntimeThread({
+  actions,
+  store,
+}: {
+  readonly actions?: ReactNode;
+  readonly store: OmpRuntimeStore;
+}) {
   const { runtime } = useOmpRuntime({
     store,
     send: testSend,
@@ -76,7 +83,7 @@ function RuntimeThread({ store }: { readonly store: OmpRuntimeStore }) {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadShell
-        slots={{ renderMessage: (message) => <MessageParts message={message} /> }}
+        slots={{ renderMessage: (message) => <MessageParts actions={actions} message={message} /> }}
         store={store}
       />
     </AssistantRuntimeProvider>
@@ -146,5 +153,31 @@ describe("U1.3 standalone parts", () => {
     expect(document.querySelector('[data-role="user"]')).toBeTruthy();
     expect(document.querySelector('[data-message-surface="system-note"]')).toBeTruthy();
     expect(document.querySelector('[data-message-surface="assistant-text"]')).toBeTruthy();
+  });
+
+  test("draws a row's actions after its bubble, inside the message row", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "user-1",
+          message: assistantMessage("user", "hello"),
+        },
+      },
+      2,
+    );
+    render(<RuntimeThread actions={<button type="button">Probe action</button>} store={store} />);
+
+    const [action] = screen.getAllByRole("button", { name: "Probe action" });
+    const row = action?.closest('[data-slot="u1-message-row"]');
+    const bubble = row?.querySelector('[data-message-surface="user-bubble"]');
+    expect(row?.getAttribute("data-role")).toBe("user");
+    expect(action && row?.contains(action)).toBe(true);
+    expect(action && bubble?.compareDocumentPosition(action)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 });

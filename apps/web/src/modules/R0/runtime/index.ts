@@ -2,6 +2,7 @@ export type {
   OmpRuntime,
   OmpRuntimeOptions,
   PromptDelivery,
+  PromptIntent,
   PromptMode,
   RuntimeMessageView,
   RuntimeToolStateReference,
@@ -11,5 +12,6 @@ export {
   createMemoizedMessageConverter,
   createOmpRuntime,
   OmpRuntimeController,
+  promptFromAppend,
   useOmpRuntime,
 } from "./runtime";

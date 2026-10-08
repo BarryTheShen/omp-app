@@ -27,6 +27,8 @@ export type SurfaceId =
   | "mode"
   | "queue"
   | "scrollFollow"
+  | "editRun"
+  | "editHandoff"
   | "context"
   | "theme";
 
@@ -42,9 +44,9 @@ export const LAYOUT: AppLayout = {
   /** The inline control row inside the composer, left to right. */
   composerToolbar: ["mode", "queue"],
   /** Under that row. */
-  composerFooter: ["attachments"],
+  composerFooter: ["editHandoff", "attachments"],
   /** At the bottom of the transcript. */
-  threadFooter: ["scrollFollow"],
+  threadFooter: ["editRun", "scrollFollow"],
   /** The bottom bar, left to right. */
   statusBar: ["context"],
 };

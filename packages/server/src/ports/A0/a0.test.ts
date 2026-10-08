@@ -6,6 +6,7 @@ import {
   OmpProcessId,
   type OmpProcessId as OmpProcessIdType,
   RequestId,
+  rpcSessionEventStream,
   SessionFilePath,
   type StreamKey,
   ThreadId,
@@ -330,7 +331,7 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(created).toHaveLength(0);
   });
 
-  test("rekeys after branch and keeps the old id as an alias", async () => {
+  test("rekeys after branch: the new id opens the same process", async () => {
     const created: FakeProcess[] = [];
     const runtimeContext = context(created);
     const handlers = handlersFor(runtimeContext, 0);
@@ -365,6 +366,94 @@ describe("A0.7 RpcSessionPort handlers", () => {
       call("two"),
     )) as { stream: StreamKey };
     expect(runtimeContext.replay.latestSeq(stream.stream)).toBeGreaterThan(0);
+  });
+
+  test("after a branch the old thread opens a fresh process on its original file, and the moved process keeps running", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const moved = created[0];
+    if (moved === undefined) throw new Error("missing fake process");
+    const switchedThread = ThreadId.parse("omp-session-branched");
+    const switchedFile = SessionFilePath.parse("/workspace/a0-7/.omp/branched.jsonl");
+    moved.nextIdentity = { threadId: switchedThread, sessionFile: switchedFile };
+    await getHandler(handlers, "send")(
+      { threadId: authorityThread, command: { type: "branch", entryId: "entry-1" } },
+      call("one"),
+    );
+
+    // The old id is no longer an alias for the branch: it resumes the original session file.
+    const original = (await getHandler(handlers, "open")(
+      { threadId: authorityThread },
+      call("two"),
+    )) as { threadId: ThreadId; sessionFile: string };
+    expect(original).toMatchObject({ threadId: authorityThread, sessionFile: authorityFile });
+    expect(created).toHaveLength(2);
+    expect(created[1]?.identity).toEqual({ threadId: authorityThread, sessionFile: authorityFile });
+
+    // The branch keeps its own process, which nothing stopped; it still answers under its new id.
+    expect(moved.status).toBe("running");
+    const branch = (await getHandler(handlers, "open")(
+      { threadId: switchedThread },
+      call("two"),
+    )) as { threadId: ThreadId; sessionFile: string };
+    expect(branch).toMatchObject({ threadId: switchedThread, sessionFile: switchedFile });
+    expect(created).toHaveLength(2);
+    expect(
+      await getHandler(handlers, "send")(
+        { threadId: switchedThread, command: { type: "get_state" } },
+        call("two"),
+      ),
+    ).toMatchObject({ sessionId: switchedThread });
+  });
+
+  test("a moved chat tells the browsers still on the old thread, and its events go on in the new stream", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const moved = created[0];
+    if (moved === undefined) throw new Error("missing fake process");
+    const switchedThread = ThreadId.parse("omp-session-branched");
+    moved.nextIdentity = {
+      threadId: switchedThread,
+      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/branched.jsonl"),
+    };
+    const { replay } = runtimeContext;
+    const oldStream = rpcSessionEventStream(authorityThread);
+    const newStream = rpcSessionEventStream(switchedThread);
+    const heard: unknown[] = [];
+    const unsubscribe = replay.subscribe(oldStream, (frame) => {
+      heard.push(frame.payload);
+    });
+    const beforeMove = replay.latestSeq(oldStream);
+
+    await getHandler(handlers, "send")(
+      { threadId: authorityThread, command: { type: "branch", entryId: "entry-1" } },
+      call("one"),
+    );
+    expect(heard).toEqual([
+      { kind: "notification", frame: { type: "session_info_update", sessionId: switchedThread } },
+    ]);
+    expect(replay.latestSeq(oldStream)).toBe(0);
+    expect(replay.latestSeq(newStream)).toBe(beforeMove + 1);
+
+    // The moved process's next event continues the new stream's numbering, not the old one's.
+    moved.emit({
+      type: "prompt_result",
+      id: "later",
+      agentInvoked: true,
+      status: "completed",
+      sessionSettled: false,
+    });
+    expect(replay.latestSeq(newStream)).toBe(beforeMove + 2);
+    expect(heard).toHaveLength(1);
+
+    // Opening the old thread starts a new run on the old stream, which never replays the moved notice.
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("two"));
+    expect(JSON.stringify(replay.replay(oldStream, 0))).not.toContain(switchedThread);
+    expect(moved.status).toBe("running");
+    unsubscribe();
   });
 
   test("two viewers arbitrate the most detailed subagent subscription and recompute after close", async () => {

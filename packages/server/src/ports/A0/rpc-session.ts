@@ -92,6 +92,7 @@ const SESSION_SWITCH_COMMANDS: Record<string, true> = {
   new_session: true,
   switch_session: true,
   open_session: true,
+  fork: true,
 };
 
 function notFound(message: string): AppFailure {
@@ -199,7 +200,7 @@ export class RpcSessionPortRuntime {
     const bootstrap = await this.#resolveBootstrap(args, call);
     // A process the registry is stopping for this thread holds the session's lease until it exits.
     await this.#context.processRegistry.whenStopped(bootstrap.threadId);
-    const existing = this.#entryOrUndefined(bootstrap.threadId);
+    const existing = this.#entries.get(bootstrap.threadId);
     if (existing !== undefined) {
       if (existing.bootstrap.folderPath !== bootstrap.folderPath) {
         throw new AppFailure({
@@ -234,6 +235,7 @@ export class RpcSessionPortRuntime {
       }
       this.#context.replay.publish(entry.stream, event satisfies RpcSessionEvent);
     });
+    this.#aliases.delete(bootstrap.threadId);
     this.#entries.set(bootstrap.threadId, entry);
     this.#addViewer(entry, call.connectionId);
     try {
@@ -390,7 +392,10 @@ export class RpcSessionPortRuntime {
     await this.#context.processRegistry.closeAll();
   }
 
+  /** The entry a thread id names: its own, or the one it moved to by a session switch. */
   #entryOrUndefined(threadId: ThreadId): ThreadEntry | undefined {
+    const own = this.#entries.get(threadId);
+    if (own !== undefined) return own;
     let current = threadId;
     const seen = new Set<ThreadId>();
     while (this.#aliases.has(current) && !seen.has(current)) {
@@ -413,7 +418,7 @@ export class RpcSessionPortRuntime {
     call: PortHandlerContext,
   ): Promise<ThreadBootstrap> {
     if ("threadId" in args) {
-      const existing = this.#entryOrUndefined(args.threadId);
+      const existing = this.#entries.get(args.threadId);
       if (existing !== undefined) return existing.bootstrap;
       const resolved = await this.#context.resolveThread(args.threadId, call.signal);
       if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
@@ -470,7 +475,16 @@ export class RpcSessionPortRuntime {
         retryable: false,
       });
     }
+    // The registry's re-key can refuse (the new id is already registered); it runs first, so a refusal
+    // leaves the stream and the process exactly as they were.
     this.#context.processRegistry.rekey(current, identity.threadId);
+    // Browsers still attached to the old id hear that the chat moved, with the new id. The stream
+    // carries on under the new id so their sequence numbers stay contiguous; the process is untouched.
+    this.#context.replay.publish(entry.stream, {
+      kind: "notification",
+      frame: { type: "session_info_update", sessionId: identity.threadId },
+    } satisfies RpcSessionEvent);
+    this.#context.replay.moveStream(entry.stream, rpcSessionEventStream(identity.threadId));
     this.#aliases.set(current, identity.threadId);
     this.#entries.delete(current);
     entry.bootstrap = {

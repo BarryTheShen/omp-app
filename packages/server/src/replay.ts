@@ -115,6 +115,23 @@ export class EventReplayHub {
     return this.#streams.get(StreamKeySchema.parse(stream))?.nextSeq ?? 0;
   }
 
+  /**
+   * Carries a stream's history and sequence over to another key, for a process that moved to a new
+   * thread id, so its events keep their numbering on the same run. The old key is left empty, and each
+   * carried frame names its new stream.
+   */
+  moveStream(from: StreamKey, to: StreamKey): void {
+    const source = StreamKeySchema.parse(from);
+    const target = StreamKeySchema.parse(to);
+    const state = this.#streams.get(source);
+    if (source === target || state === undefined) return;
+    this.#streams.delete(source);
+    this.#streams.set(target, {
+      nextSeq: state.nextSeq,
+      frames: state.frames.map((frame) => ({ ...frame, stream: target })),
+    });
+  }
+
   #notifyActivity(stream: StreamKey, active: boolean): void {
     for (const [prefix, listeners] of this.#activityWatchers) {
       if (!stream.startsWith(prefix)) continue;
