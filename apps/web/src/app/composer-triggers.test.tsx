@@ -241,7 +241,13 @@ describe("#818: Enter chooses the highlighted item, and does not send it", () =>
     const input = renderComposer(submitted);
     fireEvent.change(input, { target: { value: ":smi" } });
     input.setSelectionRange(4, 4);
-    await waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
+    // The list renders its options first and highlights the first one a moment later: Enter pressed in
+    // between would send the text, so the test waits for the highlight, as a person sees it.
+    await waitFor(() => {
+      const first = document.querySelector('[role="option"]');
+      expect(first).not.toBeNull();
+      expect(input.getAttribute("aria-activedescendant")).toBe(first?.id);
+    });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(input.value).toMatch(/\p{Extended_Pictographic}/u));
     expect(submitted).not.toHaveBeenCalled();

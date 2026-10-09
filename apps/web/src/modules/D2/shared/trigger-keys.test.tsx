@@ -31,6 +31,18 @@ function heldSearch(...candidates: TriggerCandidate[]) {
   };
 }
 
+/**
+ * Waits until the list has options and the composer points at one. The options render first and the first is
+ * highlighted a moment later: an Enter pressed in between would send the text instead of choosing.
+ */
+async function waitForHighlight(input: HTMLTextAreaElement): Promise<void> {
+  await waitFor(() => {
+    const first = document.querySelector('[role="option"]');
+    expect(first).not.toBeNull();
+    expect(input.getAttribute("aria-activedescendant")).toBe(first?.id);
+  });
+}
+
 /** A file list whose search the test holds, under a composer that sends through `submitted`. */
 function heldFileComposer(submitted: () => Promise<void>) {
   const held = heldSearch();
@@ -87,7 +99,7 @@ describe("#818: Enter waits for a list that is still loading", () => {
     expect(submitted).not.toHaveBeenCalled();
 
     held.release();
-    await waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
+    await waitForHighlight(input);
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(input.value).toContain("😄"));
     expect(submitted).not.toHaveBeenCalled();
@@ -127,7 +139,7 @@ describe("#818: Enter waits for a list that is still loading", () => {
     expect(submitted).not.toHaveBeenCalled();
 
     held.release();
-    await waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
+    await waitForHighlight(input);
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(input.value).toContain("README.md"));
     expect(submitted).not.toHaveBeenCalled();

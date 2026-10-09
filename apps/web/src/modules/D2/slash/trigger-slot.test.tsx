@@ -59,7 +59,7 @@ describe("D2.3 SlashTriggerSlot", () => {
     expect(screen.getByText("Show token usage")).toBeTruthy();
     expect(screen.getAllByText("Built-in").length).toBeGreaterThan(0);
     expect(screen.getByText(/Arguments: \[show\|reset/)).toBeTruthy();
-
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(selected).toHaveBeenCalledTimes(1));
     expect(selected).toHaveBeenCalledWith(expect.objectContaining({ id: "slash:builtin:usage" }));
