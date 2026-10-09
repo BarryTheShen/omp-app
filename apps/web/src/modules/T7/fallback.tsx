@@ -186,7 +186,7 @@ export const T7ToolFallback: ToolRenderer = (props) => {
             error: { message: unavailable, retryable: false },
             defaultOpen: true,
           }
-        : { ...normalized, label: safeLabel(normalized) };
+        : { ...normalized, label: safeLabel(normalized), defaultOpen: true };
   const shellState = { ...state, argsText: "", result: undefined, partialResult: undefined };
   const summary =
     unavailable !== undefined ? "Unavailable" : (correlation ?? SETTLED_SUMMARY[state.phase] ?? "");
@@ -196,8 +196,9 @@ export const T7ToolFallback: ToolRenderer = (props) => {
       : "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-status']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden";
   return (
     <div data-testid={`t7-fallback-${state.toolCallId}`} data-tool-name={state.toolName}>
-      <ToolCard className={cardClassName} state={shellState} summary={summary} />
-      <SafeDetails props={props} state={state} />
+      <ToolCard className={cardClassName} state={shellState} summary={summary}>
+        <SafeDetails props={props} state={state} />
+      </ToolCard>
     </div>
   );
 };

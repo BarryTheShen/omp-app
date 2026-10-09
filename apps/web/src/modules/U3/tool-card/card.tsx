@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import {
   Collapsible,
@@ -52,6 +52,8 @@ export interface ToolCardProps {
   readonly onCopy?: (raw: string, kind: CopyKind) => void | Promise<void>;
   readonly onShowMore?: (state: ToolCardState) => void | Promise<void>;
   readonly className?: string;
+  /** The card's body: it sits inside the disclosure, so collapsing the card hides it. */
+  readonly children?: ReactNode;
 }
 
 export function ToolCard({
@@ -63,6 +65,7 @@ export function ToolCard({
   onCopy,
   onShowMore,
   className,
+  children,
 }: ToolCardProps) {
   const contentId = useId();
   const visual = state.queued === true ? QUEUED_VISUAL : VISUAL_BY_PHASE[state.phase];
@@ -202,6 +205,7 @@ export function ToolCard({
               {state.error.retryable && <p className="mt-1 text-xs">Retry is available.</p>}
             </div>
           )}
+          {children}
           {state.phase === "partial" && resultRaw !== "" && (
             <ToolRawBlock
               copySlot={copySlot}

@@ -183,3 +183,19 @@ describe("ToolCard queued call", () => {
     expect(screen.getByTestId("tool-card-queued-card").getAttribute("data-queued")).toBe("true");
   });
 });
+
+describe("ToolCard body", () => {
+  test("keeps its children inside the disclosure: they show only while it is open", () => {
+    render(
+      <ToolCard state={state("success", "body")}>
+        <p>Body text</p>
+      </ToolCard>,
+    );
+    const trigger = screen.getByRole("button", { name: "Run bash: Complete" });
+    expect(screen.queryByText("Body text")).toBeNull();
+    fireEvent.click(trigger);
+    expect(screen.getByText("Body text")).toBeTruthy();
+    fireEvent.click(trigger);
+    expect(screen.queryByText("Body text")).toBeNull();
+  });
+});

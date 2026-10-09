@@ -1,5 +1,5 @@
 import type { ToolCallId } from "@omp-app/contracts";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { T7ToolFallback } from "./fallback";
@@ -106,5 +106,27 @@ describe("T7 fallback for a finished call with no result", () => {
     expect(screen.getByTestId("tool-state-chip-unrecorded").textContent).toContain("Finished");
     expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
     expect(screen.queryByText("Streaming")).toBeNull();
+  });
+});
+
+describe("T7 fallback body", () => {
+  test("opens at first sight with its details, and its header folds them away", () => {
+    render(
+      <T7ToolFallback
+        {...props({ content: [{ type: "text", text: "MCP result" }], details: { value: "ok" } })}
+        toolCallId={"t7-fold" as ToolCallId}
+        toolName="mcp__notion_search"
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "MCP tool: Complete" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("t7-fallback-details")).toBeTruthy();
+
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("t7-fallback-details")).toBeNull();
+
+    fireEvent.click(trigger);
+    expect(screen.getByTestId("t7-fallback-details")).toBeTruthy();
   });
 });

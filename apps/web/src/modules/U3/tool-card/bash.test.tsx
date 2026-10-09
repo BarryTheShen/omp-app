@@ -123,6 +123,31 @@ describe("BashCard", () => {
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("line 1");
     expect(screen.queryByText("Waiting for bash output…")).toBeNull();
   });
+
+  test("opens at first sight, and its header folds the command and output away", () => {
+    // A distinct call id: the card remembers a person's fold per call, and other tests share "bash-call".
+    const folding = { ...props(result({ output: "hello" })), toolCallId: "fold-call" };
+    render(<BashCard rendererProps={folding as unknown as ToolRendererProps} />);
+    const trigger = screen.getByRole("button", { name: "bash: Complete" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("hello");
+    expect(screen.getByText("$ printf 'hello'")).toBeTruthy();
+
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("u3-bash-stdout")).toBeNull();
+    expect(screen.queryByText("$ printf 'hello'")).toBeNull();
+
+    fireEvent.click(trigger);
+    expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("hello");
+  });
+
+  test("a failed command's card opens with its output in view", () => {
+    render(<BashCard rendererProps={props(result({ output: "bad", exitCode: 2 }))} />);
+    const trigger = screen.getByRole("button", { name: "bash: Error" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("bad");
+  });
 });
 
 describe("failureMessage", () => {

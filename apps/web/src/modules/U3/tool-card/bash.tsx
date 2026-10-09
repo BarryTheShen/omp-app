@@ -42,17 +42,18 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
   return (
     <div data-slot="u3-bash-card" data-testid="u3-bash-card" title={command}>
       <ToolCard
-        className="[&_[data-slot='u3-tool-card-args']]:hidden"
+        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, outputMeta: undefined, result: undefined, partialResult: undefined }}
         summary={summary}
-      />
-      <BashCommand command={command} cwd={cwd} onCopy={onCopy} />
-      <BashOutput
-        cut={outputCutOf(rendererProps.result)}
-        result={result}
-        state={state}
-        onCancel={onCancel}
-      />
+      >
+        <BashCommand command={command} cwd={cwd} onCopy={onCopy} />
+        <BashOutput
+          cut={outputCutOf(rendererProps.result)}
+          result={result}
+          state={state}
+          onCancel={onCancel}
+        />
+      </ToolCard>
     </div>
   );
 }
@@ -101,8 +102,12 @@ function repeatsBanner(result: BashResult): boolean {
   );
 }
 
+/**
+ * The command and output are this card's facts, so it opens at first sight in every phase; a person
+ * can fold it from its header.
+ */
 function bashState(state: ToolCardState, result: BashResult | undefined): ToolCardState {
-  if (result === undefined) return state;
+  if (result === undefined) return { ...state, defaultOpen: true };
   const phase = result.cancelled
     ? "cancelled"
     : result.timedOut || (result.exitCode !== undefined && result.exitCode !== 0)
@@ -128,7 +133,7 @@ function bashState(state: ToolCardState, result: BashResult | undefined): ToolCa
     cancelled: phase === "cancelled",
     timedOut: result.timedOut === true,
     error,
-    defaultOpen: phase !== "success",
+    defaultOpen: true,
   };
 }
 
