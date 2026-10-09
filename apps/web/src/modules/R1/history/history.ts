@@ -228,10 +228,10 @@ export class SelectedThreadHistoryController {
         isLoading: true,
         error: null,
       });
-      // Replay everything the server still holds for this thread: omp's process lifecycle and any
-      // prompt events sent between `open` and this subscription (the composer is usable as soon
-      // as the store exists). Without it the store never sees the process become ready and can
-      // miss the start of the first prompt.
+      // A live-only subscription: with afterSeq 0 the client sends no cursor (`packages/client/src/client.ts`), so
+      // the server replays nothing and the first event is the store's baseline; the history load below covers
+      // everything written before it. Without the subscription the store never sees the process become ready and
+      // can miss the start of the first prompt.
       await this.attachSubscription(threadId, store, 0);
       await loader.loadInitial();
       this.stopRefetchWatch = loader.watchNeedsRefetch();
@@ -301,7 +301,16 @@ export class SelectedThreadHistoryController {
       subscription = await subscribe(undefined);
     }
     this.subscription = subscription;
+    // With afterSeq 0 the client sends no cursor, so the server replays nothing: the subscription is live only and
+    // its first event is where the stream is now, not a gap. The history load that follows reads everything written
+    // before that event, so the store starts its sequence there. Treating it as a gap dropped every live event
+    // until the refetch ended.
+    let baselined = afterSeq !== 0;
     this.offEvents = subscription.onEvent((payload, seq) => {
+      if (!baselined) {
+        baselined = true;
+        if (store.getSnapshot().lastSeq === 0) store.resetSequence(seq - 1);
+      }
       store.ingest(payload, seq);
       // After each settled turn, omp has persisted the turn: refetch so its messages pair with their
       // entries (edit and branch need entry ids) and get_state brings the model, context and usage.

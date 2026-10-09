@@ -244,6 +244,54 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(store.getSnapshot().needsRefetch).toBe(false);
   });
 
+  test("a fresh subscription's first event is its baseline, so a prompt sent during the first load keeps its live state", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const entriesHeld = Promise.withResolvers<void>();
+    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const rpc = {
+      ...base,
+      send: async (args: { threadId: ThreadId; command: { type: string } }) => {
+        calls.push({ type: args.command.type, threadId: args.threadId });
+        if (args.command.type === "get_entries") await entriesHeld.promise;
+        return args.command.type === "get_state"
+          ? { sessionId: args.threadId }
+          : { entries: [], leafId: null };
+      },
+    } as unknown as RpcSessionClient;
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const opening = controller.openExisting(threadOne);
+    await vi.waitFor(() => expect(subscriptions[0]?.listeners).toHaveLength(1));
+    const live = subscriptions[0]?.listeners[0];
+    if (!live) throw new Error("initial subscription did not attach");
+    // The prompt's first events arrive while the first history load waits for its entries.
+    live({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 6);
+    live(
+      {
+        kind: "omp",
+        event: {
+          type: "tool_execution_start",
+          toolCallId: "bash-1",
+          toolName: "bash",
+          args: { command: "sleep 20; echo first" },
+        },
+      } as RpcSessionEvent,
+      7,
+    );
+    entriesHeld.resolve();
+    const store = await opening;
+    const snapshot = store.getSnapshot();
+    expect(snapshot.needsRefetch).toBe(false);
+    expect(snapshot.prompt.streaming).toBe(true);
+    expect(
+      Object.values(snapshot.tools).find((tool) => tool.toolCallId === "bash-1"),
+    ).toMatchObject({ status: "running" });
+    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
+  });
+
   test("re-keys in place during a turn without replacing the streaming store", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));

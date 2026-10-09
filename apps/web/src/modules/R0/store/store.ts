@@ -730,6 +730,41 @@ function setError(next: MutableSnapshot, error: AppError): void {
   next.error = cloneValue(error);
 }
 
+const TOOL_LIFECYCLE_EVENTS: Record<string, true> = {
+  tool_execution_start: true,
+  tool_execution_update: true,
+  tool_stream_update: true,
+  tool_execution_end: true,
+};
+
+/** omp's events for one tool call's execution: live facts that no history read holds. */
+function isToolLifecycleEvent(value: unknown): boolean {
+  return (
+    isRecord(value) && typeof value.type === "string" && TOOL_LIFECYCLE_EVENTS[value.type] === true
+  );
+}
+
+const PROMPT_LIFECYCLE_EVENTS: Record<string, true> = {
+  agent_start: true,
+  turn_start: true,
+  message_start: true,
+  message_end: true,
+  turn_end: true,
+  agent_end: true,
+};
+
+/** Whether an applied event sets the prompt lifecycle (`prompt.streaming`, `admitted`, `sessionSettled`). */
+function setsPromptLifecycle(eventValue: Record<string, unknown>): boolean {
+  if (eventValue.kind === "prompt_result" || eventValue.kind === "session_settled") return true;
+  const event = eventValue.event;
+  return (
+    eventValue.kind === "omp" &&
+    isRecord(event) &&
+    typeof event.type === "string" &&
+    PROMPT_LIFECYCLE_EVENTS[event.type] === true
+  );
+}
+
 /**
  * The single reducer of normalized omp events for one open thread.
  *
@@ -746,6 +781,8 @@ export class OmpRuntimeStore {
   private generatedMessageNumber = 0;
   /** The highest seq ever passed to `ingest`, including events dropped during a gap. */
   private latestSeenSeq = 0;
+  /** The seq of the last applied event that set the prompt lifecycle: a run starting, admitted or ending. */
+  private promptEventSeq = 0;
 
   public constructor(options: OmpRuntimeStoreOptions);
   public constructor(threadId: ThreadId, options?: Omit<OmpRuntimeStoreOptions, "threadId">);
@@ -853,6 +890,7 @@ export class OmpRuntimeStore {
         // A future RpcSessionEvent kind is intentionally ignored without losing the sequence slot.
         break;
     }
+    if (setsPromptLifecycle(eventValue)) this.promptEventSeq = seq;
     next.lastSeq = seq;
     this.commit(next);
     if (event.kind === "omp") this.forwardOmpEvent(event.event, seq);
@@ -862,10 +900,11 @@ export class OmpRuntimeStore {
   /**
    * An event that cannot be applied in order: the stream has a gap, or a refetch is still running.
    * The refetch restores messages and state from omp, but it can never restore what omp is waiting
-   * on, so a notification (a question, an approval, a host tool call, or the cancellation of one)
-   * is recorded anyway; everything else is dropped and covered by the refetch. Dropping the
-   * request left omp blocked forever on an answer nobody was shown (a fresh chat's first events
-   * predate the browser's subscription, which is a gap by construction).
+   * on or what is running now, so a notification (a question, an approval, a host tool call, or the
+   * cancellation of one) and a tool call's start, progress and end are recorded anyway; everything
+   * else is dropped and covered by the refetch. Dropping the request left omp blocked forever on an
+   * answer nobody was shown (a fresh chat's first events predate the browser's subscription, which is
+   * a gap by construction). Dropping a tool's start left its card reading Waiting until the call ended.
    */
   private ingestAcrossGap(eventValue: Record<string, unknown>, seq: number): void {
     const next = mutableSnapshot(this.snapshot);
@@ -879,10 +918,14 @@ export class OmpRuntimeStore {
       this.reduceNotification(next, rawFrame, seq);
       if (isExtensionCancel) this.forwardNotification(rawFrame, seq);
     }
-    const recorded = next.pending !== this.snapshot.pending || next.error !== this.snapshot.error;
+    const toolEvent = eventValue.kind === "omp" && isToolLifecycleEvent(eventValue.event);
+    if (toolEvent) this.reduceOmp(next, eventValue.event, seq);
+    const recorded =
+      toolEvent || next.pending !== this.snapshot.pending || next.error !== this.snapshot.error;
     if (this.snapshot.needsRefetch && !recorded) return;
     next.needsRefetch = true;
     this.commit(next);
+    if (toolEvent) this.forwardOmpEvent(eventValue.event as OmpEvent, seq);
   }
 
   /**
@@ -961,8 +1004,14 @@ export class OmpRuntimeStore {
     this.commit(next);
   }
 
-  /** Apply the relevant fields of a `get_state` result; no JSONL or wire parsing happens here. */
-  public applySessionState(state: Partial<SessionState>): void {
+  /**
+   * Apply the relevant fields of a `get_state` result; no JSONL or wire parsing happens here. `asOfSeq`
+   * is the stream position the answer was asked at.
+   */
+  public applySessionState(
+    state: Partial<SessionState>,
+    options?: { readonly asOfSeq?: number },
+  ): void {
     const next = mutableSnapshot(this.snapshot);
     updateQueues(next, {
       steering: state.queuedMessages?.steering,
@@ -972,11 +1021,15 @@ export class OmpRuntimeStore {
       interruptMode: state.interruptMode,
     });
     if (state.todoPhases) updateTodos(next, state.todoPhases);
-    updatePrompt(next, {
-      admitted: state.isStreaming === true ? true : undefined,
-      streaming: state.isStreaming,
-      sessionSettled: state.isSettled,
-    });
+    // The answer describes omp as it was when it was asked. A run that started or ended on the stream after
+    // that is newer than the answer, so the answer leaves the prompt lifecycle alone.
+    if (options?.asOfSeq === undefined || this.promptEventSeq <= options.asOfSeq) {
+      updatePrompt(next, {
+        admitted: state.isStreaming === true ? true : undefined,
+        streaming: state.isStreaming,
+        sessionSettled: state.isSettled,
+      });
+    }
     // omp answered get_state, so its process is up. When the lifecycle events that announced it are
     // older than the server's replay window, this is the only signal the store gets.
     if (next.process.status === "starting") setProcess(next, "ready");

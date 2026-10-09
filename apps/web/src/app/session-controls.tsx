@@ -98,9 +98,11 @@ export function SessionModelControl({
    * changes the model or the thinking level, read it now so the header shows what omp uses.
    */
   const refreshSession = useCallback(() => {
+    // The answer describes omp as of this request: a run that starts after it is newer than the answer.
+    const asOfSeq = store.getSnapshot().lastSeq;
     void rpc
       .send({ threadId, command: { type: "get_state" } })
-      .then((state) => store.applySessionState(state))
+      .then((state) => store.applySessionState(state, { asOfSeq }))
       .catch((error: unknown) => {
         reportClientError({
           kind: "error",

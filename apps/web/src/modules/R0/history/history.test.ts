@@ -648,3 +648,22 @@ describe("SessionHistoryLoader.watchNeedsRefetch", () => {
     unsubscribe();
   });
 });
+
+describe("SessionHistoryLoader and a run that starts while the load's answer is on its way", () => {
+  test("a get_state answer asked before the run started does not end the run", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const answer = createDeferred<unknown>();
+    const { send } = makeSend({
+      get_state: () => answer.promise,
+      get_entries: () => ({ entries: [], leafId: null }),
+    });
+    const loader = new SessionHistoryLoader({ send, threadId, store, readWindow: noWindows });
+    const loading = loader.loadInitial();
+    await flushMicrotasks();
+    // The run's first event reaches the store while omp's answer to the load's get_state is still on its way.
+    store.ingest({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 1);
+    answer.resolve({ sessionId: "s1", isStreaming: false });
+    await loading;
+    expect(store.getSnapshot().prompt.streaming).toBe(true);
+  });
+});

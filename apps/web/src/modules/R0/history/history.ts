@@ -219,11 +219,13 @@ export class SessionHistoryLoader {
   }
 
   private async applyState(signal: AbortSignalLike): Promise<void> {
+    // The answer describes omp as of this request: the store keeps any run event that arrives after it.
+    const asOfSeq = this.store.getSnapshot().lastSeq;
     const state = (await this.send(
       { threadId: this.threadId, command: { type: "get_state" } },
       { signal },
     )) as SessionState;
-    this.store.applySessionState(state);
+    this.store.applySessionState(state, { asOfSeq });
     const file = SessionFilePath.safeParse(state.sessionFile);
     this.sessionFile = file.success ? file.data : undefined;
   }

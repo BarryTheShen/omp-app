@@ -91,9 +91,11 @@ async function refreshSession(
   threadId: ThreadId,
 ): Promise<void> {
   const session = client.port(RpcSessionPort) as RpcSessionClient;
+  // The answer describes omp as of this request: a run that starts after it is newer than the answer.
+  const asOfSeq = store.getSnapshot().lastSeq;
   await session
     .send({ threadId, command: { type: "get_state" } })
-    .then((state) => store.applySessionState(state));
+    .then((state) => store.applySessionState(state, { asOfSeq }));
 }
 
 /** The compaction port: the result of an accepted compaction is recorded, and the session read again. */

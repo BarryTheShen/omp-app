@@ -703,6 +703,63 @@ describe("OmpRuntimeStore", () => {
     expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ask-2"]);
   });
 
+  test("records a tool call's start, progress and end across a gap, since history never restores them", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    // A fresh chat's first events predate the browser's subscription, so the first one it sees is a gap.
+    ingest(store, { kind: "process", status: "ready" }, 6);
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 0, needsRefetch: true });
+
+    // A refetch restores messages and state, never a call omp is running: its start, progress and end are kept.
+    omp(store, { type: "tool_execution_start", toolCallId: "bash-1", toolName: "bash" }, 7);
+    expect(store.getSnapshot().tools["bash-1" as ToolCallId]).toMatchObject({ status: "running" });
+    omp(
+      store,
+      {
+        type: "tool_execution_update",
+        toolCallId: "bash-1",
+        toolName: "bash",
+        partialResult: "one",
+      },
+      8,
+    );
+    expect(store.getSnapshot().tools["bash-1" as ToolCallId]).toMatchObject({
+      status: "partial",
+      partialResult: "one",
+    });
+    omp(
+      store,
+      { type: "tool_execution_end", toolCallId: "bash-1", toolName: "bash", result: "done" },
+      9,
+    );
+    expect(store.getSnapshot().tools["bash-1" as ToolCallId]).toMatchObject({
+      status: "success",
+      result: "done",
+    });
+
+    // Ordinary events in the gap are still dropped: the refetch covers them.
+    omp(store, { type: "turn_start" }, 10);
+    expect(store.getSnapshot()).toMatchObject({
+      lastSeq: 0,
+      needsRefetch: true,
+      prompt: { streaming: false },
+    });
+    store.resetSequence();
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 10, needsRefetch: false });
+  });
+
+  test("a get_state answer asked before a run started does not undo that run, but a later one is authoritative", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const askedAt = store.getSnapshot().lastSeq;
+    omp(store, { type: "agent_start" }, 1);
+    expect(store.getSnapshot().prompt.streaming).toBe(true);
+    // omp answered before the run began, but the answer arrives after the run's first event.
+    store.applySessionState({ isStreaming: false }, { asOfSeq: askedAt });
+    expect(store.getSnapshot().prompt.streaming).toBe(true);
+    // An answer asked once the run had started says what omp is doing now.
+    store.applySessionState({ isStreaming: false }, { asOfSeq: 1 });
+    expect(store.getSnapshot().prompt.streaming).toBe(false);
+  });
+
   test("shows a reopened session's history on the active branch, oldest first", () => {
     const store = new OmpRuntimeStore({ threadId });
     const message = (id: string, parentId: string | null, role: string, text: string) => ({
