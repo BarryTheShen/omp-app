@@ -155,6 +155,51 @@ describe("U1.3 standalone parts", () => {
     expect(document.querySelector('[data-message-surface="assistant-text"]')).toBeTruthy();
   });
 
+  test("every message surface lets a long unbroken word wrap inside it", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const token = "x".repeat(300);
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "user-1",
+          message: assistantMessage("user", token),
+        },
+      },
+      2,
+    );
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "developer-1",
+          message: assistantMessage("developer", token),
+        },
+      },
+      3,
+    );
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "assistant-1",
+          message: assistantMessage("assistant", token),
+        },
+      },
+      4,
+    );
+    render(<RuntimeThread store={store} />);
+
+    for (const surface of ["user-bubble", "system-note", "assistant-text"]) {
+      const element = document.querySelector(`[data-message-surface="${surface}"]`);
+      expect(element?.className).toContain("wrap-anywhere");
+    }
+  });
+
   test("draws a row's actions after its bubble, inside the message row", () => {
     const store = new OmpRuntimeStore({ threadId });
     store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);

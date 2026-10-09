@@ -192,7 +192,7 @@ export function MessageParts({
       data-slot="u1-message-row"
     >
       <div
-        className={className}
+        className={cn(className, "wrap-anywhere")}
         data-message-surface={isUser ? "user-bubble" : isSystem ? "system-note" : "assistant-text"}
       >
         {note !== undefined ? (

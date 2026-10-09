@@ -189,6 +189,9 @@ function reply(request: Request): Reply {
       thinking: "I should run the slow step.",
     };
   if (prompt.includes("make_it_big")) return { text: "a".repeat(1_100_000) };
+  // One unbroken 306-character token, as a long URL or hash is: the reply must wrap it, not run past its box.
+  if (prompt.includes("long_word_probe"))
+    return { text: `Token: token-${"a1b2c3d4e5".repeat(30)} end of the token.` };
   if (prompt.includes("abort_slow")) return { text: "slow-stream", thinking: "working" };
   if (prompt.includes("stream_code")) return { text: STREAMED_CODE_REPLY, streamed: true };
   if (prompt.includes("stream_long_code"))
