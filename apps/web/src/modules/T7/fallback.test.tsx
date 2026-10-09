@@ -31,7 +31,7 @@ describe("T7 fallback", () => {
       />,
     );
     expect(screen.getByRole("alert").textContent).toContain("Host tools are unavailable.");
-    expect(screen.getByText("Arguments: object")).toBeTruthy();
+    expect(screen.getByTestId("t7-fallback-arguments").textContent).toContain("operation");
     expect(screen.getByText("Result: object")).toBeTruthy();
     expect(screen.getByText(/long string/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Show raw details" })).toBeTruthy();
@@ -74,14 +74,18 @@ describe("T7 fallback", () => {
     expect(screen.getByRole("button", { name: "MCP tool: Complete" })).toBeTruthy();
   });
 
-  test("a finished result is summarised as Finished, and a failed call has no summary", () => {
+  test("a finished call says its status once, in its chip, and shows its text at once", () => {
     const finished = props({
       content: [{ type: "text", text: "MCP result" }],
       details: { value: "ok" },
     });
-    const { unmount } = render(<T7ToolFallback {...finished} toolName="mcp__notion_search" />);
-    expect(screen.getByText("Finished")).toBeTruthy();
-    unmount();
+    render(<T7ToolFallback {...finished} toolName="mcp__notion_search" />);
+    expect(screen.getByTestId("tool-state-chip-success").textContent).toContain("Complete");
+    expect(screen.queryByText("Finished")).toBeNull();
+    expect(screen.getByText("MCP result")).toBeTruthy();
+  });
+
+  test("a failed call has no summary line, and its reason shows in an alert", () => {
     const failed: ToolRendererProps = {
       ...props({
         content: [{ type: "text", text: "Tool mcp__notion_search not found" }],
@@ -106,6 +110,25 @@ describe("T7 fallback for a finished call with no result", () => {
     expect(screen.getByTestId("tool-state-chip-unrecorded").textContent).toContain("Finished");
     expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
     expect(screen.queryByText("Streaming")).toBeNull();
+  });
+});
+
+describe("T7 fallback, an unclaimed tool", () => {
+  test("shows its arguments as rows and its text result at once, with no JSON type words", () => {
+    render(
+      <T7ToolFallback
+        {...props({ content: [{ type: "text", text: "custom result text" }], details: {} })}
+        args={{ query: "fixture" }}
+        toolName="some_unlisted_tool"
+      />,
+    );
+    expect(screen.getByTestId("t7-fallback-arguments").textContent).toContain("Arguments");
+    expect(screen.getByText("query")).toBeTruthy();
+    expect(screen.getByText("fixture")).toBeTruthy();
+    expect(screen.getByText("custom result text")).toBeTruthy();
+    expect(screen.queryByText("Arguments: object")).toBeNull();
+    expect(screen.queryByText("content: array")).toBeNull();
+    expect(screen.queryByText("Finished")).toBeNull();
   });
 });
 

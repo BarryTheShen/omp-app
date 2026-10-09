@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Icons } from "../../tokens";
 import { ToolCard } from "../U3/tool-card/card";
@@ -9,13 +9,14 @@ import type {
   ToolRendererProps,
 } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { splitToolResult } from "../U3/tool-card/result";
+import { TextOutput } from "../U3/tool-card/text-output";
 import { decodeHostTool, decodeHostUri } from "./models";
 
 const LONG_STRING_LIMIT = 240;
 
-/** The one line the fallback card gives a settled call: a success, or one with no result recorded. */
+/** A call with no result recorded gets its one line; a finished call's chip already says Complete. */
 const SETTLED_SUMMARY: Partial<Record<ToolCardPhase, string>> = {
-  success: "Finished",
   unrecorded: "No result recorded",
 };
 
@@ -124,13 +125,12 @@ function SafeDetails({
   const [showRaw, setShowRaw] = useState(false);
   const rawArgs = props.args;
   const rawResult = state.result ?? state.partialResult ?? props.result;
+  // omp's text for the call, when its result carries one: it is what a person came to read.
+  const text = splitToolResult(rawResult).text;
   const unavailable = unavailableReason(props, state);
   const artifact = state.outputMeta?.artifactId ?? state.outputMeta?.truncation?.artifactId;
   return (
-    <section
-      className="border-border/70 ms-2 mt-1 border-s-2 py-2 ps-4"
-      data-testid="t7-fallback-details"
-    >
+    <section className="min-w-0" data-testid="t7-fallback-details">
       {unavailable && (
         <span
           className="border-warning/30 bg-warning-surface text-warning-surface-foreground inline-flex rounded-full border px-2 py-0.5 text-xs font-medium"
@@ -140,10 +140,9 @@ function SafeDetails({
         </span>
       )}
       {artifact && <p className="text-muted-foreground text-xs">Artifact available: {artifact}</p>}
-      <div className="mt-2 space-y-1">
-        <JsonTree label="Arguments" value={rawArgs} />
-        <JsonTree label="Result" value={rawResult} />
-      </div>
+      <ArgumentRows args={rawArgs} />
+      {text !== "" && <TextOutput testId="t7-fallback-text" text={text} />}
+      {text === "" && rawResult !== undefined && <JsonTree label="Result" value={rawResult} />}
       <Button
         className="mt-2"
         size="xs"
@@ -161,6 +160,46 @@ function SafeDetails({
       )}
     </section>
   );
+}
+
+/** The call's arguments, one name and value per row, so a person reads what the tool was given. */
+function ArgumentRows({ args }: { readonly args: unknown }) {
+  if (args === undefined || args === null) return null;
+  if (typeof args !== "object" || Array.isArray(args)) {
+    return (
+      <p className="font-mono text-xs break-words" data-testid="t7-fallback-arguments">
+        {shortValue(args)}
+      </p>
+    );
+  }
+  const entries = Object.entries(args);
+  if (entries.length === 0) return null;
+  return (
+    <div className="mb-2 flex min-w-0 flex-col gap-1" data-testid="t7-fallback-arguments">
+      <p className="text-xs font-medium text-muted-foreground">Arguments</p>
+      <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+        {entries.map(([name, value]) => (
+          <Fragment key={name}>
+            <dt className="text-muted-foreground">{name}</dt>
+            <dd className="text-foreground min-w-0 font-mono break-words">{shortValue(value)}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+/** A value as one line: a string as it is, a structure as compact JSON; a long one is cut and says how long it was. */
+function shortValue(value: unknown): string {
+  const text =
+    typeof value === "string"
+      ? value
+      : typeof value === "object" && value !== null
+        ? JSON.stringify(value)
+        : String(value);
+  return text.length > LONG_STRING_LIMIT
+    ? `${text.slice(0, LONG_STRING_LIMIT)}… [${text.length} chars]`
+    : text;
 }
 
 /** T7's one fallback renderer for unknown/custom/MCP/host calls; it never executes a call. */

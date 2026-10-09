@@ -88,7 +88,7 @@ test.describe("T7 fallback", () => {
     await expectStylesLoaded(page);
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expect(page.getByRole("alert")).toContainText("Host tools are unavailable");
-    await expect(page.getByText("Arguments: object")).toBeVisible();
+    await expect(page.getByTestId("t7-fallback-arguments")).toContainText("operation");
     await page.screenshot({ path: "../../.data/screenshots/t7-fallback-dark.png", fullPage: true });
 
     await page.getByTestId("theme-light").click();
