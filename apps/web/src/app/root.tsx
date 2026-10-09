@@ -84,6 +84,7 @@ import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import { ComposerSurface } from "@/modules/U2/composer";
 import type { AttachmentAdapter, PromptIntent, SubmitPolicy } from "@/modules/U2/contract";
 import { createDraftStoreAdapter, DraftController } from "@/modules/U2/drafts";
+import { useIsRecalledPrompt } from "@/modules/U2/history";
 import { ModeIndicator } from "@/modules/U2/modes";
 import { NestedTranscript } from "@/modules/U3/tool-card/nested";
 import { createToolRegistry } from "@/modules/U3/tool-card/registry";
@@ -110,6 +111,7 @@ import { AppShell } from "@/shell";
 import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
 import { ThemeApplier, ThemeButton } from "@/theme";
 import { reportClientError, setClientErrorSink } from "./client-errors";
+import { ComposerHistory } from "./composer-history";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
 import { saveTextFile } from "./save-file";
@@ -461,10 +463,13 @@ function DraftComposer({
     snapshot.text,
     text,
   ]);
+  const isRecalledPrompt = useIsRecalledPrompt();
   useEffect(() => {
     if (hydratedFor.current !== controller) return;
+    // A prompt Up or Down recalled (U2.5) is not the draft: the saved draft stays what was typed.
+    if (isRecalledPrompt(text)) return;
     controller.setDraft(text, manager.toDraftRefs());
-  }, [controller, manager, text]);
+  }, [controller, isRecalledPrompt, manager, text]);
   return (
     <ComposerSurface
       capabilities={capabilities}
@@ -1021,17 +1026,19 @@ function ActiveThreadReady({
       folder={folder}
       slash={slashProvider}
     >
-      <DraftComposer
-        capabilities={capabilities}
-        cancel={cancel}
-        controller={draftController}
-        footer={area("composerFooter")}
-        footerOpen={editing !== null}
-        manager={attachmentManager}
-        policy={resolveQueueSubmitPolicy}
-        submit={submit}
-        toolbar={area("composerToolbar")}
-      />
+      <ComposerHistory store={store}>
+        <DraftComposer
+          capabilities={capabilities}
+          cancel={cancel}
+          controller={draftController}
+          footer={area("composerFooter")}
+          footerOpen={editing !== null}
+          manager={attachmentManager}
+          policy={resolveQueueSubmitPolicy}
+          submit={submit}
+          toolbar={area("composerToolbar")}
+        />
+      </ComposerHistory>
     </ComposerTriggers>
   );
   return (
