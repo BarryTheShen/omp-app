@@ -2,6 +2,7 @@ import type { EntryId, RpcSessionSend, ThreadId } from "@omp-app/contracts";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { TreeSelectorFilter, TreeSelectorState, TreeSnapshot } from "@/modules/P4/contract";
 import { OmpSessionTreePort } from "@/modules/P4/history";
+import { createP4LabelsViewModel, P4LabelsView } from "@/modules/P4/labels";
 import {
   createP4TreePanelState,
   openP4TreePickerDialog,
@@ -178,16 +179,28 @@ export function RewindPanel({
     open: true,
     position: "right",
   });
-  const footer =
-    failure !== null ? (
-      <p className="text-danger px-4 py-2 text-xs" role="alert">
-        {failure}
-      </p>
-    ) : rewinding ? (
-      <p className="text-muted-foreground px-4 py-2 text-xs" role="status">
-        Rewinding the conversation…
-      </p>
-    ) : null;
+  const labels = useMemo(
+    () => (tree.snapshot === null ? null : createP4LabelsViewModel(tree.snapshot)),
+    [tree.snapshot],
+  );
+  const footer = (
+    <div className="flex min-w-0 flex-col">
+      {failure !== null ? (
+        <p className="text-danger px-4 py-2 text-xs" role="alert">
+          {failure}
+        </p>
+      ) : rewinding ? (
+        <p className="text-muted-foreground px-4 py-2 text-xs" role="status">
+          Rewinding the conversation…
+        </p>
+      ) : null}
+      {labels === null ? null : (
+        <div className="px-4 pb-4">
+          <P4LabelsView model={labels} showReason={controller.viewModel.labelsNotice === null} />
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col" data-rewind-panel="true" ref={root}>

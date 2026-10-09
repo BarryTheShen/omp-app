@@ -75,7 +75,7 @@ interface FlatTreeNode {
   readonly branches: boolean;
 }
 
-const LABELS_READ_ONLY_NOTICE = "Labels can only be changed in omp's terminal for now.";
+export const LABELS_READ_ONLY_NOTICE = "Labels can only be changed in omp's terminal for now.";
 
 /**
  * Entry kinds omp's terminal hides in its default view (tui/overlays/tree-selector.ts, the
