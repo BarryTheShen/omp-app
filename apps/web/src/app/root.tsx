@@ -77,7 +77,12 @@ import {
 import { createNativeRemoteThreadListAdapter } from "@/modules/R1/remote";
 import { SessionCatalogSidebar } from "@/modules/R1/ui";
 import { MessageParts } from "@/modules/U1/parts";
-import { ScrollFollowControls, useThreadScrollController } from "@/modules/U1/scroll";
+import {
+  type ReadingPlace,
+  readStoredReadingPlace,
+  ScrollFollowControls,
+  useThreadScrollController,
+} from "@/modules/U1/scroll";
 import { ThreadShell } from "@/modules/U1/thread";
 import { type ToolRendererResolver, ToolRendererResolverContext } from "@/modules/U1/tool-slots";
 import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
@@ -521,6 +526,8 @@ interface ActiveThreadProps {
   readonly leftSidebar: ReactNode;
   readonly title: string;
   readonly p3Runs: P3Runs;
+  /** The place the reader was in when the page last closed, for the reload that reopens this chat. */
+  readonly resumePlace: ReadingPlace | null;
 }
 
 function ActiveThreadContent(props: ActiveThreadProps) {
@@ -541,6 +548,7 @@ function ActiveThreadReady({
   remote,
   title,
   p3Runs,
+  resumePlace,
   onLoadOlder,
   onLoadFullOutput,
   onRefreshAfterCommand,
@@ -1098,6 +1106,11 @@ function ActiveThreadReady({
                 <div className="h-full min-h-0" ref={transcriptRootRef}>
                   <ThreadShell
                     autoScroll
+                    readingPlace={{
+                      threadId,
+                      resumeAt: resumePlace,
+                      historyLoading: history.isLoading,
+                    }}
                     footer={area("threadFooter")}
                     onLoadOlder={onLoadOlder}
                     onLoadFullOutput={onLoadFullOutput}
@@ -1160,6 +1173,8 @@ function ConnectedApp({
   const overlay = useStableOverlayHost();
   const lastInstanceId = useRef<string | undefined>(undefined);
   const [folderText, setFolderText] = useState(() => readSessionValue(FOLDER_KEY, launchFolder));
+  // The place the reader was in when the page last closed: a reload that reopens the chat returns there.
+  const [resumePlace, setResumePlace] = useState<ReadingPlace | null>(null);
   const folder = FolderPath.safeParse(folderText).success ? FolderPath.parse(folderText) : null;
   const openSettings = useCallback(
     (threadId: ThreadId | null) => {
@@ -1249,7 +1264,12 @@ function ConnectedApp({
     if (!controller) return;
     const saved = ThreadId.safeParse(readSessionValue(THREAD_KEY, ""));
     if (!saved.success) return;
-    void controller.openExisting(saved.data).catch(() => writeSessionValue(THREAD_KEY, null));
+    // A reload returns the reader to the message they were reading. The place is read before the chat opens.
+    setResumePlace(readStoredReadingPlace(saved.data));
+    void controller
+      .openExisting(saved.data)
+      .catch(() => writeSessionValue(THREAD_KEY, null))
+      .finally(() => setResumePlace(null));
   }, [controller]);
   // The sidebar's list is fetched again after the person's message has been answered: omp writes a
   // new chat's file during its first turn, and a chat's title and time change with each turn. The
@@ -1400,6 +1420,7 @@ function ConnectedApp({
         client={client}
         folder={folder}
         history={history}
+        resumePlace={resumePlace}
         onLoadOlder={controller === null ? undefined : () => controller.loadOlder()}
         onLoadFullOutput={controller === null ? undefined : (id) => controller.loadFullOutput(id)}
         onRefreshAfterCommand={
