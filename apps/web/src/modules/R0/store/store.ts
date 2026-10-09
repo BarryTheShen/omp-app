@@ -595,6 +595,7 @@ function activeBranch(transcript: TranscriptState): readonly EntryId[] {
 function messageFromEntry(entry: TranscriptEntry): OmpMessage | undefined {
   if (!isRecord(entry.raw)) return undefined;
   if (entry.type === "custom_message") return customMessageFromEntry(entry.raw);
+  if (entry.type === "branch_summary") return branchSummaryFromEntry(entry.raw);
   if (entry.type !== "message") return undefined;
   const message = entry.raw.message;
   if (!isRecord(message) || typeof message.role !== "string") return undefined;
@@ -614,6 +615,25 @@ function customMessageFromEntry(raw: Record<string, unknown>): OmpMessage | unde
     display: raw.display === true,
     timestamp: time,
     ...(raw.details === undefined ? {} : { details: raw.details }),
+  }) as unknown as OmpMessage;
+}
+
+/**
+ * omp's branch summary: the summary of a branch someone left, with the id it left from. omp also
+ * writes one with an empty summary as an internal discard marker, which its own context skips
+ * (`packages/coding-agent/src/session/session-context.ts:410`), so an empty one is not a message.
+ */
+function branchSummaryFromEntry(raw: Record<string, unknown>): OmpMessage | undefined {
+  const { fromId, summary, timestamp } = raw;
+  if (typeof summary !== "string" || summary.length === 0) return undefined;
+  if (typeof fromId !== "string" || typeof timestamp !== "string") return undefined;
+  const time = Date.parse(timestamp);
+  if (Number.isNaN(time)) return undefined;
+  return cloneValue({
+    role: "branchSummary",
+    summary,
+    fromId,
+    timestamp: time,
   }) as unknown as OmpMessage;
 }
 

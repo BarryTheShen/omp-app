@@ -1,5 +1,5 @@
 import type { OmpWire } from "@omp-app/contracts";
-import { MarkdownContent } from "@/modules/U1/markdown";
+import { MarkdownContent, summaryWithFileLists } from "@/modules/U1/markdown";
 import { SessionEntryRow } from "@/modules/U1/rows";
 import { compactionMethodLabel, formatTokenCount } from "./models";
 
@@ -22,7 +22,7 @@ export function CompactionSummaryDivider({
   error,
 }: CompactionSummaryDividerProps) {
   const shortSummary = message.shortSummary?.trim();
-  const summary = message.summary.trim();
+  const summary = summaryWithFileLists(message.summary).trim();
 
   return (
     <div className="w-full" data-p7-compaction-divider>

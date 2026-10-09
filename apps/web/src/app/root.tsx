@@ -61,6 +61,7 @@ import {
   storedEntryId,
   useP3RunHandlers,
 } from "@/modules/P3/runs";
+import { BranchSummaryRow, branchSummaryOfRow } from "@/modules/P3/summary";
 import { QueueLaneBar } from "@/modules/P6/bar/bar";
 import { resolveQueueSubmitPolicy } from "@/modules/P6/composer/composer";
 import { createQueueAdapter } from "@/modules/P6/contract";
@@ -1069,18 +1070,23 @@ function ActiveThreadReady({
                     onLoadOlder={onLoadOlder}
                     onLoadFullOutput={onLoadFullOutput}
                     slots={{
-                      renderMessage: (message, renderNested) => (
-                        <MessageParts
-                          message={message}
-                          actions={rowActions(message)}
-                          renderNested={(part) =>
-                            part.messages === undefined
-                              ? undefined
-                              : renderNested?.(part.messages, part.toolCallId, part.toolName)
-                          }
-                          toolRenderers={toolRenderers}
-                        />
-                      ),
+                      renderMessage: (message, renderNested) => {
+                        const branchSummary = branchSummaryOfRow(message);
+                        if (branchSummary !== undefined)
+                          return <BranchSummaryRow message={message} summary={branchSummary} />;
+                        return (
+                          <MessageParts
+                            message={message}
+                            actions={rowActions(message)}
+                            renderNested={(part) =>
+                              part.messages === undefined
+                                ? undefined
+                                : renderNested?.(part.messages, part.toolCallId, part.toolName)
+                            }
+                            toolRenderers={toolRenderers}
+                          />
+                        );
+                      },
                       renderNested: (messages, taskId, toolName) => {
                         const parsedTaskId = ToolCallId.safeParse(taskId);
                         return (

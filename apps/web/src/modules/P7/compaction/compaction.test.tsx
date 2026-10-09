@@ -120,6 +120,18 @@ describe("P7 compaction and cache dividers", () => {
     ).toBeTruthy();
   });
 
+  test("shows the file names of omp's compaction summary as plain lists", () => {
+    const summary = "## Kept context\n\n<files>\n# src/\nparser.ts (Read)\nstore.ts (RW)\n</files>";
+    const { container } = render(
+      <CompactionSummaryDivider message={{ ...summaryMessage, summary }} />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Files read");
+    expect(text).toContain("src/parser.ts");
+    expect(text).toContain("src/store.ts");
+    expect(text).not.toContain("<files>");
+  });
+
   test("places an expandable safe summary at the compaction point with before and after counts", () => {
     const { container } = render(<CompactionSummaryDivider message={summaryMessage} />);
     expect(screen.getByRole("button", { name: "Conversation compacted remotely" })).toBeTruthy();

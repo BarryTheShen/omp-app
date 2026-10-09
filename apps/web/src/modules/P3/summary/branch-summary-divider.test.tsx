@@ -10,6 +10,23 @@ const message: OmpWire.BranchSummaryMessage = {
   timestamp: 1_759_600_000_000,
 };
 
+// omp's real shape: the preamble, the model's text, a blank line, then the <files> block.
+const OMP_SUMMARY = [
+  "User explored another conversation branch, then returned here.",
+  "Exploration summary:",
+  "",
+  "## Goal",
+  "Keep the parser stable.",
+  "",
+  "<files>",
+  "# src/",
+  "parser.ts (Read)",
+  "store.ts (RW)",
+  "# src/lib/",
+  "hash.ts (Write)",
+  "</files>",
+].join("\n");
+
 afterEach(cleanup);
 
 function disclosure(container: HTMLElement): HTMLDetailsElement {
@@ -59,5 +76,17 @@ describe("P3 branch summary divider", () => {
     expect(screen.getByText("No branch summary was provided.")).toBeTruthy();
     expect(container.textContent).not.toContain("entry-with-sensitive-label");
     expect(container.querySelector("[data-from-id='entry-with-sensitive-label']")).toBeTruthy();
+  });
+
+  test("shows the file names of omp's real branch summary as plain lists, not the raw block", () => {
+    const { container } = render(
+      <BranchSummaryDivider message={{ ...message, summary: OMP_SUMMARY }} />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("Files read");
+    expect(text).toContain("src/parser.ts");
+    expect(text).toContain("Files changed");
+    expect(text).toContain("src/lib/hash.ts");
+    expect(text).not.toContain("<files>");
   });
 });

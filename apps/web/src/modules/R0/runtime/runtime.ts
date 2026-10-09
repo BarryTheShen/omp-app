@@ -457,6 +457,15 @@ function convertRecord(
           },
         },
       } as unknown as ThreadMessageLike;
+    case "branchSummary":
+      // omp's branch summary: a divider row. P3 draws it from the summary and source kept in the metadata.
+      return {
+        role: "system",
+        id,
+        ...(createdAt ? { createdAt } : {}),
+        content: [textPart("")],
+        metadata: { custom: { ...metadata.custom, ompBranchSummary: message } },
+      } as unknown as ThreadMessageLike;
     case "bashExecution":
     case "pythonExecution":
       // The user's own `!` or `$` run: U2 normalizes omp's record and U1 draws its card from it.

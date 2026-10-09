@@ -2,7 +2,7 @@ import type { OmpWire } from "@omp-app/contracts";
 import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { MarkdownContent } from "@/modules/U1/markdown";
+import { MarkdownContent, summaryWithFileLists } from "@/modules/U1/markdown";
 
 export interface BranchSummaryDividerProps {
   readonly message: OmpWire.BranchSummaryMessage;
@@ -15,7 +15,7 @@ export interface BranchSummaryDividerProps {
  * reconciliation can keep the marker stable across reloads.
  */
 export function BranchSummaryDivider({ message }: BranchSummaryDividerProps) {
-  const summary = message.summary.trim();
+  const summary = summaryWithFileLists(message.summary).trim();
   const [open, setOpen] = useState(false);
 
   return (

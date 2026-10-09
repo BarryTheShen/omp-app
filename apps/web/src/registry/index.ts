@@ -14,6 +14,7 @@ import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { I1_SETTINGS_SECTIONS } from "../modules/I1/settings/descriptors";
 import { I5_SETTINGS_SECTIONS } from "../modules/I5/settings";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
+import { P3_MESSAGE_DESCRIPTORS } from "../modules/P3/descriptors";
 import { P4_DESCRIPTORS } from "../modules/P4/contract";
 import { P6_DESCRIPTORS } from "../modules/P6";
 import { R1_DESCRIPTORS } from "../modules/R1/descriptors";
@@ -98,6 +99,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...R1_DESCRIPTORS,
   ...D5_LIFECYCLE_COMMAND_DESCRIPTORS,
   ...N1_DESCRIPTORS,
+  ...P3_MESSAGE_DESCRIPTORS,
   ...P4_DESCRIPTORS,
   ...P6_DESCRIPTORS,
   ...I1_MCP_SERVER_DESCRIPTORS,

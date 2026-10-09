@@ -896,6 +896,70 @@ describe("OmpRuntimeStore", () => {
     expect(store.getSnapshot().messageOrder).toEqual([]);
   });
 
+  test("shows a branch_summary entry as a branch summary message, with its summary, source and time", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const summaryAt = "2026-10-05T00:00:02.000Z";
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "u1",
+          parentId: null,
+          timestamp: "2026-10-05T00:00:00.000Z",
+          message: { role: "user", content: "start two helpers", timestamp: 1 },
+        },
+        {
+          type: "branch_summary",
+          id: "b1",
+          parentId: "u1",
+          timestamp: summaryAt,
+          fromId: "u1-leaf",
+          summary: "## Goal\n\nKeep the parser stable.",
+        },
+        { type: "model_change", id: "m1", parentId: "b1", timestamp: summaryAt },
+      ],
+      "m1" as EntryId,
+    );
+    const snapshot = store.getSnapshot();
+    expect(snapshot.messageOrder).toEqual([`entry:${threadId}:u1`, `entry:${threadId}:b1`]);
+    expect(snapshot.messages[`entry:${threadId}:b1` as MessageKey]).toMatchObject({
+      status: "persisted",
+      entryId: "b1",
+      message: {
+        role: "branchSummary",
+        summary: "## Goal\n\nKeep the parser stable.",
+        fromId: "u1-leaf",
+        timestamp: Date.parse(summaryAt),
+      },
+    });
+  });
+
+  test("a branch_summary entry with an empty summary (omp's discard marker) is not a message", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "u1",
+          parentId: null,
+          timestamp: "2026-10-05T00:00:00.000Z",
+          message: { role: "user", content: "start", timestamp: 1 },
+        },
+        {
+          type: "branch_summary",
+          id: "b1",
+          parentId: "u1",
+          timestamp: "2026-10-05T00:00:01.000Z",
+          fromId: "u1",
+          summary: "",
+        },
+        { type: "model_change", id: "m1", parentId: "b1", timestamp: "2026-10-05T00:00:01.000Z" },
+      ],
+      "m1" as EntryId,
+    );
+    expect(store.getSnapshot().messageOrder).toEqual([`entry:${threadId}:u1`]);
+  });
+
   test("a live custom message pairs with its saved entry and shows once", () => {
     const store = new OmpRuntimeStore({ threadId });
     const noticeAt = Date.parse("2026-10-05T00:00:03.000Z");

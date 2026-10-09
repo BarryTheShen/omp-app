@@ -641,6 +641,26 @@ describe("R0.3 assistant-ui runtime", () => {
     }
   });
 
+  test("converts omp's branch summary into a system row that carries the summary for the divider", () => {
+    const message = {
+      role: "branchSummary",
+      summary: "## Goal\n\n<files>\n# src/\nparser.ts (Read)\n</files>",
+      fromId: "entry-left",
+      timestamp: 1_759_600_000_000,
+    } as unknown as OmpMessage;
+    const converted = convertMessage(
+      runtimeMessage(message, "entry:runtime-test-thread:summary") as RuntimeMessageView["record"],
+    );
+    expect(converted.role).toBe("system");
+    expect(converted.metadata?.custom).toMatchObject({
+      ompRole: "branchSummary",
+      ompBranchSummary: message,
+    });
+    expect(() =>
+      fromThreadMessageLike(converted, "summary", { type: "complete", reason: "unknown" }),
+    ).not.toThrow();
+  });
+
   test("shows a user's bash run as a system row that keeps omp's record for U1's card", () => {
     const run = {
       role: "bashExecution",
