@@ -60,10 +60,10 @@ export function TaskSubagentsScope({
   const lookup: TaskSubagentLookup | undefined =
     agents === null
       ? undefined
-      : (parentToolCallId) => {
+      : (parentToolCallId, workerIds) => {
           // Starting is idempotent: the first card that asks starts the roster, and the rest share that start.
           void agents.start().catch(() => undefined);
-          return agents.subagentsFor(parentToolCallId);
+          return agents.subagentsFor(parentToolCallId, workerIds);
         };
   return <TaskSubagentsContext.Provider value={lookup}>{children}</TaskSubagentsContext.Provider>;
 }

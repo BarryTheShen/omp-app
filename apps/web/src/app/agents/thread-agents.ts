@@ -24,8 +24,14 @@ export interface ThreadAgents {
   readonly roster: AgentRosterStore;
   /** Subscribes to progress and loads the roster on the first call; every later call waits for that same start. */
   start(): Promise<void>;
-  /** The workers a task call started, as the roster holds them now. */
-  subagentsFor(parentToolCallId: ToolCallId): readonly TaskSubagent[];
+  /**
+   * The workers a task call started: those the roster ties to the call, and those whose ids its result names
+   * (a worker that ended before the roster subscribed has no tie, only its id and its transcript).
+   */
+  subagentsFor(
+    parentToolCallId: ToolCallId,
+    workerIds?: readonly string[],
+  ): readonly TaskSubagent[];
   /** Releases the progress subscription and the roster. Calling it again does nothing. */
   dispose(): Promise<void>;
 }
@@ -67,13 +73,14 @@ export function createThreadAgents({
       }
       return starting;
     },
-    subagentsFor(parentToolCallId) {
+    subagentsFor(parentToolCallId, workerIds = []) {
       const snapshot = roster.getSnapshot();
       return snapshot.order
         .map((key) => snapshot.agents[key])
         .filter(
           (agent): agent is RosterAgent =>
-            agent !== undefined && agent.parentToolCallId === parentToolCallId,
+            agent !== undefined &&
+            (agent.parentToolCallId === parentToolCallId || workerIds.includes(agent.id)),
         )
         .map((agent) => {
           const cached = sources.get(agent.key);

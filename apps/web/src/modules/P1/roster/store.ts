@@ -162,14 +162,38 @@ export class AgentRosterStore {
 
   /**
    * Adds finished workers read from the chat's transcripts. Each keeps the moment it ended, so the
-   * same 24-hour and 100-entry retention as a live tombstone applies. A worker this connection
-   * already knows keeps its live record.
+   * same 24-hour and 100-entry retention as a live tombstone applies. A worker the roster already
+   * holds keeps its live record, except one it only saw as pending: its end may have come while the
+   * roster was not subscribed, so the transcript's end corrects it.
    */
   public adoptFinished(workers: readonly FinishedWorker[]): void {
     if (this.disposed) return;
     let changed = false;
     for (const worker of workers) {
-      if (this.latestById.has(worker.agent.id)) continue;
+      const knownKey = this.latestById.get(worker.agent.id);
+      const known = knownKey === undefined ? undefined : this.snapshot.agents[knownKey];
+      if (known !== undefined) {
+        if (known.status === "pending") {
+          // The transcript says how the worker ended; everything else the roster knew of it (its task call, its
+          // description, its index, its source and its metrics) stays, or the Agents tab would lose where it belongs.
+          const ended = createAgent(
+            {
+              ...known,
+              status: worker.agent.status,
+              lastUpdate: worker.agent.lastUpdate,
+              sessionFile: known.sessionFile ?? worker.agent.sessionFile,
+            },
+            known.key,
+            known.incarnation,
+            worker.endedAt,
+            known.lifecycleSeq,
+            known.progressSeq,
+            known.metrics,
+          );
+          changed = this.replaceAgent(known.key, ended) || changed;
+        }
+        continue;
+      }
       const incarnation = this.incarnationById.get(worker.agent.id) ?? 0;
       const key = this.makeKey(worker.agent.id, incarnation);
       this.latestById.set(worker.agent.id, key);

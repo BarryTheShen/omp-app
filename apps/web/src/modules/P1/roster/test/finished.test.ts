@@ -303,3 +303,24 @@ describe("a chat's finished workers, read through its live omp", () => {
     await expect(source.list()).rejects.toMatchObject({ appError: { code: "permission" } });
   });
 });
+
+describe("a chat whose session file omp has not written yet", () => {
+  test("lists no finished workers instead of failing the roster that asks for them", async () => {
+    const notWritten: SessionTranscriptFiles = {
+      listSubagents: async () => {
+        throw new AppFailure({
+          code: "not_found",
+          message: "Session file was not found",
+          retryable: false,
+        });
+      },
+      readSubagent: async () => page(),
+    };
+    const source = createFinishedWorkerSource({
+      threadId,
+      sessionFile: async () => chat,
+      files: notWritten,
+    });
+    await expect(source.list()).resolves.toEqual([]);
+  });
+});

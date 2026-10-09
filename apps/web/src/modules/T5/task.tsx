@@ -27,10 +27,14 @@ export interface TaskSubagent {
 }
 
 /**
- * The workers a task call started, found by the call's id (never by position). P1's roster and client
+ * The workers a task call started, found by the call's id (never by position) and by the ids its result names,
+ * so a worker that ended before the roster subscribed is still shown under its call. P1's roster and client
  * supply them. A task card with no lookup above it shows no transcript.
  */
-export type TaskSubagentLookup = (parentToolCallId: ToolCallId) => readonly TaskSubagent[];
+export type TaskSubagentLookup = (
+  parentToolCallId: ToolCallId,
+  workerIds?: readonly string[],
+) => readonly TaskSubagent[];
 
 export const TaskSubagentsContext = createContext<TaskSubagentLookup | undefined>(undefined);
 
@@ -44,7 +48,10 @@ export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRender
   const state =
     decoded?.ok === false ? malformedState(normalized, decoded.error.appError.message) : normalized;
   const lookup = useContext(TaskSubagentsContext);
-  const subagents = lookup === undefined ? [] : lookup(normalized.toolCallId);
+  const workerIds = [...(details?.progress ?? []), ...(details?.results ?? [])].map(
+    (worker) => worker.id,
+  );
+  const subagents = lookup === undefined ? [] : lookup(normalized.toolCallId, workerIds);
   return (
     <div className="min-w-0" data-slot="t5-task-card" data-testid="t5-task-card">
       <ToolCard

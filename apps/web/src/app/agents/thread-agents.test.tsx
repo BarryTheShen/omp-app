@@ -132,6 +132,67 @@ describe("ThreadAgents", () => {
     await agents.dispose();
   });
 
+  test("a task card finds a worker by the id its result names, even without a link to the call", async () => {
+    const omp = fakeOmp();
+    const agents = createThreadAgents({
+      threadId: threadA,
+      store: new OmpRuntimeStore({ threadId: threadA }),
+      session: omp.session,
+      files: unreadFiles,
+      capabilities: CAPABILITIES,
+    });
+    await agents.start();
+    const byId = agents.subagentsFor(ToolCallId.parse("call-2"), ["worker-1"]);
+    expect(byId.map(({ agent }) => agent.id)).toEqual(["worker-1"]);
+    expect(agents.subagentsFor(ToolCallId.parse("call-2"), ["another-worker"])).toEqual([]);
+    await agents.dispose();
+  });
+
+  test("a worker that ended before the roster subscribed is listed from its transcript, and found by its id", async () => {
+    const session = {
+      send: async (args: { command: { type: string } }) => {
+        if (args.command.type === "get_subagents") return { subagents: [] };
+        if (args.command.type === "get_state") return { sessionFile: "/workspace/.omp/chat.jsonl" };
+        throw new Error(`unexpected command ${args.command.type}`);
+      },
+      setSubagentSubscription: async (args: { level: string }) => ({ level: args.level }),
+    } as unknown as SubagentSession;
+    const files = {
+      listSubagents: async () => ({
+        transcripts: [
+          {
+            key: "chat/NestedProbe",
+            agentId: "NestedProbe",
+            parent: null,
+            sessionFile: "/workspace/.omp/NestedProbe.jsonl",
+            leafId: "entry-2",
+            entryCount: 2,
+            aborted: false,
+            status: "completed",
+            endedAt: "2026-10-09T00:00:00.000Z",
+            agent: "task",
+          },
+        ],
+      }),
+      readSubagent: async () => {
+        throw new Error("the roster only lists transcripts");
+      },
+    } as unknown as SessionTranscriptFiles;
+    const agents = createThreadAgents({
+      threadId: threadA,
+      store: new OmpRuntimeStore({ threadId: threadA }),
+      session,
+      capabilities: { ...CAPABILITIES, "host.session-files": { state: "available", via: "rpc" } },
+      files,
+    });
+    await agents.start();
+    const found = agents.subagentsFor(ToolCallId.parse("call-9"), ["NestedProbe"]);
+    expect(found.map(({ agent }) => ({ id: agent.id, status: agent.status }))).toEqual([
+      { id: "NestedProbe", status: "completed" },
+    ]);
+    await agents.dispose();
+  });
+
   test("disposing releases the progress subscription once, and a second dispose does nothing", async () => {
     const omp = fakeOmp();
     const agents = createThreadAgents({

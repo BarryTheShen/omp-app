@@ -281,6 +281,82 @@ realTest(
   },
 );
 
+/**
+ * Holds the answer to the roster's first setSubagentSubscription for `ms`: the roster is not subscribed until then,
+ * so a worker that starts and ends in the meantime is never announced to it, as on a busy machine.
+ */
+async function holdRosterSubscription(page: Page, ms: number): Promise<void> {
+  await page.routeWebSocket(/\/ws/, (ws) => {
+    const server = ws.connectToServer();
+    let subscribeCall: string | undefined;
+    let held = false;
+    ws.onMessage((message) => {
+      const frame = JSON.parse(String(message)) as Record<string, unknown>;
+      if (frame.type === "call" && frame.method === "setSubagentSubscription" && !held) {
+        subscribeCall = String(frame.id);
+      }
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      const frame = JSON.parse(String(message)) as Record<string, unknown>;
+      if (frame.type === "result" && subscribeCall !== undefined && frame.id === subscribeCall) {
+        held = true;
+        subscribeCall = undefined;
+        setTimeout(() => ws.send(message), ms);
+        return;
+      }
+      ws.send(message);
+    });
+  });
+}
+
+realTest(
+  "a worker that ended before the roster subscribed shows under its task card, with its transcript",
+  async ({ realApp }) => {
+    const page = await realApp.open({ beforeLoad: (page) => holdRosterSubscription(page, 5_000) });
+    const composer = await startChat(page);
+    // The chat has loaded (the thread shows its empty state, not "Loading conversation"): a prompt typed while it
+    // loads is lost when the draft loads.
+    await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 30_000 });
+    await sendPrompt(composer, "spawn_subagent");
+
+    // The card starts the roster, whose subscription is held until the worker has ended: the worker's end is
+    // only known from its transcript, and the card must show that end.
+    const card = page.getByTestId("t5-task-card");
+    await expect(card).toBeVisible({ timeout: 120_000 });
+    await expect(card.locator('[data-slot="t5-task-transcript"]')).toContainText("Read only", {
+      timeout: 60_000,
+    });
+    const progress = card.locator('[data-slot="t5-task-progress"]');
+    await expect(progress).toContainText("Completed");
+    await expect(progress).not.toContainText("Pending");
+    // The parent turn runs on after the worker ends (its job result, then its reply): wait for it to settle before
+    // the card is scrolled and shot, as the sibling specs do.
+    await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
+    // The thread runs on below the card: open the card and bring it into view, so each shot shows the worker.
+    const trigger = card.locator('[data-slot="u3-tool-card-trigger"]').first();
+    if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+    await card.scrollIntoViewIfNeeded();
+    await settle(page);
+    await page.screenshot({
+      path: join(screenshots, "app-panels-finished-worker-light.png"),
+    });
+    await darkLook(page);
+    await card.scrollIntoViewIfNeeded();
+    await settle(page);
+    await page.screenshot({
+      path: join(screenshots, "app-panels-finished-worker-dark.png"),
+    });
+    await page.setViewportSize(NARROW);
+    await card.scrollIntoViewIfNeeded();
+    await settle(page);
+    await page.screenshot({
+      path: join(screenshots, "app-panels-finished-worker-narrow.png"),
+    });
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
 realTest(
   "the four tabs stay inside the sidebar at 1280 px; only the history panel draws Close, and it closes its tab",
   async ({ realApp }) => {
