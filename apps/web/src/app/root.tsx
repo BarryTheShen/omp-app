@@ -83,7 +83,7 @@ import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import { ComposerSurface } from "@/modules/U2/composer";
 import type { AttachmentAdapter, PromptIntent, SubmitPolicy } from "@/modules/U2/contract";
-import { createDraftStoreAdapter, DraftController } from "@/modules/U2/drafts";
+import { createDraftStoreAdapter, type DraftController, useChatDraft } from "@/modules/U2/drafts";
 import { useIsRecalledPrompt } from "@/modules/U2/history";
 import { ModeIndicator } from "@/modules/U2/modes";
 import { NestedTranscript } from "@/modules/U3/tool-card/nested";
@@ -452,19 +452,15 @@ function DraftComposer({
   useEffect(() => {
     if (snapshot.status !== "ready" || hydratedFor.current === controller) return;
     hydratedFor.current = controller;
-    if (snapshot.text !== text) aui.composer.setText(snapshot.text);
+    // The clear above emptied the composer, so the controller's text is written back even when it equals the
+    // composer text this render read: that read is stale by now, and skipping the write would lose the draft.
+    aui.composer.setText(snapshot.text);
     void manager.restore(snapshot.attachments).catch(() => undefined);
-  }, [
-    aui.composer,
-    controller,
-    manager,
-    snapshot.attachments,
-    snapshot.status,
-    snapshot.text,
-    text,
-  ]);
+  }, [aui.composer, controller, manager, snapshot.attachments, snapshot.status, snapshot.text]);
   const isRecalledPrompt = useIsRecalledPrompt();
-  useEffect(() => {
+  // A layout effect: the typed text reaches the controller before the browser paints, so a move that hands off the
+  // controller's text never misses what the person has just typed.
+  useLayoutEffect(() => {
     if (hydratedFor.current !== controller) return;
     // A prompt Up or Down recalled (U2.5) is not the draft: the saved draft stays what was typed.
     if (isRecalledPrompt(text)) return;
@@ -836,15 +832,16 @@ function ActiveThreadReady({
     [],
   );
   useEffect(() => () => todoStore.dispose(), [todoStore]);
-  const draftController = useMemo(
-    () =>
-      new DraftController({
-        store: createDraftStoreAdapter(client),
-        scope: { kind: "thread", threadId },
-        lifecycle: typeof window === "undefined" ? undefined : window,
-      }),
-    [client, threadId],
-  );
+  const draftStore = useMemo(() => createDraftStoreAdapter(client), [client]);
+  // The composer's draft: this chat's own draft once it has messages, the folder's new-chat draft before that.
+  const chatDraft = useChatDraft({
+    draftStore,
+    folder,
+    threadId,
+    messages: store,
+    loaded: !history.isLoading,
+  });
+  const draftController = chatDraft.controller;
   const setEditorText = useCallback(
     (text: string) => draftController.setDraft(text, attachmentManager.toDraftRefs()),
     [attachmentManager, draftController],
@@ -872,7 +869,7 @@ function ActiveThreadReady({
       hasAttachments: attachmentManager.toDraftRefs().length > 0,
       provider: slashProvider,
     });
-    await draftController.submit(intent, (nextIntent) =>
+    await chatDraft.submit(intent, (nextIntent) =>
       route === null
         ? runtimeController.submitPrompt({
             ...nextIntent,

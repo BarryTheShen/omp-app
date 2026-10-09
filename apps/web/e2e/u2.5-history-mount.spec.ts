@@ -136,7 +136,10 @@ realTest(
     testInfo.setTimeout(180_000);
     const page = await realApp.open();
     const composer = await startChat(page);
-    await sendPrompt(composer, "pick :sm");
+    // ":sm" opens the emoji list, and Enter then chooses an emoji instead of sending (#818): close the list first.
+    await composer.fill("pick :sm");
+    await composer.press("Escape");
+    await composer.press("Enter");
     await expectReplies(page, 1);
 
     await composer.focus();

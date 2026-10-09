@@ -1,0 +1,149 @@
+import { FolderPath, ThreadId } from "@omp-app/contracts";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+import { describe, expect, test } from "vitest";
+import type { PromptIntent } from "../../R0/runtime/runtime";
+import { ScopedDraftStore } from "./test-support";
+import type { ChatMessagesSource } from "./use-chat-draft";
+import { useChatDraft } from "./use-chat-draft";
+
+/** A chat's message list the test changes the way the runtime store does, with listeners told. */
+function messageList(initial: readonly string[]): ChatMessagesSource & {
+  add(message: string): void;
+} {
+  let order = initial;
+  const listeners = new Set<() => void>();
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    getSnapshot() {
+      return { messageOrder: order };
+    },
+    add(message) {
+      order = [...order, message];
+      for (const listener of listeners) listener();
+    },
+  };
+}
+
+const folder = FolderPath.parse("/workspace/app");
+const prompt: PromptIntent = { mode: "prompt", text: "hello", delivery: "new" };
+
+describe("useChatDraft", () => {
+  test("a new chat shows the folder's new-chat draft, and follows the chat to its own draft once it has a message", async () => {
+    const store = new ScopedDraftStore();
+    const messages = messageList([]);
+    const { result, rerender } = renderHook(
+      ({ loaded }: { readonly loaded: boolean }) =>
+        useChatDraft({
+          draftStore: store,
+          folder,
+          threadId: ThreadId.parse("chat-h"),
+          messages,
+          loaded,
+        }),
+      { initialProps: { loaded: false } },
+    );
+    expect(result.current.controller.getSnapshot().scope).toEqual({
+      kind: "thread",
+      threadId: "chat-h",
+    });
+
+    rerender({ loaded: true });
+    await waitFor(() =>
+      expect(result.current.controller.getSnapshot().scope).toEqual({ kind: "folder", folder }),
+    );
+
+    act(() => messages.add("first message"));
+    await waitFor(() =>
+      expect(result.current.controller.getSnapshot().scope).toEqual({
+        kind: "thread",
+        threadId: "chat-h",
+      }),
+    );
+  });
+
+  test("a prompt sent from a new chat is sent through the new-chat draft, and the chat is its own afterwards", async () => {
+    const store = new ScopedDraftStore();
+    const messages = messageList([]);
+    const { result } = renderHook(() =>
+      useChatDraft({
+        draftStore: store,
+        folder,
+        threadId: ThreadId.parse("chat-i"),
+        messages,
+        loaded: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.controller.getSnapshot().scope).toEqual({ kind: "folder", folder }),
+    );
+
+    await act(async () => {
+      await result.current.submit(prompt, async () => {
+        messages.add("hello");
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.controller.getSnapshot().scope).toEqual({
+        kind: "thread",
+        threadId: "chat-i",
+      }),
+    );
+  });
+
+  test("a new chat still moves to the folder draft under StrictMode, which runs each effect's cleanup and setup again", async () => {
+    const store = new ScopedDraftStore();
+    const messages = messageList([]);
+    const { result } = renderHook(
+      () =>
+        useChatDraft({
+          draftStore: store,
+          folder,
+          threadId: ThreadId.parse("chat-s"),
+          messages,
+          loaded: true,
+        }),
+      { wrapper: StrictMode },
+    );
+    await waitFor(() =>
+      expect(result.current.controller.getSnapshot().scope).toEqual({ kind: "folder", folder }),
+    );
+  });
+
+  test("the text typed in a new chat is there in the next new chat after switching chats", async () => {
+    const store = new ScopedDraftStore();
+    const messages = messageList([]);
+    const { result, rerender } = renderHook(
+      ({ threadId }: { readonly threadId: string }) =>
+        useChatDraft({
+          draftStore: store,
+          folder,
+          threadId: ThreadId.parse(threadId),
+          messages,
+          loaded: true,
+        }),
+      { initialProps: { threadId: "chat-q" } },
+    );
+    await waitFor(() =>
+      expect(result.current.controller.getSnapshot().scope).toEqual({ kind: "folder", folder }),
+    );
+    act(() => result.current.controller.setDraft("unsent in chat q", []));
+
+    // Switching chats: the composer disposes the controller it holds, which saves its text first.
+    await result.current.controller.dispose();
+    rerender({ threadId: "chat-r" });
+
+    await waitFor(() =>
+      expect(result.current.controller.getSnapshot()).toMatchObject({
+        scope: { kind: "folder", folder },
+        text: "unsent in chat q",
+      }),
+    );
+  });
+});

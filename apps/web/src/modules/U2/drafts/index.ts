@@ -1,4 +1,9 @@
 export type {
+  ChatDraftObservation,
+  ChatDraftOptions,
+} from "./chat-draft";
+export { ChatDraft } from "./chat-draft";
+export type {
   DraftConflict,
   DraftControllerOptions,
   DraftLifecycleTarget,
@@ -7,5 +12,8 @@ export type {
   DraftStatus,
   DraftStoreAdapter,
   DraftTimer,
+  HeldDraft,
 } from "./drafts";
 export { createDraftStoreAdapter, DraftController } from "./drafts";
+export type { ChatMessagesSource, UseChatDraftOptions, UseChatDraftResult } from "./use-chat-draft";
+export { useChatDraft } from "./use-chat-draft";

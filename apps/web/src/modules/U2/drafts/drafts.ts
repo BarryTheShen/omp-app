@@ -18,6 +18,36 @@ type DraftCallOptions = Pick<PortCallOptions, "signal">;
 
 const AUTOSAVE_MS = 10_000;
 
+/**
+ * Writes this app is still making, by scope. A controller that loads a scope waits for them first, so a
+ * draft flushed as the person leaves a chat is the one the next chat that opens the same scope reads.
+ */
+const pendingWrites = new Map<string, Promise<void>>();
+
+function trackWrite<T>(scope: DraftScope, write: Promise<T>): Promise<T> {
+  const key = draftScopeStream(scope);
+  const settled = write.then(
+    () => undefined,
+    () => undefined,
+  );
+  pendingWrites.set(key, settled);
+  void settled.then(() => {
+    if (pendingWrites.get(key) === settled) pendingWrites.delete(key);
+  });
+  return write;
+}
+
+async function settledWrites(scope: DraftScope): Promise<void> {
+  await pendingWrites.get(draftScopeStream(scope));
+}
+
+/** What a scope held, handed to another scope when the chat's draft moves. */
+export interface HeldDraft {
+  readonly text: string;
+  readonly attachments: readonly AttachmentRef[];
+  readonly failedSends: readonly FailedSend[];
+}
+
 export interface DraftStoreAdapter {
   readonly get: (
     args: { readonly scope: DraftScope },
@@ -193,6 +223,7 @@ export class DraftController {
   public async load(): Promise<DraftSnapshot> {
     this.setState({ status: "loading", error: null });
     try {
+      await settledWrites(this.scope);
       const result = await this.store.get({ scope: this.scope });
       if (this.snapshot.dirty) {
         // The person typed while this was loading. Their text is newer than the stored draft, so it
@@ -274,6 +305,77 @@ export class DraftController {
     this.setDraft(text, attachments);
   }
 
+  /**
+   * Empties this scope and returns what it held, so the chat's draft can move to another scope with
+   * nothing left here to reappear later. Waits for this scope's writes in flight first, so the revision
+   * it removes is the current one.
+   */
+  public async handOff(): Promise<HeldDraft> {
+    await settledWrites(this.scope);
+    if (this.snapshot.conflict !== null) {
+      throw new AppFailure({
+        code: "conflict",
+        message: "The draft has a conflict to resolve before it can move",
+        retryable: true,
+      });
+    }
+    this.clearTimer();
+    const held: HeldDraft = {
+      text: this.snapshot.text,
+      attachments: [...this.snapshot.attachments],
+      failedSends: [...this.snapshot.failedSends],
+    };
+    if (this.snapshot.revision !== null) {
+      const result = await trackWrite(
+        this.scope,
+        this.store.clear({ scope: this.scope, expectedRevision: this.snapshot.revision }),
+      );
+      if (!result.cleared) {
+        throw new AppFailure({
+          code: "conflict",
+          message: "The draft changed in another tab before it could move",
+          retryable: true,
+        });
+      }
+    }
+    this.setState({
+      text: "",
+      attachments: [],
+      failedSends: [],
+      revision: null,
+      dirty: false,
+      conflict: null,
+      status: "ready",
+      error: null,
+    });
+    return held;
+  }
+
+  /** Adds a draft that moved here from another scope; the text already here stays first. */
+  public adopt(held: HeldDraft): void {
+    if (held.text === "" && held.attachments.length === 0 && held.failedSends.length === 0) return;
+    const text =
+      this.snapshot.text === ""
+        ? held.text
+        : held.text === ""
+          ? this.snapshot.text
+          : `${this.snapshot.text}\n\n${held.text}`;
+    this.setState({
+      text,
+      attachments: [...this.snapshot.attachments, ...held.attachments],
+      failedSends: [...this.snapshot.failedSends, ...held.failedSends],
+      dirty: true,
+      status: "ready",
+      error: null,
+    });
+    this.scheduleSave();
+  }
+
+  /** Reports a failed move into or out of this scope through the status the composer already shows. */
+  public failWith(error: unknown): void {
+    this.setState({ status: "error", error: failure(error, "Moving the draft failed") });
+  }
+
   public async flush(): Promise<void> {
     this.clearTimer();
     if (!this.snapshot.dirty || this.snapshot.conflict !== null) return;
@@ -289,21 +391,36 @@ export class DraftController {
     this.setDraft(text, intent.attachmentRefs ?? []);
     try {
       await submitPrompt(intent);
-      await this.clearAfterAdmission();
+      await this.clearAfterAdmission(intent.text);
     } catch (error) {
       await this.recordFailedSend(intent, text, error);
       throw error;
     }
   }
 
-  public async clearAfterAdmission(): Promise<void> {
+  public async clearAfterAdmission(sentText?: string): Promise<void> {
     if (this.snapshot.revision === null && !this.snapshot.dirty) return;
+    // Text typed while the prompt was being admitted is not part of it: it stays, and autosave stores it.
+    if (sentText !== undefined && this.snapshot.text !== sentText) return;
     this.clearTimer();
-    try {
-      const result = await this.store.clear({
-        scope: this.scope,
-        expectedRevision: this.snapshot.revision,
+    if (this.snapshot.revision === null) {
+      // Never stored: there is nothing to remove, and the store would answer "not cleared".
+      this.setState({
+        text: "",
+        attachments: [],
+        failedSends: [],
+        dirty: false,
+        conflict: null,
+        status: "ready",
+        error: null,
       });
+      return;
+    }
+    try {
+      const result = await trackWrite(
+        this.scope,
+        this.store.clear({ scope: this.scope, expectedRevision: this.snapshot.revision }),
+      );
       if (!result.cleared) {
         await this.handleConflict("The draft changed before it could be cleared");
         return;
@@ -415,11 +532,14 @@ export class DraftController {
     );
     this.setState({ status: "saving", error: null });
     try {
-      const saved = await this.store.save({
-        scope: this.scope,
-        draft: input,
-        expectedRevision: this.snapshot.revision,
-      });
+      const saved = await trackWrite(
+        this.scope,
+        this.store.save({
+          scope: this.scope,
+          draft: input,
+          expectedRevision: this.snapshot.revision,
+        }),
+      );
       this.setState({
         scope: saved.scope,
         status: "ready",

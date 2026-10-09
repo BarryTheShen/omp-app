@@ -1,5 +1,5 @@
 import type { AttachmentRef, Draft, DraftChanged, DraftScope, Revision } from "@omp-app/contracts";
-import { AppFailure } from "@omp-app/contracts";
+import { AppFailure, FolderPath } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
 import {
@@ -8,6 +8,7 @@ import {
   type DraftStoreAdapter,
   type DraftTimer,
 } from "./drafts";
+import { ScopedDraftStore } from "./test-support";
 
 const scope: DraftScope = { kind: "thread", threadId: "thread-drafts" as never };
 const attachment: AttachmentRef = {
@@ -290,5 +291,71 @@ describe("U2.4 DraftController", () => {
     await controller.resolveConflict("remote");
     store.emit({ ...remote, text: "newer", revision: "r-newer" as Revision });
     expect(controller.getSnapshot()).toMatchObject({ text: "newer", dirty: false });
+  });
+});
+
+const idleTimers: DraftTimer = { setTimeout: () => undefined, clearTimeout: () => undefined };
+
+describe("DraftController: writes and clears across controllers", () => {
+  test("clearing a draft that was never stored resets it locally, without a conflict", async () => {
+    const store = new ScopedDraftStore();
+    const controller = new DraftController({
+      store,
+      scope: { kind: "folder", folder: FolderPath.parse("/workspace/app") },
+      timers: idleTimers,
+    });
+    await controller.load();
+    controller.setDraft("sent before the autosave", []);
+
+    await controller.clearAfterAdmission("sent before the autosave");
+
+    expect(controller.getSnapshot()).toMatchObject({ text: "", status: "ready", conflict: null });
+    expect(store.clears).toEqual([]);
+  });
+
+  test("a load waits for a save still in flight to the same scope, so it reads what was saved", async () => {
+    class SlowSaveStore extends ScopedDraftStore {
+      release: () => void = () => undefined;
+      private readonly gate = new Promise<void>((resolve) => {
+        this.release = resolve;
+      });
+      override async save(args: Parameters<ScopedDraftStore["save"]>[0]): Promise<Draft> {
+        await this.gate;
+        return super.save(args);
+      }
+    }
+    const store = new SlowSaveStore();
+    const scope: DraftScope = { kind: "folder", folder: FolderPath.parse("/workspace/app") };
+    const writer = new DraftController({ store, scope, timers: idleTimers });
+    const reader = new DraftController({ store, scope, timers: idleTimers });
+    await writer.load();
+    writer.setDraft("saved late", []);
+
+    const saving = writer.flush();
+    const loading = reader.load();
+    store.release();
+    await Promise.all([saving, loading]);
+
+    expect(reader.getSnapshot().text).toBe("saved late");
+  });
+
+  test("handOff returns what the scope held, including text typed after the last save, and leaves nothing stored", async () => {
+    const store = new ScopedDraftStore();
+    const controller = new DraftController({
+      store,
+      scope: { kind: "folder", folder: FolderPath.parse("/workspace/app") },
+      timers: idleTimers,
+    });
+    await controller.load();
+    controller.setDraft("held text", [attachment]);
+    await controller.flush();
+    controller.setDraft("held text, typed later", [attachment]);
+
+    const held = await controller.handOff();
+
+    expect(held.text).toBe("held text, typed later");
+    expect(held.attachments).toEqual([attachment]);
+    expect(store.clears).toHaveLength(1);
+    expect(controller.getSnapshot()).toMatchObject({ text: "", revision: null, dirty: false });
   });
 });

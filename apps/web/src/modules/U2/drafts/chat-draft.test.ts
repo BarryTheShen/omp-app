@@ -1,0 +1,244 @@
+import { AppFailure, type DraftScope, FolderPath, ThreadId } from "@omp-app/contracts";
+import { describe, expect, test, vi } from "vitest";
+import type { PromptIntent } from "../../R0/runtime/runtime";
+import { ChatDraft } from "./chat-draft";
+import type { DraftStoreAdapter, DraftTimer } from "./drafts";
+import { ScopedDraftStore } from "./test-support";
+
+// Autosave never fires in these tests: every write happens at a step the test takes, so each one is exact.
+const noTimers: DraftTimer = { setTimeout: () => undefined, clearTimeout: () => undefined };
+const folder = FolderPath.parse("/workspace/app");
+const newChatDraft: DraftScope = { kind: "folder", folder };
+
+function threadScope(id: string): DraftScope {
+  return { kind: "thread", threadId: ThreadId.parse(id) };
+}
+
+function chatFor(store: DraftStoreAdapter, id: string): ChatDraft {
+  return new ChatDraft({ store, folder, threadId: ThreadId.parse(id), timers: noTimers });
+}
+
+/** A prompt as the composer sends it, with the text the draft held. */
+function prompt(text: string): PromptIntent {
+  return { mode: "prompt", text, delivery: "new" };
+}
+
+describe("ChatDraft: a chat with no prompt yet", () => {
+  test("keeps its text in the folder's new-chat draft, not in a draft of its own", async () => {
+    const store = new ScopedDraftStore();
+    const chat = chatFor(store, "chat-b");
+    await chat.controller.load();
+    chat.controller.setDraft("unsent draft B", []);
+
+    chat.observe({ loaded: true, hasMessages: false });
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft));
+    expect(chat.controller.getSnapshot().text).toBe("unsent draft B");
+    await chat.controller.flush();
+
+    expect(store.text(newChatDraft)).toBe("unsent draft B");
+    expect(store.text(threadScope("chat-b"))).toBeUndefined();
+  });
+
+  test("the next new chat in the folder shows the text the last unsent chat left", async () => {
+    const store = new ScopedDraftStore();
+    const first = chatFor(store, "chat-b");
+    await first.controller.load();
+    first.observe({ loaded: true, hasMessages: false });
+    await vi.waitFor(() => expect(first.controller.getSnapshot().scope).toEqual(newChatDraft));
+    first.controller.setDraft("unsent draft B", []);
+    await first.controller.flush();
+    first.dispose();
+
+    const next = chatFor(store, "chat-c");
+    await next.controller.load();
+    next.observe({ loaded: true, hasMessages: false });
+
+    await vi.waitFor(() => expect(next.controller.getSnapshot().text).toBe("unsent draft B"));
+    expect(next.controller.getSnapshot().scope).toEqual(newChatDraft);
+  });
+
+  test("text typed while its history loads moves to the folder draft, after the text already there", async () => {
+    const store = new ScopedDraftStore();
+    await store.save({
+      scope: newChatDraft,
+      draft: { text: "unsent draft B", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const chat = chatFor(store, "chat-d");
+    await chat.controller.load();
+    chat.observe({ loaded: false, hasMessages: false });
+    expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-d"));
+    chat.controller.setDraft("typed while loading", []);
+
+    chat.observe({ loaded: true, hasMessages: false });
+
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft));
+    expect(chat.controller.getSnapshot().text).toBe("unsent draft B\n\ntyped while loading");
+    await chat.controller.flush();
+    expect(store.text(newChatDraft)).toBe("unsent draft B\n\ntyped while loading");
+    expect(store.text(threadScope("chat-d"))).toBeUndefined();
+  });
+
+  test("a folder with no chat open has no new-chat draft, so the chat keeps its own", async () => {
+    const store = new ScopedDraftStore();
+    const chat = new ChatDraft({
+      store,
+      folder: null,
+      threadId: ThreadId.parse("chat-e"),
+      timers: noTimers,
+    });
+    await chat.controller.load();
+    chat.controller.setDraft("own draft", []);
+    chat.observe({ loaded: true, hasMessages: false });
+    await chat.controller.flush();
+    expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-e"));
+    expect(store.text(threadScope("chat-e"))).toBe("own draft");
+  });
+});
+
+describe("ChatDraft: a chat that has messages", () => {
+  test("keeps its own draft and never reads the new-chat draft", async () => {
+    const store = new ScopedDraftStore();
+    await store.save({
+      scope: newChatDraft,
+      draft: { text: "unsent draft B", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const chat = chatFor(store, "chat-a");
+    await chat.controller.load();
+    chat.observe({ loaded: true, hasMessages: true });
+    expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-a"));
+    expect(chat.controller.getSnapshot().text).toBe("");
+
+    chat.controller.setDraft("A draft", []);
+    await chat.controller.flush();
+
+    expect(store.text(threadScope("chat-a"))).toBe("A draft");
+    expect(store.text(newChatDraft)).toBe("unsent draft B");
+  });
+
+  test("a prompt sent from the new-chat draft clears it, and later drafts are the chat's own", async () => {
+    const store = new ScopedDraftStore();
+    const chat = chatFor(store, "chat-d");
+    await chat.controller.load();
+    chat.controller.setDraft("draft to send", []);
+    chat.observe({ loaded: true, hasMessages: false });
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft));
+    await chat.controller.flush();
+
+    let scopeWhileSending: DraftScope | undefined;
+    await chat.submit(prompt("draft to send"), async () => {
+      scopeWhileSending = chat.controller.getSnapshot().scope;
+      // The runtime store now holds the sent message, as the hook reports it.
+      chat.observe({ loaded: true, hasMessages: true });
+    });
+
+    expect(scopeWhileSending).toEqual(newChatDraft);
+    await vi.waitFor(() =>
+      expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-d")),
+    );
+    expect(store.text(newChatDraft)).toBeUndefined();
+    chat.controller.setDraft("follow-up", []);
+    await chat.controller.flush();
+    expect(store.text(threadScope("chat-d"))).toBe("follow-up");
+    expect(store.text(newChatDraft)).toBeUndefined();
+  });
+
+  test("text typed while its first prompt is admitted goes with the chat, not back to the new-chat draft", async () => {
+    const store = new ScopedDraftStore();
+    const chat = chatFor(store, "chat-f");
+    await chat.controller.load();
+    chat.controller.setDraft("first prompt", []);
+    chat.observe({ loaded: true, hasMessages: false });
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft));
+    await chat.controller.flush();
+
+    await chat.submit(prompt("first prompt"), async () => {
+      chat.controller.setDraft("typed during the send", []);
+      chat.observe({ loaded: true, hasMessages: true });
+    });
+
+    await vi.waitFor(() =>
+      expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-f")),
+    );
+    expect(chat.controller.getSnapshot().text).toBe("typed during the send");
+    await chat.controller.flush();
+    expect(store.text(threadScope("chat-f"))).toBe("typed during the send");
+    expect(store.text(newChatDraft)).toBeUndefined();
+  });
+});
+
+describe("ChatDraft: a move that fails", () => {
+  test("reports the failure on the draft the composer holds, and keeps the text where it was", async () => {
+    class UnreadableFolderStore extends ScopedDraftStore {
+      override async get(args: { readonly scope: DraftScope }) {
+        if (args.scope.kind === "folder") {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The store is down",
+            retryable: true,
+          });
+        }
+        return super.get(args);
+      }
+    }
+    const chat = chatFor(new UnreadableFolderStore(), "chat-g");
+    await chat.controller.load();
+    chat.controller.setDraft("kept text", []);
+
+    chat.observe({ loaded: true, hasMessages: false });
+
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().status).toBe("error"));
+    expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-g"));
+    expect(chat.controller.getSnapshot().text).toBe("kept text");
+  });
+});
+
+describe("ChatDraft: a prompt sent while its draft moves", () => {
+  test("waits for the move, then sends from the draft that now holds the text, and leaves nothing behind", async () => {
+    class GatedClearStore extends ScopedDraftStore {
+      private readonly clearGate = Promise.withResolvers<void>();
+      releaseClear(): void {
+        this.clearGate.resolve();
+      }
+      override async clear(args: Parameters<ScopedDraftStore["clear"]>[0]) {
+        if (args.scope.kind === "folder") await this.clearGate.promise;
+        return super.clear(args);
+      }
+    }
+    const store = new GatedClearStore();
+    await store.save({
+      scope: newChatDraft,
+      draft: { text: "queue two", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const chat = chatFor(store, "chat-v");
+    await chat.controller.load();
+    chat.observe({ loaded: true, hasMessages: false });
+    await vi.waitFor(() =>
+      expect(chat.controller.getSnapshot()).toMatchObject({
+        scope: newChatDraft,
+        text: "queue two",
+      }),
+    );
+
+    // The first prompt lands, so the draft starts to move to the chat; a follow-up is sent before it finishes.
+    chat.observe({ loaded: true, hasMessages: true });
+    const sentFrom: { scope: DraftScope; text: string }[] = [];
+    const sending = chat.submit(prompt("queue two"), async () => {
+      const snapshot = chat.controller.getSnapshot();
+      sentFrom.push({ scope: snapshot.scope, text: snapshot.text });
+    });
+    store.releaseClear();
+    await sending;
+
+    expect(sentFrom).toEqual([{ scope: threadScope("chat-v"), text: "queue two" }]);
+    expect(chat.controller.getSnapshot()).toMatchObject({
+      scope: threadScope("chat-v"),
+      text: "",
+      status: "ready",
+    });
+    expect(store.text(newChatDraft)).toBeUndefined();
+    expect(store.text(threadScope("chat-v"))).toBeUndefined();
+  });
+});
