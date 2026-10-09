@@ -100,10 +100,12 @@ function renderPart(
   part: EnrichedPartState,
   toolRenderers: ToolRendererMap | undefined,
   renderNested: MessagePartsProps["renderNested"],
+  /** A person's own message keeps the line breaks it was typed with. */
+  lineBreaks: boolean,
 ): ReactNode {
   switch (part.type) {
     case "text":
-      return <MarkdownText />;
+      return <MarkdownText lineBreaks={lineBreaks} />;
     case "reasoning":
       return <Reasoning {...part} />;
     case "image":
@@ -205,7 +207,7 @@ export function MessageParts({
               if (isTurnGroup(part, "group-reasoning"))
                 return <ReasoningGroup group={part}>{children}</ReasoningGroup>;
               if (part.type === "indicator") return null;
-              return renderPart(part as EnrichedPartState, toolRenderers, renderNested);
+              return renderPart(part as EnrichedPartState, toolRenderers, renderNested, isUser);
             }}
           </MessagePrimitive.GroupedParts>
         )}

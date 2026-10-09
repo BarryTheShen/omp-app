@@ -5,6 +5,7 @@ import {
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
 import { type FC, type HTMLAttributes, memo, type ReactNode } from "react";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { SafeImage } from "../media";
@@ -12,6 +13,8 @@ import { CodeView } from "./code-view";
 
 export type MarkdownTextProps = Partial<TextMessagePartProps> & {
   readonly variant?: "default" | "compact";
+  /** Keeps each line break the text has as a line break, as a person's own message shows it. */
+  readonly lineBreaks?: boolean;
 };
 
 function CodeBlock({ className, children, ...props }: HTMLAttributes<HTMLElement>) {
@@ -150,13 +153,15 @@ const compactMarkdownComponents = memoizeMarkdownComponents({
 });
 
 /** U1.4's one Markdown implementation: assistant-ui's react-markdown primitive with safe components. */
-export const MarkdownText: FC<MarkdownTextProps> = memo(({ variant = "default", ...props }) => (
-  <MarkdownTextPrimitive
-    {...props}
-    components={variant === "compact" ? compactMarkdownComponents : markdownComponents}
-    defer={false}
-    remarkPlugins={[remarkGfm]}
-    skipHtml
-    smooth={false}
-  />
-));
+export const MarkdownText: FC<MarkdownTextProps> = memo(
+  ({ variant = "default", lineBreaks = false, ...props }) => (
+    <MarkdownTextPrimitive
+      {...props}
+      components={variant === "compact" ? compactMarkdownComponents : markdownComponents}
+      defer={false}
+      remarkPlugins={lineBreaks ? [remarkGfm, remarkBreaks] : [remarkGfm]}
+      skipHtml
+      smooth={false}
+    />
+  ),
+);

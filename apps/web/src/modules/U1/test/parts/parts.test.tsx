@@ -180,4 +180,40 @@ describe("U1.3 standalone parts", () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
   });
+
+  test("keeps the line breaks in a person's own message and nowhere else", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "user-1",
+          message: assistantMessage("user", "line one\nline two"),
+        },
+      },
+      2,
+    );
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "assistant-1",
+          message: assistantMessage("assistant", [{ type: "text", text: "soft one\nsoft two" }]),
+        },
+      },
+      3,
+    );
+    render(<RuntimeThread store={store} />);
+
+    const userText = document.querySelector('[data-message-surface="user-bubble"] p');
+    expect(userText).not.toBeNull();
+    // The typed newline becomes a <br>; the newline text after it collapses in the browser.
+    expect(userText?.innerHTML).toBe("line one<br>\nline two");
+    const answerText = document.querySelector('[data-message-surface="assistant-text"] p');
+    expect(answerText?.innerHTML).toBe("soft one\nsoft two");
+    expect(answerText?.querySelector("br")).toBeNull();
+  });
 });
