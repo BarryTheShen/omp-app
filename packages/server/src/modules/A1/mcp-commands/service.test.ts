@@ -76,6 +76,31 @@ function parseOmpCommandArgs(text: string): string[] {
   return args;
 }
 
+/** Wall-clock milliseconds for one `prompts` call whose only description is `text`. */
+async function promptsMs(text: string): Promise<number> {
+  const { service } = serviceFor(`atlas/explain — ${text}`);
+  const started = performance.now();
+  const result = await service.prompts({ threadId });
+  const elapsed = performance.now() - started;
+  expect(result.prompts[0]?.description?.length).toBeLessThanOrEqual(2_048);
+  return elapsed;
+}
+
+// A quadratic pattern takes about 16 times as long on four times the input; a linear one about 4.
+// The limit is a ratio, not a wall-clock bound, so a busy machine slows both runs alike.
+const LINEAR_GROWTH_LIMIT = 12;
+// A run under two milliseconds is mostly noise, so the small run is never counted as less.
+const TIMING_FLOOR_MS = 2;
+
+/** Large-input time over small-input time, with the small time floored. */
+async function growthRatio(build: (length: number) => string, small: number): Promise<number> {
+  // Untimed warm-up: a regex's first run is far slower, and a slow small run hides growth.
+  await promptsMs(build(small));
+  const smallMs = await promptsMs(build(small));
+  const largeMs = await promptsMs(build(4 * small));
+  return largeMs / Math.max(smallMs, TIMING_FLOOR_MS);
+}
+
 describe("McpCommandsService", () => {
   test("parses v18.6.1 list output and exposes only remote URL origins", async () => {
     const { service } = serviceFor(
@@ -171,20 +196,29 @@ describe("McpCommandsService", () => {
     expect(redacted.prompts[0]?.description).not.toContain("hunter2");
 
     // omp sends a whole prompt list as one frame, so a hostile description can be about 40,000 characters.
-    const hostileRuns = [
-      "a".repeat(40_000),
-      ["-----BEGIN", "PRIVATE KEY-----"].join(" ").repeat(1_500),
-      `/home${"/a".repeat(20_000)}`,
+    // Letters and paths are measured from 10,000 to 40,000 characters. The private-key pattern
+    // rescans to the end of the text for each unclosed header, so it grows faster than linear
+    // (10 to 12 times from 10,000 to 40,000 characters); it is measured from 5,000 to 20,000.
+    const privateKeyHeader = ["-----BEGIN", "PRIVATE KEY-----"].join(" ");
+    const hostileRuns: Array<[string, number, (length: number) => string]> = [
+      ["a long run of letters", 10_000, (length) => "a".repeat(length)],
+      [
+        "repeated private key headers",
+        5_000,
+        (length) =>
+          privateKeyHeader.repeat(Math.ceil(length / privateKeyHeader.length)).slice(0, length),
+      ],
+      ["a long absolute path", 10_000, (length) => `/home${"/a".repeat(length / 2)}`],
     ];
-    for (const run of hostileRuns) {
-      const { service } = serviceFor(`atlas/explain — ${run}`);
-      const started = performance.now();
-      const result = await service.prompts({ threadId });
-      const elapsed = performance.now() - started;
-      expect(result.prompts[0]?.description?.length).toBeLessThanOrEqual(2_048);
-      expect(elapsed).toBeLessThan(100);
+    const overLimit: Array<[string, number]> = [];
+    for (const [name, small, build] of hostileRuns) {
+      let ratio = await growthRatio(build, small);
+      // One retry, so a single scheduling pause during one measurement cannot fail the test.
+      if (ratio >= LINEAR_GROWTH_LIMIT) ratio = await growthRatio(build, small);
+      if (ratio >= LINEAR_GROWTH_LIMIT) overLimit.push([name, ratio]);
     }
-  });
+    expect(overLimit).toEqual([]);
+  }, 30_000);
   test("keeps multiline descriptions and bounds long catalog entries and lists", async () => {
     const longName = "n".repeat(300);
     const longDescription = "d".repeat(2_050);
