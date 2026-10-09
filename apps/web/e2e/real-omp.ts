@@ -111,6 +111,14 @@ export async function sendPrompt(composer: Locator, text: string): Promise<void>
   await composer.press("Enter");
 }
 
+/**
+ * Starting the app's server and a real omp takes seconds on a quiet machine and well over 30 s when many agents run
+ * tests at once (load above 40 on 20 cores). The wait ends the moment the line arrives, so a longer limit costs
+ * nothing when the start is quick, and only a start that never happens waits the full time. It stays below the
+ * 90 s a test gets from `testInfo.slow()`, so a start that never happens reports this error, not a bare timeout.
+ */
+const READINESS_TIMEOUT_MS = 80_000;
+
 function waitForLine(process: ChildProcess, predicate: (line: string) => boolean): Promise<string> {
   const stdout = process.stdout;
   if (!stdout) return Promise.reject(new Error("Child process stdout is unavailable"));
@@ -119,7 +127,7 @@ function waitForLine(process: ChildProcess, predicate: (line: string) => boolean
   const timer = setTimeout(() => {
     reader.close();
     reject(new Error("Timed out waiting for child process readiness"));
-  }, 30_000);
+  }, READINESS_TIMEOUT_MS);
   process.once("error", (error) => {
     clearTimeout(timer);
     reader.close();
