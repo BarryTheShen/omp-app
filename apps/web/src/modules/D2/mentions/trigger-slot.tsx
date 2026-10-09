@@ -5,13 +5,14 @@ import {
   unstable_useLiveCompletionAdapter,
   useAuiState,
 } from "@assistant-ui/react";
-import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type {
   ComposerTriggerCandidate,
   ComposerTriggerProvider,
   ComposerTriggerSlotProps,
 } from "../../U2/contract";
 import type { MentionProvider, TriggerCandidate, TriggerSearchResult } from "../contract";
+import { TriggerKeyScope, useTriggerListLoading } from "../shared/trigger-keys";
 import { detectMentionTrigger } from "./mentions";
 
 interface TriggerItemsResult {
@@ -127,6 +128,7 @@ function TriggerPopoverView({
     debounceMs: 60,
     enabled: provider !== undefined,
   });
+  useTriggerListLoading(completion.isLoading);
   const formatter = useMemo(() => directiveFormatter(trigger), [trigger]);
   const handleInserted = useCallback(
     (item: Unstable_TriggerItem) => {
@@ -167,18 +169,6 @@ function isMentionProvider(provider: ComposerTriggerProvider): provider is Menti
   return "kind" in provider && "source" in provider && "searchTyped" in provider;
 }
 
-function selectActiveTriggerItem(event: KeyboardEvent<HTMLDivElement>): void {
-  if (event.key !== "Enter" && event.key !== "Tab") return;
-  if (!(event.target instanceof HTMLTextAreaElement)) return;
-  const activeId = event.target.getAttribute("aria-activedescendant");
-  if (!activeId) return;
-  const item = document.getElementById(activeId);
-  if (!(item instanceof HTMLElement)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  item.click();
-}
-
 function findMentionProvider(
   providers: readonly ComposerTriggerProvider[],
   trigger: "@" | "#",
@@ -188,27 +178,34 @@ function findMentionProvider(
   }
   return undefined;
 }
+/** The file and GitHub lists for one composer. They render inside the composer's shared trigger root (see ComposerTriggers). */
+export function MentionComposerSlot({ providers, onSelect, children }: ComposerTriggerSlotProps) {
+  return (
+    <TriggerKeyScope className="relative">
+      {children}
+      <TriggerPopoverView
+        provider={findMentionProvider(providers, "@")}
+        trigger="@"
+        onSelect={onSelect}
+      />
+      <TriggerPopoverView
+        provider={findMentionProvider(providers, "#")}
+        trigger="#"
+        onSelect={onSelect}
+      />
+    </TriggerKeyScope>
+  );
+}
+
 /**
  * Composes D2's host-backed mention providers with U2's ComposerSurface. Assistant-ui owns the
  * trigger range, caret replacement, keyboard navigation, and Escape/focus behavior.
  */
-export function MentionTriggerSlot({ providers, onSelect, children }: ComposerTriggerSlotProps) {
+export function MentionTriggerSlot(props: ComposerTriggerSlotProps) {
   return (
-    <div className="relative" onKeyDownCapture={selectActiveTriggerItem}>
-      <ComposerPrimitive.Unstable_TriggerPopoverRoot>
-        {children}
-        <TriggerPopoverView
-          provider={findMentionProvider(providers, "@")}
-          trigger="@"
-          onSelect={onSelect}
-        />
-        <TriggerPopoverView
-          provider={findMentionProvider(providers, "#")}
-          trigger="#"
-          onSelect={onSelect}
-        />
-      </ComposerPrimitive.Unstable_TriggerPopoverRoot>
-    </div>
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <MentionComposerSlot {...props} />
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
 }
 

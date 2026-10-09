@@ -302,6 +302,12 @@ async function stopChild(child: ChildProcess | undefined): Promise<void> {
 
 export const realOmpEnabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
 
+/** Files for the chat's workspace folder, and whether that folder is a git repository (`git init`). */
+export interface SeedWorkspace {
+  readonly files: Readonly<Record<string, string>>;
+  readonly gitRepo: boolean;
+}
+
 /**
  * A test with a `realApp` fixture: a fresh composed app per test, torn down afterwards. A spec can
  * shorten how long an unwatched chat's omp process lives with `realTest.use({ idleCloseMs })`, and
@@ -312,6 +318,7 @@ export const realOmpEnabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync
  * entries } })`. A spec
  * about omp being missing points the app at another binary with `realTest.use({ ompBinary })`.
  * Fake files in the agent's `extensions` folder appear in omp's extension catalog: `realTest.use({ seedExtensions: { "name.ts": source } })`.
+ * A spec that needs `@` file mentions seeds files with `realTest.use({ seedWorkspace: { files, gitRepo: true } })`; file search lists git files only.
  */
 export const realTest = test.extend<{
   realApp: RealApp;
@@ -321,6 +328,7 @@ export const realTest = test.extend<{
   seedToolResults: SeedToolResults | undefined;
   seedEntries: SeedEntries | undefined;
   seedExtensions: Readonly<Record<string, string>>;
+  seedWorkspace: SeedWorkspace | undefined;
   ompBinary: string | undefined;
 }>({
   idleCloseMs: [undefined, { option: true }],
@@ -329,6 +337,7 @@ export const realTest = test.extend<{
   seedToolResults: [undefined, { option: true }],
   seedEntries: [undefined, { option: true }],
   seedExtensions: [{}, { option: true }],
+  seedWorkspace: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
   realApp: async (
     {
@@ -339,6 +348,7 @@ export const realTest = test.extend<{
       seedToolResults,
       seedEntries,
       seedExtensions,
+      seedWorkspace,
       ompBinary,
     },
     use,
@@ -361,6 +371,13 @@ export const realTest = test.extend<{
       for (const [name, source] of Object.entries(seedExtensions)) {
         await writeFile(join(agentDir, "extensions", name), source);
       }
+    }
+    // Files for the chat's workspace folder, in a git repository when the spec asks for one.
+    if (seedWorkspace !== undefined) {
+      for (const [name, source] of Object.entries(seedWorkspace.files)) {
+        await writeFile(join(folder, name), source);
+      }
+      if (seedWorkspace.gitRepo) execFileSync("git", ["init", "-q"], { cwd: folder });
     }
     const env = {
       ...process.env,

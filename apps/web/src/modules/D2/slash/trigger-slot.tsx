@@ -4,13 +4,14 @@ import {
   type Unstable_TriggerItem,
   unstable_useLiveCompletionAdapter,
 } from "@assistant-ui/react";
-import { type KeyboardEvent, type ReactNode, useCallback, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useMemo, useRef } from "react";
 import type {
   ComposerTriggerCandidate,
   ComposerTriggerProvider,
   ComposerTriggerSlotProps,
 } from "../../U2/contract";
 import type { TriggerCandidate, TriggerSearchResult } from "../contract";
+import { TriggerKeyScope, useTriggerListLoading } from "../shared/trigger-keys";
 import type { SlashCommandProvider } from "./provider";
 
 /** The typed text from the start of the message up to the caret, on one line: `/name` or `/name args`. */
@@ -124,18 +125,6 @@ function isSlashProvider(provider: ComposerTriggerProvider): provider is SlashCo
   return provider.trigger === "/" && "searchTyped" in provider && "catalog" in provider;
 }
 
-function selectActiveTriggerItem(event: KeyboardEvent<HTMLDivElement>): void {
-  if (event.key !== "Enter" && event.key !== "Tab") return;
-  if (!(event.target instanceof HTMLTextAreaElement)) return;
-  const activeId = event.target.getAttribute("aria-activedescendant");
-  if (!activeId) return;
-  const item = document.getElementById(activeId);
-  if (!(item instanceof HTMLElement)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  item.click();
-}
-
 function SlashPopover({
   provider,
   onSelect,
@@ -165,6 +154,7 @@ function SlashPopover({
     debounceMs: 60,
     enabled: provider !== undefined,
   });
+  useTriggerListLoading(completion.isLoading);
   const formatter = useMemo(() => directiveFormatter(), []);
   const handleInserted = useCallback(
     (item: Unstable_TriggerItem) => {
@@ -195,17 +185,16 @@ function SlashPopover({
 }
 
 /**
- * The slash list for a composer that already sits inside a trigger root (the app's composer does: the
- * mention slot owns the root). The composer and the list must share one root, because the composer reads
- * the open popover's keyboard highlight from its nearest root; a second root would hide it.
+ * The slash list for one composer. It renders inside the composer's shared trigger root (see ComposerTriggers),
+ * so the composer's textarea can point at the highlighted command.
  */
 export function SlashComposerSlot({ providers, onSelect, children }: ComposerTriggerSlotProps) {
   const provider = providers.find(isSlashProvider);
   return (
-    <div className="relative" onKeyDownCapture={selectActiveTriggerItem}>
+    <TriggerKeyScope className="relative">
       {children}
       <SlashPopover provider={provider} onSelect={onSelect} />
-    </div>
+    </TriggerKeyScope>
   );
 }
 

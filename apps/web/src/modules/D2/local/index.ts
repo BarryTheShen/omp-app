@@ -9,7 +9,7 @@ export {
   tryEmojiInlineReplace,
 } from "./emoji";
 export type { LocalProvider, LocalTrigger } from "./provider";
-export { LocalTriggerSlot } from "./trigger-slot";
+export { LocalComposerSlot, LocalTriggerSlot } from "./trigger-slot";
 export type { InternalUrlProviderOptions, InternalUrlTriggerMatch } from "./urls";
 export {
   createInternalUrlProvider,

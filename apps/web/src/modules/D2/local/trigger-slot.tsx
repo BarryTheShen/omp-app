@@ -4,9 +4,10 @@ import {
   type Unstable_TriggerItem,
   unstable_useLiveCompletionAdapter,
 } from "@assistant-ui/react";
-import { type KeyboardEvent, useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { ComposerTriggerProvider, ComposerTriggerSlotProps } from "../../U2/contract";
 import type { TriggerCandidate, TriggerSearchResult } from "../contract";
+import { TriggerKeyScope, useTriggerListLoading } from "../shared/trigger-keys";
 import { detectEmojiTrigger } from "./emoji";
 import type { LocalProvider, LocalTrigger } from "./provider";
 import { detectInternalUrlTrigger } from "./urls";
@@ -153,6 +154,7 @@ function LocalTriggerPopover({
     debounceMs: 60,
     enabled: provider !== undefined,
   });
+  useTriggerListLoading(completion.isLoading);
   const formatter = useMemo(() => directiveFormatter(trigger), [trigger]);
   const handleInserted = useCallback(
     (item: Unstable_TriggerItem) => {
@@ -183,39 +185,36 @@ function LocalTriggerPopover({
     </ComposerPrimitive.Unstable_TriggerPopover>
   );
 }
-
-function selectActiveTriggerItem(event: KeyboardEvent<HTMLDivElement>): void {
-  if (event.key !== "Enter" && event.key !== "Tab") return;
-  if (!(event.target instanceof HTMLTextAreaElement)) return;
-  const activeId = event.target.getAttribute("aria-activedescendant");
-  if (!activeId) return;
-  const item = document.getElementById(activeId);
-  if (!(item instanceof HTMLElement)) return;
-  event.preventDefault();
-  event.stopPropagation();
-  item.click();
-}
-
-/** D2.5's local trigger slot uses the same assistant-ui popover and focus grammar as D2.4. */
-export function LocalTriggerSlot({ providers, onSelect, children }: LocalTriggerSlotProps) {
+/**
+ * The emoji and link lists for one composer. They render inside the composer's shared trigger root (see
+ * ComposerTriggers), so the composer's textarea can point at the highlighted emoji.
+ */
+export function LocalComposerSlot({ providers, onSelect, children }: LocalTriggerSlotProps) {
   return (
-    <div className="relative" onKeyDownCapture={selectActiveTriggerItem}>
-      <ComposerPrimitive.Unstable_TriggerPopoverRoot>
-        {children}
+    <TriggerKeyScope className="relative">
+      {children}
+      <LocalTriggerPopover
+        provider={providerForTrigger(providers, ":")}
+        trigger=":"
+        onSelect={onSelect}
+      />
+      {URL_TRIGGER_CHARS.map((trigger) => (
         <LocalTriggerPopover
-          provider={providerForTrigger(providers, ":")}
-          trigger=":"
+          key={trigger}
+          provider={providerForTrigger(providers, trigger)}
+          trigger={trigger}
           onSelect={onSelect}
         />
-        {URL_TRIGGER_CHARS.map((trigger) => (
-          <LocalTriggerPopover
-            key={trigger}
-            provider={providerForTrigger(providers, trigger)}
-            trigger={trigger}
-            onSelect={onSelect}
-          />
-        ))}
-      </ComposerPrimitive.Unstable_TriggerPopoverRoot>
-    </div>
+      ))}
+    </TriggerKeyScope>
+  );
+}
+
+/** D2.5's local trigger slot on its own: it opens its own trigger root, for a composer that no other slot wraps. */
+export function LocalTriggerSlot(props: LocalTriggerSlotProps) {
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <LocalComposerSlot {...props} />
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
 }

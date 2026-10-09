@@ -7,6 +7,7 @@ import type { AppClient } from "@omp-app/client";
 import { AppFailure, type CapabilityMap, FolderPath } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { createEmojiProvider } from "@/modules/D2/local";
 import { ComposerSurface } from "@/modules/U2/composer";
 import { ComposerTriggers, composerTriggerProviders } from "./composer-triggers";
 
@@ -18,6 +19,13 @@ const EVERYTHING: CapabilityMap = {
 };
 const folder = FolderPath.parse("/workspace");
 const oneFile = { results: [{ path: "src/app.ts", kind: "file", score: 1 }], truncated: false };
+const twoFiles = {
+  results: [
+    { path: "src/app.ts", kind: "file", score: 1 },
+    { path: "src/main.ts", kind: "file", score: 0.9 },
+  ],
+  truncated: false,
+};
 
 function unavailableSearch(): never {
   throw new AppFailure({
@@ -209,5 +217,97 @@ describe("ComposerTriggers in the composer", () => {
     await pause();
     expect(screen.queryByRole("listbox")).toBeNull();
     expect((input as HTMLTextAreaElement).value).toBe(typed);
+  });
+});
+
+describe("#818: Enter chooses the highlighted item, and does not send it", () => {
+  /** A composer with every trigger on, sending through `submitPrompt`. Returns its message box. */
+  function renderComposer(
+    submitPrompt: () => Promise<void>,
+    client = fakeClient(async () => oneFile),
+  ) {
+    render(
+      <RuntimeHarness>
+        <ComposerTriggers capabilities={EVERYTHING} client={client} folder={folder}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </ComposerTriggers>
+      </RuntimeHarness>,
+    );
+    return screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+  }
+
+  test("with the emoji list open, Enter inserts the highlighted emoji and sends nothing", async () => {
+    const submitted = vi.fn(async () => undefined);
+    const input = renderComposer(submitted);
+    fireEvent.change(input, { target: { value: ":smi" } });
+    input.setSelectionRange(4, 4);
+    await waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toMatch(/\p{Extended_Pictographic}/u));
+    expect(submitted).not.toHaveBeenCalled();
+  });
+
+  test("with the emoji list open, ArrowDown then Enter inserts the highlighted emoji and sends nothing", async () => {
+    const submitted = vi.fn(async () => undefined);
+    const { candidates } = await createEmojiProvider().searchTyped("smi");
+    const input = renderComposer(submitted);
+    fireEvent.change(input, { target: { value: ":smi" } });
+    input.setSelectionRange(4, 4);
+    await waitFor(() =>
+      expect(document.querySelectorAll('[role="option"]').length).toBeGreaterThan(1),
+    );
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(input.getAttribute("aria-activedescendant")).toBe(
+        document.querySelectorAll('[role="option"]')[1]?.id,
+      ),
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
+    // The list and the composer read the same search, so the second candidate is the highlighted one.
+    await waitFor(() => expect(input.value).toBe(`${candidates[1]?.insertText?.trim()} `));
+    expect(submitted).not.toHaveBeenCalled();
+  });
+
+  test("with the file list open, ArrowDown then Enter inserts the highlighted file and sends nothing", async () => {
+    const submitted = vi.fn(async () => undefined);
+    const input = renderComposer(
+      submitted,
+      fakeClient(async () => twoFiles),
+    );
+    fireEvent.change(input, { target: { value: "before @src" } });
+    input.setSelectionRange(11, 11);
+    await waitFor(() => expect(screen.getByText("src/main.ts")).toBeTruthy());
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(input.getAttribute("aria-activedescendant")).toBe(
+        screen.getByText("src/main.ts").closest('[role="option"]')?.id,
+      ),
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("before @src/main.ts "));
+    expect(submitted).not.toHaveBeenCalled();
+  });
+
+  test("Escape closes the emoji list, and then Enter sends the text", async () => {
+    const submitted = vi.fn(async () => undefined);
+    const input = renderComposer(submitted);
+    fireEvent.change(input, { target: { value: ":smi" } });
+    input.setSelectionRange(4, 4);
+    await waitFor(() =>
+      expect(screen.getByRole("listbox", { name: "Emoji suggestions" })).toBeTruthy(),
+    );
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitted).toHaveBeenCalledTimes(1));
+  });
+
+  test("with no list open, Enter sends the typed text", async () => {
+    const submitted = vi.fn(async () => undefined);
+    const input = renderComposer(submitted);
+    fireEvent.change(input, { target: { value: "hello there" } });
+    input.setSelectionRange(11, 11);
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitted).toHaveBeenCalledTimes(1));
   });
 });

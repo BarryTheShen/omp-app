@@ -1,3 +1,4 @@
+import { ComposerPrimitive } from "@assistant-ui/react";
 import type { AppClient } from "@omp-app/client";
 import type { CapabilityMap, CapabilityStatus, FolderPath } from "@omp-app/contracts";
 import { type ReactNode, useMemo } from "react";
@@ -5,13 +6,13 @@ import type { MentionProvider } from "@/modules/D2/contract";
 import {
   createEmojiProvider,
   createInternalUrlProvider,
+  LocalComposerSlot,
   type LocalProvider,
-  LocalTriggerSlot,
 } from "@/modules/D2/local";
 import {
   createFileMentionProvider,
   createGithubMentionProvider,
-  MentionTriggerSlot,
+  MentionComposerSlot,
 } from "@/modules/D2/mentions";
 import { type SlashCommandProvider, SlashComposerSlot } from "@/modules/D2/slash";
 
@@ -66,8 +67,9 @@ function keepInsertedText(): void {}
 
 /**
  * Wraps the composer in D2's trigger slots: `/` omp commands and app commands (slash), `@` files and `#`
- * GitHub references (mentions), `:` emoji and scheme links such as `issue://` (local). The caret,
- * keyboard and Escape behavior belong to the slots; this file only chooses which providers the open chat gets.
+ * GitHub references (mentions), `:` emoji and scheme links such as `issue://` (local). All of them share one
+ * trigger root, so the composer's textarea can point at whichever list is open. The caret, keyboard and Escape
+ * behavior belong to the slots; this file only chooses which providers the open chat gets.
  */
 export function ComposerTriggers({
   client,
@@ -81,13 +83,14 @@ export function ComposerTriggers({
     [client, folder, capabilities],
   );
   return (
-    <LocalTriggerSlot onSelect={keepInsertedText} providers={providers.local}>
-      <MentionTriggerSlot onSelect={keepInsertedText} providers={providers.mention}>
-        {/* Inside the mention root, not its own: the composer reads the open list's highlight from its nearest root. */}
-        <SlashComposerSlot onSelect={keepInsertedText} providers={slash ? [slash] : []}>
-          {children}
-        </SlashComposerSlot>
-      </MentionTriggerSlot>
-    </LocalTriggerSlot>
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <LocalComposerSlot onSelect={keepInsertedText} providers={providers.local}>
+        <MentionComposerSlot onSelect={keepInsertedText} providers={providers.mention}>
+          <SlashComposerSlot onSelect={keepInsertedText} providers={slash ? [slash] : []}>
+            {children}
+          </SlashComposerSlot>
+        </MentionComposerSlot>
+      </LocalComposerSlot>
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
 }
