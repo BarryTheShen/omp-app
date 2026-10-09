@@ -1,9 +1,9 @@
 import type { OmpWire } from "@omp-app/contracts";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { Button } from "../../../components/ui/button";
 import { Icons } from "../../../tokens";
-import { ToolCard } from "./card";
+import { copyStatusText, ToolCard } from "./card";
 import type {
   ToolCardState,
   ToolRegistryDescriptor,
@@ -13,6 +13,7 @@ import type {
 import { type OutputCut, OutputCutNote, outputCutOf } from "./full-output";
 import { normalizeToolRendererProps } from "./normalize";
 import { OutputMetaSchema } from "./output-meta";
+import type { CopyKind } from "./slots";
 
 const MAX_OUTPUT_LINES = 12;
 const MAX_OUTPUT_CHARS = 8_000;
@@ -22,10 +23,13 @@ type BashResult = OmpWire.BashResult & {
   readonly wallTimeMs?: number;
 };
 
+/** The thread's copy handler, when it gives one; otherwise the clipboard is used. */
+type CopyHandler = (raw: string, kind: CopyKind) => void | Promise<void>;
+
 export interface BashCardProps {
   readonly rendererProps: ToolRendererProps;
   readonly onCancel?: () => void | Promise<void>;
-  readonly onCopy?: (raw: string, kind: "code") => void | Promise<void>;
+  readonly onCopy?: CopyHandler;
 }
 
 /** Renders one normalized bash tool call; stop cancels the parent turn when supplied. */
@@ -52,6 +56,7 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
           result={result}
           state={state}
           onCancel={onCancel}
+          onCopy={onCopy}
         />
       </ToolCard>
     </div>
@@ -253,6 +258,53 @@ function cwdFromArgs(args: unknown): string | undefined {
   return typeof args.cwd === "string" ? args.cwd : undefined;
 }
 
+/** How long a copy's confirmation stays on screen before it clears. */
+const COPY_NOTE_MS = 1_500;
+
+/** Runs a copy and says in words what happened: the confirmation, or that the clipboard refused. */
+function useCopyStatus(): {
+  readonly status: string | undefined;
+  readonly copy: (write: () => void | Promise<void>, copied: string) => Promise<void>;
+} {
+  const [status, setStatus] = useState<string | undefined>(undefined);
+  const timer = useRef<number | undefined>(undefined);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      window.clearTimeout(timer.current);
+    };
+  }, []);
+  const show = (text: string) => {
+    if (!mounted.current) return;
+    window.clearTimeout(timer.current);
+    setStatus(text);
+    timer.current = window.setTimeout(() => {
+      timer.current = undefined;
+      setStatus(undefined);
+    }, COPY_NOTE_MS);
+  };
+  const copy = async (write: () => void | Promise<void>, copied: string) => {
+    try {
+      await write();
+      show(copied);
+    } catch {
+      show(copyStatusText("failed"));
+    }
+  };
+  return { status, copy };
+}
+
+/** The thread's copy handler when it gives one; otherwise the clipboard. */
+function writeCopy(
+  text: string,
+  kind: CopyKind,
+  onCopy: CopyHandler | undefined,
+): void | Promise<void> {
+  return onCopy !== undefined ? onCopy(text, kind) : navigator.clipboard.writeText(text);
+}
+
 function BashCommand({
   command,
   cwd,
@@ -260,20 +312,11 @@ function BashCommand({
 }: {
   readonly command: string;
   readonly cwd?: string;
-  readonly onCopy?: (raw: string, kind: "code") => void | Promise<void>;
+  readonly onCopy?: CopyHandler;
 }) {
-  const copy = async () => {
-    if (onCopy !== undefined) {
-      await onCopy(command, "code");
-    } else if (typeof navigator !== "undefined" && navigator.clipboard !== undefined) {
-      await navigator.clipboard.writeText(command);
-    }
-  };
+  const { status, copy } = useCopyStatus();
   return (
-    <section
-      className="ms-2 flex min-w-0 flex-col gap-2 border-s-2 border-border/70 py-2 ps-4"
-      data-slot="u3-bash-command"
-    >
+    <section className="flex min-w-0 flex-col gap-2 py-2" data-slot="u3-bash-command">
       <div className="flex items-start gap-2">
         <pre className="border-border bg-muted/40 min-w-0 flex-1 overflow-auto rounded-lg border p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
           $ {command}
@@ -283,11 +326,16 @@ function BashCommand({
           size="icon-xs"
           type="button"
           variant="ghost"
-          onClick={() => void copy()}
+          onClick={() => void copy(() => writeCopy(command, "code", onCopy), "Copied command")}
         >
           <Icons.copy aria-hidden="true" />
         </Button>
       </div>
+      {status !== undefined && (
+        <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
+          {status}
+        </span>
+      )}
       {cwd !== undefined && (
         <span
           className="w-fit rounded border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground"
@@ -305,11 +353,13 @@ function BashOutput({
   result,
   state,
   onCancel,
+  onCopy,
 }: {
   readonly result: BashResult | undefined;
   readonly state: ToolCardState;
   readonly cut?: OutputCut;
   readonly onCancel?: () => void | Promise<void>;
+  readonly onCopy?: CopyHandler;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (result === undefined) {
@@ -324,12 +374,15 @@ function BashOutput({
   const output = expanded ? result.output : preview.text;
   const shortened = shortenedNote(result);
   const shownNote = `Showing the first ${count(preview.shown)} of ${count(preview.total)} ${preview.unit}.`;
+  const copiedOutput =
+    cut !== undefined
+      ? copyStatusText("copiedShown")
+      : result.truncated
+        ? "Copied the shown part of the output."
+        : copyStatusText("copied");
   const stderr = result.stderr?.trim() ?? "";
   return (
-    <div
-      className="ms-2 flex min-w-0 flex-col gap-2 border-s-2 border-border/70 py-2 ps-4"
-      data-slot="u3-bash-output"
-    >
+    <div className="flex min-w-0 flex-col gap-2 py-2" data-slot="u3-bash-output">
       <div
         className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
         data-slot="u3-bash-meta"
@@ -354,9 +407,27 @@ function BashOutput({
           No output
         </p>
       ) : (
-        <OutputBlock label="stdout" text={output} stderr={false} />
+        <OutputBlock
+          label="stdout"
+          text={output}
+          stderr={false}
+          raw={result.output}
+          copyLabel="Copy raw output"
+          copied={copiedOutput}
+          onCopy={onCopy}
+        />
       )}
-      {stderr.length > 0 && <OutputBlock label="stderr" text={stderr} stderr />}
+      {stderr.length > 0 && (
+        <OutputBlock
+          label="stderr"
+          text={stderr}
+          stderr
+          raw={stderr}
+          copyLabel="Copy raw stderr"
+          copied="Copied raw stderr"
+          onCopy={onCopy}
+        />
+      )}
       {(shortened !== undefined || preview.cut) && (
         <div
           className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
@@ -400,14 +471,44 @@ function OutputBlock({
   label,
   text,
   stderr,
+  raw,
+  copyLabel,
+  copied,
+  onCopy,
 }: {
   readonly label: string;
   readonly text: string;
   readonly stderr: boolean;
+  /** The whole output: the copy control copies all of it, not only the lines the card shows. */
+  readonly raw: string;
+  readonly copyLabel: string;
+  /** The confirmation once the copy has worked. */
+  readonly copied: string;
+  readonly onCopy?: CopyHandler;
 }) {
+  const { status, copy } = useCopyStatus();
   return (
     <section data-slot={`u3-bash-${label}`} data-testid={`u3-bash-${label}`}>
-      <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <div className="flex items-center gap-2">
+          {status !== undefined && (
+            <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
+              {status}
+            </span>
+          )}
+          <Button
+            aria-label={copyLabel}
+            className="text-muted-foreground"
+            size="icon-xs"
+            type="button"
+            variant="ghost"
+            onClick={() => void copy(() => writeCopy(raw, "result", onCopy), copied)}
+          >
+            <Icons.copy aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
       <pre className="border-border bg-muted/40 max-h-80 overflow-auto rounded-lg border p-3 text-xs leading-relaxed whitespace-pre-wrap">
         {ansiTokens(text).map((token) => (
           <span className={stderr ? "text-danger" : token.className} key={token.start}>

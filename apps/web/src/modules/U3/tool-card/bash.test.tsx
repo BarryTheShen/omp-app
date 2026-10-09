@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { BashCard, decodeBashResult, failureMessage } from "./bash";
 import type { ToolRendererProps } from "./contract";
@@ -260,5 +260,123 @@ describe("BashCard output in full", () => {
     render(<BashCard rendererProps={props(toolResult(""))} />);
     expect(screen.getByText("No output")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Show/ })).toBeNull();
+  });
+});
+
+describe("BashCard copy", () => {
+  test("copies the whole output, not the lines the card shows, and says so", async () => {
+    const onCopy = vi.fn(async () => {});
+    render(<BashCard onCopy={onCopy} rendererProps={props(toolResult(numbered(40)))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+    await waitFor(() => expect(onCopy).toHaveBeenCalledWith(numbered(40), "result"));
+    expect(await screen.findByText("Copied raw output", { exact: true })).toBeTruthy();
+  });
+
+  test("copies the command and says so", async () => {
+    const onCopy = vi.fn(async () => {});
+    render(<BashCard onCopy={onCopy} rendererProps={props(toolResult("ok"))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy bash command" }));
+    await waitFor(() => expect(onCopy).toHaveBeenCalledWith("printf 'hello'", "code"));
+    expect(await screen.findByText("Copied command", { exact: true })).toBeTruthy();
+  });
+
+  test("says the copy failed when the handler refuses", async () => {
+    const onCopy = vi.fn(async () => {
+      throw new Error("denied");
+    });
+    render(<BashCard onCopy={onCopy} rendererProps={props(toolResult("ok"))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+    expect(await screen.findByText("Copy unavailable", { exact: true })).toBeTruthy();
+  });
+
+  test("says only the shown part was copied when the thread cut the output", async () => {
+    const onCopy = vi.fn(async () => {});
+    const cut = { ...toolResult(numbered(40)), outputCut: { shownBytes: 4, totalBytes: 40 } };
+    render(<BashCard onCopy={onCopy} rendererProps={props(cut)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+    expect(
+      await screen.findByText(
+        "Copied the shown part of the output. Load the full output to copy all of it.",
+        { exact: true },
+      ),
+    ).toBeTruthy();
+  });
+
+  test("says the shown part was copied when omp shortened the output", async () => {
+    const meta = {
+      truncation: {
+        direction: "tail",
+        truncatedBy: "lines",
+        totalLines: 4000,
+        outputLines: 20,
+        totalBytes: 250000,
+        outputBytes: 180,
+      },
+    };
+    const onCopy = vi.fn(async () => {});
+    render(<BashCard onCopy={onCopy} rendererProps={props(toolResult(numbered(20), { meta }))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+    expect(
+      await screen.findByText("Copied the shown part of the output.", { exact: true }),
+    ).toBeTruthy();
+  });
+
+  test("copies stderr with its own control", async () => {
+    const onCopy = vi.fn(async () => {});
+    render(
+      <BashCard
+        onCopy={onCopy}
+        rendererProps={props(result({ output: "ok", stderr: "boom\n" }))}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw stderr" }));
+    await waitFor(() => expect(onCopy).toHaveBeenCalledWith("boom", "result"));
+    expect(await screen.findByText("Copied raw stderr", { exact: true })).toBeTruthy();
+  });
+
+  test("copies to the clipboard when no handler is given, and says so when there is none", async () => {
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const first = render(<BashCard rendererProps={props(toolResult("ok"))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ok"));
+    expect(await screen.findByText("Copied raw output", { exact: true })).toBeTruthy();
+    first.unmount();
+
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    render(<BashCard rendererProps={props(toolResult("ok"))} />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+    expect(await screen.findByText("Copy unavailable", { exact: true })).toBeTruthy();
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+});
+
+describe("BashCard copy confirmation", () => {
+  test("clears a copy confirmation after 1.5 seconds, and its timer goes with the card", async () => {
+    vi.useFakeTimers();
+    try {
+      const onCopy = vi.fn(async () => {});
+      const card = render(<BashCard onCopy={onCopy} rendererProps={props(toolResult("ok"))} />);
+      fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+      await act(async () => {});
+      expect(screen.getByText("Copied raw output", { exact: true })).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(1_499);
+      });
+      expect(screen.getByText("Copied raw output", { exact: true })).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.queryByText("Copied raw output", { exact: true })).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+      await act(async () => {});
+      const pending = vi.getTimerCount();
+      card.unmount();
+      expect(vi.getTimerCount()).toBeLessThan(pending);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

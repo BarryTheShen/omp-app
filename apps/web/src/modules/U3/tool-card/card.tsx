@@ -261,7 +261,7 @@ export function ToolCard({
   );
 }
 
-function copyStatusText(status: "copied" | "copiedShown" | "failed"): string {
+export function copyStatusText(status: "copied" | "copiedShown" | "failed"): string {
   switch (status) {
     case "copied":
       return "Copied raw output";
