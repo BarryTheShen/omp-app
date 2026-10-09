@@ -20,7 +20,13 @@ import {
   type SubmitPolicyInput,
   type SubmitPolicyResult,
 } from "../contract";
-import { modeForText, parseComposerMode, submitModeInput } from "../modes";
+import {
+  modeForText,
+  parseComposerMode,
+  shouldExitMode,
+  submitModeInput,
+  textForMode,
+} from "../modes";
 import { useRemeasureOnWidthChange } from "./remeasure";
 
 export interface ComposerSurfaceProps {
@@ -234,10 +240,23 @@ export function ComposerSurface({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      // A running turn takes Escape first, in bash and Python mode too: one press stops the turn
+      // and the mode stays. With no turn running, Escape or an empty Backspace leaves bash and
+      // Python mode for Prompt and keeps the text. A key a trigger list already handled
+      // (defaultPrevented) is not the composer's to act on.
       if (event.key === "Escape" && !event.nativeEvent.isComposing && canCancel) {
         event.preventDefault();
         void handleCancel();
         return;
+      }
+      if (!event.defaultPrevented && !event.nativeEvent.isComposing && !composingRef.current) {
+        const parsed = parseComposerMode(text);
+        if (shouldExitMode(parsed.mode, event.key, parsed.text)) {
+          event.preventDefault();
+          event.stopPropagation();
+          composer.setText(textForMode(text, "prompt"));
+          return;
+        }
       }
       if (
         event.key !== "Enter" ||
@@ -251,7 +270,7 @@ export function ComposerSurface({
       event.stopPropagation();
       void submit(enterChord(event));
     },
-    [canCancel, handleCancel, submit],
+    [canCancel, composer, handleCancel, submit, text],
   );
 
   return (

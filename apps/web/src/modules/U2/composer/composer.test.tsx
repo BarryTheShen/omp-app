@@ -212,4 +212,66 @@ describe("U2.2 ComposerSurface", () => {
     expect(submitPrompt).not.toHaveBeenCalled();
     expect(input.value).toBe("!");
   });
+
+  test("Escape in bash mode returns the composer to Prompt and keeps the text", () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    renderComposer(false, submitPrompt);
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "!some text" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input.value).toBe("some text");
+    expect(submitPrompt).not.toHaveBeenCalled();
+  });
+
+  test("an empty Backspace leaves bash mode, but a Backspace with text left does not", () => {
+    renderComposer(
+      false,
+      vi.fn(async () => undefined),
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "!" } });
+    fireEvent.keyDown(input, { key: "Backspace" });
+    expect(input.value).toBe("");
+    fireEvent.change(input, { target: { value: "!cmd" } });
+    fireEvent.keyDown(input, { key: "Backspace" });
+    expect(input.value).toBe("!cmd");
+  });
+
+  test("Escape in Prompt mode changes nothing, and a key a trigger already handled is left alone", () => {
+    renderComposer(
+      false,
+      vi.fn(async () => undefined),
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input.value).toBe("hello");
+    fireEvent.change(input, { target: { value: "!still bash" } });
+    // A trigger list takes Escape on the document, in the capture phase, before the composer sees it.
+    const takesEscape = (event: KeyboardEvent) => event.preventDefault();
+    document.addEventListener("keydown", takesEscape, { capture: true });
+    fireEvent.keyDown(input, { key: "Escape" });
+    document.removeEventListener("keydown", takesEscape, { capture: true });
+    expect(input.value).toBe("!still bash");
+  });
+
+  test("a running turn takes Escape first; the next Escape leaves bash mode", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    const cancel = vi.fn(async () => undefined);
+    const { rerender } = renderComposer(true, submitPrompt, cancel);
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "!some text" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+    expect(input.value).toBe("!some text");
+
+    rerender(
+      <RuntimeProvider running={false}>
+        <ComposerSurface submitPrompt={submitPrompt} cancel={cancel} />
+      </RuntimeProvider>,
+    );
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe("some text");
+  });
 });
