@@ -907,25 +907,38 @@ describe("A0.rename: omp sets a chat's title, whether or not the chat is open", 
     expect(runtimeContext.processRegistry.has(authorityThread)).toBe(true);
   });
 
-  test("refuses to rename a chat another omp is writing, and starts no omp for it", async () => {
+  test("refuses to rename a chat another omp is writing: the check runs once the host is up, and nothing is written", async () => {
     const created: FakeProcess[] = [];
-    const asked: string[] = [];
+    const seen: { hosts: number; asked: string[] } = { hosts: 0, asked: [] };
     const runtimeContext: A0PortContext = {
       ...context(created),
-      externalOmp: async (threadId, sessionFile) => {
-        asked.push(`${threadId} ${sessionFile}`);
+      externalOmp: async (threadId, sessionFile, hostPid) => {
+        seen.hosts = created.length;
+        seen.asked.push(`${threadId} ${sessionFile} host ${hostPid}`);
         return "running";
       },
     };
     const handlers = handlersFor(runtimeContext, 0);
     await expect(
       getHandler(handlers, "rename")({ threadId: authorityThread, name: "Busy" }, call("one")),
-    ).rejects.toMatchObject({ appError: { code: "conflict" } });
-    expect(asked).toEqual([`${authorityThread} ${authorityFile}`]);
-    expect(created).toHaveLength(0);
+    ).rejects.toMatchObject({
+      appError: {
+        code: "conflict",
+        message: expect.stringMatching(/Another omp is using this chat/),
+      },
+    });
+    // The fake omp reports pid 777: the check must be told it, so the host is not taken for another omp.
+    expect(seen).toEqual({
+      hosts: 1,
+      asked: [`${authorityThread} ${authorityFile} host 777`],
+    });
+    const host = created[0];
+    expect(host?.writes.some((frame) => frame.type === "set_session_name")).toBe(false);
+    expect(host?.status).toBe("stopped");
+    expect(runtimeContext.processRegistry.has(authorityThread)).toBe(false);
   });
 
-  test("refuses to rename a chat while the app cannot tell whether another omp is writing it", async () => {
+  test("refuses to rename a chat while the app can't tell whether another omp is writing it, and writes nothing", async () => {
     const created: FakeProcess[] = [];
     const runtimeContext: A0PortContext = {
       ...context(created),
@@ -935,7 +948,8 @@ describe("A0.rename: omp sets a chat's title, whether or not the chat is open", 
     await expect(
       getHandler(handlers, "rename")({ threadId: authorityThread, name: "Unknown" }, call("one")),
     ).rejects.toMatchObject({ appError: { code: "unavailable" } });
-    expect(created).toHaveLength(0);
+    expect(created[0]?.writes.some((frame) => frame.type === "set_session_name")).toBe(false);
+    expect(created[0]?.status).toBe("stopped");
   });
 
   test("a chat that does not exist cannot be renamed", async () => {

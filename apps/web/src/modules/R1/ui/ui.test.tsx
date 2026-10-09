@@ -461,4 +461,65 @@ describe("SessionCatalogSidebar", () => {
     );
     expect(screen.queryByText("Newest chat")).toBeNull();
   });
+
+  test("while a rename is being saved the box is busy and read-only, and a second Enter starts no second rename", async () => {
+    const calls: string[] = [];
+    let release: () => void = () => undefined;
+    const saving = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    renderSidebar({
+      renameAvailable: true,
+      remote: {
+        ...fakeRemote(calls),
+        rename: async (id: string, title: string) => {
+          calls.push(`rename:${id}:${title}`);
+          await saving;
+        },
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    startRename("Newest chat");
+    const box = screen.getByRole("textbox", { name: "Rename Newest chat" }) as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "Busy title" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(box.getAttribute("aria-busy")).toBe("true"));
+    expect(box.readOnly).toBe(true);
+    expect(screen.getByText("Saving…")).toBeTruthy();
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(calls).toEqual(["rename:new:Busy title"]);
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Rename Newest chat" })).toBeNull(),
+    );
+    expect(calls).toEqual(["rename:new:Busy title"]);
+  });
+
+  test("after Enter saves a rename, the renamed chat's row has the focus and the roving focus", async () => {
+    renderSidebar({ renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    startRename("Newest chat");
+    const box = screen.getByRole("textbox", { name: "Rename Newest chat" });
+    fireEvent.change(box, { target: { value: "Focus after save" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("option", { name: /Newest chat/ })),
+    );
+    expect(screen.getByRole("option", { name: /Newest chat/ }).getAttribute("tabindex")).toBe("0");
+    expect(screen.getByRole("option", { name: /Old chat/ }).getAttribute("tabindex")).toBe("-1");
+  });
+
+  test("Escape cancels a rename and gives the focus back to the chat's row, not the whole list", async () => {
+    renderSidebar({ renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    startRename("Newest chat");
+    const box = screen.getByRole("textbox", { name: "Rename Newest chat" });
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "Rename Newest chat" })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("option", { name: /Newest chat/ })),
+    );
+  });
 });

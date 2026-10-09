@@ -61,13 +61,14 @@ export interface A0PortContext {
     signal: AbortSignalLike,
   ) => Promise<ThreadBootstrap | undefined>;
   /**
-   * Whether an omp this server did not start is writing a chat's file (the process table). A rename
-   * of a chat nobody has open waits for "none": omp writes a chat to a copy when another process
-   * holds its file.
+   * Whether another omp is writing a chat (omp's lease on the chat's file). A rename of a chat nobody
+   * has open goes ahead only on "none": omp writes a chat to a copy when another process holds its file.
    */
   readonly externalOmp: (
     threadId: ThreadId,
     sessionFile: SessionFilePath,
+    /** The rename host this runtime started for the chat: it is not another omp. */
+    hostPid: number | undefined,
   ) => Promise<ExternalOmpState>;
   /** Test seam and process adapter seam; defaults to the merged A0.3 RpcSession. */
   readonly createSession?: (process: OmpProcess) => RpcSession;
@@ -358,8 +359,8 @@ export class RpcSessionPortRuntime {
 
   /**
    * Renames a chat. A chat that is open is renamed by its own omp. A chat nobody has open is renamed
-   * by a short-lived omp for it: opened the way any chat is opened, asked to set the name, and
-   * stopped again at once, unless another viewer has opened it meanwhile.
+   * by a short-lived omp for it: opened, checked for another omp's lease, asked to set the name, and
+   * stopped again at once, whatever the outcome.
    */
   async rename(args: SessionRenameArgs, call: PortHandlerContext): Promise<null> {
     await this.#serializeRename(args.threadId, async () => {
@@ -381,28 +382,32 @@ export class RpcSessionPortRuntime {
     if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
     // A process this server is still stopping holds the chat's file until it exits.
     await this.#context.processRegistry.whenStopped(args.threadId);
-    const other = await this.#context.externalOmp(args.threadId, resolved.sessionFile);
-    if (other === "running") {
-      throw new AppFailure({
-        code: "conflict",
-        message:
-          "Another omp is using this chat, so it cannot be renamed right now. Close it, then rename the chat again.",
-        retryable: true,
-      });
-    }
-    if (other === "unknown") {
-      throw unavailable(
-        "The app cannot check whether another omp is using this chat, so the rename was not saved.",
-      );
-    }
     const opened = await this.open({ threadId: args.threadId }, call);
     try {
+      // Checked after this host is up and before it writes. omp takes a chat's lease only when it
+      // writes, so this is the point where another omp that has written the chat shows up, and a
+      // refusal here leaves the chat exactly as it was.
+      const hostPid = this.#context.processRegistry.get(args.threadId)?.pid;
+      const other = await this.#context.externalOmp(args.threadId, opened.sessionFile, hostPid);
+      if (other === "running") {
+        throw new AppFailure({
+          code: "conflict",
+          message:
+            "Another omp is using this chat, so it can't be renamed right now. Close that omp, then try again.",
+          retryable: true,
+        });
+      }
+      if (other === "unknown") {
+        throw unavailable(
+          "The app can't tell whether another omp is using this chat, so nothing was renamed.",
+        );
+      }
       const entry = this.#entry(args.threadId);
       await entry.session.send(
         { type: "set_session_name", name: args.name },
         { signal: call.signal },
       );
-      // omp writes a chat to a copy when another process holds its file, so the title can land there.
+      // Another omp can start writing between the check and this write; omp then moves the chat to a copy.
       const identity = readSessionState(
         await entry.session.send({ type: "get_state" }, { signal: call.signal }),
       );
@@ -410,7 +415,7 @@ export class RpcSessionPortRuntime {
         throw new AppFailure({
           code: "conflict",
           message:
-            "The new title was saved to a copy of this chat, because another omp was writing the original. Close that omp, then check the list.",
+            "Another omp started writing this chat during the rename, so the new title went to a copy. The original keeps its old title, and the copy is listed as its own chat.",
           retryable: false,
         });
       }
@@ -744,7 +749,7 @@ export class RpcSessionPortRuntime {
     ) {
       throw new AppFailure({
         code: "conflict",
-        message: "omp returned a different session identity than the requested thread",
+        message: "The chat opened as a different chat than the one asked for. Try again.",
         retryable: false,
       });
     }

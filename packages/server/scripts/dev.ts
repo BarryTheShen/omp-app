@@ -47,6 +47,7 @@ import {
   findExternalOmp,
   logOmpProcess,
   OmpProcessRegistry,
+  ompSessionOwnersDir,
   spawnOmpProcess,
 } from "../src/process";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
@@ -221,7 +222,13 @@ export async function createCompositionServer(
     processRegistry,
     replay,
     resolveThread,
-    externalOmp: findExternalOmp,
+    externalOmp: (threadId, sessionFile, hostPid) =>
+      findExternalOmp({
+        sessionId: threadId,
+        sessionFile,
+        ownersDir: ompSessionOwnersDir(env, homeDir),
+        ownPid: hostPid,
+      }),
     capabilities,
     serverInfo: {
       instanceId,

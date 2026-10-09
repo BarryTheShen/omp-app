@@ -106,6 +106,10 @@ export function SessionCatalogSidebar({
   const [editingId, setEditingId] = useState<ThreadId | undefined>();
   const [editingTitle, setEditingTitle] = useState("");
   const [renameError, setRenameError] = useState<string | undefined>();
+  const [renaming, setRenaming] = useState(false);
+  const renamingRef = useRef(false);
+  const [focusRowId, setFocusRowId] = useState<ThreadId | undefined>();
+  const rowElements = useRef(new Map<ThreadId, HTMLDivElement>());
   const [menuSessionId, setMenuSessionId] = useState<ThreadId | undefined>();
   const previousCatalog = useRef(catalog);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -163,6 +167,16 @@ export function SessionCatalogSidebar({
   }, [snapshot.sessions]);
   const sessions = snapshot.sessions;
 
+  // After a rename (or Escape) the chat's own row takes focus and becomes the focused row, so the
+  // arrow keys continue from it. It runs once the list shows the saved title, where the row sits now.
+  useEffect(() => {
+    if (focusRowId === undefined) return;
+    const index = sessions.findIndex((session) => session.id === focusRowId);
+    if (index >= 0) setFocusedIndex(index);
+    rowElements.current.get(focusRowId)?.querySelector<HTMLElement>('[role="option"]')?.focus();
+    setFocusRowId(undefined);
+  }, [focusRowId, sessions]);
+
   const openSession = async (session: SessionMetadata): Promise<void> => {
     const initialized = await remote.initialize(session.id);
     await onOpenThread?.(initialized.remoteId as ThreadId);
@@ -173,33 +187,47 @@ export function SessionCatalogSidebar({
     await onNewChat?.(initialized.remoteId as ThreadId);
   };
 
+  /** Keeps each chat's row element, so the keyboard can go back to the row after a rename. */
+  const rememberRow = (id: ThreadId, element: HTMLDivElement | null): void => {
+    if (element) rowElements.current.set(id, element);
+    else rowElements.current.delete(id);
+  };
+
   const beginRename = (session: SessionMetadata): void => {
     setEditingId(session.id);
     setEditingTitle(session.title ?? "");
     setRenameError(undefined);
   };
 
-  /** Closes the rename box and gives the keyboard back to the list, where the chat is. */
-  const endRename = (): void => {
+  /** Closes the rename box; focus then goes to the chat's own row, not to the list as a whole. */
+  const endRename = (session: SessionMetadata): void => {
     setEditingId(undefined);
     setRenameError(undefined);
-    listRef.current?.focus();
+    setFocusRowId(session.id);
   };
 
   const finishRename = async (session: SessionMetadata): Promise<void> => {
+    // Enter pressed again while a save runs is ignored: the first one owns the rename.
+    if (renamingRef.current) return;
     const nextTitle = editingTitle.trim();
     if (nextTitle.length === 0 || nextTitle === session.title) {
-      endRename();
+      endRename(session);
       return;
     }
+    renamingRef.current = true;
+    setRenaming(true);
+    setRenameError(undefined);
     try {
       await remote.rename(session.id, nextTitle);
     } catch (error) {
       // The box stays open with the typed title, so the person can try again or press Escape.
       setRenameError(error instanceof Error ? error.message : "The chat could not be renamed.");
       return;
+    } finally {
+      renamingRef.current = false;
+      setRenaming(false);
     }
-    endRename();
+    endRename(session);
   };
   const togglePin = async (session: SessionMetadata): Promise<void> => {
     setMenuSessionId(undefined);
@@ -319,13 +347,19 @@ export function SessionCatalogSidebar({
                     : "Pinning is unavailable"
                   : capabilityReason(pinStatus, "Pinning is unavailable");
                 return (
-                  <div key={session.id} className="group relative mb-1">
+                  <div
+                    key={session.id}
+                    className="group relative mb-1"
+                    ref={(element) => rememberRow(session.id, element)}
+                  >
                     <ListRow
                       title={
                         isEditing ? (
                           <Input
+                            aria-busy={isEditing && renaming ? true : undefined}
                             aria-label={`Rename ${title}`}
                             autoFocus
+                            readOnly={renaming}
                             value={editingTitle}
                             onChange={(event) => setEditingTitle(event.target.value)}
                             onClick={(event) => event.stopPropagation()}
@@ -334,7 +368,7 @@ export function SessionCatalogSidebar({
                                 event.preventDefault();
                                 void finishRename(session);
                               }
-                              if (event.key === "Escape") endRename();
+                              if (event.key === "Escape") endRename(session);
                             }}
                           />
                         ) : (
@@ -352,19 +386,25 @@ export function SessionCatalogSidebar({
                         ) : undefined
                       }
                       detail={
-                        <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate text-xs">
-                          <time dateTime={session.updatedAt} title={activity.title}>
-                            {activity.label}
-                          </time>
-                          {snapshot.git?.branch && (
-                            <>
-                              <span aria-hidden="true">·</span>
-                              <span className="truncate" title={`Branch: ${snapshot.git.branch}`}>
-                                {snapshot.git.branch}
-                              </span>
-                            </>
-                          )}
-                        </span>
+                        isEditing && renaming ? (
+                          <span className="text-muted-foreground text-xs" role="status">
+                            Saving…
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate text-xs">
+                            <time dateTime={session.updatedAt} title={activity.title}>
+                              {activity.label}
+                            </time>
+                            {snapshot.git?.branch && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="truncate" title={`Branch: ${snapshot.git.branch}`}>
+                                  {snapshot.git.branch}
+                                </span>
+                              </>
+                            )}
+                          </span>
+                        )
                       }
                       selected={selected}
                       tabIndex={index === focusedIndex ? 0 : -1}

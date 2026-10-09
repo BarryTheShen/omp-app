@@ -1,4 +1,4 @@
-export { type ExternalOmpState, findExternalOmp } from "./external-omp";
+export { type ExternalOmpState, findExternalOmp, readProcessTable } from "./external-omp";
 export { logOmpProcess } from "./log";
 export {
   type OmpProcess,
@@ -12,3 +12,4 @@ export {
   OmpProcessRegistry,
   type OmpProcessRegistryOptions,
 } from "./registry";
+export { ompSessionOwnersDir } from "./session-lease";

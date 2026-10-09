@@ -86,6 +86,12 @@ export interface RealApp {
   readonly token: string;
   /** For a test that breaks the page on purpose: problems matching this are expected; any other still fails the test. */
   readonly allowProblem: (pattern: RegExp) => void;
+  /**
+   * Starts another omp (`--mode rpc-ui`, the app's mode) in this run's folder, home and agent folder,
+   * with the app's environment, for a test that needs a chat held by an omp the app did not start.
+   * Stopped when the test ends.
+   */
+  readonly startOmp: (args: readonly string[]) => ChildProcess;
 }
 
 /** Clicks "New chat" and waits for the composer; a new chat starts a real omp process. */
@@ -389,6 +395,7 @@ export const realTest = test.extend<{
     let provider: ChildProcess | undefined;
     let server: { readonly process: ChildProcess; readonly url: string } | undefined;
     const pages: Page[] = [];
+    const extraOmp: ChildProcess[] = [];
     const problems: string[] = [];
     const allowed: RegExp[] = [];
     try {
@@ -445,12 +452,22 @@ export const realTest = test.extend<{
         log,
         token,
         allowProblem: (pattern) => void allowed.push(pattern),
+        startOmp: (args) => {
+          const child = spawn(ompBinary ?? REAL_OMP, ["--mode", "rpc-ui", ...args], {
+            cwd: folder,
+            env,
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          extraOmp.push(child);
+          return child;
+        },
       });
       expect(
         problems.filter((problem) => !allowed.some((pattern) => pattern.test(problem))),
       ).toEqual([]);
     } finally {
       await Promise.all(pages.map((page) => page.close().catch(() => undefined)));
+      for (const child of extraOmp) await stopChild(child);
       await stopChild(server?.process);
       if (provider?.stdin) provider.stdin.end();
       await stopChild(provider);
