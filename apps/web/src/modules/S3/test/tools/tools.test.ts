@@ -1,5 +1,6 @@
 import {
   AppFailure,
+  ConfigChanged,
   type ConfigEntry,
   type ConfigSource,
   type ConfigWriteResult,
@@ -8,7 +9,7 @@ import {
   type SettingSource,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import type { ConfigStoreClient } from "../../../S1/settings-kit";
+import type { ConfigChangeSource, ConfigStoreClient } from "../../../S1/settings-kit";
 import {
   projectToolsPolicy,
   readToolsSettings,
@@ -27,6 +28,7 @@ type FakeConfigStore = {
   entries: ConfigEntry[];
   listFolders: (string | null)[];
   writes: Parameters<ConfigStoreClient["write"]>[0][];
+  listeners: Set<(change: ConfigChanged) => void>;
 };
 
 function configValue(
@@ -45,6 +47,7 @@ function configSecret(key: string, isSet: boolean, source: ConfigSource = "globa
 function fakeConfigStore(entries: readonly ConfigEntry[] = []): {
   readonly state: FakeConfigStore;
   readonly client: ConfigStoreClient;
+  readonly source: ConfigChangeSource;
 } {
   const state: FakeConfigStore = {
     revision: "revision-1",
@@ -52,6 +55,7 @@ function fakeConfigStore(entries: readonly ConfigEntry[] = []): {
     entries: [...entries],
     listFolders: [],
     writes: [],
+    listeners: new Set(),
   };
   const client: ConfigStoreClient = {
     read: async ({ key }) => {
@@ -92,17 +96,45 @@ function fakeConfigStore(entries: readonly ConfigEntry[] = []): {
       const index = state.entries.findIndex((candidate) => candidate.key === args.key);
       if (index < 0) state.entries.push(entry);
       else state.entries[index] = entry;
+      const folder = args.folder === null ? null : FolderPath.parse(args.folder);
       return {
         key: args.key,
         layer: args.layer,
-        folder: args.folder === null ? null : FolderPath.parse(args.folder),
+        folder,
         revision: state.revision,
         previousRevision: args.expectedRevision,
         entry,
       };
     },
   };
-  return { state, client };
+  const source: ConfigChangeSource = {
+    subscribe: (listener) => {
+      state.listeners.add(listener);
+      return () => state.listeners.delete(listener);
+    },
+  };
+  return { state, client, source };
+}
+
+function emitChange(
+  state: FakeConfigStore,
+  key: string,
+  revision: string,
+  entry: ConfigEntry,
+  folder: FolderPath | null = null,
+): void {
+  const change = ConfigChanged.parse({
+    key,
+    layer: entry.source,
+    folder,
+    revision,
+    entry,
+  });
+  for (const listener of state.listeners) listener(change);
+}
+
+async function settle(): Promise<void> {
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
 describe("S3 Tools ConfigStore policy", () => {
@@ -167,6 +199,18 @@ describe("S3 Tools ConfigStore policy", () => {
       });
     }
   });
+  test("projects normalized values used by omp for numeric policy settings", async () => {
+    const { client } = fakeConfigStore([
+      configValue("async.maxJobs", 250),
+      configValue("extensionHandlers.toolCallTimeoutMs", 0),
+      configValue("ida.maxOpen", 0),
+    ]);
+    const policy = projectToolsPolicy(await readToolsSettings(client, null));
+
+    expect(policy.execution.asyncMaxJobs).toBe(100);
+    expect(policy.extensions.toolCallTimeoutMs).toBe(30_000);
+    expect(policy.ida.maxOpen).toBe(1);
+  });
 
   test("reads effective entries once, projects provenance, and keeps record and secret policy typed", async () => {
     const projectFolder = FolderPath.parse("/repo/project");
@@ -181,6 +225,9 @@ describe("S3 Tools ConfigStore policy", () => {
       configValue("browser.headless", false),
       configValue("computer.maxWidth", 1920),
       configValue("github.cache.enabled", false),
+      configValue("tools.artifactSpillThreshold", 64),
+      configValue("tools.artifactTailBytes", 20),
+      configValue("tools.artifactHeadBytes", 10),
       configValue("tools.artifactMaxBytes", 32),
       configValue("tools.speculativeExecution.enabled", true),
       configValue("tools.speculativeExecution.maxInFlight", 3),
@@ -215,7 +262,12 @@ describe("S3 Tools ConfigStore policy", () => {
     expect(policy.grepBrowser).toMatchObject({ contextBefore: 2, headless: false });
     expect(policy.computer.maxWidth).toBe(1920);
     expect(policy.github.cacheEnabled).toBe(false);
-    expect(policy.outputLimits.artifactMaxBytes).toBe(32);
+    expect(policy.outputLimits).toMatchObject({
+      artifactSpillThresholdKb: 64,
+      artifactTailKb: 20,
+      artifactHeadKb: 10,
+      artifactMaxMb: 32,
+    });
     expect(policy.execution).toMatchObject({
       speculativeExecutionEnabled: true,
       speculativeExecutionMaxInFlight: 3,
@@ -248,6 +300,23 @@ describe("S3 Tools ConfigStore policy", () => {
     expect(
       "value" in (config.entries.find((entry) => entry.key === "dev.autoqaPush.token") ?? {}),
     ).toBe(false);
+  });
+
+  test("preserves omp-effective values, maps legacy find booleans, and clamps async capacity", async () => {
+    const { client } = fakeConfigStore([
+      configValue("grep.contextBefore", 150),
+      configValue("find.enabled", true),
+      configValue("async.maxJobs", 150),
+    ]);
+    const policy = projectToolsPolicy(await readToolsSettings(client, null));
+
+    expect(policy.settings["grep.contextBefore"]).toBe(150);
+    expect(policy.settings["find.enabled"]).toBe("on");
+    expect(policy.availability.find).toBe("on");
+    expect(policy.execution.asyncMaxJobs).toBe(100);
+    expect(policy.invalid).not.toEqual(
+      expect.arrayContaining(["grep.contextBefore", "find.enabled", "async.maxJobs"]),
+    );
   });
 
   test("falls back on invalid bounds, URLs, and record policy values", async () => {
@@ -284,8 +353,8 @@ describe("S3 Tools ConfigStore policy", () => {
   });
 
   test("writes staged keys with sequential revision CAS and applies the strongest boundary", async () => {
-    const { state, client } = fakeConfigStore();
-    const store = new ToolsSettingsStore(client, { folder: null, layer: "global" });
+    const { state, client, source } = fakeConfigStore();
+    const store = new ToolsSettingsStore(client, source, { folder: null, layer: "global" });
     await store.read();
 
     expect(store.stage("async.enabled", { secret: false, value: false }).ok).toBe(true);
@@ -297,7 +366,7 @@ describe("S3 Tools ConfigStore policy", () => {
       ["async.maxJobs", "revision-2"],
     ]);
     expect(result.revision).toBe("revision-3");
-    expect(result.status).toBe("reload-required");
+    expect(result.status).toBe("applied");
     expect(result.snapshot.entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: "async.enabled", value: false }),
@@ -308,11 +377,67 @@ describe("S3 Tools ConfigStore policy", () => {
       asyncEnabled: false,
       asyncMaxJobs: 12,
     });
+    store.dispose();
+  });
+
+  test("coalesces concurrent saves into one CAS operation", async () => {
+    const { state, client, source } = fakeConfigStore();
+    const store = new ToolsSettingsStore(client, source, { folder: null, layer: "global" });
+    await store.read();
+    expect(store.stage("async.maxJobs", { secret: false, value: 12 }).ok).toBe(true);
+
+    const first = store.save();
+    const second = store.save();
+    expect(second).toBe(first);
+    await Promise.all([first, second]);
+
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0]).toMatchObject({ key: "async.maxJobs", expectedRevision: "revision-1" });
+    expect(store.getSnapshot().phase).toBe("ready");
+    store.dispose();
+  });
+  test("rejects new edits while a save is in flight instead of dropping them", async () => {
+    const { state, client, source } = fakeConfigStore();
+    let releaseWrite = () => {};
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const delayedClient: ConfigStoreClient = {
+      read: (args) => client.read(args),
+      list: (args) => client.list(args),
+      write: async (args) => {
+        await writeGate;
+        return client.write(args);
+      },
+    };
+    const store = new ToolsSettingsStore(delayedClient, source, { folder: null, layer: "global" });
+    await store.read();
+    expect(store.stage("async.maxJobs", { secret: false, value: 12 }).ok).toBe(true);
+
+    const saving = store.save();
+    expect(store.getSnapshot().phase).toBe("saving");
+    const stagedDuringSave = store.stage("async.enabled", { secret: false, value: false });
+    expect(stagedDuringSave).toMatchObject({
+      ok: false,
+      validation: {
+        valid: false,
+        code: "not-ready",
+        message: "Settings are saving. Try again in a moment.",
+      },
+    });
+    expect(store.getSnapshot().phase).toBe("saving");
+    releaseWrite();
+    await saving;
+
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0]?.key).toBe("async.maxJobs");
+    expect(store.getSnapshot().staged?.edits).toEqual({});
+    store.dispose();
   });
 
   test("reloads remote policy on CAS conflict and requires explicit resolution", async () => {
-    const { state, client } = fakeConfigStore();
-    const store = new ToolsSettingsStore(client, { folder: null, layer: "global" });
+    const { state, client, source } = fakeConfigStore();
+    const store = new ToolsSettingsStore(client, source, { folder: null, layer: "global" });
     await store.read();
     expect(store.stage("async.maxJobs", { secret: false, value: 7 }).ok).toBe(true);
 
@@ -339,6 +464,50 @@ describe("S3 Tools ConfigStore policy", () => {
       value: 7,
     });
     expect(store.getSnapshot().phase).toBe("ready");
+    store.dispose();
+  });
+
+  test("refreshes external policy changes, conflicts with staged edits, and unsubscribes on dispose", async () => {
+    const { state, client, source } = fakeConfigStore();
+    const store = new ToolsSettingsStore(client, source, { folder: null, layer: "global" });
+    await store.read();
+
+    const firstEntry = configValue("glob.enabled", false);
+    state.revision = "revision-2";
+    state.revisionIndex = 2;
+    state.entries.push(firstEntry);
+    emitChange(state, "glob", state.revision, configValue("glob", { enabled: false }));
+    await settle();
+    expect(store.getSnapshot()).toMatchObject({
+      phase: "ready",
+      config: { revision: "revision-2" },
+      policy: { availability: { glob: false } },
+    });
+
+    expect(store.stage("async.enabled", { secret: false, value: false }).ok).toBe(true);
+    const secondEntry = configValue("glob.enabled", true);
+    state.revision = "revision-3";
+    state.revisionIndex = 3;
+    const globIndex = state.entries.findIndex((entry) => entry.key === "glob.enabled");
+    state.entries[globIndex] = secondEntry;
+    emitChange(state, "glob", state.revision, configValue("glob", { enabled: true }));
+    await settle();
+    expect(store.getSnapshot()).toMatchObject({
+      phase: "conflict",
+      config: { revision: "revision-3" },
+      staged: { edits: { "async.enabled": { value: false } } },
+      policy: { availability: { glob: true } },
+    });
+    await store.resolveConflict("reload");
+    expect(store.getSnapshot()).toMatchObject({ phase: "ready", staged: { edits: {} } });
+
+    store.dispose();
+    expect(state.listeners.size).toBe(0);
+    const beforeDisposeChange = store.getSnapshot();
+    state.revision = "revision-4";
+    emitChange(state, "glob", state.revision, configValue("glob", { enabled: false }));
+    await settle();
+    expect(store.getSnapshot()).toBe(beforeDisposeChange);
   });
 
   test("exposes rejected edits as validation and does not stage them", async () => {

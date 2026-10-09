@@ -1,5 +1,6 @@
 import type {
   AppError,
+  ConfigChanged,
   ConfigEntry,
   ConfigWriteLayer,
   FolderPath,
@@ -212,9 +213,16 @@ function toAppError(error: unknown, fallback: string): AppError {
 /** Aggregate ConfigStore-backed Tools state while keeping S1.1 as the settings write grammar. */
 export class ToolsSettingsStore {
   private readonly client: ConfigStoreClient;
+  private readonly source: ConfigChangeSource;
   private readonly folder: FolderPath | null;
   private readonly layer: ConfigWriteLayer;
   private readonly listeners = new Set<ToolsSettingsStoreListener>();
+  private unsubscribeChanged: (() => void) | undefined;
+  private operation = 0;
+  private writing = false;
+  private pendingChange: ConfigChanged | undefined;
+  private disposed = false;
+  private inFlightSave: Promise<ToolsSaveResult> | undefined;
   private current: ToolsSettingsStoreSnapshot = Object.freeze({
     config: null,
     staged: null,
@@ -226,11 +234,16 @@ export class ToolsSettingsStore {
 
   public constructor(
     client: ConfigStoreClient,
+    source: ConfigChangeSource,
     options: { readonly folder: FolderPath | null; readonly layer: ConfigWriteLayer },
   ) {
     this.client = client;
+    this.source = source;
     this.folder = options.folder;
     this.layer = options.layer;
+    this.unsubscribeChanged = this.source.subscribe((change) => {
+      void this.handleChanged(change);
+    });
   }
 
   public getSnapshot(): ToolsSettingsStoreSnapshot {
@@ -238,24 +251,48 @@ export class ToolsSettingsStore {
   }
 
   public subscribe(listener: ToolsSettingsStoreListener): () => void {
+    if (this.disposed) return () => undefined;
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
   public async read(): Promise<ToolsConfigSnapshot> {
+    const operation = ++this.operation;
     this.update({ phase: "loading", error: null });
     try {
       const config = await readToolsSettings(this.client, this.folder);
+      if (operation !== this.operation || this.disposed) return config;
       const staged = Object.freeze({ snapshot: config, edits: {} });
       this.update({ config, staged, policy: projectToolsPolicy(config), phase: "ready" });
       return config;
     } catch (error) {
-      this.update({ phase: "error", error: toAppError(error, "Reading Tools settings failed.") });
+      if (operation === this.operation && !this.disposed) {
+        this.update({ phase: "error", error: toAppError(error, "Reading Tools settings failed.") });
+      }
       throw error;
     }
   }
 
   public stage(key: ToolsSettingKey, value: SettingValue): ToolsStageResult {
+    if (this.disposed) {
+      return {
+        ok: false,
+        validation: {
+          valid: false,
+          code: "unavailable",
+          message: "Tools settings are no longer available.",
+        },
+      };
+    }
+    if (this.current.phase === "saving") {
+      const validation: ValidationResult & { readonly valid: false } = {
+        valid: false,
+        code: "not-ready",
+        message: "Settings are saving. Try again in a moment.",
+      };
+      this.update({ validation: { ...this.current.validation, [key]: validation } });
+      return { ok: false, validation };
+    }
     const staged = this.current.staged;
     if (!staged) {
       const validation = {
@@ -278,13 +315,38 @@ export class ToolsSettingsStore {
   }
 
   public cancel(): void {
+    if (this.disposed) return;
     const config = this.current.config;
     if (!config) return;
     const staged = Object.freeze({ snapshot: config, edits: {} });
     this.update({ staged, validation: {}, phase: "ready", error: null });
   }
 
-  public async save(): Promise<ToolsSaveResult> {
+  public save(): Promise<ToolsSaveResult> {
+    if (this.disposed) {
+      return Promise.reject(
+        new AppFailure({
+          code: "unavailable",
+          message: "Tools settings are no longer available.",
+          retryable: false,
+        }),
+      );
+    }
+    if (this.inFlightSave) return this.inFlightSave;
+    const pending = this.saveStaged();
+    this.inFlightSave = pending;
+    void pending.then(
+      () => {
+        if (this.inFlightSave === pending) this.inFlightSave = undefined;
+      },
+      () => {
+        if (this.inFlightSave === pending) this.inFlightSave = undefined;
+      },
+    );
+    return pending;
+  }
+
+  private async saveStaged(): Promise<ToolsSaveResult> {
     const staged = this.current.staged;
     if (!staged) {
       throw new AppFailure({
@@ -300,20 +362,33 @@ export class ToolsSettingsStore {
         retryable: false,
       });
     }
+    const operation = ++this.operation;
+    this.writing = true;
+    this.pendingChange = undefined;
     this.update({ phase: "saving", error: null });
     try {
       const result = await saveToolsSettings(this.client, staged, this.layer);
-      const next = Object.freeze({ snapshot: result.snapshot, edits: {} });
+      const pendingChange = this.takePendingChange();
+      this.writing = false;
+      const config =
+        pendingChange && pendingChange.revision !== result.revision
+          ? await readToolsSettings(this.client, this.folder)
+          : result.snapshot;
+      const settled = Object.freeze({ ...result, snapshot: config, revision: config.revision });
+      if (operation !== this.operation || this.disposed) return settled;
+      const next = Object.freeze({ snapshot: config, edits: {} });
       this.update({
-        config: result.snapshot,
+        config,
         staged: next,
-        policy: projectToolsPolicy(result.snapshot),
+        policy: projectToolsPolicy(config),
         phase: "ready",
         validation: {},
         error: null,
       });
-      return result;
+      return settled;
     } catch (error) {
+      this.writing = false;
+      this.pendingChange = undefined;
       const appError = toAppError(error, "Saving Tools settings failed.");
       if (appError.code === "conflict") {
         try {
@@ -325,7 +400,7 @@ export class ToolsSettingsStore {
             error: toAppError(refreshError, "Refreshing Tools settings after a conflict failed."),
           });
         }
-      } else {
+      } else if (operation === this.operation) {
         this.update({ phase: "error", error: appError });
       }
       throw error;
@@ -334,7 +409,9 @@ export class ToolsSettingsStore {
 
   /** Re-read the scope and preserve staged edits as a conflict when they exist. */
   public async refresh(): Promise<ToolsConfigSnapshot> {
+    const operation = ++this.operation;
     const remote = await readToolsSettings(this.client, this.folder);
+    if (operation !== this.operation || this.disposed) return remote;
     const staged = this.current.staged;
     if (staged && Object.keys(staged.edits).length > 0) {
       this.update({
@@ -357,8 +434,10 @@ export class ToolsSettingsStore {
   }
 
   public async resolveConflict(choice: "reload" | "keep-mine"): Promise<void> {
-    if (this.current.phase !== "conflict") return;
+    if (this.disposed || this.current.phase !== "conflict") return;
+    const operation = ++this.operation;
     const remote = await readToolsSettings(this.client, this.folder);
+    if (operation !== this.operation || this.disposed) return;
     const edits = choice === "reload" ? {} : (this.current.staged?.edits ?? {});
     this.update({
       config: remote,
@@ -370,7 +449,62 @@ export class ToolsSettingsStore {
     });
   }
 
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.operation += 1;
+    this.pendingChange = undefined;
+    this.unsubscribeChanged?.();
+    this.unsubscribeChanged = undefined;
+    this.listeners.clear();
+  }
+
+  private takePendingChange(): ConfigChanged | undefined {
+    const change = this.pendingChange;
+    this.pendingChange = undefined;
+    return change;
+  }
+
+  private async handleChanged(change: ConfigChanged): Promise<void> {
+    if (this.disposed) return;
+    if (this.writing) {
+      this.pendingChange = change;
+      return;
+    }
+    const operation = ++this.operation;
+    try {
+      const remote = await readToolsSettings(this.client, this.folder);
+      if (operation !== this.operation || this.disposed) return;
+      const staged = this.current.staged;
+      if (staged && Object.keys(staged.edits).length > 0) {
+        this.update({
+          config: remote,
+          staged: Object.freeze({ snapshot: remote, edits: staged.edits }),
+          policy: projectToolsPolicy(remote),
+          phase: "conflict",
+          error: null,
+        });
+      } else {
+        this.update({
+          config: remote,
+          staged: Object.freeze({ snapshot: remote, edits: {} }),
+          policy: projectToolsPolicy(remote),
+          phase: "ready",
+          error: null,
+        });
+      }
+    } catch (error) {
+      if (operation === this.operation && !this.disposed) {
+        this.update({
+          phase: "error",
+          error: toAppError(error, "Reading an external Tools settings change failed."),
+        });
+      }
+    }
+  }
+
   private update(patch: Partial<ToolsSettingsStoreSnapshot>): void {
+    if (this.disposed) return;
     this.current = Object.freeze({ ...this.current, ...patch });
     for (const listener of this.listeners) listener(this.current);
   }

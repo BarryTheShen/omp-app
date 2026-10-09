@@ -301,12 +301,12 @@ export type ToolsGithubPolicy = {
 };
 
 export type ToolsOutputLimitsPolicy = {
-  readonly artifactSpillThreshold: number;
-  readonly artifactTailBytes: number;
-  readonly artifactHeadBytes: number;
+  readonly artifactSpillThresholdKb: number;
+  readonly artifactTailKb: number;
+  readonly artifactHeadKb: number;
   readonly outputMaxColumns: number;
   readonly artifactTailLines: number;
-  readonly artifactMaxBytes: number;
+  readonly artifactMaxMb: number;
 };
 
 export type ToolsExecutionPolicy = {
@@ -419,15 +419,58 @@ function provenanceFor(entry: ConfigEntry | undefined): ToolSettingProvenance {
   });
 }
 
-function accepts(
+type ProjectedSettingValue = boolean | number | string;
+
+type SettingProjection =
+  | { readonly valid: true; readonly value: ProjectedSettingValue }
+  | { readonly valid: false };
+
+function projectSettingValue(
+  key: ToolsSettingKey,
   registration: { readonly control: SettingControl; readonly sectionId: ToolsSectionId },
   value: JsonValue,
   snapshot: ToolsConfigSnapshot,
-): boolean {
-  return registration.control.validate(
-    { secret: false, value },
-    snapshot.sections[registration.sectionId],
-  ).valid;
+): SettingProjection {
+  const { control } = registration;
+  // v18.6.1 migrates legacy booleans to the enum's on/off values.
+  // `packages/coding-agent/src/config/settings.ts:2808-2812`.
+  if (key === "find.enabled" && typeof value === "boolean") {
+    return { valid: true, value: value ? "on" : "off" };
+  }
+  if (control.kind === "boolean") {
+    return typeof value === "boolean" ? { valid: true, value } : { valid: false };
+  }
+  // Read-side projection must not apply the UI's guessed write ranges to values omp accepts.
+  if (control.kind === "number" || control.kind === "duration") {
+    const allowsNever = key === "tasks.todoClearDelay" && value === -1;
+    if (typeof value !== "number" || !Number.isFinite(value) || (value < 0 && !allowsNever)) {
+      return { valid: false };
+    }
+    // omp caps async jobs at 100, resets a zero handler timeout to 30 seconds, and keeps one IDA database open (`sdk.ts:2124-2128`, `extensibility/extensions/runner.ts:141-143`, `ida/client.ts:320`).
+    const normalizedValue =
+      key === "async.maxJobs"
+        ? Math.min(100, value)
+        : key === "extensionHandlers.toolCallTimeoutMs" && value === 0
+          ? TOOLS_SETTING_DEFAULTS["extensionHandlers.toolCallTimeoutMs"]
+          : key === "ida.maxOpen"
+            ? Math.max(1, value)
+            : value;
+    return { valid: true, value: normalizedValue };
+  }
+  if (control.kind === "enum") {
+    return typeof value === "string" && control.options?.some((option) => option.value === value)
+      ? { valid: true, value }
+      : { valid: false };
+  }
+  if (control.kind === "text" || control.kind === "path" || control.kind === "multiline") {
+    if (typeof value !== "string") return { valid: false };
+    const validation = control.validate(
+      { secret: false, value },
+      snapshot.sections[registration.sectionId],
+    );
+    return validation.valid ? { valid: true, value } : { valid: false };
+  }
+  return { valid: false };
 }
 
 function projectValues(snapshot: ToolsConfigSnapshot): {
@@ -454,13 +497,17 @@ function projectValues(snapshot: ToolsConfigSnapshot): {
       if (entry?.secret) redacted.push(key);
       continue;
     }
-    if (!registration || !accepts(registration, entry.value, snapshot)) {
+    const projected =
+      registration === undefined
+        ? undefined
+        : projectSettingValue(key, registration, entry.value, snapshot);
+    if (!projected?.valid) {
       values[key] = fallback;
       provenance[key] = provenanceFor(entry);
       invalid.push(key);
       continue;
     }
-    values[key] = entry.value as ToolsSettingValues[typeof key];
+    values[key] = projected.value;
     provenance[key] = provenanceFor(entry);
   }
 
@@ -626,12 +673,12 @@ export function projectToolsPolicy(snapshot: ToolsConfigSnapshot): ToolsPolicySn
       cacheHardTtlSec: values["github.cache.hardTtlSec"],
     }),
     outputLimits: Object.freeze({
-      artifactSpillThreshold: values["tools.artifactSpillThreshold"],
-      artifactTailBytes: values["tools.artifactTailBytes"],
-      artifactHeadBytes: values["tools.artifactHeadBytes"],
+      artifactSpillThresholdKb: values["tools.artifactSpillThreshold"],
+      artifactTailKb: values["tools.artifactTailBytes"],
+      artifactHeadKb: values["tools.artifactHeadBytes"],
       outputMaxColumns: values["tools.outputMaxColumns"],
       artifactTailLines: values["tools.artifactTailLines"],
-      artifactMaxBytes: values["tools.artifactMaxBytes"],
+      artifactMaxMb: values["tools.artifactMaxBytes"],
     }),
     execution: Object.freeze({
       imageQuestionTimeoutMs: values["images.questionTimeoutMs"],
