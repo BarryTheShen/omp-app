@@ -3,11 +3,13 @@ import type { ReactNode } from "react";
 import { File } from "@/components/assistant-ui/elements/file";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { cn } from "@/lib/utils";
+import { executionRecordOf } from "@/modules/U2/execution";
 import { MarkdownText } from "../markdown";
 import { ReasoningGroup } from "../reasoning";
 import { type ToolRendererMap, ToolSlot } from "../tool-slots";
 import { CustomNote, type CustomNoteSource } from "./custom-note";
 import { EarlierSteps, isTurnGroup, useTurnGroupBy } from "./earlier-steps";
+import { ExecutionRow } from "./execution-row";
 import { endingOf, MessageEndingNote } from "./message-ending";
 export interface MessagePartsProps {
   readonly message: MessageState;
@@ -146,6 +148,12 @@ function customNoteOf(message: MessageState): CustomNoteSource | undefined {
   return { customType: ompCustomType, details: ompCustomDetails, text: texts.join("\n\n") };
 }
 
+/** A user's own `!` or `$` run: R0 keeps omp's record in the metadata; U2 normalizes it. */
+function executionOf(message: MessageState) {
+  const raw: unknown = message.metadata.custom.ompExecution;
+  return raw === undefined ? undefined : executionRecordOf(message.id, raw);
+}
+
 /** Renders one assistant-ui message with U1's role grammar and U3's tool boundary. */
 export function MessageParts({
   message,
@@ -159,6 +167,7 @@ export function MessageParts({
   const isUser = role === "user";
   const isSystem = role === "system";
   const note = isSystem ? customNoteOf(message) : undefined;
+  const execution = isSystem ? executionOf(message) : undefined;
   const ending = endingOf(message);
   // A very long assistant turn folds its earlier steps away (see earlier-steps.tsx).
   const groupBy = useTurnGroupBy(!isUser && !isSystem);
@@ -186,6 +195,8 @@ export function MessageParts({
       >
         {note !== undefined ? (
           <CustomNote source={note} />
+        ) : execution !== undefined ? (
+          <ExecutionRow record={execution} />
         ) : (
           <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="never">
             {({ part, children }) => {

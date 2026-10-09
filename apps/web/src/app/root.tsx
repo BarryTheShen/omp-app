@@ -401,6 +401,7 @@ function RouterBridge({
 
 function DraftComposer({
   controller,
+  capabilities,
   submit,
   cancel,
   policy,
@@ -410,6 +411,7 @@ function DraftComposer({
   manager,
 }: {
   readonly controller: DraftController;
+  readonly capabilities: CapabilityMap;
   readonly submit: (intent: PromptIntent) => Promise<void>;
   readonly cancel: () => Promise<void>;
   readonly policy: SubmitPolicy;
@@ -465,6 +467,7 @@ function DraftComposer({
   }, [controller, manager, text]);
   return (
     <ComposerSurface
+      capabilities={capabilities}
       cancel={cancel}
       disabled={snapshot.status === "error"}
       policy={policy}
@@ -484,6 +487,8 @@ interface ActiveThreadProps {
   readonly onLoadOlder?: () => Promise<void>;
   /** Loads the full text of a tool output the thread shows shortened. */
   readonly onLoadFullOutput?: (toolCallId: string) => Promise<void>;
+  /** Brings the open thread up to date after a `!` command; omp saves a command's result without a turn. */
+  readonly onRefreshAfterCommand?: () => Promise<void>;
   readonly capabilities: CapabilityMap;
   readonly folder: FolderPath | null;
   readonly catalog: SessionCatalogModel | null;
@@ -517,6 +522,7 @@ function ActiveThreadReady({
   p3Runs,
   onLoadOlder,
   onLoadFullOutput,
+  onRefreshAfterCommand,
 }: ActiveThreadProps) {
   const store = history.store as OmpRuntimeStore;
   const threadId = history.threadId as ThreadId;
@@ -875,6 +881,7 @@ function ActiveThreadReady({
             showStatus: setCommandStatus,
           }),
     );
+    if (intent.mode === "bash") void onRefreshAfterCommand?.();
     attachmentManager.clearAfterSend();
     scrollController.jumpToLatest();
   };
@@ -1015,6 +1022,7 @@ function ActiveThreadReady({
       slash={slashProvider}
     >
       <DraftComposer
+        capabilities={capabilities}
         cancel={cancel}
         controller={draftController}
         footer={area("composerFooter")}
@@ -1352,6 +1360,9 @@ function ConnectedApp({
         history={history}
         onLoadOlder={controller === null ? undefined : () => controller.loadOlder()}
         onLoadFullOutput={controller === null ? undefined : (id) => controller.loadFullOutput(id)}
+        onRefreshAfterCommand={
+          controller === null ? undefined : () => controller.refreshAfterCommand()
+        }
         leftSidebar={leftSidebar}
         onOpenSettings={openSettings}
         onPromptSent={onPromptSent}

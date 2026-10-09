@@ -6,6 +6,7 @@ export type {
   PythonModeAvailability,
 } from "./modes";
 export {
+  composerTextForIntent,
   modeForText,
   parseComposerMode,
   pythonModeAvailability,

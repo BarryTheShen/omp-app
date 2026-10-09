@@ -254,6 +254,24 @@ describe("U2.4 DraftController", () => {
     expect(controller.getSnapshot().text).toBe("");
   });
 
+  test("keeps the typed mode prefix of a refused command line in the draft", async () => {
+    const timers = new FakeTimers();
+    const store = new FakeDraftStore();
+    const controller = new DraftController({ store, scope, timers });
+    await controller.load();
+    const failure = new AppFailure({ code: "unavailable", message: "refused", retryable: false });
+    await expect(
+      controller.submit(
+        { mode: "bash", text: "echo excluded-out", delivery: "new", excludeFromContext: true },
+        async () => {
+          throw failure;
+        },
+      ),
+    ).rejects.toBe(failure);
+    expect(controller.getSnapshot().text).toBe("!!echo excluded-out");
+    expect(controller.getSnapshot().failedSends[0]?.text).toBe("!!echo excluded-out");
+  });
+
   test("turns another tab's scoped change into a conflict while dirty and adopts it while clean", async () => {
     const store = new FakeDraftStore();
     const controller = new DraftController({ store, scope });

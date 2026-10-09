@@ -46,6 +46,19 @@ export function modeForText(text: string): PromptMode {
   return parseComposerMode(text).mode;
 }
 
+/** The composer text an intent came from, mode prefix included, so a draft keeps what was typed. */
+export function composerTextForIntent(intent: PromptIntent): string {
+  const excluded = intent.excludeFromContext === true;
+  switch (intent.mode) {
+    case "prompt":
+      return intent.text;
+    case "bash":
+      return `${excluded ? "!!" : "!"}${intent.text}`;
+    case "python":
+      return `${excluded ? "$$ " : "$ "}${intent.text}`;
+  }
+}
+
 /** Adds/removes terminal mode prefixes without keeping a second mode state. */
 export function textForMode(text: string, mode: PromptMode): string {
   const parsed = parseComposerMode(text);

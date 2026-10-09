@@ -364,6 +364,27 @@ describe("R0.3 assistant-ui runtime", () => {
     });
     expect(commands).toEqual([]);
   });
+
+  test("gates a bash command that keeps its output out of the model, without sending it", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const commands: unknown[] = [];
+    const send: RpcSessionSend = async ({ command }) => {
+      commands.push(command);
+      return undefined as never;
+    };
+    const controller = createOmpRuntime({ store, send, capabilities });
+    await expect(
+      controller.submitPrompt({
+        mode: "bash",
+        text: "printf hello",
+        delivery: "new",
+        excludeFromContext: true,
+      }),
+    ).rejects.toMatchObject({
+      appError: { code: "unavailable", capability: "upstream.bash-exclude-from-context" },
+    });
+    expect(commands).toEqual([]);
+  });
   test("maps cancel to omp abort and hides unavailable actions", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const commands: unknown[] = [];
@@ -618,6 +639,31 @@ describe("R0.3 assistant-ui runtime", () => {
         fromThreadMessageLike(converted, "note", { type: "complete", reason: "unknown" }),
       ).not.toThrow();
     }
+  });
+
+  test("shows a user's bash run as a system row that keeps omp's record for U1's card", () => {
+    const run = {
+      role: "bashExecution",
+      command: "ls /missing",
+      output: "ls: cannot access '/missing'\n",
+      exitCode: 2,
+      cancelled: false,
+      truncated: false,
+      timestamp: 1,
+    };
+    const record = runtimeMessage(
+      run as unknown as Parameters<typeof runtimeMessage>[0],
+      "entry:runtime-test-thread:bash",
+    );
+    const converted = convertMessage(record as RuntimeMessageView["record"]);
+    expect(converted.role).toBe("system");
+    expect(converted.metadata?.custom).toMatchObject({
+      ompRole: "bashExecution",
+      ompExecution: run,
+    });
+    expect(() =>
+      fromThreadMessageLike(converted, "bash", { type: "complete", reason: "unknown" }),
+    ).not.toThrow();
   });
 
   test("a custom message marked display:false is saved but never a row, and does not split a turn", () => {

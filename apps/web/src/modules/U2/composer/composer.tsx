@@ -1,5 +1,5 @@
 import { type Attachment, ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
-import type { AppError, AttachmentRef } from "@omp-app/contracts";
+import type { AppError, AttachmentRef, CapabilityMap } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
 import {
@@ -20,6 +20,7 @@ import {
   type SubmitPolicyInput,
   type SubmitPolicyResult,
 } from "../contract";
+import { modeForText, parseComposerMode, submitModeInput } from "../modes";
 import { useRemeasureOnWidthChange } from "./remeasure";
 
 export interface ComposerSurfaceProps {
@@ -30,6 +31,8 @@ export interface ComposerSurfaceProps {
   readonly disabled?: boolean;
   readonly showAttachmentNames?: boolean;
   readonly toolbar?: ReactNode;
+  /** The app's capabilities: `submitModeInput` reads Python availability from them. Empty means none. */
+  readonly capabilities?: CapabilityMap;
   readonly children?: ReactNode;
 }
 
@@ -109,11 +112,14 @@ function intentsForDecision(
   ];
 }
 
+const NO_CAPABILITIES: CapabilityMap = Object.freeze({});
+
 /** U2's assistant-ui composer surface; all submissions go through the injected R0.3 callback. */
 export function ComposerSurface({
   submitPrompt,
   cancel,
   policy = defaultSubmitPolicy,
+  capabilities = NO_CAPABILITIES,
   autoFocus = true,
   disabled = false,
   showAttachmentNames = true,
@@ -136,17 +142,32 @@ export function ComposerSurface({
   const submit = useCallback(async () => {
     if (disabled || isSubmitting || !hasContent(text, attachments)) return;
 
-    let intents: readonly PromptIntent[];
+    // A `!` or `$` line is a command: it goes through U2's mode seam, never to the model as a prompt.
+    const command = parseComposerMode(text);
+    const isCommand = command.mode !== "prompt";
+    // A bare `!` or `$` has no command to run: nothing is sent and the line stays.
+    if (isCommand && command.text.length === 0) return;
+    let intents: readonly PromptIntent[] = [];
     try {
-      const input = decisionInput(text, attachments, isStreaming, "enter");
-      const result = policy(input);
-      intents = intentsForDecision(result, text, attachments);
-      if (isStreaming && intents.some((intent) => intent.delivery === "new")) {
-        throw new AppFailure({
-          code: "invalid_args",
-          message: "A turn is running: choose steer or follow-up",
-          retryable: false,
-        });
+      if (isCommand) {
+        if (attachments.length > 0) {
+          throw new AppFailure({
+            code: "invalid_args",
+            message: "Remove the attachments to run a bash or Python command",
+            retryable: false,
+          });
+        }
+      } else {
+        const input = decisionInput(text, attachments, isStreaming, "enter");
+        const result = policy(input);
+        intents = intentsForDecision(result, text, attachments);
+        if (isStreaming && intents.some((intent) => intent.delivery === "new")) {
+          throw new AppFailure({
+            code: "invalid_args",
+            message: "A turn is running: choose steer or follow-up",
+            retryable: false,
+          });
+        }
       }
     } catch (cause) {
       setError(appFailure(cause).appError);
@@ -155,7 +176,11 @@ export function ComposerSurface({
     setError(null);
     setIsSubmitting(true);
     try {
-      for (const intent of intents) await submitPrompt(intent);
+      if (isCommand) {
+        await submitModeInput(command, "new", capabilities, submitPrompt);
+      } else {
+        for (const intent of intents) await submitPrompt(intent);
+      }
       await composer.reset();
       inputRef.current?.focus();
     } catch (cause) {
@@ -164,7 +189,17 @@ export function ComposerSurface({
     } finally {
       setIsSubmitting(false);
     }
-  }, [attachments, composer, disabled, isStreaming, isSubmitting, policy, submitPrompt, text]);
+  }, [
+    attachments,
+    capabilities,
+    composer,
+    disabled,
+    isStreaming,
+    isSubmitting,
+    policy,
+    submitPrompt,
+    text,
+  ]);
 
   const handleCancel = useCallback(async () => {
     if (!canCancel) return;
@@ -243,7 +278,7 @@ export function ComposerSurface({
           submitMode="none"
           className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
         />
-        {isStreaming && (
+        {isStreaming && modeForText(text) === "prompt" && (
           <p
             data-composer-steer-hint="true"
             className="text-muted-foreground px-(--space-md) text-xs"

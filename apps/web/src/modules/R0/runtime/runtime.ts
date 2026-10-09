@@ -41,6 +41,8 @@ export interface PromptIntent {
   readonly attachmentRefs?: readonly AttachmentRef[];
   readonly delivery: PromptDelivery;
   readonly signal?: AbortSignalLike;
+  /** Bash only: keep the output out of the model's context (`!!`). omp's RPC bash command takes no such flag, so the runtime refuses the intent. */
+  readonly excludeFromContext?: boolean;
 }
 
 export interface OmpRuntimeOptions {
@@ -455,6 +457,16 @@ function convertRecord(
           },
         },
       } as unknown as ThreadMessageLike;
+    case "bashExecution":
+    case "pythonExecution":
+      // The user's own `!` or `$` run: U2 normalizes omp's record and U1 draws its card from it.
+      return {
+        role: "system",
+        id,
+        ...(createdAt ? { createdAt } : {}),
+        content: [textPart("")],
+        metadata: { custom: { ...metadata.custom, ompExecution: message } },
+      } as unknown as ThreadMessageLike;
     default:
       return fallbackMessage(id);
   }
@@ -810,6 +822,12 @@ export class OmpRuntimeController {
     if (intent.mode === "bash") {
       if (intent.delivery !== "new") {
         throw invalidArgs("Bash commands cannot be steered or queued");
+      }
+      if (intent.excludeFromContext === true) {
+        throw unavailable(
+          "upstream.bash-exclude-from-context",
+          "Running a command without sending its output to the model is not available in this version of omp.",
+        );
       }
       const capability = "omp.cmd.bash" as CapabilityKey;
       if (!capabilityAvailable(this.capabilities, capability)) {

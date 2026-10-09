@@ -41,7 +41,7 @@ import {
 } from "../drafts";
 import { EXTERNAL_EDITOR_CAPABILITY, ExternalEditorController } from "../external-editor";
 import { U2_STATE_FIXTURES, type U2StateFixture } from "../fixtures";
-import { ModeIndicator, parseComposerMode, submitModeInput } from "../modes";
+import { ModeIndicator } from "../modes";
 import { ComposerShortcutScope, U2_EXTERNAL_EDITOR_SHORTCUT } from "../shortcuts";
 
 afterEach(() => cleanup());
@@ -605,19 +605,12 @@ describe("U2 composer CC6 acceptance", () => {
   test("routes Bash through R0 and keeps Python's unavailable reason in its tooltip", async () => {
     const runtime = createRuntime();
     const submittedModes: PromptIntent[] = [];
-    const submitByMode = async (intent: PromptIntent): Promise<void> => {
-      const parsed = parseComposerMode(intent.text);
-      await submitModeInput(parsed, intent.delivery, capabilities, async (modeIntent) => {
-        submittedModes.push(modeIntent);
-        await runtime.controller.submitPrompt({
-          ...modeIntent,
-          ...(intent.images === undefined ? {} : { images: intent.images }),
-          ...(intent.attachmentRefs === undefined ? {} : { attachmentRefs: intent.attachmentRefs }),
-        });
-      });
+    const submitToR0 = async (intent: PromptIntent): Promise<void> => {
+      submittedModes.push(intent);
+      await runtime.controller.submitPrompt(intent);
     };
     const view = renderComposer(runtime, {
-      submitPrompt: submitByMode,
+      submitPrompt: submitToR0,
       children: <ModeIndicator capabilities={capabilities} />,
     });
     const input = screen.getByRole("textbox", { name: "Message input" });

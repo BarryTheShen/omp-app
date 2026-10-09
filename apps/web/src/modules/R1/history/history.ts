@@ -158,6 +158,21 @@ export class SelectedThreadHistoryController {
     }
   }
 
+  /**
+   * Brings the open thread up to date after a `!` command. omp saves a command's result to the
+   * session without a turn, so no `session_settled` arrives to refresh the transcript.
+   */
+  public async refreshAfterCommand(): Promise<void> {
+    const loader = this.loader;
+    if (!this.state.threadId || !this.state.store || !loader) return;
+    try {
+      await loader.refreshAfterTurn();
+    } catch (error) {
+      const failure = asFailure(error, "Refreshing the session after the command failed");
+      if (failure.appError.code !== "cancelled") this.commit({ error: failure.appError });
+    }
+  }
+
   public close(): Promise<void> {
     return this.serialize(() => this.closeNow());
   }

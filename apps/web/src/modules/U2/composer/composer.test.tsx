@@ -125,4 +125,59 @@ describe("U2.2 ComposerSurface", () => {
     fireEvent.click(stop);
     await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
   });
+
+  test("sends a `!` line to the bash path as a bash intent, not to the model as a prompt", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    renderComposer(false, submitPrompt);
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "!ls -la" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(submitPrompt).toHaveBeenCalledWith({ mode: "bash", text: "ls -la", delivery: "new" });
+  });
+
+  test("keeps a `!!` line in the composer when the host refuses it, and says why", async () => {
+    const reason =
+      "Running a command without sending its output to the model is not available in this version of omp.";
+    const submitPrompt = vi.fn(async () => {
+      throw new AppFailure({ code: "unavailable", message: reason, retryable: false });
+    });
+    renderComposer(false, submitPrompt);
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "!!echo excluded-out" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(reason));
+    expect(submitPrompt).toHaveBeenCalledWith({
+      mode: "bash",
+      text: "echo excluded-out",
+      delivery: "new",
+      excludeFromContext: true,
+    });
+    expect(input.value).toBe("!!echo excluded-out");
+  });
+
+  test("refuses a `$` line while Python is unavailable: nothing is sent and the line stays", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    renderComposer(false, submitPrompt);
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "$ echo python-try" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Python mode is not available in this version of omp.",
+      ),
+    );
+    expect(submitPrompt).not.toHaveBeenCalled();
+    expect(input.value).toBe("$ echo python-try");
+  });
+
+  test("a bare `!` line sends nothing and stays in the composer", () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    renderComposer(false, submitPrompt);
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "!" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(submitPrompt).not.toHaveBeenCalled();
+    expect(input.value).toBe("!");
+  });
 });

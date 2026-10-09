@@ -320,6 +320,24 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
   });
 
+  test("refreshes the open thread after a bash command, without waiting for a turn", async () => {
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      calls,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    calls.length = 0;
+    await controller.refreshAfterCommand();
+    // omp saves a `!` result without a turn: get_state, then the entries after the newest one.
+    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
+  });
+
   test("lets go of the chat on the server when it closes or switches away, and a failed release never blocks the next chat", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc((args) => ({

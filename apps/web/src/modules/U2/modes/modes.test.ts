@@ -1,6 +1,7 @@
 import type { CapabilityMap } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import {
+  composerTextForIntent,
   modeForText,
   parseComposerMode,
   pythonModeAvailability,
@@ -84,6 +85,31 @@ describe("U2.6 composer modes", () => {
       mode: "bash",
       text: "printf hello",
       delivery: "new",
+      excludeFromContext: true,
+    });
+  });
+
+  test("puts the mode prefix back on an intent, so the text parses to the same mode", () => {
+    expect(composerTextForIntent({ mode: "prompt", text: "hello", delivery: "new" })).toBe("hello");
+    expect(composerTextForIntent({ mode: "bash", text: "ls", delivery: "new" })).toBe("!ls");
+    expect(composerTextForIntent({ mode: "python", text: "print(1)", delivery: "new" })).toBe(
+      "$ print(1)",
+    );
+    const refused = {
+      mode: "bash" as const,
+      text: "echo x",
+      delivery: "new" as const,
+      excludeFromContext: true,
+    };
+    expect(composerTextForIntent(refused)).toBe("!!echo x");
+    expect(parseComposerMode("!!echo x")).toEqual({
+      mode: "bash",
+      text: "echo x",
+      excludeFromContext: true,
+    });
+    expect(parseComposerMode("$$ print(1)")).toEqual({
+      mode: "python",
+      text: "print(1)",
       excludeFromContext: true,
     });
   });

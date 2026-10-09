@@ -22,15 +22,14 @@ function stringField(value: Record<string, unknown>, key: string): string {
   return typeof value[key] === "string" ? value[key] : "";
 }
 
-/** Converts R0.1's normalized execution message without parsing wire frames or creating state. */
-export function normalizeExecutionMessage(message: RuntimeMessage): ExecutionRecord | undefined {
-  const raw = message.message;
+/** The execution row for one omp bash or python message; undefined for any other message. */
+export function executionRecordOf(id: string, raw: unknown): ExecutionRecord | undefined {
   if (!isRecord(raw) || (raw.role !== "bashExecution" && raw.role !== "pythonExecution"))
     return undefined;
   const mode: ExecutionMode = raw.role === "bashExecution" ? "bash" : "python";
   const source = mode === "bash" ? stringField(raw, "command") : stringField(raw, "code");
   return {
-    id: message.key,
+    id,
     mode,
     source,
     output: stringField(raw, "output"),
@@ -40,4 +39,9 @@ export function normalizeExecutionMessage(message: RuntimeMessage): ExecutionRec
     ...(Array.isArray(raw.images) ? { images: raw.images } : {}),
     excludeFromContext: raw.excludeFromContext === true,
   };
+}
+
+/** Converts R0.1's normalized execution message without parsing wire frames or creating state. */
+export function normalizeExecutionMessage(message: RuntimeMessage): ExecutionRecord | undefined {
+  return executionRecordOf(message.key, message.message);
 }

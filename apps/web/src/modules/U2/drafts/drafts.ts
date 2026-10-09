@@ -12,6 +12,7 @@ import {
   type Revision,
 } from "@omp-app/contracts";
 import type { PromptIntent } from "../../R0/runtime/runtime";
+import { composerTextForIntent } from "../modes";
 
 type DraftCallOptions = Pick<PortCallOptions, "signal">;
 
@@ -284,12 +285,13 @@ export class DraftController {
     intent: PromptIntent,
     submitPrompt: (intent: PromptIntent) => Promise<void>,
   ): Promise<void> {
-    this.setDraft(intent.text, intent.attachmentRefs ?? []);
+    const text = composerTextForIntent(intent);
+    this.setDraft(text, intent.attachmentRefs ?? []);
     try {
       await submitPrompt(intent);
       await this.clearAfterAdmission();
     } catch (error) {
-      await this.recordFailedSend(intent, error);
+      await this.recordFailedSend(intent, text, error);
       throw error;
     }
   }
@@ -437,10 +439,14 @@ export class DraftController {
     }
   }
 
-  private async recordFailedSend(intent: PromptIntent, error: unknown): Promise<void> {
+  private async recordFailedSend(
+    intent: PromptIntent,
+    text: string,
+    error: unknown,
+  ): Promise<void> {
     const failed: FailedSend = {
       attemptedAt: this.now().toISOString(),
-      text: intent.text,
+      text,
       attachments: [...(intent.attachmentRefs ?? [])],
       reason: scrubFailureReason(error),
     };
