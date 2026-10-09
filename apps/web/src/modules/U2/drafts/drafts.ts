@@ -13,6 +13,7 @@ import {
 } from "@omp-app/contracts";
 import type { PromptIntent } from "../../R0/runtime/runtime";
 import { composerTextForIntent } from "../modes";
+import type { BufferedDraft, DraftBuffer } from "./draft-buffer";
 
 type DraftCallOptions = Pick<PortCallOptions, "signal">;
 
@@ -70,7 +71,7 @@ export interface DraftStoreAdapter {
     listener: (change: DraftChanged) => void,
   ) => () => void;
 }
-function draftScopeStream(scope: DraftScope): string {
+export function draftScopeStream(scope: DraftScope): string {
   return scope.kind === "thread" ? `thread:${scope.threadId}` : `folder:${scope.folder}`;
 }
 
@@ -122,6 +123,8 @@ export interface DraftControllerOptions {
   readonly lifecycle?: DraftLifecycleTarget;
   readonly timers?: DraftTimer;
   readonly now?: () => Date;
+  /** Keeps the text this scope has not saved yet in this tab, so it survives the app's server stopping. */
+  readonly buffer?: DraftBuffer;
 }
 
 export type DraftStatus = "idle" | "loading" | "ready" | "saving" | "conflict" | "error";
@@ -173,11 +176,48 @@ function scrubFailureReason(error: unknown): string {
   return "Prompt submission failed before admission";
 }
 
+/** Two drafts' text, the first then the second with a blank line between; attachments and failed sends in order, once each. */
+function combineDrafts(first: DraftInput, second: DraftInput): DraftInput {
+  const text =
+    first.text === ""
+      ? second.text
+      : second.text === ""
+        ? first.text
+        : `${first.text}\n\n${second.text}`;
+  return {
+    text,
+    attachments: distinctBy([...first.attachments, ...second.attachments]),
+    failedSends: distinctBy([...first.failedSends, ...second.failedSends]),
+  };
+}
+
+/** The items, each kept once by its content. */
+function distinctBy<T>(items: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = JSON.stringify(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function sameInput(left: DraftInput, right: DraftInput): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 /** Draft state machine for one thread/folder scope; DraftStore remains the authority. */
 export class DraftController {
   private readonly store: DraftStoreAdapter;
   private readonly timers: DraftTimer;
   private readonly now: () => Date;
+  private readonly buffer: DraftBuffer | undefined;
+  /** True from the start of a load until the buffered text is read: the controller must not overwrite it first. */
+  private loading = false;
+  /** The load in progress, if any: a second call while it runs gets the same promise. */
+  private loadInFlight: Promise<DraftSnapshot> | undefined;
+  /** The text of the save this controller sent and has not heard back about; the buffer keeps it until it lands. */
+  private saving: DraftInput | null = null;
   private lifecycle: DraftLifecycleTarget | undefined;
   private readonly onPageHide = (): void => this.flushLifecycle();
   private readonly onVisibilityChange = (): void => {
@@ -194,6 +234,7 @@ export class DraftController {
     this.store = options.store;
     this.timers = options.timers ?? defaultTimers;
     this.now = options.now ?? (() => new Date());
+    this.buffer = options.buffer;
     this.scope = options.scope;
     this.lifecycle = options.lifecycle;
     this.snapshot = {
@@ -220,11 +261,31 @@ export class DraftController {
     return () => this.listeners.delete(listener);
   }
 
-  public async load(): Promise<DraftSnapshot> {
+  /** Loads the scope. Loads started together, as StrictMode's double-run effects start them, share one load. */
+  public load(): Promise<DraftSnapshot> {
+    this.loadInFlight ??= this.loadNow().finally(() => {
+      this.loadInFlight = undefined;
+    });
+    return this.loadInFlight;
+  }
+
+  private async loadNow(): Promise<DraftSnapshot> {
+    // A controller that already holds text is the authority: the buffer only mirrors that text, so it is not
+    // restored over it again (a load repeats when the composer's controller changes, after a restore).
+    const holdsText = this.snapshot.dirty;
+    this.loading = true;
     this.setState({ status: "loading", error: null });
+    let held: BufferedDraft | null = null;
     try {
       await settledWrites(this.scope);
+      // Read once the writes in flight have landed: the buffer then holds what the store is about to return.
+      held = holdsText ? null : (this.buffer?.read(this.scope) ?? null);
       const result = await this.store.get({ scope: this.scope });
+      this.loading = false;
+      if (held !== null) {
+        this.restore(held, result.draft);
+        return this.snapshot;
+      }
       if (this.snapshot.dirty) {
         // The person typed while this was loading. Their text is newer than the stored draft, so it
         // stays. The stored revision is adopted so the next save is not taken for a conflict.
@@ -263,29 +324,12 @@ export class DraftController {
       }
       return this.snapshot;
     } catch (error) {
+      this.loading = false;
+      this.keepUnsavedOnFailure(held);
       const appError = failure(error, "Loading the draft failed");
       this.setState({ status: "error", error: appError });
       throw appError;
     }
-  }
-
-  public async switchScope(scope: DraftScope): Promise<DraftSnapshot> {
-    await this.flush();
-    this.unsubscribeChanged?.();
-    this.scope = scope;
-    this.setState({
-      scope,
-      status: "idle",
-      text: "",
-      attachments: [],
-      failedSends: [],
-      revision: null,
-      dirty: false,
-      conflict: null,
-      error: null,
-    });
-    this.subscribeToChanges();
-    return this.load();
   }
 
   public setDraft(text: string, attachments: readonly AttachmentRef[]): void {
@@ -530,6 +574,7 @@ export class DraftController {
       this.snapshot.attachments,
       this.snapshot.failedSends,
     );
+    this.saving = input;
     this.setState({ status: "saving", error: null });
     try {
       const saved = await trackWrite(
@@ -540,11 +585,17 @@ export class DraftController {
           expectedRevision: this.snapshot.revision,
         }),
       );
+      // Text typed while the save was in flight is not in it: it stays unsaved, and the autosave stores it.
+      const unchanged = sameInput(
+        input,
+        draftInput(this.snapshot.text, this.snapshot.attachments, this.snapshot.failedSends),
+      );
+      this.saving = null;
       this.setState({
         scope: saved.scope,
         status: "ready",
         revision: saved.revision,
-        dirty: false,
+        dirty: !unchanged,
         conflict: null,
         error: null,
       });
@@ -688,8 +739,72 @@ export class DraftController {
     }
   }
 
+  /**
+   * Restores the text this tab kept when the app stopped. The kept text is the draft, unless the stored draft
+   * is another tab's change since it was typed: then both are kept, the stored text first, and saved over the
+   * stored revision. A save this tab had in flight that landed is not another change. Text typed while this
+   * loaded comes last.
+   */
+  private restore(held: BufferedDraft, stored: Draft | null): void {
+    const storedInput =
+      stored === null ? null : draftInput(stored.text, stored.attachments, stored.failedSends);
+    const ownSaveLanded =
+      storedInput !== null && held.saving !== null && sameInput(held.saving, storedInput);
+    const restored =
+      storedInput !== null && !ownSaveLanded && stored?.revision !== held.baseRevision
+        ? combineDrafts(storedInput, held.input)
+        : held.input;
+    const typed = this.snapshot.dirty
+      ? draftInput(this.snapshot.text, this.snapshot.attachments, this.snapshot.failedSends)
+      : null;
+    const merged = typed === null ? restored : combineDrafts(restored, typed);
+    this.setState({
+      status: "ready",
+      text: merged.text,
+      attachments: merged.attachments,
+      failedSends: merged.failedSends,
+      revision: stored?.revision ?? null,
+      dirty: true,
+      conflict: null,
+      error: null,
+    });
+    this.scheduleSave();
+  }
+
   private setState(update: Partial<DraftSnapshot>): void {
+    const wasDirty = this.snapshot.dirty;
     this.snapshot = { ...this.snapshot, ...update };
+    this.mirrorBuffer(wasDirty);
     for (const listener of this.listeners) listener(this.snapshot);
+  }
+
+  /** A failed load keeps the text kept in this tab, with any text typed while it loaded after it. */
+  private keepUnsavedOnFailure(held: BufferedDraft | null): void {
+    if (held === null) {
+      this.mirrorBuffer(false);
+      return;
+    }
+    const typed = this.snapshot.dirty
+      ? draftInput(this.snapshot.text, this.snapshot.attachments, this.snapshot.failedSends)
+      : null;
+    this.buffer?.write(this.scope, {
+      input: typed === null ? held.input : combineDrafts(held.input, typed),
+      baseRevision: held.baseRevision,
+      saving: held.saving,
+    });
+  }
+
+  /** Keeps the text not yet saved in the buffer, and drops it once the scope is clean. */
+  private mirrorBuffer(wasDirty: boolean): void {
+    if (this.buffer === undefined || this.loading) return;
+    if (this.snapshot.dirty) {
+      this.buffer.write(this.scope, {
+        input: draftInput(this.snapshot.text, this.snapshot.attachments, this.snapshot.failedSends),
+        baseRevision: this.snapshot.revision,
+        saving: this.saving,
+      });
+    } else if (wasDirty) {
+      this.buffer.clear(this.scope);
+    }
   }
 }

@@ -1,5 +1,6 @@
 import type { DraftScope, FolderPath, ThreadId } from "@omp-app/contracts";
 import type { PromptIntent } from "../../R0/runtime/runtime";
+import type { DraftBuffer } from "./draft-buffer";
 import {
   DraftController,
   type DraftLifecycleTarget,
@@ -35,6 +36,8 @@ export interface ChatDraftOptions {
   readonly threadId: ThreadId;
   readonly lifecycle?: DraftLifecycleTarget;
   readonly timers?: DraftTimer;
+  /** Keeps unsaved text in this tab, so it survives the app's server stopping. */
+  readonly buffer?: DraftBuffer;
 }
 
 export class ChatDraft {
@@ -153,6 +156,7 @@ export class ChatDraft {
       scope,
       lifecycle: this.options.lifecycle,
       timers: this.options.timers,
+      buffer: this.options.buffer,
     });
   }
 }

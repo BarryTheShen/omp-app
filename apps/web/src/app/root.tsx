@@ -84,7 +84,12 @@ import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import { ComposerSurface } from "@/modules/U2/composer";
 import type { AttachmentAdapter, PromptIntent, SubmitPolicy } from "@/modules/U2/contract";
-import { createDraftStoreAdapter, type DraftController, useChatDraft } from "@/modules/U2/drafts";
+import {
+  createDraftStoreAdapter,
+  type DraftController,
+  sessionDraftBuffer,
+  useChatDraft,
+} from "@/modules/U2/drafts";
 import { useIsRecalledPrompt } from "@/modules/U2/history";
 import { ModeIndicator } from "@/modules/U2/modes";
 import { NestedTranscript } from "@/modules/U3/tool-card/nested";
@@ -402,6 +407,16 @@ function RouterBridge({
   return null;
 }
 
+/** Hands a failed draft operation to the debug log, with its cause. */
+function reportDraftFailure(what: string): (error: unknown) => void {
+  return (error) =>
+    reportClientError({
+      kind: "error",
+      message: `${what}: ${error instanceof Error ? error.message : "unknown error"}`,
+      ...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
+    });
+}
+
 function DraftComposer({
   controller,
   capabilities,
@@ -442,9 +457,13 @@ function DraftComposer({
     attachmentState.pending.length > 0 || attachmentState.complete.length > 0;
   const text = useAuiState((state) => state.composer.text);
   useEffect(() => {
-    void controller.load();
+    // A failed load or save is kept in the debug log: once the composer has gone, nothing else shows it. The text
+    // that could not be saved stays in this tab's buffer, so it is restored when the chat opens again.
+    controller.load().catch(reportDraftFailure("Loading the draft failed"));
     return () => {
-      void controller.dispose();
+      controller
+        .dispose()
+        .catch(reportDraftFailure("Saving the draft when its chat closed failed"));
     };
   }, [controller]);
   useEffect(() => {
@@ -841,6 +860,11 @@ function ActiveThreadReady({
   );
   useEffect(() => () => todoStore.dispose(), [todoStore]);
   const draftStore = useMemo(() => createDraftStoreAdapter(client), [client]);
+  // Unsent text is also kept in this tab, so it survives the app's server stopping before the autosave saves it.
+  const draftBuffer = useMemo(
+    () => sessionDraftBuffer(reportDraftFailure("Keeping unsent draft text in this tab failed")),
+    [],
+  );
   // The composer's draft: this chat's own draft once it has messages, the folder's new-chat draft before that.
   const chatDraft = useChatDraft({
     draftStore,
@@ -848,6 +872,7 @@ function ActiveThreadReady({
     threadId,
     messages: store,
     loaded: !history.isLoading,
+    buffer: draftBuffer,
   });
   const draftController = chatDraft.controller;
   const setEditorText = useCallback(

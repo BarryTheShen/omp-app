@@ -76,6 +76,10 @@ export interface RealApp {
   readonly mcpConfigPath: string;
   /** Opens the app in a new browser page, signed in, and waits for it to render. */
   readonly open: (options?: OpenOptions) => Promise<Page>;
+  /** The app's data folder for this run: drafts, attachments and settings. */
+  readonly appDataDir: string;
+  /** Stops the app's server and starts it again on the same port and data. Returns the new launch link, with a new token; the old link expires. */
+  readonly restartServer: () => Promise<string>;
   /** Console errors and uncaught page errors from every page opened so far. A test must end clean. */
   readonly problems: readonly string[];
   /** The process ids of the omp processes the app's server has running right now. */
@@ -168,6 +172,7 @@ async function startServer(
     readonly seedToolResults: SeedToolResults | undefined;
     readonly seedEntries: SeedEntries | undefined;
     readonly ompBinary: string | undefined;
+    readonly port: number;
   },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
   const script = join(root, "app-root-server.ts");
@@ -277,7 +282,7 @@ if (seededEntries.length > 0) {
   await utimes(file, when, when);
 }
 const server = await createCompositionServer({
-  port: 0,
+  port: ${options.port},
   cwd: ${JSON.stringify(join(root, "workspace"))},
   env: process.env,
   homeDir: ${JSON.stringify(join(root, "home"))},
@@ -344,6 +349,7 @@ export const realTest = test.extend<{
   seedExtensions: Readonly<Record<string, string>>;
   seedWorkspace: SeedWorkspace | undefined;
   ompBinary: string | undefined;
+  serverPort: number;
 }>({
   idleCloseMs: [undefined, { option: true }],
   seedSessions: [0, { option: true }],
@@ -353,6 +359,7 @@ export const realTest = test.extend<{
   seedExtensions: [{}, { option: true }],
   seedWorkspace: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
+  serverPort: [0, { option: true }],
   realApp: async (
     {
       browser,
@@ -364,6 +371,7 @@ export const realTest = test.extend<{
       seedExtensions,
       seedWorkspace,
       ompBinary,
+      serverPort,
     },
     use,
     testInfo,
@@ -415,8 +423,9 @@ export const realTest = test.extend<{
         seedToolResults,
         seedEntries,
         ompBinary,
+        port: serverPort,
       });
-      const url = server.url;
+      let url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
         const page = await browser.newPage();
         pages.push(page);
@@ -431,7 +440,23 @@ export const realTest = test.extend<{
         }
         return page;
       };
-      const serverPid = server.process.pid;
+      // A restart keeps the same data, workspace and port, so the app finds its saved state. It returns a new launch link.
+      const restartServer = async (): Promise<string> => {
+        await stopChild(server?.process);
+        server = await startServer(root, env, {
+          idleCloseMs,
+          seedSessions,
+          seedLongTurn,
+          seedToolResults,
+          seedEntries,
+          ompBinary,
+          port: serverPort,
+        });
+        url = server.url;
+        serverPid = server.process.pid;
+        return url;
+      };
+      let serverPid: number | undefined = server.process.pid;
       const ompProcesses = (): readonly number[] => {
         if (serverPid === undefined) return [];
         let listing: string;
@@ -449,7 +474,6 @@ export const realTest = test.extend<{
       };
       const logFile = join(root, "logs", "omp-app.log");
       const log = (): string => (existsSync(logFile) ? readFileSync(logFile, "utf8") : "");
-      const token = decodeURIComponent(new URL(url).hash.replace(/^#token=/, ""));
       await use({
         folder,
         otherFolder,
@@ -458,7 +482,11 @@ export const realTest = test.extend<{
         problems,
         ompProcesses,
         log,
-        token,
+        get token() {
+          return decodeURIComponent(new URL(url).hash.replace(/^#token=/, ""));
+        },
+        restartServer,
+        appDataDir,
         allowProblem: (pattern) => void allowed.push(pattern),
         startOmp: (args) => {
           const child = spawn(ompBinary ?? REAL_OMP, ["--mode", "rpc-ui", ...args], {

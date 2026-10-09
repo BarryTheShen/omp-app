@@ -1,0 +1,120 @@
+import { AppFailure, DraftInput, type DraftScope, Revision } from "@omp-app/contracts";
+import { z } from "zod";
+import { draftScopeStream } from "./drafts";
+
+/**
+ * Text the person has typed in a scope that the server has not saved yet, the app's copy of it in this tab.
+ *
+ * - `baseRevision`: the server revision the text was typed on (`null` when the scope had no stored draft).
+ * - `saving`: the text of a save this tab sent and has not heard back about, or `null`. The save may have
+ *   landed without its answer reaching the page, for example when the page is reloaded mid-save.
+ */
+export interface BufferedDraft {
+  readonly input: DraftInput;
+  readonly baseRevision: Revision | null;
+  readonly saving: DraftInput | null;
+}
+
+export interface DraftBuffer {
+  /** The scope's unsaved text, or null. A value that cannot be read is dropped and reported. */
+  read(scope: DraftScope): BufferedDraft | null;
+  write(scope: DraftScope, held: BufferedDraft): void;
+  clear(scope: DraftScope): void;
+}
+
+/** The part of Web Storage the buffer uses. The app passes `sessionStorage`, so the copy lives in this tab. */
+export interface DraftBufferStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+const KEY_PREFIX = "omp-app:u2:draft:";
+
+const StoredDraft = z.strictObject({
+  version: z.literal(1),
+  input: DraftInput,
+  baseRevision: Revision.nullable(),
+  saving: DraftInput.nullable(),
+});
+
+function keyFor(scope: DraftScope): string {
+  return `${KEY_PREFIX}${draftScopeStream(scope)}`;
+}
+
+function parseStored(raw: string): BufferedDraft | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const parsed = StoredDraft.safeParse(value);
+  return parsed.success
+    ? {
+        input: parsed.data.input,
+        baseRevision: parsed.data.baseRevision,
+        saving: parsed.data.saving,
+      }
+    : null;
+}
+
+function attempt(onError: (error: unknown) => void, action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    onError(error);
+  }
+}
+
+/**
+ * A buffer over `storage`. A write or removal the storage refuses is reported, and the draft stays in
+ * memory, where the controller still saves it. A value that cannot be read is dropped and reported: it is
+ * never restored in part.
+ */
+export function createDraftBuffer(
+  storage: DraftBufferStorage,
+  onError: (error: unknown) => void,
+): DraftBuffer {
+  return {
+    read(scope) {
+      const key = keyFor(scope);
+      const raw = storage.getItem(key);
+      if (raw === null) return null;
+      const held = parseStored(raw);
+      if (held !== null) return held;
+      attempt(onError, () => storage.removeItem(key));
+      onError(
+        new AppFailure({
+          code: "internal",
+          message: "A saved draft in this tab could not be read and was dropped",
+          retryable: false,
+        }),
+      );
+      return null;
+    },
+    write(scope, held) {
+      attempt(onError, () =>
+        storage.setItem(
+          keyFor(scope),
+          JSON.stringify({
+            version: 1,
+            input: held.input,
+            baseRevision: held.baseRevision,
+            saving: held.saving,
+          }),
+        ),
+      );
+    },
+    clear(scope) {
+      attempt(onError, () => storage.removeItem(keyFor(scope)));
+    },
+  };
+}
+
+/** The buffer in this tab's session storage, or none outside a browser. */
+export function sessionDraftBuffer(onError: (error: unknown) => void): DraftBuffer | undefined {
+  return typeof window === "undefined"
+    ? undefined
+    : createDraftBuffer(window.sessionStorage, onError);
+}

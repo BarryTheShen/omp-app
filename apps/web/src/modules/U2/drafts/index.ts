@@ -3,6 +3,7 @@ export type {
   ChatDraftOptions,
 } from "./chat-draft";
 export { ChatDraft } from "./chat-draft";
+export { sessionDraftBuffer } from "./draft-buffer";
 export type {
   DraftConflict,
   DraftControllerOptions,

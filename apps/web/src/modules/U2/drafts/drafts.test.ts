@@ -2,6 +2,7 @@ import type { AttachmentRef, Draft, DraftChanged, DraftScope, Revision } from "@
 import { AppFailure, FolderPath } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
+import { createDraftBuffer, type DraftBufferStorage } from "./draft-buffer";
 import {
   DraftController,
   type DraftLifecycleTarget,
@@ -10,6 +11,26 @@ import {
 } from "./drafts";
 import { ScopedDraftStore } from "./test-support";
 
+/** The part of sessionStorage the draft buffer uses, kept in memory. */
+class MemoryDraftStorage implements DraftBufferStorage {
+  private readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+
+  keys(): string[] {
+    return [...this.values.keys()];
+  }
+}
 const scope: DraftScope = { kind: "thread", threadId: "thread-drafts" as never };
 const attachment: AttachmentRef = {
   id: "blob-1",
@@ -357,5 +378,292 @@ describe("DraftController: writes and clears across controllers", () => {
     expect(held.attachments).toEqual([attachment]);
     expect(store.clears).toHaveLength(1);
     expect(controller.getSnapshot()).toMatchObject({ text: "", revision: null, dirty: false });
+  });
+});
+
+describe("DraftController: unsaved text kept in this tab", () => {
+  const folderScope: DraftScope = { kind: "folder", folder: FolderPath.parse("/workspace/app") };
+  const quiet = (): void => undefined;
+
+  test("typed text is kept in the buffer until the server saves it, and the save clears it", async () => {
+    const store = new ScopedDraftStore();
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer,
+    });
+    await controller.load();
+
+    controller.setDraft("typed, not saved yet", []);
+    expect(buffer.read(folderScope)?.input.text).toBe("typed, not saved yet");
+
+    await controller.flush();
+    expect(buffer.read(folderScope)).toBeNull();
+  });
+
+  test("a sent draft leaves nothing in the buffer", async () => {
+    const store = new ScopedDraftStore();
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const controller = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer,
+    });
+    await controller.load();
+    controller.setDraft("sent text", []);
+
+    await controller.submit(prompt("sent text"), async () => undefined);
+
+    expect(buffer.read(folderScope)).toBeNull();
+  });
+
+  test("a new controller restores text typed before the app stopped, when the server draft has not changed", async () => {
+    const store = new ScopedDraftStore();
+    const storage = new MemoryDraftStorage();
+    const before = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await before.load();
+    before.setDraft("typed before the restart", [attachment]);
+    // The app stops before the autosave, so `before` is never flushed.
+
+    const after = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await after.load();
+
+    expect(after.getSnapshot()).toMatchObject({
+      text: "typed before the restart",
+      attachments: [attachment],
+      dirty: true,
+      status: "ready",
+    });
+    await after.flush();
+    expect(store.text(folderScope)).toBe("typed before the restart");
+  });
+
+  test("when another tab saved the draft after this text was typed, both texts are kept and saved over the stored revision", async () => {
+    const store = new ScopedDraftStore();
+    const storage = new MemoryDraftStorage();
+    const before = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await before.load();
+    before.setDraft("typed here", []);
+    await store.save({
+      scope: folderScope,
+      draft: { text: "saved elsewhere", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+
+    const after = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await after.load();
+    await after.flush();
+
+    expect(store.text(folderScope)).toBe("saved elsewhere\n\ntyped here");
+  });
+
+  test("text typed while the restored text loads comes after it, and nothing is lost", async () => {
+    const store = new ScopedDraftStore();
+    const storage = new MemoryDraftStorage();
+    const before = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await before.load();
+    before.setDraft("typed before", []);
+
+    const after = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    const loading = after.load();
+    after.setDraft("typed while loading", []);
+    await loading;
+
+    expect(after.getSnapshot().text).toBe("typed before\n\ntyped while loading");
+  });
+
+  test("a save that finishes after more text was typed leaves that text unsaved, so the next save stores it", async () => {
+    class GatedSaveStore extends ScopedDraftStore {
+      private readonly gate = Promise.withResolvers<void>();
+      release(): void {
+        this.gate.resolve();
+      }
+      override async save(args: Parameters<ScopedDraftStore["save"]>[0]): Promise<Draft> {
+        await this.gate.promise;
+        return super.save(args);
+      }
+    }
+    const store = new GatedSaveStore();
+    const controller = new DraftController({ store, scope: folderScope, timers: idleTimers });
+    await controller.load();
+    controller.setDraft("first", []);
+
+    const saving = controller.flush();
+    controller.setDraft("first, then more", []);
+    store.release();
+    await saving;
+
+    expect(controller.getSnapshot()).toMatchObject({ text: "first, then more", dirty: true });
+    await controller.flush();
+    expect(store.text(folderScope)).toBe("first, then more");
+  });
+
+  test("a failed save keeps the text in the buffer, so it is still there after the app stops", async () => {
+    class DownStore extends ScopedDraftStore {
+      override async save(): Promise<Draft> {
+        throw new AppFailure({
+          code: "unavailable",
+          message: "The store is down",
+          retryable: true,
+        });
+      }
+    }
+    const storage = new MemoryDraftStorage();
+    const controller = new DraftController({
+      store: new DownStore(),
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await controller.load();
+    controller.setDraft("kept when the save fails", []);
+
+    await expect(controller.flush()).rejects.toBeInstanceOf(AppFailure);
+    expect(createDraftBuffer(storage, quiet).read(folderScope)?.input.text).toBe(
+      "kept when the save fails",
+    );
+  });
+
+  test("loads started together, as StrictMode's effects start them, restore the kept text once", async () => {
+    const store = new ScopedDraftStore();
+    const storage = new MemoryDraftStorage();
+    const before = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await before.load();
+    before.setDraft("typed once", []);
+
+    const after = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await Promise.all([after.load(), after.load()]);
+
+    expect(after.getSnapshot().text).toBe("typed once");
+  });
+
+  /** A store whose save lands on the server while its answer never reaches the page, as when the connection closes. */
+  class LandingStore extends ScopedDraftStore {
+    override async save(args: Parameters<ScopedDraftStore["save"]>[0]): Promise<Draft> {
+      await super.save(args);
+      throw new AppFailure({
+        code: "unavailable",
+        message: "The connection closed",
+        retryable: true,
+      });
+    }
+  }
+
+  test("a save that landed without its answer is not added to the stored text again", async () => {
+    const store = new LandingStore();
+    const storage = new MemoryDraftStorage();
+    const before = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await before.load();
+    before.setDraft("typed once", []);
+    await expect(before.flush()).rejects.toBeInstanceOf(AppFailure);
+    expect(store.text(folderScope)).toBe("typed once");
+
+    const after = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await after.load();
+
+    expect(after.getSnapshot()).toMatchObject({ text: "typed once", dirty: true });
+  });
+
+  test("text typed after a save that landed without its answer comes after nothing it already holds", async () => {
+    const store = new LandingStore();
+    const storage = new MemoryDraftStorage();
+    const before = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await before.load();
+    before.setDraft("typed once", []);
+    await expect(before.flush()).rejects.toBeInstanceOf(AppFailure);
+    before.setDraft("typed once, then more", []);
+
+    const after = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await after.load();
+
+    expect(after.getSnapshot().text).toBe("typed once, then more");
+  });
+
+  test("a second load of a controller that already restored the kept text keeps that text once", async () => {
+    const store = new ScopedDraftStore();
+    const storage = new MemoryDraftStorage();
+    const before = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await before.load();
+    before.setDraft("typed once", []);
+
+    // The composer loads its controller again when the controller it shows changes, after the first load restored it.
+    const after = new DraftController({
+      store,
+      scope: folderScope,
+      timers: idleTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await after.load();
+    await after.load();
+
+    expect(after.getSnapshot().text).toBe("typed once");
   });
 });

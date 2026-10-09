@@ -2,8 +2,30 @@ import { AppFailure, type DraftScope, FolderPath, ThreadId } from "@omp-app/cont
 import { describe, expect, test, vi } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
 import { ChatDraft } from "./chat-draft";
+import { createDraftBuffer, type DraftBufferStorage } from "./draft-buffer";
 import type { DraftStoreAdapter, DraftTimer } from "./drafts";
 import { ScopedDraftStore } from "./test-support";
+
+/** The part of sessionStorage the draft buffer uses, kept in memory. */
+class MemoryDraftStorage implements DraftBufferStorage {
+  private readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+
+  keys(): string[] {
+    return [...this.values.keys()];
+  }
+}
 
 // Autosave never fires in these tests: every write happens at a step the test takes, so each one is exact.
 const noTimers: DraftTimer = { setTimeout: () => undefined, clearTimeout: () => undefined };
@@ -240,5 +262,29 @@ describe("ChatDraft: a prompt sent while its draft moves", () => {
     });
     expect(store.text(newChatDraft)).toBeUndefined();
     expect(store.text(threadScope("chat-v"))).toBeUndefined();
+  });
+});
+
+describe("ChatDraft: unsaved text kept in this tab", () => {
+  test("the text of a new chat is kept in the buffer of the folder draft it is in, so the app's restart cannot lose it", async () => {
+    const store = new ScopedDraftStore();
+    const storage = new MemoryDraftStorage();
+    const quiet = (): void => undefined;
+    const chat = new ChatDraft({
+      store,
+      folder,
+      threadId: ThreadId.parse("chat-x"),
+      timers: noTimers,
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await chat.controller.load();
+    chat.observe({ loaded: true, hasMessages: false });
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft));
+
+    chat.controller.setDraft("typed in the new chat", []);
+
+    expect(createDraftBuffer(storage, quiet).read(newChatDraft)?.input.text).toBe(
+      "typed in the new chat",
+    );
   });
 });
