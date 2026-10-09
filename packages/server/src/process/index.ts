@@ -1,3 +1,4 @@
+export { type ExternalOmpState, findExternalOmp } from "./external-omp";
 export { logOmpProcess } from "./log";
 export {
   type OmpProcess,

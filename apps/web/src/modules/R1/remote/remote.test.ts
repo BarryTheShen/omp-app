@@ -1,7 +1,7 @@
 import type {
   OpenThreadArgs,
   OpenThreadResult,
-  RpcSessionSend,
+  SessionRenameArgs,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
@@ -49,6 +49,7 @@ function catalogSource(sessions: readonly SessionMetadata[]): RemoteThreadCatalo
         throw new AppFailure({ code: "not_found", message: "missing", retryable: false });
       return result;
     },
+    refresh: async () => undefined,
   };
 }
 
@@ -78,19 +79,60 @@ describe("NativeRemoteThreadListAdapter", () => {
     expect(page.threads[0]?.lastMessageAt).toBeInstanceOf(Date);
   });
 
-  test("rename uses the released set_session_name RPC", async () => {
-    const commands: unknown[] = [];
-    const send: RpcSessionSend = async (args) => {
-      commands.push(args.command);
-      return undefined as never;
-    };
+  test("rename sends the typed rename port, then re-reads the chat so the list shows the saved title", async () => {
+    const order: string[] = [];
+    const renames: SessionRenameArgs[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: {
+        ...catalogSource([]),
+        refresh: async (threadId) => {
+          order.push(`refresh ${threadId}`);
+        },
+      },
+      open: async () => openResult(threadOne),
+      rename: async (args) => {
+        order.push("rename");
+        renames.push(args);
+        return null;
+      },
+    });
+    await adapter.rename(threadOne, "Renamed");
+    expect(renames).toEqual([{ threadId: threadOne, name: "Renamed" }]);
+    expect(order).toEqual(["rename", `refresh ${threadOne}`]);
+  });
+
+  test("a rename omp refuses keeps omp's reason, and the list is not re-read", async () => {
+    const refreshed: ThreadId[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: {
+        ...catalogSource([]),
+        refresh: async (threadId) => {
+          refreshed.push(threadId);
+        },
+      },
+      open: async () => openResult(threadOne),
+      rename: async () => {
+        throw new AppFailure({
+          code: "conflict",
+          message: "Another omp is using this chat.",
+          retryable: true,
+        });
+      },
+    });
+    await expect(adapter.rename(threadOne, "Busy")).rejects.toMatchObject({
+      appError: { code: "conflict", message: "Another omp is using this chat." },
+    });
+    expect(refreshed).toEqual([]);
+  });
+
+  test("without the rename port a rename is unavailable, and it names the capability", async () => {
     const adapter = createNativeRemoteThreadListAdapter({
       catalog: catalogSource([]),
       open: async () => openResult(threadOne),
-      send,
     });
-    await adapter.rename(threadOne, "Renamed");
-    expect(commands).toEqual([{ type: "set_session_name", name: "Renamed" }]);
+    await expect(adapter.rename(threadOne, "Nope")).rejects.toMatchObject({
+      appError: { code: "unavailable", capability: "omp.cmd.set_session_name" },
+    });
   });
 
   test("new-thread initialize completes open before the caller appends", async () => {

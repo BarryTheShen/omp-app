@@ -488,3 +488,81 @@ describe("SessionCatalogModel errors and immutable snapshots", () => {
     expect(Object.isFrozen(model.getSnapshot())).toBe(true);
   });
 });
+
+describe("SessionCatalogModel refresh after a rename", () => {
+  test("re-reads a listed chat so its row shows the title saved in its file, and leaves other rows alone", async () => {
+    const renamed = session("one", "2026-10-03T00:00:00.000Z");
+    const other = session("two", "2026-10-02T00:00:00.000Z");
+    let saved: SessionFile = renamed;
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [renamed, other], nextCursor: null }),
+        readSession: async ({ sessionFile }) =>
+          sessionFile === renamed.sessionFile ? saved : other,
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    saved = { ...renamed, title: "Renamed in place" };
+
+    await model.refresh(renamed.id);
+
+    expect(model.getSnapshot().sessions.map((item) => [item.id, item.title])).toEqual([
+      [renamed.id, "Renamed in place"],
+      [other.id, other.title],
+    ]);
+  });
+
+  test("a refresh never adds a chat the list does not hold, and never brings back a removed one", async () => {
+    const listed = session("one", "2026-10-03T00:00:00.000Z");
+    const unlisted = session("two", "2026-10-02T00:00:00.000Z");
+    let reads = 0;
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [listed], nextCursor: null }),
+        readSession: async () => {
+          reads += 1;
+          return unlisted;
+        },
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+
+    await model.refresh(unlisted.id);
+    expect(model.getSnapshot().sessions.map((item) => item.id)).toEqual([listed.id]);
+
+    await model.reconcile({
+      folder,
+      sessionFile: listed.sessionFile,
+      id: listed.id,
+      kind: "removed",
+    });
+    await model.refresh(listed.id);
+    expect(model.getSnapshot().sessions).toEqual([]);
+    expect(reads).toBe(0);
+  });
+
+  test("a chat whose file cannot be read keeps its row and reports the failure", async () => {
+    const listed = session("one", "2026-10-03T00:00:00.000Z");
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [listed], nextCursor: null }),
+        readSession: async () => {
+          throw new AppFailure({
+            code: "not_found",
+            message: "The file is gone.",
+            retryable: false,
+          });
+        },
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+
+    await model.refresh(listed.id);
+
+    expect(model.getSnapshot().sessions.map((item) => item.id)).toEqual([listed.id]);
+    expect(model.getSnapshot().error).not.toBeNull();
+  });
+});

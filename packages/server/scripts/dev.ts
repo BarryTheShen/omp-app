@@ -43,7 +43,12 @@ import { createSessionImportStore } from "../src/modules/A1/session-import";
 import { createSessionFileStore } from "../src/modules/A1/sessions";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
-import { logOmpProcess, OmpProcessRegistry, spawnOmpProcess } from "../src/process";
+import {
+  findExternalOmp,
+  logOmpProcess,
+  OmpProcessRegistry,
+  spawnOmpProcess,
+} from "../src/process";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
 import { EventReplayHub } from "../src/replay";
 import { type AppServer, createAppServer } from "../src/server";
@@ -216,6 +221,7 @@ export async function createCompositionServer(
     processRegistry,
     replay,
     resolveThread,
+    externalOmp: findExternalOmp,
     capabilities,
     serverInfo: {
       instanceId,

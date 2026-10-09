@@ -1185,10 +1185,10 @@ function ConnectedApp({
             catalog,
             open: rpc.open,
             close: rpc.close,
-            send: rpc.send,
+            rename: rpc.rename,
           })
         : null,
-    [catalog, rpc.open, rpc.close, rpc.send],
+    [catalog, rpc.open, rpc.close, rpc.rename],
   );
   useEffect(() => {
     let active = true;

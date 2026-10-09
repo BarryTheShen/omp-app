@@ -11,6 +11,7 @@ import type {
   RpcSessionSend,
   SessionFile,
   SessionFileChanged,
+  SessionRenameArgs,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, parseFixture, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
@@ -365,10 +366,7 @@ describe("R1 remote adapter and typed native actions", () => {
     await catalog.list({ filter: { scope: folderScope, query: "" }, limit: 50 });
 
     const opens: OpenThreadArgs[] = [];
-    const sends: Array<{
-      readonly threadId: ThreadId;
-      readonly command: { readonly type: string };
-    }> = [];
+    const renames: SessionRenameArgs[] = [];
     const newThreadId = ThreadIdSchema.parse("0199a2f0-7a4b-7d1f-9a6c-888888888888");
     const remote = createNativeRemoteThreadListAdapter({
       catalog,
@@ -376,10 +374,10 @@ describe("R1 remote adapter and typed native actions", () => {
         opens.push(args);
         return openResult("threadId" in args ? args.threadId : newThreadId);
       },
-      send: (async (args) => {
-        sends.push({ threadId: args.threadId, command: args.command });
-        return undefined as never;
-      }) as RpcSessionSend,
+      rename: async (args) => {
+        renames.push(args);
+        return null;
+      },
       deleteThread: async () => {},
     });
 
@@ -410,12 +408,7 @@ describe("R1 remote adapter and typed native actions", () => {
     ]);
 
     await remote.rename(R1_THREAD_IDS.active, "Renamed from omp");
-    expect(sends).toEqual([
-      {
-        threadId: R1_THREAD_IDS.active,
-        command: { type: "set_session_name", name: "Renamed from omp" },
-      },
-    ]);
+    expect(renames).toEqual([{ threadId: R1_THREAD_IDS.active, name: "Renamed from omp" }]);
     await expect(remote.archive(R1_THREAD_IDS.active)).rejects.toMatchObject({
       appError: { code: "unavailable", capability: "upstream.session-archive" },
     });

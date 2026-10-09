@@ -4,7 +4,7 @@ import type {
   CapabilityKey,
   OpenThreadArgs,
   OpenThreadResult,
-  RpcSessionSend,
+  SessionRenameArgs,
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
@@ -21,6 +21,8 @@ export interface RemoteThreadCatalogSource {
     args: SessionCatalogPageArgs,
   ): Promise<{ readonly sessions: readonly SessionMetadata[]; readonly nextCursor: string | null }>;
   fetch(threadId: ThreadId): Promise<SessionMetadata>;
+  /** Re-reads one listed chat's file so its row shows what the file says now (after a rename). */
+  refresh(threadId: ThreadId): Promise<void>;
 }
 
 export interface RemoteThreadListOptions {
@@ -32,7 +34,8 @@ export interface RemoteThreadListOptions {
    * keeps its process running. Without `close` the chat would be held twice and never released.
    */
   readonly close?: CloseThread;
-  readonly send?: RpcSessionSend;
+  /** A0's typed rename: omp sets the chat's name, open or not (the `rename` port method). */
+  readonly rename?: (args: SessionRenameArgs) => Promise<unknown>;
   /** A1.8's typed native `/delete` gateway; absent means the action is visibly unavailable. */
   readonly deleteThread?: (threadId: ThreadId) => Promise<void>;
   readonly onThreadIdChange?: (threadId: ThreadId | undefined) => void;
@@ -131,19 +134,21 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
     return task;
   }
 
+  /**
+   * Renames a chat through the rename port: omp sets the name in the chat's file, open or not. Then
+   * the list re-reads that file, so the row shows the title omp kept (it trims the title).
+   */
   public async rename(remoteId: string, newTitle: string): Promise<void> {
-    if (!this.options.send) {
-      throw unavailable("Rename requires omp's set_session_name RPC", "host.session-files");
+    if (!this.options.rename) {
+      throw unavailable("Rename requires omp's set_session_name RPC", "omp.cmd.set_session_name");
     }
     const threadId = this.parseThreadId(remoteId);
     try {
-      await this.options.send({
-        threadId,
-        command: { type: "set_session_name", name: newTitle },
-      });
+      await this.options.rename({ threadId, name: newTitle });
     } catch (error) {
       throw failure(error, "Renaming the remote thread failed");
     }
+    await this.options.catalog.refresh(threadId);
   }
 
   public async archive(_remoteId: string): Promise<void> {

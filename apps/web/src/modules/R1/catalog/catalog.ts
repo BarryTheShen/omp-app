@@ -341,6 +341,31 @@ export class SessionCatalogModel {
     this.commit({ sessions, pinsRevision: revision });
   }
 
+  /**
+   * Re-reads one listed chat's file, so its row shows the title saved in it now (after a rename). A
+   * chat the list does not hold is left out, and a chat that was removed stays removed.
+   */
+  public async refresh(threadId: ThreadId): Promise<void> {
+    const listed = this.snapshot.sessions.find((session) => session.id === threadId);
+    if (!listed || this.tombstones.has(threadId)) return;
+    try {
+      const file = await this.options.sessionFiles.readSession({
+        sessionFile: listed.sessionFile,
+      });
+      const current = this.snapshot.sessions.find((session) => session.id === threadId);
+      if (!current || this.tombstones.has(threadId)) return;
+      const metadata = metadataFromFile(file, this.snapshot.scope, this.pins);
+      if (sameSession(current, metadata)) return;
+      this.commit({
+        sessions: this.snapshot.sessions
+          .map((session) => (session.id === threadId ? metadata : session))
+          .sort(compareSessions),
+      });
+    } catch (error) {
+      this.commit({ error: internalFailure(error, "Reading the renamed chat failed").appError });
+    }
+  }
+
   /** One request per folder for the given page; nothing is committed. */
   private async fetchSessions(
     filter: SessionCatalogFilter,

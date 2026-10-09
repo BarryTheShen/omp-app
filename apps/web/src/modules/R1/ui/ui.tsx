@@ -105,6 +105,7 @@ export function SessionCatalogSidebar({
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [editingId, setEditingId] = useState<ThreadId | undefined>();
   const [editingTitle, setEditingTitle] = useState("");
+  const [renameError, setRenameError] = useState<string | undefined>();
   const [menuSessionId, setMenuSessionId] = useState<ThreadId | undefined>();
   const previousCatalog = useRef(catalog);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -175,16 +176,30 @@ export function SessionCatalogSidebar({
   const beginRename = (session: SessionMetadata): void => {
     setEditingId(session.id);
     setEditingTitle(session.title ?? "");
+    setRenameError(undefined);
+  };
+
+  /** Closes the rename box and gives the keyboard back to the list, where the chat is. */
+  const endRename = (): void => {
+    setEditingId(undefined);
+    setRenameError(undefined);
+    listRef.current?.focus();
   };
 
   const finishRename = async (session: SessionMetadata): Promise<void> => {
     const nextTitle = editingTitle.trim();
     if (nextTitle.length === 0 || nextTitle === session.title) {
-      setEditingId(undefined);
+      endRename();
       return;
     }
-    await remote.rename(session.id, nextTitle);
-    setEditingId(undefined);
+    try {
+      await remote.rename(session.id, nextTitle);
+    } catch (error) {
+      // The box stays open with the typed title, so the person can try again or press Escape.
+      setRenameError(error instanceof Error ? error.message : "The chat could not be renamed.");
+      return;
+    }
+    endRename();
   };
   const togglePin = async (session: SessionMetadata): Promise<void> => {
     setMenuSessionId(undefined);
@@ -196,6 +211,9 @@ export function SessionCatalogSidebar({
 
   const onListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (sessions.length === 0) return;
+    // A key pressed in a row's rename box or on its More actions button belongs to that control.
+    const target = event.target as HTMLElement;
+    if (target !== event.currentTarget && target.getAttribute("role") !== "option") return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setFocusedIndex((index) => Math.min(index + 1, sessions.length - 1));
@@ -249,6 +267,11 @@ export function SessionCatalogSidebar({
       {snapshot.error && snapshot.isLoaded && (
         <p className="text-destructive px-3 py-1 text-xs leading-snug" role="status">
           Couldn't refresh sessions. Showing the last list.
+        </p>
+      )}
+      {renameError && (
+        <p className="text-destructive px-3 py-1 text-xs leading-snug" role="alert">
+          {renameError}
         </p>
       )}
       {snapshot.isLoaded && sessions.length === 0 && (
@@ -311,7 +334,7 @@ export function SessionCatalogSidebar({
                                 event.preventDefault();
                                 void finishRename(session);
                               }
-                              if (event.key === "Escape") setEditingId(undefined);
+                              if (event.key === "Escape") endRename();
                             }}
                           />
                         ) : (

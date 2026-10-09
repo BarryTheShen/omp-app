@@ -142,6 +142,9 @@ class FakeProcess implements OmpProcess {
                       : {};
     this.emit({ type: "response", id: frame.id, command, success: true, data });
     if (command === "branch" && this.nextIdentity !== undefined) this.identity = this.nextIdentity;
+    if (command === "set_session_name" && this.nextIdentity !== undefined) {
+      this.identity = this.nextIdentity;
+    }
     if (command === "prompt" || command === "abort_and_prompt") {
       this.emit({
         type: "prompt_result",
@@ -210,6 +213,7 @@ function context(
       threadId,
       args: ["--resume", authorityFile],
     }),
+    externalOmp: async () => "none",
     serverInfo: {
       instanceId: "instance-a0-7",
       serverVersion: "test",
@@ -847,5 +851,134 @@ describe("A0.7 AppPort handlers", () => {
       fileName: "omp-app-debug-x.log",
       text: "report text",
     });
+  });
+});
+
+describe("A0.rename: omp sets a chat's title, whether or not the chat is open", () => {
+  test("an open chat is renamed by its own omp and stays open", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    await expect(
+      getHandler(handlers, "rename")(
+        { threadId: authorityThread, name: "Renamed open" },
+        call("one"),
+      ),
+    ).resolves.toBeNull();
+    expect(created).toHaveLength(1);
+    expect(created[0]?.writes).toContainEqual(
+      expect.objectContaining({ type: "set_session_name", name: "Renamed open" }),
+    );
+    expect(created[0]?.status).toBe("running");
+  });
+
+  test("a chat nobody has open is renamed by a short-lived omp that stops once the title is saved", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await expect(
+      getHandler(handlers, "rename")(
+        { threadId: authorityThread, name: "Closed rename" },
+        call("one"),
+      ),
+    ).resolves.toBeNull();
+    const host = created[0];
+    expect(created).toHaveLength(1);
+    expect(host?.args).toEqual(["--resume", authorityFile]);
+    expect(host?.writes).toContainEqual(
+      expect.objectContaining({ type: "set_session_name", name: "Closed rename" }),
+    );
+    expect(host?.status).toBe("stopped");
+    expect(runtimeContext.processRegistry.has(authorityThread)).toBe(false);
+  });
+
+  test("a chat another viewer has open keeps its process when one viewer renames it", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("two"));
+    await getHandler(handlers, "rename")(
+      { threadId: authorityThread, name: "Shared" },
+      call("one"),
+    );
+    expect(created).toHaveLength(1);
+    expect(created[0]?.status).toBe("running");
+    expect(runtimeContext.processRegistry.has(authorityThread)).toBe(true);
+  });
+
+  test("refuses to rename a chat another omp is writing, and starts no omp for it", async () => {
+    const created: FakeProcess[] = [];
+    const asked: string[] = [];
+    const runtimeContext: A0PortContext = {
+      ...context(created),
+      externalOmp: async (threadId, sessionFile) => {
+        asked.push(`${threadId} ${sessionFile}`);
+        return "running";
+      },
+    };
+    const handlers = handlersFor(runtimeContext, 0);
+    await expect(
+      getHandler(handlers, "rename")({ threadId: authorityThread, name: "Busy" }, call("one")),
+    ).rejects.toMatchObject({ appError: { code: "conflict" } });
+    expect(asked).toEqual([`${authorityThread} ${authorityFile}`]);
+    expect(created).toHaveLength(0);
+  });
+
+  test("refuses to rename a chat while the app cannot tell whether another omp is writing it", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext: A0PortContext = {
+      ...context(created),
+      externalOmp: async () => "unknown",
+    };
+    const handlers = handlersFor(runtimeContext, 0);
+    await expect(
+      getHandler(handlers, "rename")({ threadId: authorityThread, name: "Unknown" }, call("one")),
+    ).rejects.toMatchObject({ appError: { code: "unavailable" } });
+    expect(created).toHaveLength(0);
+  });
+
+  test("a chat that does not exist cannot be renamed", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext: A0PortContext = {
+      ...context(created),
+      resolveThread: async () => undefined,
+    };
+    const handlers = handlersFor(runtimeContext, 0);
+    await expect(
+      getHandler(handlers, "rename")({ threadId: authorityThread, name: "Gone" }, call("one")),
+    ).rejects.toMatchObject({ appError: { code: "not_found" } });
+    expect(created).toHaveLength(0);
+  });
+
+  test("a rename omp saved to a copy of the chat is reported, and the copy's omp is stopped", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext: A0PortContext = {
+      ...context(created),
+      processRegistry: new OmpProcessRegistry({
+        createProcess: (options: OmpProcessOptions) => {
+          const process = new FakeProcess(options, {
+            threadId: authorityThread,
+            sessionFile: authorityFile,
+          });
+          // omp writes to a copy when another live process holds the chat's file.
+          process.nextIdentity = {
+            threadId: ThreadId.parse("omp-copy-a0-7"),
+            sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/copy-a0-7.jsonl"),
+          };
+          created.push(process);
+          return process;
+        },
+      }),
+    };
+    const handlers = handlersFor(runtimeContext, 0);
+    await expect(
+      getHandler(handlers, "rename")({ threadId: authorityThread, name: "Copied" }, call("one")),
+    ).rejects.toMatchObject({ appError: { code: "conflict" } });
+    expect(created[0]?.writes).toContainEqual(
+      expect.objectContaining({ type: "set_session_name", name: "Copied" }),
+    );
+    expect(created[0]?.status).toBe("stopped");
+    expect(runtimeContext.processRegistry.has(authorityThread)).toBe(false);
   });
 });

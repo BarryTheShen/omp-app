@@ -15,6 +15,7 @@ import {
   rpcSessionEventStream,
   type SendCommandArgs,
   SessionFilePath,
+  type SessionRenameArgs,
   type SetEventFilterArgs,
   type SetSubagentSubscriptionArgs,
   type StreamKey,
@@ -25,7 +26,12 @@ import { type CommandFuture, RpcSession } from "@omp-app/omp-rpc";
 import { z } from "zod";
 import { capabilitiesForProtocol } from "../../capabilities";
 import type { Logger } from "../../logging";
-import type { OmpProcess, OmpProcessOptions, OmpProcessRegistry } from "../../process";
+import type {
+  ExternalOmpState,
+  OmpProcess,
+  OmpProcessOptions,
+  OmpProcessRegistry,
+} from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { EventReplayHub } from "../../replay";
 
@@ -54,6 +60,15 @@ export interface A0PortContext {
     threadId: ThreadId,
     signal: AbortSignalLike,
   ) => Promise<ThreadBootstrap | undefined>;
+  /**
+   * Whether an omp this server did not start is writing a chat's file (the process table). A rename
+   * of a chat nobody has open waits for "none": omp writes a chat to a copy when another process
+   * holds its file.
+   */
+  readonly externalOmp: (
+    threadId: ThreadId,
+    sessionFile: SessionFilePath,
+  ) => Promise<ExternalOmpState>;
   /** Test seam and process adapter seam; defaults to the merged A0.3 RpcSession. */
   readonly createSession?: (process: OmpProcess) => RpcSession;
   /** The debug log; browser-reported errors are written to it. */
@@ -192,6 +207,8 @@ export class RpcSessionPortRuntime {
   readonly #context: A0PortContext;
   readonly #entries = new Map<ThreadId, ThreadEntry>();
   readonly #aliases = new Map<ThreadId, ThreadId>();
+  /** The renames of each chat, one after another: a second rename waits for the first to finish. */
+  readonly #renames = new Map<ThreadId, Promise<void>>();
 
   constructor(context: A0PortContext) {
     this.#context = context;
@@ -204,6 +221,7 @@ export class RpcSessionPortRuntime {
   readonly handlers: Readonly<Record<string, PortHandler>> = {
     // DispatcherSession parses each method's zod args before invoking this boundary.
     open: (args, call) => this.open(args as OpenThreadArgs, call),
+    rename: (args, call) => this.rename(args as SessionRenameArgs, call),
     send: (args, call) => this.send(args as SendCommandArgs, call),
     subscribe: (args, call) => this.subscribe(args as SubscribeArgs, call),
     answerExtensionUi: (args, call) => this.answerExtensionUi(args as AnswerExtensionUiArgs, call),
@@ -336,6 +354,84 @@ export class RpcSessionPortRuntime {
       await this.#refreshIdentity(entry, call.signal);
     }
     return admitted;
+  }
+
+  /**
+   * Renames a chat. A chat that is open is renamed by its own omp. A chat nobody has open is renamed
+   * by a short-lived omp for it: opened the way any chat is opened, asked to set the name, and
+   * stopped again at once, unless another viewer has opened it meanwhile.
+   */
+  async rename(args: SessionRenameArgs, call: PortHandlerContext): Promise<null> {
+    await this.#serializeRename(args.threadId, async () => {
+      const entry = this.#entryOrUndefined(args.threadId);
+      if (entry === undefined) {
+        await this.#renameClosed(args, call);
+        return;
+      }
+      await entry.session.send(
+        { type: "set_session_name", name: args.name },
+        { signal: call.signal },
+      );
+    });
+    return null;
+  }
+
+  async #renameClosed(args: SessionRenameArgs, call: PortHandlerContext): Promise<void> {
+    const resolved = await this.#context.resolveThread(args.threadId, call.signal);
+    if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
+    // A process this server is still stopping holds the chat's file until it exits.
+    await this.#context.processRegistry.whenStopped(args.threadId);
+    const other = await this.#context.externalOmp(args.threadId, resolved.sessionFile);
+    if (other === "running") {
+      throw new AppFailure({
+        code: "conflict",
+        message:
+          "Another omp is using this chat, so it cannot be renamed right now. Close it, then rename the chat again.",
+        retryable: true,
+      });
+    }
+    if (other === "unknown") {
+      throw unavailable(
+        "The app cannot check whether another omp is using this chat, so the rename was not saved.",
+      );
+    }
+    const opened = await this.open({ threadId: args.threadId }, call);
+    try {
+      const entry = this.#entry(args.threadId);
+      await entry.session.send(
+        { type: "set_session_name", name: args.name },
+        { signal: call.signal },
+      );
+      // omp writes a chat to a copy when another process holds its file, so the title can land there.
+      const identity = readSessionState(
+        await entry.session.send({ type: "get_state" }, { signal: call.signal }),
+      );
+      if (identity.threadId !== args.threadId || identity.sessionFile !== opened.sessionFile) {
+        throw new AppFailure({
+          code: "conflict",
+          message:
+            "The new title was saved to a copy of this chat, because another omp was writing the original. Close that omp, then check the list.",
+          retryable: false,
+        });
+      }
+    } finally {
+      await this.close({ threadId: args.threadId }, call);
+      await this.#context.processRegistry.stopIfUnwatched(args.threadId);
+    }
+  }
+
+  #serializeRename(threadId: ThreadId, operation: () => Promise<void>): Promise<void> {
+    const previous = this.#renames.get(threadId) ?? Promise.resolve();
+    const current = previous.then(operation);
+    const settled = current.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#renames.set(threadId, settled);
+    void settled.then(() => {
+      if (this.#renames.get(threadId) === settled) this.#renames.delete(threadId);
+    });
+    return current;
   }
   #setHostTools(
     entry: ThreadEntry,

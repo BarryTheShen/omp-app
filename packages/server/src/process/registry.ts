@@ -134,6 +134,19 @@ export class OmpProcessRegistry {
     this.#scheduleIdleIfNeeded(entry);
   }
 
+  /**
+   * Stops a thread's process now if nobody watches it and it is not busy: a host started only for
+   * one job (a rename of a chat nobody has open) stops as soon as the job is done, not after the
+   * idle wait. A watched or busy process is left alone, and the idle timer still applies to it.
+   */
+  async stopIfUnwatched(threadId: ThreadId): Promise<void> {
+    const entry = this.#entries.get(threadId);
+    if (entry === undefined || entry.watchers > 0 || entry.busy) return;
+    this.#cancelIdle(entry);
+    await this.#closeIfIdle(entry);
+    await this.whenStopped(threadId);
+  }
+
   /** A busy thread is never idle-closed, even with zero watchers (for example, a running prompt). */
   setBusy(threadId: ThreadId, busy: boolean): void {
     const entry = this.#entries.get(threadId);

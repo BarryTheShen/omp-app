@@ -97,6 +97,16 @@ export type SendCommandArgs<K extends OmpCommandName = OmpCommandName> = {
   registrationOwner?: string;
 };
 
+/**
+ * A chat's new title, as typed. omp trims it and turns control characters into spaces, so the title
+ * the chat then shows can differ; the caller reads the saved title back from the chat's file.
+ */
+export const SessionRenameArgs = z.strictObject({
+  threadId: ThreadId,
+  name: z.string().min(1),
+});
+export type SessionRenameArgs = z.infer<typeof SessionRenameArgs>;
+
 export const SubscribeArgs = z
   .object({
     threadId: ThreadId,
@@ -365,6 +375,11 @@ export const RpcSessionPort = definePort({
     open: {
       args: OpenThreadArgs,
       result: OpenThreadResult,
+    },
+    rename: {
+      args: SessionRenameArgs,
+      result: z.null(),
+      capability: "omp.cmd.set_session_name",
     },
     send: {
       args: SendCommandArgs,

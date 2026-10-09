@@ -1,10 +1,13 @@
-import type { SessionFile } from "@omp-app/contracts";
-import { SessionFilePath, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
+import type { CapabilityMap, SessionFile } from "@omp-app/contracts";
+import { AppFailure, SessionFilePath, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, test } from "vitest";
+import { createRegistry } from "@/registry-core";
+import { withRegistry } from "@/registry-core/test-support";
 import { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
+import { createNativeRemoteThreadListAdapter } from "../remote";
 import { SessionCatalogSidebar } from ".";
 
 afterEach(cleanup);
@@ -54,10 +57,13 @@ function modelWithSessions(
   });
 }
 
-function renderSidebar(overrides: Partial<ComponentProps<typeof SessionCatalogSidebar>> = {}) {
-  const catalog = overrides.catalog ?? modelWithSessions();
-  const calls: string[] = [];
-  const remote = overrides.remote ?? {
+/** Omp's rename command is available, so the Rename menu item is enabled. */
+const RENAME_AVAILABLE: CapabilityMap = {
+  "omp.cmd.set_session_name": { state: "available", via: "rpc" },
+};
+
+function fakeRemote(calls: string[]): ComponentProps<typeof SessionCatalogSidebar>["remote"] {
+  return {
     initialize: async (id: string) => {
       calls.push(`initialize:${id}`);
       return { remoteId: id };
@@ -71,15 +77,33 @@ function renderSidebar(overrides: Partial<ComponentProps<typeof SessionCatalogSi
       calls.push(`delete:${id}`);
     },
   };
-  render(
+}
+
+function renderSidebar(
+  overrides: Partial<ComponentProps<typeof SessionCatalogSidebar>> & {
+    readonly renameAvailable?: boolean;
+  } = {},
+) {
+  const { renameAvailable = false, ...props } = overrides;
+  const catalog = props.catalog ?? modelWithSessions();
+  const calls: string[] = [];
+  const sidebar = (
     <SessionCatalogSidebar
-      catalog={catalog}
-      remote={remote}
       confirmDelete={() => true}
-      {...overrides}
-    />,
+      {...props}
+      catalog={catalog}
+      remote={props.remote ?? fakeRemote(calls)}
+    />
   );
+  render(renameAvailable ? withRegistry(createRegistry([]), RENAME_AVAILABLE, sidebar) : sidebar);
   return { catalog, calls };
+}
+
+/** Opens a row's More actions and then its Rename item, the way a person does. */
+function startRename(title: string): void {
+  fireEvent.click(screen.getByRole("button", { name: `More actions for ${title}` }));
+  const menu = screen.getByRole("menu", { name: `Actions for ${title}` });
+  fireEvent.click(within(menu).getByRole("menuitem", { name: `Rename ${title}` }));
 }
 
 describe("SessionCatalogSidebar", () => {
@@ -324,5 +348,117 @@ describe("SessionCatalogSidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(60));
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("Enter in the rename box saves the title and keeps the current chat open", async () => {
+    const opened: string[] = [];
+    const { calls } = renderSidebar({
+      renameAvailable: true,
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    startRename("Newest chat");
+    const box = screen.getByRole("textbox", { name: "Rename Newest chat" });
+    fireEvent.change(box, { target: { value: "Renamed by Enter" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(calls).toEqual(["rename:new:Renamed by Enter"]));
+    expect(opened).toEqual([]);
+  });
+
+  test("Enter on a row's More actions button is left to the button, and opens no chat", async () => {
+    const opened: string[] = [];
+    renderSidebar({
+      renameAvailable: true,
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    const more = screen.getByRole("button", { name: "More actions for Newest chat" });
+    // A browser turns Enter on a button into a click only when the keydown is not cancelled.
+    expect(fireEvent.keyDown(more, { key: "Enter" })).toBe(true);
+    expect(opened).toEqual([]);
+  });
+
+  test("arrow and Home keys in the rename box are left to the text box, not the list", async () => {
+    renderSidebar({ renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    startRename("Newest chat");
+    const box = screen.getByRole("textbox", { name: "Rename Newest chat" });
+    expect(fireEvent.keyDown(box, { key: "ArrowDown" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Home" })).toBe(true);
+  });
+
+  test("a rename omp refuses keeps the box open with omp's reason, and opens nothing", async () => {
+    const opened: string[] = [];
+    const calls: string[] = [];
+    renderSidebar({
+      renameAvailable: true,
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+      remote: {
+        ...fakeRemote(calls),
+        rename: async () => {
+          throw new AppFailure({
+            code: "conflict",
+            message: "Another omp is using this chat, so it cannot be renamed right now.",
+            retryable: true,
+          });
+        },
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    startRename("Newest chat");
+    const box = screen.getByRole("textbox", { name: "Rename Newest chat" });
+    fireEvent.change(box, { target: { value: "Refused" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Another omp is using this chat");
+    expect(
+      (screen.getByRole("textbox", { name: "Rename Newest chat" }) as HTMLInputElement).value,
+    ).toBe("Refused");
+    expect(opened).toEqual([]);
+  });
+
+  test("a renamed chat shows its new title in the list at once, read back from its file", async () => {
+    const files: SessionFile[] = [
+      session("new", "2026-10-03T00:00:00.000Z", "Newest chat"),
+      session("old", "2026-10-01T00:00:00.000Z", "Old chat"),
+    ];
+    const catalog = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: files, nextCursor: null }),
+        readSession: async ({ sessionFile }) =>
+          files.find((file) => file.sessionFile === sessionFile) as SessionFile,
+      },
+    });
+    // The rename port saves the title into the chat's file, as omp does; the list reads it back.
+    const remote = createNativeRemoteThreadListAdapter({
+      catalog,
+      open: async () => {
+        throw new AppFailure({ code: "not_found", message: "Not opened here", retryable: false });
+      },
+      rename: async ({ threadId, name }) => {
+        const index = files.findIndex((file) => file.id === threadId);
+        const file = files[index];
+        if (file === undefined) throw new Error(`No chat ${threadId}`);
+        files[index] = { ...file, title: name };
+        return null;
+      },
+    });
+    renderSidebar({ catalog, remote, renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    startRename("Newest chat");
+    const box = screen.getByRole("textbox", { name: "Rename Newest chat" });
+    fireEvent.change(box, { target: { value: "Renamed in place" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: /Renamed in place/ })).toBeTruthy(),
+    );
+    expect(screen.queryByText("Newest chat")).toBeNull();
   });
 });

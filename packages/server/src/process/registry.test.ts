@@ -366,4 +366,31 @@ describe("OmpProcessRegistry", () => {
       expect(waited).toBe(true);
     });
   });
+
+  test("stopIfUnwatched stops an unwatched process at once and leaves a watched one running", async () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const watchedOptions = options("thread-watched", "/workspace/one");
+    const hostOptions = options("thread-host", "/workspace/one");
+    registry.acquire(watchedOptions);
+    registry.acquire(hostOptions);
+    registry.release(hostOptions.threadId);
+
+    await registry.stopIfUnwatched(watchedOptions.threadId);
+    expect(createdAt(created, 0).stopCalls).toBe(0);
+    expect(registry.has(watchedOptions.threadId)).toBe(true);
+
+    await registry.stopIfUnwatched(hostOptions.threadId);
+    expect(createdAt(created, 1).stopCalls).toBe(1);
+    expect(registry.has(hostOptions.threadId)).toBe(false);
+    expect(timer.callbacks.size).toBe(0);
+  });
 });
