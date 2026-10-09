@@ -50,7 +50,7 @@ export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRender
       <ToolCard
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, result: undefined, partialResult: undefined }}
-        summary={taskSummary(details, state.isError)}
+        summary={taskSummary(details, state.isError, subagents)}
       />
       <RawDetails state={state} />
       <TaskBody
@@ -101,7 +101,7 @@ function TaskBody({
     >
       {details.async !== undefined && (
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs" data-slot="t5-task-job">
-          <StatusChip value={details.async.state} />
+          <StatusChip value={jobState(details, subagents) ?? details.async.state} />
           <span className="min-w-0 break-all text-muted-foreground">
             Background job {details.async.jobId}
           </span>
@@ -256,7 +256,31 @@ function resultStatus(result: TaskResult): string {
   return result.exitCode === 0 ? "completed" : "failed";
 }
 
-function taskSummary(details: TaskDetails | undefined, isError: boolean): string {
+/**
+ * The background job's state. The task call's result says what it was when the call returned; the workers
+ * the roster knows are newer, so once it knows any, their statuses decide: running while one is pending or
+ * running, else failed or aborted when one is. A roster whose workers have all completed settles the job
+ * only when it knows every worker the call lists: a roster that missed one (a late subscription, a dropped
+ * event) cannot say the job is done, so the call's own state stands.
+ */
+function jobState(
+  details: TaskDetails | undefined,
+  subagents: readonly TaskSubagent[],
+): string | undefined {
+  const snapshot = details?.async?.state;
+  if (snapshot === undefined || subagents.length === 0) return snapshot;
+  const statuses = subagents.map((item) => item.agent.status);
+  if (statuses.some((status) => status === "pending" || status === "running")) return "running";
+  if (statuses.some((status) => status === "failed")) return "failed";
+  if (statuses.some((status) => status === "aborted")) return "aborted";
+  return subagents.length < (details?.progress?.length ?? 0) ? snapshot : "completed";
+}
+
+function taskSummary(
+  details: TaskDetails | undefined,
+  isError: boolean,
+  subagents: readonly TaskSubagent[],
+): string {
   if (isError) return "";
   if (details === undefined) return "Waiting for agents";
   const progress = details.progress ?? [];
@@ -264,8 +288,9 @@ function taskSummary(details: TaskDetails | undefined, isError: boolean): string
   if (progress.length === 0 && results.length === 0 && details.async === undefined) {
     return "No agents reported";
   }
+  const state = jobState(details, subagents);
   return [
-    details.async === undefined ? undefined : statusLabel(details.async.state),
+    state === undefined ? undefined : statusLabel(state),
     progress.length > 0 ? countOf(progress.length, "agent") : undefined,
     results.length > 0 ? countOf(results.length, "result") : undefined,
   ]

@@ -124,6 +124,76 @@ describe("T5.2 task card worker transcripts", () => {
     expect(transcript?.textContent).toContain("Read only");
   });
 
+  test("a background job whose only worker failed reads Failed, not Running, once the roster knows the worker", () => {
+    const agent = agentRef({
+      parentToolCallId: "task-call",
+      status: "failed",
+      description: "Fail probe",
+    });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call"
+        ? [{ agent, source: workerSource(agent, "the failed worker's text") }]
+        : [];
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={recorded("task: one agent started in the background")} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    expect(screen.getByText("Failed · 1 agent")).toBeTruthy();
+    expect(screen.queryByText("Running · 1 agent")).toBeNull();
+    const job = container.querySelector("[data-slot='t5-task-job']");
+    expect(job?.textContent).toContain("Failed");
+    expect(job?.textContent).not.toContain("Running");
+  });
+
+  test("a worker the roster reports completed makes the job Completed, whatever the call's snapshot said", () => {
+    const agent = agentRef({ parentToolCallId: "task-call", status: "completed" });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call" ? [{ agent, source: workerSource(agent, "done") }] : [];
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={recorded("task: one agent started in the background")} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    expect(screen.getByText("Completed · 1 agent")).toBeTruthy();
+    expect(container.querySelector("[data-slot='t5-task-job']")?.textContent).toContain(
+      "Completed",
+    );
+  });
+
+  test("a roster that knows one of two workers, finished, does not settle the job: the call's own state stands", () => {
+    const agent = agentRef({ parentToolCallId: "task-call", status: "completed" });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call" ? [{ agent, source: workerSource(agent, "done") }] : [];
+    render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={recorded("task: two reviewers started in the background")} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    expect(screen.getByText("Running · 2 agents")).toBeTruthy();
+    expect(screen.queryByText("Completed · 2 agents")).toBeNull();
+  });
+
+  test("a failure the roster knows stands even when it knows only one of the two workers", () => {
+    const agent = agentRef({ parentToolCallId: "task-call", status: "failed" });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call" ? [{ agent, source: workerSource(agent, "failed") }] : [];
+    render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={recorded("task: two reviewers started in the background")} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    expect(screen.getByText("Failed · 2 agents")).toBeTruthy();
+  });
+
   test("a card with no lookup shows no transcript", () => {
     const { container } = render(
       <TaskCard rendererProps={recorded("task: one agent started in the background")} />,
