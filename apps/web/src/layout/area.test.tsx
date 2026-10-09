@@ -127,4 +127,22 @@ describe("LayoutArea", () => {
     rerender(<LayoutArea area="panels" layout={layout} surfaces={panelsWith(true, 2)} />);
     expect(screen.getByText("History body")).toBeTruthy();
   });
+
+  test("a full-row surface starts a line of its own in a wrapping row", () => {
+    const rowSurfaces: SurfaceMap = {
+      ...surfaces,
+      queue: { title: "Queued messages", fullRow: true, render: () => <p>Queue body</p> },
+    };
+    const { container } = render(
+      <LayoutArea
+        area="composerToolbar"
+        layout={layoutWith({ composerToolbar: ["model", "queue"] })}
+        surfaces={rowSurfaces}
+      />,
+    );
+    const queueClass = container.querySelector('[data-surface="queue"]')?.className ?? "";
+    const modelClass = container.querySelector('[data-surface="model"]')?.className ?? "";
+    expect(queueClass).toContain("basis-full");
+    expect(modelClass).not.toContain("basis-full");
+  });
 });

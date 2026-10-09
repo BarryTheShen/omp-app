@@ -20,6 +20,7 @@ function portFixture(
   port: QueuePort;
   calls: { readonly kind: string; readonly value: unknown }[];
   replace(snapshot: QueueSnapshot): void;
+  listenerCount(): number;
 } {
   let snapshot = initial;
   const listeners = new Set<(next: QueueSnapshot) => void>();
@@ -57,6 +58,7 @@ function portFixture(
       snapshot = next;
       for (const listener of listeners) listener(next);
     },
+    listenerCount: () => listeners.size,
   };
 }
 
@@ -207,6 +209,24 @@ describe("P6 QueuePort adapter", () => {
 
     expect(updates.at(-1)?.items.map((item) => item.prompt)).toEqual(["new item"]);
     expect(controller.adapter.items.map((item) => item.prompt)).toEqual(["new item"]);
+    unsubscribe();
+    controller.dispose();
+  });
+
+  test("listens to R0 only while a listener is subscribed, and keeps updating after dispose", () => {
+    const fixture = portFixture(idleSnapshot);
+    const controller = createQueueAdapter(fixture.port);
+    const unsubscribeFirst = controller.subscribe(() => undefined);
+    expect(fixture.listenerCount()).toBe(1);
+    unsubscribeFirst();
+    expect(fixture.listenerCount()).toBe(0);
+    // React StrictMode runs an effect's cleanup and then its setup again: dispose, then subscribe.
+    controller.dispose();
+    const updates: QueueAdapterSnapshot[] = [];
+    const unsubscribe = controller.subscribe((snapshot) => updates.push(snapshot));
+    expect(fixture.listenerCount()).toBe(1);
+    fixture.replace({ ...idleSnapshot, steering: [], followUp: ["after strict mode"] });
+    expect(updates.at(-1)?.items.map((item) => item.prompt)).toEqual(["after strict mode"]);
     unsubscribe();
     controller.dispose();
   });

@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { type PropsWithChildren, useMemo } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
+import type { SubmitPolicy } from "../contract";
 import { ComposerSurface } from "./composer";
 
 afterEach(() => cleanup());
@@ -73,6 +74,37 @@ describe("U2.2 ComposerSurface", () => {
       mode: "prompt",
       text: "steer text",
       delivery: "steer",
+    });
+  });
+
+  test.each([
+    { chord: "ctrlEnter", modifier: { ctrlKey: true } },
+    { chord: "metaEnter", modifier: { metaKey: true } },
+  ])("$chord hands the policy a follow-up chord, not a steer", async ({ chord, modifier }) => {
+    const submitPrompt = vi.fn(async (_intent: PromptIntent) => undefined);
+    const keyChords: string[] = [];
+    const policy: SubmitPolicy = (input) => {
+      keyChords.push(input.keyChord);
+      return { delivery: input.keyChord === "enter" ? "steer" : "followUp" };
+    };
+    render(
+      <RuntimeProvider running>
+        <ComposerSurface
+          cancel={async () => undefined}
+          policy={policy}
+          submitPrompt={submitPrompt}
+        />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "follow later please" } });
+    fireEvent.keyDown(input, { key: "Enter", ...modifier });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(keyChords).toEqual([chord]);
+    expect(submitPrompt).toHaveBeenCalledWith({
+      mode: "prompt",
+      text: "follow later please",
+      delivery: "followUp",
     });
   });
 

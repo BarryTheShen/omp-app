@@ -275,20 +275,34 @@ export function createQueueAdapter(
     edit: { enumerable: true, value: edit },
     remove: { enumerable: true, value: remove },
   });
-  const unsubscribe = port.subscribe(() => {
-    lastError = undefined;
-    const snapshot = getSnapshot();
-    for (const listener of [...listeners]) listener(snapshot);
-  });
+  // R0 is listened to only while a listener is subscribed. A subscriber that goes away and comes
+  // back (React StrictMode runs effect cleanups and setups again in development) reconnects here,
+  // so the bar is never left attached to a port it has disposed.
+  let disconnectPort: (() => void) | undefined;
+  const connect = (): void => {
+    disconnectPort ??= port.subscribe(() => {
+      lastError = undefined;
+      const snapshot = getSnapshot();
+      for (const listener of [...listeners]) listener(snapshot);
+    });
+  };
+  const disconnect = (): void => {
+    disconnectPort?.();
+    disconnectPort = undefined;
+  };
   return {
     adapter,
     getSnapshot,
     subscribe(listener) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      connect();
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) disconnect();
+      };
     },
     dispose() {
-      unsubscribe();
+      disconnect();
       listeners.clear();
     },
   };

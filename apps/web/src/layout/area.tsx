@@ -21,6 +21,11 @@ export interface Surface {
   readonly reveal?: number;
   /** In a row area, take the free space (e.g. the header title). */
   readonly grow?: boolean;
+  /**
+   * In a row area that wraps, start a line of its own and take all of it, so a block such as a card
+   * never sits beside the controls on the line above it. Rendered empty, it takes no space.
+   */
+  readonly fullRow?: boolean;
   readonly render: () => ReactNode;
 }
 
@@ -66,9 +71,11 @@ export function areaSurfaces(
 }
 
 function surfaceClass(area: LayoutAreaName, surface: Surface): string {
+  const row = ROW_AREAS[area] === true;
   return cn(
     "min-w-0",
-    surface.grow && (ROW_AREAS[area] === true ? "flex-1" : "flex min-h-0 flex-1 flex-col"),
+    surface.grow && (row ? "flex-1" : "flex min-h-0 flex-1 flex-col"),
+    surface.fullRow && row && "basis-full empty:hidden",
   );
 }
 

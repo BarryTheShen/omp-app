@@ -126,7 +126,11 @@ export function QueueLaneBar({
   connection = { state: "connected" },
 }: QueueLaneBarProps) {
   const [snapshot, setSnapshot] = useState<QueueAdapterSnapshot>(() => controller.getSnapshot());
-  useEffect(() => controller.subscribe(setSnapshot), [controller]);
+  useEffect(() => {
+    // Read the snapshot again on subscribe: a change between the first render and here is not lost.
+    setSnapshot(controller.getSnapshot());
+    return controller.subscribe(setSnapshot);
+  }, [controller]);
   if (snapshot.items.length === 0 && snapshot.steerItems.length === 0) return null;
 
   const disconnected = connection.state !== "connected";

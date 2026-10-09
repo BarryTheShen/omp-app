@@ -836,7 +836,6 @@ function ActiveThreadReady({
     [],
   );
   useEffect(() => () => todoStore.dispose(), [todoStore]);
-  useEffect(() => () => queueAdapter.dispose(), [queueAdapter]);
   const draftController = useMemo(
     () =>
       new DraftController({
@@ -974,6 +973,7 @@ function ActiveThreadReady({
     mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
     queue: {
       title: "Queued messages",
+      fullRow: true,
       render: () => <QueueLaneBar connection={queueConnection} controller={queueAdapter} />,
     },
     attachments: {

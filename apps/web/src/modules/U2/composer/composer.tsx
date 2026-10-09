@@ -93,6 +93,16 @@ function decisionInput(
   return { isStreaming, keyChord, draft };
 }
 
+/** The chord an Enter press makes: Ctrl+Enter and Cmd+Enter are the follow-up chords. */
+function enterChord(modifiers: {
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+}): ComposerKeyChord {
+  if (modifiers.ctrlKey) return "ctrlEnter";
+  if (modifiers.metaKey) return "metaEnter";
+  return "enter";
+}
+
 function intentsForDecision(
   result: SubmitPolicyResult,
   text: string,
@@ -139,67 +149,70 @@ export function ComposerSurface({
   const composingRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useRemeasureOnWidthChange(inputRef);
-  const submit = useCallback(async () => {
-    if (disabled || isSubmitting || !hasContent(text, attachments)) return;
+  const submit = useCallback(
+    async (keyChord: ComposerKeyChord) => {
+      if (disabled || isSubmitting || !hasContent(text, attachments)) return;
 
-    // A `!` or `$` line is a command: it goes through U2's mode seam, never to the model as a prompt.
-    const command = parseComposerMode(text);
-    const isCommand = command.mode !== "prompt";
-    // A bare `!` or `$` has no command to run: nothing is sent and the line stays.
-    if (isCommand && command.text.length === 0) return;
-    let intents: readonly PromptIntent[] = [];
-    try {
-      if (isCommand) {
-        if (attachments.length > 0) {
-          throw new AppFailure({
-            code: "invalid_args",
-            message: "Remove the attachments to run a bash or Python command",
-            retryable: false,
-          });
+      // A `!` or `$` line is a command: it goes through U2's mode seam, never to the model as a prompt.
+      const command = parseComposerMode(text);
+      const isCommand = command.mode !== "prompt";
+      // A bare `!` or `$` has no command to run: nothing is sent and the line stays.
+      if (isCommand && command.text.length === 0) return;
+      let intents: readonly PromptIntent[] = [];
+      try {
+        if (isCommand) {
+          if (attachments.length > 0) {
+            throw new AppFailure({
+              code: "invalid_args",
+              message: "Remove the attachments to run a bash or Python command",
+              retryable: false,
+            });
+          }
+        } else {
+          const input = decisionInput(text, attachments, isStreaming, keyChord);
+          const result = policy(input);
+          intents = intentsForDecision(result, text, attachments);
+          if (isStreaming && intents.some((intent) => intent.delivery === "new")) {
+            throw new AppFailure({
+              code: "invalid_args",
+              message: "A turn is running: choose steer or follow-up",
+              retryable: false,
+            });
+          }
         }
-      } else {
-        const input = decisionInput(text, attachments, isStreaming, "enter");
-        const result = policy(input);
-        intents = intentsForDecision(result, text, attachments);
-        if (isStreaming && intents.some((intent) => intent.delivery === "new")) {
-          throw new AppFailure({
-            code: "invalid_args",
-            message: "A turn is running: choose steer or follow-up",
-            retryable: false,
-          });
+      } catch (cause) {
+        setError(appFailure(cause).appError);
+        return;
+      }
+      setError(null);
+      setIsSubmitting(true);
+      try {
+        if (isCommand) {
+          await submitModeInput(command, "new", capabilities, submitPrompt);
+        } else {
+          for (const intent of intents) await submitPrompt(intent);
         }
+        await composer.reset();
+        inputRef.current?.focus();
+      } catch (cause) {
+        setError(appFailure(cause).appError);
+        inputRef.current?.focus();
+      } finally {
+        setIsSubmitting(false);
       }
-    } catch (cause) {
-      setError(appFailure(cause).appError);
-      return;
-    }
-    setError(null);
-    setIsSubmitting(true);
-    try {
-      if (isCommand) {
-        await submitModeInput(command, "new", capabilities, submitPrompt);
-      } else {
-        for (const intent of intents) await submitPrompt(intent);
-      }
-      await composer.reset();
-      inputRef.current?.focus();
-    } catch (cause) {
-      setError(appFailure(cause).appError);
-      inputRef.current?.focus();
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [
-    attachments,
-    capabilities,
-    composer,
-    disabled,
-    isStreaming,
-    isSubmitting,
-    policy,
-    submitPrompt,
-    text,
-  ]);
+    },
+    [
+      attachments,
+      capabilities,
+      composer,
+      disabled,
+      isStreaming,
+      isSubmitting,
+      policy,
+      submitPrompt,
+      text,
+    ],
+  );
 
   const handleCancel = useCallback(async () => {
     if (!canCancel) return;
@@ -214,7 +227,7 @@ export function ComposerSurface({
   const handleSubmitCapture = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      void submit();
+      void submit("enter");
     },
     [submit],
   );
@@ -236,7 +249,7 @@ export function ComposerSurface({
       }
       event.preventDefault();
       event.stopPropagation();
-      void submit();
+      void submit(enterChord(event));
     },
     [canCancel, handleCancel, submit],
   );
@@ -330,7 +343,7 @@ export function ComposerSurface({
                 size="icon"
                 aria-label="Send message"
                 disabled={disabled || isSubmitting || !hasContent(text, attachments)}
-                onClick={() => void submit()}
+                onClick={() => void submit("enter")}
                 className="size-7 rounded-full"
               >
                 <ArrowUpIcon aria-hidden="true" className="size-4" />

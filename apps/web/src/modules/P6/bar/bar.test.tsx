@@ -70,6 +70,22 @@ describe("QueueLaneBar", () => {
     expect(screen.getByText("summarize after yield")).toBeTruthy();
   });
 
+  test("shows a queue that filled between the first render and the subscription", () => {
+    const full = fixture().controller;
+    const empty = fixture({ ...snapshot, steering: [], followUp: [] }).controller.getSnapshot();
+    let reads = 0;
+    // The first read is the first render, which sees an empty queue; the queue fills before the bar subscribes.
+    const controller = {
+      ...full,
+      getSnapshot: () => {
+        reads += 1;
+        return reads === 1 ? empty : full.getSnapshot();
+      },
+    };
+    render(<QueueLaneBar controller={controller} />);
+    expect(screen.getByText("fix the failing test")).toBeTruthy();
+  });
+
   test("remove and promote call the adapter exactly once", () => {
     const state = fixture();
     render(<QueueLaneBar controller={state.controller} />);
