@@ -1,5 +1,7 @@
 import { Button } from "../../components/ui/button";
 import { Icons } from "../../tokens";
+import { fileLanguageLabel } from "../U1/markdown/code-language";
+import { CodeView, codeLines } from "../U1/markdown/code-view";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
@@ -261,41 +263,10 @@ function CodePreview({
   readonly startLine: number;
   readonly target: string;
 }) {
-  const lines = content.split("\n");
-  // Rows only ever append or are replaced whole, so a row's position is a stable key.
-  const numberedLines = lines.map((line, index) => ({
-    id: `row-${index}`,
-    line,
-    lineNumber: lineNumbers === undefined ? startLine + index : (lineNumbers[index] ?? null),
-  }));
-  const language = languageForTarget(target);
-  return (
-    <div className="border-border bg-muted/30 overflow-hidden rounded-lg border" data-markdown-code>
-      <div className="border-border/60 bg-muted/60 border-b px-3 py-1.5 text-xs">
-        <span className="font-mono text-muted-foreground" data-code-language>
-          {language}
-        </span>
-      </div>
-      <pre
-        className="max-w-full overflow-x-auto p-3 text-sm leading-relaxed"
-        data-slot="t1-read-code"
-      >
-        <code className="font-mono text-info">
-          {numberedLines.map(({ id, line, lineNumber: currentLine }) => (
-            <span className="block" key={id}>
-              <span
-                aria-hidden="true"
-                className="mr-4 inline-block min-w-8 select-none text-right text-muted-foreground"
-              >
-                {currentLine}
-              </span>
-              <span>{line || " "}</span>
-            </span>
-          ))}
-        </code>
-      </pre>
-    </div>
+  const numbers = codeLines(content).map((_line, index) =>
+    lineNumbers === undefined ? startLine + index : (lineNumbers[index] ?? null),
   );
+  return <CodeView code={content} language={fileLanguageLabel(target)} lineNumbers={numbers} />;
 }
 
 function TruncationNotice({ meta }: { readonly meta: TruncationMeta }) {
@@ -377,20 +348,6 @@ function diagnosticMessages(details: ReadToolDetails): string | undefined {
     })
     .slice(0, 4);
   return messages && messages.length > 0 ? messages.join(" · ") : undefined;
-}
-
-function languageForTarget(target: string): string {
-  const extension = target.toLowerCase().split(".").pop() ?? "";
-  const languages: Record<string, string> = {
-    css: "css",
-    html: "html",
-    js: "javascript",
-    json: "json",
-    md: "markdown",
-    ts: "typescript",
-    tsx: "tsx",
-  };
-  return languages[extension] ?? "text";
 }
 
 function displayTarget(

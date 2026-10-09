@@ -190,6 +190,21 @@
   --diff-remove-foreground: var(--omp-light-syntax-string);
   --diff-add: var(--omp-light-green);
   --diff-remove: var(--omp-light-red);
+  /* Syntax code view: the omp light syntax colours, consumed by Shiki's CSS-variable theme. */
+  --code-foreground: var(--foreground);
+  --code-background: var(--muted);
+  --code-token-comment: var(--muted-foreground);
+  --code-token-keyword: var(--omp-light-blue-strong);
+  --code-token-string: var(--omp-light-syntax-string);
+  --code-token-constant: var(--omp-light-green-strong);
+  --code-token-parameter: var(--omp-light-purple);
+  --code-token-function: var(--omp-light-syntax-function);
+  --code-token-string-expression: var(--omp-light-syntax-string);
+  --code-token-punctuation: var(--muted-foreground);
+  --code-token-link: var(--omp-light-blue-strong);
+  --code-token-inserted: var(--omp-light-green-strong);
+  --code-token-deleted: var(--omp-light-red);
+  --code-token-changed: var(--warning-surface-foreground);
 }
 
 /* ---------- Semantics: dark (omp "titanium") ---------- */
@@ -245,6 +260,21 @@
   --diff-remove-foreground: var(--omp-titanium-bright-red);
   --diff-add: var(--omp-titanium-readout-green);
   --diff-remove: var(--omp-titanium-alert-red);
+  /* Syntax code view: the titanium palette, consumed by Shiki's CSS-variable theme. */
+  --code-foreground: var(--foreground);
+  --code-background: var(--muted);
+  --code-token-comment: var(--muted-foreground);
+  --code-token-keyword: var(--omp-titanium-electric-blue);
+  --code-token-string: var(--omp-titanium-readout-green);
+  --code-token-constant: var(--omp-titanium-warning-amber);
+  --code-token-parameter: var(--omp-titanium-bright-blue);
+  --code-token-function: var(--omp-titanium-gold);
+  --code-token-string-expression: var(--omp-titanium-readout-green);
+  --code-token-punctuation: var(--omp-titanium-dim-aluminum);
+  --code-token-link: var(--omp-titanium-bright-blue);
+  --code-token-inserted: var(--omp-titanium-bright-green);
+  --code-token-deleted: var(--omp-titanium-bright-red);
+  --code-token-changed: var(--omp-titanium-bright-yellow);
 
   --shadow-xs-raw: 0 1px 2px rgb(0 0 0 / 30%);
   --shadow-sm-raw: 0 1px 3px rgb(0 0 0 / 40%), 0 1px 2px rgb(0 0 0 / 30%);

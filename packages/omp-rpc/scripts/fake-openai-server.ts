@@ -5,7 +5,7 @@ type Request = { messages?: Message[]; stream?: boolean };
 /** One tool call an assistant message makes. */
 type ToolCall = { tool: string; args: Record<string, unknown>; id?: string };
 type Reply =
-  | { text: string; thinking?: string }
+  | { text: string; thinking?: string; streamed?: boolean }
   | (ToolCall & { thinking?: string })
   | { tools: readonly ToolCall[]; thinking?: string }
   | { failure: string };
@@ -66,6 +66,51 @@ function steerChildReply(messages: readonly Message[]): Reply | undefined {
     id: `call_wait_${steps}`,
     thinking: "I am waiting for a steer.",
   };
+}
+
+/** How many characters one streamed piece carries, for a reply that is streamed in pieces. */
+const STREAMED_PIECE_CHARACTERS = 12;
+/** How long the server waits between two streamed pieces, short enough for several to coalesce. */
+const STREAMED_PIECE_DELAY_MS = 40;
+/** A fenced TypeScript block, streamed in pieces for the code-view e2e so the block grows while it is watched. */
+const STREAMED_CODE_REPLY = [
+  "Here is the streamed block:",
+  "",
+  "```typescript",
+  "export function sum(values: number[]): number {",
+  "  let total = 0;",
+  "  for (const value of values) {",
+  "    total += value;",
+  "  }",
+  "  return total;",
+  "}",
+  "",
+  "export const answer = sum([1, 2, 3]);",
+  "```",
+].join("\n");
+/**
+ * A fenced TypeScript block longer than the code view's short-block limit (2,048 characters), so it is coloured in the
+ * background as it grows. The e2e spec builds the same rows (`apps/web/e2e/code-view-stream.spec.ts`).
+ */
+const STREAMED_LONG_CODE_REPLY = [
+  "Here is the long streamed block:",
+  "",
+  "```typescript",
+  ...Array.from(
+    { length: 48 },
+    (_, index) => `export const value${index}: number = ${index} * 2; // step ${index}`,
+  ),
+  "```",
+].join("\n");
+
+/** The content of a reply, cut into pieces when the reply is streamed in pieces; otherwise one piece. */
+function contentDeltas(content: string, inPieces: boolean): string[] {
+  if (!inPieces) return [content];
+  const pieces: string[] = [];
+  for (let start = 0; start < content.length; start += STREAMED_PIECE_CHARACTERS) {
+    pieces.push(content.slice(start, start + STREAMED_PIECE_CHARACTERS));
+  }
+  return pieces;
 }
 
 /** `count_reply` turns are counted across the whole fake server, so an answer given again is visibly new. */
@@ -145,6 +190,9 @@ function reply(request: Request): Reply {
     };
   if (prompt.includes("make_it_big")) return { text: "a".repeat(1_100_000) };
   if (prompt.includes("abort_slow")) return { text: "slow-stream", thinking: "working" };
+  if (prompt.includes("stream_code")) return { text: STREAMED_CODE_REPLY, streamed: true };
+  if (prompt.includes("stream_long_code"))
+    return { text: STREAMED_LONG_CODE_REPLY, streamed: true };
   if (prompt.includes("ask_user"))
     return {
       tool: "ask",
@@ -241,6 +289,8 @@ const server = Bun.serve({
       created: 0,
       model: "fake-model",
     };
+    // A reply flagged `streamed` (the `stream_code` keyword) is sent in pieces, a little apart.
+    const inPieces = "text" in value && value.streamed === true;
     const chunks = [
       ...(value.thinking === undefined
         ? []
@@ -253,12 +303,10 @@ const server = Bun.serve({
             },
           ]),
       ...("text" in value
-        ? [
-            {
-              ...base,
-              choices: [{ index: 0, delta: { content: value.text }, finish_reason: null }],
-            },
-          ]
+        ? contentDeltas(value.text, inPieces).map((content) => ({
+            ...base,
+            choices: [{ index: 0, delta: { content }, finish_reason: null }],
+          }))
         : toolCallsOf(value).map((call, index) => ({
             ...base,
             choices: [
@@ -286,6 +334,7 @@ const server = Bun.serve({
     ];
     const lines = chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`);
     const stream =
+      inPieces ||
       body.messages?.some(
         (message) => message.role === "user" && text(message.content).includes("abort_slow"),
       ) === true;
@@ -294,7 +343,7 @@ const server = Bun.serve({
         async start(controller) {
           for (const line of lines) {
             controller.enqueue(line);
-            await Bun.sleep(100);
+            await Bun.sleep(inPieces ? STREAMED_PIECE_DELAY_MS : 100);
           }
           controller.enqueue("data: [DONE]\n\n");
           controller.close();

@@ -222,12 +222,20 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   await page.reload();
   await page.getByTestId("thread-show-markdown").click();
   await expect(page.getByRole("heading", { name: "Rich Markdown answer" })).toBeVisible();
-  await expect(page.locator("[data-markdown-code]")).toHaveCount(1);
+  await expect(page.locator("[data-code-view]")).toHaveCount(1);
+  await expect.poll(() => distinctTokenColors(page, "[data-code-view]")).toBeGreaterThan(2);
   await expect(page.locator("[data-markdown-table]")).toBeVisible();
   await expectMarkdownStyles(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
   const richLight = page.getByRole("region", { name: "Rich Markdown answer" });
   await richLight.scrollIntoViewIfNeeded();
   await page.screenshot({ path: "../../.data/screenshots/u1-4-rich-light.png", fullPage: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await richLight.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: "../../.data/screenshots/u1-4-rich-light-narrow.png",
+    fullPage: false,
+  });
 
   const darkPage = await page.context().newPage();
   await darkPage.addInitScript(() => document.documentElement.classList.add("dark"));
@@ -237,6 +245,7 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   await expect(darkPage.locator("html")).toHaveClass(/dark/);
   await expect(darkPage.getByRole("heading", { name: "Rich Markdown answer" })).toBeVisible();
   await expectMarkdownStyles(darkPage);
+  await expect.poll(() => distinctTokenColors(darkPage, "[data-code-view]")).toBeGreaterThan(2);
   const darkBackground = await darkPage.evaluate(
     () => getComputedStyle(document.body).backgroundColor,
   );
@@ -249,6 +258,7 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   });
 
   await darkPage.setViewportSize({ width: 390, height: 844 });
+  await darkPage.getByRole("region", { name: "Rich Markdown answer" }).scrollIntoViewIfNeeded();
   await darkPage.screenshot({
     path: "../../.data/screenshots/u1-4-rich-narrow.png",
     fullPage: false,
@@ -292,3 +302,17 @@ test("renders U1.6 special rows in light, dark and narrow states", async ({ page
   });
   await darkPage.close();
 });
+
+/** How many colours the highlighted tokens of a code block take: plain text would take one. */
+async function distinctTokenColors(page: Page, scope: string): Promise<number> {
+  return page
+    .locator(`${scope} [data-code-token]`)
+    .evaluateAll(
+      (tokens) =>
+        new Set(
+          tokens
+            .filter((token) => (token.textContent ?? "").trim() !== "")
+            .map((token) => getComputedStyle(token).color),
+        ).size,
+    );
+}

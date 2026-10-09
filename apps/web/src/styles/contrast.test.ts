@@ -121,15 +121,33 @@ function luminance(color: Rgb): number {
   return 0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue);
 }
 
-function contrast(foreground: string, background: string, tokens: TokenMap): number {
-  const bg = oklchToSrgb(parseOklch(resolve(background, tokens)));
-  const fg = composite(oklchToSrgb(parseOklch(resolve(foreground, tokens))), bg);
-  const foregroundLum = luminance(fg);
-  const backgroundLum = luminance(bg);
+function ratio(foreground: Rgb, background: Rgb): number {
+  const foregroundLum = luminance(foreground);
+  const backgroundLum = luminance(background);
   return (
     (Math.max(foregroundLum, backgroundLum) + 0.05) /
     (Math.min(foregroundLum, backgroundLum) + 0.05)
   );
+}
+
+function contrast(foreground: string, background: string, tokens: TokenMap): number {
+  const bg = oklchToSrgb(parseOklch(resolve(background, tokens)));
+  return ratio(composite(oklchToSrgb(parseOklch(resolve(foreground, tokens))), bg), bg);
+}
+
+/**
+ * The code block's own background: `bg-muted/30` (the muted token at 30%) over the page. Code text is tested on
+ * this colour, the one a reader sees behind it, not on the bare token.
+ */
+function codeBlockBackground(tokens: TokenMap): Rgb {
+  const page = oklchToSrgb(parseOklch(resolve("--background", tokens)));
+  const muted = oklchToSrgb(parseOklch(resolve("--muted", tokens)));
+  return composite({ ...muted, alpha: 0.3 }, page);
+}
+
+function contrastOnCodeBlock(foreground: string, tokens: TokenMap): number {
+  const bg = codeBlockBackground(tokens);
+  return ratio(composite(oklchToSrgb(parseOklch(resolve(foreground, tokens))), bg), bg);
 }
 
 const TEXT_PAIRS = [
@@ -142,6 +160,22 @@ const TEXT_PAIRS = [
   ["--info-surface-foreground", "--info-surface"],
   ["--diff-add-foreground", "--diff-add-surface"],
   ["--diff-remove-foreground", "--diff-remove-surface"],
+] as const;
+
+/** The colours code text is drawn in, on the code block's own background. */
+const CODE_TEXT = [
+  "--code-foreground",
+  "--code-token-keyword",
+  "--code-token-punctuation",
+  "--code-token-comment",
+  "--code-token-string",
+  "--code-token-constant",
+  "--code-token-parameter",
+  "--code-token-function",
+  "--code-token-string-expression",
+  "--code-token-link",
+  "--code-token-inserted",
+  "--code-token-deleted",
 ] as const;
 
 for (const theme of ["light", "dark"] as const) {
@@ -159,5 +193,16 @@ for (const theme of ["light", "dark"] as const) {
     test("input border has at least 3:1 contrast against the page", () => {
       expect(contrast("--input", "--background", tokens)).toBeGreaterThanOrEqual(3);
     });
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  describe(`${theme} code block contrast`, () => {
+    const tokens = themeTokens(theme);
+    for (const foreground of CODE_TEXT) {
+      test(`${foreground} on the code block is WCAG AA`, () => {
+        expect(contrastOnCodeBlock(foreground, tokens), foreground).toBeGreaterThanOrEqual(4.5);
+      });
+    }
   });
 }

@@ -63,7 +63,7 @@ describe("ReadCard", () => {
         )}
       />,
     );
-    expect(document.querySelector('[data-slot="t1-read-code"]')?.textContent).toContain(
+    expect(document.querySelector("[data-code-view]")?.textContent).toContain(
       'import { A } from "./a";',
     );
     // The real truncation record says 89 lines in all and 80 shown: nine are left out.

@@ -4,11 +4,11 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
-import { CheckIcon, CopyIcon } from "lucide-react";
-import { type FC, type HTMLAttributes, memo, type ReactNode, useState } from "react";
+import { type FC, type HTMLAttributes, memo, type ReactNode } from "react";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { SafeImage } from "../media";
+import { CodeView } from "./code-view";
 
 export type MarkdownTextProps = Partial<TextMessagePartProps> & {
   readonly variant?: "default" | "compact";
@@ -16,7 +16,6 @@ export type MarkdownTextProps = Partial<TextMessagePartProps> & {
 
 function CodeBlock({ className, children, ...props }: HTMLAttributes<HTMLElement>) {
   const isCodeBlock = useIsMarkdownCodeBlock();
-  const [copied, setCopied] = useState(false);
   if (!isCodeBlock) {
     return (
       <code
@@ -28,46 +27,9 @@ function CodeBlock({ className, children, ...props }: HTMLAttributes<HTMLElement
       </code>
     );
   }
-
-  const language = /language-([\w-]+)/.exec(className ?? "")?.[1] ?? "text";
+  const language = /language-(\S+)/.exec(className ?? "")?.[1] ?? "text";
   const code = String(children).replace(/\n$/, "");
-  const copy = async () => {
-    if (typeof navigator === "undefined" || navigator.clipboard === undefined) return;
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  };
-  return (
-    <div
-      className="border-border bg-muted/30 my-3 overflow-hidden rounded-lg border"
-      data-markdown-code
-    >
-      <div className="border-border/60 bg-muted/60 flex items-center justify-between border-b px-3 py-1.5 text-xs">
-        <span className="text-muted-foreground font-mono" data-code-language>
-          {language}
-        </span>
-        <button
-          aria-label={copied ? "Copied code" : "Copy code"}
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 rounded px-1.5 py-1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          data-markdown-copy
-          type="button"
-          onClick={() => void copy()}
-        >
-          {copied ? (
-            <CheckIcon aria-hidden="true" className="size-3.5" />
-          ) : (
-            <CopyIcon aria-hidden="true" className="size-3.5" />
-          )}
-          <span>{copied ? "Copied" : "Copy"}</span>
-        </button>
-      </div>
-      <pre className="max-w-full overflow-x-auto p-3 text-sm leading-relaxed">
-        <code {...props} className={cn("font-mono text-info", className)}>
-          {children}
-        </code>
-      </pre>
-    </div>
-  );
+  return <CodeView className="my-3" code={code} language={language} />;
 }
 
 function Link({

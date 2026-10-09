@@ -67,6 +67,7 @@ test("renders streaming, executable, SVG-safe and error write states in light/da
   await expect(page.getByText("Source preview shortened; 10 lines omitted")).toBeVisible();
   await expect(page.getByText("Executable", { exact: true })).toBeVisible();
   await expect(page.getByRole("img", { name: "assets/mark.svg SVG preview" })).toBeVisible();
+  await expect.poll(() => distinctTokenColors(page, "[data-code-view]")).toBeGreaterThan(2);
   await expect(page.getByRole("alert")).toContainText("Write denied by host");
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: "../../.data/screenshots/t1.4-write-light.png", fullPage: true });
@@ -80,6 +81,7 @@ test("renders streaming, executable, SVG-safe and error write states in light/da
     "background-color",
     /^(rgb|oklch)/,
   );
+  await expect.poll(() => distinctTokenColors(darkPage, "[data-code-view]")).toBeGreaterThan(2);
   await waitForFiniteAnimations(darkPage);
   await darkPage.screenshot({
     path: "../../.data/screenshots/t1.4-write-dark.png",
@@ -93,3 +95,17 @@ test("renders streaming, executable, SVG-safe and error write states in light/da
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: "../../.data/screenshots/t1.4-write-narrow.png", fullPage: true });
 });
+
+/** How many colours the highlighted tokens of a code block take: plain text would take one. */
+async function distinctTokenColors(page: Page, scope: string): Promise<number> {
+  return page
+    .locator(`${scope} [data-code-token]`)
+    .evaluateAll(
+      (tokens) =>
+        new Set(
+          tokens
+            .filter((token) => (token.textContent ?? "").trim() !== "")
+            .map((token) => getComputedStyle(token).color),
+        ).size,
+    );
+}

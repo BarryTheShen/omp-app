@@ -1,7 +1,8 @@
 import { AppError as AppErrorSchema, AppFailure } from "@omp-app/contracts";
 import { useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
-import { Icons } from "../../tokens";
+import { fileLanguageLabel } from "../U1/markdown/code-language";
+import { CodeView } from "../U1/markdown/code-view";
 import { ToolCard } from "../U3/tool-card/card";
 import type {
   ToolCardError,
@@ -116,10 +117,9 @@ function WriteBody({
   readonly waiting: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const content = source ?? "";
   const hasSource = source !== undefined;
-  const language = languageForTarget(displayTarget, content);
+  const language = fileLanguageLabel(displayTarget, content);
   const lineCount = lineCountFor(content);
   const preview = useMemo(() => sourcePreview(content, expanded), [content, expanded]);
   const svg = isSvg(displayTarget, content);
@@ -128,17 +128,15 @@ function WriteBody({
     outputMeta?.artifactElidedBytes ?? outputMeta?.truncation?.artifactElidedBytes;
   const diagnostics = diagnosticsFor(details);
   const metadataNotices = metadataNotice(outputMeta);
-  const copySource = async () => {
-    try {
-      if (onCopy !== undefined) {
-        await onCopy(content, "code");
-      } else if (typeof navigator !== "undefined" && navigator.clipboard !== undefined) {
-        await navigator.clipboard.writeText(content);
-      }
-      setCopyStatus("copied");
-    } catch {
-      setCopyStatus("failed");
+  const copySource = async (): Promise<void> => {
+    if (onCopy !== undefined) {
+      await onCopy(content, "code");
+      return;
     }
+    if (typeof navigator === "undefined" || navigator.clipboard === undefined) {
+      throw new Error("Clipboard unavailable");
+    }
+    await navigator.clipboard.writeText(content);
   };
 
   return (
@@ -201,7 +199,7 @@ function WriteBody({
           content={content}
           expanded={expanded}
           language={language}
-          onCopy={() => void copySource()}
+          onCopy={copySource}
           onExpand={() => setExpanded(true)}
           preview={preview}
           svg={svg}
@@ -229,11 +227,6 @@ function WriteBody({
           outputMeta={outputMeta}
         />
       )}
-      {copyStatus !== "idle" && (
-        <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
-          {copyStatus === "copied" ? "Copied raw source" : "Copy unavailable"}
-        </span>
-      )}
     </section>
   );
 }
@@ -251,7 +244,7 @@ function SourcePreview({
   readonly content: string;
   readonly expanded: boolean;
   readonly language: string;
-  readonly onCopy: () => void;
+  readonly onCopy: () => Promise<void>;
   readonly onExpand: () => void;
   readonly preview: SourcePreviewValue;
   readonly svg: boolean;
@@ -259,24 +252,7 @@ function SourcePreview({
 }) {
   const imagePreview = svg && content.length <= MAX_SVG_PREVIEW_CHARACTERS;
   return (
-    <div
-      className="border-border bg-muted/30 overflow-hidden rounded-lg border"
-      data-slot="t1-write-source"
-    >
-      <div className="border-border/60 bg-muted/60 flex min-w-0 items-center justify-between gap-2 border-b px-3 py-1.5 text-xs">
-        <span className="text-muted-foreground min-w-0 truncate font-mono" data-code-language>
-          {language}
-        </span>
-        <Button
-          aria-label="Copy raw source"
-          size="icon-xs"
-          type="button"
-          variant="ghost"
-          onClick={onCopy}
-        >
-          <Icons.copy aria-hidden="true" />
-        </Button>
-      </div>
+    <div className="flex min-w-0 flex-col gap-2" data-slot="t1-write-source">
       {imagePreview && (
         <div
           className="border-border/60 bg-muted relative inline-flex max-w-full items-center overflow-hidden rounded border p-3"
@@ -299,33 +275,22 @@ function SourcePreview({
       )}
       {svg && !imagePreview && (
         <p
-          className="border-border/60 bg-muted/40 border-b px-3 py-2 text-xs text-muted-foreground"
+          className="border-border bg-muted/40 rounded-lg border px-3 py-2 text-xs text-muted-foreground"
           data-slot="t1-write-svg-unavailable"
         >
           SVG preview omitted for large source; use the raw source or artifact.
         </p>
       )}
-      <pre
-        className="max-w-full overflow-x-auto p-3 text-sm leading-relaxed"
-        data-slot="t1-write-code"
-      >
-        <code className="font-mono text-info" data-language={language}>
-          {preview.lines.map(({ line, number }) => (
-            <span className="block" key={number}>
-              <span
-                aria-hidden="true"
-                className="mr-4 inline-block min-w-8 select-none text-right text-muted-foreground"
-              >
-                {number}
-              </span>
-              <span>{line || " "}</span>
-            </span>
-          ))}
-        </code>
-      </pre>
+      <CodeView
+        code={preview.lines.map((row) => row.line).join("\n")}
+        copyLabel="Copy raw source"
+        language={language}
+        lineNumbers={preview.lines.map((row) => row.number)}
+        onCopy={onCopy}
+      />
       {preview.truncated && !expanded && (
         <div
-          className="border-border/60 flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-xs text-muted-foreground"
+          className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted-foreground"
           data-slot="t1-write-source-truncation"
         >
           <span>{preview.label}</span>
@@ -660,37 +625,6 @@ function diagnosticText(diagnostic: Diagnostic): string {
     .join(":");
   const message = diagnostic.message ?? "Diagnostic reported without a message.";
   return location.length > 0 ? `${location}: ${message}` : message;
-}
-
-function languageForTarget(target: string, content: string): string {
-  const normalized = target.toLowerCase().split(/[?#]/, 1)[0] ?? target.toLowerCase();
-  const extension = normalized.split(".").pop();
-  if (extension === undefined || extension === normalized) {
-    if (content.startsWith("#!")) return "shell";
-    return "text";
-  }
-  const aliases: Record<string, string> = {
-    cjs: "javascript",
-    css: "css",
-    go: "go",
-    htm: "html",
-    html: "html",
-    java: "java",
-    js: "javascript",
-    json: "json",
-    jsx: "javascript",
-    md: "markdown",
-    mjs: "javascript",
-    py: "python",
-    rs: "rust",
-    sh: "shell",
-    svg: "xml",
-    ts: "typescript",
-    tsx: "typescript",
-    yaml: "yaml",
-    yml: "yaml",
-  };
-  return aliases[extension] ?? extension;
 }
 
 function lineCountFor(content: string): number {

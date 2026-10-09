@@ -5,7 +5,7 @@ import {
   ThreadPrimitive,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { MarkdownText } from "../../markdown/markdown-text";
 import { MarkdownShowcase } from "../../markdown/showcase";
@@ -64,12 +64,25 @@ describe("U1.4 Markdown renderer", () => {
 
   test("renders partial fences and GFM tables without a second renderer", async () => {
     render(<MarkdownHarness text={"```ts\nconst value = 1"} />);
-    expect(document.querySelector("[data-markdown-code]")).toBeTruthy();
-    expect(document.querySelector("[data-code-language]")?.textContent).toBe("ts");
+    expect(document.querySelector("[data-code-view]")).toBeTruthy();
+    expect(document.querySelector("[data-code-language]")?.textContent).toBe("typescript");
 
     cleanup();
     render(<MarkdownHarness text={"| A | B |\n| --- | --- |\n| one | two |"} />);
     expect(document.querySelector("[data-markdown-table]")).toBeTruthy();
+  });
+
+  test("a c++ fence is labelled and coloured as C++, not read as C", async () => {
+    render(<MarkdownHarness text={"```c++\nint main() { return 0; }\n```"} />);
+
+    expect(document.querySelector("[data-code-language]")?.textContent).toBe("cpp");
+    await waitFor(
+      () =>
+        expect(document.querySelector("[data-code-state]")?.getAttribute("data-code-state")).toBe(
+          "highlighted",
+        ),
+      { timeout: 10_000 },
+    );
   });
 
   test("copies a code block through its accessible copy button", async () => {
@@ -88,6 +101,6 @@ describe("U1.4 Markdown renderer", () => {
     render(<MarkdownShowcase />);
     expect(await screen.findByRole("heading", { name: "Rich Markdown answer" })).toBeTruthy();
     expect(document.querySelector("[data-markdown-table]")).toBeTruthy();
-    expect(document.querySelector("[data-markdown-code]")).toBeTruthy();
+    expect(document.querySelector("[data-code-view]")).toBeTruthy();
   });
 });
