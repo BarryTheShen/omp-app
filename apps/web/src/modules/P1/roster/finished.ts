@@ -1,6 +1,8 @@
 import {
+  AppFailure,
+  type CapabilityMap,
   type PortCallOptions,
-  type SessionFilePath,
+  SessionFilePath,
   type SessionReadArgs,
   type SessionSubagentsResult,
   SubagentId,
@@ -9,6 +11,7 @@ import {
   type SubagentTranscript,
   type ThreadId,
 } from "@omp-app/contracts";
+import type { SubagentSession } from "@/modules/P1/client";
 import { SubagentTranscriptPageSchema } from "@/modules/P1/contract";
 import type { FinishedWorker, FinishedWorkerSource } from "./types";
 
@@ -20,8 +23,8 @@ export interface SessionTranscriptFiles {
 
 export interface FinishedWorkerSourceOptions {
   readonly threadId: ThreadId;
-  /** The chat's own session file: its workers sit beside it. */
-  readonly sessionFile: SessionFilePath;
+  /** The chat's own session file, asked for each time the list is read: its workers sit beside it. */
+  readonly sessionFile: () => Promise<SessionFilePath | undefined>;
   readonly files: SessionTranscriptFiles;
 }
 
@@ -50,6 +53,22 @@ function finishedWorker(threadId: ThreadId, transcript: SubagentTranscript): Fin
 }
 
 /**
+ * The chat's worker transcripts. omp has not written a new chat's session file before its first turn, and
+ * the listing then reports it missing: that chat has no finished workers. Any other failure is still an error.
+ */
+async function transcriptsOf(
+  files: SessionTranscriptFiles,
+  sessionFile: SessionFilePath,
+): Promise<readonly SubagentTranscript[]> {
+  try {
+    return (await files.listSubagents({ sessionFile })).transcripts;
+  } catch (error) {
+    if (error instanceof AppFailure && error.appError.code === "not_found") return [];
+    throw error;
+  }
+}
+
+/**
  * The chat's finished workers, read from its transcripts beside its session file. After a reload this
  * is the only record of a finished worker: omp forgets it, but its transcript stays on disk. Both
  * reads are read-only on the server.
@@ -60,8 +79,10 @@ export function createFinishedWorkerSource(
   const { threadId, sessionFile, files } = options;
   const source: FinishedWorkerSource = {
     list: async () => {
-      const listing = await files.listSubagents({ sessionFile });
-      return listing.transcripts.flatMap((transcript) => finishedWorker(threadId, transcript));
+      const file = await sessionFile();
+      if (file === undefined) return [];
+      const transcripts = await transcriptsOf(files, file);
+      return transcripts.flatMap((transcript) => finishedWorker(threadId, transcript));
     },
     read: async (file: SessionFilePath, fromByte?: number) => {
       const page = await files.readSubagent({
@@ -72,4 +93,33 @@ export function createFinishedWorkerSource(
     },
   };
   return Object.freeze(source);
+}
+
+/** What a chat-scoped finished-worker source needs: the chat, its live omp session, its files and what omp can do. */
+export interface ChatFinishedWorkersOptions {
+  readonly threadId: ThreadId;
+  readonly session: Pick<SubagentSession, "send">;
+  readonly files: SessionTranscriptFiles;
+  readonly capabilities: CapabilityMap;
+}
+
+/**
+ * The chat's finished workers, for a reload to list. The chat's session file is asked of omp when the list is
+ * read, so a chat that had no file when it opened still finds its workers once it has one. Without the
+ * session-files capability there is nothing to read, and nothing is asked.
+ */
+export function createChatFinishedWorkers(
+  options: ChatFinishedWorkersOptions,
+): FinishedWorkerSource {
+  const { threadId, session, files, capabilities } = options;
+  return createFinishedWorkerSource({
+    threadId,
+    files,
+    sessionFile: async () => {
+      if (capabilities["host.session-files"]?.state !== "available") return undefined;
+      const state = await session.send({ threadId, command: { type: "get_state" } });
+      const parsed = SessionFilePath.safeParse(state.sessionFile);
+      return parsed.success ? parsed.data : undefined;
+    },
+  });
 }

@@ -12,6 +12,7 @@ function sameInputs(a: ThreadAgentsOptions, b: ThreadAgentsOptions): boolean {
     a.threadId === b.threadId &&
     a.store === b.store &&
     a.session === b.session &&
+    a.files === b.files &&
     a.capabilities === b.capabilities
   );
 }
@@ -22,18 +23,18 @@ function sameInputs(a: ThreadAgentsOptions, b: ThreadAgentsOptions): boolean {
  * right after a switch gives `null` rather than the previous chat's roster.
  */
 export function useThreadAgents(options: ThreadAgentsOptions): ThreadAgents | null {
-  const { threadId, store, session, capabilities } = options;
+  const { threadId, store, session, files, capabilities } = options;
   const [current, setCurrent] = useState<Current | null>(null);
   useEffect(() => {
-    const inputs = { threadId, store, session, capabilities };
+    const inputs = { threadId, store, session, files, capabilities };
     const agents = createThreadAgents(inputs);
     setCurrent({ inputs, agents });
     return () => {
       void agents.dispose();
     };
-  }, [capabilities, session, store, threadId]);
+  }, [capabilities, files, session, store, threadId]);
   if (current === null) return null;
-  return sameInputs(current.inputs, { threadId, store, session, capabilities })
+  return sameInputs(current.inputs, { threadId, store, session, files, capabilities })
     ? current.agents
     : null;
 }

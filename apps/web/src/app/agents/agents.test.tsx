@@ -7,7 +7,7 @@ import type { SubagentClient, SubagentSession } from "@/modules/P1/client";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
 import { createAgentHubController } from "@/modules/P1/panels";
 import { fixtureClock, fixtureRoster, fixtureWorker } from "@/modules/P1/panels/fixtures";
-import type { RosterAgent } from "@/modules/P1/roster";
+import type { RosterAgent, SessionTranscriptFiles } from "@/modules/P1/roster";
 import { transcriptPage, userMessage } from "@/modules/P1/transcript/test/fixtures";
 import { OmpRuntimeStore } from "@/modules/R0/store";
 import { AgentsPanel, type AgentsView, type LiveAgents } from "./agents-panel";
@@ -51,6 +51,16 @@ function allCapabilities(except?: string): CapabilityMap {
 
 const noSession = {} as unknown as SubagentSession;
 
+// The harness offers no session-files capability, so its chat's files are never read.
+const noFiles: SessionTranscriptFiles = {
+  listSubagents: async () => {
+    throw new Error("the session files are not read in this harness");
+  },
+  readSubagent: async () => {
+    throw new Error("the session files are not read in this harness");
+  },
+};
+
 /** The panels area as the thread view mounts it: the todo panel and the Agents tab. */
 function AgentsTabHarness({
   capabilities,
@@ -60,7 +70,7 @@ function AgentsTabHarness({
   readonly session?: SubagentSession;
 }) {
   const [store] = useState(() => new OmpRuntimeStore({ threadId }));
-  const agents = useThreadAgents({ threadId, store, session, capabilities });
+  const agents = useThreadAgents({ threadId, store, session, files: noFiles, capabilities });
   const surfaces: SurfaceMap = {
     todo: { title: "Todo checklist", render: () => <p>Todo body</p> },
     agents: agentsSurface({ agents }),

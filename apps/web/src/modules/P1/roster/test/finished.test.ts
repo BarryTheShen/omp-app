@@ -1,4 +1,5 @@
 import {
+  AppFailure,
   SessionFilePath,
   type SessionSubagentsResult,
   SubagentId,
@@ -7,9 +8,13 @@ import {
   ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import type { SubagentClient } from "@/modules/P1/client";
+import type { SubagentClient, SubagentSession } from "@/modules/P1/client";
 import { AgentRefSchema } from "@/modules/P1/contract";
-import { createFinishedWorkerSource, type SessionTranscriptFiles } from "../finished";
+import {
+  createChatFinishedWorkers,
+  createFinishedWorkerSource,
+  type SessionTranscriptFiles,
+} from "../finished";
 import { AgentRosterStore } from "../store";
 
 const threadId = ThreadId.parse("thread-finished");
@@ -84,7 +89,7 @@ describe("finished workers read from the chat's transcripts", () => {
   test("lists the workers that ended, with their status and agent, and drops the rest", async () => {
     const source = createFinishedWorkerSource({
       threadId,
-      sessionFile: chat,
+      sessionFile: async () => chat,
       files: files([
         worker("Done"),
         worker("Broken", { status: "failed" }),
@@ -111,7 +116,11 @@ describe("finished workers read from the chat's transcripts", () => {
   });
 
   test("reads a page of a finished worker's transcript through the page schema", async () => {
-    const source = createFinishedWorkerSource({ threadId, sessionFile: chat, files: files([]) });
+    const source = createFinishedWorkerSource({
+      threadId,
+      sessionFile: async () => chat,
+      files: files([]),
+    });
     const read = await source.read(
       SessionFilePath.parse("/workspace/.omp/sessions/main/Done.jsonl"),
     );
@@ -127,7 +136,7 @@ describe("a reload lists the chat's finished workers in the roster", () => {
       client: fakeClient(),
       finished: createFinishedWorkerSource({
         threadId,
-        sessionFile: chat,
+        sessionFile: async () => chat,
         files: files([worker("Done")]),
       }),
       clock: { now: () => NOW },
@@ -152,7 +161,7 @@ describe("a reload lists the chat's finished workers in the roster", () => {
       client: fakeClient(),
       finished: createFinishedWorkerSource({
         threadId,
-        sessionFile: chat,
+        sessionFile: async () => chat,
         files: files([
           worker("Recent"),
           worker("Old", { endedAt: new Date(NOW - 25 * HOUR).toISOString() }),
@@ -172,7 +181,7 @@ describe("a reload lists the chat's finished workers in the roster", () => {
       client: fakeClient([liveAgent("Done")]),
       finished: createFinishedWorkerSource({
         threadId,
-        sessionFile: chat,
+        sessionFile: async () => chat,
         files: files([worker("Done")]),
       }),
       clock: { now: () => NOW },
@@ -182,5 +191,115 @@ describe("a reload lists the chat's finished workers in the roster", () => {
     expect(agents).toHaveLength(1);
     expect(agents[0]).toMatchObject({ id: "Done", status: "running" });
     await store.dispose();
+  });
+});
+
+/** A session whose state reports `sessionFile`, and which records every command it is asked. */
+function sessionReporting(
+  sessionFile: unknown,
+  asked: unknown[] = [],
+): Pick<SubagentSession, "send"> {
+  return {
+    send: async (args: unknown) => {
+      asked.push(args);
+      return { sessionFile };
+    },
+  } as unknown as Pick<SubagentSession, "send">;
+}
+
+describe("a chat's finished workers, read through its live omp", () => {
+  const available = { "host.session-files": { state: "available", via: "rpc" } } as const;
+
+  test("asks omp for the chat's session file, then lists the workers beside it", async () => {
+    const asked: unknown[] = [];
+    const source = createChatFinishedWorkers({
+      threadId,
+      session: sessionReporting(chat, asked),
+      files: files([worker("Done")]),
+      capabilities: available,
+    });
+    const listed = await source.list();
+    expect(asked).toEqual([{ threadId, command: { type: "get_state" } }]);
+    expect(listed.map((item) => item.agent.id)).toEqual(["Done"]);
+  });
+
+  test("asks nothing and lists nothing when the host has no session files", async () => {
+    const asked: unknown[] = [];
+    const source = createChatFinishedWorkers({
+      threadId,
+      session: sessionReporting(chat, asked),
+      files: files([worker("Done")]),
+      capabilities: {},
+    });
+    expect(await source.list()).toEqual([]);
+    expect(asked).toEqual([]);
+  });
+
+  test("lists nothing while the chat has no session file, and finds its workers once it has one", async () => {
+    let sessionFile: unknown;
+    const source = createChatFinishedWorkers({
+      threadId,
+      session: {
+        send: async () => ({ sessionFile }),
+      } as unknown as Pick<SubagentSession, "send">,
+      files: files([worker("Done")]),
+      capabilities: available,
+    });
+    expect(await source.list()).toEqual([]);
+    sessionFile = chat;
+    expect((await source.list()).map((item) => item.agent.id)).toEqual(["Done"]);
+  });
+
+  test("a chat whose session file omp has not written yet lists nothing, and its roster still starts", async () => {
+    const notWritten: SessionTranscriptFiles = {
+      listSubagents: async () => {
+        throw new AppFailure({
+          code: "not_found",
+          message: "Session file was not found",
+          retryable: false,
+        });
+      },
+      readSubagent: async () => {
+        throw new Error("unused");
+      },
+    };
+    const source = createChatFinishedWorkers({
+      threadId,
+      session: sessionReporting(chat),
+      files: notWritten,
+      capabilities: available,
+    });
+    expect(await source.list()).toEqual([]);
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      finished: source,
+      clock: { now: () => NOW },
+    });
+    await expect(store.start()).resolves.toBeUndefined();
+    expect(store.getSnapshot().recent).toEqual([]);
+    await store.dispose();
+  });
+
+  test("any other failure reading the chat's files is still an error", async () => {
+    const broken: SessionTranscriptFiles = {
+      listSubagents: async () => {
+        throw new AppFailure({
+          code: "permission",
+          message: "Unable to read omp session file",
+          retryable: true,
+        });
+      },
+      readSubagent: async () => {
+        throw new Error("unused");
+      },
+    };
+    const source = createChatFinishedWorkers({
+      threadId,
+      session: sessionReporting(chat),
+      files: broken,
+      capabilities: available,
+    });
+    await expect(source.list()).rejects.toMatchObject({ appError: { code: "permission" } });
   });
 });

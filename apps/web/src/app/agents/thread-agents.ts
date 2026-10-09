@@ -4,7 +4,12 @@ import {
   type SubagentClient,
   type SubagentSession,
 } from "@/modules/P1/client";
-import { AgentRosterStore, type RosterAgent } from "@/modules/P1/roster";
+import {
+  AgentRosterStore,
+  createChatFinishedWorkers,
+  type RosterAgent,
+  type SessionTranscriptFiles,
+} from "@/modules/P1/roster";
 import { createNestedTranscriptSource } from "@/modules/P1/transcript";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import type { TaskSubagent } from "@/modules/T5/task";
@@ -29,6 +34,8 @@ export interface ThreadAgentsOptions {
   readonly threadId: ThreadId;
   readonly store: OmpRuntimeStore;
   readonly session: SubagentSession;
+  /** The chat's files on the server: a reload lists the workers that finished in them. */
+  readonly files: SessionTranscriptFiles;
   readonly capabilities: CapabilityMap;
 }
 
@@ -36,10 +43,12 @@ export function createThreadAgents({
   threadId,
   store,
   session,
+  files,
   capabilities,
 }: ThreadAgentsOptions): ThreadAgents {
   const client = createSubagentClient({ threadId, session, runtime: store, capabilities });
-  const roster = new AgentRosterStore({ threadId, client });
+  const finished = createChatFinishedWorkers({ threadId, session, files, capabilities });
+  const roster = new AgentRosterStore({ threadId, client, finished });
   // One source per worker: a roster update that keeps a worker keeps its source, so its view is not re-read.
   const sources = new Map<string, TaskSubagent>();
   let starting: Promise<void> | undefined;

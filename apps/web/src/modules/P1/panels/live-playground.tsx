@@ -5,7 +5,6 @@ import {
   AppPort,
   type CapabilityMap,
   RpcSessionPort,
-  SessionFilePath,
   SessionFileStore,
   ThreadId,
 } from "@omp-app/contracts";
@@ -14,17 +13,9 @@ import { createRoot } from "react-dom/client";
 import { AccessibilityProvider } from "@/a11y/live-region";
 import { Button } from "@/components/ui/button";
 import { AppConnectionGate, AppConnectionProvider, useAppConnection } from "@/launch";
-import {
-  createSubagentClient,
-  type SubagentClient,
-  type SubagentSession,
-} from "@/modules/P1/client";
+import { createSubagentClient, type SubagentClient } from "@/modules/P1/client";
 import { type FocusedAgentRuntime, P1CapabilityKeys } from "@/modules/P1/contract";
-import {
-  AgentRosterStore,
-  createFinishedWorkerSource,
-  type FinishedWorkerSource,
-} from "@/modules/P1/roster";
+import { AgentRosterStore, createChatFinishedWorkers } from "@/modules/P1/roster";
 import { createFocusedAgentRuntime, FocusedAgentTranscript } from "@/modules/P1/transcript";
 import { createSelectedThreadHistoryController } from "@/modules/R1/history";
 import {
@@ -67,27 +58,6 @@ function cancelFor(capabilities: CapabilityMap, subagents: SubagentClient): Canc
   return { state: "available", run: (agent) => subagents.cancel(agent.id) };
 }
 
-/**
- * The chat's finished workers, read from its own files. Needs the session-files capability and the
- * chat's file, which omp reports in its state; without either, only the live roster is shown.
- */
-async function finishedWorkersOf(
-  client: AppClient,
-  session: SubagentSession,
-  threadId: ThreadId,
-  capabilities: CapabilityMap,
-): Promise<FinishedWorkerSource | undefined> {
-  if (capabilities["host.session-files"]?.state !== "available") return undefined;
-  const state = await session.send({ threadId, command: { type: "get_state" } });
-  const sessionFile = SessionFilePath.safeParse(state.sessionFile);
-  if (!sessionFile.success) return undefined;
-  return createFinishedWorkerSource({
-    threadId,
-    sessionFile: sessionFile.data,
-    files: client.port(SessionFileStore),
-  });
-}
-
 async function startHub(
   client: AppClient,
   threadId: ThreadId,
@@ -99,7 +69,12 @@ async function startHub(
   const store = await history.openExisting(threadId);
   const rpc = client.port(RpcSessionPort);
   const subagents = createSubagentClient({ threadId, session: rpc, runtime: store, capabilities });
-  const finished = await finishedWorkersOf(client, rpc, threadId, capabilities);
+  const finished = createChatFinishedWorkers({
+    threadId,
+    session: rpc,
+    files: client.port(SessionFileStore),
+    capabilities,
+  });
   const roster = new AgentRosterStore({ threadId, client: subagents, finished });
   try {
     await roster.start();

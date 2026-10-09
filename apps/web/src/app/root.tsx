@@ -530,7 +530,14 @@ function ActiveThreadReady({
   const threadId = history.threadId as ThreadId;
   const connection = useAppConnection();
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
-  const agents = useThreadAgents({ threadId, store, session: rpc, capabilities });
+  const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
+  const agents = useThreadAgents({
+    threadId,
+    store,
+    session: rpc,
+    files: sessionFiles,
+    capabilities,
+  });
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
   // The message being edited, and the row button that opened the editor (focus returns to it on cancel).

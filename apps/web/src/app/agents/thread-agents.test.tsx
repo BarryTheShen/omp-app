@@ -1,9 +1,10 @@
 import type { CapabilityMap } from "@omp-app/contracts";
-import { ThreadId, ToolCallId } from "@omp-app/contracts";
+import { SessionFilePath, ThreadId, ToolCallId } from "@omp-app/contracts";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { useContext } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { SubagentSession } from "@/modules/P1/client";
+import type { SessionTranscriptFiles } from "@/modules/P1/roster";
 import { OmpRuntimeStore } from "@/modules/R0/store";
 import { TaskSubagentsContext } from "@/modules/T5/task";
 import { AGENT_CAPABILITIES } from "./agents-tab";
@@ -25,6 +26,43 @@ function allCapabilities(): CapabilityMap {
 
 // Memoized: the hook keys its chat on these inputs, so a fresh object each render would remake the chat.
 const CAPABILITIES = allCapabilities();
+
+// These chats have no session files in these tests, so nothing may read them.
+const unreadFiles: SessionTranscriptFiles = {
+  listSubagents: async () => {
+    throw new Error("the session files are read only with the session-files capability");
+  },
+  readSubagent: async () => {
+    throw new Error("the session files are read only with the session-files capability");
+  },
+};
+
+/** The chat's files after a reload: one worker finished in them, and omp's live roster has none. */
+function filesWithFinishedWorker(): SessionTranscriptFiles {
+  const sessionFile = SessionFilePath.parse("/workspace/.omp/sessions/main.jsonl");
+  return {
+    listSubagents: async () => ({
+      sessionFile,
+      transcripts: [
+        {
+          key: "worker-1",
+          agentId: "worker-1",
+          parent: null,
+          sessionFile: SessionFilePath.parse("/workspace/.omp/sessions/main/worker-1.jsonl"),
+          leafId: "leaf",
+          entryCount: 3,
+          aborted: false,
+          status: "completed",
+          endedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          agent: "task",
+        },
+      ],
+    }),
+    readSubagent: async () => {
+      throw new Error("unused");
+    },
+  };
+}
 
 /** A fake omp: one worker that the task call "call-1" started, and every subscription level it is asked for. */
 function fakeOmp() {
@@ -66,6 +104,7 @@ describe("ThreadAgents", () => {
       threadId: threadA,
       store: new OmpRuntimeStore({ threadId: threadA }),
       session: omp.session,
+      files: unreadFiles,
       capabilities: CAPABILITIES,
     });
     expect(omp.levels).toEqual([]);
@@ -82,6 +121,7 @@ describe("ThreadAgents", () => {
       threadId: threadA,
       store: new OmpRuntimeStore({ threadId: threadA }),
       session: omp.session,
+      files: unreadFiles,
       capabilities: CAPABILITIES,
     });
     await agents.start();
@@ -98,6 +138,7 @@ describe("ThreadAgents", () => {
       threadId: threadA,
       store: new OmpRuntimeStore({ threadId: threadA }),
       session: omp.session,
+      files: unreadFiles,
       capabilities: CAPABILITIES,
     });
     await agents.start();
@@ -107,6 +148,34 @@ describe("ThreadAgents", () => {
       { threadId: threadA, level: "progress" },
       { threadId: threadA, level: "off" },
     ]);
+  });
+
+  test("after a reload, a worker that finished in the chat's files is in its roster", async () => {
+    const session = {
+      send: async (args: { command: { type: string } }) => {
+        if (args.command.type === "get_subagents") return { subagents: [] };
+        if (args.command.type === "get_state") {
+          return { sessionFile: "/workspace/.omp/sessions/main.jsonl" };
+        }
+        throw new Error(`unexpected command ${args.command.type}`);
+      },
+      setSubagentSubscription: async (args: { level: string }) => ({ level: args.level }),
+    } as unknown as SubagentSession;
+    const capabilities: CapabilityMap = {
+      ...CAPABILITIES,
+      "host.session-files": { state: "available", via: "rpc" },
+    };
+    const agents = createThreadAgents({
+      threadId: threadA,
+      store: new OmpRuntimeStore({ threadId: threadA }),
+      session,
+      files: filesWithFinishedWorker(),
+      capabilities,
+    });
+    await agents.start();
+    const { agents: byKey, recent } = agents.roster.getSnapshot();
+    expect(recent.map((key) => byKey[key]?.id)).toEqual(["worker-1"]);
+    await agents.dispose();
   });
 });
 
@@ -128,7 +197,13 @@ function Chat({
   readonly session: SubagentSession;
   readonly withCard: boolean;
 }) {
-  const agents = useThreadAgents({ threadId, store, session, capabilities: CAPABILITIES });
+  const agents = useThreadAgents({
+    threadId,
+    store,
+    session,
+    files: unreadFiles,
+    capabilities: CAPABILITIES,
+  });
   return (
     <TaskSubagentsScope agents={agents}>{withCard ? <Card /> : <p>No cards</p>}</TaskSubagentsScope>
   );
