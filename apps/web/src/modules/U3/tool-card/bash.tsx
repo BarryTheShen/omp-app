@@ -5,7 +5,6 @@ import { Button } from "../../../components/ui/button";
 import { Icons } from "../../../tokens";
 import { ToolCard } from "./card";
 import type {
-  OutputMeta,
   ToolCardState,
   ToolRegistryDescriptor,
   ToolRenderer,
@@ -13,6 +12,7 @@ import type {
 } from "./contract";
 import { type OutputCut, OutputCutNote, outputCutOf } from "./full-output";
 import { normalizeToolRendererProps } from "./normalize";
+import { OutputMetaSchema } from "./output-meta";
 
 const MAX_OUTPUT_LINES = 12;
 const MAX_OUTPUT_CHARS = 8_000;
@@ -34,8 +34,7 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
   const result = decodeBashResult(
     rendererProps.result ?? normalized.result ?? normalized.partialResult,
   );
-  const outputMeta = bashOutputMeta(result, normalized.outputMeta);
-  const state = bashState(normalized, result, outputMeta);
+  const state = bashState(normalized, result);
   const command = commandFromArgs(rendererProps.args);
   const cwd = cwdFromArgs(rendererProps.args) ?? result?.workingDir;
   const summary = singleLine(command);
@@ -44,7 +43,7 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
     <div data-slot="u3-bash-card" data-testid="u3-bash-card" title={command}>
       <ToolCard
         className="[&_[data-slot='u3-tool-card-args']]:hidden"
-        state={{ ...state, result: undefined, partialResult: undefined, outputMeta }}
+        state={{ ...state, outputMeta: undefined, result: undefined, partialResult: undefined }}
         summary={summary}
       />
       <BashCommand command={command} cwd={cwd} onCopy={onCopy} />
@@ -102,12 +101,8 @@ function repeatsBanner(result: BashResult): boolean {
   );
 }
 
-function bashState(
-  state: ToolCardState,
-  result: BashResult | undefined,
-  outputMeta: OutputMeta | undefined,
-): ToolCardState {
-  if (result === undefined) return { ...state, outputMeta };
+function bashState(state: ToolCardState, result: BashResult | undefined): ToolCardState {
+  if (result === undefined) return state;
   const phase = result.cancelled
     ? "cancelled"
     : result.timedOut || (result.exitCode !== undefined && result.exitCode !== 0)
@@ -133,7 +128,6 @@ function bashState(
     cancelled: phase === "cancelled",
     timedOut: result.timedOut === true,
     error,
-    outputMeta,
     defaultOpen: phase !== "success",
   };
 }
@@ -150,6 +144,7 @@ const BashToolResultSchema = z.looseObject({
       wallTimeMs: z.number().optional(),
       exitCode: z.number().optional(),
       timedOut: z.boolean().optional(),
+      meta: z.unknown().optional(),
     })
     .optional(),
 });
@@ -216,14 +211,17 @@ function decodeBashToolResult(result: z.infer<typeof BashToolResultSchema>): Bas
     details.wallTimeMs === undefined ? text : text.replace(WALL_TIME_SUFFIX, "");
   const output = withoutWallTime.replace(/\n+$/, "");
   const lines = output.length === 0 ? 0 : output.split("\n").length;
+  // omp records a cut in `details.meta.truncation`, and only when it cut the output.
+  const meta = OutputMetaSchema.safeParse(details.meta);
+  const truncation = meta.success ? meta.data.truncation : undefined;
   return {
     output,
     cancelled: false,
-    truncated: false,
-    totalLines: lines,
-    totalBytes: output.length,
-    outputLines: lines,
-    outputBytes: output.length,
+    truncated: truncation !== undefined && truncation.truncated !== false,
+    totalLines: truncation?.totalLines ?? lines,
+    totalBytes: truncation?.totalBytes ?? output.length,
+    outputLines: truncation?.outputLines ?? lines,
+    outputBytes: truncation?.outputBytes ?? output.length,
     ...(details.exitCode === undefined ? {} : { exitCode: details.exitCode }),
     ...(details.timedOut === true ? { timedOut: true } : {}),
     ...(details.wallTimeMs === undefined ? {} : { wallTimeMs: Math.round(details.wallTimeMs) }),
@@ -243,27 +241,6 @@ function singleLine(command: string): string {
   return oneLine.length > 160 ? `${oneLine.slice(0, 157)}…` : oneLine;
 }
 
-function bashOutputMeta(
-  result: BashResult | undefined,
-  existing: OutputMeta | undefined,
-): OutputMeta | undefined {
-  if (result === undefined || !result.truncated) return existing;
-  return {
-    ...existing,
-    truncation: {
-      direction: "tail",
-      reason: "lines",
-      totalLines: result.totalLines,
-      shownLines: result.outputLines,
-      totalBytes: result.totalBytes,
-      shownBytes: result.outputBytes,
-      omittedLines: Math.max(0, result.totalLines - result.outputLines),
-      omittedBytes: Math.max(0, result.totalBytes - result.outputBytes),
-      artifactId: result.artifactId,
-      artifactElidedBytes: result.artifactElidedBytes,
-    },
-  };
-}
 function cwdFromArgs(args: unknown): string | undefined {
   if (args === null || typeof args !== "object" || Array.isArray(args) || !("cwd" in args)) {
     return undefined;
@@ -338,7 +315,10 @@ function BashOutput({
     );
   }
   if (state.phase === "error" && repeatsBanner(result)) return null;
-  const output = expanded ? result.output : previewOutput(result.output);
+  const preview = previewOutput(result.output);
+  const output = expanded ? result.output : preview.text;
+  const shortened = shortenedNote(result);
+  const shownNote = `Showing the first ${count(preview.shown)} of ${count(preview.total)} ${preview.unit}.`;
   const stderr = result.stderr?.trim() ?? "";
   return (
     <div
@@ -372,16 +352,27 @@ function BashOutput({
         <OutputBlock label="stdout" text={output} stderr={false} />
       )}
       {stderr.length > 0 && <OutputBlock label="stderr" text={stderr} stderr />}
-      {result.truncated && !expanded && (
-        <Button
-          className="w-fit self-start"
-          size="xs"
-          type="button"
-          variant="outline"
-          onClick={() => setExpanded(true)}
+      {(shortened !== undefined || preview.cut) && (
+        <div
+          className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+          data-slot="u3-bash-shown"
         >
-          Show more
-        </Button>
+          {shortened !== undefined && <span>{shortened}</span>}
+          {preview.cut && !expanded && <span>{shownNote}</span>}
+          {preview.cut && (
+            <Button
+              className="w-fit"
+              size="xs"
+              type="button"
+              variant="outline"
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {expanded
+                ? `Show fewer ${preview.unit}`
+                : `Show all ${count(preview.total)} ${preview.unit}`}
+            </Button>
+          )}
+        </div>
       )}
       {cut !== undefined && <OutputCutNote cut={cut} toolCallId={state.toolCallId} />}
       {onCancel !== undefined && (state.phase === "running" || state.phase === "partial") && (
@@ -414,10 +405,7 @@ function OutputBlock({
       <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
       <pre className="border-border bg-muted/40 max-h-80 overflow-auto rounded-lg border p-3 text-xs leading-relaxed whitespace-pre-wrap">
         {ansiTokens(text).map((token) => (
-          <span
-            className={stderr ? "text-danger" : token.className}
-            key={`${token.className ?? ""}:${token.text}`}
-          >
+          <span className={stderr ? "text-danger" : token.className} key={token.start}>
             {token.text}
           </span>
         ))}
@@ -426,7 +414,7 @@ function OutputBlock({
   );
 }
 
-type AnsiToken = { readonly text: string; readonly className?: string };
+type AnsiToken = { readonly text: string; readonly className?: string; readonly start: number };
 
 function ansiTokens(text: string): readonly AnsiToken[] {
   const tokens: AnsiToken[] = [];
@@ -436,11 +424,13 @@ function ansiTokens(text: string): readonly AnsiToken[] {
   while (true) {
     const match = pattern.exec(text);
     if (match === null) break;
-    if (match.index > start) tokens.push({ text: text.slice(start, match.index), className });
+    if (match.index > start) {
+      tokens.push({ text: text.slice(start, match.index), className, start });
+    }
     className = ansiClass(match[1] ?? "");
     start = match.index + match[0].length;
   }
-  if (start < text.length) tokens.push({ text: text.slice(start), className });
+  if (start < text.length) tokens.push({ text: text.slice(start), className, start });
   return tokens;
 }
 
@@ -463,9 +453,47 @@ function ansiClass(codes: string): string | undefined {
   return classes.length > 0 ? classes.join(" ") : undefined;
 }
 
-function previewOutput(value: string): string {
+/** What the card shows of an output: its first lines, and at most MAX_OUTPUT_CHARS characters. */
+interface OutputPreview {
+  readonly text: string;
+  readonly cut: boolean;
+  /** What the cut is counted in: lines, or characters when one line is too long to show. */
+  readonly unit: "lines" | "characters";
+  readonly shown: number;
+  readonly total: number;
+}
+
+function previewOutput(value: string): OutputPreview {
   const lines = value.split("\n");
-  if (lines.length <= MAX_OUTPUT_LINES && value.length <= MAX_OUTPUT_CHARS) return value;
-  const preview = lines.slice(0, MAX_OUTPUT_LINES).join("\n").slice(0, MAX_OUTPUT_CHARS);
-  return `${preview}${preview.length < value.length ? "\n…" : ""}`;
+  const firstLines = lines.slice(0, MAX_OUTPUT_LINES).join("\n");
+  if (firstLines.length > MAX_OUTPUT_CHARS) {
+    const text = firstLines.slice(0, MAX_OUTPUT_CHARS);
+    return { text, cut: true, unit: "characters", shown: text.length, total: value.length };
+  }
+  if (lines.length > MAX_OUTPUT_LINES) {
+    return {
+      text: firstLines,
+      cut: true,
+      unit: "lines",
+      shown: MAX_OUTPUT_LINES,
+      total: lines.length,
+    };
+  }
+  return { text: value, cut: false, unit: "lines", shown: lines.length, total: lines.length };
+}
+
+/** omp's own word that it shortened the output: `details.meta.truncation`, or the RPC `truncated`. */
+function shortenedNote(result: BashResult): string | undefined {
+  if (!result.truncated) return undefined;
+  if (result.totalLines > result.outputLines) {
+    return `omp shortened this output: showing ${count(result.outputLines)} of ${count(result.totalLines)} lines.`;
+  }
+  if (result.totalBytes > result.outputBytes) {
+    return `omp shortened this output: showing ${count(result.outputBytes)} of ${count(result.totalBytes)} bytes.`;
+  }
+  return "omp shortened this output.";
+}
+
+function count(value: number): string {
+  return value.toLocaleString("en-US");
 }
