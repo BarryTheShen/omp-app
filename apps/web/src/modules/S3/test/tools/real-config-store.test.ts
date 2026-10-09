@@ -2,12 +2,40 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ConfigChanged, JsonValue } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { ConfigStoreService } from "../../../../../../../packages/server/src/modules/A1/config/config-store";
+import type * as FileWatcherModule from "../../../../../../../packages/server/src/modules/A1/fs/file-watcher";
 import type { ConfigChangeSource, ConfigStoreClient } from "../../../S1/settings-kit";
 import { ToolsSettingsStore } from "../../tools";
 
 const worktreeData = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../../../../.data");
+
+// The store starts a re-read when its file watcher (`fs.watch`, inotify) reports a change. That
+// report never comes when the machine's inotify instances are used up: `watch` throws EMFILE and
+// the store stays silent (#903). So this file replaces only the watcher, and the test starts the
+// re-read itself after each write. The rest is the real store: it reads, compares and emits, and
+// the tools store re-reads.
+const fileChangeListeners = vi.hoisted(
+  () => new Map<string, FileWatcherModule.FileChangeListener>(),
+);
+
+vi.mock(
+  "../../../../../../../packages/server/src/modules/A1/fs/file-watcher",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof FileWatcherModule>();
+    return {
+      ...actual,
+      watchFile: (path: string, onChange: FileWatcherModule.FileChangeListener) => {
+        fileChangeListeners.set(path, onChange);
+        return {
+          dispose: () => {
+            fileChangeListeners.delete(path);
+          },
+        };
+      },
+    };
+  },
+);
 
 function waitForToolsRevision(settings: ToolsSettingsStore, revision: string): Promise<void> {
   if (settings.getSnapshot().config?.revision === revision) return Promise.resolve();
@@ -26,6 +54,14 @@ function waitForToolsRevision(settings: ToolsSettingsStore, revision: string): P
   return pending.promise;
 }
 
+/** Starts the store's re-read of `path`, as its file watcher does after a change. */
+function rereadChangedFile(path: string): Promise<void> {
+  const onChange = fileChangeListeners.get(path);
+  if (!onChange) throw new Error(`No ConfigStore file watcher is armed for ${path}.`);
+  // The store re-reads the file itself, so the event's hash is not used.
+  return Promise.resolve(onChange({ path, hash: null }));
+}
+
 async function writeExternalConfig(
   configStore: ConfigStoreService,
   settings: ToolsSettingsStore,
@@ -36,6 +72,7 @@ async function writeExternalConfig(
   const unsubscribe = configStore.subscribe(null, pending.resolve);
   try {
     await writeFile(configPath, content, "utf8");
+    await rereadChangedFile(configPath);
     const change = await pending.promise;
     await waitForToolsRevision(settings, change.revision);
     return change;
