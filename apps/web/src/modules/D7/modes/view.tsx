@@ -46,10 +46,27 @@ function statusText(mode: D73Mode, state: ModeStateLike | undefined): string {
       if (mode === "fast") return "Checking with omp…";
       return state.reason ? `Sent to omp. ${state.reason}` : "Sent to omp.";
     case "fallback":
-      return "Status not available.";
+      return unknownText(mode, state);
     case "unavailable":
       return state.reason ? `Not available. ${state.reason}` : "Not available.";
   }
+}
+
+/**
+ * omp does not report this mode's state. The line says so and what the person can do: a setting they
+ * chose in this session reads as set, and until they choose one, the choice is theirs.
+ */
+function unknownText(mode: D73Mode, state: ModeStateLike): string {
+  if (mode === "fast") return "omp has not reported Fast mode yet. Refresh status to check it.";
+  const chosen = state.requested !== undefined;
+  if (mode === "browser") {
+    return chosen
+      ? "Set for this session. omp does not report which window mode is in use."
+      : "omp does not report which window mode is in use. Choose Headless or Visible window for this session.";
+  }
+  return chosen
+    ? "Set for this session. omp does not report whether it is on."
+    : "omp does not report whether this is on. Choose Turn on or Turn off for this session.";
 }
 
 /** On or off as omp reported it; for Fast mode, also whether the current model uses the tier. */
@@ -57,6 +74,14 @@ function knownText(mode: D73Mode, state: ModeStateLike): string {
   if (!state.enabled) return "Off";
   if (mode === "fast" && state.active === false) return "On, but the current model does not use it";
   return "On";
+}
+
+/**
+ * What a Fast mode button shows as chosen: omp's own report once omp has given one, otherwise the change
+ * the person asked for that omp has not answered yet. Undefined selects neither button.
+ */
+function fastChoice(fast: ModeSnapshot["fast"]): boolean | undefined {
+  return fast.state === "known" ? fast.enabled : fast.requested;
 }
 
 function isDisabled(state: ModeStateLike | undefined, busy: boolean): boolean {
@@ -104,7 +129,7 @@ function ToggleRow({
   mode,
   title,
   description,
-  requested,
+  chosen,
   state,
   busy,
   onRequest,
@@ -112,7 +137,7 @@ function ToggleRow({
   readonly mode: D73Mode;
   readonly title: string;
   readonly description: string;
-  readonly requested: boolean;
+  readonly chosen: boolean | undefined;
   readonly state: ModeState | ModeSnapshot["fast"] | undefined;
   readonly busy: boolean;
   readonly onRequest: (mode: D73Mode, requested: boolean) => void;
@@ -126,26 +151,26 @@ function ToggleRow({
     >
       <Toolbar ariaLabel={`${title} controls`}>
         <Button
-          aria-disabled={busy || requested || undefined}
-          aria-pressed={requested}
+          aria-disabled={busy || chosen === true || undefined}
+          aria-pressed={chosen === true}
           disabled={unavailable}
           onClick={() => {
-            if (!busy && !requested) onRequest(mode, true);
+            if (!busy && chosen !== true) onRequest(mode, true);
           }}
           type="button"
-          variant={requested ? "secondary" : "outline"}
+          variant={chosen === true ? "secondary" : "outline"}
         >
           Turn on
         </Button>
         <Button
-          aria-disabled={busy || !requested || undefined}
-          aria-pressed={!requested}
+          aria-disabled={busy || chosen === false || undefined}
+          aria-pressed={chosen === false}
           disabled={unavailable}
           onClick={() => {
-            if (!busy && requested) onRequest(mode, false);
+            if (!busy && chosen !== false) onRequest(mode, false);
           }}
           type="button"
-          variant={!requested ? "secondary" : "outline"}
+          variant={chosen === false ? "secondary" : "outline"}
         >
           Turn off
         </Button>
@@ -199,7 +224,7 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
             description="Allow omp to use the computer-control tool in this conversation."
             mode="computer"
             onRequest={actions.onRequest}
-            requested={model.snapshot.modes.computer?.requested ?? false}
+            chosen={model.snapshot.modes.computer?.requested}
             state={computer}
             title="Computer use"
             busy={busy}
@@ -208,7 +233,7 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
             description="Ask omp to use its wider context policy. Saved for every conversation."
             mode="extended-context"
             onRequest={actions.onRequest}
-            requested={model.snapshot.modes["extended-context"]?.requested ?? false}
+            chosen={model.snapshot.modes["extended-context"]?.requested}
             state={extendedContext}
             title="Extended context"
             busy={busy}
@@ -217,7 +242,7 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
             description="Enable the provider's fast tier when omp supports it."
             mode="fast"
             onRequest={actions.onRequest}
-            requested={fast?.enabled ?? false}
+            chosen={fastChoice(model.snapshot.fast)}
             state={fast}
             title="Fast mode"
             busy={busy}
@@ -226,7 +251,7 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
             description="Use the slower execution tier when the command is available. Saved for every conversation."
             mode="slow"
             onRequest={actions.onRequest}
-            requested={model.snapshot.modes.slow?.requested ?? false}
+            chosen={model.snapshot.modes.slow?.requested}
             state={slow}
             title="Slow mode"
             busy={busy}

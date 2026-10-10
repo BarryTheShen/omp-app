@@ -148,11 +148,11 @@ describe("D7 mode controls", () => {
       />,
     );
     expect(screen.getAllByRole("status").map((element) => element.textContent)).toEqual([
-      "Status not available.",
-      "Status not available.",
-      "Status not available.",
+      "omp does not report which window mode is in use. Choose Headless or Visible window for this session.",
+      "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
+      "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
       "Not available. Fast mode is unavailable until the session RPC is connected.",
-      "Status not available.",
+      "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
     ]);
     controller.dispose();
   });
@@ -251,6 +251,176 @@ describe("D7 mode controls", () => {
       />,
     );
     expect(screen.getByText("Checking with omp…", { exact: true })).toBeTruthy();
+    const fast = within(screen.getByRole("group", { name: "Fast mode controls" }));
+    expect(fast.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(fast.getByRole("button", { name: "Turn off" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    controller.dispose();
+  });
+});
+
+describe("a mode omp does not report", () => {
+  test("neither button is set until the person chooses one, and the status line says why", () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      gateway: {
+        run: async () => {
+          throw new Error("The command was not expected in this test.");
+        },
+      },
+    });
+    render(
+      <ModeControls
+        actions={{ onRequest: vi.fn(), onBrowserVisibility: vi.fn(), onRefresh: vi.fn() }}
+        model={{
+          snapshot: controller.getSnapshot(),
+          browserVisibility: null,
+          busyMode: null,
+          error: null,
+        }}
+      />,
+    );
+
+    for (const name of [
+      "Computer use controls",
+      "Extended context controls",
+      "Slow mode controls",
+    ]) {
+      const controls = within(screen.getByRole("group", { name }));
+      expect(controls.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe(
+        "false",
+      );
+      expect(controls.getByRole("button", { name: "Turn off" }).getAttribute("aria-pressed")).toBe(
+        "false",
+      );
+    }
+    expect(
+      screen.getAllByText(
+        "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
+        { exact: true },
+      ),
+    ).toHaveLength(3);
+    controller.dispose();
+  });
+
+  test("reads as set once the person chooses it in this session", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities({
+        "host.command-gateway": CapabilityStatus.parse({
+          state: "fallback",
+          via: "host",
+          detail: "Commands run without a status reply.",
+        }),
+      }),
+      gateway: {
+        run: async ({ command }) => ({
+          command,
+          status: "completed",
+          agentInvoked: false,
+          promptSettled: true,
+          sessionSettled: true,
+          outputs: [],
+          sessionUpdates: [],
+          configUpdates: [],
+        }),
+      },
+    });
+    await controller.request({ mode: "slow", scope: "session", requested: true });
+    render(
+      <ModeControls
+        actions={{ onRequest: vi.fn(), onBrowserVisibility: vi.fn(), onRefresh: vi.fn() }}
+        model={{
+          snapshot: controller.getSnapshot(),
+          browserVisibility: null,
+          busyMode: null,
+          error: null,
+        }}
+      />,
+    );
+
+    const slow = within(screen.getByRole("group", { name: "Slow mode controls" }));
+    expect(slow.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe("true");
+    expect(slow.getByRole("button", { name: "Turn off" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(
+      screen.getByText("Set for this session. omp does not report whether it is on.", {
+        exact: true,
+      }),
+    ).toBeTruthy();
+    controller.dispose();
+  });
+
+  test("a failed Fast change keeps the last value omp reported, stays enabled, and offers Try again", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      fastRpc: {
+        getState: async () => ({
+          fastModeEnabled: false,
+          fastModeActive: false,
+          sessionId: "session",
+        }),
+        setFastMode: async () => {
+          throw new Error("omp did not answer the Fast mode change.");
+        },
+      },
+    });
+    await controller.refresh();
+    render(<ConnectedModeControls controller={controller} refreshOnMount={false} />);
+
+    const fast = within(screen.getByRole("group", { name: "Fast mode controls" }));
+    fireEvent.click(fast.getByRole("button", { name: "Turn on" }));
+
+    expect(await screen.findByText("The execution setting could not be changed")).toBeTruthy();
+    expect(screen.getByText("Fast mode could not be changed.", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Off", { exact: true })).toBeTruthy();
+    expect(fast.getByRole("button", { name: "Turn off" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(fast.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(fast.getByRole("button", { name: "Turn on" }).hasAttribute("disabled")).toBe(false);
+    expect(fast.getByRole("button", { name: "Turn off" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    controller.dispose();
+  });
+
+  test("a failed Fast change before omp has reported anything selects neither button", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      fastRpc: {
+        getState: () => Promise.withResolvers<never>().promise,
+        setFastMode: async () => {
+          throw new Error("omp did not answer the Fast mode change.");
+        },
+      },
+    });
+    render(<ConnectedModeControls controller={controller} refreshOnMount={false} />);
+
+    const fast = within(screen.getByRole("group", { name: "Fast mode controls" }));
+    fireEvent.click(fast.getByRole("button", { name: "Turn on" }));
+
+    expect(await screen.findByText("The execution setting could not be changed")).toBeTruthy();
+    expect(fast.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(fast.getByRole("button", { name: "Turn off" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(fast.getByRole("button", { name: "Turn on" }).hasAttribute("disabled")).toBe(false);
+    expect(
+      screen.getByText("omp has not reported Fast mode yet. Refresh status to check it.", {
+        exact: true,
+      }),
+    ).toBeTruthy();
     controller.dispose();
   });
 });

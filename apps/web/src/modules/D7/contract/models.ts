@@ -58,6 +58,8 @@ export const FastModeState = z.strictObject({
   enabled: z.boolean(),
   active: z.boolean(),
   state: ModeStateKind,
+  /** The value the person asked for while omp has not answered that request yet. */
+  requested: z.boolean().optional(),
   scope: ModeScope,
   source: ModeSource,
   capability: CapabilityKey.optional(),

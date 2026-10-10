@@ -210,3 +210,93 @@ describe("ModeController", () => {
     controller.dispose();
   });
 });
+
+describe("a mode omp does not report", () => {
+  test("starts with no choice recorded, so neither button is set", () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      gateway: { run: async ({ command }) => commandResult(command) },
+    });
+    const computer = controller.getSnapshot().modes.computer;
+    expect(computer?.state).toBe("fallback");
+    expect(computer?.requested).toBeUndefined();
+    expect(computer?.enabled).toBeUndefined();
+    controller.dispose();
+  });
+
+  test("a failed Fast change keeps the value omp last reported and stays enabled", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      fastRpc: {
+        getState: async () => ({
+          fastModeEnabled: false,
+          fastModeActive: false,
+          sessionId: "session",
+        }),
+        setFastMode: async () => {
+          throw new Error("omp did not answer the Fast mode change.");
+        },
+      },
+    });
+    await controller.refresh();
+
+    const result = await controller.request({ mode: "fast", scope: "session", requested: true });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: "Fast mode could not be changed.", retryable: true },
+    });
+    expect(controller.getSnapshot().fast).toMatchObject({ enabled: false, state: "known" });
+    expect(controller.getSnapshot().fast.requested).toBeUndefined();
+    controller.dispose();
+  });
+
+  test("a failed Fast change before omp has reported anything reports nothing", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      fastRpc: {
+        getState: () => Promise.withResolvers<never>().promise,
+        setFastMode: async () => {
+          throw new Error("omp did not answer the Fast mode change.");
+        },
+      },
+    });
+
+    const result = await controller.request({ mode: "fast", scope: "session", requested: true });
+    expect(result).toMatchObject({ ok: false });
+    expect(controller.getSnapshot().fast).toMatchObject({ state: "fallback" });
+    expect(controller.getSnapshot().fast.requested).toBeUndefined();
+    controller.dispose();
+  });
+
+  test("a Fast change waiting on omp shows the requested value over the last value omp reported", async () => {
+    const answer = Promise.withResolvers<{ enabled: boolean; active: boolean }>();
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      fastRpc: {
+        getState: async () => ({
+          fastModeEnabled: false,
+          fastModeActive: false,
+          sessionId: "session",
+        }),
+        setFastMode: () => answer.promise,
+      },
+    });
+    await controller.refresh();
+
+    const pending = controller.request({ mode: "fast", scope: "session", requested: true });
+    expect(controller.getSnapshot().fast).toMatchObject({
+      enabled: false,
+      state: "requested",
+      requested: true,
+    });
+    answer.resolve({ enabled: true, active: true });
+    expect(await pending).toMatchObject({ ok: true });
+    expect(controller.getSnapshot().fast).toMatchObject({ enabled: true, state: "known" });
+    expect(controller.getSnapshot().fast.requested).toBeUndefined();
+    controller.dispose();
+  });
+});

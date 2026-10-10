@@ -207,10 +207,7 @@ function initialModeState(
     return unavailableMode(mode, "session", "omp-command", stateReason(capabilities, capability));
   }
   return modeState(mode, "session", "omp-command", "fallback", capabilities, {
-    requested: false,
-    enabled: false,
-    active: false,
-    reason: "omp has not reported a live status for this mode; this request is waiting.",
+    reason: "omp has not reported a live status for this mode.",
   });
 }
 
@@ -235,6 +232,8 @@ export class ModeController implements ModeControllerPort {
   private readonly unsubscribeSession: (() => void) | undefined;
   private snapshot: ModeSnapshot;
   private fast: FastModeStateValue;
+  /** The last Fast mode value omp reported; a failed change falls back to it. */
+  private reportedFast: { readonly enabled: boolean; readonly active: boolean } | null = null;
   private browserVisibility: BrowserVisibility | null = null;
   private revision = 0;
   private modeStates: Partial<Record<ExecutionMode, ModeState>>;
@@ -321,7 +320,7 @@ export class ModeController implements ModeControllerPort {
           "omp did not include fast-mode state in its response.",
         );
       } else {
-        this.fast = this.fastFromValues(enabled, active, "known");
+        this.reportFast(enabled, active);
       }
       this.commit();
       return this.snapshot;
@@ -431,14 +430,22 @@ export class ModeController implements ModeControllerPort {
         capability,
       );
     }
-    this.fast = this.fastFromValues(requested, this.fast.active, "requested");
+    // The request is shown as chosen; the last value omp reported stays under it until omp answers.
+    this.fast = this.fastFromValues(
+      this.reportedFast?.enabled ?? false,
+      this.reportedFast?.active ?? false,
+      "requested",
+      undefined,
+      undefined,
+      requested,
+    );
     this.commit();
     try {
       const result = await this.fastRpc.setFastMode(
         { enabled: requested },
         commandOptions(options?.signal ?? this.signal),
       );
-      this.fast = this.fastFromValues(result.enabled, result.active, "known");
+      this.reportFast(result.enabled, result.active);
       this.commit();
       return modeCommandResult(
         { mode: "fast", requested },
@@ -451,19 +458,8 @@ export class ModeController implements ModeControllerPort {
       );
     } catch (cause) {
       const error = errorFrom(cause, "Fast mode could not be changed.", capability);
-      this.fast = this.fastFromValues(requested, false, "unavailable", error.message, error);
+      this.restoreFast();
       this.commit();
-      if (error.code === "cancelled") {
-        return modeCommandResult(
-          { mode: "fast", requested },
-          command,
-          false,
-          "unavailable",
-          error,
-          error.message,
-          capability,
-        );
-      }
       return modeCommandResult(
         { mode: "fast", requested },
         command,
@@ -583,14 +579,25 @@ export class ModeController implements ModeControllerPort {
 
   private applySessionProjection(projection: ModeSessionProjection): void {
     if (projection.fastModeEnabled === null || projection.fastModeActive === null) return;
-    this.fast = this.fastFromValues(
-      projection.fastModeEnabled,
-      projection.fastModeActive,
-      "known",
-      undefined,
-      undefined,
-    );
+    this.reportFast(projection.fastModeEnabled, projection.fastModeActive);
     this.commit();
+  }
+
+  /** Keeps what omp reported for Fast mode, so a failed change can fall back to it. */
+  private reportFast(enabled: boolean, active: boolean): void {
+    this.reportedFast = { enabled, active };
+    this.fast = this.fastFromValues(enabled, active, "known");
+  }
+
+  /**
+   * After a failed Fast change the control shows the last value omp reported, and stays enabled.
+   * Until omp has reported one, it shows neither value.
+   */
+  private restoreFast(): void {
+    const reported = this.reportedFast;
+    this.fast = reported
+      ? this.fastFromValues(reported.enabled, reported.active, "known")
+      : this.fastFromValues(false, false, "fallback");
   }
 
   private fastFromValues(
@@ -599,6 +606,7 @@ export class ModeController implements ModeControllerPort {
     state: ModeStateKind,
     reason?: string,
     error?: AppError,
+    requested?: boolean,
   ): FastModeStateValue {
     return FastModeState.parse({
       enabled,
@@ -607,6 +615,7 @@ export class ModeController implements ModeControllerPort {
       scope: "session",
       source: "omp-rpc",
       capability: "omp.cmd.set_fast_mode",
+      ...(requested === undefined ? {} : { requested }),
       ...(reason ? { reason } : {}),
       ...(error ? { error } : {}),
     });

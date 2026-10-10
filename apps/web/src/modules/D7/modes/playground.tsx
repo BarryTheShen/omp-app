@@ -5,6 +5,8 @@ import { ConnectedModeControls, ModeController } from "./index";
 const threadId: ThreadId = ThreadIdSchema.parse("d7-playground-thread");
 
 function createController(): ModeController {
+  // `?fast=fails` makes every Fast mode change fail, so the error path can be captured.
+  const failFast = new URLSearchParams(window.location.search).get("fast") === "fails";
   const capabilities = {
     "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
     "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
@@ -31,7 +33,10 @@ function createController(): ModeController {
         fastModeEnabled: false,
         fastModeActive: false,
       }),
-      setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
+      setFastMode: async ({ enabled }) => {
+        if (failFast) throw new Error("omp did not answer the Fast mode change.");
+        return { enabled, active: enabled };
+      },
     },
   });
 }

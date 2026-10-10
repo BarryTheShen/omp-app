@@ -123,3 +123,119 @@ test("renders mode controls in light, dark and narrow layouts", async ({ page })
   });
   expect([...problems, ...darkProblems]).toEqual([]);
 });
+
+test("modes omp does not report start with neither button set, in every layout", async ({
+  page,
+}) => {
+  const problems = collectProblems(page);
+  await page.goto(PLAYGROUND);
+  await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
+  await assertStyled(page);
+  for (const name of ["Computer use controls", "Extended context controls", "Slow mode controls"]) {
+    const group = page.getByRole("group", { name });
+    await expect(group.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await expect(group.getByRole("button", { name: "Turn off" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  }
+  await expect(
+    page.getByText(
+      "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
+      { exact: true },
+    ),
+  ).toHaveCount(3);
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-unknown-light.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+
+  const dark = await page.context().newPage();
+  const darkProblems = collectProblems(dark);
+  await dark.goto(`${PLAYGROUND}?theme=dark`);
+  await expect(dark.locator("html")).toHaveClass(/dark/);
+  await expect(dark.getByTestId("d7-3-modes-playground")).toBeVisible();
+  await assertStyled(dark);
+  await dark.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-unknown-dark.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  await dark.close();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-unknown-narrow.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  expect([...problems, ...darkProblems]).toEqual([]);
+});
+
+test("a failed Fast change keeps the last value omp reported, in every layout", async ({
+  page,
+}) => {
+  const problems = collectProblems(page);
+  await page.goto(`${PLAYGROUND}?fast=fails`);
+  await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
+  const fast = page.getByRole("group", { name: "Fast mode controls" });
+  await expect(
+    page.locator("[data-d7-mode-controls]").getByText("Off", { exact: true }),
+  ).toHaveCount(1);
+  await fast.getByRole("button", { name: "Turn on" }).click();
+  await page.mouse.move(0, 0);
+  await expect(page.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(page.getByText("Fast mode could not be changed.", { exact: true })).toBeVisible();
+  await expect(fast.getByRole("button", { name: "Turn off" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(fast.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(fast.getByRole("button", { name: "Turn on" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await assertStyled(page);
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-fast-failed-light.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+
+  const dark = await page.context().newPage();
+  const darkProblems = collectProblems(dark);
+  await dark.goto(`${PLAYGROUND}?fast=fails&theme=dark`);
+  await expect(dark.locator("html")).toHaveClass(/dark/);
+  await expect(
+    dark.locator("[data-d7-mode-controls]").getByText("Off", { exact: true }),
+  ).toHaveCount(1);
+  await dark
+    .getByRole("group", { name: "Fast mode controls" })
+    .getByRole("button", { name: "Turn on" })
+    .click();
+  await dark.mouse.move(0, 0);
+  await expect(dark.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(dark.getByRole("button", { name: "Try again" })).toBeVisible();
+  await assertStyled(dark);
+  await dark.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-fast-failed-dark.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  await dark.close();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-fast-failed-narrow.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  expect([...problems, ...darkProblems]).toEqual([]);
+});
