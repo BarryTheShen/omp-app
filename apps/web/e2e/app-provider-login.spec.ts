@@ -19,12 +19,15 @@ async function openProvidersTab(page: Page): Promise<void> {
 }
 
 realTest(
-  "the Providers tab says to open a chat when none is open, and shows provider sign-in for the open chat",
+  "the Providers tab offers to start a chat when none is open, and shows provider sign-in for the open chat",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
     const page = await realApp.open();
     await openProvidersTab(page);
-    await expect(page.getByText("Open a chat to sign in to a provider.")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Start a chat to sign in", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Open a chat to sign in to a provider.")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Log in" })).toHaveCount(0);
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
 

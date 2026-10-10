@@ -54,6 +54,8 @@ export type SettingsScreenProps = {
   readonly onClose: () => void;
   /** The open chat, whose omp session runs provider login; null when no chat is open. */
   readonly threadId: ThreadId | null;
+  /** Starts a chat to sign in with, when no chat is open (Providers offers it); the chat's id is what opens sign-in. */
+  readonly onStartChat?: () => Promise<void>;
 };
 
 type SettingsLayer = Extract<ConfigWriteLayer, "global" | "project">;
@@ -520,6 +522,7 @@ export function SettingsScreen({
   folder,
   onClose,
   threadId,
+  onStartChat,
 }: SettingsScreenProps) {
   const [activeTab, setActiveTab] = useState<SettingTab>("appearance");
   const [layer, setLayer] = useState<SettingsLayer>("global");
@@ -686,6 +689,7 @@ export function SettingsScreen({
                     capabilities={capabilities}
                     client={client}
                     threadId={threadId}
+                    onStartChat={onStartChat}
                   />
                 ) : null}
                 <Section heading={`${TAB_LABELS[activeTab]} sections`} variant="plain">

@@ -135,7 +135,7 @@ import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
 import { useRetryShortcut } from "./p3-retry-shortcut";
-import { openProviderLogin, openProviderSignIn } from "./provider-login-section";
+import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
 import { saveTextFile } from "./save-file";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
@@ -724,17 +724,16 @@ function ActiveThreadReady({
       () => undefined,
     );
   }, [agents]);
-  const openLogin = useCallback(
-    () =>
-      openProviderLogin({
-        overlay,
-        client,
-        threadId,
-        capabilities,
-        restoreFocus: composerInput() ?? undefined,
-      }),
-    [capabilities, client, overlay, threadId],
-  );
+  const openLogin = useCallback(() => {
+    requireProviderLogin(capabilities);
+    openProviderSignIn({
+      overlay,
+      client,
+      threadId,
+      capabilities,
+      restoreFocus: composerInput() ?? undefined,
+    });
+  }, [capabilities, client, overlay, threadId]);
   const commandHandlers = useMemo(() => {
     const handlers = new Map<DescriptorId, CommandPaletteHandler>();
     handlers.set("D5.new", () => {
@@ -1259,27 +1258,7 @@ function ConnectedApp({
   // The place the reader was in when the page last closed: a reload that reopens the chat returns there.
   const [resumePlace, setResumePlace] = useState<ReadingPlace | null>(null);
   const folder = FolderPath.safeParse(folderText).success ? FolderPath.parse(folderText) : null;
-  const openSettings = useCallback(
-    (threadId: ThreadId | null, restoreFocus?: HTMLElement) => {
-      overlay.open({
-        kind: "modal",
-        label: "Settings",
-        ...(restoreFocus === undefined ? {} : { restoreFocus }),
-        width: "viewport",
-        className: SETTINGS_FRAME_CLASS,
-        content: ({ close }) => (
-          <SettingsScreen
-            capabilities={capabilities}
-            client={client}
-            folder={folder}
-            threadId={threadId}
-            onClose={() => close("programmatic")}
-          />
-        ),
-      });
-    },
-    [capabilities, client, folder, overlay],
-  );
+
   const [folderError, setFolderError] = useState<string | null>(null);
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
@@ -1458,6 +1437,47 @@ function ConnectedApp({
       await controller.openExisting(threadId);
     },
     [controller],
+  );
+  // A new chat, started the way the sidebar's New chat starts one. Sign-in runs in a chat's omp, so this gives
+  // sign-in one when no chat is open.
+  const startChat = useCallback(async (): Promise<ThreadId> => {
+    if (remote === null) {
+      throw new AppFailure({
+        code: "unavailable",
+        message: "Starting a chat needs a selected workspace folder.",
+        retryable: false,
+      });
+    }
+    const initialized = await remote.initialize("new");
+    const started = initialized.remoteId as ThreadId;
+    await openThread(started);
+    return started;
+  }, [openThread, remote]);
+  const openSettings = useCallback(
+    (threadId: ThreadId | null, restoreFocus?: HTMLElement) => {
+      overlay.open({
+        kind: "modal",
+        label: "Settings",
+        ...(restoreFocus === undefined ? {} : { restoreFocus }),
+        width: "viewport",
+        className: SETTINGS_FRAME_CLASS,
+        content: ({ close }) => (
+          <SettingsScreen
+            capabilities={capabilities}
+            client={client}
+            folder={folder}
+            threadId={threadId}
+            onClose={() => close("programmatic")}
+            onStartChat={async () => {
+              const started = await startChat();
+              close("programmatic");
+              openProviderSignIn({ overlay, client, threadId: started, capabilities });
+            }}
+          />
+        ),
+      });
+    },
+    [capabilities, client, folder, overlay, startChat],
   );
   // What each sidebar surface id renders. Where it goes: `@/layout` (LAYOUT).
   const sidebarSurfaces: SurfaceMap = {
