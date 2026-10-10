@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
-import { AppPort, FolderPath, RpcSessionPort, WelcomeFrame } from "@omp-app/contracts";
+import { AppPort, ConfigStore, FolderPath, RpcSessionPort, WelcomeFrame } from "@omp-app/contracts";
 import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../.data");
@@ -57,7 +57,10 @@ async function fakeOmp(root: string): Promise<string> {
   return path;
 }
 
-async function startServer(ompBin: string): Promise<CompositionServer> {
+async function startServer(
+  ompBin: string,
+  environment: Readonly<Record<string, string>> = {},
+): Promise<CompositionServer> {
   const root = await temporaryRoot("capabilities-server-");
   const home = join(root, "home");
   const agentDir = join(root, "agent");
@@ -68,6 +71,7 @@ async function startServer(ompBin: string): Promise<CompositionServer> {
     HOME: home,
     PI_CODING_AGENT_DIR: agentDir,
     OMP_APP_DATA_DIR: appDataDir,
+    ...environment,
   };
   const server = await createCompositionServer({
     port: 0,
@@ -167,6 +171,25 @@ describe("composition capability wiring", () => {
     await expect(
       client.port(RpcSessionPort).open({ folderPath: FolderPath.parse(folder), start: "new" }),
     ).rejects.toMatchObject({ appError: { code: "unavailable" } });
+    client.dispose();
+  });
+});
+
+describe("composition environment wiring", () => {
+  test("the ConfigStore reports omp's environment values as their source", async () => {
+    const root = await temporaryRoot("environment-bin-");
+    const binary = await fakeOmp(root);
+    const server = await startServer(binary, { PI_AUTO_QA: "0", PI_INTENT_TRACING: "0" });
+    const client = clientFor(server);
+    const config = client.port(ConfigStore);
+    expect(await config.read({ key: "dev.autoqa", folder: null })).toMatchObject({
+      value: false,
+      source: "env",
+    });
+    expect(await config.read({ key: "tools.intentTracing", folder: null })).toMatchObject({
+      value: false,
+      source: "env",
+    });
     client.dispose();
   });
 });

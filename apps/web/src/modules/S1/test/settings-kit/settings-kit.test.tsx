@@ -249,6 +249,39 @@ describe("S1 settings section", () => {
     render(<SettingsSection descriptor={descriptor} snapshot={{ ...snapshot, entries: [] }} />);
     expect(screen.getAllByText("Source: not configured")).toHaveLength(controls.length);
   });
+
+  test("shows a value the server hid as a sentence, not an empty box, with its source", () => {
+    const endpoint: SettingControl = {
+      key: "dev.autoqaPush.endpoint",
+      label: "Auto QA Push Endpoint",
+      kind: "text",
+      secret: false,
+      validate: () => ({ valid: true }),
+      apply: "live",
+    };
+    render(
+      <SettingsSection
+        descriptor={{ ...descriptor, controls: [endpoint] }}
+        snapshot={{
+          ...snapshot,
+          entries: [
+            {
+              key: "dev.autoqaPush.endpoint",
+              secret: true,
+              isSet: true,
+              source: "env",
+              overrides: ["default"],
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("Set in the environment; the value is hidden.")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Auto QA Push Endpoint" })).toBeNull();
+    expect(
+      screen.getByText("Source: Set in the environment · overrides omp's default"),
+    ).toBeTruthy();
+  });
 });
 
 describe("S1 structured settings", () => {

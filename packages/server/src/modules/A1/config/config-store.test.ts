@@ -133,7 +133,7 @@ describe("ConfigStoreService", () => {
     await writeText(join(agent, "config.yml"), "model: global\n");
     const store = new ConfigStoreService({
       agentDir: agent,
-      environmentValues: { model: "environment" },
+      environmentValues: async () => ({ model: "environment" }),
       runtimeValues: { thinking: "runtime" },
     });
     expect(await store.read({ key: "model", folder: null })).toMatchObject({

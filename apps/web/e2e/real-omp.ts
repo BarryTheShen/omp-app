@@ -340,6 +340,8 @@ export interface SeedWorkspace {
  * about omp being missing points the app at another binary with `realTest.use({ ompBinary })`.
  * Fake files in the agent's `extensions` folder appear in omp's extension catalog: `realTest.use({ seedExtensions: { "name.ts": source } })`.
  * A spec that needs `@` file mentions seeds files with `realTest.use({ seedWorkspace: { files, gitRepo: true } })`; file search lists git files only.
+ * A spec that needs omp's environment overrides (for example `PI_AUTO_QA=0`) starts the app with `realTest.use({ serverEnv: { PI_AUTO_QA: "0" } })`.
+ * A spec that needs a value omp reads from the agent folder's `.env` file (not the process environment) writes it with `realTest.use({ seedAgentDotEnv: "PI_INTENT_TRACING=0\n" })` before the app starts.
  */
 export const realTest = test.extend<{
   realApp: RealApp;
@@ -349,9 +351,12 @@ export const realTest = test.extend<{
   seedToolResults: SeedToolResults | undefined;
   seedEntries: SeedEntries | undefined;
   seedExtensions: Readonly<Record<string, string>>;
+  seedAgentDotEnv: string | undefined;
   seedWorkspace: SeedWorkspace | undefined;
   ompBinary: string | undefined;
   serverPort: number;
+  /** Extra environment for the app's server and the omp it starts (omp reads these as overrides). */
+  serverEnv: Readonly<Record<string, string>>;
 }>({
   idleCloseMs: [undefined, { option: true }],
   seedSessions: [0, { option: true }],
@@ -359,9 +364,11 @@ export const realTest = test.extend<{
   seedToolResults: [undefined, { option: true }],
   seedEntries: [undefined, { option: true }],
   seedExtensions: [{}, { option: true }],
+  seedAgentDotEnv: [undefined, { option: true }],
   seedWorkspace: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
   serverPort: [0, { option: true }],
+  serverEnv: [{}, { option: true }],
   realApp: async (
     {
       browser,
@@ -371,9 +378,11 @@ export const realTest = test.extend<{
       seedToolResults,
       seedEntries,
       seedExtensions,
+      seedAgentDotEnv,
       seedWorkspace,
       ompBinary,
       serverPort,
+      serverEnv,
     },
     use,
     testInfo,
@@ -389,6 +398,8 @@ export const realTest = test.extend<{
     const folder = join(root, "workspace");
     const otherFolder = join(root, "other-workspace");
     await Promise.all([home, agentDir, appDataDir, folder, otherFolder].map((path) => mkdir(path)));
+    // A value omp reads from the agent folder's `.env`, written before the app and its server start.
+    if (seedAgentDotEnv !== undefined) await writeFile(join(agentDir, ".env"), seedAgentDotEnv);
     // Fake files for omp's extension catalog: a file in `<agent>/extensions` is listed as an extension.
     if (Object.keys(seedExtensions).length > 0) {
       await mkdir(join(agentDir, "extensions"));
@@ -409,6 +420,7 @@ export const realTest = test.extend<{
       PI_CODING_AGENT_DIR: agentDir,
       OMP_APP_DATA_DIR: appDataDir,
       ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-"),
+      ...serverEnv,
     };
     let provider: ChildProcess | undefined;
     let server: { readonly process: ChildProcess; readonly url: string } | undefined;

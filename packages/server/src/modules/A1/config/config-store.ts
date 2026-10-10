@@ -72,8 +72,14 @@ export interface ConfigStoreOptions {
   readonly agentDir?: string;
   /** Explicit app-owned data directory; useful for tests. */
   readonly appDataDir?: string;
-  /** Optional values supplied by the running omp process's environment layer. */
-  readonly environmentValues?: Readonly<Record<string, unknown>>;
+  /**
+   * The values omp's environment layer supplies for one read: the environment omp's process starts with and,
+   * for a project, the variables from the `.env` files omp reads there. `null` is a read with no project.
+   * It is asked on every read, so a changed `.env` file applies to the next read.
+   */
+  readonly environmentValues?: (
+    folder: string | null,
+  ) => Promise<Readonly<Record<string, unknown>>>;
   /** Optional values supplied by the running omp process's runtime layer. */
   readonly runtimeValues?: Readonly<Record<string, unknown>>;
   /** Optional values supplied by an explicit `--config`/`PI_CONFIG_FILES` overlay. */
@@ -116,6 +122,7 @@ interface LayerRead {
 interface ScopeRead {
   readonly folder: string | null;
   readonly layers: ReadonlyMap<PersistedLayer, LayerRead>;
+  readonly environment: LayerValues;
   readonly revision: string;
 }
 
@@ -322,6 +329,29 @@ function credentialLike(key: string): boolean {
   return segments.some((segment) => CREDENTIAL_SEGMENT.test(segment));
 }
 
+/** A query or fragment parameter whose last name segment is a credential word (`token`, `api_key`, `X-Auth-Token`). */
+const SECRET_PARAMETER_SEGMENT = /^(?:token|key|secret|password|auth|sig|signature)$/i;
+
+/**
+ * Whether an environment value carries a credential in its query or fragment (for example `?token=`). omp reads
+ * such an endpoint as given, so a plain read would show the credential in the page.
+ */
+function carriesSecretParameter(value: string): boolean {
+  return value
+    .split(/[?&#]/)
+    .slice(1)
+    .some((pair) => SECRET_PARAMETER_SEGMENT.test(pair.split("=")[0]?.split(/[_.-]/).at(-1) ?? ""));
+}
+
+/** A value the environment supplies that carries a credential in its URL: it is hidden, as a secret is. */
+function isHiddenEnvironmentValue(resolved: ResolvedSetting): boolean {
+  return (
+    resolved.source === "env" &&
+    typeof resolved.value === "string" &&
+    carriesSecretParameter(resolved.value)
+  );
+}
+
 /** True when a value, or anything nested in it, is credential-shaped by key or by value. */
 function containsSecret(
   value: unknown,
@@ -392,7 +422,6 @@ export class ConfigStoreService {
   readonly appDataDir: string;
 
   private readonly options: ConfigStoreOptions;
-  private readonly environmentValues: LayerValues;
   private readonly runtimeValues: LayerValues;
   private readonly overlayValues: LayerValues;
   private readonly defaultValues: LayerValues;
@@ -407,7 +436,6 @@ export class ConfigStoreService {
     this.options = options;
     this.agentDir = resolveAgentDirectory(options);
     this.appDataDir = resolveAppDirectory(options);
-    this.environmentValues = mapValues(options.environmentValues);
     this.runtimeValues = mapValues(options.runtimeValues);
     this.overlayValues = mapValues(options.overlayValues);
     this.defaultValues = mapValues(options.defaultValues);
@@ -642,7 +670,8 @@ export class ConfigStoreService {
     }
     const layers = new Map(layerEntries);
     const snapshots = layerEntries.flatMap(([, layer]) => layer.candidates);
-    return { folder, layers, revision: revisionForSnapshots(snapshots) };
+    const environment = mapValues(await this.options.environmentValues?.(folder));
+    return { folder, layers, environment, revision: revisionForSnapshots(snapshots) };
   }
 
   private targetLayer(scope: ScopeRead, layer: ConfigWriteRequest["layer"]): LayerRead {
@@ -687,10 +716,10 @@ export class ConfigStoreService {
         path: app.selectedPath,
         provenanceOrigin: "app-store",
       });
-    if (this.environmentValues.size > 0) {
+    if (scope.environment.size > 0) {
       candidates.push({
         source: "env",
-        values: this.environmentValues,
+        values: scope.environment,
         provenanceOrigin: "omp-config",
         fallbackEnvironment: false,
       });
@@ -723,10 +752,10 @@ export class ConfigStoreService {
         path: global.selectedPath,
         provenanceOrigin: "omp-config",
       });
-    if (this.environmentValues.size > 0 && this.fallbackEnvironmentKeys.size > 0) {
+    if (scope.environment.size > 0 && this.fallbackEnvironmentKeys.size > 0) {
       candidates.push({
         source: "env",
-        values: this.environmentValues,
+        values: scope.environment,
         provenanceOrigin: "omp-config",
         fallbackEnvironment: true,
       });
@@ -805,7 +834,7 @@ export class ConfigStoreService {
       throw failure("not_found", "Configuration key was not found.");
     }
     const provenance = this.provenance(resolved);
-    if (this.isSecretEntry(key, resolved.value)) {
+    if (this.isSecretEntry(key, resolved.value) || isHiddenEnvironmentValue(resolved)) {
       return {
         key,
         secret: true,
@@ -828,7 +857,7 @@ export class ConfigStoreService {
   private entriesForScope(scope: ScopeRead, prefix?: string): ConfigEntry[] {
     const layerValues = [...scope.layers.values()].map((layer) => layer.selected.values);
     const keys = mapKeys(
-      this.environmentValues,
+      scope.environment,
       this.runtimeValues,
       this.overlayValues,
       this.defaultValues,

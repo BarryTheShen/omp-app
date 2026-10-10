@@ -14,7 +14,13 @@ import type {
   StagedSettings,
   ValidationResult,
 } from "./grammar";
-import { effectiveEntry, provenanceLabel, secretSummary, stage } from "./grammar";
+import {
+  effectiveEntry,
+  provenanceLabel,
+  secretSummary,
+  settingSourceLabel,
+  stage,
+} from "./grammar";
 import { isStructuredControl, ReadOnlyValue, StructuredEditor } from "./structured";
 
 export type SettingsSectionProps = {
@@ -190,6 +196,11 @@ function SettingControlRow({
     value?.secret === false ? value.value : entry && !entry.secret ? entry.value : undefined;
   const committedValue = entry && !entry.secret ? entry.value : undefined;
   const provenance = entry ? provenanceLabel(entry) : "not configured";
+  // A value the server hid (a credential in its URL) reads as a sentence: the input would be an empty box.
+  const hiddenValue =
+    entry?.secret === true && !control.secret
+      ? `${settingSourceLabel(entry.source)}; the value is hidden.`
+      : undefined;
   const setSecret = () => onSecretAction?.(control.key, "set");
   const unsetSecret = () => onSecretAction?.(control.key, "unset");
   const secretActionLabel = secret?.isSet ? "Replace…" : "Set…";
@@ -237,6 +248,10 @@ function SettingControlRow({
           onInvalid={onInvalid}
           onValue={(next) => onStage({ secret: false, value: next })}
         />
+      ) : hiddenValue !== undefined ? (
+        <p className="text-muted-foreground text-sm" data-testid={`${control.key}-hidden`}>
+          {hiddenValue}
+        </p>
       ) : (
         <ControlInput
           control={control}

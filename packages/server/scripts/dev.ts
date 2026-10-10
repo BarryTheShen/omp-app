@@ -26,7 +26,7 @@ import {
 import { createProviderAccountStore } from "../src/modules/A1/accounts";
 import { AttachmentStoreService } from "../src/modules/A1/attachments";
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
-import { createConfigStoreWithOmpDefaults } from "../src/modules/A1/config";
+import { createConfigStoreWithOmpDefaults, ompEnvironmentValues } from "../src/modules/A1/config";
 import { createDraftStore } from "../src/modules/A1/drafts";
 import { createExtensionCatalog } from "../src/modules/A1/extensions";
 import { searchWorkspaceFiles } from "../src/modules/A1/file-search";
@@ -277,7 +277,14 @@ export async function createCompositionServer(
     return session;
   };
   const configStore = await createConfigStoreWithOmpDefaults(
-    { env, homeDir, agentDir, appDataDir },
+    {
+      env,
+      homeDir,
+      agentDir,
+      appDataDir,
+      environmentValues: (projectDir) =>
+        ompEnvironmentValues({ processEnv: env, homeDir, agentDir, projectDir }),
+    },
     {
       binary: ompBinary,
       launchDirectory: launchFolder,
