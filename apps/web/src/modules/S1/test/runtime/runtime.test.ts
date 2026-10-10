@@ -57,6 +57,8 @@ type FakeState = {
   listeners: Set<(change: ConfigChanged) => void>;
   nextWriteFailure: AppFailure | null;
   nextListFailure: AppFailure | null;
+  /** Keys omp refuses once: that write fails and nothing is written. */
+  refusedKeys: Set<string>;
 };
 
 function fakeState(): FakeState {
@@ -68,6 +70,7 @@ function fakeState(): FakeState {
     listeners: new Set(),
     nextWriteFailure: null,
     nextListFailure: null,
+    refusedKeys: new Set(),
   };
 }
 
@@ -92,10 +95,24 @@ function fakeClient(state: FakeState): AppClient {
     },
     write: async (args: ConfigWriteArgs): Promise<ConfigWriteResult> => {
       state.writes.push(args);
+      if (args.expectedRevision !== state.revision) {
+        throw new AppFailure({
+          code: "conflict",
+          message: "Cannot write configuration: the file changed.",
+          retryable: true,
+        });
+      }
       if (state.nextWriteFailure) {
         const failure = state.nextWriteFailure;
         state.nextWriteFailure = null;
         throw failure;
+      }
+      if (state.refusedKeys.delete(args.key)) {
+        throw new AppFailure({
+          code: "invalid_args",
+          message: "This setting could not be written to the settings file.",
+          retryable: false,
+        });
       }
       const revision = `revision-${state.writes.length + 1}`;
       state.revision = revision;
@@ -280,5 +297,41 @@ describe("S1.2 ConfigStore runtime", () => {
     });
     await expect(brokenRuntime.read()).rejects.toMatchObject({ appError: { code: "permission" } });
     expect(brokenRuntime.getSnapshot().phase).toBe("error");
+  });
+
+  test("a save refused on one key reloads what omp holds, so the next save is not a false conflict", async () => {
+    const state = fakeState();
+    state.refusedKeys.add("provider.apiKey");
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    runtime.stage("provider.apiKey", { secret: true, action: "set", value: "fresh-value" });
+
+    await expect(runtime.save()).rejects.toMatchObject({
+      appError: {
+        code: "invalid_args",
+        message: "This setting could not be written to the settings file.",
+      },
+    });
+    const refused = runtime.getSnapshot();
+    expect(refused.phase).toBe("editing");
+    expect(refused.unsavedKeys).toEqual(["provider.apiKey"]);
+    expect(refused.config?.revision).toBe("revision-2");
+    expect(refused.staged?.edits).toEqual({
+      "provider.apiKey": { secret: true, action: "set", value: "fresh-value" },
+    });
+
+    await runtime.save();
+    expect(state.writes.at(-1)).toMatchObject({
+      key: "provider.apiKey",
+      expectedRevision: "revision-2",
+    });
+    expect(runtime.getSnapshot().phase).toBe("ready");
+    expect(runtime.getSnapshot().unsavedKeys).toEqual([]);
   });
 });

@@ -36,6 +36,7 @@ function runtime(
     error: null,
     applyStatus: null,
     lastChange: null,
+    unsavedKeys: [],
   };
   const listeners = new Set<(next: SettingsRuntimeSnapshot) => void>();
   return {

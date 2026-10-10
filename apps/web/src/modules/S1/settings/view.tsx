@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AppearancePreview } from "../appearance/preview";
 import { ShowImagesSelector, ThemeSelector } from "../appearance/selectors";
-import { SettingsSection, saveLocationText } from "../settings-kit";
+import { SettingsSection, saveLocationText, UnsavedSettingsNotice } from "../settings-kit";
 import type {
   AppearanceSettingsActions,
   AppearanceSettingsActiveSectionModel,
@@ -37,6 +37,7 @@ function ActiveSectionView({
         validation={section.validation}
         disabled={section.disabled}
         applyStatus={section.applyStatus ? statusLabel(section.applyStatus) : undefined}
+        unsavedKeys={section.unsavedKeys}
         onStage={(staged) => actions.onStage(section.descriptor.id, staged)}
         onPreview={actions.onPreview}
         onSecretAction={actions.onSecretAction}
@@ -68,6 +69,8 @@ function ActiveSectionView({
             </Button>
           </div>
         </div>
+      ) : section.unsavedLabels.length > 0 ? (
+        <UnsavedSettingsNotice labels={section.unsavedLabels} reason={section.error ?? ""} />
       ) : section.error ? (
         <div
           className="border-destructive/50 bg-destructive/10 rounded-lg border px-4 py-3"

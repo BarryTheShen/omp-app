@@ -474,7 +474,10 @@ export class ConfigStoreService {
         document.setIn(pathParts(key), args.value.value);
       }
     } catch {
-      throw failure("invalid_args", "Cannot patch configuration key.");
+      throw failure(
+        "invalid_args",
+        "This setting could not be written to the settings file. Check the settings file for an entry that conflicts with it.",
+      );
     }
 
     const content = document.toString();

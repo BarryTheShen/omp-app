@@ -279,6 +279,8 @@ export interface SettingRowProps {
   readonly layout?: "beside" | "stacked";
   /** The control itself, shown beside the label or below it (see `layout`). */
   readonly children: ReactNode;
+  /** A short line under the control, for example that the change is not saved yet. */
+  readonly notice?: ReactNode;
 }
 
 /** One setting: its label, help text and source, with its control beside or below them. */
@@ -288,6 +290,7 @@ export function SettingRow({
   detail,
   layout = "beside",
   children,
+  notice,
 }: SettingRowProps) {
   const stacked = layout === "stacked";
   const className = stacked
@@ -303,7 +306,10 @@ export function SettingRow({
         {description ? <p className={helpClassName}>{description}</p> : null}
         {detail ? <div className="text-muted-foreground mt-2 text-xs">{detail}</div> : null}
       </div>
-      <div className={stacked ? "min-w-0 max-w-md" : "min-w-0"}>{children}</div>
+      <div className={stacked ? "min-w-0 max-w-md" : "min-w-0"}>
+        {children}
+        {notice ? <div className="text-destructive mt-2 text-xs font-medium">{notice}</div> : null}
+      </div>
     </div>
   );
 }
@@ -365,12 +371,21 @@ export interface InlineErrorProps {
   readonly heading?: string;
   readonly onRetry?: () => void | Promise<void>;
   readonly retryLabel?: string;
-  readonly variant?: "default" | "compact" | "message";
+  /** `boxed` puts the message in a destructive-bordered box, for a save that did not happen. */
+  readonly variant?: "default" | "compact" | "message" | "boxed";
   /** Buttons that let the person act on the error, shown after the message. */
   readonly actions?: ReactNode;
   /** The underlying words, kept behind a "Show details" toggle that starts closed. */
   readonly details?: string;
 }
+
+const INLINE_ERROR_CLASSES: Record<NonNullable<InlineErrorProps["variant"]>, string> = {
+  default: "flex flex-col items-start gap-2 p-4 text-sm",
+  compact: "flex shrink-0 flex-col items-start gap-2 px-4 py-3 text-sm",
+  message: "mt-2 text-sm",
+  boxed:
+    "border-destructive/50 bg-destructive/10 flex flex-col items-start gap-2 rounded-lg border px-4 py-3 text-sm",
+};
 
 export function InlineError({
   message,
@@ -381,24 +396,22 @@ export function InlineError({
   actions,
   details,
 }: InlineErrorProps) {
+  const boxed = variant === "boxed";
   return (
-    <div
-      className={
-        variant === "compact"
-          ? "flex shrink-0 flex-col items-start gap-2 px-4 py-3 text-sm"
-          : variant === "message"
-            ? "mt-2 text-sm"
-            : "flex flex-col items-start gap-2 p-4 text-sm"
-      }
-      role="alert"
-    >
+    <div className={INLINE_ERROR_CLASSES[variant]} role="alert">
       {heading ? (
-        <p className="text-foreground font-medium" title={heading}>
+        <p
+          className={boxed ? "text-destructive font-medium" : "text-foreground font-medium"}
+          title={heading}
+        >
           {heading}
         </p>
       ) : null}
       {message ? (
-        <p className={heading ? "text-muted-foreground" : "text-destructive"} title={message}>
+        <p
+          className={heading && !boxed ? "text-muted-foreground" : "text-destructive"}
+          title={message}
+        >
           {message}
         </p>
       ) : null}

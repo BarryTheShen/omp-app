@@ -10,6 +10,8 @@ import {
 import { useCallback, useSyncExternalStore } from "react";
 import {
   type ApplyStatus,
+  applyStatusOf,
+  type CommitResult,
   type ConfigChangeSource,
   type ConfigSnapshot,
   type ConfigStoreClient,
@@ -53,6 +55,8 @@ export type SettingsRuntimeSnapshot = {
   readonly error: AppError | null;
   readonly applyStatus: ApplyStatus | null;
   readonly lastChange: ConfigChanged | null;
+  /** Keys of the last save that omp did not write; they stay staged for the next save. */
+  readonly unsavedKeys: readonly string[];
 };
 
 export type SettingsRuntimeListener = (snapshot: SettingsRuntimeSnapshot) => void;
@@ -183,6 +187,7 @@ export class SettingsRuntime {
       error: null,
       applyStatus: null,
       lastChange: null,
+      unsavedKeys: [],
     });
     this.unsubscribeChanged = this.source.subscribe((change) => {
       void this.handleChanged(change);
@@ -213,6 +218,7 @@ export class SettingsRuntime {
         error: null,
         applyStatus: null,
         lastChange: null,
+        unsavedKeys: [],
       });
       return config;
     } catch (error) {
@@ -225,11 +231,13 @@ export class SettingsRuntime {
   public stage(key: string, value: StagedSettings["edits"][string]): StageResult {
     const staged = this.snapshot.staged;
     if (!staged) return emptyValidation("Settings are still loading.");
+    // While a save has left keys unsaved, the reason for it stays on screen until the next save.
+    const error = this.snapshot.unsavedKeys.length > 0 ? this.snapshot.error : null;
     const result = stageEdit(this.descriptor, staged, key, value);
     if (!result.ok) {
       this.commit({
         validation: { ...this.snapshot.validation, [key]: result.validation },
-        error: null,
+        error,
       });
       return result;
     }
@@ -239,7 +247,7 @@ export class SettingsRuntime {
       staged: result.state,
       validation,
       phase: "editing",
-      error: null,
+      error,
       conflict: null,
     });
     return result;
@@ -260,10 +268,11 @@ export class SettingsRuntime {
       phase: "ready",
       conflict: null,
       error: null,
+      unsavedKeys: [],
     });
   }
 
-  public async save(): Promise<Awaited<ReturnType<typeof commitSection>>> {
+  public async save(): Promise<CommitResult> {
     const staged = this.snapshot.staged;
     if (!staged) throw unavailable("Settings are not loaded yet.");
     if (this.snapshot.conflict) {
@@ -272,10 +281,13 @@ export class SettingsRuntime {
     if (Object.keys(staged.edits).length === 0) {
       return { entries: [], revision: staged.snapshot.revision, status: "applied" };
     }
+    const written: string[] = [];
     this.writing = true;
     this.commit({ phase: "saving", error: null });
     try {
-      const result = await commitSection(this.client, this.descriptor, staged, this.layer);
+      const result = await commitSection(this.client, this.descriptor, staged, this.layer, (key) =>
+        written.push(key),
+      );
       const config = await readSection(this.client, this.descriptor, this.folder);
       this.writing = false;
       this.commit({
@@ -287,15 +299,23 @@ export class SettingsRuntime {
         error: null,
         applyStatus: result.status,
         lastChange: null,
+        unsavedKeys: [],
       });
       return result;
     } catch (error) {
       this.writing = false;
       const failure = asFailure(error, "Saving settings failed.");
+      // Keys omp already wrote are not staged again: the next save starts from what omp holds now.
+      const unsaved: StagedSettings = {
+        snapshot: staged.snapshot,
+        edits: Object.fromEntries(
+          Object.entries(staged.edits).filter(([key]) => !written.includes(key)),
+        ),
+      };
       if (failure.appError.code === "conflict") {
-        await this.enterConflict(staged, failure.appError);
+        await this.enterConflict(unsaved, failure.appError);
       } else {
-        this.commit({ phase: "error", error: failure.appError });
+        await this.keepUnsaved(unsaved, written, failure.appError);
       }
       throw failure;
     }
@@ -315,6 +335,7 @@ export class SettingsRuntime {
       phase: choice === "reload" ? "ready" : "editing",
       conflict: null,
       error: null,
+      unsavedKeys: [],
     });
   }
 
@@ -351,6 +372,7 @@ export class SettingsRuntime {
           },
           error: null,
           lastChange: change,
+          unsavedKeys: [],
         });
       } else {
         this.commit({
@@ -360,6 +382,7 @@ export class SettingsRuntime {
           conflict: null,
           error: null,
           lastChange: change,
+          unsavedKeys: [],
         });
       }
     } catch (error) {
@@ -380,10 +403,52 @@ export class SettingsRuntime {
           changedKeys: Object.keys(local.edits),
         },
         error,
+        unsavedKeys: [],
       });
     } catch (readError) {
       const failure = asFailure(readError, "Reloading settings after a conflict failed.");
       this.commit({ phase: "error", error: failure.appError });
+    }
+  }
+
+  /**
+   * After a save that stopped with keys still unwritten: reloads what omp holds and keeps only those
+   * keys staged, so the next save starts from the current revision and names what is still unsaved.
+   * A partial save never reports "applied", because the rest of the section is still unsaved; a status
+   * the written keys need (a reload or a restart) is still reported.
+   */
+  private async keepUnsaved(
+    unsaved: StagedSettings,
+    written: readonly string[],
+    error: AppError,
+  ): Promise<void> {
+    const unsavedKeys = Object.keys(unsaved.edits);
+    const writtenStatus = applyStatusOf(this.descriptor, written);
+    const applyStatus = writtenStatus === "applied" ? null : writtenStatus;
+    try {
+      const config = await readSection(this.client, this.descriptor, this.folder);
+      this.commit({
+        config,
+        staged: { snapshot: config, edits: unsaved.edits },
+        validation: {},
+        phase: unsavedKeys.length > 0 ? "editing" : "ready",
+        conflict: null,
+        error,
+        applyStatus,
+        lastChange: null,
+        unsavedKeys,
+      });
+    } catch (readError) {
+      // The reload failed: keep the unwritten edits staged on the revision the save started from, so
+      // the notice still names them and the next save writes them (a stale revision is re-read there).
+      const failure = asFailure(readError, "Reloading settings after a failed save failed.");
+      this.commit({
+        phase: "error",
+        error: failure.appError,
+        staged: unsaved,
+        applyStatus,
+        unsavedKeys,
+      });
     }
   }
 

@@ -26,6 +26,7 @@ import type {
   StagedSettings,
   ValidationResult,
 } from "../settings-kit";
+import { settingLabels } from "../settings-kit";
 
 export type AppearanceSettingsControllerOptions = {
   readonly client: ConfigStoreClient;
@@ -58,6 +59,10 @@ export type AppearanceSettingsActiveSectionModel = {
   readonly conflict: SettingsRuntimeConflict | null;
   readonly applyStatus: ApplyStatus | null;
   readonly error?: string;
+  /** Keys of the last save that omp did not write, marked on their rows. */
+  readonly unsavedKeys: readonly string[];
+  /** Their labels, in the order the section shows them, for the notice that names them. */
+  readonly unsavedLabels: readonly string[];
   readonly selectorActions?: "theme" | "images";
 };
 
@@ -500,6 +505,8 @@ export function useAppearanceSettingsController({
             conflict: activeSnapshot.conflict,
             applyStatus: activeSnapshot.applyStatus,
             error: activeSnapshot.error?.message,
+            unsavedKeys: activeSnapshot.unsavedKeys,
+            unsavedLabels: settingLabels(activeDescriptor, activeSnapshot.unsavedKeys),
             selectorActions:
               activeDescriptor.id === THEME_SETTINGS_SECTION.id
                 ? "theme"

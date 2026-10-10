@@ -24,6 +24,7 @@ export type SettingsSectionProps = {
   readonly disabled?: boolean;
   readonly validation?: Readonly<Record<string, ValidationResult>>;
   readonly applyStatus?: string;
+  readonly unsavedKeys?: readonly string[];
   readonly onStage?: (state: StagedSettings) => void;
   readonly onSecretAction?: (key: string, action: "set" | "unset") => void;
   readonly onPreview?: (key: string, preview: PreviewResult) => void;
@@ -38,6 +39,7 @@ export function SettingsSection({
   disabled = false,
   validation = {},
   applyStatus,
+  unsavedKeys = [],
   onStage,
   onSecretAction,
   onPreview,
@@ -82,6 +84,7 @@ export function SettingsSection({
             entry={effectiveEntry(snapshot, control.key)}
             value={staged.edits[control.key]}
             validation={shown(control.key)}
+            unsaved={unsavedKeys.includes(control.key)}
             disabled={disabled}
             resetToken={resetToken}
             onStage={(value) => {
@@ -140,12 +143,30 @@ export function SettingsSection({
   );
 }
 
+/**
+ * The line a save leaves when omp did not write some of its settings: which ones, and why. Both
+ * settings screens show it. It has no Retry: "Save changes" writes the same edits again.
+ */
+export function UnsavedSettingsNotice({
+  labels,
+  reason,
+}: {
+  readonly labels: readonly string[];
+  readonly reason: string;
+}) {
+  if (labels.length === 0) return null;
+  return (
+    <InlineError heading={`Not saved: ${labels.join(", ")}.`} message={reason} variant="boxed" />
+  );
+}
+
 type SettingControlRowProps = {
   readonly control: SettingControl;
   readonly entry?: ConfigEntry;
   readonly value?: SettingValue;
   readonly validation?: ValidationResult;
   readonly disabled: boolean;
+  readonly unsaved: boolean;
   readonly resetToken: number;
   readonly onStage: (value: SettingValue) => void;
   readonly onInvalid: (validation: ValidationResult & { readonly valid: false }) => void;
@@ -158,6 +179,7 @@ function SettingControlRow({
   value,
   validation,
   disabled,
+  unsaved,
   resetToken,
   onStage,
   onInvalid,
@@ -178,6 +200,7 @@ function SettingControlRow({
       description={control.description}
       detail={<span data-testid={`${control.key}-provenance`}>Source: {provenance}</span>}
       layout="stacked"
+      notice={unsaved ? "Not saved" : undefined}
     >
       {control.secret ? (
         <div className="flex flex-wrap items-center gap-2">

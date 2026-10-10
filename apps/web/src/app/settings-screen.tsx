@@ -39,6 +39,8 @@ import {
   type SettingsSectionDescriptor,
   type StagedSettings,
   saveLocationText,
+  settingLabels,
+  UnsavedSettingsNotice,
   type ValidationResult,
 } from "@/modules/S1/settings-kit";
 import { SETTINGS_SECTIONS } from "@/registry";
@@ -296,6 +298,7 @@ function SettingsRuntimeEditor({
   const [actionError, setActionError] = useState<string | null>(null);
   const staged = snapshot.staged;
   const dirty = staged !== null && Object.keys(staged.edits).length > 0;
+  const unsavedLabels = settingLabels(descriptor, snapshot.unsavedKeys);
 
   useEffect(() => onDirtyChange(descriptor.id, dirty), [descriptor.id, dirty, onDirtyChange]);
   useEffect(() => {
@@ -355,6 +358,7 @@ function SettingsRuntimeEditor({
         disabled={disabled}
         validation={{ ...snapshot.validation, ...localValidation }}
         applyStatus={status}
+        unsavedKeys={snapshot.unsavedKeys}
         onStage={(next) => {
           for (const [key, value] of changedEdits(staged, next)) {
             const result = runtime.stage(key, value);
@@ -399,7 +403,12 @@ function SettingsRuntimeEditor({
           </Toolbar>
         </Section>
       ) : null}
-      {actionError || (snapshot.error && snapshot.phase !== "conflict") ? (
+      {unsavedLabels.length > 0 ? (
+        <UnsavedSettingsNotice
+          labels={unsavedLabels}
+          reason={actionError ?? snapshot.error?.message ?? ""}
+        />
+      ) : actionError || (snapshot.error && snapshot.phase !== "conflict") ? (
         <InlineError
           message={actionError ?? snapshot.error?.message ?? "Settings could not be saved."}
           onRetry={retry}

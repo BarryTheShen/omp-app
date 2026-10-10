@@ -287,21 +287,32 @@ export function resetToEffective(state: StagedSettings, key: string): StagedSett
   return Object.freeze({ snapshot: state.snapshot, edits: Object.freeze(edits) });
 }
 
+/**
+ * Writes the staged keys in control order, one CAS write per key, each carrying the revision the
+ * previous write returned. Every value is validated before the first write, so an invalid value cannot
+ * leave a section half saved. `onWritten` names each key omp accepted, so a caller whose later write
+ * fails knows which keys did save.
+ */
 export async function commit(
   client: ConfigStoreClient,
   descriptor: SettingsSectionDescriptor,
   state: StagedSettings,
   layer: ConfigWriteLayer,
+  onWritten: (key: string) => void = () => undefined,
 ): Promise<CommitResult> {
-  let revision = state.snapshot.revision;
-  const entries: ConfigEntry[] = [];
-  let status: ApplyStatus = "applied";
-  for (const control of descriptor.controls) {
+  const writes = descriptor.controls.flatMap((control) => {
     const value = state.edits[control.key];
-    if (!value) continue;
+    return value ? [{ control, value }] : [];
+  });
+  for (const { control, value } of writes) {
     const validation = validate(control, value, state.snapshot);
     if (!validation.valid)
       throw new AppFailure({ code: "invalid_args", message: validation.message, retryable: false });
+  }
+  let revision = state.snapshot.revision;
+  const entries: ConfigEntry[] = [];
+  let status: ApplyStatus = "applied";
+  for (const { control, value } of writes) {
     const result = await client.write({
       key: control.key,
       layer,
@@ -312,8 +323,19 @@ export async function commit(
     entries.push(result.entry);
     revision = result.revision;
     status = maxApplyStatus(status, control.apply);
+    onWritten(control.key);
   }
   return Object.freeze({ entries: Object.freeze(entries), revision, status });
+}
+
+/** The strongest apply boundary among `keys`: what a person must do before those changes take effect. */
+export function applyStatusOf(
+  descriptor: SettingsSectionDescriptor,
+  keys: readonly string[],
+): ApplyStatus {
+  return descriptor.controls
+    .filter((control) => keys.includes(control.key))
+    .reduce<ApplyStatus>((status, control) => maxApplyStatus(status, control.apply), "applied");
 }
 
 export function subscribeChanged(
@@ -350,6 +372,16 @@ function maxApplyStatus(current: ApplyStatus, boundary: ApplyBoundary): ApplySta
 
 export function effectiveEntry(snapshot: ConfigSnapshot, key: string): ConfigEntry | undefined {
   return snapshot.entries.find((entry) => entry.key === key);
+}
+
+/** The labels of the settings in `keys`, in the order the section shows them. */
+export function settingLabels(
+  descriptor: SettingsSectionDescriptor,
+  keys: readonly string[],
+): readonly string[] {
+  return descriptor.controls
+    .filter((control) => keys.includes(control.key))
+    .map((control) => control.label);
 }
 
 const SOURCE_LABELS: Readonly<Record<ConfigEntry["source"], string>> = {

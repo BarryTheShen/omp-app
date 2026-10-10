@@ -78,6 +78,8 @@ export interface RealApp {
   readonly open: (options?: OpenOptions) => Promise<Page>;
   /** The app's data folder for this run: drafts, attachments and settings. */
   readonly appDataDir: string;
+  /** The agent folder for this run (omp's own folder): its config.yml is the settings file a test may write. */
+  readonly agentDir: string;
   /** Stops the app's server and starts it again on the same port and data. Returns the new launch link, with a new token; the old link expires. */
   readonly restartServer: () => Promise<string>;
   /** Console errors and uncaught page errors from every page opened so far. A test must end clean. */
@@ -487,6 +489,7 @@ export const realTest = test.extend<{
         },
         restartServer,
         appDataDir,
+        agentDir,
         allowProblem: (pattern) => void allowed.push(pattern),
         startOmp: (args) => {
           const child = spawn(ompBinary ?? REAL_OMP, ["--mode", "rpc-ui", ...args], {
