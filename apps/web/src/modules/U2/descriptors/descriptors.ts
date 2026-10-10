@@ -1,9 +1,12 @@
-import type { Descriptor } from "@omp-app/contracts";
+import type { Descriptor, ShortcutDescriptor } from "@omp-app/contracts";
 
 const COMPOSER = "client.composer";
 const HISTORY = "client.composer-history";
 const EXTERNAL_EDITOR = "client.external-editor";
 const ATTACHMENTS = "client.composer-attachments";
+
+/** A shortcut that also fires while focus is in the composer: the app's opt-in (see shortcuts/registry.ts). */
+type EditableShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable: true };
 
 const COMPOSER_DESCRIPTORS = [
   {
@@ -74,8 +77,9 @@ const COMPOSER_DESCRIPTORS = [
     title: "Copy current line",
     covers: ["F5.app-clipboard-copyline"],
     requires: [COMPOSER],
-    chord: "Mod+C",
-    scope: "composer",
+    chord: "Alt+Shift+L",
+    scope: "global",
+    allowInEditable: true,
   },
   {
     kind: "shortcut",
@@ -84,8 +88,9 @@ const COMPOSER_DESCRIPTORS = [
     title: "Copy prompt",
     covers: ["F5.app-clipboard-copyprompt"],
     requires: [COMPOSER],
-    chord: "Mod+Shift+C",
-    scope: "composer",
+    chord: "Alt+Shift+C",
+    scope: "global",
+    allowInEditable: true,
   },
   {
     kind: "shortcut",
@@ -105,7 +110,19 @@ const COMPOSER_DESCRIPTORS = [
     covers: ["F5.app-clipboard-pastetextraw"],
     requires: [COMPOSER],
     chord: "Mod+Shift+V",
-    scope: "composer",
+    scope: "global",
+    allowInEditable: true,
+  },
+  {
+    kind: "shortcut",
+    id: "U2.clipboardPasteTextRawAlt",
+    owner: "U2",
+    title: "Paste text without formatting",
+    covers: [],
+    requires: [COMPOSER],
+    chord: "Alt+Shift+V",
+    scope: "global",
+    allowInEditable: true,
   },
   {
     kind: "shortcut",
@@ -403,6 +420,6 @@ const COMPOSER_DESCRIPTORS = [
     requires: [],
     match: { by: "role", role: "bashExecution" },
   },
-] as const satisfies readonly Descriptor[];
+] as const satisfies readonly (Descriptor | EditableShortcutDescriptor)[];
 
 export const U2Descriptors: readonly Descriptor[] = COMPOSER_DESCRIPTORS;

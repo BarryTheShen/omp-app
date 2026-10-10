@@ -294,9 +294,14 @@ describe("U2.2 ComposerSurface", () => {
       return { input, onDoubleLeftArrow };
     }
 
-    function pressAt(input: HTMLTextAreaElement, key: string, at: number) {
+    function pressAt(
+      input: HTMLTextAreaElement,
+      key: string,
+      at: number,
+      init: KeyboardEventInit = {},
+    ) {
       vi.spyOn(Date, "now").mockReturnValue(at);
-      fireEvent.keyDown(input, { key });
+      fireEvent.keyDown(input, { key, ...init });
     }
 
     test("two ← presses close together in an empty editor open it once", () => {
@@ -326,6 +331,18 @@ describe("U2.2 ComposerSurface", () => {
       pressAt(input, "ArrowLeft", 1_000);
       pressAt(input, "a", 1_100);
       pressAt(input, "ArrowLeft", 1_200);
+      expect(onDoubleLeftArrow).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      { modifier: "Alt", init: { altKey: true } },
+      { modifier: "Ctrl", init: { ctrlKey: true } },
+      { modifier: "Meta", init: { metaKey: true } },
+      { modifier: "Shift", init: { shiftKey: true } },
+    ])("a ← held with $modifier is not a tap: two such presses open nothing", ({ init }) => {
+      const { input, onDoubleLeftArrow } = renderArrows();
+      pressAt(input, "ArrowLeft", 1_000, init);
+      pressAt(input, "ArrowLeft", 1_200, init);
       expect(onDoubleLeftArrow).not.toHaveBeenCalled();
     });
   });

@@ -15,6 +15,8 @@ export interface ArrowGestureInput {
   readonly repeat: boolean;
   /** The composer holds no text and no attachment. */
   readonly emptyEditor: boolean;
+  /** A modifier is held (Alt, Ctrl, Meta or Shift): the press is not a tap, whatever the key. */
+  readonly modified: boolean;
   readonly now: number;
 }
 
@@ -32,7 +34,7 @@ export function arrowGestureStep(
   input: ArrowGestureInput,
 ): ArrowGestureStep {
   if (input.repeat) return { gesture, doubleTap: false };
-  if (input.key !== "ArrowLeft" || !input.emptyEditor) {
+  if (input.key !== "ArrowLeft" || input.modified || !input.emptyEditor) {
     return { gesture: NO_ARROW_GESTURE, doubleTap: false };
   }
   if (gesture.pendingAt !== null && input.now - gesture.pendingAt <= DOUBLE_LEFT_MS) {

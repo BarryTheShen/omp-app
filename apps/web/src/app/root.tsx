@@ -125,11 +125,14 @@ import { RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
 import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
 import { setThemePreference, ThemeApplier, ThemeButton } from "@/theme";
+import { useAgentHubShortcut } from "./agents/agent-hub-shortcut";
 import { reportClientError, setClientErrorSink } from "./client-errors";
+import { useComposerClipboardShortcuts } from "./composer-clipboard";
 import { ComposerHistory } from "./composer-history";
 import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
+import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderLogin, openProviderSignIn } from "./provider-login-section";
 import { saveTextFile } from "./save-file";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
@@ -864,6 +867,9 @@ function ActiveThreadReady({
   const restartOmp = useCallback(async (): Promise<void> => {
     await rpc.restart({ threadId });
   }, [rpc, threadId]);
+  useRetryShortcut({ threadId, status: p3Runs.status, retry: p3Handlers.retry });
+  useAgentHubShortcut(openAgentHub);
+  useComposerClipboardShortcuts({ notify: setCommandStatus, fail: setCommandError });
   const { controller: runtimeController, runtime } = useOmpRuntime({
     store,
     send: rpc.send,

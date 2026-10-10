@@ -49,10 +49,34 @@ const EXPECTED_COVERAGE = [
 describe("U2.1 descriptor coverage", () => {
   test("covers every U2-owned F5/C6 row exactly once", () => {
     const covered = U2Descriptors.flatMap((descriptor) => descriptor.covers);
-    expect(U2Descriptors).toHaveLength(41);
+    // The 41 row descriptors, plus the Alt+Shift+V alias: omp's second chord for paste as text, which covers no row.
+    expect(U2Descriptors).toHaveLength(42);
     expect(covered).toHaveLength(EXPECTED_COVERAGE.length);
     expect(new Set(covered).size).toBe(EXPECTED_COVERAGE.length);
     expect([...covered].sort()).toEqual([...EXPECTED_COVERAGE].sort());
+  });
+
+  test("binds the clipboard rows to omp's chords, reachable from the editor", () => {
+    expect(U2Descriptors.find((d) => d.id === "U2.clipboardCopyLine")).toMatchObject({
+      chord: "Alt+Shift+L",
+      scope: "global",
+      allowInEditable: true,
+    });
+    expect(U2Descriptors.find((d) => d.id === "U2.clipboardCopyPrompt")).toMatchObject({
+      chord: "Alt+Shift+C",
+      scope: "global",
+      allowInEditable: true,
+    });
+    expect(U2Descriptors.find((d) => d.id === "U2.clipboardPasteTextRaw")).toMatchObject({
+      chord: "Mod+Shift+V",
+      scope: "global",
+      allowInEditable: true,
+    });
+    expect(U2Descriptors.find((d) => d.id === "U2.clipboardPasteTextRawAlt")).toMatchObject({
+      chord: "Alt+Shift+V",
+      covers: [],
+      allowInEditable: true,
+    });
   });
 
   test("validates the complete descriptor list through the C0 schema", () => {

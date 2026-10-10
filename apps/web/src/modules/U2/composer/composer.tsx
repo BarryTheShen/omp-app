@@ -251,6 +251,7 @@ export function ComposerSurface({
           key: event.key,
           repeat: event.repeat,
           emptyEditor: text === "" && attachments.length === 0,
+          modified: event.altKey || event.ctrlKey || event.metaKey || event.shiftKey,
           now: Date.now(),
         });
         arrowGesture.current = step.gesture;

@@ -7,12 +7,17 @@ function press(
   gesture: typeof NO_ARROW_GESTURE,
   key: string,
   now: number,
-  options: { readonly emptyEditor?: boolean; readonly repeat?: boolean } = {},
+  options: {
+    readonly emptyEditor?: boolean;
+    readonly repeat?: boolean;
+    readonly modified?: boolean;
+  } = {},
 ) {
   return arrowGestureStep(gesture, {
     key,
     repeat: options.repeat ?? false,
     emptyEditor: options.emptyEditor ?? true,
+    modified: options.modified ?? false,
     now,
   });
 }
@@ -57,5 +62,18 @@ describe("double-tap left arrow", () => {
     const repeat = press(first.gesture, KEYS.left, 1_050, { repeat: true });
     expect(repeat).toEqual({ gesture: first.gesture, doubleTap: false });
     expect(press(repeat.gesture, KEYS.left, 1_100).doubleTap).toBe(true);
+  });
+
+  test("a ← pressed with Alt, Ctrl, Meta or Shift is not a tap and cancels a pending one", () => {
+    const first = press(NO_ARROW_GESTURE, KEYS.left, 1_000);
+    const shifted = press(first.gesture, KEYS.left, 1_100, { modified: true });
+    expect(shifted).toEqual({ gesture: NO_ARROW_GESTURE, doubleTap: false });
+    expect(press(shifted.gesture, KEYS.left, 1_200).doubleTap).toBe(false);
+  });
+
+  test("modified ← presses never start a double-tap", () => {
+    const first = press(NO_ARROW_GESTURE, KEYS.left, 1_000, { modified: true });
+    expect(first.gesture).toEqual(NO_ARROW_GESTURE);
+    expect(press(first.gesture, KEYS.left, 1_100).doubleTap).toBe(false);
   });
 });
