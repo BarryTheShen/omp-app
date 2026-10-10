@@ -337,7 +337,7 @@ describe("#957 /share never reaches omp unconfirmed", () => {
   test("every form of /share goes to the app, with or without attachments, and before the provider is ready", async () => {
     const route = vi.fn(async () => ({ kind: "omp" as const, command: "/share" }));
     const provider = { route } as unknown as SlashCommandProvider;
-    const share = shareSlashCommand();
+    const share = shareSlashCommand({ run: async () => ({ message: "Nothing was shared." }) });
     for (const text of ["/share", "/share now", " /SHARE"]) {
       for (const hasAttachments of [false, true]) {
         await expect(
@@ -362,14 +362,13 @@ describe("#957 /share never reaches omp unconfirmed", () => {
     expect(route).not.toHaveBeenCalled();
   });
 
-  test("the share command refuses in plain words", async () => {
-    await expect(shareSlashCommand().run({})).rejects.toMatchObject({
-      appError: {
-        code: "unavailable",
-        message: "Sharing this chat isn't available yet. Nothing was uploaded.",
-        retryable: false,
-      },
-    });
+  test("the share command runs the flow it is given, and shows the message that flow returns", async () => {
+    const run = vi.fn(async () => ({ message: "Share link copied." }));
+    const command = shareSlashCommand({ run });
+    expect(command.name).toBe("share");
+    expect(command.description).toBe("Share this chat as a link");
+    await expect(command.run({})).resolves.toEqual({ message: "Share link copied." });
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   test("a prompt, steer or follow-up in a form of /share never reaches omp, and other commands pass", async () => {

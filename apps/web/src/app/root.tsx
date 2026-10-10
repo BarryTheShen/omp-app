@@ -47,6 +47,7 @@ import { LayoutArea, type LayoutAreaName, type Surface, type SurfaceMap } from "
 import type { CredentialActions } from "@/modules/D3/auth/credential-actions";
 import { readProviderSignIns } from "@/modules/D3/auth/sign-in";
 import { D3_LOGIN_COMMAND } from "@/modules/D3/descriptors";
+import { runShareCommand } from "@/modules/D4/share";
 import type {
   SessionCapabilitiesSource,
   SessionInfoMetadataSource,
@@ -147,6 +148,7 @@ import { saveTextFile } from "./save-file";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
+import { useShareFromChat } from "./share/use-share-from-chat";
 import {
   freshSlashCommand,
   guardOmpSend,
@@ -660,6 +662,15 @@ function ActiveThreadReady({
     download: saveTextFile,
     showStatus: setCommandStatus,
   });
+  const shareController = useShareFromChat({
+    client,
+    threadId,
+    folder,
+    dialogs: dialogHost,
+    clipboard: browserClipboard,
+    showStatus: setCommandStatus,
+    showError: setCommandError,
+  });
   const runtimeSource = useMemo<SessionInfoRuntimeSource>(
     () => ({
       getSnapshot: () => ({ threadId, session: store.getSnapshot().session }),
@@ -970,7 +981,7 @@ function ActiveThreadReady({
     () => [
       newChatSlashCommand({ lifecycle, openThread }),
       freshSlashCommand({ lifecycle }),
-      shareSlashCommand(),
+      shareSlashCommand({ run: () => runShareCommand(shareController) }),
       loginSlashCommand({ openLogin }),
       settingsSlashCommand({
         openSettings: () => onOpenSettings(threadId, composerInput() ?? undefined),
@@ -981,7 +992,7 @@ function ActiveThreadReady({
         },
       }),
     ],
-    [lifecycle, onOpenSettings, openLogin, openThread, shortcutRegistry, threadId],
+    [lifecycle, onOpenSettings, openLogin, openThread, shareController, shortcutRegistry, threadId],
   );
   const slashProvider = useSlashCommands({
     client,

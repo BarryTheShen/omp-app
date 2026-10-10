@@ -10,7 +10,6 @@ import {
   createSlashCommandProvider,
   describeCommandResult,
   guardedCommandName,
-  guardedRefusal,
   guardedRoute,
   plainOutputText,
   type SlashAppCommand,
@@ -192,22 +191,15 @@ export function hotkeysSlashCommand({
 }
 
 /**
- * `/share`: omp's own share uploads the whole chat with no question asked, so the app answers every form of it itself
- * (`guardedRoute`). Until the share dialog (D4.4) is mounted, the answer is this plain refusal, and nothing is uploaded.
+ * `/share`: the app's own command, in every form (`guardedRoute`). It runs the same flow as the palette command: the
+ * question first, naming what is uploaded and where, then the upload. omp's own `/share` never runs unasked.
  */
-export function shareSlashCommand(): SlashAppCommand {
-  return {
-    name: "share",
-    description: "Share this chat (not available yet)",
-    run: () =>
-      Promise.reject(
-        new AppFailure({
-          code: "unavailable",
-          message: "Sharing this chat isn't available yet. Nothing was uploaded.",
-          retryable: false,
-        }),
-      ),
-  };
+export function shareSlashCommand({
+  run,
+}: {
+  readonly run: SlashAppCommand["run"];
+}): SlashAppCommand {
+  return { name: "share", description: "Share this chat as a link", run };
 }
 
 /**
@@ -262,9 +254,18 @@ export function guardOmpSend(send: RpcSessionSend): RpcSessionSend {
   return (args, options) => {
     const text = textSentToOmp(args.command);
     const name = text === undefined ? null : guardedCommandName(text);
-    if (name !== null) return Promise.reject(guardedRefusal(name));
+    if (name !== null) return Promise.reject(refusedSend(name));
     return send(args, options);
   };
+}
+
+/** The refusal for a form of `/share` sent from a retry, an edit or a queued message: those do not ask, so they stop here. */
+function refusedSend(name: string): AppFailure {
+  return new AppFailure({
+    code: "unavailable",
+    message: `/${name} runs from the message box or the command palette, so nothing was sent to omp.`,
+    retryable: false,
+  });
 }
 
 /**
