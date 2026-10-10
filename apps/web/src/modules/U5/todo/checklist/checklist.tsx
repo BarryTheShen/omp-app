@@ -70,12 +70,9 @@ export function TodoChecklist({ model, className }: TodoChecklistProps) {
       data-testid="todo-checklist"
       data-todo-progress={`${model.progress.done} of ${model.progress.total} done`}
     >
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold text-foreground">Todo checklist</h3>
-        <span className="text-muted-foreground text-xs" data-testid="todo-progress">
-          {model.progress.done} of {model.progress.total} done
-        </span>
-      </div>
+      <p className="text-muted-foreground mb-3 text-xs" data-testid="todo-progress">
+        {model.progress.done} of {model.progress.total} done
+      </p>
       {model.phases.length === 0 ? (
         <p
           className="text-muted-foreground rounded-lg border border-dashed border-border px-3 py-4 text-sm"

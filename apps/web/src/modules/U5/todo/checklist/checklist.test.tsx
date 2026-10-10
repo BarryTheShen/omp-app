@@ -1,6 +1,7 @@
 import { ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { PanelShell } from "../../panel/shell";
 import type { TodoSnapshot } from "../contract";
 import { projectTodoSnapshot } from "../model";
 import { TodoChecklist } from "./checklist";
@@ -92,5 +93,25 @@ describe("TodoChecklist", () => {
     expect(
       screen.getByRole("button", { name: "Collapse Current" }).getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  test("inside the todo panel the title is the only heading, and the progress line stays", () => {
+    render(
+      <PanelShell
+        body={<TodoChecklist model={model()} />}
+        state={{
+          open: true,
+          lifecycle: "populated",
+          position: "right",
+          title: "Todo checklist",
+          error: null,
+          readOnly: true,
+          pendingUpdates: 0,
+        }}
+        onOpenChange={() => undefined}
+      />,
+    );
+    expect(screen.getAllByRole("heading", { name: "Todo checklist" })).toHaveLength(1);
+    expect(screen.getByTestId("todo-progress").textContent).toBe("2 of 5 done");
   });
 });
