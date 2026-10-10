@@ -125,6 +125,11 @@ if (args.command === "debug-report") {
   const probe = await probeOmp(ompBin, { ...environment, PATH: searchPath }, process.cwd());
   const now = new Date();
   const target = resolve(process.cwd(), debugReportFileName(now));
+  // The omp processes listed are the running server's: this command starts none of its own.
+  const running = await readRunningInstance(instanceFile(Bun.env, home), {
+    alive: isAlive,
+    responds,
+  });
   writeFileSync(
     target,
     buildDebugReport({
@@ -132,7 +137,7 @@ if (args.command === "debug-report") {
       version,
       now,
       omp: { path: ompBin, version: probe.version },
-      processes: await listProcesses(),
+      processes: await listProcesses(running?.pid),
     }),
     { mode: 0o600 },
   );

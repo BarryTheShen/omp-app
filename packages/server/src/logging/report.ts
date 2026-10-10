@@ -1,4 +1,5 @@
 import { arch, platform, release } from "node:os";
+import { basename } from "node:path";
 import { readLogTail } from "./files";
 import { scrubText, truncate } from "./scrub";
 
@@ -55,21 +56,41 @@ export function buildDebugReport(options: DebugReportOptions): string {
   return `${scrubText(sections.join("\n\n"), secrets)}\n`;
 }
 
-/** The omp and omp-app processes (pid, memory, running time, command), or why they could not be listed. */
-export async function listProcesses(): Promise<string> {
+/** A command word that names omp: `omp`, or the same with a script extension (`omp.js`, `omp.ts`). */
+const OMP_COMMAND = /^omp(\.[cm]?[jt]s)?$/;
+
+/**
+ * The omp processes that `ownerPid` started, from `ps -eo pid,ppid,rss,etime,args` output: the header, then each
+ * process whose parent is `ownerPid` and whose command names omp. Other processes are left out, including those that
+ * only mention omp or omp-app in their arguments, and omp processes that other programs started.
+ */
+export function ompProcessLines(psOutput: string, ownerPid: number): string[] {
+  const [header = "", ...rows] = psOutput.split("\n");
+  const owned = rows.filter((line) => {
+    const [, parent, , , ...command] = line.trim().split(/\s+/);
+    return (
+      Number(parent) === ownerPid && command.some((token) => OMP_COMMAND.test(basename(token)))
+    );
+  });
+  return [header, ...owned];
+}
+
+/**
+ * The omp processes that `ownerPid` started (see `ompProcessLines`), or why they could not be listed. `ownerPid` is
+ * the omp-app server's pid, and undefined when no server is running.
+ */
+export async function listProcesses(ownerPid: number | undefined): Promise<string> {
+  if (ownerPid === undefined) return "(no omp-app server is running, so no omp process is listed)";
   try {
-    const child = Bun.spawn(["ps", "-eo", "pid,rss,etime,args"], {
+    const child = Bun.spawn(["ps", "-eo", "pid,ppid,rss,etime,args"], {
       stdout: "pipe",
       stderr: "ignore",
     });
     const timer = setTimeout(() => child.kill(), 5_000);
     const output = await new Response(child.stdout).text();
     clearTimeout(timer);
-    const matching = output
-      .split("\n")
-      .filter((line, index) => index === 0 || /\bomp(-app)?\b/.test(line))
-      .map((line) => truncate(line, 240));
-    return matching.join("\n");
+    const lines = ompProcessLines(output, ownerPid).map((line) => truncate(line, 240));
+    return lines.length > 1 ? lines.join("\n") : `(process ${ownerPid} has no omp process)`;
   } catch (error) {
     return `(could not list processes: ${error instanceof Error ? error.message : String(error)})`;
   }

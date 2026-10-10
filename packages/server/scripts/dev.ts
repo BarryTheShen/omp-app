@@ -251,7 +251,7 @@ export async function createCompositionServer(
                 version: serverVersion,
                 now,
                 omp: { path: ompBinary, version: probe.version },
-                processes: await listProcesses(),
+                processes: await listProcesses(process.pid),
                 secrets: [launchToken],
               }),
             };
