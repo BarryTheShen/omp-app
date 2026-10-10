@@ -10,7 +10,7 @@ import type {
   ToolRenderer,
   ToolRendererProps,
 } from "./contract";
-import { type OutputCut, OutputCutNote, outputCutOf } from "./full-output";
+import { formatBytes, type OutputCut, OutputCutNote, outputCutOf } from "./full-output";
 import { normalizeToolRendererProps } from "./normalize";
 import { OutputMetaSchema } from "./output-meta";
 import type { CopyKind } from "./slots";
@@ -373,6 +373,9 @@ function BashOutput({
   const preview = previewOutput(result.output);
   const output = expanded ? result.output : preview.text;
   const shortened = shortenedNote(result);
+  // While the app holds part of the output, the note below says so once and "Load full output" is the next
+  // step. A "Show all" here would show only the loaded lines, so the preview controls wait for the full text.
+  const previewControls = preview.cut && cut === undefined;
   const shownNote = `Showing the first ${count(preview.shown)} of ${count(preview.total)} ${preview.unit}.`;
   const copiedOutput =
     cut !== undefined
@@ -428,14 +431,14 @@ function BashOutput({
           onCopy={onCopy}
         />
       )}
-      {(shortened !== undefined || preview.cut) && (
+      {(shortened !== undefined || previewControls) && (
         <div
           className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
           data-slot="u3-bash-shown"
         >
           {shortened !== undefined && <span>{shortened}</span>}
-          {preview.cut && !expanded && <span>{shownNote}</span>}
-          {preview.cut && (
+          {previewControls && !expanded && <span>{shownNote}</span>}
+          {previewControls && (
             <Button
               className="w-fit"
               size="xs"
@@ -450,7 +453,13 @@ function BashOutput({
           )}
         </div>
       )}
-      {cut !== undefined && <OutputCutNote cut={cut} toolCallId={state.toolCallId} />}
+      {cut !== undefined && (
+        <OutputCutNote
+          cut={cut}
+          lead={partialOutputNote(cut, preview)}
+          toolCallId={state.toolCallId}
+        />
+      )}
       {onCancel !== undefined && (state.phase === "running" || state.phase === "partial") && (
         <Button
           aria-label="Stop turn"
@@ -602,4 +611,20 @@ function shortenedNote(result: BashResult): string | undefined {
 
 function count(value: number): string {
   return value.toLocaleString("en-US");
+}
+
+function unitName(amount: number, unit: OutputPreview["unit"]): string {
+  if (unit === "lines") return amount === 1 ? "line" : "lines";
+  return amount === 1 ? "character" : "characters";
+}
+
+/**
+ * The one note for an output the app holds only in part: what the card shows of the loaded text, and
+ * how much of the whole output the app holds. The thread's full output is the next step.
+ */
+function partialOutputNote(cut: OutputCut, preview: OutputPreview): string {
+  const held = `the app has loaded ${formatBytes(cut.shownBytes)} of ${formatBytes(cut.totalBytes)}`;
+  return preview.cut
+    ? `Showing the first ${count(preview.shown)} ${unitName(preview.shown, preview.unit)} of the ${count(preview.total)} loaded; ${held}.`
+    : `Showing the ${count(preview.total)} loaded ${unitName(preview.total, preview.unit)}; ${held}.`;
 }

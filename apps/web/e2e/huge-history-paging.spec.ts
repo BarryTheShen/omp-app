@@ -198,11 +198,14 @@ realTest(
 
     const thread = page.locator('[data-slot="u1-thread-viewport"]');
     const load = thread.getByRole("button", { name: "Load full output" });
-    await expect(thread.getByText("Showing the start and end of")).toBeVisible({ timeout: 60_000 });
+    // The bash card the app holds in part says so once, and "Load full output" is the next step.
+    const partialNote =
+      /Showing the first [\d,]+ (?:lines|characters) of the [\d,]+ loaded; the app has loaded 64 KB of \d+ KB\./;
+    await expect(thread.getByText(partialNote)).toBeVisible({ timeout: 60_000 });
     await captureLightDarkNarrow(page, "huge-history-paging-cut");
     await load.click();
     await expect(load).toBeHidden({ timeout: 60_000 });
-    await expect(thread.getByText("Showing the start and end of")).toHaveCount(0);
+    await expect(thread.getByText(partialNote)).toHaveCount(0);
   },
 );
 

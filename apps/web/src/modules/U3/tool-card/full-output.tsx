@@ -28,7 +28,7 @@ export function outputCutOf(result: unknown): OutputCut | undefined {
   return { shownBytes, totalBytes };
 }
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   return bytes >= 1024 * 1024
     ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
     : `${Math.round(bytes / 1024)} KB`;
@@ -36,14 +36,18 @@ function formatBytes(bytes: number): string {
 
 /**
  * Says how much of a tool output the thread shows, and offers the full text when the card sits in a
- * thread that can load it. The note states the facts whether or not the action is there.
+ * thread that can load it. The note states the facts whether or not the action is there. A caller
+ * that knows more (a bash card says how many of its lines it shows) passes `lead` in place of the
+ * default sentence.
  */
 export function OutputCutNote({
   cut,
   toolCallId,
+  lead,
 }: {
   readonly cut: OutputCut;
   readonly toolCallId: string;
+  readonly lead?: string;
 }): ReactNode {
   const loadFull = useContext(FullOutputContext);
   const [loading, setLoading] = useState(false);
@@ -66,8 +70,12 @@ export function OutputCutNote({
       data-slot="u3-tool-card-cut"
     >
       <span>
-        Showing the start and end of {formatBytes(cut.totalBytes)}; {formatBytes(cut.shownBytes)} is
-        shown.
+        {lead ?? (
+          <>
+            Showing the start and end of {formatBytes(cut.totalBytes)};{" "}
+            {formatBytes(cut.shownBytes)} is shown.
+          </>
+        )}
       </span>
       {loadFull !== undefined && (
         <button

@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { BashCard, decodeBashResult, failureMessage } from "./bash";
 import type { ToolRendererProps } from "./contract";
+import { FullOutputProvider } from "./full-output";
 
 afterEach(() => cleanup());
 
@@ -378,5 +379,60 @@ describe("BashCard copy confirmation", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("BashCard output the app holds in part", () => {
+  test("says once what the app holds, with Load full output, and offers no Show all", () => {
+    const loadFull = vi.fn(async () => {});
+    const partial = {
+      ...toolResult(numbered(40)),
+      outputCut: { shownBytes: 65_536, totalBytes: 209_715 },
+    };
+    render(
+      <FullOutputProvider value={loadFull}>
+        <BashCard rendererProps={props(partial)} />
+      </FullOutputProvider>,
+    );
+    const note = screen.getByText(
+      "Showing the first 12 lines of the 40 loaded; the app has loaded 64 KB of 205 KB.",
+      { exact: true },
+    );
+    const load = screen.getByRole("button", { name: "Load full output" });
+    expect(note.compareDocumentPosition(load) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
+    expect(screen.queryByText(/Showing the first 12 of 40 lines/)).toBeNull();
+    expect(screen.queryByText(/Showing the start and end of/)).toBeNull();
+
+    fireEvent.click(load);
+    expect(loadFull).toHaveBeenCalledWith("bash-call");
+  });
+
+  test("once the full output is loaded, the card offers its own preview note and Show all", () => {
+    const partial = {
+      ...toolResult(numbered(40)),
+      outputCut: { shownBytes: 65_536, totalBytes: 209_715 },
+    };
+    const { rerender } = render(<BashCard rendererProps={props(partial)} />);
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
+
+    rerender(<BashCard rendererProps={props(toolResult(numbered(40)))} />);
+    expect(screen.getByText("Showing the first 12 of 40 lines.", { exact: true })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show all 40 lines" })).toBeTruthy();
+    expect(screen.queryByText(/loaded; the app has loaded/)).toBeNull();
+  });
+
+  test("a loaded output of 12 lines or fewer says what it holds, and has no preview control", () => {
+    const partial = {
+      ...toolResult(numbered(8)),
+      outputCut: { shownBytes: 65_536, totalBytes: 209_715 },
+    };
+    render(<BashCard rendererProps={props(partial)} />);
+    expect(
+      screen.getByText("Showing the 8 loaded lines; the app has loaded 64 KB of 205 KB.", {
+        exact: true,
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
   });
 });
