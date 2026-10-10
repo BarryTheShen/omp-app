@@ -44,7 +44,7 @@ async function validateFolder(folder: string): Promise<string> {
   ) {
     throw new AppFailure({
       code: "invalid_args",
-      message: "The host metadata folder must be an absolute path.",
+      message: "Enter a folder path that starts with /.",
       retryable: false,
     });
   }
@@ -53,7 +53,7 @@ async function validateFolder(folder: string): Promise<string> {
   if (!info.isDirectory()) {
     throw new AppFailure({
       code: "invalid_args",
-      message: "The host metadata path is not a folder.",
+      message: "That path isn't a folder. Check the path.",
       retryable: false,
     });
   }
@@ -91,19 +91,19 @@ function toFailure(error: unknown): AppFailure {
   if (code === "ENOENT") {
     return new AppFailure({
       code: "not_found",
-      message: "The host metadata folder was not found.",
+      message: "That folder doesn't exist. Check the path.",
       retryable: false,
     });
   }
   if (code === "EACCES" || code === "EPERM") {
     return new AppFailure({
       code: "permission",
-      message: "The host metadata folder cannot be read.",
+      message: "You don't have permission to open that folder.",
       retryable: false,
     });
   }
   return new AppFailure(
-    { code: "internal", message: "Unable to read host metadata.", retryable: false },
+    { code: "internal", message: "That folder couldn't be opened.", retryable: false },
     { cause: error },
   );
 }
