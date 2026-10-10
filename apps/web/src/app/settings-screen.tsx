@@ -20,6 +20,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModelSettingsSection } from "@/modules/D1/settings";
+import {
+  ContextSettings,
+  type ContextSettingsScope,
+  P7_CONTEXT_SETTINGS_SECTIONS,
+} from "@/modules/P7/settings";
 import type { BrowserPalette } from "@/modules/S1/appearance/preview";
 import {
   createConfigChangeSource,
@@ -130,7 +135,7 @@ const SETTINGS_GROUPS: SettingsGroups = {
   ),
   interaction: orderedSections("interaction"),
   model: orderedSections("model"),
-  context: orderedSections("context"),
+  context: P7_CONTEXT_SETTINGS_SECTIONS,
   memory: orderedSections("memory"),
   files: orderedSections("files"),
   shell: orderedSections("shell"),
@@ -629,6 +634,19 @@ export function SettingsScreen({
       />
     </div>
   );
+  // The Context view keeps its staged edits while another tab is open, as Appearance does.
+  const contextScope: ContextSettingsScope =
+    layer === "project" && folder !== null ? { layer: "project", folder } : { layer: "global" };
+  const context = (
+    <div hidden={activeTab !== "context"}>
+      <ContextSettings
+        client={client}
+        onDirtyChange={(dirty) => reportDirty("P7.context", dirty)}
+        scope={contextScope}
+        showHeader={false}
+      />
+    </div>
+  );
 
   return (
     <Panel
@@ -695,7 +713,8 @@ export function SettingsScreen({
         ) : (
           <>
             {appearance}
-            {activeTab !== "appearance" ? (
+            {shownTabs.includes("context") ? context : null}
+            {activeTab !== "appearance" && activeTab !== "context" ? (
               <div className="flex min-w-0 flex-col gap-4">
                 {activeTab === "tools" && extensionCenterAvailable(capabilities) ? (
                   <ExtensionCenterSection
