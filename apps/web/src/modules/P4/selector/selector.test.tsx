@@ -40,6 +40,21 @@ function entry(
   };
 }
 
+function customEntry(
+  id: EntryId,
+  parentId: EntryId | null,
+  content: string,
+  ordinal: number,
+): SessionEntryHead {
+  return {
+    type: "custom_message",
+    id,
+    parentId,
+    timestamp: `2026-10-06T00:00:${String(ordinal).padStart(2, "0")}.000Z`,
+    content,
+  };
+}
+
 const leafLabel: ReadOnlyTreeLabel = {
   targetId: leafId,
   text: "Saved point",
@@ -415,6 +430,180 @@ describe("P4 tree selector model and views", () => {
       ["Assistant", "First part Second part"],
       ["Tool result", "Tool output"],
     ]);
+  });
+
+  test("shows omp's todo reminder in plain words, without the system-reminder tags", () => {
+    const reminderId = EntryId.parse("entry-reminder");
+    const reminder = entry(
+      reminderId,
+      rootId,
+      "developer",
+      [
+        "<system-reminder>",
+        "You stopped with 2 incomplete todo item(s):",
+        "- Plan",
+        "  - Write the thing",
+        "  - Test the thing",
+        "",
+        "Please continue working on these tasks or mark them complete if finished.",
+        "(Reminder 1/3)",
+        "</system-reminder>",
+      ].join("\n"),
+      2,
+    );
+    const plain = [
+      "You stopped with 2 incomplete todo item(s):",
+      "- Plan",
+      "  - Write the thing",
+      "  - Test the thing",
+      "",
+      "Please continue working on these tasks or mark them complete if finished.",
+      "(Reminder 1/3)",
+    ].join("\n");
+    const nodes: readonly TreeNode[] = [
+      {
+        entry: entry(rootId, null, "user", "Plan the todo list.", 1),
+        children: [{ entry: reminder, children: [] }],
+      },
+    ];
+    const model = createP4TreeSelectorViewModel(
+      treeSnapshot(nodes, reminderId),
+      selectorState({ leafId: reminderId, selectedEntryId: reminderId }),
+    );
+
+    expect(model.rows.map((row) => [row.role, row.preview])).toEqual([
+      ["You", "Plan the todo list."],
+      ["Instruction", plain],
+    ]);
+    expect(model.preview?.text).toBe(plain);
+
+    const search = createP4TreeSelectorViewModel(
+      treeSnapshot(nodes, reminderId),
+      selectorState({
+        leafId: reminderId,
+        selectedEntryId: reminderId,
+        filter: { query: "continue working", showLabels: true },
+      }),
+    );
+    expect(search.rows.map((row) => row.entryId)).toEqual([reminderId]);
+  });
+
+  test("unwraps a system-* envelope in a developer, system or custom message", () => {
+    const ruleNotice = [
+      '<system-reminder reason="rule_violation" rule="no-tabs" path="src/a.ts">',
+      "Use spaces, not tabs.",
+      "</system-reminder>",
+    ].join("\n");
+    const nodes: readonly TreeNode[] = [
+      {
+        entry: entry(rootId, null, "system", ruleNotice, 1),
+        children: [
+          {
+            entry: customEntry(
+              EntryId.parse("entry-notice"),
+              rootId,
+              "<system-notice>\nThe background job finished.\n</system-notice>",
+              2,
+            ),
+            children: [],
+          },
+          {
+            entry: entry(
+              EntryId.parse("entry-job"),
+              rootId,
+              "developer",
+              "<system-notice>\nJob 1 is done.\n</system-notice>",
+              3,
+            ),
+            children: [],
+          },
+        ],
+      },
+    ];
+    const model = createP4TreeSelectorViewModel(
+      treeSnapshot(nodes, rootId),
+      selectorState({ leafId: rootId, selectedEntryId: null }),
+    );
+
+    expect(model.rows.map((row) => [row.role, row.preview])).toEqual([
+      ["System instruction", "Use spaces, not tabs."],
+      ["Extension message", "The background job finished."],
+      ["Instruction", "Job 1 is done."],
+    ]);
+  });
+
+  test("keeps a tag a person typed or quoted, or the assistant wrote, as written", () => {
+    const typed = "<system-reminder>\nWhat I typed\n</system-reminder>";
+    const quoted = "Why does `</system-reminder>` show in the log?";
+    const fenced =
+      "Explain:\n```\n<system-reminder>\nkeep working\n</system-reminder>\n```\nthanks";
+    const assistant = "The wrapper `<system-reminder>` is added by omp.";
+    const nodes: readonly TreeNode[] = [
+      {
+        entry: entry(rootId, null, "user", quoted, 1),
+        children: [
+          { entry: entry(EntryId.parse("entry-typed"), rootId, "user", typed, 2), children: [] },
+          { entry: entry(EntryId.parse("entry-fenced"), rootId, "user", fenced, 3), children: [] },
+          {
+            entry: entry(EntryId.parse("entry-assistant"), rootId, "assistant", assistant, 4),
+            children: [],
+          },
+        ],
+      },
+    ];
+    const snapshot = treeSnapshot(nodes, rootId);
+    const model = createP4TreeSelectorViewModel(
+      snapshot,
+      selectorState({ leafId: rootId, selectedEntryId: null }),
+    );
+
+    expect(model.rows.map((row) => row.preview)).toEqual([quoted, typed, fenced, assistant]);
+    const search = createP4TreeSelectorViewModel(
+      snapshot,
+      selectorState({
+        leafId: rootId,
+        selectedEntryId: null,
+        filter: { query: "what i typed", showLabels: true },
+      }),
+    );
+    expect(search.rows.map((row) => row.preview)).toEqual([typed]);
+  });
+
+  test("shows text as written unless it is exactly one envelope", () => {
+    const texts = [
+      "Heads up.\n<system-reminder>\nWords\n</system-reminder>",
+      "<system-reminder>\nWords\n</system-reminder>\nTrailing note",
+      "<system-reminder>\nFirst\n</system-reminder>\n<system-reminder>\nSecond\n</system-reminder>",
+      "<system-reminder>\nWords\n</system-notice>",
+      "<system-reminder-x>\nWords\n</system-reminder>",
+    ];
+    const lookalike = "<system-reminder>\nWords\n</system-reminder-x>";
+    const nodes: readonly TreeNode[] = [
+      {
+        entry: entry(rootId, null, "user", "Start.", 1),
+        children: [
+          ...texts.map((text, index) => ({
+            entry: entry(EntryId.parse(`entry-raw-${index}`), rootId, "developer", text, index + 2),
+            children: [],
+          })),
+          {
+            entry: customEntry(
+              EntryId.parse("entry-lookalike"),
+              rootId,
+              lookalike,
+              texts.length + 2,
+            ),
+            children: [],
+          },
+        ],
+      },
+    ];
+    const model = createP4TreeSelectorViewModel(
+      treeSnapshot(nodes, rootId),
+      selectorState({ leafId: rootId, selectedEntryId: null }),
+    );
+
+    expect(model.rows.map((row) => row.preview)).toEqual(["Start.", ...texts, lookalike]);
   });
 
   test("ignores a tree snapshot from another conversation", () => {

@@ -172,11 +172,31 @@ function entryRole(entry: SessionEntryHead): string {
   }
 }
 
+/**
+ * omp writes a reminder for the model as one `<system-*>` envelope around plain words. A todo
+ * reminder uses `<system-reminder>`; a rule notice adds attributes. The history shows the words,
+ * not the envelope. Only a developer or system message and a custom message are unwrapped (the
+ * caller decides), and only when the whole text is exactly one envelope with its own closing tag.
+ * Any other text, such as a tag a person quoted, is shown as it was written.
+ */
+const MODEL_ENVELOPE =
+  /^<(system-[\w-]+)(?:\s+[\w-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'<>]+))?)*\s*>([\s\S]*)<\/\1>$/i;
+
+function withoutModelEnvelope(text: string): string {
+  const match = MODEL_ENVELOPE.exec(text.trim());
+  if (match === null) return text;
+  const inner = (match[2] ?? "").trim();
+  // A second envelope inside the first makes two reminders, not one: the text is shown as written.
+  return /<\/?system-/i.test(inner) ? text : inner;
+}
+
 function entryPreview(entry: SessionEntryHead): string {
   const message = messageForEntry(entry);
   if (message) {
     const text = messageContent(message.content);
-    return text.length > 0 ? text : "No message text is available.";
+    const unwrap = message.role === "developer" || message.role === "system";
+    const shown = unwrap ? withoutModelEnvelope(text) : text;
+    return shown.length > 0 ? shown : "No message text is available.";
   }
   const summary = entry.summary;
   if (typeof summary === "string" && summary.length > 0) return summary;
@@ -197,7 +217,8 @@ function entryPreview(entry: SessionEntryHead): string {
       return typeof entry.mode === "string" ? `Mode set to ${entry.mode}` : "Mode changed";
   }
   const content = messageContent(entry.content);
-  return content.length > 0 ? content : "No preview is available for this message.";
+  const shown = entry.type === "custom_message" ? withoutModelEnvelope(content) : content;
+  return shown.length > 0 ? shown : "No preview is available for this message.";
 }
 
 /** Nodes whose subtree holds the current leaf, which omp lists first. */
