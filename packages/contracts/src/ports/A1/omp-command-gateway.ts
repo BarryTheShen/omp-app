@@ -61,6 +61,61 @@ export const CommandRunResult = z.strictObject({
 });
 export type CommandRunResult = z.infer<typeof CommandRunResult>;
 
+/**
+ * An https URL: the only scheme omp's share viewer and gist links use. It carries no username or password,
+ * and no space, control character or backslash.
+ */
+export const HttpsUrl = z
+  .string()
+  .url()
+  .max(2_048)
+  .refine((value) => value.startsWith("https://"), "expected an https URL")
+  .refine(
+    (value) =>
+      ![...value].some(
+        (char) => char.charCodeAt(0) <= 0x20 || char.charCodeAt(0) === 0x7f || char === "\\",
+      ),
+    "expected a URL without spaces, control characters or backslashes",
+  )
+  .refine(
+    (value) => !/^https:\/\/[^/?#]*@/.test(value),
+    "expected a URL without a username or password",
+  );
+
+/**
+ * `/share`'s typed result, read from omp 18.6.1's reply: the viewer link, the gist link when omp made
+ * one, and whether omp trimmed the session to fit the share size limit (builtin-collaboration.ts:285-307).
+ */
+export const ShareResult = z.strictObject({
+  url: HttpsUrl,
+  gistUrl: HttpsUrl.optional(),
+  truncated: z.boolean(),
+});
+export type ShareResult = z.infer<typeof ShareResult>;
+
+export const ShareCommandArgs = z.strictObject({ threadId: ThreadId });
+export type ShareCommandArgs = z.infer<typeof ShareCommandArgs>;
+
+/** `session` runs `/dump`; `all` runs `/dump all` (builtin-collaboration.ts:231-279). */
+export const DumpScope = z.enum(["session", "all"]);
+export type DumpScope = z.infer<typeof DumpScope>;
+
+export const DumpCommandArgs = z.strictObject({ threadId: ThreadId, scope: DumpScope });
+export type DumpCommandArgs = z.infer<typeof DumpCommandArgs>;
+
+/**
+ * omp's own dump text for one scope, exactly as omp printed it. The server checks the shape omp 18.6.1
+ * prints for that scope and passes the text through unparsed; browser code shows it and never reads it.
+ * `empty` is true when omp printed its message for a session with no messages (builtin-collaboration.ts:248,
+ * :257), so a caller can say so without a report to save.
+ */
+export const DumpReport = z.strictObject({
+  scope: DumpScope,
+  text: z.string().min(1),
+  empty: z.boolean(),
+});
+export type DumpReport = z.infer<typeof DumpReport>;
+
 export const CommandOutputEvent = z.strictObject({
   threadId: ThreadId,
   output: CommandOutput,
@@ -73,6 +128,16 @@ export const OmpCommandGateway = definePort({
     run: {
       args: CommandRunArgs,
       result: CommandRunResult,
+      capability: "host.command-gateway",
+    },
+    share: {
+      args: ShareCommandArgs,
+      result: ShareResult,
+      capability: "host.command-gateway",
+    },
+    dump: {
+      args: DumpCommandArgs,
+      result: DumpReport,
       capability: "host.command-gateway",
     },
   },

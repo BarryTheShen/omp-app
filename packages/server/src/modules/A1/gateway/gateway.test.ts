@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { AppFailure, ThreadId } from "@omp-app/contracts";
 import { type RpcDuplex, RpcSession, type RpcSessionTimer } from "@omp-app/omp-rpc";
-import { type CommandParserContext, OmpCommandGatewayService } from "./gateway";
+import {
+  type CommandParserContext,
+  createOmpCommandGateway,
+  OmpCommandGatewayService,
+} from "./gateway";
 
 type Frame = Record<string, unknown>;
 
@@ -440,6 +444,20 @@ describe("OmpCommandGatewayService", () => {
     gateway.registerCommandParser("compact", () => "first");
     expect(() => gateway.registerCommandParser("compact", () => "second")).toThrow(
       /Duplicate command parser registration/,
+    );
+  });
+
+  test("the app's gateway already has the typed /share and /dump parsers registered", () => {
+    const gateway = createOmpCommandGateway({
+      resolveSession: () => {
+        throw new Error("not used in this test");
+      },
+    });
+    expect(() => gateway.registerCommandParser("share", () => "again")).toThrow(
+      /Duplicate command parser registration for share/,
+    );
+    expect(() => gateway.registerCommandParser("dump", () => "again")).toThrow(
+      /Duplicate command parser registration for dump/,
     );
   });
 });

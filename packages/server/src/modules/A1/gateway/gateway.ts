@@ -12,12 +12,17 @@ import {
   ThreadId,
 } from "@omp-app/contracts";
 import type { CommandFuture, RpcSession } from "@omp-app/omp-rpc";
+import { registerOmpCommandParsers } from "./parsers";
 
 /** Resolves the already-connected RpcSession backing one thread's omp process. */
 export type SessionResolver = (threadId: ThreadId) => RpcSession | Promise<RpcSession>;
 
 /** The correlated raw frames of one command run, before any per-command parser is applied. */
 export interface CommandParserContext {
+  /** The command as run, with its leading `/` and any arguments. */
+  readonly command: CommandRunResult["command"];
+  /** False when omp sent the text to the model as a prompt, so the outputs are not the command's own. */
+  readonly agentInvoked: boolean;
   readonly outputs: readonly CommandOutput[];
   readonly sessionUpdates: readonly SessionInfoUpdate[];
   readonly configUpdates: readonly ConfigInfoUpdate[];
@@ -272,6 +277,8 @@ export class OmpCommandGatewayService {
     const result = await this.run(args, options);
     const name = commandName(result.command);
     const context: CommandParserContext = {
+      command: result.command,
+      agentInvoked: result.agentInvoked,
       outputs: result.outputs,
       sessionUpdates: result.sessionUpdates,
       configUpdates: result.configUpdates,
@@ -280,12 +287,12 @@ export class OmpCommandGatewayService {
     if (!parser) return { result, data: context };
     try {
       return { result, data: (await parser(context)) as T };
-    } catch {
-      const parserFailure = failure(
-        "internal",
-        `Command parser for /${name} threw while parsing its result.`,
-        false,
-      );
+    } catch (cause) {
+      // A parser may state its own typed failure, with a message written for the person (an unrecognized
+      // reply). Any other throw is a parser bug and gets the generic message.
+      const parserFailure = isAppFailure(cause)
+        ? cause
+        : failure("internal", `Command parser for /${name} threw while parsing its result.`, false);
       reportError(this.#onError, parserFailure);
       throw parserFailure;
     }
@@ -445,5 +452,7 @@ export class OmpCommandGatewayService {
 export function createOmpCommandGateway(
   options: OmpCommandGatewayOptions,
 ): OmpCommandGatewayService {
-  return new OmpCommandGatewayService(options);
+  const service = new OmpCommandGatewayService(options);
+  registerOmpCommandParsers(service);
+  return service;
 }
