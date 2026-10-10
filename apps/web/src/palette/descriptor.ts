@@ -60,5 +60,19 @@ const U0_THEME_COMMANDS = [
   },
 ] as const satisfies readonly CommandDescriptor[];
 
+/** The palette command that opens the keyboard shortcut sheet; omp's `/hotkeys` lists the same chords. */
+export const U0_SHORTCUT_SHEET_COMMAND = {
+  kind: "command",
+  id: "U0.shortcutSheet",
+  owner: "U0",
+  title: "Keyboard shortcuts",
+  covers: ["D6.hotkeys"],
+  requires: [],
+} as const satisfies CommandDescriptor;
+
 /** Every palette command the U0 part owns; the composed registry lists them (`registry/index.ts`). */
-export const U0_PALETTE_COMMANDS = [U0_MODEL_COMMAND, ...U0_THEME_COMMANDS] as const;
+export const U0_PALETTE_COMMANDS = [
+  U0_MODEL_COMMAND,
+  U0_SHORTCUT_SHEET_COMMAND,
+  ...U0_THEME_COMMANDS,
+] as const;

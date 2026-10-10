@@ -20,10 +20,12 @@ import type { PromptIntent } from "@/modules/U2/contract";
 import { ComposerTriggers } from "./composer-triggers";
 import {
   freshSlashCommand,
+  hotkeysSlashCommand,
   loginSlashCommand,
   newChatSlashCommand,
   routeSubmit,
   runSlashRoute,
+  settingsSlashCommand,
 } from "./slash-commands";
 
 function RuntimeHarness({ children }: { readonly children: ReactNode }) {
@@ -308,5 +310,23 @@ describe("/login", () => {
   test("with words after it, it is not the app command", () => {
     const command = loginSlashCommand({ openLogin: () => undefined });
     expect(routeSlashText("/login anthropic", [], [command])).not.toMatchObject({ kind: "app" });
+  });
+});
+
+describe("/settings and /hotkeys", () => {
+  test("/settings typed alone is an app command that opens the app's Settings", async () => {
+    const openSettings = vi.fn();
+    const command = settingsSlashCommand({ openSettings });
+    expect(routeSlashText("/settings", [], [command])).toEqual({ kind: "app", command });
+    await expect(command.run({})).resolves.toEqual({});
+    expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  test("/hotkeys typed alone is an app command that opens the shortcut sheet", async () => {
+    const openShortcuts = vi.fn();
+    const command = hotkeysSlashCommand({ openShortcuts });
+    expect(routeSlashText("/hotkeys", [], [command])).toEqual({ kind: "app", command });
+    await expect(command.run({})).resolves.toEqual({});
+    expect(openShortcuts).toHaveBeenCalledTimes(1);
   });
 });

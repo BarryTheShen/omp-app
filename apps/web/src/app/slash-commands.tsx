@@ -148,6 +148,42 @@ export function loginSlashCommand({
 }
 
 /**
+ * `/settings`: omp's settings menu is a terminal dialog; the app opens its own Settings, the one the palette opens.
+ */
+export function settingsSlashCommand({
+  openSettings,
+}: {
+  readonly openSettings: () => void;
+}): SlashAppCommand {
+  return {
+    name: "settings",
+    description: "Open settings",
+    run: async () => {
+      openSettings();
+      return {};
+    },
+  };
+}
+
+/**
+ * `/hotkeys`: omp lists its key chords in the terminal; the app opens its shortcut sheet, the same one `?` opens.
+ */
+export function hotkeysSlashCommand({
+  openShortcuts,
+}: {
+  readonly openShortcuts: () => void;
+}): SlashAppCommand {
+  return {
+    name: "hotkeys",
+    description: "Show all keyboard shortcuts",
+    run: async () => {
+      openShortcuts();
+      return {};
+    },
+  };
+}
+
+/**
  * Decides whether a submitted message is a command. Only a plain prompt with nothing attached can be one:
  * bash and Python input, pictures and files keep their normal path.
  */

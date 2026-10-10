@@ -122,10 +122,16 @@ import { projectTodoSnapshot } from "@/modules/U5/todo/model";
 import { TodoStoreAdapter } from "@/modules/U5/todo/store/store";
 import { OverlayHost, useStableOverlayHost } from "@/overlay";
 import { type CommandPaletteHandler, CommandPaletteHost } from "@/palette";
+import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { DESCRIPTORS, RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
-import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
+import {
+  type PreferenceStore,
+  ShortcutRegistryProvider,
+  ShortcutSheetHost,
+  useShortcutRegistry,
+} from "@/shortcuts";
 import { setThemePreference, ThemeApplier, ThemeButton } from "@/theme";
 import { useAgentHubShortcut } from "./agents/agent-hub-shortcut";
 import { reportClientError, setClientErrorSink } from "./client-errors";
@@ -142,10 +148,12 @@ import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
 import {
   freshSlashCommand,
+  hotkeysSlashCommand,
   loginSlashCommand,
   newChatSlashCommand,
   routeSubmit,
   runSlashRoute,
+  settingsSlashCommand,
   useSlashCommands,
 } from "./slash-commands";
 import { finishedAnswerAt } from "./turn-end";
@@ -944,14 +952,23 @@ function ActiveThreadReady({
     [attachmentManager, draftController],
   );
   const notificationProjector = useNotificationProjector(store, setEditorText);
+  const shortcutRegistry = useShortcutRegistry();
   // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
   const appSlashCommands = useMemo(
     () => [
       newChatSlashCommand({ lifecycle, openThread }),
       freshSlashCommand({ lifecycle }),
       loginSlashCommand({ openLogin }),
+      settingsSlashCommand({
+        openSettings: () => onOpenSettings(threadId, composerInput() ?? undefined),
+      }),
+      hotkeysSlashCommand({
+        openShortcuts: () => {
+          void shortcutRegistry.commandFor(U0_SHORTCUT_SHEET_COMMAND.id)?.run();
+        },
+      }),
     ],
-    [lifecycle, openLogin, openThread],
+    [lifecycle, onOpenSettings, openLogin, openThread, shortcutRegistry, threadId],
   );
   const slashProvider = useSlashCommands({
     client,
@@ -1647,13 +1664,15 @@ function ConnectedRoot() {
     <ToolRendererResolverContext.Provider value={resolveToolRenderer}>
       <RegistryProvider capabilities={capabilities} registry={registry} renderers={RENDERERS}>
         <ShortcutRegistryProvider descriptors={DESCRIPTORS} preferenceStore={shortcutPreferences}>
-          <OverlayHost>
-            <ConnectedApp
-              capabilities={capabilities}
-              client={client}
-              launchFolder={serverInfo.launchFolder}
-            />
-          </OverlayHost>
+          <ShortcutSheetHost>
+            <OverlayHost>
+              <ConnectedApp
+                capabilities={capabilities}
+                client={client}
+                launchFolder={serverInfo.launchFolder}
+              />
+            </OverlayHost>
+          </ShortcutSheetHost>
         </ShortcutRegistryProvider>
       </RegistryProvider>
     </ToolRendererResolverContext.Provider>

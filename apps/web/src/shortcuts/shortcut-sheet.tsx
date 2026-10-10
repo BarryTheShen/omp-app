@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { capabilityStatus, useCapabilities } from "@/registry-core";
 import {
   useShortcutBindings,
@@ -201,6 +202,11 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
 export function ShortcutSheetHost({ children }: { readonly children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const registry = useShortcutRegistry();
+  // omp's /hotkeys and the palette's "Keyboard shortcuts" both open this sheet.
+  useEffect(
+    () => registry.registerCommand(U0_SHORTCUT_SHEET_COMMAND.id, { run: () => setOpen(true) }),
+    [registry],
+  );
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
