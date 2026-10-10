@@ -204,6 +204,19 @@ function SettingControlRow({
   const setSecret = () => onSecretAction?.(control.key, "set");
   const unsetSecret = () => onSecretAction?.(control.key, "unset");
   const secretActionLabel = secret?.isSet ? "Replace…" : "Set…";
+  const invalid = validation !== undefined && !validation.valid;
+  // What the person typed, kept so that a value the setting does not accept stays in the field under its error
+  // message: such a value is never staged, so the field would otherwise jump back to the last good value. Cancel
+  // bumps the token, which drops it.
+  const [typed, setTyped] = useState<{ readonly token: number; readonly text: string } | undefined>(
+    undefined,
+  );
+  const fieldText =
+    invalid && typed !== undefined && typed.token === resetToken
+      ? typed.text
+      : effectiveValue === undefined
+        ? ""
+        : String(effectiveValue);
 
   return (
     <SettingRow
@@ -255,9 +268,12 @@ function SettingControlRow({
       ) : (
         <ControlInput
           control={control}
-          value={effectiveValue === undefined ? "" : String(effectiveValue)}
+          value={fieldText}
           disabled={disabled}
-          onValue={(next) => onStage({ secret: false, value: parseControlValue(control, next) })}
+          onValue={(next) => {
+            setTyped({ token: resetToken, text: next });
+            onStage({ secret: false, value: parseControlValue(control, next) });
+          }}
         />
       )}
       {validation && !validation.valid ? (
@@ -341,6 +357,9 @@ function parseControlValue(
 ): string | number | boolean | readonly string[] {
   if (control.kind === "boolean") return value === "true";
   if (control.kind === "number" || control.kind === "duration") {
+    // An emptied field is not 0: Number("") is 0, so it would be staged and saved without a word. It stays text, and
+    // the control's own check says what it needs.
+    if (value.trim() === "") return value;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : value;
   }

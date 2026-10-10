@@ -282,6 +282,48 @@ describe("S1 settings section", () => {
       screen.getByText("Source: Set in the environment · overrides omp's default"),
     ).toBeTruthy();
   });
+
+  test("a number the setting refuses, or an emptied field, stays in the field under the setting's message and blocks Save", () => {
+    function Harness() {
+      const [staged, setStaged] = useState<StagedSettings>(initial);
+      return (
+        <SettingsSection
+          descriptor={descriptor}
+          snapshot={snapshot}
+          staged={staged}
+          onStage={setStaged}
+          onCommit={() => undefined}
+          onCancel={() => setStaged(initial)}
+        />
+      );
+    }
+    render(<Harness />);
+    const count = () => screen.getByLabelText("Count") as HTMLInputElement;
+    const save = () => screen.getByRole("button", { name: "Save changes" });
+
+    fireEvent.change(count(), { target: { value: "-1" } });
+    expect(screen.getByRole("alert").textContent).toBe("Must be non-negative.");
+    expect(count().value).toBe("-1");
+    expect(save()).toHaveProperty("disabled", true);
+
+    // An emptied field is not 0: it is refused, not saved without a word.
+    fireEvent.change(count(), { target: { value: "" } });
+    expect(screen.getByRole("alert").textContent).toBe("Must be non-negative.");
+    expect(count().value).toBe("");
+    expect(save()).toHaveProperty("disabled", true);
+
+    fireEvent.change(count(), { target: { value: "3" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(count().value).toBe("3");
+    expect(save()).toHaveProperty("disabled", false);
+
+    // Cancel puts the saved value back, with no message.
+    fireEvent.change(count(), { target: { value: "-2" } });
+    expect(count().value).toBe("-2");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(count().value).toBe("1");
+  });
 });
 
 describe("S1 structured settings", () => {
