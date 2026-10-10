@@ -177,6 +177,7 @@ function SettingControlRow({
       title={control.label}
       description={control.description}
       detail={<span data-testid={`${control.key}-provenance`}>Source: {provenance}</span>}
+      layout="stacked"
     >
       {control.secret ? (
         <div className="flex flex-wrap items-center gap-2">

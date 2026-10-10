@@ -147,6 +147,11 @@ import { finishedAnswerAt } from "./turn-end";
 
 const FOLDER_KEY = "omp.app.root.folder";
 const THREAD_KEY = "omp.app.root.thread";
+/**
+ * The settings frame is 60 rem (960 px at the default size) and never wider than 94% of the window,
+ * so a phone still shows a margin. It does not scroll: its panel's body does, so the title stays whole.
+ */
+const SETTINGS_FRAME_CLASS = "w-[min(60rem,94vw)] max-w-none overflow-hidden p-0";
 const EMPTY_HISTORY: SelectedThreadHistoryState = {
   threadId: undefined,
   store: undefined,
@@ -1237,6 +1242,7 @@ function ConnectedApp({
         label: "Settings",
         ...(restoreFocus === undefined ? {} : { restoreFocus }),
         width: "viewport",
+        className: SETTINGS_FRAME_CLASS,
         content: ({ close }) => (
           <SettingsScreen
             capabilities={capabilities}

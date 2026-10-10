@@ -271,20 +271,39 @@ export interface SettingRowProps {
   readonly description?: string;
   /** A small line under the description, e.g. where the value comes from. */
   readonly detail?: ReactNode;
-  /** The control itself, shown beside the label (below it on a narrow screen). */
+  /**
+   * `beside` (the default) puts the control beside the label from the small window breakpoint up.
+   * `stacked` always puts the control below the label. Inside a wide surface, such as the settings
+   * dialog, the help text and the control then keep a readable measure (36 rem and 28 rem).
+   */
+  readonly layout?: "beside" | "stacked";
+  /** The control itself, shown beside the label or below it (see `layout`). */
   readonly children: ReactNode;
 }
 
-/** One setting: its label, help text and source on the left, its control on the right. */
-export function SettingRow({ title, description, detail, children }: SettingRowProps) {
+/** One setting: its label, help text and source, with its control beside or below them. */
+export function SettingRow({
+  title,
+  description,
+  detail,
+  layout = "beside",
+  children,
+}: SettingRowProps) {
+  const stacked = layout === "stacked";
+  const className = stacked
+    ? "grid min-w-0 gap-3 py-4"
+    : "grid min-w-0 gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(15rem,1.25fr)] sm:items-start sm:gap-8";
+  const helpClassName = stacked
+    ? "text-muted-foreground mt-1 max-w-xl text-sm"
+    : "text-muted-foreground mt-1 text-sm";
   return (
-    <div className="grid min-w-0 gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(15rem,1.25fr)] sm:items-start sm:gap-8">
+    <div className={className}>
       <div className="min-w-0">
         <div className="font-medium">{title}</div>
-        {description ? <p className="text-muted-foreground mt-1 text-sm">{description}</p> : null}
+        {description ? <p className={helpClassName}>{description}</p> : null}
         {detail ? <div className="text-muted-foreground mt-2 text-xs">{detail}</div> : null}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className={stacked ? "min-w-0 max-w-md" : "min-w-0"}>{children}</div>
     </div>
   );
 }

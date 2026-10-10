@@ -624,6 +624,7 @@ export function SettingsScreen({
               : "Choose whether changes apply to all workspaces or only this workspace."
           }
           detail={saveLocationText(layer)}
+          layout="stacked"
         >
           <Toolbar ariaLabel="Save settings to">
             <Button
