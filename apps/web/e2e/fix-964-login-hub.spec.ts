@@ -72,9 +72,7 @@ realTest(
     await expect(commandList(page).getByRole("option", { name: /^\/login/ })).toBeVisible({
       timeout: 30_000,
     });
-    // The first Enter chooses /login from the list, which leaves "/login " in the composer; the second sends it.
-    await composer.press("Enter");
-    await expect(composer).toHaveValue("/login ");
+    // /login takes no arguments, so the one Enter that chooses it also runs it.
     await composer.press("Enter");
 
     const dialog = loginDialog(page);

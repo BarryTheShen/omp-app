@@ -9,9 +9,20 @@ import {
   useRef,
 } from "react";
 
+/**
+ * How a list settles an Enter kept while it loaded, once it answers with options. `choose` runs the option the
+ * list highlights (its first); `drop` lets the key go, because the person never saw the list (issue 818).
+ */
+export type KeptEnterAnswer = "choose" | "drop";
+
 interface TriggerKeyScopeValue {
-  /** Counts the trigger lists in this scope that are loading their results. */
-  readonly loading: (delta: 1 | -1) => void;
+  /**
+   * Counts the trigger lists in this scope that are loading their results. A list that answers passes how it
+   * settles a kept Enter; a list that passes none drops it.
+   */
+  readonly loading: (delta: 1 | -1, answer?: () => KeptEnterAnswer) => void;
+  /** Presses Enter in the composer again once a choose has committed, so the chosen command is sent. */
+  readonly sendAfterChoose: () => void;
 }
 
 /** An Enter kept while a list loads: the scope it was pressed in, and the composer's textarea. */
@@ -40,14 +51,22 @@ function pressEnterAgain(textarea: HTMLTextAreaElement): void {
 }
 
 /**
- * A list has answered. An Enter kept while it loaded is dropped when the list has options, because the
- * person chooses one with Enter; it is pressed again when the list has none, so the text is sent. A list
- * that closed meanwhile (the person kept typing or moved away) drops it.
+ * A list has answered. An Enter kept while it loaded is dropped when the list has options, unless the list
+ * chooses for it: then the option it highlights (its first) is chosen (issue 1006). It is pressed again when the list
+ * has none, so the text is sent. A list that closed meanwhile (the person kept typing or moved away) drops it.
  */
-function settleKeptEnter({ scope, textarea }: KeptEnter): void {
+function settleKeptEnter(
+  { scope, textarea }: KeptEnter,
+  answer: (() => KeptEnterAnswer) | undefined,
+): void {
   const listbox = scope.querySelector('[role="listbox"]');
-  if (listbox === null || listbox.querySelector('[role="option"]') !== null) return;
-  pressEnterAgain(textarea);
+  if (listbox === null) return;
+  const first = listbox.querySelector<HTMLElement>('[role="option"]');
+  if (first === null) {
+    pressEnterAgain(textarea);
+    return;
+  }
+  if (answer?.() === "choose") first.click();
 }
 
 /**
@@ -64,17 +83,25 @@ export function TriggerKeyScope({
   readonly className?: string;
   readonly children: ReactNode;
 }) {
+  const element = useRef<HTMLDivElement>(null);
   const pending = useRef(0);
   const kept = useRef<KeptEnter | null>(null);
   const value = useMemo<TriggerKeyScopeValue>(
     () => ({
-      loading: (delta) => {
+      loading: (delta, answer) => {
         pending.current += delta;
         const enter = kept.current;
         if (pending.current > 0 || enter === null) return;
         kept.current = null;
         // After the commit that renders the answer, so the list's options are in the page when they are read.
-        queueMicrotask(() => settleKeptEnter(enter));
+        queueMicrotask(() => settleKeptEnter(enter, answer));
+      },
+      sendAfterChoose: () => {
+        // After the choose has committed (the list has gone quiet), Enter is pressed again: the composer sends.
+        queueMicrotask(() => {
+          const textarea = element.current?.querySelector("textarea");
+          if (textarea) pressEnterAgain(textarea);
+        });
       },
     }),
     [],
@@ -101,7 +128,7 @@ export function TriggerKeyScope({
   }, []);
   return (
     <TriggerKeyScopeContext.Provider value={value}>
-      <div className={className} onKeyDownCapture={onKeyDownCapture}>
+      <div ref={element} className={className} onKeyDownCapture={onKeyDownCapture}>
         {children}
       </div>
     </TriggerKeyScopeContext.Provider>
@@ -110,13 +137,20 @@ export function TriggerKeyScope({
 
 /**
  * A trigger list reports while it loads, so an Enter pressed during the search is kept until the list answers
- * (see `TriggerKeyScope`) and cannot send the text before the list has its options.
+ * (see `TriggerKeyScope`) and cannot send the text before the list has its options. `answer` says how a kept Enter
+ * is settled when the list answers with options; without one, the key is dropped.
  */
-export function useTriggerListLoading(loading: boolean): void {
+export function useTriggerListLoading(loading: boolean, answer?: () => KeptEnterAnswer): void {
   const scope = useContext(TriggerKeyScopeContext);
   useLayoutEffect(() => {
     if (!loading || scope === null) return undefined;
     scope.loading(1);
-    return () => scope.loading(-1);
-  }, [loading, scope]);
+    return () => scope.loading(-1, answer);
+  }, [loading, scope, answer]);
+}
+
+/** A function that presses Enter again in the composer once a chosen command has committed, so the command runs. */
+export function useSendAfterChoose(): () => void {
+  const scope = useContext(TriggerKeyScopeContext);
+  return useCallback(() => scope?.sendAfterChoose(), [scope]);
 }

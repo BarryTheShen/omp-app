@@ -42,14 +42,12 @@ async function captureDialogThreeWays(page: Page, name: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
-/** Types a command, chooses it from the list, and sends it: the second Enter is the one that sends. */
+/** Types a command and presses Enter on it: a command with no arguments runs when Enter chooses it. */
 async function sendTypedCommand(page: Page, composer: Locator, command: string): Promise<void> {
   await composer.fill(`/${command}`);
   await expect(
     commandList(page).getByRole("option", { name: new RegExp(`^/${command}`) }),
   ).toBeVisible({ timeout: 30_000 });
-  await composer.press("Enter");
-  await expect(composer).toHaveValue(`/${command} `);
   await composer.press("Enter");
 }
 

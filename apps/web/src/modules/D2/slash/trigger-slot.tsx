@@ -11,7 +11,12 @@ import type {
   ComposerTriggerSlotProps,
 } from "../../U2/contract";
 import type { TriggerCandidate, TriggerSearchResult } from "../contract";
-import { TriggerKeyScope, useTriggerListLoading } from "../shared/trigger-keys";
+import {
+  type KeptEnterAnswer,
+  TriggerKeyScope,
+  useSendAfterChoose,
+  useTriggerListLoading,
+} from "../shared/trigger-keys";
 import type { SlashCommandProvider } from "./provider";
 
 /** The typed text from the start of the message up to the caret, on one line: `/name` or `/name args`. */
@@ -136,6 +141,8 @@ function SlashPopover({
   const status = useRef<string | null>(null);
   // True while arguments follow a command and nothing matches them: no list, so Enter sends the message.
   const quiet = useRef(false);
+  // Whether the list's first command is exactly the text typed: only then does an Enter kept while it loaded choose it.
+  const typedIsFirst = useRef(false);
   const [, redraw] = useState(0);
   const fetcher = useCallback(
     async (query: string): Promise<readonly Unstable_TriggerItem[]> => {
@@ -145,6 +152,7 @@ function SlashPopover({
       candidateMap.current = next.candidates;
       status.current = statusLine(result);
       quiet.current = /\s/u.test(query) && next.items.length === 0 && status.current === null;
+      typedIsFirst.current = next.items[0]?.label === query;
       return next.items;
     },
     [provider],
@@ -155,21 +163,30 @@ function SlashPopover({
     debounceMs: 60,
     enabled: provider !== undefined,
   });
-  useTriggerListLoading(completion.isLoading);
+  // A kept Enter chooses only the command whose exact name was typed; otherwise the list was never seen and the key is dropped (issue 818).
+  const answerKeptEnter = useCallback(
+    (): KeptEnterAnswer => (typedIsFirst.current ? "choose" : "drop"),
+    [],
+  );
+  useTriggerListLoading(completion.isLoading, answerKeptEnter);
+  const sendAfterChoose = useSendAfterChoose();
   const formatter = useMemo(() => directiveFormatter(), []);
   const handleInserted = useCallback(
     (item: Unstable_TriggerItem) => {
       const candidate = candidateMap.current.get(item.id);
       if (!candidate) return;
       onSelect(candidate);
-      // A command with no arguments is complete once chosen. Its old option stays highlighted until the next
-      // search answers, so an Enter now would choose it again instead of sending: the list goes quiet at once.
+      // A command with no arguments runs when it is chosen, by Enter or by a click, as omp's TUI does: it applies and
+      // submits the highlighted slash command (packages/tui/src/components/editor.ts:1932-1966). Its old option stays
+      // highlighted until the next search answers, so the list goes quiet first and the send follows after that.
+      // A command with arguments keeps its name in the composer, so the arguments can be typed.
       if (typeof candidate.metadata?.argumentHint !== "string") {
         quiet.current = true;
         redraw((count) => count + 1);
+        sendAfterChoose();
       }
     },
-    [onSelect],
+    [onSelect, sendAfterChoose],
   );
   if (!provider) return null;
   return (

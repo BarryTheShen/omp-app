@@ -26,7 +26,7 @@ function commandResult(page: Page): Locator {
 }
 
 realTest(
-  "typing / lists omp's own commands; Enter inserts one, and Enter again runs it without the model",
+  "typing / lists omp's own commands; Enter inserts one that takes arguments, and Enter again runs it without the model",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
     const page = await realApp.open();
@@ -39,7 +39,7 @@ realTest(
     await expect(usage).toContainText("Show token usage");
     await expect(usage).toContainText("Arguments: [show|reset");
 
-    // Enter on the highlighted command inserts it, with one trailing space.
+    // /usage takes arguments, so Enter on it inserts it with one trailing space; a command with none runs at once (next test).
     await composer.press("Enter");
     await expect(composer).toHaveValue("/usage ");
     // Its subcommands are offered next; Escape closes them and the message is unchanged.
@@ -52,6 +52,28 @@ realTest(
     await composer.press("Enter");
     await expect(commandResult(page)).toContainText("Input tokens: 0", { timeout: 60_000 });
     await expect(composer).toHaveValue("");
+    await expect(page.getByText("pong", { exact: true })).toHaveCount(0);
+  },
+);
+
+realTest(
+  "a command with no arguments runs when Enter chooses it, and the answer shows without the model",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const page = await realApp.open();
+    const composer = await startChat(page);
+
+    // /context takes no arguments, so the one Enter that chooses it also sends it.
+    await composer.fill("/cont");
+    await expect(commandList(page).getByRole("option", { name: /^\/context/ })).toBeVisible({
+      timeout: 30_000,
+    });
+    await composer.press("Enter");
+    // The composer empties: the one Enter sent /context, and the list closed.
+    await expect(page.locator('textarea[aria-label="Message input"]')).toHaveValue("", {
+      timeout: 60_000,
+    });
+    await expect(commandList(page)).toBeHidden();
     await expect(page.getByText("pong", { exact: true })).toHaveCount(0);
   },
 );

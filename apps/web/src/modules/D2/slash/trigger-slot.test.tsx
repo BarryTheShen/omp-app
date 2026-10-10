@@ -128,13 +128,27 @@ describe("D2.3 SlashTriggerSlot", () => {
     provider.dispose();
   });
 
-  test("a command with no arguments is quiet once chosen: an Enter pressed at once sends the message", async () => {
+  /** The message box as a textarea: the slash tests type into it and read its selection and value. */
+  function composerInput(): HTMLTextAreaElement {
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    if (!(input instanceof HTMLTextAreaElement))
+      throw new Error("the message box is not a textarea");
+    return input;
+  }
+
+  /** An app command with no arguments, so choosing it runs it. */
+  function loginProvider(): SlashCommandProvider {
     const provider = createSlashCommandProvider({
       client: fakeSlashClient().client,
       threadId,
       capabilities: () => available,
       appCommands: () => [{ name: "login", description: "Sign in", run: async () => ({}) }],
     });
+    return provider;
+  }
+
+  test("a command with no arguments runs when it is chosen by Enter, and the list goes quiet", async () => {
+    const provider = loginProvider();
     const submitPrompt = vi.fn(async () => undefined);
     render(
       <RuntimeHarness>
@@ -143,26 +157,36 @@ describe("D2.3 SlashTriggerSlot", () => {
         </SlashTriggerSlot>
       </RuntimeHarness>,
     );
-    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    const input = composerInput();
     fireEvent.change(input, { target: { value: "/login" } });
     input.setSelectionRange(6, 6);
     await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(input.value).toBe("/login "));
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("option")).toBeNull();
+    provider.dispose();
+  });
 
-    // The option that was chosen is still in the list until the next search answers. It must not take this Enter.
-    fireEvent.keyDown(input, { key: "Enter" });
+  test("a command with no arguments runs when a click chooses it", async () => {
+    const provider = loginProvider();
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/login" } });
+    input.setSelectionRange(6, 6);
+    fireEvent.click(await screen.findByRole("option", { name: /^\/login/ }));
     await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
     provider.dispose();
   });
 
-  test("once the list has settled after a no-argument command, the next Enter sends too", async () => {
-    const provider = createSlashCommandProvider({
-      client: fakeSlashClient().client,
-      threadId,
-      capabilities: () => available,
-      appCommands: () => [{ name: "login", description: "Sign in", run: async () => ({}) }],
-    });
+  test("a command with arguments inserts its name and waits for the arguments: Enter does not send it", async () => {
+    const provider = providerWith(available);
     const submitPrompt = vi.fn(async () => undefined);
     render(
       <RuntimeHarness>
@@ -171,17 +195,75 @@ describe("D2.3 SlashTriggerSlot", () => {
         </SlashTriggerSlot>
       </RuntimeHarness>,
     );
-    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: "/login" } });
-    input.setSelectionRange(6, 6);
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/us" } });
+    input.setSelectionRange(3, 3);
     await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(input.value).toBe("/login "));
-    const { promise, resolve } = Promise.withResolvers<void>();
-    setTimeout(resolve, 400);
-    await promise;
+    await waitFor(() => expect(input.value).toBe("/usage "));
+    expect(submitPrompt).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  test("an Enter kept while the list loads runs the command whose exact name was typed", async () => {
+    const release = Promise.withResolvers<void>();
+    let searching = false;
+    const base = loginProvider();
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: (query) => {
+        searching = true;
+        return release.promise.then(() => base.searchTyped(query));
+      },
+    };
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/login" } });
+    input.setSelectionRange(6, 6);
+    await waitFor(() => expect(searching).toBe(true));
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(submitPrompt).not.toHaveBeenCalled();
+    release.resolve();
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    base.dispose();
+  });
+
+  test("an Enter kept while the list loads is dropped when the typed text is only a prefix of the first command", async () => {
+    const release = Promise.withResolvers<void>();
+    let searching = false;
+    const base = loginProvider();
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: (query) => {
+        searching = true;
+        return release.promise.then(() => base.searchTyped(query));
+      },
+    };
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/log" } });
+    input.setSelectionRange(4, 4);
+    await waitFor(() => expect(searching).toBe(true));
+    fireEvent.keyDown(input, { key: "Enter" });
+    release.resolve();
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    expect(submitPrompt).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
-    provider.dispose();
+    base.dispose();
   });
 });
