@@ -650,6 +650,38 @@ function streamedCopyKey(message: OmpMessage): string | undefined {
 }
 
 /**
+ * Where the live messages that history does not return go. A message still waiting for its entry is the newest and
+ * goes last. An answer cut off by the process exiting is different: omp never saved it, so history never returns it,
+ * and moving it behind the answers that came after would glue its text onto the next turn's answer. It keeps its
+ * place, right after the message it followed.
+ */
+function placeLiveMessages(
+  previousOrder: readonly MessageKey[],
+  viewOrder: readonly MessageKey[],
+  live: readonly MessageKey[],
+  isCutOff: (key: MessageKey) => boolean,
+): MessageKey[] {
+  const placed = [...viewOrder];
+  const last: MessageKey[] = [];
+  for (const key of live) {
+    const before = previousOrder.indexOf(key);
+    if (!isCutOff(key) || before < 0) {
+      last.push(key);
+      continue;
+    }
+    // The nearest earlier message that is still in the view; with none before it, the answer was the first.
+    let after = before === 0 ? -1 : undefined;
+    for (let index = before - 1; index >= 0 && after === undefined; index -= 1) {
+      const found = placed.lastIndexOf(previousOrder[index] as MessageKey);
+      if (found >= 0) after = found;
+    }
+    if (after === undefined) last.push(key);
+    else placed.splice(after + 1, 0, key);
+  }
+  return [...placed, ...last];
+}
+
+/**
  * Shows the persisted history of the active branch: every `message` entry on it becomes a persisted
  * message, in branch order, followed by the live messages omp has not persisted yet. A live message
  * already paired to an entry keeps its record; one not paired yet stands in for its entry (so a
@@ -705,7 +737,12 @@ function hydratePersistedMessages(next: MutableSnapshot): void {
   }
   const shown = new Set<MessageKey>(viewOrder);
   const live = next.messageOrder.filter((key) => !shown.has(key) && key.startsWith("stream:"));
-  next.messageOrder = [...viewOrder, ...live];
+  next.messageOrder = placeLiveMessages(
+    next.messageOrder,
+    viewOrder,
+    live,
+    (key) => next.messages[key]?.interrupted === true,
+  );
 }
 
 interface PendingDraft {

@@ -70,6 +70,8 @@ export interface ThreadReadingPlace {
 export interface ThreadShellProps {
   readonly store: OmpRuntimeStore;
   readonly onRetry?: () => Promise<void> | void;
+  /** Starts omp again for this chat; the banner offers it when omp stopped on its own (error code `omp_exited`). */
+  readonly onRestartOmp?: () => Promise<void> | void;
   readonly slots?: ThreadRowSlots;
   readonly autoScroll?: boolean;
   readonly footer?: ReactNode;
@@ -86,26 +88,43 @@ export interface ThreadShellProps {
 interface RuntimeStateSurfaceProps {
   readonly snapshot: RuntimeSnapshot;
   readonly onRetry?: () => Promise<void> | void;
+  readonly onRestartOmp?: () => Promise<void> | void;
 }
 
 function RuntimeError({
   error,
   onRetry,
+  onRestartOmp,
 }: {
   error: AppError;
   onRetry?: () => Promise<void> | void;
+  onRestartOmp?: () => Promise<void> | void;
 }) {
   const [retrying, setRetrying] = useState(false);
-  const [retryError, setRetryError] = useState<string | undefined>(undefined);
+  // What the last try said. A refusal that is not retryable (a chat that was never saved cannot be continued) ends
+  // the offer: the button would only repeat it.
+  const [retryError, setRetryError] = useState<
+    { readonly message: string; readonly retryable: boolean } | undefined
+  >(undefined);
+  // An omp that stopped is started again; any other failure is retried by whoever owns it.
+  const stopped = error.code === "omp_exited";
+  const action = stopped ? onRestartOmp : onRetry;
 
   const retry = async () => {
-    if (onRetry === undefined || retrying) return;
+    if (action === undefined || retrying) return;
     setRetrying(true);
     setRetryError(undefined);
     try {
-      await onRetry();
+      await action();
     } catch (cause) {
-      setRetryError(cause instanceof AppFailure ? cause.appError.message : "Retry failed");
+      setRetryError(
+        cause instanceof AppFailure
+          ? { message: cause.appError.message, retryable: cause.appError.retryable }
+          : {
+              message: stopped ? "omp could not be restarted" : "Retry failed",
+              retryable: true,
+            },
+      );
     } finally {
       setRetrying(false);
     }
@@ -130,19 +149,19 @@ function RuntimeError({
       >
         <p className="text-sm font-medium">The conversation could not continue.</p>
         <p className="mt-1 text-sm">{error.message}</p>
-        {onRetry !== undefined && (
+        {action !== undefined && retryError?.retryable !== false && (
           <button
             className="border-danger/40 bg-danger-surface-foreground/10 mt-3 rounded-md border px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
             disabled={retrying}
             type="button"
             onClick={() => void retry()}
           >
-            {retrying ? "Retrying…" : "Retry"}
+            {retrying ? (stopped ? "Restarting…" : "Retrying…") : stopped ? "Restart omp" : "Retry"}
           </button>
         )}
         {retryError !== undefined && (
           <p className="text-danger mt-2 text-sm" role="status">
-            {retryError}
+            {retryError.message}
           </p>
         )}
       </div>
@@ -160,12 +179,14 @@ function lastAnswerRefusedKey(snapshot: RuntimeSnapshot): boolean {
   );
 }
 
-function RuntimeStateSurface({ snapshot, onRetry }: RuntimeStateSurfaceProps) {
+function RuntimeStateSurface({ snapshot, onRetry, onRestartOmp }: RuntimeStateSurfaceProps) {
   const error = snapshot.error ?? snapshot.process.error;
   // A refused key is said once: under the answer that stopped, when the transcript has that answer.
   const shownUnderAnswer =
     credentialFailureFromError(error) !== null && lastAnswerRefusedKey(snapshot);
-  if (error !== null && !shownUnderAnswer) return <RuntimeError error={error} onRetry={onRetry} />;
+  if (error !== null && !shownUnderAnswer) {
+    return <RuntimeError error={error} onRetry={onRetry} onRestartOmp={onRestartOmp} />;
+  }
 
   if (snapshot.process.status === "starting" || snapshot.process.status === "restarting") {
     return (
@@ -333,6 +354,7 @@ function EarlierMessagesControl({
 export function ThreadShell({
   store,
   onRetry,
+  onRestartOmp,
   slots,
   autoScroll = true,
   footer,
@@ -427,7 +449,11 @@ export function ThreadShell({
             turnAnchor="bottom"
           >
             <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
-              <RuntimeStateSurface snapshot={snapshot} onRetry={onRetry} />
+              <RuntimeStateSurface
+                snapshot={snapshot}
+                onRetry={onRetry}
+                onRestartOmp={onRestartOmp}
+              />
               <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
                 {onLoadOlder !== undefined && snapshot.transcript.hasOlder && (
                   <EarlierMessagesControl onLoad={loadEarlier} />

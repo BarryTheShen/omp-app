@@ -184,6 +184,96 @@ describe("OmpRuntimeStore", () => {
     expect(snapshot.messages[oldKey as MessageKey]).toMatchObject({ interrupted: true });
   });
 
+  test("an answer cut off by the process exiting keeps its own place and never takes a later answer's", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const ask = (text: string, stamp: number) => ({
+      role: "user",
+      content: text,
+      timestamp: at + stamp,
+    });
+    const reply = (text: string, stamp: number) => ({ ...assistant(text), timestamp: at + stamp });
+    let seq = 0;
+    const nextSeq = (): number => {
+      seq += 1;
+      return seq;
+    };
+    const live = (event: unknown): void => omp(store, event, nextSeq());
+    const processStatus = (status: string): void =>
+      ingest(store, { kind: "process", status }, nextSeq());
+
+    // A finished turn, then a turn whose answer is cut off while it streams: omp is killed.
+    live({ type: "agent_start" });
+    live({ type: "message_start", message: ask("first", 1) });
+    live({ type: "message_end", message: ask("first", 1) });
+    live({ type: "message_start", message: reply("", 2) });
+    live({ type: "message_end", message: reply("pong", 2) });
+    live({ type: "agent_end" });
+    live({ type: "agent_start" });
+    live({ type: "message_start", message: ask("long please", 3) });
+    live({ type: "message_end", message: ask("long please", 3) });
+    live({ type: "message_start", message: reply("", 4) });
+    const partial = reply("cut off text", 4);
+    live({
+      type: "message_update",
+      message: partial,
+      assistantMessageEvent: {
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "cut off text",
+        partial,
+      },
+    });
+    processStatus("exited");
+    processStatus("starting");
+    processStatus("ready");
+    // The next turn, after Restart omp.
+    live({ type: "agent_start" });
+    live({ type: "message_start", message: ask("ping", 5) });
+    live({ type: "message_end", message: ask("ping", 5) });
+    live({ type: "message_start", message: reply("", 6) });
+    live({ type: "message_end", message: reply("pong", 6) });
+    live({ type: "agent_end" });
+
+    // omp's file holds every message except the one that was cut off.
+    const entry = (id: string, parentId: string | null, message: unknown) => ({
+      type: "message",
+      id,
+      parentId,
+      timestamp: new Date(at).toISOString(),
+      message,
+    });
+    store.pairEndedMessages(
+      [
+        entry("u1", null, ask("first", 1)),
+        entry("a1", "u1", reply("pong", 2)),
+        entry("u2", "a1", ask("long please", 3)),
+        entry("u3", "u2", ask("ping", 5)),
+        entry("a3", "u3", reply("pong", 6)),
+      ],
+      "a3" as EntryId,
+    );
+
+    const snapshot = store.getSnapshot();
+    const shown = snapshot.messageOrder.map((key) => {
+      const message = snapshot.messages[key]?.message as
+        | { role: string; content: unknown }
+        | undefined;
+      const content = message?.content;
+      const text = Array.isArray(content)
+        ? content.map((part: { text?: string }) => part.text ?? "").join("")
+        : String(content);
+      return `${message?.role}: ${text}`;
+    });
+    expect(shown).toEqual([
+      "user: first",
+      "assistant: pong",
+      "user: long please",
+      "assistant: cut off text",
+      "user: ping",
+      "assistant: pong",
+    ]);
+  });
+
   test("cancels active tools on abort, settlement, and process exit", () => {
     const aborted = new OmpRuntimeStore({ threadId });
     omp(aborted, { type: "tool_execution_start", toolCallId: "abort-tool", toolName: "bash" }, 1);

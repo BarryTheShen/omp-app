@@ -860,6 +860,10 @@ function ActiveThreadReady({
     [attachmentManager],
   );
   const p3Handlers = useP3RunHandlers({ store, send: rpc.send, openThread, runs: p3Runs });
+  // The banner of an omp that stopped on its own offers this: the server starts omp again on this chat.
+  const restartOmp = useCallback(async (): Promise<void> => {
+    await rpc.restart({ threadId });
+  }, [rpc, threadId]);
   const { controller: runtimeController, runtime } = useOmpRuntime({
     store,
     send: rpc.send,
@@ -1173,6 +1177,7 @@ function ActiveThreadReady({
                     footer={area("threadFooter")}
                     onLoadOlder={onLoadOlder}
                     onLoadFullOutput={onLoadFullOutput}
+                    onRestartOmp={restartOmp}
                     slots={{
                       renderMessage: (message, renderNested) => {
                         const branchSummary = branchSummaryOfRow(message);
@@ -1361,8 +1366,11 @@ function ConnectedApp({
     const look = () => {
       const watch = turnWatch.current;
       if (!watch.armed) return;
-      const answer = finishedAnswerAt(store.getSnapshot());
-      if (answer === undefined || answer === watch.before) return;
+      const snapshot = store.getSnapshot();
+      const answer = finishedAnswerAt(snapshot);
+      // A turn also ends when omp stops under it: its chat's file is on disk by then, so the list has it.
+      const answered = answer !== undefined && answer !== watch.before;
+      if (!answered && snapshot.process.status !== "exited") return;
       turnWatch.current = { armed: false, before: undefined };
       void catalog
         .list({ filter: catalog.getSnapshot().filter, limit: 100 })

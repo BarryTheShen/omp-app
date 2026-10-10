@@ -63,6 +63,8 @@ class FakeProcess implements OmpProcess {
   extraState: Record<string, unknown> = {};
   /** When set, `stop()` finishes only after this resolves, like a real omp flushing before exit. */
   stopGate: Promise<void> | undefined;
+  /** When set, `start()` fails with it, like an omp that cannot be spawned. */
+  startFailure: AppFailure | undefined;
   #status: OmpProcessEvent["status"] = "starting";
   #eventListeners = new Set<(event: OmpProcessEvent) => void>();
   #chunkListeners = new Set<(chunk: Uint8Array) => void>();
@@ -88,6 +90,15 @@ class FakeProcess implements OmpProcess {
   }
 
   start(): Promise<void> {
+    if (this.startFailure !== undefined) {
+      // Like the real process: a start that fails leaves it in the error state.
+      this.emitEvent({
+        status: "error",
+        processId: this.processId,
+        error: this.startFailure.appError,
+      });
+      return Promise.reject(this.startFailure);
+    }
     this.emitEvent({ status: "running", processId: this.processId });
     this.emit({
       type: "ready",
@@ -214,6 +225,7 @@ function context(
       args: ["--resume", authorityFile],
     }),
     externalOmp: async () => "none",
+    sessionFileExists: async () => true,
     serverInfo: {
       instanceId: "instance-a0-7",
       serverVersion: "test",
@@ -244,6 +256,12 @@ function getHandler(
 function payloadKind(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null || !("kind" in value)) return undefined;
   return typeof value.kind === "string" ? value.kind : undefined;
+}
+/** The process status a `process` event carries, or undefined for any other payload. */
+function processStatus(value: unknown): string | undefined {
+  if (payloadKind(value) !== "process") return undefined;
+  if (typeof value !== "object" || value === null || !("status" in value)) return undefined;
+  return typeof value.status === "string" ? value.status : undefined;
 }
 function call(connectionId: string): ServerPortHandlerContext {
   return {
@@ -769,6 +787,178 @@ describe("A0.7 RpcSessionPort handlers", () => {
       result: { content: [] },
     });
     expect(replay.frames.some((frame) => payloadKind(frame.payload) === "process")).toBe(true);
+  });
+
+  test("a command sent after omp crashed starts omp again on the same chat and tells it what the old one had been told", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    await getHandler(handlers, "setSubagentSubscription")(
+      { threadId: authorityThread, level: "progress" },
+      call("one"),
+    );
+    const crashed = created[0];
+    if (crashed === undefined) throw new Error("missing fake process");
+    crashed.crash();
+
+    const result = await getHandler(handlers, "send")(
+      { threadId: authorityThread, command: { type: "prompt", message: "after the crash" } },
+      call("one"),
+    );
+
+    expect(result).toEqual({ agentInvoked: true });
+    expect(created).toHaveLength(2);
+    const revived = created[1];
+    if (revived === undefined) throw new Error("omp was not started again");
+    expect(revived.args).toEqual(["--resume", authorityFile]);
+    expect(revived.writes).toContainEqual(
+      expect.objectContaining({ type: "prompt", message: "after the crash" }),
+    );
+    expect(
+      revived.writes
+        .filter((frame) => frame.type === "set_subagent_subscription")
+        .map((f) => f.level),
+    ).toEqual(["progress"]);
+    // The chat stays one chat for the browsers watching it: its stream carries the new process.
+    const stream = (await getHandler(handlers, "subscribe")(
+      { threadId: authorityThread },
+      call("one"),
+    )) as { stream: StreamKey };
+    const replay = runtimeContext.replay.replay(stream.stream, 0);
+    if ("error" in replay) throw new Error("unexpected replay conflict");
+    const statuses = replay.frames
+      .map((frame) => processStatus(frame.payload))
+      .filter((status) => status !== undefined);
+    expect(statuses).toContain("exited");
+    expect(statuses.at(-1)).toBe("ready");
+  });
+
+  test("two commands sent at once after a crash start omp only once", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    created[0]?.crash();
+
+    await Promise.all([
+      getHandler(handlers, "send")(
+        { threadId: authorityThread, command: { type: "prompt", message: "first" } },
+        call("one"),
+      ),
+      getHandler(handlers, "send")(
+        { threadId: authorityThread, command: { type: "get_state" } },
+        call("one"),
+      ),
+    ]);
+
+    expect(created).toHaveLength(2);
+  });
+
+  test("a rename sent after omp crashed starts omp again and renames the chat", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    created[0]?.crash();
+
+    await getHandler(handlers, "rename")(
+      { threadId: authorityThread, name: "Renamed after the crash" },
+      call("one"),
+    );
+
+    expect(created).toHaveLength(2);
+    expect(created[1]?.writes).toContainEqual(
+      expect.objectContaining({ type: "set_session_name", name: "Renamed after the crash" }),
+    );
+  });
+
+  test("a subagent subscription sent after omp crashed starts omp again and applies it", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    created[0]?.crash();
+
+    await getHandler(handlers, "setSubagentSubscription")(
+      { threadId: authorityThread, level: "progress" },
+      call("one"),
+    );
+
+    expect(created).toHaveLength(2);
+    expect(created[1]?.writes).toContainEqual(
+      expect.objectContaining({ type: "set_subagent_subscription", level: "progress" }),
+    );
+  });
+
+  test("an event filter sent after omp crashed starts omp again", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    created[0]?.crash();
+
+    await getHandler(handlers, "setEventFilter")(
+      { threadId: authorityThread, events: null },
+      call("one"),
+    );
+
+    expect(created).toHaveLength(2);
+  });
+
+  test("a chat whose omp stopped before the chat was saved is not started again and says why", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor({ ...context(created), sessionFileExists: async () => false }, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    created[0]?.crash();
+
+    await expect(
+      getHandler(handlers, "send")(
+        { threadId: authorityThread, command: { type: "prompt", message: "hello again" } },
+        call("one"),
+      ),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "omp_exited",
+        message: expect.stringContaining("before this chat was saved"),
+      },
+    });
+    expect(created).toHaveLength(1);
+  });
+
+  test("a failed start leaves the chat able to try again on the next command", async () => {
+    const created: FakeProcess[] = [];
+    const processRegistry = new OmpProcessRegistry({
+      createProcess: (options: OmpProcessOptions) => {
+        const process = new FakeProcess(options, {
+          threadId: authorityThread,
+          sessionFile: authorityFile,
+        });
+        // The process started for the first send after the crash cannot start; the next one can.
+        if (created.length === 1) {
+          process.startFailure = new AppFailure({
+            code: "omp_exited",
+            message: "omp could not start",
+            retryable: true,
+          });
+        }
+        created.push(process);
+        return process;
+      },
+    });
+    const handlers = handlersFor({ ...context(created), processRegistry }, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    created[0]?.crash();
+
+    await expect(
+      getHandler(handlers, "send")(
+        { threadId: authorityThread, command: { type: "prompt", message: "try" } },
+        call("one"),
+      ),
+    ).rejects.toMatchObject({ appError: { message: "omp could not start" } });
+    await expect(
+      getHandler(handlers, "send")(
+        { threadId: authorityThread, command: { type: "prompt", message: "try again" } },
+        call("one"),
+      ),
+    ).resolves.toEqual({ agentInvoked: true });
+    expect(created).toHaveLength(3);
   });
 
   test("a pre-aborted send rejects with AppFailure(cancelled)", async () => {

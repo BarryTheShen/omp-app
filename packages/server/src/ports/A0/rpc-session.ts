@@ -70,6 +70,11 @@ export interface A0PortContext {
     /** The rename host this runtime started for the chat: it is not another omp. */
     hostPid: number | undefined,
   ) => Promise<ExternalOmpState>;
+  /**
+   * Whether a chat's session file is on disk. omp writes a new chat's file only once its first turn has
+   * been saved, so a chat whose omp stopped before that has nothing to resume. Defaults to the file system.
+   */
+  readonly sessionFileExists?: (sessionFile: SessionFilePath) => Promise<boolean>;
   /** Test seam and process adapter seam; defaults to the merged A0.3 RpcSession. */
   readonly createSession?: (process: OmpProcess) => RpcSession;
   /** The debug log; browser-reported errors are written to it. */
@@ -101,6 +106,8 @@ interface ThreadEntry {
   appliedEvents?: string[] | null;
   appliedMessageUpdates?: ViewerPreference["messageUpdates"];
   arbitration: Promise<void>;
+  /** Set while omp is being started again for this chat; everyone who needs omp waits on it. */
+  respawning?: Promise<void>;
 }
 
 const LEVEL_RANK: Record<ViewerPreference["level"], number> = {
@@ -315,6 +322,7 @@ export class RpcSessionPortRuntime {
     call: PortHandlerContext,
   ): Promise<unknown> {
     const entry = this.#entry(args.threadId);
+    await this.#ensureRunning(entry);
     if (args.command.type === "set_host_tools") {
       const owner = args.registrationOwner;
       if (owner === undefined) {
@@ -369,6 +377,7 @@ export class RpcSessionPortRuntime {
         await this.#renameClosed(args, call);
         return;
       }
+      await this.#ensureRunning(entry);
       await entry.session.send(
         { type: "set_session_name", name: args.name },
         { signal: call.signal },
@@ -592,6 +601,7 @@ export class RpcSessionPortRuntime {
 
   async setSubagentSubscription(args: SetSubagentSubscriptionArgs, call: PortHandlerContext) {
     const entry = this.#entry(args.threadId);
+    await this.#ensureRunning(entry);
     const preference = this.#preference(entry, call.connectionId);
     entry.preferences.set(call.connectionId, { ...preference, level: args.level });
     await this.#arbitrate(entry, call.signal);
@@ -600,6 +610,7 @@ export class RpcSessionPortRuntime {
 
   async setEventFilter(args: SetEventFilterArgs, call: PortHandlerContext) {
     const entry = this.#entry(args.threadId);
+    await this.#ensureRunning(entry);
     const preference = this.#preference(entry, call.connectionId);
     entry.preferences.set(call.connectionId, {
       ...preference,
@@ -615,25 +626,83 @@ export class RpcSessionPortRuntime {
     };
   }
 
-  async restart(args: { threadId: ThreadId }, call: PortHandlerContext): Promise<null> {
-    const entry = this.#entry(args.threadId);
-    const viewerCount = [...entry.viewers.values()].reduce((total, count) => total + count, 0);
+  /**
+   * Starts omp again for a chat and resumes it from its session file. A running omp is stopped first,
+   * so this also ends a turn that is still going.
+   */
+  async restart(args: { threadId: ThreadId }, _call: PortHandlerContext): Promise<null> {
+    await this.#startRespawn(this.#entry(args.threadId));
+    return null;
+  }
+
+  /**
+   * Brings omp back before a command that needs it, when omp stopped under the chat (it crashed, or was
+   * killed) or its start failed. A chat whose omp is still starting is left alone: its start is another
+   * caller's, and the command fails as it always did. A start of the repair already under way is waited for.
+   */
+  async #ensureRunning(entry: ThreadEntry): Promise<void> {
+    const stopped =
+      entry.session.state === "stopped" ||
+      entry.session.state === "error" ||
+      entry.process.status === "exited" ||
+      entry.process.status === "error";
+    if (entry.respawning === undefined && !stopped) return;
+    await this.#startRespawn(entry);
+  }
+
+  #startRespawn(entry: ThreadEntry): Promise<void> {
+    if (entry.respawning !== undefined) return entry.respawning;
+    const attempt = this.#respawn(entry).finally(() => {
+      entry.respawning = undefined;
+    });
+    entry.respawning = attempt;
+    return attempt;
+  }
+
+  /**
+   * Starts a new omp for a chat, resumed from its session file, and tells it what the old one had been
+   * told: the host tools and URI schemes the tabs registered, the subagent subscription level and the
+   * event filter. Browsers watching the chat hear the new process on the chat's own event stream.
+   */
+  async #respawn(entry: ThreadEntry): Promise<void> {
+    // The server's own repair: one caller giving up must not leave it half done.
+    const signal = new AbortController().signal;
+    const { threadId, folderPath, sessionFile } = entry.bootstrap;
+    const sessionFileExists =
+      this.#context.sessionFileExists ?? ((file: SessionFilePath) => Bun.file(file).exists());
+    if (!(await sessionFileExists(sessionFile))) {
+      throw new AppFailure({
+        code: "omp_exited",
+        message:
+          "omp stopped before this chat was saved, so it can't be continued. Start a new chat.",
+        retryable: false,
+      });
+    }
+    const args = ["--resume", sessionFile];
+    // The registry stops the old process (already gone after a crash) and keeps the chat's viewers.
+    const process = await this.#context.processRegistry.respawn({
+      threadId,
+      folder: folderPath,
+      args,
+    });
     entry.unsubscribeEvents();
     await entry.session.close();
-    const process = this.#context.processRegistry.acquire(this.#processOptions(entry.bootstrap));
-    for (let index = 1; index < viewerCount; index++) {
-      this.#context.processRegistry.acquire(this.#processOptions(entry.bootstrap));
-    }
-    const replacement = this.#context.createSession?.(process) ?? new RpcSession(process);
+    const session = this.#context.createSession?.(process) ?? new RpcSession(process);
+    entry.bootstrap = { ...entry.bootstrap, args };
     entry.process = process;
-    entry.session = replacement;
-    entry.unsubscribeEvents = replacement.onEvent((event) => {
+    entry.session = session;
+    entry.unsubscribeEvents = session.onEvent((event) => {
       this.#context.replay.publish(entry.stream, event satisfies RpcSessionEvent);
     });
+    entry.appliedLevel = undefined;
+    entry.appliedEvents = undefined;
+    entry.appliedMessageUpdates = undefined;
     await process.start();
-    await replacement.start();
-    await this.#reapplyHostRegistrations(entry, call.signal);
-    return null;
+    await session.start();
+    await this.#refreshIdentity(entry, signal);
+    await this.#reapplyHostRegistrations(entry, signal);
+    // Only what a tab asked for is told to the new omp; a chat nobody tuned keeps omp's defaults.
+    if (entry.preferences.size > 0) await this.#arbitrate(entry, signal);
   }
 
   async close(args: { threadId: ThreadId }, call: PortHandlerContext): Promise<null> {

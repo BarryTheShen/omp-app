@@ -43,7 +43,7 @@ export interface OmpProcessIdleHooks {
 
 interface Entry {
   key: ThreadId;
-  readonly process: OmpProcess;
+  process: OmpProcess;
   readonly folder: string;
   unsubscribe: () => void;
   watchers: number;
@@ -55,7 +55,7 @@ interface Entry {
  * One `OmpProcess` per open thread. A thread stays up while it has a watcher or is busy; an
  * unwatched thread's process is stopped after `idleCloseMs`, but only once omp reports it is
  * settled (see `OmpProcessIdleHooks`). A process that exits on its own (crash) stays registered, so
- * `restart()` can bring the same logical thread back; a process this registry (or its caller)
+ * `respawn()` can bring the same logical thread back; a process this registry (or its caller)
  * intentionally `stop()`ped is forgotten, so the next `acquire()` for that thread spawns a fresh
  * one.
  */
@@ -116,14 +116,44 @@ export class OmpProcessRegistry {
       idleTimer: undefined,
       unsubscribe: () => undefined,
     };
-    entry.unsubscribe = process.onEvent((event) => {
+    entry.unsubscribe = this.#forgetWhenStopped(entry);
+    this.#entries.set(options.threadId, entry);
+    return process;
+  }
+
+  /**
+   * Replaces the process of a thread whose omp stopped on its own with a new one built from `options`
+   * (the caller gives the arguments that resume the chat). The thread keeps its viewers, its busy mark
+   * and its idle state; the dead process is stopped without the registry forgetting the thread.
+   */
+  async respawn(options: OmpProcessOptions): Promise<OmpProcess> {
+    const entry = this.#entries.get(options.threadId);
+    if (entry === undefined) {
+      throw new AppFailure({
+        code: "not_found",
+        message: `No process is registered for thread ${options.threadId}`,
+        retryable: false,
+      });
+    }
+    const dead = entry.process;
+    entry.unsubscribe();
+    const process = this.#createProcess(options);
+    entry.process = process;
+    entry.unsubscribe = this.#forgetWhenStopped(entry);
+    await dead.stop().catch((error: unknown) => {
+      console.error("[omp-app] could not stop an omp process that had already exited", error);
+    });
+    return process;
+  }
+
+  /** A process that is stopped on purpose is forgotten: the next `acquire()` for the thread starts a new one. */
+  #forgetWhenStopped(entry: Entry): () => void {
+    return entry.process.onEvent((event) => {
       if (event.status !== "stopped") return;
       if (this.#entries.get(entry.key) !== entry) return;
       this.#entries.delete(entry.key);
       entry.unsubscribe();
     });
-    this.#entries.set(options.threadId, entry);
-    return process;
   }
 
   /** One fewer viewer of the thread; schedules idle-close once watchers reach 0 and it is not busy. */

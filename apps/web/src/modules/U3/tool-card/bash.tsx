@@ -363,9 +363,11 @@ function BashOutput({
 }) {
   const [expanded, setExpanded] = useState(false);
   if (result === undefined) {
+    // Output can still arrive only while the command runs; a stopped or failed command says what it has.
+    const waiting = state.phase === "running" || state.phase === "partial";
     return (
       <div className="text-muted-foreground px-3 py-2 text-xs" data-slot="u3-bash-empty">
-        Waiting for bash output…
+        {waiting ? "Waiting for bash output…" : "No output was recorded."}
       </div>
     );
   }

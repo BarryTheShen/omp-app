@@ -125,6 +125,27 @@ describe("BashCard", () => {
     expect(screen.queryByText("Waiting for bash output…")).toBeNull();
   });
 
+  test("says it is waiting for output only while the command can still print", () => {
+    const { unmount } = render(<BashCard rendererProps={props(undefined, { type: "running" })} />);
+    expect(screen.getByText("Waiting for bash output…")).toBeTruthy();
+    unmount();
+
+    render(
+      <BashCard
+        rendererProps={{
+          ...props(undefined, { type: "incomplete", reason: "cancelled" }),
+          toolCallId: "stopped-call",
+        }}
+      />,
+    );
+    // A command that was stopped before it printed anything has one state, not two.
+    expect(screen.queryByText("Waiting for bash output…")).toBeNull();
+    expect(screen.getByText("No output was recorded.")).toBeTruthy();
+    expect(screen.getByTestId("tool-card-stopped-call").getAttribute("data-phase")).toBe(
+      "cancelled",
+    );
+  });
+
   test("opens at first sight, and its header folds the command and output away", () => {
     // A distinct call id: the card remembers a person's fold per call, and other tests share "bash-call".
     const folding = { ...props(result({ output: "hello" })), toolCallId: "fold-call" };

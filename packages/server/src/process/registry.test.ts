@@ -196,6 +196,69 @@ describe("OmpProcessRegistry", () => {
     expect(created).toHaveLength(2);
   });
 
+  test("respawn replaces a crashed process with one built from new arguments and keeps the thread's viewers", async () => {
+    const created: StubProcess[] = [];
+    const requested: OmpProcessOptions[] = [];
+    const registry = new OmpProcessRegistry({
+      createProcess: (processOptions) => {
+        requested.push(processOptions);
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const thread = ThreadId.parse("thread-respawn");
+    registry.acquire(options(thread, "/workspace/respawn"));
+    registry.acquire(options(thread, "/workspace/respawn"));
+    const dead = createdAt(created, 0);
+    dead.emit({ status: "exited", processId: dead.processId });
+    expect(registry.has(thread)).toBe(true);
+
+    const replacement = await registry.respawn({
+      ...options(thread, "/workspace/respawn"),
+      args: ["--resume", "/workspace/respawn/.omp/chat.jsonl"],
+    });
+
+    expect(replacement).not.toBe(dead);
+    expect(requested.at(-1)?.args).toEqual(["--resume", "/workspace/respawn/.omp/chat.jsonl"]);
+    expect(dead.stopCalls).toBe(1);
+    // Stopping the dead process did not make the registry forget the thread.
+    expect(registry.has(thread)).toBe(true);
+    expect(registry.get(thread)).toBe(replacement);
+    // Both viewers are still counted: one release does not start the idle timer.
+    registry.release(thread);
+    expect(registry.has(thread)).toBe(true);
+  });
+
+  test("a respawned process that is stopped on purpose is forgotten like any other", async () => {
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const thread = ThreadId.parse("thread-respawn-stop");
+    registry.acquire(options(thread, "/workspace/respawn-stop"));
+    await registry.respawn(options(thread, "/workspace/respawn-stop"));
+    const replacement = createdAt(created, 1);
+
+    replacement.emit({ status: "stopped", processId: replacement.processId });
+
+    expect(registry.has(thread)).toBe(false);
+  });
+
+  test("respawn refuses a thread nobody registered", async () => {
+    const registry = new OmpProcessRegistry({
+      createProcess: (processOptions) => new StubProcess(processOptions),
+    });
+
+    await expect(
+      registry.respawn(options("thread-unknown", "/workspace/unknown")),
+    ).rejects.toMatchObject({ appError: { code: "not_found" } });
+  });
+
   test("rekeys a provisional process to omp's authoritative ThreadId", () => {
     const created: StubProcess[] = [];
     const registry = new OmpProcessRegistry({

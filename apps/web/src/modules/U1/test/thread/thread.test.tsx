@@ -132,6 +132,96 @@ describe("ThreadShell states", () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
+  test("offers Restart omp when omp stopped on its own, and not the generic Retry", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    const restart = vi.fn(async () => undefined);
+    const retry = vi.fn();
+    renderThread(store, { onRestartOmp: restart, onRetry: retry });
+
+    expect(screen.getByRole("alert").textContent).toContain("omp exited (signal SIGKILL)");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
+
+    expect(restart).toHaveBeenCalledOnce();
+    expect(retry).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Restart omp" })).toBeTruthy();
+  });
+
+  test("says plainly why omp could not be restarted and takes the button away when it can never work", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    const restart = vi.fn(async () => {
+      throw new AppFailure({
+        code: "omp_exited",
+        message:
+          "omp stopped before this chat was saved, so it can't be continued. Start a new chat.",
+        retryable: false,
+      });
+    });
+    renderThread(store, { onRestartOmp: restart });
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
+
+    expect(await screen.findByText(/before this chat was saved/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Restart omp" })).toBeNull();
+    expect(restart).toHaveBeenCalledOnce();
+  });
+
+  test("keeps the button when omp could not be restarted for a reason that may pass", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    const restart = vi.fn(async () => {
+      throw new AppFailure({
+        code: "omp_exited",
+        message: "omp could not start",
+        retryable: true,
+      });
+    });
+    renderThread(store, { onRestartOmp: restart });
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
+
+    expect(await screen.findByText("omp could not start")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Restart omp" })).toBeTruthy();
+  });
+
+  test("shows no restart action for an omp failure that is not an exit", () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "process",
+        status: "error",
+        error: { code: "permission", message: "The runtime was blocked", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    renderThread(store, { onRestartOmp: vi.fn() });
+
+    expect(screen.queryByRole("button", { name: "Restart omp" })).toBeNull();
+  });
+
   test("renders a settled status after a real store message", async () => {
     const store = readyStore();
     store.ingest(
