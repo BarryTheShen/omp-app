@@ -36,4 +36,21 @@ describe("U1 execution row", () => {
     expect(screen.getByText("Not sent to the model")).toBeTruthy();
     expect(screen.queryByTestId("u1-execution-output")).toBeNull();
   });
+
+  test("the command and the output are scroll regions a keyboard can reach", () => {
+    render(<ExecutionRow record={run} />);
+    const command = screen.getByRole("region", { name: "Command" });
+    const output = screen.getByRole("region", { name: "Output" });
+    expect(command.textContent).toBe("ls /missing");
+    expect(command.tabIndex).toBe(0);
+    expect(output.tabIndex).toBe(0);
+    expect(output.textContent).toContain("No such file or directory");
+  });
+
+  test("the header has an arrow that screen readers skip, so the card reads as a disclosure", () => {
+    const { container } = render(<ExecutionRow record={run} />);
+    const arrow = container.querySelector("summary > svg");
+    expect(arrow).not.toBeNull();
+    expect(arrow?.getAttribute("aria-hidden")).toBe("true");
+  });
 });
