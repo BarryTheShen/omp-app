@@ -172,10 +172,15 @@ realTest(
     await expect(errorBanner(app)).toBeHidden({ timeout: 90_000 });
 
     await sendPrompt(composer, "ping after stream kill");
-    await expect(app.getByText("Conversation settled")).toBeVisible({ timeout: 90_000 });
-    await expect(transcript(app).getByText("pong", { exact: true }).last()).toBeVisible({
+    // The first turn's "pong" is already on screen, so "Conversation settled" and one "pong" prove nothing: wait for the
+    // new turn's own question and answer (two "pong" texts), then for the chat to settle, before reading the rows.
+    await expect(transcript(app).getByText("ping after stream kill")).toBeVisible({
       timeout: 90_000,
     });
+    await expect(transcript(app).getByText("pong", { exact: true })).toHaveCount(2, {
+      timeout: 90_000,
+    });
+    await expect(app.getByText("Conversation settled")).toBeVisible({ timeout: 90_000 });
 
     // The cut-off text sits above the new question, not in the new answer.
     const rows = await transcriptRows(app);
