@@ -86,8 +86,16 @@ function isNewThreadId(threadId: string): boolean {
  */
 export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
   private readonly options: RemoteThreadListOptions;
-  private readonly initializations = new Map<string, Promise<RemoteThreadInitializeResponse>>();
+  /** The open still in flight for each id, with its number (see `initialize`). */
+  private readonly initializations = new Map<
+    string,
+    { readonly task: Promise<RemoteThreadInitializeResponse>; readonly request: number }
+  >();
   private currentThreadId: ThreadId | undefined;
+  /** Each open takes the next number when it is made, so the pick made last has the highest. */
+  private requests = 0;
+  /** The newest open that has finished, opened or failed. */
+  private finishedRequest = 0;
 
   public constructor(options: RemoteThreadListOptions) {
     this.options = options;
@@ -120,17 +128,20 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
 
   /**
    * Initializes before the first append. Existing ids open by ThreadId; `new`/`new:*`/`local:*`
-   * requests create through A0's folder-scoped `open({ start: "new" })`.
+   * requests create through A0's folder-scoped `open({ start: "new" })`. A second call for an id whose open is still
+   * in flight shares that open, but not once a later open has started: the newest pick is the one to open.
    */
   public initialize(threadId: string): Promise<RemoteThreadInitializeResponse> {
     const existing = this.initializations.get(threadId);
-    if (existing) return existing;
+    if (existing && existing.request === this.requests) return existing.task;
     const task = this.open(threadId);
-    this.initializations.set(threadId, task);
-    void task.then(
-      () => this.initializations.delete(threadId),
-      () => this.initializations.delete(threadId),
-    );
+    // `open` takes its number as its first step, so the counter holds the number of this open now.
+    const entry = { task, request: this.requests };
+    this.initializations.set(threadId, entry);
+    const forget = (): void => {
+      if (this.initializations.get(threadId) === entry) this.initializations.delete(threadId);
+    };
+    void task.then(forget, forget);
     return task;
   }
 
@@ -194,24 +205,39 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
     return this.currentThreadId;
   }
 
+  /**
+   * Opens one pick. Picks can finish out of order: a new chat waits for omp to start, while a chat that is
+   * already running opens at once. A pick that finishes after a later pick has already finished is let go and
+   * never selected, because the person made the later pick last. A pick that fails counts as a later pick too.
+   */
   private async open(threadId: string): Promise<RemoteThreadInitializeResponse> {
-    let args: OpenThreadArgs;
-    if (isNewThreadId(threadId)) {
-      const filter = this.options.catalog.getSnapshot().filter;
-      if (filter.scope.kind !== "folder") {
+    const request = ++this.requests;
+    try {
+      let args: OpenThreadArgs;
+      if (isNewThreadId(threadId)) {
+        const filter = this.options.catalog.getSnapshot().filter;
+        if (filter.scope.kind !== "folder") {
+          throw new AppFailure({
+            code: "invalid_args",
+            message: "New sessions require a folder scope",
+            retryable: false,
+          });
+        }
+        args = { folderPath: filter.scope.folder, start: "new" };
+      } else {
+        args = { threadId: this.parseThreadId(threadId) };
+      }
+      const result = await this.options.open(args);
+      const nextThreadId = ThreadIdSchema.parse(result.threadId);
+      if (request < this.finishedRequest) {
+        if (this.options.close) void releaseThread(this.options.close, nextThreadId);
         throw new AppFailure({
-          code: "invalid_args",
-          message: "New sessions require a folder scope",
+          code: "cancelled",
+          message: "A chat picked after this one opened first, so this one was not opened.",
           retryable: false,
         });
       }
-      args = { folderPath: filter.scope.folder, start: "new" };
-    } else {
-      args = { threadId: this.parseThreadId(threadId) };
-    }
-    try {
-      const result = await this.options.open(args);
-      const nextThreadId = ThreadIdSchema.parse(result.threadId);
+      this.finishedRequest = request;
       this.currentThreadId = nextThreadId;
       if (this.options.close) void releaseThread(this.options.close, nextThreadId);
       this.options.onThreadIdChange?.(nextThreadId);
@@ -220,6 +246,7 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
         ...(result.sessionFile ? { externalId: result.sessionFile } : {}),
       };
     } catch (error) {
+      this.finishedRequest = Math.max(this.finishedRequest, request);
       throw failure(error, "Opening the remote thread failed");
     }
   }

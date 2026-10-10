@@ -232,4 +232,143 @@ describe("NativeRemoteThreadListAdapter", () => {
       appError: { code: "unavailable" },
     });
   });
+
+  test("a new chat that finishes opening after the chat picked after it is let go", async () => {
+    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const released: ThreadId[] = [];
+    const selected: ThreadId[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => ("threadId" in args ? openResult(args.threadId) : newChatOpen.promise),
+      close: async ({ threadId }) => {
+        released.push(threadId);
+        return null;
+      },
+      onThreadIdChange: (threadId) => {
+        if (threadId) selected.push(threadId);
+      },
+    });
+    const newChat = adapter.initialize("new");
+    const picked = await adapter.initialize(threadOne);
+    newChatOpen.resolve(openResult(threadTwo));
+
+    await expect(newChat).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    expect(picked.remoteId).toBe(threadOne);
+    expect(selected).toEqual([threadOne]);
+    expect(adapter.getCurrentThreadId()).toBe(threadOne);
+    expect(released).toContain(threadTwo);
+  });
+
+  test("a chat picked after one that already finished is selected, and both are applied in order", async () => {
+    const selected: ThreadId[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => openResult("threadId" in args ? args.threadId : threadTwo),
+      onThreadIdChange: (threadId) => {
+        if (threadId) selected.push(threadId);
+      },
+    });
+    await adapter.initialize(threadOne);
+    await adapter.initialize("new");
+    expect(selected).toEqual([threadOne, threadTwo]);
+    expect(adapter.getCurrentThreadId()).toBe(threadTwo);
+  });
+
+  test("a failed later pick also lets an earlier one go, and a failed pick selects nothing", async () => {
+    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const failure = new AppFailure({ code: "permission", message: "denied", retryable: false });
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => {
+        if (!("threadId" in args)) return newChatOpen.promise;
+        throw failure;
+      },
+    });
+    const newChat = adapter.initialize("new");
+    await expect(adapter.initialize(threadOne)).rejects.toBe(failure);
+    newChatOpen.resolve(openResult(threadTwo));
+
+    await expect(newChat).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    expect(adapter.getCurrentThreadId()).toBeUndefined();
+  });
+
+  test("a New chat clicked after a pick opens its own chat, and the earlier New chat still opening is let go", async () => {
+    const threadThree = ThreadIdSchema.parse("thread-three");
+    const firstNewChat = Promise.withResolvers<OpenThreadResult>();
+    const released: ThreadId[] = [];
+    const selected: ThreadId[] = [];
+    let newChats = 0;
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => {
+        if ("threadId" in args) return openResult(args.threadId);
+        newChats += 1;
+        return newChats === 1 ? firstNewChat.promise : openResult(threadThree);
+      },
+      close: async ({ threadId }) => {
+        released.push(threadId);
+        return null;
+      },
+      onThreadIdChange: (threadId) => {
+        if (threadId) selected.push(threadId);
+      },
+    });
+    const firstNew = adapter.initialize("new");
+    await adapter.initialize(threadOne);
+    const secondNew = adapter.initialize("new");
+    firstNewChat.resolve(openResult(threadTwo));
+
+    await expect(firstNew).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    await expect(secondNew).resolves.toMatchObject({ remoteId: threadThree });
+    expect(selected).toEqual([threadOne, threadThree]);
+    expect(adapter.getCurrentThreadId()).toBe(threadThree);
+    expect(released).toContain(threadTwo);
+  });
+
+  test("a chat picked again after a later pick opens again, and the earlier open of it is let go", async () => {
+    const firstOpen = Promise.withResolvers<OpenThreadResult>();
+    const selected: ThreadId[] = [];
+    let picksOfOne = 0;
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args) => {
+        if ("threadId" in args && args.threadId === threadOne) {
+          picksOfOne += 1;
+          if (picksOfOne === 1) return firstOpen.promise;
+        }
+        return openResult("threadId" in args ? args.threadId : threadTwo);
+      },
+      onThreadIdChange: (threadId) => {
+        if (threadId) selected.push(threadId);
+      },
+    });
+    const firstPick = adapter.initialize(threadOne);
+    await adapter.initialize(threadTwo);
+    const secondPick = adapter.initialize(threadOne);
+    firstOpen.resolve(openResult(threadOne));
+
+    await expect(firstPick).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    await expect(secondPick).resolves.toMatchObject({ remoteId: threadOne });
+    expect(selected).toEqual([threadTwo, threadOne]);
+    expect(adapter.getCurrentThreadId()).toBe(threadOne);
+  });
+
+  test("a second click on a New chat that is still opening shares its one open", async () => {
+    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    let opened = 0;
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async () => {
+        opened += 1;
+        return newChatOpen.promise;
+      },
+    });
+    const first = adapter.initialize("new");
+    const second = adapter.initialize("new");
+    newChatOpen.resolve(openResult(threadOne));
+
+    await expect(second).resolves.toMatchObject({ remoteId: threadOne });
+    await expect(first).resolves.toMatchObject({ remoteId: threadOne });
+    expect(opened).toBe(1);
+  });
 });

@@ -371,6 +371,38 @@ describe("SessionCatalogSidebar", () => {
     await waitFor(() => expect(calls).toEqual(["new"]));
   });
 
+  test("a New chat that a later pick superseded opens nothing once it finishes", async () => {
+    const newChatDone = Promise.withResolvers<void>();
+    const opened: string[] = [];
+    const calls: string[] = [];
+    renderSidebar({
+      remote: {
+        ...fakeRemote(calls),
+        initialize: async (id: string) => {
+          if (id !== "new") return { remoteId: id };
+          await newChatDone.promise;
+          throw new AppFailure({ code: "cancelled", message: "Superseded", retryable: false });
+        },
+      },
+      onNewChat: async (threadId) => {
+        opened.push(`new:${threadId}`);
+      },
+      onOpenThread: async (threadId) => {
+        opened.push(`open:${threadId}`);
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Old chat")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("button", { name: "New chat" })[0] as HTMLElement);
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    await waitFor(() => expect(opened).toEqual(["open:old"]));
+
+    newChatDone.resolve();
+    const { promise: settled, resolve: settle } = Promise.withResolvers<void>();
+    setTimeout(settle, 0);
+    await act(() => settled);
+    expect(opened).toEqual(["open:old"]);
+  });
+
   test("'Show older chats' loads the next page below the list, then goes away at the end", async () => {
     const all = Array.from({ length: 70 }, (_, index) =>
       session(

@@ -1,5 +1,5 @@
 import type { RemoteThreadListAdapter } from "@assistant-ui/react";
-import type { ThreadId } from "@omp-app/contracts";
+import { AppFailure, type ThreadId } from "@omp-app/contracts";
 import { MoreHorizontalIcon, PinIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
@@ -48,6 +48,19 @@ function sessionTitle(session: SessionMetadata): string {
 function folderLabel(folder: string): string {
   const normalized = folder.replace(/\/+$/, "");
   return normalized.slice(normalized.lastIndexOf("/") + 1) || folder;
+}
+
+/**
+ * A pick the person made before a later one, where the later one opened first: the remote adapter reports the
+ * earlier pick as cancelled. The later pick is the chat on screen, so the earlier one opens nothing and is no error.
+ */
+async function unlessSuperseded<Opened>(pick: Promise<Opened>): Promise<Opened | undefined> {
+  try {
+    return await pick;
+  } catch (error) {
+    if (error instanceof AppFailure && error.appError.code === "cancelled") return undefined;
+    throw error;
+  }
 }
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
@@ -181,13 +194,13 @@ export function SessionCatalogSidebar({
   }, [focusRowId]);
 
   const openSession = async (session: SessionMetadata): Promise<void> => {
-    const initialized = await remote.initialize(session.id);
-    await onOpenThread?.(initialized.remoteId as ThreadId);
+    const initialized = await unlessSuperseded(remote.initialize(session.id));
+    if (initialized) await onOpenThread?.(initialized.remoteId as ThreadId);
   };
 
   const createNewChat = async (): Promise<void> => {
-    const initialized = await remote.initialize("new");
-    await onNewChat?.(initialized.remoteId as ThreadId);
+    const initialized = await unlessSuperseded(remote.initialize("new"));
+    if (initialized) await onNewChat?.(initialized.remoteId as ThreadId);
   };
 
   /** Keeps each chat's row element, so the keyboard can go back to the row after a rename. */
