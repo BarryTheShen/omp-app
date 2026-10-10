@@ -123,6 +123,21 @@ export class SelectedThreadHistoryController {
     return this.open({ folderPath: this.options.folder, start: "latest" });
   }
 
+  /**
+   * Reopens a chat the browser had open, for a reload or a restart. A chat nobody has sent to has no session file until
+   * its first turn, so a restarted server no longer has it: the folder's new chat opens instead. The text typed in an
+   * unsent chat is kept for the folder's new chat, so it comes back in that chat's composer. Any other failure is
+   * reported as it is.
+   */
+  public async reopenSaved(threadId: ThreadId): Promise<OmpRuntimeStore> {
+    try {
+      return await this.openExisting(threadId);
+    } catch (error) {
+      if (asFailure(error, "").appError.code !== "not_found") throw error;
+      return this.openNew();
+    }
+  }
+
   /** Re-subscribes without replay duplication; A0's afterSeq is the authoritative resume cursor. */
   public async resume(afterSeq?: number): Promise<void> {
     const threadId = this.state.threadId;

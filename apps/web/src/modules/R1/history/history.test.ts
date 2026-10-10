@@ -449,3 +449,65 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(controller.getSnapshot().threadId).toBe(threadTwo);
   });
 });
+
+describe("SelectedThreadHistoryController reopening a saved chat", () => {
+  test("a saved chat the server no longer has is replaced by a new chat in its folder", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      if ("threadId" in args) {
+        throw new AppFailure({
+          code: "not_found",
+          message: `Thread ${threadOne} was not found`,
+          retryable: false,
+        });
+      }
+      return { threadId: threadTwo, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await controller.reopenSaved(threadOne);
+
+    expect(opens).toEqual([{ threadId: threadOne }, { folderPath: folder, start: "new" }]);
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
+    expect(controller.getSnapshot().error).toBeNull();
+  });
+
+  test("a saved chat that still exists opens as it did before", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await controller.reopenSaved(threadOne);
+
+    expect(opens).toEqual([{ threadId: threadOne }]);
+    expect(controller.getSnapshot().threadId).toBe(threadOne);
+  });
+
+  test("any other failure is reported, and no new chat is opened in its place", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      throw new AppFailure({ code: "permission", message: "denied", retryable: false });
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await expect(controller.reopenSaved(threadOne)).rejects.toMatchObject({
+      appError: { code: "permission", message: "denied" },
+    });
+    expect(opens).toEqual([{ threadId: threadOne }]);
+    expect(controller.getSnapshot().threadId).toBeUndefined();
+  });
+});

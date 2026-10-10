@@ -1275,14 +1275,15 @@ function ConnectedApp({
     () => controller?.getSnapshot() ?? EMPTY_HISTORY,
   );
   useEffect(() => {
-    // Reopen the thread this browser had open in this folder (cleared when the folder changes).
+    // Reopen the thread this browser had open in this folder (cleared when the folder changes). A chat nobody has
+    // sent to has no file after a restart, so the folder's new chat opens in its place.
     if (!controller) return;
     const saved = ThreadId.safeParse(readSessionValue(THREAD_KEY, ""));
     if (!saved.success) return;
     // A reload returns the reader to the message they were reading. The place is read before the chat opens.
     setResumePlace(readStoredReadingPlace(saved.data));
     void controller
-      .openExisting(saved.data)
+      .reopenSaved(saved.data)
       .catch(() => writeSessionValue(THREAD_KEY, null))
       .finally(() => setResumePlace(null));
   }, [controller]);
