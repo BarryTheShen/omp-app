@@ -42,6 +42,8 @@ import {
   useAppConnection,
 } from "@/launch";
 import { LayoutArea, type LayoutAreaName, type SurfaceMap } from "@/layout";
+import type { CredentialActions } from "@/modules/D3/auth/credential-actions";
+import { readProviderSignIns } from "@/modules/D3/auth/sign-in";
 import type {
   SessionCapabilitiesSource,
   SessionInfoMetadataSource,
@@ -127,8 +129,9 @@ import { ComposerHistory } from "./composer-history";
 import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
+import { openProviderSignIn } from "./provider-login-section";
 import { saveTextFile } from "./save-file";
-import { SessionModelControl, SessionStatusBar } from "./session-controls";
+import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
 import {
@@ -939,6 +942,16 @@ function ActiveThreadReady({
             : ("closed" as const),
     reason: connection.reason,
   };
+  // What a refused-key notice in the transcript can do: open the model list, open sign-in, and read each
+  // provider's sign-in. Built once per open chat; a view only calls these.
+  const credentialActions = useMemo<CredentialActions>(
+    () => ({
+      chooseModel: () => openSessionModelDialog({ overlay, client, store, threadId, capabilities }),
+      signIn: () => openProviderSignIn({ overlay, client, threadId, capabilities }),
+      readSignIns: () => readProviderSignIns({ client, threadId }),
+    }),
+    [overlay, client, store, threadId, capabilities],
+  );
   // What each surface id renders for an open conversation. Where it goes: `@/layout` (LAYOUT).
   const threadSurfaces: SurfaceMap = {
     title: {
@@ -1106,6 +1119,7 @@ function ActiveThreadReady({
                 <div className="h-full min-h-0" ref={transcriptRootRef}>
                   <ThreadShell
                     autoScroll
+                    credentialActions={credentialActions}
                     readingPlace={{
                       threadId,
                       resumeAt: resumePlace,

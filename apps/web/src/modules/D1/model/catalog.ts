@@ -8,6 +8,8 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, RpcSessionPort } from "@omp-app/contracts";
+import { readProviderSignIns } from "@/modules/D3/auth/sign-in";
+import type { ProviderSignIn } from "@/modules/D3/contract";
 import {
   D1_CAPABILITIES,
   type EffortLevel,
@@ -39,9 +41,13 @@ export interface ProviderModelGroup {
 export interface ModelCatalogMappingOptions {
   readonly lockedProviders?: ReadonlySet<string>;
   readonly unavailableProviders?: ReadonlySet<string>;
+  /** How each provider is signed in, keyed by provider id; a provider not listed gets no label. */
+  readonly signIns?: ReadonlyMap<string, ProviderSignIn>;
 }
 
 export interface ModelCatalogSource {
+  /** How each provider is signed in; never rejects (a failed read gives no labels). */
+  readonly readSignIns?: () => Promise<ReadonlyMap<string, ProviderSignIn>>;
   readonly getAvailableModels: (
     options?: Pick<PortCallOptions, "signal">,
   ) => Promise<readonly OmpWire.ModelInfo[]>;
@@ -144,6 +150,7 @@ export function toModelDescriptor(
     : options.lockedProviders?.has(model.provider)
       ? "locked"
       : "available";
+  const signIn = options.signIns?.get(model.provider);
   return {
     provider: model.provider,
     id: model.id,
@@ -156,6 +163,7 @@ export function toModelDescriptor(
     thinkingEfforts: safeEfforts(model),
     availability,
     ...(availability === "locked" ? { loginProvider: model.provider } : {}),
+    ...(signIn === undefined ? {} : { signIn }),
     description: model.reasoning ? "Reasoning model" : "General-purpose model",
   };
 }
@@ -274,7 +282,10 @@ export class ModelCatalogModel implements ModelCatalogPort {
     const operation = ++this.operation;
     this.commit({ loadState: "loading", error: null });
     try {
-      const rawModels = await this.source.getAvailableModels(options);
+      const [rawModels, signIns] = await Promise.all([
+        this.source.getAvailableModels(options),
+        this.source.readSignIns?.() ?? Promise.resolve(new Map<string, ProviderSignIn>()),
+      ]);
       if (operation !== this.operation) {
         return {
           models: [...this.snapshot.models],
@@ -283,7 +294,9 @@ export class ModelCatalogModel implements ModelCatalogPort {
           revision: INITIAL_REVISION,
         };
       }
-      const models = rawModels.map((model) => toModelDescriptor(model, this.mapping));
+      const models = rawModels.map((model) =>
+        toModelDescriptor(model, { ...this.mapping, signIns }),
+      );
       this.commit({ loadState: "ready", models, error: null });
       return {
         models,
@@ -380,6 +393,7 @@ export function createRpcModelCatalogSource(
 ): ModelCatalogSource {
   const session = client.port(RpcSessionPort) as RpcSessionClient;
   return {
+    readSignIns: async () => readProviderSignIns({ client, threadId }),
     getAvailableModels: async (options) => {
       const result = await session.send(
         { threadId, command: { type: "get_available_models" } },

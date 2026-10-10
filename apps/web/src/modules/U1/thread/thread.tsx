@@ -19,6 +19,15 @@ import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui";
 import { cn } from "@/lib/utils";
+import {
+  credentialFailureFromError,
+  credentialFailureFromMessage,
+} from "@/modules/D3/auth/credential";
+import {
+  type CredentialActions,
+  CredentialActionsProvider,
+} from "@/modules/D3/auth/credential-actions";
+import { CredentialFailureNotice } from "@/modules/D3/auth/credential-notice";
 import { useDescriptor, useRenderer } from "@/registry-core";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
 import { FullOutputProvider } from "../../U3/tool-card/full-output";
@@ -70,6 +79,8 @@ export interface ThreadShellProps {
   readonly onLoadFullOutput?: (toolCallId: string) => Promise<void>;
   /** Where the reader is in this chat. Without it the chat always opens at its newest message. */
   readonly readingPlace?: ThreadReadingPlace;
+  /** What a refused-key notice can do: open the model list, open sign-in, and read each provider's sign-in. */
+  readonly credentialActions?: CredentialActions;
 }
 
 interface RuntimeStateSurfaceProps {
@@ -99,6 +110,15 @@ function RuntimeError({
       setRetrying(false);
     }
   };
+
+  const failure = credentialFailureFromError(error);
+  if (failure !== null) {
+    return (
+      <div className="mx-auto my-6 w-full max-w-(--layout-thread-width) px-6">
+        <CredentialFailureNotice failure={failure} variant="default" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto my-6 w-full max-w-(--layout-thread-width) px-6">
@@ -130,9 +150,22 @@ function RuntimeError({
   );
 }
 
+const NO_CREDENTIAL_ACTIONS: CredentialActions = {};
+
+/** Whether the last answer in the transcript is one omp ended because a refused key was not accepted. */
+function lastAnswerRefusedKey(snapshot: RuntimeSnapshot): boolean {
+  const last = snapshot.messageOrder.at(-1);
+  return (
+    last !== undefined && credentialFailureFromMessage(snapshot.messages[last]?.message) !== null
+  );
+}
+
 function RuntimeStateSurface({ snapshot, onRetry }: RuntimeStateSurfaceProps) {
   const error = snapshot.error ?? snapshot.process.error;
-  if (error !== null) return <RuntimeError error={error} onRetry={onRetry} />;
+  // A refused key is said once: under the answer that stopped, when the transcript has that answer.
+  const shownUnderAnswer =
+    credentialFailureFromError(error) !== null && lastAnswerRefusedKey(snapshot);
+  if (error !== null && !shownUnderAnswer) return <RuntimeError error={error} onRetry={onRetry} />;
 
   if (snapshot.process.status === "starting" || snapshot.process.status === "restarting") {
     return (
@@ -306,6 +339,7 @@ export function ThreadShell({
   onLoadOlder,
   onLoadFullOutput,
   readingPlace,
+  credentialActions,
 }: ThreadShellProps) {
   const snapshot = useSyncExternalStore(
     (listener) => store.subscribe(listener),
@@ -363,52 +397,54 @@ export function ThreadShell({
     }
   };
   return (
-    <FullOutputProvider value={onLoadFullOutput}>
-      <ThreadPrimitive.Root
-        className="aui-u1-thread bg-background flex h-full min-h-0 min-w-0 flex-col"
-        data-slot="u1-thread-root"
-      >
-        <ThreadPrimitive.Viewport
-          ref={viewportRef}
-          data-slot="u1-thread-viewport"
-          className={cn(
-            "relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain",
-            // While a reload's place settles, every row is drawn, so each height is its real one: a row that is
-            // skipped keeps an estimate, and drawing it later moves the place the reader was given. Once settled,
-            // drawn rows keep their remembered size (`content-visibility: auto`), so nothing shifts.
-            place.resuming &&
-              "[overflow-anchor:none] [&_[data-message-id]]:[content-visibility:visible]!",
-          )}
-          role="region"
-          aria-label="Messages"
-          aria-live="off"
-          tabIndex={0}
-          autoScroll={autoScroll && !place.resuming}
-          // R0 turns `isRunning` off and on at every turn boundary, so a "run start" also fires in the
-          // middle of an answer and would pull a reader who scrolled away down to the bottom. Sending
-          // scrolls explicitly instead (the app root calls followLatest when a message is sent).
-          scrollToBottomOnRunStart={false}
-          scrollToBottomOnInitialize={!place.startsAtPlace}
-          turnAnchor="bottom"
+    <CredentialActionsProvider value={credentialActions ?? NO_CREDENTIAL_ACTIONS}>
+      <FullOutputProvider value={onLoadFullOutput}>
+        <ThreadPrimitive.Root
+          className="aui-u1-thread bg-background flex h-full min-h-0 min-w-0 flex-col"
+          data-slot="u1-thread-root"
         >
-          <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
-            <RuntimeStateSurface snapshot={snapshot} onRetry={onRetry} />
-            <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
-              {onLoadOlder !== undefined && snapshot.transcript.hasOlder && (
-                <EarlierMessagesControl onLoad={loadEarlier} />
-              )}
-              <ThreadPrimitive.Messages>
-                {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
-              </ThreadPrimitive.Messages>
+          <ThreadPrimitive.Viewport
+            ref={viewportRef}
+            data-slot="u1-thread-viewport"
+            className={cn(
+              "relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain",
+              // While a reload's place settles, every row is drawn, so each height is its real one: a row that is
+              // skipped keeps an estimate, and drawing it later moves the place the reader was given. Once settled,
+              // drawn rows keep their remembered size (`content-visibility: auto`), so nothing shifts.
+              place.resuming &&
+                "[overflow-anchor:none] [&_[data-message-id]]:[content-visibility:visible]!",
+            )}
+            role="region"
+            aria-label="Messages"
+            aria-live="off"
+            tabIndex={0}
+            autoScroll={autoScroll && !place.resuming}
+            // R0 turns `isRunning` off and on at every turn boundary, so a "run start" also fires in the
+            // middle of an answer and would pull a reader who scrolled away down to the bottom. Sending
+            // scrolls explicitly instead (the app root calls followLatest when a message is sent).
+            scrollToBottomOnRunStart={false}
+            scrollToBottomOnInitialize={!place.startsAtPlace}
+            turnAnchor="bottom"
+          >
+            <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
+              <RuntimeStateSurface snapshot={snapshot} onRetry={onRetry} />
+              <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
+                {onLoadOlder !== undefined && snapshot.transcript.hasOlder && (
+                  <EarlierMessagesControl onLoad={loadEarlier} />
+                )}
+                <ThreadPrimitive.Messages>
+                  {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
+                </ThreadPrimitive.Messages>
+              </div>
+              <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 items-center justify-between gap-(--space-md) border-t border-border bg-background px-6 py-2">
+                <RuntimeSettledStatus snapshot={snapshot} />
+                {footer}
+              </ThreadPrimitive.ViewportFooter>
             </div>
-            <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 items-center justify-between gap-(--space-md) border-t border-border bg-background px-6 py-2">
-              <RuntimeSettledStatus snapshot={snapshot} />
-              {footer}
-            </ThreadPrimitive.ViewportFooter>
-          </div>
-        </ThreadPrimitive.Viewport>
-      </ThreadPrimitive.Root>
-    </FullOutputProvider>
+          </ThreadPrimitive.Viewport>
+        </ThreadPrimitive.Root>
+      </FullOutputProvider>
+    </CredentialActionsProvider>
   );
 }
 

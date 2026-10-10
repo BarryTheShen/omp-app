@@ -215,16 +215,17 @@ describe("D1 scope, catalog and thinking acceptance", () => {
 
     expect(calls.map((call) => call.command.type)).toEqual([
       "get_available_models",
+      "get_login_providers",
       "set_model",
       "get_available_thinking_levels",
       "cycle_thinking_level",
       "set_thinking_level",
     ]);
-    expect(calls[1]).toMatchObject({
+    expect(calls[2]).toMatchObject({
       threadId,
       command: { type: "set_model", provider: "fixture-provider", modelId: "fast-chat" },
     });
-    expect(calls[4]).toMatchObject({
+    expect(calls[5]).toMatchObject({
       threadId,
       command: { type: "set_thinking_level", level: "off" },
     });

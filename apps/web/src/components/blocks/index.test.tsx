@@ -163,3 +163,23 @@ test("InlineError exposes its message and invokes optional retry", () => {
   expect(screen.getByRole("alert").textContent).toContain("Invalid setting");
   expect(screen.queryByRole("button")).toBeNull();
 });
+
+test("InlineError shows its actions, and its details start closed behind Show details", () => {
+  const act = vi.fn();
+  render(
+    <InlineError
+      actions={
+        <Button type="button" onClick={act}>
+          Do the thing
+        </Button>
+      }
+      details="raw words from the source"
+      message="Something stopped."
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Do the thing" }));
+  expect(act).toHaveBeenCalledOnce();
+  const details = screen.getByText("Show details").closest("details");
+  expect(details?.open).toBe(false);
+  expect(details?.textContent).toContain("raw words from the source");
+});

@@ -347,6 +347,10 @@ export interface InlineErrorProps {
   readonly onRetry?: () => void | Promise<void>;
   readonly retryLabel?: string;
   readonly variant?: "default" | "compact" | "message";
+  /** Buttons that let the person act on the error, shown after the message. */
+  readonly actions?: ReactNode;
+  /** The underlying words, kept behind a "Show details" toggle that starts closed. */
+  readonly details?: string;
 }
 
 export function InlineError({
@@ -355,6 +359,8 @@ export function InlineError({
   onRetry,
   retryLabel = "Retry",
   variant = "default",
+  actions,
+  details,
 }: InlineErrorProps) {
   return (
     <div
@@ -381,6 +387,15 @@ export function InlineError({
         <Button type="button" size="sm" variant="outline" onClick={() => void onRetry()}>
           {retryLabel}
         </Button>
+      ) : null}
+      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      {details ? (
+        <details className="text-muted-foreground text-xs">
+          <summary className="cursor-pointer select-none">Show details</summary>
+          <pre className="bg-muted mt-2 max-h-40 overflow-auto rounded-md p-2 font-mono break-words whitespace-pre-wrap">
+            {details}
+          </pre>
+        </details>
       ) : null}
     </div>
   );

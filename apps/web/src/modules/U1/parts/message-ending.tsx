@@ -1,8 +1,14 @@
 import { InlineError } from "@/components/blocks";
+import {
+  type CredentialFailure,
+  credentialFailureFromStatusError,
+} from "@/modules/D3/auth/credential";
+import { CredentialFailureNotice } from "@/modules/D3/auth/credential-notice";
 
 /** How an answer that did not finish normally ended. */
 export type MessageEnding =
   | { readonly kind: "error"; readonly text: string | undefined }
+  | { readonly kind: "credential"; readonly failure: CredentialFailure }
   | { readonly kind: "interrupted" }
   | { readonly kind: "length" };
 
@@ -19,7 +25,10 @@ export function endingOf(message: {
 }): MessageEnding | undefined {
   if (message.role !== "assistant" || message.status?.type !== "incomplete") return undefined;
   switch (message.status.reason) {
-    case "error":
+    case "error": {
+      // A refused key or login is said in plain words, with its way out; any other error keeps omp's words.
+      const failure = credentialFailureFromStatusError(message.status.error);
+      if (failure !== null) return { kind: "credential", failure };
       return {
         kind: "error",
         text:
@@ -27,6 +36,7 @@ export function endingOf(message: {
             ? message.status.error
             : undefined,
       };
+    }
     case "cancelled":
       return { kind: "interrupted" };
     case "length":
@@ -39,6 +49,12 @@ export function endingOf(message: {
 /** One line under an answer saying why it stopped, in plain words. */
 export function MessageEndingNote({ ending }: { readonly ending: MessageEnding }) {
   switch (ending.kind) {
+    case "credential":
+      return (
+        <div data-ending="credential" data-slot="u1-message-ending">
+          <CredentialFailureNotice failure={ending.failure} variant="message" />
+        </div>
+      );
     case "error":
       return (
         <div data-ending="error" data-slot="u1-message-ending">

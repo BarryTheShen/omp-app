@@ -4,6 +4,7 @@ import {
   AppFailure,
   ThreadId as ThreadIdSchema,
 } from "@omp-app/contracts";
+import { credentialFailureFromError } from "@/modules/D3/auth/credential";
 import type { OmpRuntimeStore, RuntimeSnapshot, ToolCallState } from "../../../R0/store";
 import type {
   TodoPhase,
@@ -165,7 +166,9 @@ function parseReminder(value: unknown): {
 function parseError(value: unknown): AppError | null {
   if (value === null || value === undefined) return null;
   const parsed = AppErrorSchema.safeParse(value);
-  return parsed.success ? Object.freeze(parsed.data) : null;
+  // A refused key belongs to the chat: its answer says so in plain words, so the todo list is not in error.
+  if (!parsed.success || credentialFailureFromError(parsed.data) !== null) return null;
+  return Object.freeze(parsed.data);
 }
 
 function todoToolChanged(previous: RuntimeSnapshot, next: RuntimeSnapshot): boolean {

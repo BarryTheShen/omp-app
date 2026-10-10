@@ -5,6 +5,7 @@ import {
   Revision,
 } from "@omp-app/contracts";
 import { z } from "zod";
+import { ProviderSignIn } from "@/modules/D3/contract";
 
 /** Product scopes from PLAN.md/D1: reply is AP6-gated, session is live omp state, default is config. */
 export const ModelScope = z.enum(["reply", "session", "default"]);
@@ -94,6 +95,8 @@ export const ModelDescriptor = z.strictObject({
   thinkingEfforts: z.array(EffortLevel),
   availability: z.enum(["available", "locked", "unavailable"]),
   loginProvider: z.string().min(1).optional(),
+  /** How the model's provider is signed in, when the app can tell (see D3's sign-in). */
+  signIn: ProviderSignIn.optional(),
   description: z.string().optional(),
 });
 export type ModelDescriptor = z.infer<typeof ModelDescriptor>;

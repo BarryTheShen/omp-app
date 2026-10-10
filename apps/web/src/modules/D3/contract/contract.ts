@@ -20,6 +20,10 @@ export const AUTH_CAPABILITIES = {
   providerAccounts: "host.provider-accounts",
 } as const satisfies Record<string, CapabilityKey>;
 
+/** How a provider is signed in: with a login omp stores, with an API key, or not at all. */
+export const ProviderSignIn = z.enum(["login", "api-key", "none"]);
+export type ProviderSignIn = z.infer<typeof ProviderSignIn>;
+
 export const LoginProviderSchema = z.strictObject({
   id: z.string().min(1).max(128),
   name: z.string().min(1).max(256),

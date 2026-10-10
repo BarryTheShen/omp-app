@@ -20,6 +20,7 @@ import type {
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { credentialFailureFromMessage, credentialStatusError } from "@/modules/D3/auth/credential";
 import type {
   OmpRuntimeStore,
   RuntimeMessage,
@@ -162,6 +163,12 @@ function messageStatus(runtime: RuntimeMessage | undefined, message: unknown): M
     // not need the failure, only the answer that followed it.
     if (isRecord(message.retryRecovery) && message.retryRecovery.status === "recovered") {
       return { type: "complete", reason: "unknown" };
+    }
+    // A refused key or login keeps its typed failure, so the answer can say what to do; omp's words stay
+    // in the failure for "Show details".
+    const failure = credentialFailureFromMessage(message);
+    if (failure !== null) {
+      return { type: "incomplete", reason: "error", error: credentialStatusError(failure) };
     }
     const text = typeof message.errorMessage === "string" ? message.errorMessage.trim() : "";
     return { type: "incomplete", reason: "error", ...(text === "" ? {} : { error: text }) };

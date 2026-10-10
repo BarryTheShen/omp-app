@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Section } from "@/components/blocks";
 import { createAuthPort, ProviderLoginPanel } from "@/modules/D3/auth";
 import { AUTH_CAPABILITIES } from "@/modules/D3/contract";
+import type { OverlayHostApi } from "@/overlay";
 
 /**
  * Whether the Providers tab offers provider sign-in: omp must be able to list login providers. The
@@ -11,6 +12,28 @@ import { AUTH_CAPABILITIES } from "@/modules/D3/contract";
  */
 export function providerLoginAvailable(capabilities: CapabilityMap): boolean {
   return capabilities[AUTH_CAPABILITIES.getLoginProviders]?.state === "available";
+}
+
+/**
+ * Opens provider sign-in for the session's omp in a dialog over the chat. A refused key's "Sign in…"
+ * button uses it, so the same sign-in screen opens from the notice as from settings.
+ */
+export function openProviderSignIn({
+  overlay,
+  client,
+  threadId,
+  capabilities,
+}: {
+  readonly overlay: OverlayHostApi;
+  readonly client: AppClient;
+  readonly threadId: ThreadId;
+  readonly capabilities: CapabilityMap;
+}): void {
+  overlay.open({
+    kind: "modal",
+    label: "Provider login",
+    content: <ProviderLoginPanel auth={createAuthPort({ client, threadId, capabilities })} />,
+  });
 }
 
 /** The provider sign-in section (D3) on the settings Providers tab. */

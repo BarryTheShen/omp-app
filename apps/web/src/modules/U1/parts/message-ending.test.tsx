@@ -41,6 +41,37 @@ describe("endingOf", () => {
     ).toBeUndefined();
     expect(endingOf({ role: "assistant" })).toBeUndefined();
   });
+
+  test("a status carrying a refused key is a credential ending; any other error keeps omp's words", () => {
+    expect(
+      endingOf(
+        assistant({
+          type: "incomplete",
+          reason: "error",
+          error: {
+            text: "401 Invalid API key",
+            httpStatus: 401,
+            provider: "openai",
+            model: "gpt-6-luna",
+          },
+        }),
+      ),
+    ).toEqual({
+      kind: "credential",
+      failure: {
+        httpStatus: 401,
+        provider: "openai",
+        model: "gpt-6-luna",
+        text: "401 Invalid API key",
+      },
+    });
+    expect(
+      endingOf(assistant({ type: "incomplete", reason: "error", error: "404 not found" })),
+    ).toEqual({
+      kind: "error",
+      text: "404 not found",
+    });
+  });
 });
 
 describe("MessageEndingNote", () => {
@@ -71,5 +102,24 @@ describe("MessageEndingNote", () => {
     render(<MessageEndingNote ending={{ kind: "length" }} />);
     expect(screen.getByText("Cut off at the length limit")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("a refused key is said in plain words, with its way out, and omp's words only under Show details", () => {
+    render(
+      <MessageEndingNote
+        ending={{
+          kind: "credential",
+          failure: {
+            httpStatus: 401,
+            provider: "openai",
+            model: "gpt-6-luna",
+            text: "401 Invalid API key",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("The model could not sign in")).toBeTruthy();
+    expect(screen.getByText(/openai did not accept the sign-in/)).toBeTruthy();
+    expect(screen.getByText("Show details").closest("details")?.open).toBe(false);
   });
 });

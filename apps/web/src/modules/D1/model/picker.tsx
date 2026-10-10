@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { signInLabel } from "@/modules/D3/auth/sign-in";
 import { useCapabilityStatus } from "@/registry-core";
 import {
   MODEL_SCOPE_AP6_CAPABILITY,
@@ -11,6 +12,7 @@ import {
   modelScopeAvailability,
 } from "../contract";
 import { filterModels, type ModelCatalogModel, modelKey, modelRefFromDescriptor } from "./catalog";
+import { groupByProvider, orderBySignIn } from "./sign-in-order";
 
 export interface ModelPickerProps {
   readonly catalog: ModelCatalogModel;
@@ -87,6 +89,11 @@ function ModelRow({
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-center gap-2">
           <span className="truncate font-medium">{model.name}</span>
+          {model.signIn === undefined ? null : (
+            <span className="text-muted-foreground shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[0.7rem]">
+              {signInLabel(model.signIn)}
+            </span>
+          )}
           {current ? (
             <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[0.7rem] text-primary">
               Current
@@ -131,9 +138,11 @@ export function ModelPicker({
       : modelScopeAvailability(scope, snapshot.capabilities);
   const visibleModels = useMemo(
     () =>
-      filterModels(
-        snapshot.models.filter((model) => model.availability !== "unavailable"),
-        query,
+      orderBySignIn(
+        filterModels(
+          snapshot.models.filter((model) => model.availability !== "unavailable"),
+          query,
+        ),
       ),
     [query, snapshot.models],
   );
@@ -258,18 +267,23 @@ export function ModelPicker({
         ) : visibleModels.length === 0 ? (
           <p className="px-3 py-4 text-sm text-muted-foreground">No matching models.</p>
         ) : (
-          visibleModels.map((model, index) => (
-            <ModelRow
-              key={modelKey(modelRefFromDescriptor(model))}
-              model={model}
-              current={
-                snapshot.current?.provider === model.provider &&
-                snapshot.current.modelId === model.id
-              }
-              active={index === activeIndex}
-              onSelect={() => void apply(model)}
-              onProviderLogin={onProviderLogin}
-            />
+          groupByProvider(visibleModels).map((group) => (
+            <fieldset className="flex min-w-0 flex-col gap-1" key={group.provider}>
+              <legend className="sr-only">{group.provider}</legend>
+              {group.models.map((model) => (
+                <ModelRow
+                  key={modelKey(modelRefFromDescriptor(model))}
+                  model={model}
+                  current={
+                    snapshot.current?.provider === model.provider &&
+                    snapshot.current.modelId === model.id
+                  }
+                  active={visibleModels.indexOf(model) === activeIndex}
+                  onSelect={() => void apply(model)}
+                  onProviderLogin={onProviderLogin}
+                />
+              ))}
+            </fieldset>
           ))
         )}
       </div>

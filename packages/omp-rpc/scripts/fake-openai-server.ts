@@ -8,11 +8,13 @@ type Reply =
   | { text: string; thinking?: string; streamed?: boolean }
   | (ToolCall & { thinking?: string })
   | { tools: readonly ToolCall[]; thinking?: string }
-  | { failure: string };
+  | { failure: string }
+  /** `auth_probe` makes the provider refuse the key with HTTP 401, as a real provider does for a bad key. */
+  | { unauthorized: string };
 
 /** The calls a tool reply makes: one call, or several in one assistant message. */
 function toolCallsOf(
-  value: Exclude<Reply, { text: string } | { failure: string }>,
+  value: Exclude<Reply, { text: string } | { failure: string } | { unauthorized: string }>,
 ): readonly ToolCall[] {
   return "tools" in value ? value.tools : [value];
 }
@@ -169,6 +171,7 @@ function reply(request: Request): Reply {
       },
       thinking: "I should start one child task that fails.",
     };
+  if (prompt.includes("auth_probe")) return { unauthorized: "Invalid API key" };
   if (prompt.includes("fail_probe_child"))
     return { failure: "fake provider failure for the failing subagent" };
   if (prompt.includes("spawn_long_subagent"))
@@ -266,6 +269,17 @@ const server = Bun.serve({
       return new Response("not found", { status: 404 });
     const body = (await request.json()) as Request;
     const value = reply(body);
+    if ("unauthorized" in value)
+      return Response.json(
+        {
+          error: {
+            message: value.unauthorized,
+            type: "invalid_request_error",
+            code: "invalid_api_key",
+          },
+        },
+        { status: 401 },
+      );
     if ("failure" in value)
       return Response.json(
         { error: { message: value.failure, type: "invalid_request_error" } },

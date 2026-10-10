@@ -1,7 +1,7 @@
 import type { AppClient } from "@omp-app/client";
 import type { CapabilityMap, RpcSessionClient, ThreadId } from "@omp-app/contracts";
 import { RpcSessionPort } from "@omp-app/contracts";
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { ThinkingLevel } from "@/modules/D1/contract";
 import {
@@ -25,6 +25,7 @@ import {
   type UsageStateSource,
 } from "@/modules/P7/contract";
 import type { OmpRuntimeStore, SessionInfoState } from "@/modules/R0/store";
+import type { OverlayHostApi } from "@/overlay";
 import { useOverlayHost } from "@/overlay";
 import { reportClientError } from "./client-errors";
 import { useModelPaletteCommand } from "./palette-model-command";
@@ -58,47 +59,49 @@ function liveThinking(store: OmpRuntimeStore): LiveThinkingState {
   return { getSnapshot: read, subscribe: (listener) => store.subscribe(() => listener(read())) };
 }
 
+/** What opening the session's model dialog needs: the host to open it in, and the session it changes. */
+export interface SessionModelDialogOptions {
+  readonly overlay: OverlayHostApi;
+  readonly client: AppClient;
+  readonly store: OmpRuntimeStore;
+  readonly threadId: ThreadId;
+  readonly capabilities: CapabilityMap;
+  /** Where focus goes back when the dialog closes; omitted, the focused opener is used. */
+  readonly restoreFocus?: HTMLElement;
+}
+
 /**
- * The header's model button: names the session's model and thinking level and opens D1's model
- * picker and thinking selector for this session.
+ * Opens D1's model and thinking dialog for the session. The header's model button, the palette's model
+ * command and a refused-key notice all open it, so the list is built the same way for each. Its model list
+ * and thinking state are made when the dialog opens and disposed when it closes.
  */
-export function SessionModelControl({
+export function openSessionModelDialog({
+  overlay,
   client,
   store,
   threadId,
   capabilities,
-}: SessionControlProps) {
-  const overlay = useOverlayHost();
-  const session = useSessionInfo(store);
-  const catalog = useMemo(
-    () =>
-      new ModelCatalogModel({
-        source: createRpcModelCatalogSource(client, threadId),
-        capabilities,
-        liveState: createR0LiveModelState({
-          getSnapshot: () => ({ model: store.getSnapshot().session.model }),
-          subscribe: (listener) => store.subscribe(() => listener()),
-        }),
-      }),
-    [capabilities, client, store, threadId],
-  );
-  const thinking = useMemo(
-    () =>
-      new ThinkingLevelsController({
-        source: createRpcThinkingSource(client, threadId),
-        capabilities,
-        live: liveThinking(store),
-      }),
-    [capabilities, client, store, threadId],
-  );
-  useEffect(() => () => catalog.dispose(), [catalog]);
-  useEffect(() => () => thinking.dispose(), [thinking]);
-  const rpc = useMemo(() => client.port(RpcSessionPort) as RpcSessionClient, [client]);
+  restoreFocus,
+}: SessionModelDialogOptions): void {
+  const catalog = new ModelCatalogModel({
+    source: createRpcModelCatalogSource(client, threadId),
+    capabilities,
+    liveState: createR0LiveModelState({
+      getSnapshot: () => ({ model: store.getSnapshot().session.model }),
+      subscribe: (listener) => store.subscribe(() => listener()),
+    }),
+  });
+  const thinking = new ThinkingLevelsController({
+    source: createRpcThinkingSource(client, threadId),
+    capabilities,
+    live: liveThinking(store),
+  });
+  const rpc = client.port(RpcSessionPort) as RpcSessionClient;
   /**
    * The header reads R0's copy of omp's state, which is read again at a turn's end. After the person
    * changes the model or the thinking level, read it now so the header shows what omp uses.
    */
-  const refreshSession = useCallback(() => {
+  const refreshSession = () => {
     // The answer describes omp as of this request: a run that starts after it is newer than the answer.
     const asOfSeq = store.getSnapshot().lastSeq;
     void rpc
@@ -112,7 +115,45 @@ export function SessionModelControl({
           }`,
         });
       });
-  }, [rpc, store, threadId]);
+  };
+  const opened = overlay.open({
+    kind: "modal",
+    label: "Model and thinking",
+    ...(restoreFocus === undefined ? {} : { restoreFocus }),
+    // One size rule, no breakpoints: nearly the whole window when it is small, a roomy 48 by
+    // 52rem box when it is large. The content sets no width of its own, so it can never be
+    // wider than this frame (it used to ask for 36rem inside a 32rem frame and was cut off).
+    className:
+      "h-[min(calc(100dvh-1rem),52rem)] w-[min(calc(100vw-1rem),48rem)] max-h-none max-w-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]",
+    content: ({ close }) => (
+      <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
+        <ModelPicker catalog={catalog} fill onApplied={refreshSession} scope="session" />
+        <ThinkingSelector controller={thinking} onApplied={refreshSession} />
+        <Button className="self-end" onClick={() => close()} type="button" variant="outline">
+          Done
+        </Button>
+      </div>
+    ),
+  });
+  void opened.closed.then(() => {
+    catalog.dispose();
+    thinking.dispose();
+  });
+  void catalog.refresh().catch(() => undefined);
+}
+
+/**
+ * The header's model button: names the session's model and thinking level and opens D1's model
+ * picker and thinking selector for this session. The palette's model command opens the same dialog.
+ */
+export function SessionModelControl({
+  client,
+  store,
+  threadId,
+  capabilities,
+}: SessionControlProps) {
+  const overlay = useOverlayHost();
+  const session = useSessionInfo(store);
   const modelName = session.model?.name ?? session.model?.id;
   const parsedLevel = session.model?.reasoning
     ? ThinkingLevel.safeParse(session.thinkingLevel)
@@ -121,28 +162,8 @@ export function SessionModelControl({
     parsedLevel?.success && parsedLevel.data !== "off"
       ? thinkingLevelLabel(parsedLevel.data).toLowerCase()
       : null;
-  const openDialog = (restoreFocus?: HTMLElement) => {
-    void catalog.refresh().catch(() => undefined);
-    overlay.open({
-      kind: "modal",
-      label: "Model and thinking",
-      ...(restoreFocus === undefined ? {} : { restoreFocus }),
-      // One size rule, no breakpoints: nearly the whole window when it is small, a roomy 48 by
-      // 52rem box when it is large. The content sets no width of its own, so it can never be
-      // wider than this frame (it used to ask for 36rem inside a 32rem frame and was cut off).
-      className:
-        "h-[min(calc(100dvh-1rem),52rem)] w-[min(calc(100vw-1rem),48rem)] max-h-none max-w-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]",
-      content: ({ close }) => (
-        <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
-          <ModelPicker catalog={catalog} fill onApplied={refreshSession} scope="session" />
-          <ThinkingSelector controller={thinking} onApplied={refreshSession} />
-          <Button className="self-end" onClick={() => close()} type="button" variant="outline">
-            Done
-          </Button>
-        </div>
-      ),
-    });
-  };
+  const openDialog = (restoreFocus?: HTMLElement) =>
+    openSessionModelDialog({ overlay, client, store, threadId, capabilities, restoreFocus });
   const open = () => openDialog();
   useModelPaletteCommand(openDialog);
   return (
