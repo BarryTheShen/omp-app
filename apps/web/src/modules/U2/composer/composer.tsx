@@ -27,6 +27,7 @@ import {
   submitModeInput,
   textForMode,
 } from "../modes";
+import { type ArrowGesture, arrowGestureStep, NO_ARROW_GESTURE } from "./arrow-gesture";
 import { useRemeasureOnWidthChange } from "./remeasure";
 
 export interface ComposerSurfaceProps {
@@ -40,6 +41,8 @@ export interface ComposerSurfaceProps {
   /** The app's capabilities: `submitModeInput` reads Python availability from them. Empty means none. */
   readonly capabilities?: CapabilityMap;
   readonly children?: ReactNode;
+  /** Two presses of ← in the empty editor, close together: omp's gesture that opens the Agent Hub. */
+  readonly onDoubleLeftArrow?: () => void;
 }
 
 function attachmentRef(attachment: Attachment): AttachmentRef {
@@ -140,6 +143,7 @@ export function ComposerSurface({
   disabled = false,
   showAttachmentNames = true,
   toolbar,
+  onDoubleLeftArrow,
   children,
 }: ComposerSurfaceProps): ReactNode {
   const aui = useAui();
@@ -153,6 +157,7 @@ export function ComposerSurface({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const composingRef = useRef(false);
+  const arrowGesture = useRef<ArrowGesture>(NO_ARROW_GESTURE);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useRemeasureOnWidthChange(inputRef);
   const submit = useCallback(
@@ -240,6 +245,17 @@ export function ComposerSurface({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      // The double-tap of ← that opens the Agent Hub (omp's gesture). Only the editor's own keys count.
+      if (!event.nativeEvent.isComposing && !composingRef.current) {
+        const step = arrowGestureStep(arrowGesture.current, {
+          key: event.key,
+          repeat: event.repeat,
+          emptyEditor: text === "" && attachments.length === 0,
+          now: Date.now(),
+        });
+        arrowGesture.current = step.gesture;
+        if (step.doubleTap) onDoubleLeftArrow?.();
+      }
       // A running turn takes Escape first, in bash and Python mode too: one press stops the turn
       // and the mode stays. With no turn running, Escape or an empty Backspace leaves bash and
       // Python mode for Prompt and keeps the text. A key a trigger list already handled
@@ -270,7 +286,7 @@ export function ComposerSurface({
       event.stopPropagation();
       void submit(enterChord(event));
     },
-    [canCancel, composer, handleCancel, submit, text],
+    [attachments, canCancel, composer, handleCancel, onDoubleLeftArrow, submit, text],
   );
 
   return (

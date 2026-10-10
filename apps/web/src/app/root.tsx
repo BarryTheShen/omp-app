@@ -28,7 +28,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { AccessibilityProvider } from "@/a11y";
-import { agentsSurface } from "@/app/agents/agents-tab";
+import { agentsSurface, RevealAgentHub } from "@/app/agents/agents-tab";
 import { TaskSubagentsScope, useThreadAgents } from "@/app/agents/thread-agents-scope";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { ToolRunScope } from "@/app/tool-run-scope";
@@ -44,6 +44,7 @@ import {
 import { LayoutArea, type LayoutAreaName, type SurfaceMap } from "@/layout";
 import type { CredentialActions } from "@/modules/D3/auth/credential-actions";
 import { readProviderSignIns } from "@/modules/D3/auth/sign-in";
+import { D3_LOGIN_COMMAND } from "@/modules/D3/descriptors";
 import type {
   SessionCapabilitiesSource,
   SessionInfoMetadataSource,
@@ -129,13 +130,14 @@ import { ComposerHistory } from "./composer-history";
 import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
-import { openProviderSignIn } from "./provider-login-section";
+import { openProviderLogin, openProviderSignIn } from "./provider-login-section";
 import { saveTextFile } from "./save-file";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
 import {
   freshSlashCommand,
+  loginSlashCommand,
   newChatSlashCommand,
   routeSubmit,
   runSlashRoute,
@@ -437,6 +439,7 @@ function DraftComposer({
   footer,
   footerOpen,
   manager,
+  onDoubleLeftArrow,
 }: {
   readonly controller: DraftController;
   readonly capabilities: CapabilityMap;
@@ -448,6 +451,7 @@ function DraftComposer({
   readonly footer: ReactNode;
   readonly footerOpen: boolean;
   readonly manager: AttachmentManager;
+  readonly onDoubleLeftArrow: () => void;
 }) {
   const aui = useAui();
   const snapshot = useSyncExternalStore(
@@ -490,6 +494,7 @@ function DraftComposer({
       submitPrompt={submit}
       toolbar={toolbar}
       showAttachmentNames={false}
+      onDoubleLeftArrow={onDoubleLeftArrow}
     >
       {hasAttachmentOutput || footerOpen ? footer : null}
     </ComposerSurface>
@@ -690,6 +695,29 @@ function ActiveThreadReady({
       ),
     });
   }, [catalog, openThread, overlay, remote, threadId]);
+  // The Agent Hub, opened by a double-tap of ← in the empty composer (omp's gesture). The Agents tab comes to the
+  // front and its sidebar opens if it is closed; only a session with an agent to show opens it.
+  const [agentsReveal, setAgentsReveal] = useState(0);
+  const openAgentHub = useCallback(() => {
+    if (agents === null) return;
+    void agents.start().then(
+      () => {
+        if (agents.roster.getSnapshot().order.length > 0) setAgentsReveal((count) => count + 1);
+      },
+      () => undefined,
+    );
+  }, [agents]);
+  const openLogin = useCallback(
+    () =>
+      openProviderLogin({
+        overlay,
+        client,
+        threadId,
+        capabilities,
+        restoreFocus: composerInput() ?? undefined,
+      }),
+    [capabilities, client, overlay, threadId],
+  );
   const commandHandlers = useMemo(() => {
     const handlers = new Map<DescriptorId, CommandPaletteHandler>();
     handlers.set("D5.new", () => {
@@ -779,6 +807,7 @@ function ActiveThreadReady({
         });
     });
     if (catalog && remote) handlers.set("R1.openSession", openSessionBrowser);
+    handlers.set(D3_LOGIN_COMMAND.id, () => openLogin());
     handlers.set("S1.settings", () => onOpenSettings(threadId, composerInput() ?? undefined));
     handlers.set("U0.themeSystem", () => setThemePreference("system"));
     handlers.set("U0.themeLight", () => setThemePreference("light"));
@@ -789,6 +818,7 @@ function ActiveThreadReady({
     client,
     lifecycle,
     onOpenSettings,
+    openLogin,
     openSessionBrowser,
     openThread,
     remote,
@@ -893,8 +923,12 @@ function ActiveThreadReady({
   const notificationProjector = useNotificationProjector(store, setEditorText);
   // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
   const appSlashCommands = useMemo(
-    () => [newChatSlashCommand({ lifecycle, openThread }), freshSlashCommand({ lifecycle })],
-    [lifecycle, openThread],
+    () => [
+      newChatSlashCommand({ lifecycle, openThread }),
+      freshSlashCommand({ lifecycle }),
+      loginSlashCommand({ openLogin }),
+    ],
+    [lifecycle, openLogin, openThread],
   );
   const slashProvider = useSlashCommands({
     client,
@@ -1012,7 +1046,7 @@ function ActiveThreadReady({
       requires: ["omp.cmd.get_state", "omp.cmd.compact", "omp.cmd.set_auto_compaction"],
       render: () => <SessionContextPanel client={client} store={store} threadId={threadId} />,
     },
-    agents: agentsSurface({ agents }),
+    agents: agentsSurface({ agents, reveal: agentsReveal }),
     rewind: useRewindPanel({
       threadId,
       store,
@@ -1085,6 +1119,7 @@ function ActiveThreadReady({
           footer={area("composerFooter")}
           footerOpen={editing !== null}
           manager={attachmentManager}
+          onDoubleLeftArrow={openAgentHub}
           policy={resolveQueueSubmitPolicy}
           submit={submit}
           toolbar={area("composerToolbar")}
@@ -1113,7 +1148,12 @@ function ActiveThreadReady({
             leftSidebar={leftSidebar}
             statusBar={area("statusBar")}
             threadHeader={area("header")}
-            rightSidebar={area("panels")}
+            rightSidebar={
+              <>
+                {area("panels")}
+                <RevealAgentHub reveal={agentsReveal} />
+              </>
+            }
             transcript={
               store && threadId ? (
                 <div className="h-full min-h-0" ref={transcriptRootRef}>

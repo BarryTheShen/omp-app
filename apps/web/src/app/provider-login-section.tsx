@@ -1,5 +1,6 @@
 import type { AppClient } from "@omp-app/client";
 import type { CapabilityMap, ThreadId } from "@omp-app/contracts";
+import { AppFailure } from "@omp-app/contracts";
 import { useMemo } from "react";
 import { Section } from "@/components/blocks";
 import { createAuthPort, ProviderLoginPanel } from "@/modules/D3/auth";
@@ -58,4 +59,44 @@ export function ProviderLoginSection({
     );
   }
   return <ProviderLoginPanel auth={auth} />;
+}
+
+/**
+ * Opens the provider login page as a dialog over the open chat: the page Settings > Providers shows. `/login`
+ * in the composer and the palette's Provider login command both come here. The dialog returns focus to
+ * `restoreFocus` when it closes; the palette passes the composer, because the palette has already closed.
+ */
+export function openProviderLogin({
+  overlay,
+  client,
+  threadId,
+  capabilities,
+  restoreFocus,
+}: {
+  readonly overlay: OverlayHostApi;
+  readonly client: AppClient;
+  readonly threadId: ThreadId;
+  readonly capabilities: CapabilityMap;
+  readonly restoreFocus?: HTMLElement;
+}): void {
+  if (!providerLoginAvailable(capabilities)) {
+    throw new AppFailure({
+      code: "unavailable",
+      message: "Provider login is unavailable for this session.",
+      retryable: false,
+      capability: AUTH_CAPABILITIES.getLoginProviders,
+    });
+  }
+  const auth = createAuthPort({ client, threadId, capabilities });
+  overlay.open({
+    kind: "modal",
+    label: "Provider login",
+    width: "content",
+    ...(restoreFocus === undefined ? {} : { restoreFocus }),
+    content: () => (
+      <div className="max-h-[75vh] overflow-y-auto">
+        <ProviderLoginPanel auth={auth} />
+      </div>
+    ),
+  });
 }

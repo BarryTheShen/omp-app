@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createSlashCommandProvider,
+  routeSlashText,
   type SlashCommandProvider,
   type SlashRoute,
 } from "@/modules/D2/slash";
@@ -19,6 +20,7 @@ import type { PromptIntent } from "@/modules/U2/contract";
 import { ComposerTriggers } from "./composer-triggers";
 import {
   freshSlashCommand,
+  loginSlashCommand,
   newChatSlashCommand,
   routeSubmit,
   runSlashRoute,
@@ -291,5 +293,20 @@ describe("D2.3 the list inside the composer's trigger root", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(input.value).toBe("/usage "));
     provider.dispose();
+  });
+});
+
+describe("/login", () => {
+  test("typed alone it is an app command: the login page opens and the text never reaches omp", async () => {
+    const openLogin = vi.fn();
+    const command = loginSlashCommand({ openLogin });
+    expect(routeSlashText("/login", [], [command])).toEqual({ kind: "app", command });
+    await expect(command.run({})).resolves.toEqual({});
+    expect(openLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test("with words after it, it is not the app command", () => {
+    const command = loginSlashCommand({ openLogin: () => undefined });
+    expect(routeSlashText("/login anthropic", [], [command])).not.toMatchObject({ kind: "app" });
   });
 });

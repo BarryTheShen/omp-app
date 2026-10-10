@@ -129,6 +129,25 @@ export function freshSlashCommand({
 }
 
 /**
+ * `/login`: omp's login is not a command omp runs over RPC (its terminal shows a provider picker), so the app
+ * opens the provider login page itself, the page Settings > Providers shows. Typed alone, it never reaches omp.
+ */
+export function loginSlashCommand({
+  openLogin,
+}: {
+  readonly openLogin: () => void;
+}): SlashAppCommand {
+  return {
+    name: "login",
+    description: "Log in to a model provider",
+    run: async () => {
+      openLogin();
+      return {};
+    },
+  };
+}
+
+/**
  * Decides whether a submitted message is a command. Only a plain prompt with nothing attached can be one:
  * bash and Python input, pictures and files keep their normal path.
  */

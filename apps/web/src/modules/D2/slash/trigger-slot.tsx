@@ -4,7 +4,7 @@ import {
   type Unstable_TriggerItem,
   unstable_useLiveCompletionAdapter,
 } from "@assistant-ui/react";
-import { type ReactNode, useCallback, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import type {
   ComposerTriggerCandidate,
   ComposerTriggerProvider,
@@ -136,6 +136,7 @@ function SlashPopover({
   const status = useRef<string | null>(null);
   // True while arguments follow a command and nothing matches them: no list, so Enter sends the message.
   const quiet = useRef(false);
+  const [, redraw] = useState(0);
   const fetcher = useCallback(
     async (query: string): Promise<readonly Unstable_TriggerItem[]> => {
       if (!provider) return [];
@@ -159,7 +160,14 @@ function SlashPopover({
   const handleInserted = useCallback(
     (item: Unstable_TriggerItem) => {
       const candidate = candidateMap.current.get(item.id);
-      if (candidate) onSelect(candidate);
+      if (!candidate) return;
+      onSelect(candidate);
+      // A command with no arguments is complete once chosen. Its old option stays highlighted until the next
+      // search answers, so an Enter now would choose it again instead of sending: the list goes quiet at once.
+      if (typeof candidate.metadata?.argumentHint !== "string") {
+        quiet.current = true;
+        redraw((count) => count + 1);
+      }
     },
     [onSelect],
   );

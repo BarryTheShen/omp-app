@@ -1,11 +1,12 @@
 import type { AppError } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Surface } from "@/layout";
 import type { AgentRef } from "@/modules/P1/contract";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
 import { createAgentHubController } from "@/modules/P1/panels";
 import type { RosterAgent } from "@/modules/P1/roster";
+import { useRightSidebar } from "@/shell";
 import { AgentsPanel, type AgentsView, type LiveAgents } from "./agents-panel";
 import type { ThreadAgents } from "./thread-agents";
 
@@ -37,19 +38,39 @@ function isRosterAgent(agent: AgentRef): agent is RosterAgent {
  * away. The roster belongs to the chat (`ThreadAgents`); the tab starts it when it opens and builds only its
  * own hub view on top of it.
  */
-export function agentsSurface({ agents }: { readonly agents: ThreadAgents | null }): Surface {
+export function agentsSurface({
+  agents,
+  reveal,
+}: {
+  readonly agents: ThreadAgents | null;
+  /** Changes each time a person asks for the hub (`← ←`): the tab comes to the front and shows the hub. */
+  readonly reveal?: number;
+}): Surface {
   return {
     title: "Agents",
     requires: AGENT_CAPABILITIES,
     grow: true,
-    render: () => <AgentsTab agents={agents} />,
+    reveal,
+    render: () => <AgentsTab agents={agents} reveal={reveal} />,
   };
 }
 
-function AgentsTab({ agents }: { readonly agents: ThreadAgents | null }) {
+function AgentsTab({
+  agents,
+  reveal,
+}: {
+  readonly agents: ThreadAgents | null;
+  readonly reveal: number | undefined;
+}) {
   const [attempt, setAttempt] = useState(0);
   const [live, setLive] = useState<LiveAgents | null>(null);
   const [view, setView] = useState<AgentsView>({ kind: "hub" });
+  const seenReveal = useRef(reveal);
+  useEffect(() => {
+    if (reveal === seenReveal.current) return;
+    seenReveal.current = reveal;
+    setView({ kind: "hub" });
+  }, [reveal]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a retry (attempt) starts the roster again on purpose.
   useEffect(() => {
@@ -93,4 +114,20 @@ function AgentsTab({ agents }: { readonly agents: ThreadAgents | null }) {
       view={view}
     />
   );
+}
+
+/**
+ * Opens the Panels sidebar when a person asks for the Agent Hub (`← ←`) while the sidebar is closed. It renders
+ * nothing: the Agents tab comes to the front through its `reveal`. It is mounted beside the panels, so it runs
+ * whether or not the sidebar is open.
+ */
+export function RevealAgentHub({ reveal }: { readonly reveal: number }) {
+  const sidebar = useRightSidebar();
+  const seen = useRef(reveal);
+  useEffect(() => {
+    if (reveal === seen.current) return;
+    seen.current = reveal;
+    sidebar?.show();
+  }, [reveal, sidebar]);
+  return null;
 }

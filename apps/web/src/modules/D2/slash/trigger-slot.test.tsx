@@ -127,4 +127,61 @@ describe("D2.3 SlashTriggerSlot", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
     provider.dispose();
   });
+
+  test("a command with no arguments is quiet once chosen: an Enter pressed at once sends the message", async () => {
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [{ name: "login", description: "Sign in", run: async () => ({}) }],
+    });
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "/login" } });
+    input.setSelectionRange(6, 6);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("/login "));
+
+    // The option that was chosen is still in the list until the next search answers. It must not take this Enter.
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    provider.dispose();
+  });
+
+  test("once the list has settled after a no-argument command, the next Enter sends too", async () => {
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [{ name: "login", description: "Sign in", run: async () => ({}) }],
+    });
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "/login" } });
+    input.setSelectionRange(6, 6);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("/login "));
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 400);
+    await promise;
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    provider.dispose();
+  });
 });

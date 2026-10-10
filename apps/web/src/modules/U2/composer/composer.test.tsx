@@ -274,4 +274,59 @@ describe("U2.2 ComposerSurface", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(input.value).toBe("some text");
   });
+
+  describe("double-tap ← in the empty editor opens the Agent Hub", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    function renderArrows(value = "") {
+      const onDoubleLeftArrow = vi.fn();
+      render(
+        <RuntimeProvider running={false}>
+          <ComposerSurface
+            cancel={async () => undefined}
+            onDoubleLeftArrow={onDoubleLeftArrow}
+            submitPrompt={async () => undefined}
+          />
+        </RuntimeProvider>,
+      );
+      const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+      if (value !== "") fireEvent.change(input, { target: { value } });
+      return { input, onDoubleLeftArrow };
+    }
+
+    function pressAt(input: HTMLTextAreaElement, key: string, at: number) {
+      vi.spyOn(Date, "now").mockReturnValue(at);
+      fireEvent.keyDown(input, { key });
+    }
+
+    test("two ← presses close together in an empty editor open it once", () => {
+      const { input, onDoubleLeftArrow } = renderArrows();
+      pressAt(input, "ArrowLeft", 1_000);
+      pressAt(input, "ArrowLeft", 1_200);
+      expect(onDoubleLeftArrow).toHaveBeenCalledTimes(1);
+    });
+
+    test("a ← press in an editor with text does not open it, and the text stays", () => {
+      const { input, onDoubleLeftArrow } = renderArrows("draft");
+      pressAt(input, "ArrowLeft", 1_000);
+      pressAt(input, "ArrowLeft", 1_200);
+      expect(onDoubleLeftArrow).not.toHaveBeenCalled();
+      expect(input.value).toBe("draft");
+    });
+
+    test("a second ← after the window is a first press, not a double-tap", () => {
+      const { input, onDoubleLeftArrow } = renderArrows();
+      pressAt(input, "ArrowLeft", 1_000);
+      pressAt(input, "ArrowLeft", 1_600);
+      expect(onDoubleLeftArrow).not.toHaveBeenCalled();
+    });
+
+    test("any other key between the two ← presses cancels the double-tap", () => {
+      const { input, onDoubleLeftArrow } = renderArrows();
+      pressAt(input, "ArrowLeft", 1_000);
+      pressAt(input, "a", 1_100);
+      pressAt(input, "ArrowLeft", 1_200);
+      expect(onDoubleLeftArrow).not.toHaveBeenCalled();
+    });
+  });
 });

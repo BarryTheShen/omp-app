@@ -9,6 +9,7 @@ import type { Descriptor } from "@omp-app/contracts";
 import { D1_DESCRIPTORS } from "../modules/D1/descriptors";
 import { modelSettingsSections } from "../modules/D1/settings/descriptors";
 import { D2_TRIGGER_DESCRIPTORS } from "../modules/D2/contract";
+import { D3_LOGIN_DESCRIPTORS } from "../modules/D3/descriptors";
 import { D5_LIFECYCLE_COMMAND_DESCRIPTORS } from "../modules/D5/descriptors";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { I1_SETTINGS_SECTIONS } from "../modules/I1/settings/descriptors";
@@ -100,6 +101,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   U2_EXTERNAL_EDITOR_SHORTCUT,
   U0_COMMAND_PALETTE_SHORTCUT,
   U0_SAVE_DEBUG_LOG_COMMAND,
+  ...D3_LOGIN_DESCRIPTORS,
   ...U0_PALETTE_COMMANDS,
   // S1's Settings command, so the palette can offer it; its handler is mounted with the open thread.
   ...S1_DESCRIPTORS.filter((descriptor) => descriptor.kind === "command"),
