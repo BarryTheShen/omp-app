@@ -28,6 +28,7 @@ import {
   SlashCommand,
   type ThreadId,
 } from "@omp-app/contracts";
+import { redactPrivateKeyBlocks } from "./private-key-blocks";
 
 const MAX_OUTPUTS = 256;
 const MAX_RESULTS = 256;
@@ -45,8 +46,6 @@ const SECRET_ASSIGNMENTS =
 const BASIC_CREDENTIALS = /\bBasic\s+[A-Za-z0-9+/=]{12,}/gi;
 const API_KEY_CREDENTIALS =
   /\b(?:sk-(?:ant-|proj-|or-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[abprs]-[A-Za-z0-9-]{10,}|(?:hf|gsk)_[A-Za-z0-9]{30,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})\b/gi;
-const PRIVATE_KEY_BLOCK =
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
 const PRIVATE_PATH = new RegExp(
   `(?<![\\w.>~-])(?:${PRIVATE_PATH_ROOTS.join("|")})(?:[/\\\\][^\\s"'<>|?*:]+)*(?![\\w.-])`,
   "g",
@@ -688,7 +687,7 @@ function parseOutput(
 }
 
 function sanitizeOutput(value: string): string {
-  return value
+  const withoutCredentials = value
     .replace(ANSI_ESCAPE, "")
     .replace(URL_CREDENTIALS, "$1<redacted>@")
     .replace(HEADER_CREDENTIALS, '$1"<redacted>"')
@@ -696,8 +695,8 @@ function sanitizeOutput(value: string): string {
     .replace(AUTH_SCHEME_CREDENTIALS, "$1 <redacted>")
     .replace(SECRET_ASSIGNMENTS, "$1<redacted>")
     .replace(API_KEY_CREDENTIALS, "<redacted>")
-    .replace(BASIC_CREDENTIALS, "Basic <redacted>")
-    .replace(PRIVATE_KEY_BLOCK, "<redacted>")
+    .replace(BASIC_CREDENTIALS, "Basic <redacted>");
+  return redactPrivateKeyBlocks(withoutCredentials)
     .replace(PRIVATE_PATH, "<private-path>")
     .replace(WINDOWS_PATH, "<private-path>");
 }

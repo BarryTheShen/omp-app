@@ -101,6 +101,19 @@ async function growthRatio(build: (length: number) => string, small: number): Pr
   return largeMs / Math.max(smallMs, TIMING_FLOOR_MS);
 }
 
+// The private-key growth case through prompts uses the floor and limit of the function's own test
+// (private-key-blocks.test.ts), at the larger sizes given in the test below.
+const PRIVATE_KEY_GROWTH_LIMIT = 8;
+const PRIVATE_KEY_FLOOR_MS = 0.25;
+
+/** The fastest of five `prompts` calls on `text`, after one untimed call (the first run compiles the regexes). */
+async function fastestPromptsMs(text: string): Promise<number> {
+  await promptsMs(text);
+  let fastest = Number.POSITIVE_INFINITY;
+  for (let run = 0; run < 5; run += 1) fastest = Math.min(fastest, await promptsMs(text));
+  return fastest;
+}
+
 describe("McpCommandsService", () => {
   test("parses v18.6.1 list output and exposes only remote URL origins", async () => {
     const { service } = serviceFor(
@@ -196,9 +209,9 @@ describe("McpCommandsService", () => {
     expect(redacted.prompts[0]?.description).not.toContain("hunter2");
 
     // omp sends a whole prompt list as one frame, so a hostile description can be about 40,000 characters.
-    // Letters and paths are measured from 10,000 to 40,000 characters. The private-key pattern
-    // rescans to the end of the text for each unclosed header, so it grows faster than linear
-    // (10 to 12 times from 10,000 to 40,000 characters); it is measured from 5,000 to 20,000.
+    // Letters and paths are measured from 10,000 to 40,000 characters. Private-key headers here are a smoke check: the
+    // function's own growth test (private-key-blocks.test.ts) holds the linear guard, and the test after this one
+    // measures larger sizes through prompts (#869).
     const privateKeyHeader = ["-----BEGIN", "PRIVATE KEY-----"].join(" ");
     const hostileRuns: Array<[string, number, (length: number) => string]> = [
       ["a long run of letters", 10_000, (length) => "a".repeat(length)],
@@ -219,6 +232,34 @@ describe("McpCommandsService", () => {
     }
     expect(overLimit).toEqual([]);
   }, 30_000);
+  test("a long run of unclosed private-key headers in a description takes linear time", async () => {
+    // The function's floor and limit, through prompts, so that sanitizeOutput is checked too. The sizes are larger than
+    // the function's (25,000 and 100,000): the other redaction steps dilute the ratio here, and at 12,500 and 50,000 the
+    // old pattern measured 6.7 to 14.2, too close to the limit to fail reliably. Built at runtime: the PR gate rejects added
+    // lines that look like a private key.
+    const header = ["-----BEGIN", "PRIVATE KEY-----"].join(" ");
+    const small = header.repeat(Math.ceil(25_000 / header.length)).slice(0, 25_000);
+    const large = header.repeat(Math.ceil(100_000 / header.length)).slice(0, 100_000);
+    const smallMs = await fastestPromptsMs(small);
+    const largeMs = await fastestPromptsMs(large);
+    expect(largeMs / Math.max(smallMs, PRIVATE_KEY_FLOOR_MS)).toBeLessThan(
+      PRIVATE_KEY_GROWTH_LIMIT,
+    );
+  }, 30_000);
+  test("redacts a private key block in an MCP description, and keeps the text around it", async () => {
+    // Built at runtime: the PR gate rejects added lines that look like a private key.
+    const dashes = "-----";
+    const key = [
+      `${dashes}BEGIN RSA PRIVATE KEY${dashes}`,
+      "MIIEpAIBAAKCAQEA",
+      `${dashes}END RSA PRIVATE KEY${dashes}`,
+    ];
+    const { service } = serviceFor(`atlas/explain — before ${key.join("\n")} after`);
+
+    const result = await service.prompts({ threadId });
+
+    expect(result.prompts[0]?.description).toBe("before <redacted> after");
+  });
   test("keeps multiline descriptions and bounds long catalog entries and lists", async () => {
     const longName = "n".repeat(300);
     const longDescription = "d".repeat(2_050);
