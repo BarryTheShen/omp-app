@@ -169,7 +169,8 @@ describe("ThreadAgents", () => {
             entryCount: 2,
             aborted: false,
             status: "completed",
-            endedAt: "2026-10-09T00:00:00.000Z",
+            // An hour ago: inside the roster's 24-hour retention however old the clock gets.
+            endedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
             agent: "task",
           },
         ],
