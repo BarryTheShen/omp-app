@@ -140,6 +140,7 @@ import { ComposerHistory } from "./composer-history";
 import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
+import { browserClipboard, useCopyFromChat } from "./copy/use-copy-from-chat";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
 import { saveTextFile } from "./save-file";
@@ -648,6 +649,14 @@ function ActiveThreadReady({
     [overlay, threadId],
   );
   useDisposeWhenReplaced(dialogHost);
+  useCopyFromChat({
+    threadId,
+    store,
+    dialogs: dialogHost,
+    clipboard: browserClipboard,
+    download: saveTextFile,
+    showStatus: setCommandStatus,
+  });
   const runtimeSource = useMemo<SessionInfoRuntimeSource>(
     () => ({
       getSnapshot: () => ({ threadId, session: store.getSnapshot().session }),

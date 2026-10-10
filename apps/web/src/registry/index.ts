@@ -10,6 +10,7 @@ import { D1_DESCRIPTORS } from "../modules/D1/descriptors";
 import { modelSettingsSections } from "../modules/D1/settings/descriptors";
 import { D2_TRIGGER_DESCRIPTORS } from "../modules/D2/contract";
 import { D3_LOGIN_DESCRIPTORS } from "../modules/D3/descriptors";
+import { D4_COPY_DESCRIPTORS } from "../modules/D4/copy/descriptors";
 import { D5_LIFECYCLE_COMMAND_DESCRIPTORS } from "../modules/D5/descriptors";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { I1_SETTINGS_SECTIONS } from "../modules/I1/settings/descriptors";
@@ -109,6 +110,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...U0_PALETTE_COMMANDS,
   // S1's Settings command, so the palette can offer it; its handler is mounted with the open thread.
   ...S1_DESCRIPTORS.filter((descriptor) => descriptor.kind === "command"),
+  ...D4_COPY_DESCRIPTORS,
   ...R1_DESCRIPTORS,
   ...D5_LIFECYCLE_COMMAND_DESCRIPTORS,
   ...N1_DESCRIPTORS,
