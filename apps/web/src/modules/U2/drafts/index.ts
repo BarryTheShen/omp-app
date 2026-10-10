@@ -18,3 +18,4 @@ export type {
 export { createDraftStoreAdapter, DraftController } from "./drafts";
 export type { ChatMessagesSource, UseChatDraftOptions, UseChatDraftResult } from "./use-chat-draft";
 export { useChatDraft } from "./use-chat-draft";
+export { useComposerDraft } from "./use-composer-draft";

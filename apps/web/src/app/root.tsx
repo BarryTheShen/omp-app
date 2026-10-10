@@ -94,6 +94,7 @@ import {
   type DraftController,
   sessionDraftBuffer,
   useChatDraft,
+  useComposerDraft,
 } from "@/modules/U2/drafts";
 import { useIsRecalledPrompt } from "@/modules/U2/history";
 import { ModeIndicator } from "@/modules/U2/modes";
@@ -445,9 +446,6 @@ function DraftComposer({
   readonly manager: AttachmentManager;
 }) {
   const aui = useAui();
-  // The controller this composer last loaded its draft for. A thread switch can keep this composer
-  // mounted (a branch re-keys the chat), so a new controller clears the text and loads its own draft.
-  const hydratedFor = useRef<DraftController | null>(null);
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
@@ -471,26 +469,14 @@ function DraftComposer({
         .catch(reportDraftFailure("Saving the draft when its chat closed failed"));
     };
   }, [controller]);
-  useEffect(() => {
-    if (hydratedFor.current !== controller) aui.composer.setText("");
-  }, [aui.composer, controller]);
-  useEffect(() => {
-    if (snapshot.status !== "ready" || hydratedFor.current === controller) return;
-    hydratedFor.current = controller;
-    // The clear above emptied the composer, so the controller's text is written back even when it equals the
-    // composer text this render read: that read is stale by now, and skipping the write would lose the draft.
-    aui.composer.setText(snapshot.text);
-    void manager.restore(snapshot.attachments).catch(() => undefined);
-  }, [aui.composer, controller, manager, snapshot.attachments, snapshot.status, snapshot.text]);
   const isRecalledPrompt = useIsRecalledPrompt();
-  // A layout effect: the typed text reaches the controller before the browser paints, so a move that hands off the
-  // controller's text never misses what the person has just typed.
-  useLayoutEffect(() => {
-    if (hydratedFor.current !== controller) return;
-    // A prompt Up or Down recalled (U2.5) is not the draft: the saved draft stays what was typed.
-    if (isRecalledPrompt(text)) return;
-    controller.setDraft(text, manager.toDraftRefs());
-  }, [controller, isRecalledPrompt, manager, text]);
+  useComposerDraft({
+    controller,
+    text,
+    composer: aui.composer,
+    attachments: manager,
+    isRecalledPrompt,
+  });
   return (
     <ComposerSurface
       capabilities={capabilities}
