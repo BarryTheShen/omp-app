@@ -179,7 +179,7 @@ test("captures the migrated R1 list, empty state, and narrow drawer", async ({ p
   });
 
   await sidebar.getByRole("textbox", { name: "Search sessions" }).fill("no matching session");
-  await expect(sidebar.getByText("No sessions in this folder")).toBeVisible();
+  await expect(sidebar.getByText('No chats match "no matching session"')).toBeVisible();
   await waitForFiniteAnimations(page);
   await page.screenshot({
     path: join(SCREENSHOT_ROOT, "ui-blocks-r1-empty.png"),

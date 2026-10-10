@@ -207,6 +207,7 @@ export function SessionCatalogSidebar({
     return [...groups.entries()];
   }, [snapshot.sessions]);
   const sessions = snapshot.sessions;
+  const activeSearch = snapshot.filter.query.trim();
   // The focused row is a chat, not a position: when the list reorders under it, the row and Enter still mean that
   // chat. A chat that has left the list, or none yet, puts the tab stop on the first row.
   const focusedRow = sessions.findIndex((session) => session.id === focusedId);
@@ -371,7 +372,7 @@ export function SessionCatalogSidebar({
           {renameError}
         </p>
       )}
-      {snapshot.isLoaded && sessions.length === 0 && (
+      {snapshot.isLoaded && sessions.length === 0 && activeSearch.length === 0 && (
         <EmptyState
           title="No sessions in this folder"
           hint="Start a new chat to create an omp session."
@@ -380,6 +381,13 @@ export function SessionCatalogSidebar({
               New chat
             </Button>
           }
+        />
+      )}
+      {/* A search with no match is not an empty folder: its chats are still there. */}
+      {snapshot.isLoaded && sessions.length === 0 && activeSearch.length > 0 && (
+        <EmptyState
+          title={`No chats match "${activeSearch}"`}
+          hint="Clear the search to see every chat in this folder."
         />
       )}
       {sessions.length > 0 && (

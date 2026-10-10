@@ -403,6 +403,18 @@ describe("SessionCatalogSidebar", () => {
     expect(opened).toEqual(["open:old"]);
   });
 
+  test("a search with no match says which chats were searched for, with no New chat prompt", async () => {
+    renderSidebar();
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    const search = screen.getByRole("textbox", { name: "Search sessions" });
+    fireEvent.change(search, { target: { value: "zzzz" } });
+    await waitFor(() => expect(screen.getByText('No chats match "zzzz"')).toBeTruthy());
+    expect(screen.queryByText("No sessions in this folder")).toBeNull();
+    expect(screen.queryByText("Start a new chat to create an omp session.")).toBeNull();
+    fireEvent.change(search, { target: { value: "" } });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+  });
+
   test("'Show older chats' loads the next page below the list, then goes away at the end", async () => {
     const all = Array.from({ length: 70 }, (_, index) =>
       session(
