@@ -100,6 +100,56 @@ describe("LayoutArea", () => {
     expect(screen.queryByText("Todo body")).toBeNull();
   });
 
+  test("the arrow keys move focus and selection along the tabs; Home and End go to the ends", () => {
+    render(
+      <LayoutArea
+        area="panels"
+        layout={layoutWith({ panels: ["todo", "queue", "model"] })}
+        surfaces={surfaces}
+      />,
+    );
+    const todo = screen.getByRole("tab", { name: "Todo checklist" });
+    const queue = screen.getByRole("tab", { name: "Queued messages" });
+    const model = screen.getByRole("tab", { name: "Model" });
+    todo.focus();
+    fireEvent.keyDown(todo, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(queue);
+    expect(queue.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("Queue body")).toBeTruthy();
+    fireEvent.keyDown(queue, { key: "ArrowLeft" });
+    expect(document.activeElement).toBe(todo);
+    expect(screen.getByText("Todo body")).toBeTruthy();
+    fireEvent.keyDown(todo, { key: "ArrowLeft" });
+    expect(document.activeElement).toBe(model);
+    fireEvent.keyDown(model, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(todo);
+    fireEvent.keyDown(todo, { key: "End" });
+    expect(document.activeElement).toBe(model);
+    fireEvent.keyDown(model, { key: "Home" });
+    expect(document.activeElement).toBe(todo);
+  });
+
+  test("only the selected tab is in the Tab order; each tab is linked to the tabpanel", () => {
+    render(
+      <LayoutArea
+        area="panels"
+        layout={layoutWith({ panels: ["todo", "queue"] })}
+        surfaces={surfaces}
+      />,
+    );
+    const todo = screen.getByRole("tab", { name: "Todo checklist" });
+    const queue = screen.getByRole("tab", { name: "Queued messages" });
+    const panel = screen.getByRole("tabpanel", { name: "Todo checklist" });
+    expect(todo.getAttribute("tabindex")).toBe("0");
+    expect(queue.getAttribute("tabindex")).toBe("-1");
+    expect(todo.getAttribute("aria-controls")).toBe(panel.id);
+    expect(queue.getAttribute("aria-controls")).toBe(panel.id);
+    fireEvent.click(queue);
+    expect(queue.getAttribute("tabindex")).toBe("0");
+    expect(todo.getAttribute("tabindex")).toBe("-1");
+    expect(screen.getByRole("tabpanel", { name: "Queued messages" })).toBe(panel);
+  });
+
   test("lists an on-demand panel only while it is open", () => {
     const layout = layoutWith({ panels: ["todo", "rewind"] });
     expect(areaSurfaces("panels", panelsWith(false), {}, layout).map(([id]) => id)).toEqual([

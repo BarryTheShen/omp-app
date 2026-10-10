@@ -1,5 +1,12 @@
 import type { CapabilityKey, CapabilityMap } from "@omp-app/contracts";
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "@/lib/utils";
 import { type AppLayout, LAYOUT, type LayoutAreaName, type SurfaceId } from "./layout";
 
@@ -82,13 +89,39 @@ function surfaceClass(area: LayoutAreaName, surface: Surface): string {
 type ListedPanels = readonly (readonly [SurfaceId, Surface])[];
 
 /**
+ * The tab that an arrow, Home or End key moves to from `from`, or undefined for any other key.
+ * Arrows wrap around the row.
+ */
+function tabKeyTarget(
+  key: string,
+  ids: readonly SurfaceId[],
+  from: SurfaceId,
+): SurfaceId | undefined {
+  const index = ids.indexOf(from);
+  switch (key) {
+    case "ArrowRight":
+      return ids[(index + 1) % ids.length];
+    case "ArrowLeft":
+      return ids[(index - 1 + ids.length) % ids.length];
+    case "Home":
+      return ids[0];
+    case "End":
+      return ids.at(-1);
+    default:
+      return undefined;
+  }
+}
+
+/**
  * The right sidebar's panels: one fills the area, several become tabs. A panel listed for the first
  * time, or revealed again, becomes the tab shown; the other panels keep the tab they had.
  * The tabs wrap onto more rows, so no number of them runs past the sidebar's edge.
+ * Only the selected tab is in the Tab order; the arrow keys, Home and End move focus and selection.
  */
 function PanelArea({ panels }: { readonly panels: ListedPanels }) {
   const [active, setActive] = useState<SurfaceId | undefined>(undefined);
   const previous = useRef<ReadonlyMap<SurfaceId, number | undefined> | null>(null);
+  const idPrefix = useId();
   useLayoutEffect(() => {
     const before = previous.current;
     previous.current = new Map(panels.map(([id, surface]) => [id, surface.reveal]));
@@ -111,6 +144,22 @@ function PanelArea({ panels }: { readonly panels: ListedPanels }) {
       </div>
     );
   }
+
+  const tabId = (id: SurfaceId) => `${idPrefix}-tab-${id}`;
+  const panelId = `${idPrefix}-panel`;
+  /** Focus and selection move to the tab a key names; any other key is left alone. */
+  function moveToTab(event: KeyboardEvent<HTMLButtonElement>, from: SurfaceId): void {
+    const target = tabKeyTarget(
+      event.key,
+      panels.map(([id]) => id),
+      from,
+    );
+    if (target === undefined) return;
+    event.preventDefault();
+    setActive(target);
+    document.getElementById(tabId(target))?.focus();
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-layout-area="panels">
       <div
@@ -120,23 +169,32 @@ function PanelArea({ panels }: { readonly panels: ListedPanels }) {
       >
         {panels.map(([id, surface]) => (
           <button
+            aria-controls={panelId}
             aria-selected={id === current[0]}
             className={cn(
-              "rounded-md px-2 py-1 text-xs font-medium",
+              "rounded-md px-2 py-1 text-xs font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
               id === current[0]
                 ? "bg-muted text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
+            id={tabId(id)}
             key={id}
             role="tab"
+            tabIndex={id === current[0] ? 0 : -1}
             type="button"
             onClick={() => setActive(id)}
+            onKeyDown={(event) => moveToTab(event, id)}
           >
             {surface.title}
           </button>
         ))}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col" role="tabpanel">
+      <div
+        aria-labelledby={tabId(current[0])}
+        className="flex min-h-0 flex-1 flex-col"
+        id={panelId}
+        role="tabpanel"
+      >
         {current[1].render()}
       </div>
     </div>
