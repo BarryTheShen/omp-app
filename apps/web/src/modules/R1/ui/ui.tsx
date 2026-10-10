@@ -102,7 +102,7 @@ export function SessionCatalogSidebar({
   const snapshot = catalog.getSnapshot();
   const [query, setQuery] = useState(snapshot.filter.query);
   const [, setCatalogRevision] = useState(0);
-  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [focusedId, setFocusedId] = useState<ThreadId | undefined>();
   const [editingId, setEditingId] = useState<ThreadId | undefined>();
   const [editingTitle, setEditingTitle] = useState("");
   const [renameError, setRenameError] = useState<string | undefined>();
@@ -143,7 +143,7 @@ export function SessionCatalogSidebar({
     previousCatalog.current = catalog;
     const current = catalog.getSnapshot();
     if (!catalogChanged && current.isLoaded && current.filter.query === query) return;
-    if (catalogChanged || current.filter.query !== query) setFocusedIndex(0);
+    if (catalogChanged || current.filter.query !== query) setFocusedId(undefined);
     void catalog.list({ filter: { ...current.filter, query }, limit: 50 });
   }, [catalog, query]);
 
@@ -166,16 +166,19 @@ export function SessionCatalogSidebar({
     return [...groups.entries()];
   }, [snapshot.sessions]);
   const sessions = snapshot.sessions;
+  // The focused row is a chat, not a position: when the list reorders under it, the row and Enter still mean that
+  // chat. A chat that has left the list, or none yet, puts the tab stop on the first row.
+  const focusedRow = sessions.findIndex((session) => session.id === focusedId);
+  const activeIndex = focusedRow >= 0 ? focusedRow : 0;
 
-  // After a rename (or Escape) the chat's own row takes focus and becomes the focused row, so the
-  // arrow keys continue from it. It runs once the list shows the saved title, where the row sits now.
+  // After a rename (or Escape) the chat's own row takes focus and becomes the focused row. The focus is kept by
+  // the chat's id, so the arrow keys continue from it wherever the row sits in the list.
   useEffect(() => {
     if (focusRowId === undefined) return;
-    const index = sessions.findIndex((session) => session.id === focusRowId);
-    if (index >= 0) setFocusedIndex(index);
+    setFocusedId(focusRowId);
     rowElements.current.get(focusRowId)?.querySelector<HTMLElement>('[role="option"]')?.focus();
     setFocusRowId(undefined);
-  }, [focusRowId, sessions]);
+  }, [focusRowId]);
 
   const openSession = async (session: SessionMetadata): Promise<void> => {
     const initialized = await remote.initialize(session.id);
@@ -237,26 +240,49 @@ export function SessionCatalogSidebar({
     await catalog.reconcilePin(session.id, pinned, "ui");
   };
 
+  /** Moves focus to the chat's row: its ring shows, and Enter opens the row that has focus. */
+  const focusRow = (index: number): boolean => {
+    const session = sessions[index];
+    const option = session
+      ? rowElements.current.get(session.id)?.querySelector<HTMLElement>('[role="option"]')
+      : undefined;
+    if (!option) return false;
+    option.focus();
+    return true;
+  };
+
+  /** The index of the chat whose row (its option) this element is; -1 when it is no row. */
+  const rowIndexOf = (element: HTMLElement): number =>
+    sessions.findIndex(
+      (session) =>
+        rowElements.current.get(session.id)?.querySelector<HTMLElement>('[role="option"]') ===
+        element,
+    );
+
   const onListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (sessions.length === 0) return;
     // A key pressed in a row's rename box or on its More actions button belongs to that control.
     const target = event.target as HTMLElement;
     if (target !== event.currentTarget && target.getAttribute("role") !== "option") return;
-    if (event.key === "ArrowDown") {
+    // The key acts on the row it came from, so a list that reordered under the focus is read as it is now.
+    const fromRow = rowIndexOf(target);
+    const current = fromRow >= 0 ? fromRow : activeIndex;
+    const last = sessions.length - 1;
+    let next: number | undefined;
+    if (event.key === "ArrowDown") next = Math.min(current + 1, last);
+    else if (event.key === "ArrowUp") next = Math.max(current - 1, 0);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = last;
+    if (next !== undefined) {
+      // The focus itself moves, so the row the arrow keys reach is the row Enter opens.
       event.preventDefault();
-      setFocusedIndex((index) => Math.min(index + 1, sessions.length - 1));
-    } else if (event.key === "ArrowUp") {
+      const row = sessions[next];
+      if (row && focusRow(next)) setFocusedId(row.id);
+      return;
+    }
+    if (event.key === "Enter") {
       event.preventDefault();
-      setFocusedIndex((index) => Math.max(index - 1, 0));
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      setFocusedIndex(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      setFocusedIndex(sessions.length - 1);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      const focused = sessions[focusedIndex];
+      const focused = sessions[current];
       if (focused) void openSession(focused);
     }
   };
@@ -319,7 +345,6 @@ export function SessionCatalogSidebar({
           aria-label="Session list"
           className="min-h-0 flex-1 overflow-y-auto p-2"
           role="listbox"
-          tabIndex={0}
           onKeyDown={onListKeyDown}
           onScroll={(event) => scrollPositions.set(catalog, event.currentTarget.scrollTop)}
         >
@@ -407,9 +432,9 @@ export function SessionCatalogSidebar({
                         )
                       }
                       selected={selected}
-                      tabIndex={index === focusedIndex ? 0 : -1}
+                      tabIndex={index === activeIndex ? 0 : -1}
                       onSelect={!isEditing ? () => void openSession(session) : undefined}
-                      onFocus={!isEditing ? () => setFocusedIndex(index) : undefined}
+                      onFocus={!isEditing ? () => setFocusedId(session.id) : undefined}
                       trailing={
                         <Toolbar ariaLabel={`Actions for ${title}`}>
                           <Button
@@ -418,6 +443,7 @@ export function SessionCatalogSidebar({
                             aria-label={`More actions for ${title}`}
                             className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                             size="icon-xs"
+                            tabIndex={index === activeIndex ? 0 : -1}
                             title="More actions"
                             type="button"
                             variant="ghost"

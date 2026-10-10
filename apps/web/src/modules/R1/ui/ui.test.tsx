@@ -232,6 +232,101 @@ describe("SessionCatalogSidebar", () => {
     expect(catalog.getSnapshot().filter.query).toBe("new");
   });
 
+  test("arrow keys move focus to the next row, and Enter opens the row that has focus", async () => {
+    const opened: string[] = [];
+    renderSidebar({
+      catalog: modelWithSessions([
+        session("first", "2026-10-05T00:00:00.000Z", "First chat"),
+        session("second", "2026-10-04T00:00:00.000Z", "Second chat"),
+        session("third", "2026-10-03T00:00:00.000Z", "Third chat"),
+      ]),
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
+    const [first, second, third] = screen.getAllByRole("option");
+    if (!first || !second || !third) throw new Error("Expected three chat rows.");
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(second, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(third);
+    fireEvent.keyDown(third, { key: "Home" });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: "End" });
+    expect(document.activeElement).toBe(third);
+    fireEvent.keyDown(third, { key: "Enter" });
+    await waitFor(() => expect(opened).toEqual(["third"]));
+  });
+
+  test("the list is not a tab stop of its own: the focused row and its More actions button are", async () => {
+    renderSidebar({
+      catalog: modelWithSessions([
+        session("first", "2026-10-05T00:00:00.000Z", "First chat"),
+        session("second", "2026-10-04T00:00:00.000Z", "Second chat"),
+        session("third", "2026-10-03T00:00:00.000Z", "Third chat"),
+      ]),
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
+    expect(screen.getByRole("listbox", { name: "Session list" }).hasAttribute("tabindex")).toBe(
+      false,
+    );
+    const [first, second, third] = screen.getAllByRole("option");
+    expect(first?.getAttribute("tabindex")).toBe("0");
+    expect(second?.getAttribute("tabindex")).toBe("-1");
+    expect(third?.getAttribute("tabindex")).toBe("-1");
+    const more = (title: string) =>
+      screen.getByRole("button", { name: `More actions for ${title}` });
+    expect(more("First chat").getAttribute("tabindex")).toBe("0");
+    expect(more("Second chat").getAttribute("tabindex")).toBe("-1");
+    expect(more("Third chat").getAttribute("tabindex")).toBe("-1");
+  });
+
+  test("a reorder under the focused row keeps Enter and the arrow keys on that row's chat", async () => {
+    const opened: string[] = [];
+    const files = [
+      session("first", "2026-10-05T00:00:00.000Z", "First chat"),
+      session("second", "2026-10-04T00:00:00.000Z", "Second chat"),
+      session("third", "2026-10-03T00:00:00.000Z", "Third chat"),
+    ];
+    const catalog = modelWithSessions(files);
+    renderSidebar({
+      catalog,
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
+    const second = screen.getByRole("option", { name: /Second chat/ });
+    second.focus();
+    expect(document.activeElement).toBe(second);
+
+    // The second chat becomes the newest, so the list reorders while its row has focus.
+    const newest = session("second", "2026-10-06T00:00:00.000Z", "Second chat");
+    files[1] = newest;
+    await act(async () => {
+      await catalog.reconcile({
+        folder,
+        sessionFile: newest.sessionFile,
+        id: newest.id,
+        kind: "updated",
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getAllByRole("option")[0]?.textContent).toContain("Second chat"),
+    );
+    expect(document.activeElement).toBe(second);
+
+    // Enter opens the chat the focused row shows, not the chat now at the position the focus had.
+    fireEvent.keyDown(second, { key: "Enter" });
+    await waitFor(() => expect(opened).toEqual(["second"]));
+
+    // The arrow keys go to the focused row's neighbour in the new order: the first chat, now second in the list.
+    fireEvent.keyDown(second, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(screen.getByRole("option", { name: /First chat/ }));
+  });
+
   test("inline rename calls the typed adapter and unavailable actions expose reasons", async () => {
     const { calls } = renderSidebar();
     await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
