@@ -32,6 +32,7 @@ export type SurfaceId =
   | "context"
   | "contextCard"
   | "notifications"
+  | "connection"
   | "theme"
   | "rewind"
   | "agents";
@@ -53,7 +54,7 @@ export const LAYOUT: AppLayout = {
   /** Under that row. */
   composerFooter: ["editHandoff", "attachments"],
   /** At the bottom of the transcript. */
-  threadFooter: ["editRun", "scrollFollow"],
+  threadFooter: ["connection", "editRun", "scrollFollow"],
   /** The bottom bar, left to right. */
   statusBar: ["notifications", "context"],
 };

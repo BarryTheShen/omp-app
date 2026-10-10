@@ -649,4 +649,24 @@ describe("SessionCatalogSidebar", () => {
       expect(document.activeElement).toBe(screen.getByRole("option", { name: /Newest chat/ })),
     );
   });
+
+  test("a list that fails when the sidebar opens is shown with a retry, and nothing is left unhandled", async () => {
+    const catalog = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "Connection to the app server closed",
+            retryable: true,
+          });
+        },
+        readSession: async () => {
+          throw new Error("No session is read in this test");
+        },
+      },
+    });
+    renderSidebar({ catalog });
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeTruthy();
+  });
 });

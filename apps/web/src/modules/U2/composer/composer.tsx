@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useCallback,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -36,6 +37,11 @@ export interface ComposerSurfaceProps {
   readonly policy?: SubmitPolicy;
   readonly autoFocus?: boolean;
   readonly disabled?: boolean;
+  /**
+   * Why the composer cannot send right now (the app is reconnecting). While set, Enter and Send do nothing,
+   * the reason is shown, and the text stays in the composer.
+   */
+  readonly sendBlockedReason?: string;
   readonly showAttachmentNames?: boolean;
   readonly toolbar?: ReactNode;
   /** The app's capabilities: `submitModeInput` reads Python availability from them. Empty means none. */
@@ -141,6 +147,7 @@ export function ComposerSurface({
   capabilities = NO_CAPABILITIES,
   autoFocus = true,
   disabled = false,
+  sendBlockedReason,
   showAttachmentNames = true,
   toolbar,
   onDoubleLeftArrow,
@@ -159,10 +166,17 @@ export function ComposerSurface({
   const composingRef = useRef(false);
   const arrowGesture = useRef<ArrowGesture>(NO_ARROW_GESTURE);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const blockedId = useId();
   useRemeasureOnWidthChange(inputRef);
   const submit = useCallback(
     async (keyChord: ComposerKeyChord) => {
-      if (disabled || isSubmitting || !hasContent(text, attachments)) return;
+      if (
+        disabled ||
+        sendBlockedReason !== undefined ||
+        isSubmitting ||
+        !hasContent(text, attachments)
+      )
+        return;
 
       // A `!` or `$` line is a command: it goes through U2's mode seam, never to the model as a prompt.
       const command = parseComposerMode(text);
@@ -220,20 +234,21 @@ export function ComposerSurface({
       isStreaming,
       isSubmitting,
       policy,
+      sendBlockedReason,
       submitPrompt,
       text,
     ],
   );
 
   const handleCancel = useCallback(async () => {
-    if (!canCancel) return;
+    if (!canCancel || sendBlockedReason !== undefined) return;
     try {
       await cancel();
       inputRef.current?.focus();
     } catch (cause) {
       setError(appFailure(cause).appError);
     }
-  }, [canCancel, cancel]);
+  }, [canCancel, cancel, sendBlockedReason]);
 
   const handleSubmitCapture = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -311,6 +326,7 @@ export function ComposerSurface({
         <ComposerPrimitive.Input
           ref={inputRef}
           aria-label="Message input"
+          aria-describedby={sendBlockedReason === undefined ? undefined : blockedId}
           data-focus-ring="parent"
           autoFocus={autoFocus}
           cancelOnEscape={false}
@@ -327,7 +343,7 @@ export function ComposerSurface({
           submitMode="none"
           className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
         />
-        {isStreaming && modeForText(text) === "prompt" && (
+        {isStreaming && sendBlockedReason === undefined && modeForText(text) === "prompt" && (
           <p
             data-composer-steer-hint="true"
             className="text-muted-foreground px-(--space-md) text-xs"
@@ -342,6 +358,15 @@ export function ComposerSurface({
             className="text-destructive px-(--space-md) text-sm"
           >
             {error.message}
+          </p>
+        )}
+        {sendBlockedReason !== undefined && (
+          <p
+            className="text-warning px-(--space-md) text-xs"
+            data-composer-blocked="true"
+            id={blockedId}
+          >
+            {sendBlockedReason}
           </p>
         )}
         <div className="flex min-w-0 items-center gap-(--space-xs)">
@@ -366,7 +391,8 @@ export function ComposerSurface({
                 variant="default"
                 size="icon"
                 aria-label="Stop generating"
-                disabled={isSubmitting && !isStreaming}
+                disabled={(isSubmitting && !isStreaming) || sendBlockedReason !== undefined}
+                aria-describedby={sendBlockedReason === undefined ? undefined : blockedId}
                 onClick={() => void handleCancel()}
                 className="size-7 rounded-full"
               >
@@ -378,7 +404,12 @@ export function ComposerSurface({
                 variant="default"
                 size="icon"
                 aria-label="Send message"
-                disabled={disabled || isSubmitting || !hasContent(text, attachments)}
+                disabled={
+                  disabled ||
+                  isSubmitting ||
+                  !hasContent(text, attachments) ||
+                  sendBlockedReason !== undefined
+                }
                 onClick={() => void submit("enter")}
                 className="size-7 rounded-full"
               >

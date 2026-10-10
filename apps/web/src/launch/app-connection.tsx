@@ -16,6 +16,10 @@ import {
   websocketUrl,
 } from "./token";
 
+/**
+ * `reconnecting`: a connection that was open dropped; the app keeps retrying and keeps its screen.
+ * `connecting`: the first connection, before the app has ever been open.
+ */
 export type AppConnectionState =
   | "missing-token"
   | "connecting"
@@ -29,6 +33,8 @@ export interface AppConnectionSnapshot {
   readonly state: AppConnectionState;
   readonly reason?: string;
   readonly websocketUrl?: string;
+  /** True once reconnects have failed for UNREACHABLE_AFTER_MS: the server is probably not running. */
+  readonly unreachable?: boolean;
 }
 
 export interface AppConnectionProviderProps {
@@ -39,6 +45,9 @@ export interface AppConnectionProviderProps {
   readonly createClient?: (options: CreateAppClientOptions) => AppClient;
 }
 
+/** How long reconnects may fail before the banner says the server is not answering, and what to do. */
+const UNREACHABLE_AFTER_MS = 30_000;
+
 const EMPTY_CONNECTION: AppConnectionSnapshot = Object.freeze({
   client: null,
   state: "connecting",
@@ -46,12 +55,18 @@ const EMPTY_CONNECTION: AppConnectionSnapshot = Object.freeze({
 
 const AppConnectionContext = createContext<AppConnectionSnapshot | null>(null);
 
+/**
+ * Maps the client's state. Once this connection has been open, a retry the client reports as `connecting`
+ * is a reconnect, so the app keeps its screen while it retries.
+ */
 function stateFromClient(
   state: ClientConnectionState,
   error: ConnectionStateEvent["error"],
+  hasConnected: boolean,
 ): AppConnectionState {
   if (state === "open") return "connected";
-  if (state === "reconnecting" || state === "connecting") return state;
+  if (state === "reconnecting") return "reconnecting";
+  if (state === "connecting") return hasConnected ? "reconnecting" : "connecting";
   if (error?.code === "permission") return "rejected";
   return "closed";
 }
@@ -106,8 +121,25 @@ export function AppConnectionProvider({
       return;
     }
 
+    // A retry after the first connection is a reconnect, so the screen stays up (see stateFromClient).
+    let hasConnected = false;
+    // After UNREACHABLE_AFTER_MS of failed reconnects the snapshot says so, and the banner says what to do.
+    let unreachable = false;
+    let unreachableTimer: number | undefined;
     const update = ({ state, attempt, error }: ConnectionStateEvent): void => {
-      const mappedState = stateFromClient(state, error);
+      if (state === "open") hasConnected = true;
+      const mappedState = stateFromClient(state, error, hasConnected);
+      if (mappedState !== "reconnecting") {
+        window.clearTimeout(unreachableTimer);
+        unreachableTimer = undefined;
+        unreachable = false;
+      } else if (!unreachable && unreachableTimer === undefined) {
+        unreachableTimer = window.setTimeout(() => {
+          unreachableTimer = undefined;
+          unreachable = true;
+          setSnapshot((current) => ({ ...current, unreachable: true }));
+        }, UNREACHABLE_AFTER_MS);
+      }
       const reason =
         mappedState === "rejected"
           ? "This launch link has expired. Open the URL the app printed when it last started."
@@ -119,11 +151,13 @@ export function AppConnectionProvider({
         state: mappedState,
         ...(reason ? { reason } : {}),
         websocketUrl: url,
+        unreachable,
       });
     };
     const unsubscribe = client.onConnectionState(update);
     update({ state: client.connectionState, attempt: 0 });
     return () => {
+      window.clearTimeout(unreachableTimer);
       unsubscribe();
       client.dispose();
     };
@@ -176,7 +210,11 @@ function LaunchStatusScreen({ state, reason }: Pick<AppConnectionSnapshot, "stat
   );
 }
 
-/** Holds the app shell until a token is available; the rest of the app reads only `useAppConnection`. */
+/**
+ * Holds the app shell until a token is available; the rest of the app reads only `useAppConnection`. A drop
+ * after the first connection keeps the shell up while the app retries; the full-page screen is for the first
+ * connection and for a launch link the server refuses.
+ */
 export function AppConnectionGate({ children }: { readonly children: ReactNode }) {
   const connection = useAppConnection();
   if (

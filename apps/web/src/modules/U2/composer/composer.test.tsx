@@ -35,6 +35,8 @@ function renderComposer(
   );
 }
 
+const BLOCKED_REASON = "Can't send yet. Your message stays here until omp-app reconnects.";
+
 describe("U2.2 ComposerSurface", () => {
   test("submits on Enter but leaves Shift+Enter as a newline gesture", async () => {
     const submitPrompt = vi.fn(async () => undefined);
@@ -273,6 +275,81 @@ describe("U2.2 ComposerSurface", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(input.value).toBe("some text");
+  });
+
+  test("a composer that cannot send yet keeps the text, disables Send, and says why", () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface
+          cancel={() => undefined}
+          sendBlockedReason={BLOCKED_REASON}
+          submitPrompt={submitPrompt}
+        />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    const send = screen.getByRole("button", { name: "Send message" });
+    fireEvent.change(input, { target: { value: "still typing" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(submitPrompt).not.toHaveBeenCalled();
+    expect(input).toHaveProperty("value", "still typing");
+    expect(send.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(BLOCKED_REASON)).toBeTruthy();
+    const describedBy = input.getAttribute("aria-describedby") ?? "";
+    expect(document.getElementById(describedBy)?.textContent).toBe(BLOCKED_REASON);
+  });
+
+  test("the text the composer kept sends once it can send again", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    const { rerender } = render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface
+          cancel={() => undefined}
+          sendBlockedReason={BLOCKED_REASON}
+          submitPrompt={submitPrompt}
+        />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(submitPrompt).not.toHaveBeenCalled();
+
+    rerender(
+      <RuntimeProvider running={false}>
+        <ComposerSurface cancel={() => undefined} submitPrompt={submitPrompt} />
+      </RuntimeProvider>,
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(submitPrompt).toHaveBeenCalledWith({ mode: "prompt", text: "hello", delivery: "new" }),
+    );
+    expect(screen.queryByText(BLOCKED_REASON)).toBeNull();
+  });
+
+  test("while sending is blocked, Stop is disabled, Escape does not cancel, and no steer hint shows", () => {
+    const cancel = vi.fn(async () => undefined);
+    render(
+      <RuntimeProvider running>
+        <ComposerSurface
+          cancel={cancel}
+          sendBlockedReason={BLOCKED_REASON}
+          submitPrompt={vi.fn(async () => undefined)}
+        />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "still typing" } });
+
+    expect(screen.queryByText("Press Enter to steer this turn")).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop generating" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(cancel).not.toHaveBeenCalled();
+    expect(input).toHaveProperty("value", "still typing");
   });
 
   describe("double-tap ← in the empty editor opens the Agent Hub", () => {

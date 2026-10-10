@@ -45,7 +45,7 @@ const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   panels: "flex min-h-0 flex-1 flex-col",
   composerToolbar: "flex min-w-0 flex-wrap items-center gap-(--space-xs)",
   composerFooter: "flex min-w-0 flex-col",
-  threadFooter: "flex min-w-0 items-center justify-end gap-(--space-sm)",
+  threadFooter: "flex min-w-0 flex-1 flex-wrap items-center justify-end gap-(--space-sm)",
   statusBar: "flex min-w-0 flex-1 items-center gap-3",
 };
 

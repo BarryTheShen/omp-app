@@ -36,12 +36,14 @@ import { Button } from "@/components/ui/button";
 import {
   AppConnectionGate,
   AppConnectionProvider,
+  ConnectionBanner,
   LaunchStatusScreen,
   OmpUnavailableScreen,
   rememberLogFile,
+  SEND_BLOCKED_TEXT,
   useAppConnection,
 } from "@/launch";
-import { LayoutArea, type LayoutAreaName, type SurfaceMap } from "@/layout";
+import { LayoutArea, type LayoutAreaName, type Surface, type SurfaceMap } from "@/layout";
 import type { CredentialActions } from "@/modules/D3/auth/credential-actions";
 import { readProviderSignIns } from "@/modules/D3/auth/sign-in";
 import { D3_LOGIN_COMMAND } from "@/modules/D3/descriptors";
@@ -447,6 +449,7 @@ function DraftComposer({
   footer,
   footerOpen,
   manager,
+  sendBlockedReason,
   onDoubleLeftArrow,
 }: {
   readonly controller: DraftController;
@@ -459,6 +462,8 @@ function DraftComposer({
   readonly footer: ReactNode;
   readonly footerOpen: boolean;
   readonly manager: AttachmentManager;
+  /** Why the composer cannot send right now; the text stays in the composer while it is set. */
+  readonly sendBlockedReason?: string;
   readonly onDoubleLeftArrow: () => void;
 }) {
   const aui = useAui();
@@ -499,6 +504,7 @@ function DraftComposer({
       cancel={cancel}
       disabled={snapshot.status === "error"}
       policy={policy}
+      sendBlockedReason={sendBlockedReason}
       submitPrompt={submit}
       toolbar={toolbar}
       showAttachmentNames={false}
@@ -531,6 +537,8 @@ interface ActiveThreadProps {
   readonly p3Runs: P3Runs;
   /** The place the reader was in when the page last closed, for the reload that reopens this chat. */
   readonly resumePlace: ReadingPlace | null;
+  /** The connection banner's surface: over the chat while the app reconnects (`connection` in `LAYOUT`). */
+  readonly connectionSurface: Surface;
 }
 
 function ActiveThreadContent(props: ActiveThreadProps) {
@@ -552,6 +560,7 @@ function ActiveThreadReady({
   title,
   p3Runs,
   resumePlace,
+  connectionSurface,
   onLoadOlder,
   onLoadFullOutput,
   onRefreshAfterCommand,
@@ -991,6 +1000,8 @@ function ActiveThreadReady({
             : ("closed" as const),
     reason: connection.reason,
   };
+  // While the app reconnects the chat stays on screen: the composer keeps the text and says it cannot send yet.
+  const sendBlockedReason = connection.state === "connected" ? undefined : SEND_BLOCKED_TEXT;
   // What a refused-key notice in the transcript can do: open the model list, open sign-in, and read each
   // provider's sign-in. Built once per open chat; a view only calls these.
   const credentialActions = useMemo<CredentialActions>(
@@ -1115,6 +1126,7 @@ function ActiveThreadReady({
       title: "Notifications",
       render: () => <NotificationFeedback projector={notificationProjector} />,
     },
+    connection: connectionSurface,
   };
   const area = (name: LayoutAreaName) => (
     <LayoutArea area={name} capabilities={capabilities} surfaces={threadSurfaces} />
@@ -1136,6 +1148,7 @@ function ActiveThreadReady({
           manager={attachmentManager}
           onDoubleLeftArrow={openAgentHub}
           policy={resolveQueueSubmitPolicy}
+          sendBlockedReason={sendBlockedReason}
           submit={submit}
           toolbar={area("composerToolbar")}
         />
@@ -1397,6 +1410,13 @@ function ConnectedApp({
     if (controller && history.threadId)
       void controller.openExisting(history.threadId).catch(() => undefined);
   }, [client.instanceId, connection.state, controller, history.threadId]);
+  // A list that failed while the connection was down is loaded again once the app is back.
+  useEffect(() => {
+    if (connection.state !== "connected" || catalog === null) return;
+    const current = catalog.getSnapshot();
+    if (current.error === null) return;
+    void catalog.list({ filter: current.filter, limit: 50 }).catch(() => undefined);
+  }, [catalog, connection.state]);
   const activeCapabilities = useMemo(
     () => (history.capabilities ? { ...capabilities, ...history.capabilities } : capabilities),
     [capabilities, history.capabilities],
@@ -1488,6 +1508,14 @@ function ConnectedApp({
       render: () => <SettingsButton onOpenSettings={openSettings} threadId={null} />,
     },
   };
+
+  // The connection banner: an open chat shows it in its footer, the empty shell at the bottom of its transcript.
+  const connectionSurface: Surface = {
+    title: "Connection",
+    open: connection.state === "reconnecting",
+    render: () => <ConnectionBanner unreachable={connection.unreachable} />,
+  };
+  const emptyTranscriptSurfaces: SurfaceMap = { connection: connectionSurface };
   if (history.store && history.threadId) {
     return (
       <ActiveThreadContent
@@ -1497,6 +1525,7 @@ function ConnectedApp({
         folder={folder}
         history={history}
         resumePlace={resumePlace}
+        connectionSurface={connectionSurface}
         onLoadOlder={controller === null ? undefined : () => controller.loadOlder()}
         onLoadFullOutput={controller === null ? undefined : (id) => controller.loadFullOutput(id)}
         onRefreshAfterCommand={
@@ -1520,7 +1549,20 @@ function ConnectedApp({
         }
         leftSidebar={leftSidebar}
         rightSidebar={<div className="text-muted-foreground p-4 text-sm">No panel selected.</div>}
-        transcript={<EmptyTranscript state={history} />}
+        transcript={
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <EmptyTranscript state={history} />
+            </div>
+            <div className="border-border bg-background border-t px-6 py-2 empty:hidden">
+              <LayoutArea
+                area="threadFooter"
+                capabilities={capabilities}
+                surfaces={emptyTranscriptSurfaces}
+              />
+            </div>
+          </div>
+        }
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import type { AppClient, ConnectionStateEvent, CreateAppClientOptions } from "@omp-app/client";
 import { AppFailure } from "@omp-app/contracts";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { AppConnectionGate, AppConnectionProvider, useAppConnection } from "./app-connection";
 import { DEFAULT_LOG_FILE, rememberLogFile } from "./log-location";
@@ -14,7 +14,9 @@ const pageLocation: LaunchLocationLike = {
   host: "127.0.0.1:4317",
 };
 
-function makeClient(state: "connecting" | "open" = "open"): AppClient {
+type TestClient = AppClient & { emit(next: ConnectionStateEvent): void };
+
+function makeClient(state: "connecting" | "open" = "open"): TestClient {
   const listeners = new Set<(event: ConnectionStateEvent) => void>();
   const client = {
     connectionState: state,
@@ -37,17 +39,25 @@ function makeClient(state: "connecting" | "open" = "open"): AppClient {
       for (const listener of listeners) listener(next);
     },
   };
-  return client as unknown as AppClient;
+  return client as unknown as TestClient;
 }
 
 function Harness() {
   const connection = useAppConnection();
-  return <output data-testid="connection-state">{connection.state}</output>;
+  return (
+    <>
+      <output data-testid="connection-state">{connection.state}</output>
+      <output data-testid="connection-unreachable">
+        {String(connection.unreachable === true)}
+      </output>
+    </>
+  );
 }
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("app connection launch gate", () => {
@@ -120,6 +130,101 @@ describe("app connection launch gate", () => {
     expect(screen.getByText("The launch token is invalid")).toBeTruthy();
   });
 
+  test("a drop after the app connected keeps the app on screen while it retries", async () => {
+    const client = makeClient("open");
+    render(
+      <AppConnectionProvider
+        createClient={() => client}
+        history={{ replaceState: vi.fn() }}
+        location={pageLocation}
+        storage={{ getItem: () => null, setItem: vi.fn() }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("connection-state").textContent).toBe("connected"),
+    );
+
+    // The socket drops and the next three tries fail: the app keeps its screen and says it is reconnecting.
+    act(() => {
+      client.emit({ state: "reconnecting", attempt: 1 });
+      client.emit({ state: "connecting", attempt: 2 });
+      client.emit({ state: "connecting", attempt: 3 });
+      client.emit({ state: "connecting", attempt: 4 });
+    });
+    expect(screen.getByTestId("connection-state").textContent).toBe("reconnecting");
+    expect(screen.queryByRole("heading", { name: "Connecting to omp-app" })).toBeNull();
+
+    act(() => client.emit({ state: "open", attempt: 0 }));
+    await waitFor(() =>
+      expect(screen.getByTestId("connection-state").textContent).toBe("connected"),
+    );
+  });
+
+  test("a first connection that cannot reach the app keeps the full-page screen", async () => {
+    const client = makeClient("connecting");
+    render(
+      <AppConnectionProvider
+        createClient={() => client}
+        history={{ replaceState: vi.fn() }}
+        location={pageLocation}
+        storage={{ getItem: () => null, setItem: vi.fn() }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+
+    act(() => {
+      client.emit({ state: "connecting", attempt: 1 });
+      client.emit({ state: "connecting", attempt: 2 });
+      client.emit({ state: "connecting", attempt: 3 });
+    });
+    expect(await screen.findByRole("heading", { name: "Connecting to omp-app" })).toBeTruthy();
+    expect(
+      screen.getByText("Can't reach the app server at ws://127.0.0.1:4317/ws. Retrying…"),
+    ).toBeTruthy();
+  });
+
+  test("a launch link that expires during a drop still gets the expired-link screen", async () => {
+    const client = makeClient("open");
+    render(
+      <AppConnectionProvider
+        createClient={() => client}
+        history={{ replaceState: vi.fn() }}
+        location={pageLocation}
+        storage={{ getItem: () => null, setItem: vi.fn() }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("connection-state").textContent).toBe("connected"),
+    );
+
+    act(() => client.emit({ state: "reconnecting", attempt: 1 }));
+    act(() =>
+      client.emit({
+        state: "closed",
+        attempt: 1,
+        error: {
+          code: "permission",
+          message: "Launch token is invalid or expired",
+          retryable: false,
+        },
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "This launch link has expired" }),
+    ).toBeTruthy();
+  });
+
   test("the can't-connect screens say where the app's log is: its default first, then the path the server last reported", async () => {
     window.localStorage.removeItem("omp-app.log-file");
     const first = render(
@@ -159,5 +264,69 @@ describe("app connection launch gate", () => {
     } finally {
       window.localStorage.removeItem("omp-app.log-file");
     }
+  });
+
+  test("a server that stays down says what to do after 30 seconds of failed tries", () => {
+    vi.useFakeTimers();
+    const client = makeClient("open");
+    render(
+      <AppConnectionProvider
+        createClient={() => client}
+        history={{ replaceState: vi.fn() }}
+        location={pageLocation}
+        storage={{ getItem: () => null, setItem: vi.fn() }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+    expect(screen.getByTestId("connection-state").textContent).toBe("connected");
+
+    act(() => client.emit({ state: "reconnecting", attempt: 1 }));
+    act(() => {
+      vi.advanceTimersByTime(29_000);
+    });
+    expect(screen.getByTestId("connection-unreachable").textContent).toBe("false");
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(screen.getByTestId("connection-state").textContent).toBe("reconnecting");
+    expect(screen.getByTestId("connection-unreachable").textContent).toBe("true");
+
+    // The server answers again: the warning goes, and the next outage counts from zero.
+    act(() => client.emit({ state: "open", attempt: 0 }));
+    expect(screen.getByTestId("connection-unreachable").textContent).toBe("false");
+    act(() => client.emit({ state: "reconnecting", attempt: 1 }));
+    act(() => {
+      vi.advanceTimersByTime(29_000);
+    });
+    expect(screen.getByTestId("connection-unreachable").textContent).toBe("false");
+  });
+
+  test("a connection that comes back within 30 seconds never says the server is unreachable", () => {
+    vi.useFakeTimers();
+    const client = makeClient("open");
+    render(
+      <AppConnectionProvider
+        createClient={() => client}
+        history={{ replaceState: vi.fn() }}
+        location={pageLocation}
+        storage={{ getItem: () => null, setItem: vi.fn() }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+    act(() => client.emit({ state: "reconnecting", attempt: 1 }));
+    act(() => {
+      vi.advanceTimersByTime(20_000);
+    });
+    act(() => client.emit({ state: "open", attempt: 0 }));
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByTestId("connection-unreachable").textContent).toBe("false");
   });
 });

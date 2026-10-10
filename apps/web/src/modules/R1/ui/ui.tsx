@@ -157,7 +157,8 @@ export function SessionCatalogSidebar({
     const current = catalog.getSnapshot();
     if (!catalogChanged && current.isLoaded && current.filter.query === query) return;
     if (catalogChanged || current.filter.query !== query) setFocusedId(undefined);
-    void catalog.list({ filter: { ...current.filter, query }, limit: 50 });
+    // A failed load is kept in the catalog's error, and the sidebar shows it with a retry.
+    void catalog.list({ filter: { ...current.filter, query }, limit: 50 }).catch(() => undefined);
   }, [catalog, query]);
 
   useEffect(() => {
@@ -328,7 +329,9 @@ export function SessionCatalogSidebar({
       {!snapshot.isLoading && snapshot.error && !snapshot.isLoaded && (
         <InlineError
           message={snapshot.error.message}
-          onRetry={() => void catalog.list({ filter: snapshot.filter, limit: 50 })}
+          onRetry={() =>
+            void catalog.list({ filter: snapshot.filter, limit: 50 }).catch(() => undefined)
+          }
         />
       )}
       {snapshot.error && snapshot.isLoaded && (
