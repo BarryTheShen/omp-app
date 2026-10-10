@@ -94,6 +94,10 @@ export class SelectedThreadHistoryController {
   private stopRefetchWatch: (() => void) | undefined;
   private listeners = new Set<(state: SelectedThreadHistoryState) => void>();
   private transitions: Promise<void> = Promise.resolve();
+  /** The chat open most recently asked for, while that open is still pending (see `openExisting`). */
+  private pendingOpen:
+    | { readonly threadId: ThreadId; readonly open: Promise<OmpRuntimeStore> }
+    | undefined;
 
   public constructor(options: SelectedThreadHistoryOptions) {
     this.options = options;
@@ -111,15 +115,31 @@ export class SelectedThreadHistoryController {
     return () => this.listeners.delete(listener);
   }
 
-  public async openExisting(threadId: ThreadId): Promise<OmpRuntimeStore> {
-    return this.open({ threadId });
+  /**
+   * Opens an existing chat. Several requests for the chat while its open is pending share that open: a button clicked
+   * ten times used to close and reopen the chat ten times (issue 922). A request for another chat in between starts its own
+   * open, so the last pick is the one shown.
+   */
+  public openExisting(threadId: ThreadId): Promise<OmpRuntimeStore> {
+    const pending = this.pendingOpen;
+    if (pending !== undefined && pending.threadId === threadId) return pending.open;
+    const open = this.open({ threadId });
+    const entry = { threadId, open };
+    this.pendingOpen = entry;
+    const settle = (): void => {
+      if (this.pendingOpen === entry) this.pendingOpen = undefined;
+    };
+    void open.then(settle, settle);
+    return open;
   }
 
   public async openNew(): Promise<OmpRuntimeStore> {
+    this.pendingOpen = undefined;
     return this.open({ folderPath: this.options.folder, start: "new" });
   }
 
   public async openLatest(): Promise<OmpRuntimeStore> {
+    this.pendingOpen = undefined;
     return this.open({ folderPath: this.options.folder, start: "latest" });
   }
 

@@ -540,3 +540,86 @@ describe("SelectedThreadHistoryController reopening a saved chat", () => {
     expect(controller.getSnapshot().threadId).toBeUndefined();
   });
 });
+
+describe("SelectedThreadHistoryController sharing a pending open", () => {
+  test("requests for a chat that is still opening share one open, and all get its store", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    const stores = await Promise.all([
+      controller.openExisting(threadOne),
+      controller.openExisting(threadOne),
+      controller.openExisting(threadOne),
+    ]);
+
+    expect(opens).toEqual([{ threadId: threadOne }]);
+    expect(stores[1]).toBe(stores[0]);
+    expect(stores[2]).toBe(stores[0]);
+    expect(controller.getSnapshot().threadId).toBe(threadOne);
+  });
+
+  test("a request for another chat in between starts its own open, so the last pick is the one shown", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      return {
+        threadId: "threadId" in args ? args.threadId : threadTwo,
+        sessionFile: null,
+        capabilities: {},
+      };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await Promise.all([
+      controller.openExisting(threadOne),
+      controller.openExisting(threadTwo),
+      controller.openExisting(threadOne),
+    ]);
+
+    expect(opens).toEqual([
+      { threadId: threadOne },
+      { threadId: threadTwo },
+      { threadId: threadOne },
+    ]);
+    expect(controller.getSnapshot().threadId).toBe(threadOne);
+  });
+
+  test("a New chat asked for in between is not skipped by a later request for the chat before it", async () => {
+    const opens: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opens.push(args);
+      return {
+        threadId: "threadId" in args ? args.threadId : threadTwo,
+        sessionFile: null,
+        capabilities: {},
+      };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await Promise.all([
+      controller.openExisting(threadOne),
+      controller.openNew(),
+      controller.openExisting(threadOne),
+    ]);
+
+    expect(opens).toEqual([
+      { threadId: threadOne },
+      { folderPath: folder, start: "new" },
+      { threadId: threadOne },
+    ]);
+    expect(controller.getSnapshot().threadId).toBe(threadOne);
+  });
+});

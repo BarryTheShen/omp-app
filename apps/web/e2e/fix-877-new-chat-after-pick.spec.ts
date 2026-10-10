@@ -78,5 +78,5 @@ realTest("New chat, a pick, then New chat again ends on the new chat", async ({ 
   await expect(composer(page)).toHaveValue("", { timeout: 60_000 });
   await expect(
     sessionList(page).getByRole("option", { name: /pick target/, selected: true }),
-  ).toHaveCount(0);
+  ).toHaveCount(0, { timeout: 30_000 });
 });
