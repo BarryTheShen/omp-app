@@ -1492,13 +1492,14 @@ function ConnectedApp({
         ...(restoreFocus === undefined ? {} : { restoreFocus }),
         width: "viewport",
         className: SETTINGS_FRAME_CLASS,
-        content: ({ close }) => (
+        content: ({ close, requestClose, update }) => (
           <SettingsScreen
             capabilities={capabilities}
             client={client}
             folder={folder}
             threadId={threadId}
-            onClose={() => close("programmatic")}
+            onClose={() => requestClose()}
+            onUnsavedChange={(unsavedChanges) => update({ unsavedChanges })}
             onStartChat={async () => {
               const started = await startChat();
               close("programmatic");

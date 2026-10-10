@@ -3,9 +3,10 @@
  *
  * One host owns the stack for dialogs, popovers, menus and toasts. Modal requests are serialized
  * FIFO (one active modal at a time), trap focus, lock page scrolling and make the background inert.
- * Interactive non-modal overlays may close on outside press and move focus without trapping it.
- * Toasts are passive: they preserve focus and never close another overlay. Escape always targets the
- * topmost visible overlay, and each overlay's rule decides whether that close is allowed.
+ * Dialogs and interactive non-modal overlays close on an outside press, a press on the dimmed backdrop
+ * included; a dialog with unsaved changes asks first. Toasts are passive: they preserve focus and never
+ * close another overlay. Escape always targets the topmost visible overlay, and each overlay's rule
+ * decides whether that close is allowed.
  *
  * The z-index values come from U0.2's typed token mirror; components never invent raw layers.
  */
@@ -39,7 +40,7 @@ export const OVERLAY_GRAMMAR = {
   modal: {
     zIndex: "modal",
     focus: "trap",
-    outsidePress: "ignore",
+    outsidePress: "close",
     escape: "close",
     scrollLock: true,
     inertBackground: true,

@@ -263,6 +263,9 @@ export class DialogHostController implements DialogHost {
         label: entry.request.kind,
         content: () => this.render(entry.request, context),
         restoreFocus: entry.restoreFocus === undefined ? undefined : false,
+        // omp is waiting on these answers, so a stray press must not answer them; Escape still does.
+        // The app's own dialogs keep closing on a press outside, as Escape does.
+        closeOnOutsidePointer: entry.options.origin === "app",
       });
       void entry.overlay.closed.then((reason) => {
         if (entry.state !== "active" || entry.internalClose) return;

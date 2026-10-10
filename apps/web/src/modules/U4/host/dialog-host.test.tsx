@@ -369,3 +369,45 @@ describe("DialogHostController ownership", () => {
     }
   });
 });
+
+describe("DialogHostController outside press", () => {
+  function dimmedArea(): HTMLElement {
+    const element = document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    if (!element) throw new Error("expected the dimmed backdrop to be on the screen");
+    return element;
+  }
+
+  test("a press outside leaves omp's question open, and Escape still cancels it", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    const pending = open(controller, request("select", "omp-question"));
+    const question = await screen.findByRole("dialog", { name: "select" });
+    fireEvent.pointerDown(dimmedArea());
+    fireEvent.pointerUp(dimmedArea());
+    expect(screen.getByRole("dialog", { name: "select" })).toBeTruthy();
+    expect(state.answers).toEqual([]);
+    fireEvent.keyDown(question, { key: "Escape" });
+    await expect(pending).resolves.toEqual({
+      outcome: "cancelled",
+      kind: "select",
+      timedOut: false,
+    });
+    expect(state.answers).toEqual([
+      { type: "extension_ui_response", id: "omp-question", cancelled: true },
+    ]);
+  });
+
+  test("a press outside still closes an app dialog, which settles as cancelled", async () => {
+    const state = renderHarness({});
+    const controller = await controllerFrom(state);
+    const cancelled = controller.confirm(
+      request("confirm", "app-outside") as Extract<DialogRequest, { kind: "confirm" }>,
+      { threadId: threadA, origin: "app" },
+    );
+    await screen.findByRole("dialog", { name: "confirm" });
+    fireEvent.pointerDown(dimmedArea());
+    fireEvent.pointerUp(dimmedArea());
+    await expect(cancelled).resolves.toBe(false);
+    expect(state.answers).toEqual([]);
+  });
+});

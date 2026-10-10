@@ -7,15 +7,18 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { Section, Toolbar } from "@/components/blocks";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { FocusScope } from "./focus-scope";
+import { FocusScope, getTabbableElements } from "./focus-scope";
 import {
   type FocusTarget,
   OVERLAY_GRAMMAR,
@@ -40,11 +43,18 @@ export interface OverlayOpenOptions {
   readonly width?: OverlayWidth;
   readonly label?: string;
   readonly className?: string;
+  /**
+   * True while the content holds edits that closing would lose. An outside press, or the content's own
+   * requestClose, then asks "Discard unsaved changes?" before a modal closes. Escape is unchanged.
+   */
+  readonly unsavedChanges?: boolean;
 }
 
 export interface OverlayControls {
   readonly id: string;
   readonly close: (reason?: OverlayCloseReason) => void;
+  /** Closes the way an outside press does: a modal with unsaved changes asks first. */
+  readonly requestClose: () => void;
   readonly update: (patch: Partial<Omit<OverlayOpenOptions, "kind">>) => void;
 }
 
@@ -76,6 +86,9 @@ interface OverlayRecord extends OverlaySnapshot {
   readonly width?: OverlayWidth;
   readonly label?: string;
   readonly className?: string;
+  readonly unsavedChanges: boolean;
+  /** True while the discard question shows for this modal. */
+  readonly askingToDiscard: boolean;
   readonly resolveClosed: (reason: OverlayCloseReason) => void;
 }
 
@@ -138,25 +151,38 @@ function defaultCloseOnOutsidePointer(kind: OverlayKind): boolean {
   return OVERLAY_GRAMMAR[kind].outsidePress === "close";
 }
 
+/** Within this many CSS pixels, a press and its release make a click, not a swipe or a drag. */
+const OUTSIDE_CLICK_SLOP_PX = 10;
+
 function OverlayView({
   record,
   index,
   onClose,
   onUpdate,
+  onRequestClose,
+  onKeepEditing,
+  onInside,
 }: {
   record: OverlayRecord;
   index: number;
   onClose: (id: string, reason?: OverlayCloseReason) => void;
   onUpdate: (id: string, patch: Partial<Omit<OverlayOpenOptions, "kind">>) => void;
+  onRequestClose: (id: string, reason: OverlayCloseReason) => void;
+  onKeepEditing: (id: string) => void;
+  /** Reports a press that belongs to this overlay, so the host does not read it as an outside press. */
+  onInside: (event: Event) => void;
 }) {
   const reducedMotion = useReducedMotion();
+  const questionId = useId();
+  const popupRef = useRef<HTMLDivElement>(null);
   const controls = useMemo<OverlayControls>(
     () => ({
       id: record.id,
       close: (reason = "programmatic") => onClose(record.id, reason),
+      requestClose: () => onRequestClose(record.id, "programmatic"),
       update: (patch) => onUpdate(record.id, patch),
     }),
-    [onClose, onUpdate, record.id],
+    [onClose, onRequestClose, onUpdate, record.id],
   );
   const content = getOverlayContent(record, controls);
   const grammar = OVERLAY_GRAMMAR[record.kind];
@@ -170,6 +196,7 @@ function OverlayView({
     "data-overlay-id": record.id,
     "data-overlay-kind": record.kind,
     "data-overlay-status": record.status,
+    "data-overlay-unsaved": record.unsavedChanges ? "true" : undefined,
     "data-reduced-motion": reducedMotion ? "true" : undefined,
   } as const;
   if (record.kind === "modal") {
@@ -192,29 +219,26 @@ function OverlayView({
       onClose(record.id, reason);
     };
 
+    // The host decides every outside press, one on the dimmed backdrop included. The base dialog never
+    // dismisses by itself: it would close without asking about unsaved changes.
     return (
-      <Dialog
-        open
-        modal={false}
-        disablePointerDismissal={!record.closeOnOutsidePointer}
-        onOpenChange={closeFromDialog}
-      >
+      <Dialog open modal={false} disablePointerDismissal onOpenChange={closeFromDialog}>
         <DialogPortal>
           <DialogOverlay
             {...dataProps}
             className="bg-foreground/15 motion-reduce:transition-none"
             style={layerStyle(record.kind, index)}
-            onPointerDown={() => {
-              if (record.closeOnOutsidePointer) onClose(record.id, "outside-press");
-            }}
           />
           <DialogPrimitive.Popup
             {...dataProps}
+            ref={popupRef}
             role="dialog"
             aria-modal="true"
             aria-label={record.label}
             initialFocus={false}
             finalFocus={false}
+            onPointerDown={(event) => onInside(event.nativeEvent)}
+            onPointerUp={(event) => onInside(event.nativeEvent)}
             className={cn(
               "fixed top-1/2 left-1/2 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-popover p-4 text-sm text-popover-foreground shadow-overlay ring-1 ring-foreground/10 outline-none motion-reduce:transition-none",
               sharedClassName,
@@ -222,13 +246,63 @@ function OverlayView({
             style={layerStyle(record.kind, index + 1)}
           >
             <FocusScope
-              trapped
+              trapped={!record.askingToDiscard}
               initialFocus={focus ? undefined : false}
               restoreFocus={record.restoreFocus}
             >
               {content}
             </FocusScope>
           </DialogPrimitive.Popup>
+          {record.askingToDiscard ? (
+            <div
+              {...dataProps}
+              className="fixed inset-0 flex items-center justify-center p-4"
+              style={layerStyle(record.kind, index + 2)}
+              onPointerDown={(event) => onInside(event.nativeEvent)}
+              onPointerUp={(event) => onInside(event.nativeEvent)}
+            >
+              <FocusScope
+                trapped
+                restoreFocus={() => {
+                  const popup = popupRef.current;
+                  return popup ? (getTabbableElements(popup)[0] ?? popup) : null;
+                }}
+              >
+                <div
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby={questionId}
+                  className="w-full max-w-sm rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-overlay"
+                >
+                  <Section
+                    heading="Discard unsaved changes?"
+                    headingId={questionId}
+                    variant="dialog"
+                    description="Closing now loses the changes you have not saved."
+                  >
+                    <Toolbar ariaLabel="Unsaved changes" alignment="end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onKeepEditing(record.id)}
+                      >
+                        Keep editing
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => onClose(record.id, "programmatic")}
+                      >
+                        Discard changes
+                      </Button>
+                    </Toolbar>
+                  </Section>
+                </div>
+              </FocusScope>
+            </div>
+          ) : null}
         </DialogPortal>
       </Dialog>
     );
@@ -249,6 +323,8 @@ function OverlayView({
         record.kind === "toast" && "pointer-events-auto",
         sharedClassName,
       )}
+      onPointerDown={(event) => onInside(event.nativeEvent)}
+      onPointerUp={(event) => onInside(event.nativeEvent)}
       style={layerStyle(record.kind, index)}
     >
       {record.kind === "toast" ? (
@@ -275,59 +351,54 @@ function OverlayView({
 export function OverlayHost({ children }: { readonly children: ReactNode }) {
   const [records, setRecords] = useState<OverlayRecord[]>([]);
   const [portal, setPortal] = useState<HTMLDivElement | null>(null);
+  // Every change is written here at once, and the state follows. Reading the records inside a state
+  // updater would lag behind: a press that lands before React renders a change (a flag reported from
+  // an effect, say) must still see that change.
   const recordsRef = useRef<OverlayRecord[]>([]);
   const backgroundRef = useRef<HTMLDivElement>(null);
-  const recordsWithRef = useCallback((next: OverlayRecord[]) => {
+  const commit = useCallback((next: OverlayRecord[]) => {
     recordsRef.current = next;
-    return next;
+    setRecords(next);
   }, []);
 
   const update = useCallback(
     (id: string, patch: Partial<Omit<OverlayOpenOptions, "kind">>) => {
-      setRecords((current) =>
-        recordsWithRef(
-          current.map((record) => {
-            if (record.id !== id) return record;
-            return {
-              ...record,
-              ...patch,
-              closeOnEscape: patch.closeOnEscape ?? record.closeOnEscape,
-              closeOnOutsidePointer: patch.closeOnOutsidePointer ?? record.closeOnOutsidePointer,
-              focus: patch.focus ?? record.focus,
-            };
-          }),
-        ),
+      commit(
+        recordsRef.current.map((record) => {
+          if (record.id !== id) return record;
+          return {
+            ...record,
+            ...patch,
+            closeOnEscape: patch.closeOnEscape ?? record.closeOnEscape,
+            closeOnOutsidePointer: patch.closeOnOutsidePointer ?? record.closeOnOutsidePointer,
+            focus: patch.focus ?? record.focus,
+          };
+        }),
       );
     },
-    [recordsWithRef],
+    [commit],
   );
 
   const close = useCallback(
     (id: string, reason: OverlayCloseReason = "programmatic") => {
-      const target = recordsRef.current.find((record) => record.id === id);
+      const current = recordsRef.current;
+      const target = current.find((record) => record.id === id);
       if (!target) return;
-      setRecords((current) => {
-        const currentTarget = current.find((record) => record.id === id);
-        if (!currentTarget) return current;
-        const remaining = current.filter((record) => record.id !== id);
-        const shouldPromote = currentTarget.kind === "modal" && currentTarget.status === "open";
-        if (shouldPromote) {
-          const nextModal = remaining.find(
-            (record) => record.kind === "modal" && record.status === "queued",
-          );
-          if (nextModal) {
-            return recordsWithRef(
-              remaining.map((record) =>
-                record.id === nextModal.id ? { ...record, status: "open" as const } : record,
-              ),
-            );
-          }
-        }
-        return recordsWithRef(remaining);
-      });
+      const remaining = current.filter((record) => record.id !== id);
+      const shouldPromote = target.kind === "modal" && target.status === "open";
+      const nextModal = shouldPromote
+        ? remaining.find((record) => record.kind === "modal" && record.status === "queued")
+        : undefined;
+      commit(
+        nextModal
+          ? remaining.map((record) =>
+              record.id === nextModal.id ? { ...record, status: "open" as const } : record,
+            )
+          : remaining,
+      );
       queueMicrotask(() => target.resolveClosed(reason));
     },
-    [recordsWithRef],
+    [commit],
   );
 
   const closeTopmost = useCallback(
@@ -337,6 +408,42 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
       if (topmost) close(topmost.id, reason);
     },
     [close],
+  );
+
+  // A press on a surface of an overlay (the dialog, its popups, the toasts) is not an outside press.
+  // React reports a press from a popup that the dialog opened into a portal through the component
+  // tree, so this does not depend on where that popup sits in the DOM. The listener reads the mark.
+  const insideEventRef = useRef<Event | null>(null);
+  const markInside = useCallback((event: Event) => {
+    insideEventRef.current = event;
+  }, []);
+
+  const requestClose = useCallback(
+    (id: string, reason: OverlayCloseReason) => {
+      const target = recordsRef.current.find((record) => record.id === id);
+      if (!target || target.askingToDiscard) return;
+      if (!target.unsavedChanges) {
+        close(id, reason);
+        return;
+      }
+      commit(
+        recordsRef.current.map((record) =>
+          record.id === id ? { ...record, askingToDiscard: true } : record,
+        ),
+      );
+    },
+    [close, commit],
+  );
+
+  const keepEditing = useCallback(
+    (id: string) => {
+      commit(
+        recordsRef.current.map((record) =>
+          record.id === id ? { ...record, askingToDiscard: false } : record,
+        ),
+      );
+    },
+    [commit],
   );
 
   const open = useCallback(
@@ -352,30 +459,31 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
         settled = true;
         resolvePromise(reason);
       };
-      setRecords((current) => {
-        const hasOpenModal = current.some(
-          (record) => record.kind === "modal" && record.status === "open",
-        );
-        const record: OverlayRecord = {
-          id,
-          kind: options.kind,
-          status: options.kind === "modal" && hasOpenModal ? "queued" : "open",
-          content: options.content,
-          closeOnEscape: options.closeOnEscape ?? defaultCloseOnEscape(options.kind),
-          closeOnOutsidePointer:
-            options.closeOnOutsidePointer ?? defaultCloseOnOutsidePointer(options.kind),
-          focus: options.focus ?? defaultFocusMode(options.kind),
-          restoreFocus: options.restoreFocus,
-          width: options.width,
-          label: options.label,
-          className: options.className,
-          resolveClosed,
-        };
-        return recordsWithRef([...current, record]);
-      });
+      const current = recordsRef.current;
+      const hasOpenModal = current.some(
+        (record) => record.kind === "modal" && record.status === "open",
+      );
+      const record: OverlayRecord = {
+        id,
+        kind: options.kind,
+        status: options.kind === "modal" && hasOpenModal ? "queued" : "open",
+        content: options.content,
+        closeOnEscape: options.closeOnEscape ?? defaultCloseOnEscape(options.kind),
+        closeOnOutsidePointer:
+          options.closeOnOutsidePointer ?? defaultCloseOnOutsidePointer(options.kind),
+        focus: options.focus ?? defaultFocusMode(options.kind),
+        restoreFocus: options.restoreFocus,
+        width: options.width,
+        label: options.label,
+        className: options.className,
+        unsavedChanges: options.unsavedChanges ?? false,
+        askingToDiscard: false,
+        resolveClosed,
+      };
+      commit([...current, record]);
       return { id, closed };
     },
-    [recordsWithRef],
+    [commit],
   );
 
   const hasOpenModal = records.some(
@@ -426,24 +534,66 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
       if (!topmost?.closeOnEscape) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      close(topmost.id, "escape");
+      // While the discard question is up, Escape answers it with the safe choice. Otherwise Escape
+      // closes the topmost overlay as it always has, with or without unsaved changes.
+      if (topmost.askingToDiscard) keepEditing(topmost.id);
+      else close(topmost.id, "escape");
     };
+    // A press that starts outside the topmost overlay closes it on release, when the press is a click with
+    // the primary button: a swipe, a drag, or a right or middle click does not. Closing on press would take
+    // the overlay away under the pointer, so the focus and the click that follow would land on the page
+    // behind it. A modal's release click is swallowed too, so it cannot reach whatever is under the pointer.
+    // Bubble phase: React has marked the presses that belong to an overlay before these listeners run.
+    let press: { id: string; x: number; y: number; drifted: boolean } | null = null;
     const handlePointerDown = (event: PointerEvent) => {
       const topmost = visibleOverlays(recordsRef.current).at(-1);
-      if (!topmost?.closeOnOutsidePointer) return;
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      const inside =
-        target instanceof Element && target.closest(`[data-overlay-id="${topmost.id}"]`);
-      if (!inside) close(topmost.id, "outside-press");
+      press =
+        topmost?.closeOnOutsidePointer && insideEventRef.current !== event && event.button === 0
+          ? { id: topmost.id, x: event.clientX, y: event.clientY, drifted: false }
+          : null;
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      if (press === null) return;
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > OUTSIDE_CLICK_SLOP_PX) {
+        press.drifted = true;
+      }
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      const current = press;
+      press = null;
+      if (current === null || insideEventRef.current === event || event.button !== 0) return;
+      const moved = Math.hypot(event.clientX - current.x, event.clientY - current.y);
+      if (current.drifted || moved > OUTSIDE_CLICK_SLOP_PX) return;
+      const topmost = visibleOverlays(recordsRef.current).at(-1);
+      if (topmost?.id !== current.id) return;
+      if (topmost.kind === "modal") {
+        // A modal's press began on its backdrop, which the release now uncovers: the click the release
+        // makes must not reach the page behind it. A popover's click still reaches what was pressed.
+        const swallowClick = (click: MouseEvent) => {
+          click.preventDefault();
+          click.stopPropagation();
+        };
+        document.addEventListener("click", swallowClick, { capture: true, once: true });
+        window.setTimeout(() => document.removeEventListener("click", swallowClick, true), 0);
+      }
+      requestClose(current.id, "outside-press");
+    };
+    const handlePointerCancel = () => {
+      press = null;
     };
     document.addEventListener("keydown", handleKeyDown, true);
-    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerCancel);
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
-      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerCancel);
     };
-  }, [close]);
+  }, [close, keepEditing, requestClose]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -472,6 +622,9 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
                   index={index}
                   onClose={close}
                   onUpdate={update}
+                  onRequestClose={requestClose}
+                  onKeepEditing={keepEditing}
+                  onInside={markInside}
                 />
               ))}
             </div>,

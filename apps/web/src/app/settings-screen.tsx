@@ -7,7 +7,7 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { SETTING_SECTIONS as OMP_SETTING_SECTIONS, SETTING_TABS } from "@omp-app/contracts";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   EmptyState,
   InlineError,
@@ -54,6 +54,8 @@ export type SettingsScreenProps = {
   readonly capabilities: CapabilityMap;
   readonly folder: FolderPath | null;
   readonly onClose: () => void;
+  /** Told when the screen gains or loses unsaved edits, so closing can ask before it discards them. */
+  readonly onUnsavedChange?: (unsaved: boolean) => void;
   /** The open chat, whose omp session runs provider login; null when no chat is open. */
   readonly threadId: ThreadId | null;
   /** Starts a chat to sign in with, when no chat is open (Providers offers it); the chat's id is what opens sign-in. */
@@ -530,6 +532,7 @@ export function SettingsScreen({
   capabilities,
   folder,
   onClose,
+  onUnsavedChange,
   threadId,
   onStartChat,
 }: SettingsScreenProps) {
@@ -587,6 +590,14 @@ export function SettingsScreen({
   const activeSection =
     visibleSections.find((section) => section.id === selectedId) ?? visibleSections[0];
   const hasDirtySections = dirtySections.size > 0;
+  // Tells the overlay whether closing now would lose edits, so an outside press can ask first. The last
+  // value sent is remembered, so a new callback on each render does not send the same value again.
+  const reportedUnsaved = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    if (reportedUnsaved.current === hasDirtySections) return;
+    reportedUnsaved.current = hasDirtySections;
+    onUnsavedChange?.(hasDirtySections);
+  }, [hasDirtySections, onUnsavedChange]);
 
   const selectTab = (tab: SettingTab): void => {
     setActiveTab(tab);
