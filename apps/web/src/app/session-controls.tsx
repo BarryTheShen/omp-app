@@ -27,6 +27,7 @@ import {
 import type { OmpRuntimeStore, SessionInfoState } from "@/modules/R0/store";
 import { useOverlayHost } from "@/overlay";
 import { reportClientError } from "./client-errors";
+import { useModelPaletteCommand } from "./palette-model-command";
 
 interface SessionControlProps {
   readonly client: AppClient;
@@ -120,11 +121,12 @@ export function SessionModelControl({
     parsedLevel?.success && parsedLevel.data !== "off"
       ? thinkingLevelLabel(parsedLevel.data).toLowerCase()
       : null;
-  const open = () => {
+  const openDialog = (restoreFocus?: HTMLElement) => {
     void catalog.refresh().catch(() => undefined);
     overlay.open({
       kind: "modal",
       label: "Model and thinking",
+      ...(restoreFocus === undefined ? {} : { restoreFocus }),
       // One size rule, no breakpoints: nearly the whole window when it is small, a roomy 48 by
       // 52rem box when it is large. The content sets no width of its own, so it can never be
       // wider than this frame (it used to ask for 36rem inside a 32rem frame and was cut off).
@@ -141,6 +143,8 @@ export function SessionModelControl({
       ),
     });
   };
+  const open = () => openDialog();
+  useModelPaletteCommand(openDialog);
   return (
     <Button
       aria-label={modelName ? `Model: ${modelName}. Change model or thinking` : "Choose a model"}

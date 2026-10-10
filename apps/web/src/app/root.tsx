@@ -121,9 +121,10 @@ import { DESCRIPTORS, RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
 import { type PreferenceStore, ShortcutRegistryProvider } from "@/shortcuts";
-import { ThemeApplier, ThemeButton } from "@/theme";
+import { setThemePreference, ThemeApplier, ThemeButton } from "@/theme";
 import { reportClientError, setClientErrorSink } from "./client-errors";
 import { ComposerHistory } from "./composer-history";
+import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
 import { saveTextFile } from "./save-file";
@@ -504,7 +505,7 @@ interface ActiveThreadProps {
   readonly capabilities: CapabilityMap;
   readonly folder: FolderPath | null;
   readonly catalog: SessionCatalogModel | null;
-  readonly onOpenSettings: (threadId: ThreadId | null) => void;
+  readonly onOpenSettings: (threadId: ThreadId | null, restoreFocus?: HTMLElement) => void;
   readonly remote: ReturnType<typeof createNativeRemoteThreadListAdapter> | null;
   /** Called when the person sends a message (the sidebar's list is fetched again once it is answered). */
   readonly onPromptSent: () => void;
@@ -775,8 +776,21 @@ function ActiveThreadReady({
         });
     });
     if (catalog && remote) handlers.set("R1.openSession", openSessionBrowser);
+    handlers.set("S1.settings", () => onOpenSettings(threadId, composerInput() ?? undefined));
+    handlers.set("U0.themeSystem", () => setThemePreference("system"));
+    handlers.set("U0.themeLight", () => setThemePreference("light"));
+    handlers.set("U0.themeDark", () => setThemePreference("dark"));
     return handlers;
-  }, [catalog, client, lifecycle, openSessionBrowser, openThread, remote]);
+  }, [
+    catalog,
+    client,
+    lifecycle,
+    onOpenSettings,
+    openSessionBrowser,
+    openThread,
+    remote,
+    threadId,
+  ]);
   const clearReason =
     lifecycle?.getAvailability("clear").reason ??
     "Clearing the conversation only works in the omp terminal for now.";
@@ -1163,10 +1177,11 @@ function ConnectedApp({
   const [resumePlace, setResumePlace] = useState<ReadingPlace | null>(null);
   const folder = FolderPath.safeParse(folderText).success ? FolderPath.parse(folderText) : null;
   const openSettings = useCallback(
-    (threadId: ThreadId | null) => {
+    (threadId: ThreadId | null, restoreFocus?: HTMLElement) => {
       overlay.open({
         kind: "modal",
         label: "Settings",
+        ...(restoreFocus === undefined ? {} : { restoreFocus }),
         width: "viewport",
         content: ({ close }) => (
           <SettingsScreen

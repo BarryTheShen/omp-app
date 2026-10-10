@@ -155,6 +155,26 @@ describe("U0 command palette", () => {
     expect(titles.every((text) => !text.includes(NEW_CHAT.id))).toBe(true);
   });
 
+  test("a theme command is listed for a search only when the app has mounted it", async () => {
+    const DARK = commandById("U0.themeDark");
+    const setDark = vi.fn();
+    renderPalette(capabilitiesFor([DARK], "available"), handlersFor([DARK, setDark]));
+    await openPalette();
+    fireEvent.change(screen.getByRole("combobox", { name: "Search commands" }), {
+      target: { value: "theme" },
+    });
+    fireEvent.click(optionFor(DARK));
+    expect(setDark).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    renderPalette(capabilitiesFor([DARK], "available"));
+    await openPalette();
+    fireEvent.change(screen.getByRole("combobox", { name: "Search commands" }), {
+      target: { value: "theme" },
+    });
+    expect(screen.getByRole("status").textContent).toBe("No commands found.");
+  });
+
   test("shows an empty state when the app has mounted no command", async () => {
     renderPalette();
     await openPalette();

@@ -21,3 +21,44 @@ export const U0_SAVE_DEBUG_LOG_COMMAND = {
   covers: [],
   requires: [],
 } as const satisfies CommandDescriptor;
+
+/** The palette command that opens the model and thinking-level dialog, the same one the header's model button opens. */
+export const U0_MODEL_COMMAND = {
+  kind: "command",
+  id: "U0.modelAndThinking",
+  owner: "U0",
+  title: "Model and thinking level",
+  covers: [],
+  requires: ["omp.cmd.get_available_models", "omp.cmd.set_model"],
+} as const satisfies CommandDescriptor;
+
+/** The palette commands that set the theme: the same three choices as the sidebar's Theme buttons. */
+const U0_THEME_COMMANDS = [
+  {
+    kind: "command",
+    id: "U0.themeSystem",
+    owner: "U0",
+    title: "Use the system theme",
+    covers: [],
+    requires: [],
+  },
+  {
+    kind: "command",
+    id: "U0.themeLight",
+    owner: "U0",
+    title: "Use the light theme",
+    covers: [],
+    requires: [],
+  },
+  {
+    kind: "command",
+    id: "U0.themeDark",
+    owner: "U0",
+    title: "Use the dark theme",
+    covers: [],
+    requires: [],
+  },
+] as const satisfies readonly CommandDescriptor[];
+
+/** Every palette command the U0 part owns; the composed registry lists them (`registry/index.ts`). */
+export const U0_PALETTE_COMMANDS = [U0_MODEL_COMMAND, ...U0_THEME_COMMANDS] as const;

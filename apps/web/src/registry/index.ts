@@ -18,7 +18,7 @@ import { P3_MESSAGE_DESCRIPTORS } from "../modules/P3/descriptors";
 import { P4_DESCRIPTORS } from "../modules/P4/contract";
 import { P6_DESCRIPTORS } from "../modules/P6";
 import { R1_DESCRIPTORS } from "../modules/R1/descriptors";
-import { S1_SETTINGS_SECTIONS } from "../modules/S1/descriptors";
+import { S1_DESCRIPTORS, S1_SETTINGS_SECTIONS } from "../modules/S1/descriptors";
 import type { SettingsSectionDescriptor } from "../modules/S1/settings-kit";
 import { S2_SETTINGS_SECTIONS } from "../modules/S2/sections";
 import { S3_SETTINGS_SECTIONS } from "../modules/S3/sections";
@@ -42,7 +42,11 @@ import { U4Descriptors } from "../modules/U4/descriptors";
 import { ASK_TOOL_DESCRIPTOR } from "../modules/U4/dialogs/ask-result";
 import { U5Descriptors } from "../modules/U5/descriptors";
 import { todoToolDescriptor } from "../modules/U5/todo/tool-card/tool-card";
-import { U0_COMMAND_PALETTE_SHORTCUT, U0_SAVE_DEBUG_LOG_COMMAND } from "../palette/descriptor";
+import {
+  U0_COMMAND_PALETTE_SHORTCUT,
+  U0_PALETTE_COMMANDS,
+  U0_SAVE_DEBUG_LOG_COMMAND,
+} from "../palette/descriptor";
 import { createRegistry, type RendererMap } from "../registry-core";
 
 /** T1's read card renders URL reads through T4's renderer; the seam keeps T1 from importing T4. */
@@ -96,6 +100,9 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   U2_EXTERNAL_EDITOR_SHORTCUT,
   U0_COMMAND_PALETTE_SHORTCUT,
   U0_SAVE_DEBUG_LOG_COMMAND,
+  ...U0_PALETTE_COMMANDS,
+  // S1's Settings command, so the palette can offer it; its handler is mounted with the open thread.
+  ...S1_DESCRIPTORS.filter((descriptor) => descriptor.kind === "command"),
   ...R1_DESCRIPTORS,
   ...D5_LIFECYCLE_COMMAND_DESCRIPTORS,
   ...N1_DESCRIPTORS,
