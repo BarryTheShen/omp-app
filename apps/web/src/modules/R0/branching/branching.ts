@@ -123,20 +123,28 @@ export class OmpBranchingController {
   /** Branches from a user entry, switches to omp's reported new session, reloads, then submits the edit through R0.3. */
   public async editFrom(entryId: EntryId, intent: PromptIntent): Promise<void> {
     this.requireEntry(entryId);
-    await this.branchAndReload(entryId);
-    try {
-      await this.submitPrompt({ ...intent, delivery: "new" });
-    } catch (error) {
-      throw asFailure(error, "The edited prompt failed after branching");
-    }
+    await this.branchAndSubmit(entryId, intent);
   }
 
-  /** Regenerates from an existing user entry without creating a second prompt-send path. */
+  /**
+   * Regenerates from an existing user entry: the same text, asked again on the new chat omp branched from the
+   * source. No name is written: omp gives the branch its source's name, and the session list marks it as a branch.
+   */
   public async regenerateFrom(entryId: EntryId): Promise<void> {
     const entry = this.requireEntry(entryId);
     const message = entryMessage(entry);
     if (!message) throw notFound(entryId);
-    await this.editFrom(entryId, promptFromUserEntry(message));
+    await this.branchAndSubmit(entryId, promptFromUserEntry(message));
+  }
+
+  /** The one branch-then-send path for edit and regenerate. */
+  private async branchAndSubmit(entryId: EntryId, intent: PromptIntent): Promise<void> {
+    await this.branchAndReload(entryId);
+    try {
+      await this.submitPrompt({ ...intent, delivery: "new" });
+    } catch (error) {
+      throw asFailure(error, "The prompt failed after branching");
+    }
   }
 
   /** Switches to an existing session/thread and reloads its R0 history. */
@@ -170,6 +178,7 @@ export class OmpBranchingController {
     return entry;
   }
 
+  /** Branches the source chat at an entry, then opens omp's new chat. The chat keeps the name omp gave it. */
   private async branchAndReload(entryId: EntryId): Promise<ThreadId> {
     const sourceThreadId = this.store.getSnapshot().threadId;
     let result: OmpWire.BranchResult;

@@ -65,6 +65,33 @@ async function unlessSuperseded<Opened>(pick: Promise<Opened>): Promise<Opened |
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 const shortDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+const branchedShort = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "short",
+  timeStyle: "medium",
+});
+const branchedFull = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "medium",
+});
+
+/**
+ * The line that marks a chat omp branched from another chat (a regenerated answer, or an edit). It is a
+ * line of its own under the title, so it stays in view however long the title is. The time it was made
+ * tells branches of one chat apart; the source's title is in the tooltip. Undefined for a chat that is no branch.
+ */
+function branchMarker(
+  session: SessionMetadata,
+  source: SessionMetadata | undefined,
+): { readonly text: string; readonly tooltip: string } | undefined {
+  if (session.parentSession === null) return undefined;
+  const from = source ? `Branch of ${sessionTitle(source)}` : "Branch";
+  const made = new Date(session.createdAt);
+  if (Number.isNaN(made.getTime())) return { text: "Branch", tooltip: from };
+  return {
+    text: `Branch made ${branchedShort.format(made)}`,
+    tooltip: `${from}, made ${branchedFull.format(made)}`,
+  };
+}
 
 function activityPreview(updatedAt: string): { label: string; title: string } {
   const date = new Date(updatedAt);
@@ -379,6 +406,11 @@ export function SessionCatalogSidebar({
                 const isEditing = editingId === session.id;
                 const title = sessionTitle(session);
                 const activity = activityPreview(session.updatedAt);
+                const source =
+                  session.parentSession === null
+                    ? undefined
+                    : snapshot.sessions.find((item) => item.sessionFile === session.parentSession);
+                const marker = branchMarker(session, source);
                 const menuOpen = menuSessionId === session.id;
                 const pinReason = canPin
                   ? onPinChange
@@ -432,19 +464,32 @@ export function SessionCatalogSidebar({
                             Saving…
                           </span>
                         ) : (
-                          <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate text-xs">
-                            <time dateTime={session.updatedAt} title={activity.title}>
-                              {activity.label}
-                            </time>
-                            {snapshot.git?.branch && (
-                              <>
-                                <span aria-hidden="true">·</span>
-                                <span className="truncate" title={`Branch: ${snapshot.git.branch}`}>
-                                  {snapshot.git.branch}
-                                </span>
-                              </>
+                          <>
+                            {marker && (
+                              <span
+                                className="text-muted-foreground block truncate text-xs"
+                                title={marker.tooltip}
+                              >
+                                {marker.text}
+                              </span>
                             )}
-                          </span>
+                            <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate text-xs">
+                              <time dateTime={session.updatedAt} title={activity.title}>
+                                {activity.label}
+                              </time>
+                              {snapshot.git?.branch && (
+                                <>
+                                  <span aria-hidden="true">·</span>
+                                  <span
+                                    className="truncate"
+                                    title={`Branch: ${snapshot.git.branch}`}
+                                  >
+                                    {snapshot.git.branch}
+                                  </span>
+                                </>
+                              )}
+                            </span>
+                          </>
                         )
                       }
                       selected={selected}

@@ -669,4 +669,65 @@ describe("SessionCatalogSidebar", () => {
     renderSidebar({ catalog });
     expect(await screen.findByRole("button", { name: "Retry" })).toBeTruthy();
   });
+
+  /** A chat omp branched from `parentId` (a regenerated answer or an edit), made at `createdAt`. */
+  function branchOf(
+    id: string,
+    parentId: string,
+    createdAt: SessionFile["createdAt"],
+    title: string,
+  ): SessionFile {
+    return {
+      ...session(id, "2026-10-05T12:00:00.000Z", title),
+      createdAt,
+      parentSession: SessionFilePath.parse(`${folder}/.omp/${parentId}.jsonl`),
+    };
+  }
+
+  test("a branch row has its own marker line with the time it was made, and its source row has none", async () => {
+    const source = session("source", "2026-10-05T10:00:00.000Z", "Count reply");
+    const branch = branchOf("branch", "source", "2026-10-05T11:00:01.000Z", "Count reply");
+    renderSidebar({ catalog: modelWithSessions([source, branch]) });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const [branchRow, sourceRow] = screen.getAllByRole("option");
+    expect(branchRow?.textContent).toContain("Branch made");
+    expect(sourceRow?.textContent).not.toContain("Branch made");
+    expect(screen.getByText(/^Branch made /).getAttribute("title")).toMatch(
+      /^Branch of Count reply, made /,
+    );
+  });
+
+  test("three branches of one chat each show their own marker, so no two rows read alike", async () => {
+    const source = session("source", "2026-10-05T10:00:00.000Z", "Count reply");
+    const branches = [
+      branchOf("first", "source", "2026-10-05T11:00:01.000Z", "Count reply"),
+      branchOf("second", "source", "2026-10-05T11:00:02.000Z", "Count reply"),
+      branchOf("third", "source", "2026-10-05T11:00:03.000Z", "Count reply"),
+    ];
+    renderSidebar({ catalog: modelWithSessions([source, ...branches]) });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(4));
+    const markers = screen.getAllByText(/^Branch made /).map((element) => element.textContent);
+    expect(markers).toHaveLength(3);
+    expect(new Set(markers).size).toBe(3);
+    const rows = screen.getAllByRole("option").map((row) => row.textContent);
+    expect(new Set(rows).size).toBe(4);
+  });
+
+  test("a long source title does not hide a branch's marker: the marker is a line of its own", async () => {
+    const longTitle = "Quarterly planning notes for the district budget review and staffing plan";
+    const source = session("source", "2026-10-05T10:00:00.000Z", longTitle);
+    const branch = branchOf("branch", "source", "2026-10-05T11:00:01.000Z", longTitle);
+    renderSidebar({ catalog: modelWithSessions([source, branch]) });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const marker = screen.getByText(/^Branch made /);
+    expect(marker.textContent).not.toContain("Quarterly");
+    expect(marker.getAttribute("title")).toContain(longTitle);
+  });
+
+  test("a branch whose source is not in the list still reads as a branch, with the time it was made", async () => {
+    const orphan = branchOf("orphan", "gone", "2026-10-05T11:00:01.000Z", "Count reply");
+    renderSidebar({ catalog: modelWithSessions([orphan]) });
+    await waitFor(() => expect(screen.getByText(/^Branch made /)).toBeTruthy());
+    expect(screen.getByText(/^Branch made /).getAttribute("title")).toMatch(/^Branch, made /);
+  });
 });

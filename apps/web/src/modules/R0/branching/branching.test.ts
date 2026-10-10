@@ -7,7 +7,11 @@ import { createOmpBranchingController } from "./branching";
 const sourceThread = "source-thread" as ThreadId;
 const branchedThread = "branched-thread" as ThreadId;
 const userEntry = "user-entry" as EntryId;
-const calls: Array<{ readonly type: string; readonly command: unknown }> = [];
+const calls: Array<{
+  readonly type: string;
+  readonly command: unknown;
+  readonly threadId?: ThreadId;
+}> = [];
 
 function userEntryRecord(content: string): Record<string, unknown> {
   return {
@@ -25,11 +29,12 @@ function storeWithUserEntry(): OmpRuntimeStore {
   return store;
 }
 
+/** omp's answers to the two commands a branch sends. Any other command, a rename included, throws here. */
 function sendFor(
   branchResult: OmpWire.BranchResult | AppFailure = { text: "original draft", cancelled: false },
 ): RpcSessionSend {
   return (async (args) => {
-    calls.push({ type: args.command.type, command: args.command });
+    calls.push({ type: args.command.type, command: args.command, threadId: args.threadId });
     if (args.command.type === "branch") {
       if (branchResult instanceof AppFailure) throw branchResult;
       return branchResult;
@@ -169,5 +174,62 @@ describe("OmpBranchingController", () => {
     } catch (error) {
       expect(error).toMatchObject({ appError: { code: "not_found" } });
     }
+  });
+
+  test("regenerate asks again on a new chat and sends no rename, so the chat keeps the name omp gave it", async () => {
+    const store = storeWithUserEntry();
+    calls.length = 0;
+    const controller = createOmpBranchingController({
+      store,
+      send: sendFor(),
+      submitPrompt: async (intent) => {
+        calls.push({ type: "submit", command: intent });
+      },
+      switchThread: async () => {},
+      reloadHistory: async () => {},
+    });
+
+    await controller.regenerateFrom(userEntry);
+
+    expect(calls.map((call) => call.type)).toEqual(["branch", "get_state", "submit"]);
+    expect(calls.find((call) => call.type === "submit")?.command).toMatchObject({
+      text: "original draft",
+      delivery: "new",
+    });
+  });
+
+  test("regenerating three times names no chat, so every branch keeps the title omp gave it", async () => {
+    const store = storeWithUserEntry();
+    calls.length = 0;
+    const controller = createOmpBranchingController({
+      store,
+      send: sendFor(),
+      submitPrompt: async (intent) => {
+        calls.push({ type: "submit", command: intent });
+      },
+      switchThread: async () => {},
+      reloadHistory: async () => {},
+    });
+
+    for (let round = 0; round < 3; round += 1) await controller.regenerateFrom(userEntry);
+
+    expect(calls.filter((call) => call.type === "submit")).toHaveLength(3);
+    expect(calls.some((call) => call.type === "set_session_name")).toBe(false);
+  });
+
+  test("edit sends no rename, so the branch keeps the name omp gave it", async () => {
+    const store = storeWithUserEntry();
+    calls.length = 0;
+    const controller = createOmpBranchingController({
+      store,
+      send: sendFor(),
+      submitPrompt: async () => {},
+      switchThread: async () => {},
+      reloadHistory: async () => {},
+    });
+
+    await controller.editFrom(userEntry, { mode: "prompt", text: "edited draft", delivery: "new" });
+
+    expect(calls.map((call) => call.type)).toEqual(["branch", "get_state"]);
   });
 });
