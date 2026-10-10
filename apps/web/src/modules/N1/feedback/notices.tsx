@@ -250,7 +250,7 @@ function NoticeStack({
       {notifications.length > limit || expanded ? (
         <Button
           aria-expanded={expanded}
-          className="self-start motion-reduce:transition-none"
+          className="self-start bg-background motion-reduce:transition-none"
           data-testid={moreTestId}
           onClick={() => setExpanded((open) => !open)}
           size="xs"
@@ -262,6 +262,16 @@ function NoticeStack({
       ) : null}
     </section>
   );
+}
+
+/**
+ * Whether the banners-and-toasts stack draws a notice: every toast, and every banner except the projection's
+ * own error, which the status strip's inline alert draws instead. The stack and its "has anything to show"
+ * check both use this, so an empty stack is never drawn.
+ */
+export function isStackNotice(notification: Notification): boolean {
+  if (notification.placement === "toast") return true;
+  return notification.placement === "banner" && notification.dedupeKey !== PROJECTION_ERROR_KEY;
 }
 
 /**
@@ -298,8 +308,7 @@ export function NotificationBanners({ projector }: { readonly projector: Notific
       limit={MAX_VISIBLE_BANNERS}
       moreTestId="n1-feedback-banners-more"
       notifications={snapshot.notifications.filter(
-        (notification) =>
-          notification.placement === "banner" && notification.dedupeKey !== PROJECTION_ERROR_KEY,
+        (notification) => notification.placement === "banner" && isStackNotice(notification),
       )}
       projector={projector}
     />

@@ -55,7 +55,7 @@ import type {
 } from "@/modules/D5/contract";
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { SessionInfoModel } from "@/modules/D5/session/info";
-import { NotificationFeedback } from "@/modules/N1/feedback";
+import { NotificationFeedback, NotificationNotices } from "@/modules/N1/feedback";
 import { NotificationProjector } from "@/modules/N1/notifications";
 import {
   createP3Runs,
@@ -1165,7 +1165,11 @@ function ActiveThreadReady({
     },
     notifications: {
       title: "Notifications",
-      render: () => <NotificationFeedback projector={notificationProjector} />,
+      render: () => <NotificationFeedback notices="none" projector={notificationProjector} />,
+    },
+    notices: {
+      title: "Notices",
+      render: () => <NotificationNotices projector={notificationProjector} />,
     },
     connection: connectionSurface,
   };
@@ -1234,7 +1238,12 @@ function ActiveThreadReady({
                       resumeAt: resumePlace,
                       historyLoading: history.isLoading,
                     }}
-                    footer={area("threadFooter")}
+                    footer={
+                      <>
+                        {area("threadFooter")}
+                        {area("threadOverlay")}
+                      </>
+                    }
                     onLoadOlder={onLoadOlder}
                     onLoadFullOutput={onLoadFullOutput}
                     onRestartOmp={restartOmp}

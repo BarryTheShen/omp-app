@@ -46,6 +46,9 @@ const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   composerToolbar: "flex min-w-0 flex-wrap items-center gap-(--space-xs)",
   composerFooter: "flex min-w-0 flex-col",
   threadFooter: "flex min-w-0 flex-1 flex-wrap items-center justify-end gap-(--space-sm)",
+  // Above the transcript's sticky footer, so it follows that footer. It takes no pointer events itself:
+  // only what is drawn in it (the notices) catches them, so the footer and the transcript stay usable.
+  threadOverlay: "pointer-events-none absolute inset-x-0 bottom-full flex min-w-0 flex-col px-6",
   statusBar: "flex min-w-0 flex-1 items-center gap-3",
 };
 

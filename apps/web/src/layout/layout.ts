@@ -13,6 +13,7 @@ export type LayoutAreaName =
   | "composerToolbar"
   | "composerFooter"
   | "threadFooter"
+  | "threadOverlay"
   | "statusBar";
 
 /** Every placeable piece of UI, by a short stable id. */
@@ -32,6 +33,7 @@ export type SurfaceId =
   | "context"
   | "contextCard"
   | "notifications"
+  | "notices"
   | "connection"
   | "theme"
   | "rewind"
@@ -55,6 +57,11 @@ export const LAYOUT: AppLayout = {
   composerFooter: ["editHandoff", "attachments"],
   /** At the bottom of the transcript. */
   threadFooter: ["connection", "editRun", "scrollFollow"],
+  /**
+   * Over the end of the transcript, just above its footer: the notices float here and never cover the
+   * footer's controls (Jump to latest), and the composer and the status bar do not move for them.
+   */
+  threadOverlay: ["notices"],
   /** The bottom bar, left to right. */
   statusBar: ["notifications", "context"],
 };

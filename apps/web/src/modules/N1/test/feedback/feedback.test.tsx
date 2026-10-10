@@ -2,7 +2,7 @@ import { ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { OmpRuntimeStore } from "../../../R0/store";
-import { NotificationFeedback } from "../../feedback";
+import { NotificationFeedback, NotificationNotices } from "../../feedback";
 import { TOAST_LIFETIME_MS } from "../../feedback/notices";
 import { NotificationProjector } from "../../notifications";
 
@@ -334,6 +334,70 @@ describe("notice stacks keep focus and pause on their own terms", () => {
     notify(projector, "A notice");
     const list = strip().getByText("A notice").closest("article")?.parentElement;
     expect(list?.className).toContain("max-h-[30dvh]");
+    projector.dispose();
+  });
+});
+
+describe("the notices stack over the transcript", () => {
+  test("draws the newest three notices and counts the rest", () => {
+    const projector = makeProjector();
+    render(<NotificationNotices projector={projector} />);
+    for (let index = 1; index <= 5; index += 1) notify(projector, `Update ${index}`);
+
+    const stack = within(screen.getByTestId("n1-notices"));
+    expect(stack.queryByText("Update 2")).toBeNull();
+    expect(stack.getByText("Update 3")).toBeTruthy();
+    expect(stack.getByText("Update 5")).toBeTruthy();
+    expect(screen.getByTestId("n1-feedback-more").textContent).toContain("+2 more");
+    projector.dispose();
+  });
+
+  test("is hidden until a notice is waiting to be shown", () => {
+    const projector = makeProjector();
+    render(<NotificationNotices projector={projector} />);
+    expect(screen.getByTestId("n1-notices").hidden).toBe(true);
+
+    notify(projector, "Saved");
+    expect(screen.getByTestId("n1-notices").hidden).toBe(false);
+    projector.dispose();
+  });
+
+  test("the status strip keeps statuses and widgets and leaves notices to the stack", () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback notices="none" projector={projector} />);
+    notify(projector, "Extension finished");
+    act(() => {
+      projector.present(
+        { kind: "setStatus", statusKey: "build", statusText: "Running" },
+        { threadId },
+      );
+      projector.present(
+        { kind: "setWidget", widgetKey: "build", widgetLines: ["Building"] },
+        { threadId },
+      );
+    });
+
+    expect(strip().queryByText("Extension finished")).toBeNull();
+    expect(strip().getByText("Running")).toBeTruthy();
+    expect(strip().getByText("Building")).toBeTruthy();
+    projector.dispose();
+  });
+
+  test("the status strip takes no room while only notices are waiting", () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback notices="none" projector={projector} />);
+    notify(projector, "Saved");
+    expect(screen.getByTestId("n1-feedback").hidden).toBe(true);
+    projector.dispose();
+  });
+
+  test("is not drawn when its only banner is the projection's own error", () => {
+    const projector = makeProjector();
+    render(<NotificationNotices projector={projector} />);
+    act(() => {
+      projector.present({ kind: "setTitle", title: "   " }, { threadId });
+    });
+    expect(screen.getByTestId("n1-notices").hidden).toBe(true);
     projector.dispose();
   });
 });

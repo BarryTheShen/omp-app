@@ -2,6 +2,7 @@ export { LiveAnnouncer } from "./announcer";
 export {
   NotificationFeedback,
   type NotificationFeedbackProps,
+  NotificationNotices,
   type WidgetScope,
 } from "./feedback";
 export { NotificationBanners, NotificationToasts } from "./notices";

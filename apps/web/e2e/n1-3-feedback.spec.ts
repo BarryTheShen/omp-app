@@ -133,7 +133,7 @@ realTest(
     const composer = page.getByRole("textbox", { name: "Message input" });
     await composer.click();
     chat.notify(["Update 1", "Update 2", "Update 3", "Update 4"]);
-    const feedback = page.getByTestId("n1-feedback");
+    const feedback = page.getByTestId("n1-notices");
     await realExpect(feedback.getByText("Update 4")).toBeVisible();
     await realExpect(composer).toBeFocused();
 
@@ -178,7 +178,7 @@ realTest(
     await startChat(page);
     await settleChat(chat);
     chat.notify(["Build finished", "Tests passed"]);
-    const feedback = page.getByTestId("n1-feedback");
+    const feedback = page.getByTestId("n1-notices");
     await realExpect(feedback.getByText("Tests passed")).toBeVisible();
     const toneOf = (locator: Locator) =>
       locator.evaluate((element) => getComputedStyle(element).backgroundColor);
@@ -208,7 +208,7 @@ realTest(
     await settleChat(darkChat);
     darkChat.notify(["Build finished", "Tests passed"]);
     await realExpect(dark.locator("html")).toHaveClass(/dark/);
-    await realExpect(dark.getByTestId("n1-feedback").getByText("Tests passed")).toBeVisible();
+    await realExpect(dark.getByTestId("n1-notices").getByText("Tests passed")).toBeVisible();
     await dark.screenshot({
       path: join(screenshots, "n1-3-feedback-dark.png"),
       animations: "disabled",
@@ -228,7 +228,7 @@ realTest(
     const composer = page.getByRole("textbox", { name: "Message input" });
     await composer.click();
     chat.notify(["Only one"]);
-    const feedback = page.getByTestId("n1-feedback");
+    const feedback = page.getByTestId("n1-notices");
     await realExpect(feedback.getByText("Only one")).toBeVisible();
 
     await feedback.getByRole("button", { name: "Dismiss notification" }).focus();
@@ -251,7 +251,7 @@ realTest(
     const composer = page.getByRole("textbox", { name: "Message input" });
     await composer.click();
     chat.notify(["Only one"]);
-    const feedback = page.getByTestId("n1-feedback");
+    const feedback = page.getByTestId("n1-notices");
     await realExpect(feedback.getByText("Only one")).toBeVisible();
 
     await feedback.getByRole("button", { name: "Dismiss notification" }).focus();
