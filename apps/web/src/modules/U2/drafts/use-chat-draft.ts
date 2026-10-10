@@ -31,6 +31,10 @@ export interface UseChatDraftResult {
     intent: PromptIntent,
     send: (intent: PromptIntent) => Promise<void>,
   ) => Promise<void>;
+  /** Runs again what failed: a move that did not finish, or the composer's own failed load or save. */
+  readonly retry: () => void;
+  /** Keeps this tab's text, or takes the other tab's, for a draft conflict the composer shows. */
+  readonly resolveConflict: (choice: "local" | "remote") => Promise<void>;
 }
 
 /**
@@ -64,5 +68,10 @@ export function useChatDraft({
     chat.observe({ loaded, hasMessages });
   }, [chat, loaded, hasMessages]);
   const controller = useSyncExternalStore(chat.subscribe, () => chat.controller);
-  return { controller, submit: chat.submit };
+  return {
+    controller,
+    submit: chat.submit,
+    retry: chat.retry,
+    resolveConflict: chat.resolveConflict,
+  };
 }

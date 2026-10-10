@@ -6,6 +6,7 @@ import {
   type DraftLifecycleTarget,
   type DraftStoreAdapter,
   type DraftTimer,
+  isConflictFailure,
 } from "./drafts";
 
 /**
@@ -47,6 +48,7 @@ export class ChatDraft {
   private busy = false;
   private observed: ChatDraftObservation = { loaded: false, hasMessages: false };
   private moves: Promise<void> = Promise.resolve();
+  private pendingMove: DraftScope | null = null;
   private disposed = false;
   private readonly listeners = new Set<() => void>();
 
@@ -113,10 +115,28 @@ export class ChatDraft {
     this.listeners.clear();
   }
 
+  /** Runs again what failed: the move that did not finish, or the composer's own failed load or save. */
+  public retry = (): void => {
+    if (this.pendingMove !== null) {
+      this.enqueueMove(this.pendingMove);
+      return;
+    }
+    void this.current.retry().catch(() => undefined);
+  };
+
+  /** Resolves the conflict the composer shows; a move that the conflict stopped runs again from the result. */
+  public resolveConflict = async (choice: "local" | "remote"): Promise<void> => {
+    await this.current.resolveConflict(choice);
+    if (this.pendingMove !== null) this.enqueueMove(this.pendingMove);
+  };
+
   private enqueueMove(scope: DraftScope): void {
+    this.pendingMove = scope;
     this.moves = this.moves
       .then(() => this.move(scope))
       .catch((error: unknown) => {
+        // A conflict leaves its choices in the draft the composer shows; the move runs again once one is made.
+        if (isConflictFailure(error) && this.current.getSnapshot().status === "conflict") return;
         this.current.failWith(error);
       });
   }
@@ -147,6 +167,7 @@ export class ChatDraft {
       return;
     }
     this.current = next;
+    if (this.pendingMove === scope) this.pendingMove = null;
     for (const listener of this.listeners) listener();
   }
 

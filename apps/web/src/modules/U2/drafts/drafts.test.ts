@@ -242,6 +242,35 @@ describe("U2.4 DraftController", () => {
     expect(controller.getSnapshot()).toMatchObject({ text: "remote" });
   });
 
+  test("typing while a conflict shows keeps the choice on screen, and the local side is what was typed last", async () => {
+    const timers = new FakeTimers();
+    const store = new FakeDraftStore();
+    const controller = new DraftController({ store, scope, timers });
+    await controller.load();
+    controller.setDraft("local", []);
+    store.conflictNextSave = true;
+    store.draft = {
+      scope,
+      text: "remote",
+      attachments: [],
+      failedSends: [],
+      revision: "remote-r" as Revision,
+      updatedAt: new Date(2).toISOString(),
+    };
+    await timers.runAll();
+    expect(controller.getSnapshot().status).toBe("conflict");
+
+    const savesBefore = store.saves.length;
+    controller.setDraft("local, typed on", []);
+    await timers.runAll();
+
+    expect(controller.getSnapshot().status).toBe("conflict");
+    expect(controller.getSnapshot().conflict?.local.text).toBe("local, typed on");
+    expect(store.saves).toHaveLength(savesBefore);
+    await controller.resolveConflict("local");
+    expect(store.draft?.text).toBe("local, typed on");
+  });
+
   test("restores a saved draft after a new controller loads the same scope", async () => {
     const timers = new FakeTimers();
     const store = new FakeDraftStore();
@@ -665,5 +694,100 @@ describe("DraftController: unsaved text kept in this tab", () => {
     await after.load();
 
     expect(after.getSnapshot().text).toBe("typed once");
+  });
+});
+
+describe("DraftController: a failed step and a conflict", () => {
+  test("a failed load shows its reason, and retry loads the stored draft once the store answers", async () => {
+    class FlakyGetStore extends FakeDraftStore {
+      failNextGet = true;
+      override async get(): Promise<{ draft: Draft | null }> {
+        if (this.failNextGet) {
+          this.failNextGet = false;
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The store is down",
+            retryable: true,
+          });
+        }
+        return super.get();
+      }
+    }
+    const store = new FlakyGetStore();
+    store.draft = {
+      scope,
+      text: "stored text",
+      attachments: [],
+      failedSends: [],
+      revision: "r0" as Revision,
+      updatedAt: new Date(1).toISOString(),
+    };
+    const controller = new DraftController({ store, scope, timers: new FakeTimers() });
+
+    await expect(controller.load()).rejects.toMatchObject({
+      appError: { message: "The store is down" },
+    });
+    expect(controller.getSnapshot()).toMatchObject({ status: "error" });
+
+    await controller.retry();
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "ready",
+      text: "stored text",
+      error: null,
+    });
+  });
+
+  test("a failed save shows its reason, and retry saves the text again", async () => {
+    class FlakySaveStore extends FakeDraftStore {
+      failNextSave = true;
+      override async save(args: Parameters<FakeDraftStore["save"]>[0]): Promise<Draft> {
+        if (this.failNextSave) {
+          this.failNextSave = false;
+          throw new AppFailure({ code: "internal", message: "Disk full", retryable: true });
+        }
+        return super.save(args);
+      }
+    }
+    const store = new FlakySaveStore();
+    const controller = new DraftController({ store, scope, timers: new FakeTimers() });
+    await controller.load();
+    controller.setDraft("kept text", []);
+
+    await expect(controller.flush()).rejects.toMatchObject({ appError: { message: "Disk full" } });
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "error",
+      dirty: true,
+      text: "kept text",
+    });
+
+    await controller.retry();
+    expect(controller.getSnapshot()).toMatchObject({ status: "ready", dirty: false, error: null });
+    expect(store.draft?.text).toBe("kept text");
+  });
+
+  test("a clear that conflicts while a draft moves out waits for a choice, not a dead-end error", async () => {
+    class ConflictOnClear extends FakeDraftStore {
+      override async clear(): Promise<{ cleared: boolean; revision: Revision | null }> {
+        return { cleared: false, revision: null };
+      }
+    }
+    const store = new ConflictOnClear();
+    store.draft = {
+      scope,
+      text: "remote text",
+      attachments: [],
+      failedSends: [],
+      revision: "remote-r" as Revision,
+      updatedAt: new Date(2).toISOString(),
+    };
+    const controller = new DraftController({ store, scope, timers: new FakeTimers() });
+    await controller.load();
+    controller.setDraft("local text", []);
+
+    await expect(controller.handOff()).rejects.toMatchObject({ appError: { code: "conflict" } });
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "conflict",
+      conflict: { local: { text: "local text" }, remote: { text: "remote text" } },
+    });
   });
 });

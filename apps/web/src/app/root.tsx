@@ -98,6 +98,7 @@ import type { AttachmentAdapter, PromptIntent, SubmitPolicy } from "@/modules/U2
 import {
   createDraftStoreAdapter,
   type DraftController,
+  DraftNotice,
   sessionDraftBuffer,
   useChatDraft,
   useComposerDraft,
@@ -462,6 +463,8 @@ function DraftComposer({
   footer,
   footerOpen,
   manager,
+  onRetry,
+  onResolve,
   sendBlockedReason,
   onDoubleLeftArrow,
 }: {
@@ -475,6 +478,10 @@ function DraftComposer({
   readonly footer: ReactNode;
   readonly footerOpen: boolean;
   readonly manager: AttachmentManager;
+  /** Runs the step that failed again: the composer's Retry. */
+  readonly onRetry: () => void;
+  /** Keeps this tab's text, or takes the other tab's, for a draft conflict. */
+  readonly onResolve: (choice: "local" | "remote") => Promise<void>;
   /** Why the composer cannot send right now; the text stays in the composer while it is set. */
   readonly sendBlockedReason?: string;
   readonly onDoubleLeftArrow: () => void;
@@ -523,6 +530,7 @@ function DraftComposer({
       showAttachmentNames={false}
       onDoubleLeftArrow={onDoubleLeftArrow}
     >
+      <DraftNotice onResolve={onResolve} onRetry={onRetry} snapshot={snapshot} />
       {hasAttachmentOutput || footerOpen ? footer : null}
     </ComposerSurface>
   );
@@ -1191,6 +1199,8 @@ function ActiveThreadReady({
           footer={area("composerFooter")}
           footerOpen={editing !== null}
           manager={attachmentManager}
+          onResolve={chatDraft.resolveConflict}
+          onRetry={chatDraft.retry}
           onDoubleLeftArrow={openAgentHub}
           policy={resolveQueueSubmitPolicy}
           sendBlockedReason={sendBlockedReason}

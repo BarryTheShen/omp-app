@@ -19,6 +19,9 @@ type DraftCallOptions = Pick<PortCallOptions, "signal">;
 
 const AUTOSAVE_MS = 10_000;
 
+const MOVE_CONFLICT = "The draft changed in another tab before it could move";
+type FailedStep = "load" | "save" | "clear";
+
 /**
  * Writes this app is still making, by scope. A controller that loads a scope waits for them first, so a
  * draft flushed as the person leaves a chat is the one the next chat that opens the same scope reads.
@@ -157,6 +160,11 @@ function failure(error: unknown, fallback: string): AppFailure {
   if (error instanceof AppFailure) return error;
   return new AppFailure({ code: "internal", message: fallback, retryable: true }, { cause: error });
 }
+
+export function isConflictFailure(error: unknown): boolean {
+  return error instanceof AppFailure && error.appError.code === "conflict";
+}
+
 function draftInput(
   text: string,
   attachments: readonly AttachmentRef[],
@@ -229,6 +237,8 @@ export class DraftController {
   private readonly listeners = new Set<DraftListener>();
   private timer: unknown;
   private unsubscribeChanged: (() => void) | undefined;
+  /** The step the error status is for: the composer's Retry runs it again. */
+  private failedStep: FailedStep | null = null;
 
   public constructor(options: DraftControllerOptions) {
     this.store = options.store;
@@ -327,19 +337,25 @@ export class DraftController {
       this.loading = false;
       this.keepUnsavedOnFailure(held);
       const appError = failure(error, "Loading the draft failed");
-      this.setState({ status: "error", error: appError });
+      this.fail("load", appError);
       throw appError;
     }
   }
 
   public setDraft(text: string, attachments: readonly AttachmentRef[]): void {
+    const conflict = this.snapshot.conflict;
     this.setState({
       text,
       attachments: [...attachments],
       dirty: true,
-      status: "ready",
-      error: null,
-      conflict: null,
+      // A conflict stays on screen until a choice is made: its local side is what was typed last. Nothing is saved
+      // over the other tab's draft before then (flush does not save while a conflict shows).
+      status: conflict === null ? "ready" : "conflict",
+      error: conflict === null ? null : this.snapshot.error,
+      conflict:
+        conflict === null
+          ? null
+          : { ...conflict, local: draftInput(text, attachments, this.snapshot.failedSends) },
     });
     this.scheduleSave();
   }
@@ -370,16 +386,20 @@ export class DraftController {
       failedSends: [...this.snapshot.failedSends],
     };
     if (this.snapshot.revision !== null) {
-      const result = await trackWrite(
+      const cleared = await trackWrite(
         this.scope,
         this.store.clear({ scope: this.scope, expectedRevision: this.snapshot.revision }),
+      ).then(
+        (result) => result.cleared,
+        (error: unknown) => {
+          if (isConflictFailure(error)) return false;
+          throw error;
+        },
       );
-      if (!result.cleared) {
-        throw new AppFailure({
-          code: "conflict",
-          message: "The draft changed in another tab before it could move",
-          retryable: true,
-        });
+      if (!cleared) {
+        // The draft changed in another tab: its choices are shown here, and the move waits for one of them.
+        await this.handleConflict(MOVE_CONFLICT);
+        throw new AppFailure({ code: "conflict", message: MOVE_CONFLICT, retryable: true });
       }
     }
     this.setState({
@@ -417,7 +437,24 @@ export class DraftController {
 
   /** Reports a failed move into or out of this scope through the status the composer already shows. */
   public failWith(error: unknown): void {
+    this.failedStep = null;
     this.setState({ status: "error", error: failure(error, "Moving the draft failed") });
+  }
+
+  /**
+   * Runs again the step that failed: a load, a save or a clear. A failed move is run again by ChatDraft, which
+   * owns the moves. Each step reports its outcome in the snapshot, so a step that fails again shows again.
+   */
+  public async retry(): Promise<void> {
+    const step = this.failedStep;
+    if (step === null) return;
+    if (step === "load") {
+      await this.load();
+      return;
+    }
+    this.setState({ status: "ready", error: null });
+    if (step === "clear") await this.clearAfterAdmission();
+    else await this.flush();
   }
 
   public async flush(): Promise<void> {
@@ -484,7 +521,7 @@ export class DraftController {
         await this.handleConflict("The draft changed before it could be cleared");
       } else {
         const appError = failure(error, "Clearing the draft failed");
-        this.setState({ status: "error", error: appError });
+        this.fail("clear", appError);
         throw appError;
       }
     }
@@ -562,7 +599,7 @@ export class DraftController {
     this.timer = this.timers.setTimeout(() => {
       this.timer = undefined;
       void this.flush().catch((error) => {
-        this.setState({ status: "error", error: failure(error, "Saving the draft failed") });
+        this.fail("save", failure(error, "Saving the draft failed"));
       });
     }, AUTOSAVE_MS);
   }
@@ -604,7 +641,7 @@ export class DraftController {
         await this.handleConflict("The draft changed in another tab");
       } else {
         const appError = failure(error, "Saving the draft failed");
-        this.setState({ status: "error", error: appError });
+        this.fail("save", appError);
         throw appError;
       }
     }
@@ -728,7 +765,7 @@ export class DraftController {
 
   private flushLifecycle(): void {
     void this.flush().catch((error) => {
-      this.setState({ status: "error", error: failure(error, "Saving the draft failed") });
+      this.fail("save", failure(error, "Saving the draft failed"));
     });
   }
 
@@ -771,7 +808,14 @@ export class DraftController {
     this.scheduleSave();
   }
 
+  /** Shows a failed step through the status the composer shows, and keeps which step failed for retry. */
+  private fail(step: FailedStep, error: AppFailure): void {
+    this.failedStep = step;
+    this.setState({ status: "error", error });
+  }
+
   private setState(update: Partial<DraftSnapshot>): void {
+    if (update.status !== undefined && update.status !== "error") this.failedStep = null;
     const wasDirty = this.snapshot.dirty;
     this.snapshot = { ...this.snapshot, ...update };
     this.mirrorBuffer(wasDirty);

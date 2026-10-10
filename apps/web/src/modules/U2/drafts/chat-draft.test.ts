@@ -288,3 +288,76 @@ describe("ChatDraft: unsaved text kept in this tab", () => {
     );
   });
 });
+
+describe("ChatDraft: a failed step is retried, a conflict waits for a choice", () => {
+  test("a move the store could not load is re-run by retry, and the text moves once the store answers", async () => {
+    class FlakyFolderGet extends ScopedDraftStore {
+      private failures = 1;
+      override async get(args: { readonly scope: DraftScope }) {
+        if (args.scope.kind === "folder" && this.failures > 0) {
+          this.failures -= 1;
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The store is down",
+            retryable: true,
+          });
+        }
+        return super.get(args);
+      }
+    }
+    const chat = chatFor(new FlakyFolderGet(), "chat-h");
+    await chat.controller.load();
+    chat.controller.setDraft("kept text", []);
+    chat.observe({ loaded: true, hasMessages: false });
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().status).toBe("error"));
+    expect(chat.controller.getSnapshot()).toMatchObject({
+      scope: threadScope("chat-h"),
+      text: "kept text",
+    });
+
+    chat.retry();
+
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft));
+    expect(chat.controller.getSnapshot()).toMatchObject({ status: "ready", text: "kept text" });
+  });
+
+  test("a conflict that stops a move waits for the person's choice, and the choice runs the move again", async () => {
+    class ConflictOnFirstFolderClear extends ScopedDraftStore {
+      private conflicts = 1;
+      override async clear(args: Parameters<ScopedDraftStore["clear"]>[0]) {
+        if (args.scope.kind === "folder" && this.conflicts > 0) {
+          this.conflicts -= 1;
+          return { cleared: false, revision: null };
+        }
+        return super.clear(args);
+      }
+    }
+    const store = new ConflictOnFirstFolderClear();
+    await store.save({
+      scope: newChatDraft,
+      draft: { text: "folder text", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const chat = chatFor(store, "chat-k");
+    await chat.controller.load();
+    chat.observe({ loaded: true, hasMessages: false });
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft));
+    chat.controller.setDraft("typed while the chat was new", []);
+
+    chat.observe({ loaded: true, hasMessages: true });
+
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().status).toBe("conflict"));
+    expect(chat.controller.getSnapshot().conflict).toMatchObject({
+      local: { text: "typed while the chat was new" },
+      remote: { text: "folder text" },
+    });
+
+    await chat.resolveConflict("local");
+
+    await vi.waitFor(() =>
+      expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-k")),
+    );
+    expect(chat.controller.getSnapshot().text).toBe("typed while the chat was new");
+    expect(store.text(newChatDraft)).toBeUndefined();
+  });
+});

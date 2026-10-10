@@ -244,3 +244,92 @@ describe("useComposerDraft: switching chats", () => {
     expect(store.text(chatScope("chat-e2"))).toBe("saved draft");
   });
 });
+
+describe("useComposerDraft: the controller's text changed without the composer", () => {
+  test("a remote choice puts the other tab's text in the composer, and the next keystroke saves on top of it", async () => {
+    const store = new ScopedDraftStore();
+    const scope = chatScope("chat-h");
+    await store.save({
+      scope,
+      draft: { text: "base", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const chat = new DraftController({ store, scope, timers: noTimers });
+    const { shown } = renderComposer(chat);
+    await act(async () => {
+      await chat.load();
+    });
+    // Another tab saves a different draft while this tab's text is unsaved: this tab's save conflicts.
+    await store.save({
+      scope,
+      draft: { text: "other tab text", attachments: [], failedSends: [] },
+      expectedRevision: chat.getSnapshot().revision,
+    });
+    act(() => shown.type("local text"));
+    await act(async () => {
+      await chat.flush();
+    });
+    expect(chat.getSnapshot().status).toBe("conflict");
+
+    await act(async () => {
+      await chat.resolveConflict("remote");
+    });
+    expect(shown.text).toBe("other tab text");
+    expect(chat.getSnapshot().dirty).toBe(false);
+
+    act(() => shown.type("other tab text!"));
+    await act(async () => {
+      await chat.flush();
+    });
+    expect(store.text(scope)).toBe("other tab text!");
+  });
+
+  test("a draft another tab saves, with no unsaved edit here, is shown in the composer", async () => {
+    const store = new ScopedDraftStore();
+    const scope = chatScope("chat-i");
+    await store.save({
+      scope,
+      draft: { text: "first", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const chat = new DraftController({ store, scope, timers: noTimers });
+    const { shown } = renderComposer(chat);
+    await act(async () => {
+      await chat.load();
+    });
+    expect(shown.text).toBe("first");
+
+    await store.save({
+      scope,
+      draft: { text: "from another tab", attachments: [], failedSends: [] },
+      expectedRevision: chat.getSnapshot().revision,
+    });
+    // The controller reads the stored draft again, as it does when the store reports a change.
+    await act(async () => {
+      await chat.load();
+    });
+
+    expect(shown.text).toBe("from another tab");
+    expect(chat.getSnapshot().dirty).toBe(false);
+  });
+
+  test("text typed for a chat before its draft loads is saved, even when it equals the previous chat's text", async () => {
+    const store = new ScopedDraftStore();
+    const first = new DraftController({ store, scope: chatScope("chat-j1"), timers: noTimers });
+    const { shown, switchTo } = renderComposer(first);
+    await act(async () => {
+      await first.load();
+    });
+    act(() => shown.type("same text"));
+
+    const second = new DraftController({ store, scope: chatScope("chat-j2"), timers: noTimers });
+    switchTo(second);
+    act(() => shown.type("same text"));
+    await act(async () => {
+      await second.load();
+      await second.flush();
+    });
+
+    expect(store.text(chatScope("chat-j2"))).toBe("same text");
+  });
+});

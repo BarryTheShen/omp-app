@@ -4,6 +4,8 @@ export type {
 } from "./chat-draft";
 export { ChatDraft } from "./chat-draft";
 export { sessionDraftBuffer } from "./draft-buffer";
+export type { DraftNoticeProps } from "./draft-notice";
+export { DraftNotice } from "./draft-notice";
 export type {
   DraftConflict,
   DraftControllerOptions,
