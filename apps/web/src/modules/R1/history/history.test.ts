@@ -292,6 +292,35 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
   });
 
+  test("the open chat is saved as soon as it is open, before its history has loaded", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const entriesHeld = Promise.withResolvers<void>();
+    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const rpc = {
+      ...base,
+      send: async (args: { threadId: ThreadId; command: { type: string } }) => {
+        if (args.command.type === "get_entries") await entriesHeld.promise;
+        return args.command.type === "get_state"
+          ? { sessionId: args.threadId }
+          : { entries: [], leafId: null };
+      },
+    } as unknown as RpcSessionClient;
+    const saved: Array<ThreadId | undefined> = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+      onThreadIdChange: (threadId) => saved.push(threadId),
+    });
+    const opening = controller.openExisting(threadOne);
+    // The composer takes text once the chat is open, so a reload or a restart from here on must find it.
+    await vi.waitFor(() => expect(controller.getSnapshot().threadId).toBe(threadOne));
+    expect(controller.getSnapshot().isLoading).toBe(true);
+    expect(saved).toEqual([threadOne]);
+    entriesHeld.resolve();
+    await opening;
+    expect(saved).toEqual([threadOne]);
+  });
+
   test("re-keys in place during a turn without replacing the streaming store", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));

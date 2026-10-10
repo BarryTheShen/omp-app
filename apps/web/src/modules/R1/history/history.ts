@@ -243,6 +243,9 @@ export class SelectedThreadHistoryController {
         isLoading: true,
         error: null,
       });
+      // From here the composer takes text, so a reload or a restart must already find this chat: its id is saved now,
+      // not after the history has loaded. Otherwise text typed in a new chat is lost when the app restarts in that window.
+      this.options.onThreadIdChange?.(threadId);
       // A live-only subscription: with afterSeq 0 the client sends no cursor (`packages/client/src/client.ts`), so
       // the server replays nothing and the first event is the store's baseline; the history load below covers
       // everything written before it. Without the subscription the store never sees the process become ready and
@@ -257,7 +260,6 @@ export class SelectedThreadHistoryController {
         isLoading: false,
         error: null,
       });
-      this.options.onThreadIdChange?.(threadId);
       return store;
     } catch (error) {
       const failure = asFailure(error, "Opening the selected thread failed");

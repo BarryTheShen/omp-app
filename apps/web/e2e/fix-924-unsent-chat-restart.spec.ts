@@ -19,6 +19,9 @@ realTest(
     realApp.allowProblem(/WebSocket connection to .* failed/);
     const app = await realApp.open();
     const composer = await startChat(app);
+    // The chat has loaded (the thread shows its empty state). Text typed while its history is still loading is kept under
+    // the chat's own id until the draft moves to the folder's new-chat draft, which a restart in that window loses (#1003).
+    await expect(app.getByText("No messages yet.")).toBeVisible({ timeout: 30_000 });
     await composer.fill(DRAFT);
     await expect(composer).toHaveValue(DRAFT);
 
