@@ -62,6 +62,9 @@ export interface SessionLiveness {
   readonly serverProcess: boolean;
 }
 
+/** The turn state of a chat this server runs omp for: a turn is running, or the session is idle. */
+export type SessionTurn = "running" | "idle";
+
 export type SessionStatus =
   | "complete"
   | "interrupted"
@@ -109,6 +112,8 @@ export interface SessionFile {
   readonly sizeBytes: number;
   readonly status: SessionStatus;
   readonly liveness: SessionLiveness;
+  /** A turn of this server's omp on the chat; absent when this server runs no omp for the chat. */
+  readonly turn?: SessionTurn;
   readonly subagents: readonly SubagentTranscript[];
   readonly parseWarnings: readonly ParseWarning[];
   /** Full logical records are available to direct store callers. */
@@ -182,4 +187,6 @@ export interface SessionFileStoreOptions {
   readonly ownersRoot?: string;
   readonly serverSessionIds?: ReadonlySet<string> | (() => ReadonlySet<string>);
   readonly serverOwnsSession?: (sessionId: string, sessionFile: string) => boolean;
+  /** The turn state of the chat's omp on this server; `undefined` when this server runs no omp for the chat. */
+  readonly turnOf?: (sessionId: string) => SessionTurn | undefined;
 }

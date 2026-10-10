@@ -2,6 +2,7 @@ import {
   type SessionFile as ContractSessionFile,
   type SubagentTranscript as ContractSubagentTranscript,
   SessionFile,
+  SessionFileChanged,
   SessionFilePath,
   SessionFileStore,
 } from "@omp-app/contracts";
@@ -11,7 +12,7 @@ import type {
   SubagentTranscript as InternalSubagentTranscript,
 } from "../sessions";
 import type { A1PortContext } from "./context";
-import { assertNotAborted, createA1PortRegistration } from "./helper";
+import { type A1EventBinding, assertNotAborted, createA1PortRegistration } from "./helper";
 
 function mapSubagent(transcript: InternalSubagentTranscript): ContractSubagentTranscript {
   return {
@@ -54,9 +55,43 @@ function mapSession(file: InternalSessionFile): ContractSessionFile {
     sizeBytes: file.sizeBytes,
     status: file.status,
     liveness: file.liveness,
+    ...(file.turn === undefined ? {} : { turn: file.turn }),
     subagents: file.subagents.map(mapSubagent),
     parseWarnings: file.parseWarnings.map((warning) => warning.message),
   };
+}
+
+/**
+ * A chat's turn starting or settling changes what the list shows for it, so the `changed` event tells clients to
+ * re-read that chat's file. The process registry knows a chat only by its id, so the file is found from the id.
+ */
+function sessionTurnBindings(context: A1PortContext): readonly A1EventBinding[] {
+  const busy = context.processBusy;
+  if (busy === undefined) return [];
+  return [
+    {
+      event: "changed",
+      subscribe: (listener) =>
+        busy.onBusyChange((threadId) => {
+          context.sessionFileStore
+            .findSession(threadId)
+            .then((file) => {
+              if (file === undefined) return;
+              listener(
+                SessionFileChanged.parse({
+                  folder: file.cwd,
+                  sessionFile: file.sessionFile,
+                  id: threadId,
+                  kind: "updated",
+                }),
+              );
+            })
+            .catch((error: unknown) => {
+              context.logger?.warn("session.turn_unreadable", { message: String(error) });
+            });
+        }),
+    },
+  ];
 }
 
 export function createSessionFileStoreRegistration(context: A1PortContext): PortRegistration {
@@ -121,7 +156,7 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
       },
     },
     context.publish,
-    [],
+    sessionTurnBindings(context),
     context.watchStreamActivity,
   );
 }

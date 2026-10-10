@@ -171,6 +171,44 @@ describe("OmpProcessRegistry", () => {
     expect(created).toHaveLength(1);
   });
 
+  test("reports each change of the busy mark once, and an exit ends the turn without an idle close", () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 10,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const thread = ThreadId.parse("thread-5");
+    expect(registry.busyOf(thread)).toBeUndefined();
+    registry.acquire(options(thread, "/workspace/five"));
+    const process = createdAt(created, 0);
+    const heard: boolean[] = [];
+    const stop = registry.onBusyChange((_threadId, busy) => heard.push(busy));
+
+    expect(registry.busyOf(thread)).toBe(false);
+    registry.setBusy(thread, true);
+    registry.setBusy(thread, true);
+    expect(registry.busyOf(thread)).toBe(true);
+    expect(heard).toEqual([true]);
+
+    process.emit({ status: "exited", processId: process.processId });
+    expect(registry.busyOf(thread)).toBe(false);
+    expect(heard).toEqual([true, false]);
+    // The crashed process stays registered for a restart, and no idle close is scheduled for it.
+    expect(registry.has(thread)).toBe(true);
+    timer.fireAll();
+    expect(process.stopCalls).toBe(0);
+
+    stop();
+    registry.setBusy(thread, true);
+    expect(heard).toEqual([true, false]);
+  });
+
   test("forgets an intentionally stopped process but retains a crashed one for restart", async () => {
     const timer = new ManualTimer();
     const created: StubProcess[] = [];
@@ -228,6 +266,27 @@ describe("OmpProcessRegistry", () => {
     // Both viewers are still counted: one release does not start the idle timer.
     registry.release(thread);
     expect(registry.has(thread)).toBe(true);
+  });
+
+  test("respawn ends a turn the replaced process was still running", async () => {
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const thread = ThreadId.parse("thread-respawn-busy");
+    registry.acquire(options(thread, "/workspace/respawn-busy"));
+    const heard: boolean[] = [];
+    registry.onBusyChange((_threadId, busy) => heard.push(busy));
+    registry.setBusy(thread, true);
+
+    await registry.respawn(options(thread, "/workspace/respawn-busy"));
+
+    expect(registry.busyOf(thread)).toBe(false);
+    expect(heard).toEqual([true, false]);
   });
 
   test("a respawned process that is stopped on purpose is forgotten like any other", async () => {

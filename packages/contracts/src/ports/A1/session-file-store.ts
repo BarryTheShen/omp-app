@@ -20,6 +20,13 @@ export const SessionLiveness = z.strictObject({
 });
 export type SessionLiveness = z.infer<typeof SessionLiveness>;
 
+/**
+ * Whether this server's omp is inside a turn on the chat. Absent when this server runs no omp for the chat, so a
+ * chat open in another omp (a terminal) has no turn state here.
+ */
+export const SessionTurn = z.enum(["running", "idle"]);
+export type SessionTurn = z.infer<typeof SessionTurn>;
+
 /** How a worker ended, read from its own transcript: `unknown` when the file records no end. */
 export const SubagentFinalStatus = z.enum(["completed", "failed", "aborted", "unknown"]);
 export type SubagentFinalStatus = z.infer<typeof SubagentFinalStatus>;
@@ -59,6 +66,7 @@ export const SessionFile = z.strictObject({
   sizeBytes: z.int().nonnegative(),
   status: SessionStatus,
   liveness: SessionLiveness,
+  turn: SessionTurn.optional(),
   subagents: z.array(SubagentTranscript),
   /** Non-fatal issues found while tolerantly reading a v3 (or older) file. */
   parseWarnings: z.array(z.string().min(1)),

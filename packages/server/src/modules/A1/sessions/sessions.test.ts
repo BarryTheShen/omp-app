@@ -360,4 +360,43 @@ describe("SessionFileStore", () => {
       await removeRoot(root);
     }
   });
+
+  test("reports a chat's turn state only when this server runs omp for it", async () => {
+    const root = await makeTempRoot();
+    try {
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(root, "workspace");
+      const busy = path.join(sessionsRoot, "-workspace", "busy.jsonl");
+      const idle = path.join(sessionsRoot, "-workspace", "idle.jsonl");
+      const elsewhere = path.join(sessionsRoot, "-workspace", "elsewhere.jsonl");
+      await writeSession(busy, { id: "busy", cwd, timestamp: "2026-10-04T12:00:00.000Z" });
+      await writeSession(idle, { id: "idle", cwd, timestamp: "2026-10-04T12:00:01.000Z" });
+      await writeSession(elsewhere, {
+        id: "elsewhere",
+        cwd,
+        timestamp: "2026-10-04T12:00:02.000Z",
+      });
+      const turns = new Map<string, "running" | "idle">([
+        ["busy", "running"],
+        ["idle", "idle"],
+      ]);
+      const store = new SessionFileStore({
+        sessionsRoot,
+        home: root,
+        tempRoot: path.join(root, "tmp"),
+        turnOf: (sessionId) => turns.get(sessionId),
+      });
+      const result = await store.listSessions({ folder: cwd });
+      const turnOf = (id: string) => result.sessions.find((session) => session.id === id)?.turn;
+      expect(turnOf("busy")).toBe("running");
+      expect(turnOf("idle")).toBe("idle");
+      // A chat this server runs no omp for has no turn state at all: it is not reported as idle.
+      expect(turnOf("elsewhere")).toBeUndefined();
+      expect("turn" in (result.sessions.find((session) => session.id === "elsewhere") ?? {})).toBe(
+        false,
+      );
+    } finally {
+      await removeRoot(root);
+    }
+  });
 });

@@ -66,6 +66,7 @@ export class OmpProcessRegistry {
   readonly #entries = new Map<ThreadId, Entry>();
   readonly #stopping = new Map<ThreadId, Promise<void>>();
   #idleHooks: OmpProcessIdleHooks | undefined;
+  readonly #busyListeners = new Set<(threadId: ThreadId, busy: boolean) => void>();
 
   constructor(options: OmpProcessRegistryOptions = {}) {
     this.#idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
@@ -123,8 +124,8 @@ export class OmpProcessRegistry {
 
   /**
    * Replaces the process of a thread whose omp stopped on its own with a new one built from `options`
-   * (the caller gives the arguments that resume the chat). The thread keeps its viewers, its busy mark
-   * and its idle state; the dead process is stopped without the registry forgetting the thread.
+   * (the caller gives the arguments that resume the chat). The thread keeps its viewers and its idle state. A turn
+   * the dead process was running ends with it; the dead process is stopped without the registry forgetting the thread.
    */
   async respawn(options: OmpProcessOptions): Promise<OmpProcess> {
     const entry = this.#entries.get(options.threadId);
@@ -137,6 +138,8 @@ export class OmpProcessRegistry {
     }
     const dead = entry.process;
     entry.unsubscribe();
+    // The old process's end is no longer heard from here, so a turn it was still running ends now.
+    this.#endTurn(entry);
     const process = this.#createProcess(options);
     entry.process = process;
     entry.unsubscribe = this.#forgetWhenStopped(entry);
@@ -149,6 +152,10 @@ export class OmpProcessRegistry {
   /** A process that is stopped on purpose is forgotten: the next `acquire()` for the thread starts a new one. */
   #forgetWhenStopped(entry: Entry): () => void {
     return entry.process.onEvent((event) => {
+      // A process that exits, fails or is stopped ends the turn it was running: omp sends no more of it.
+      if (event.status === "exited" || event.status === "error" || event.status === "stopped") {
+        this.#endTurn(entry);
+      }
       if (event.status !== "stopped") return;
       if (this.#entries.get(entry.key) !== entry) return;
       this.#entries.delete(entry.key);
@@ -177,13 +184,45 @@ export class OmpProcessRegistry {
     await this.whenStopped(threadId);
   }
 
-  /** A busy thread is never idle-closed, even with zero watchers (for example, a running prompt). */
+  /**
+   * A busy thread is never idle-closed, even with zero watchers: it is in a turn (omp's `agent_start` until the
+   * session settles). Listeners hear each change of the mark.
+   */
   setBusy(threadId: ThreadId, busy: boolean): void {
     const entry = this.#entries.get(threadId);
     if (entry === undefined) return;
+    const changed = entry.busy !== busy;
     entry.busy = busy;
     if (busy) this.#cancelIdle(entry);
     else this.#scheduleIdleIfNeeded(entry);
+    if (changed) this.#notifyBusy(threadId, busy);
+  }
+
+  /** Whether the thread is busy; `undefined` when the registry holds no process for it. */
+  busyOf(threadId: ThreadId): boolean | undefined {
+    return this.#entries.get(threadId)?.busy;
+  }
+
+  /** Calls `listener` each time a thread's busy mark changes; the returned function stops it. */
+  onBusyChange(listener: (threadId: ThreadId, busy: boolean) => void): () => void {
+    this.#busyListeners.add(listener);
+    return () => {
+      this.#busyListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Clears the busy mark of a process that exited or failed: its turn is lost with it. No idle close is scheduled,
+   * so a crashed process stays registered for `respawn()`.
+   */
+  #endTurn(entry: Entry): void {
+    if (!entry.busy || this.#entries.get(entry.key) !== entry) return;
+    entry.busy = false;
+    this.#notifyBusy(entry.key, false);
+  }
+
+  #notifyBusy(threadId: ThreadId, busy: boolean): void {
+    for (const listener of this.#busyListeners) listener(threadId, busy);
   }
 
   get(threadId: ThreadId): OmpProcess | undefined {

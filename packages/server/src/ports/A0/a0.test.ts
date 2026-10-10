@@ -327,6 +327,35 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(payloadKind(all.frames[0]?.payload)).toBe("process");
   });
 
+  test("a chat is busy from agent_start until omp reports it settled, and a yielded run does not end it", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const busy = () => runtimeContext.processRegistry.busyOf(authorityThread);
+    expect(busy()).toBe(false);
+
+    process.emit({ type: "agent_start" });
+    expect(busy()).toBe(true);
+    // The run yielded, but a queued message or background job can still wake the session: the chat stays busy.
+    process.emit({ type: "agent_end", messages: [] });
+    expect(busy()).toBe(true);
+    process.emit({ type: "session_settled" });
+    expect(busy()).toBe(false);
+
+    process.emit({ type: "agent_start" });
+    process.emit({
+      type: "prompt_result",
+      agentInvoked: true,
+      status: "completed",
+      sessionSettled: true,
+    });
+    expect(busy()).toBe(false);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
   test("uses --continue for latest and --resume for an existing omp ThreadId", async () => {
     const latestCreated: FakeProcess[] = [];
     const latestHandlers = handlersFor(context(latestCreated), 0);

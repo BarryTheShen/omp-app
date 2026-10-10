@@ -5,7 +5,7 @@ import {
   CapabilityMap,
   FolderPath,
   SessionFilePath,
-  type ThreadId,
+  ThreadId,
 } from "@omp-app/contracts";
 import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
@@ -208,6 +208,11 @@ export async function createCompositionServer(
   const sessionFileStore = createSessionFileStore({
     sessionsRoot: join(agentDir, "sessions"),
     home: homeDir,
+    turnOf: (sessionId) => {
+      const busy = processRegistry.busyOf(ThreadId.parse(sessionId));
+      if (busy === undefined) return undefined;
+      return busy ? "running" : "idle";
+    },
   });
   const resolveThread: A0PortContext["resolveThread"] = async (threadId, _signal) => {
     const file = await sessionFileStore.findSession(threadId);
@@ -339,6 +344,7 @@ export async function createCompositionServer(
   const watchStreamActivity = replay.registerStreamActivity.bind(replay);
   const a1Context: A1PortContext = {
     sessionFileStore,
+    processBusy: processRegistry,
     configStore,
     checkpointStore,
     draftStore,

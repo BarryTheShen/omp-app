@@ -32,6 +32,7 @@ import type {
   SessionLeaseState,
   SessionListResult,
   SessionStatus,
+  SessionTurn,
   SubagentListResult,
 } from "./types";
 import {
@@ -115,6 +116,15 @@ function serverOwnsSession(
       ? options.serverSessionIds()
       : options.serverSessionIds;
   return ids?.has(sessionId) ?? false;
+}
+
+/** The chat's turn state when this server runs omp for it; absent otherwise (a chat open in another omp has none). */
+function turnFields(
+  options: SessionFileStoreOptions,
+  sessionId: string,
+): { readonly turn?: SessionTurn } {
+  const turn = options.turnOf?.(sessionId);
+  return turn === undefined ? {} : { turn };
 }
 
 function statusFromEntries(entries: readonly unknown[]): SessionStatus {
@@ -562,6 +572,7 @@ export class SessionFileStore {
       sizeBytes: candidate.size,
       status: summary.status,
       liveness: { lease: lease.lease, serverProcess },
+      ...turnFields(this.#options, header.id),
       subagents: [],
       parseWarnings: summary.parseWarnings,
       entries: [],
@@ -609,6 +620,7 @@ export class SessionFileStore {
       sizeBytes: stat.size,
       status: statusFromEntries(parsed.entries),
       liveness: { lease: lease.lease, serverProcess },
+      ...turnFields(this.#options, header.id),
       subagents: subagents.subagents,
       parseWarnings: [...parsed.parseWarnings, ...subagents.parseWarnings],
       entries: parsed.entries,

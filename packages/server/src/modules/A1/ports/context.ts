@@ -1,3 +1,4 @@
+import type { ThreadId } from "@omp-app/contracts";
 import type { Logger } from "../../../logging";
 import type { ProviderAccountStoreService } from "../accounts";
 import type { AttachmentStoreService } from "../attachments";
@@ -42,6 +43,10 @@ export interface A1PortContext {
   readonly readHostMetadata?: typeof readHostMetadata;
   readonly watchStreamActivity: A1StreamActivity;
   readonly publish: A1EventPublisher;
+  /** Reports when a chat's omp starts or settles a turn (the registry's busy mark); the chat's list entry re-reads. */
+  readonly processBusy?: {
+    onBusyChange(listener: (threadId: ThreadId, busy: boolean) => void): () => void;
+  };
   /** The app's debug log; absent in tests and embeddings. */
   readonly logger?: Logger;
 }

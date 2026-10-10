@@ -204,6 +204,13 @@ const restoreResult = {
 };
 
 describe("A1 SessionFileStore and session pins", () => {
+  test("a session carries an optional turn state of running or idle, and nothing else", () => {
+    expect(SessionFile.safeParse(session).success).toBe(true);
+    expect(SessionFile.safeParse({ ...session, turn: "running" }).success).toBe(true);
+    expect(SessionFile.safeParse({ ...session, turn: "idle" }).success).toBe(true);
+    expect(SessionFile.safeParse({ ...session, turn: "busy" }).success).toBe(false);
+  });
+
   test("accept representative listings and reject malformed paths", () => {
     expect(SessionFile.parse(session).id).toBe(threadId);
     expect(

@@ -288,6 +288,7 @@ export class RpcSessionPortRuntime {
       arbitration: Promise.resolve(),
     };
     entry.unsubscribeEvents = session.onEvent((event) => {
+      this.#trackTurn(entry.bootstrap.threadId, event);
       if (!entry.rekeyed) {
         entry.startupEvents.push(event);
         return;
@@ -315,6 +316,22 @@ export class RpcSessionPortRuntime {
       throw error;
     }
     return this.#openResult(entry);
+  }
+
+  /**
+   * Keeps the registry's busy mark in step with omp's turn: it starts with `agent_start` and ends when the session
+   * settles (`session_settled`, or a `prompt_result` that reports it settled). A yielded run is not a settled session:
+   * a queued message or background job keeps the chat busy until it settles.
+   */
+  #trackTurn(threadId: ThreadId, event: RpcSessionEvent): void {
+    if (event.kind === "omp" && event.event.type === "agent_start") {
+      this.#context.processRegistry.setBusy(threadId, true);
+    } else if (
+      event.kind === "session_settled" ||
+      (event.kind === "prompt_result" && event.event.sessionSettled)
+    ) {
+      this.#context.processRegistry.setBusy(threadId, false);
+    }
   }
 
   async send<K extends SendCommandArgs["command"]["type"]>(
@@ -692,6 +709,7 @@ export class RpcSessionPortRuntime {
     entry.process = process;
     entry.session = session;
     entry.unsubscribeEvents = session.onEvent((event) => {
+      this.#trackTurn(entry.bootstrap.threadId, event);
       this.#context.replay.publish(entry.stream, event satisfies RpcSessionEvent);
     });
     entry.appliedLevel = undefined;
