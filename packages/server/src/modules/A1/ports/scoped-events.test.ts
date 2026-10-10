@@ -69,6 +69,7 @@ function contextWith(
     ompCommandGateway: undefined,
     sessionPinStore: undefined,
     providerAccountStore: undefined,
+    usageLimitStore: undefined,
     extensionCatalog: undefined,
     publish: (stream: StreamKey, payload: unknown) => replay.publish(stream, payload),
     watchStreamActivity: (prefix: string, listener: (stream: StreamKey, active: boolean) => void) =>

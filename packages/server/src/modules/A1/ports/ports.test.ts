@@ -29,6 +29,7 @@ import {
   streamKey,
   ThreadId,
   UrlCatalogPort,
+  UsageLimitStore,
   WorkspaceStatePort,
 } from "@omp-app/contracts";
 import { DEFAULT_HOST_CAPABILITIES } from "../../../capabilities";
@@ -217,6 +218,9 @@ function createContext(
         return () => pinListeners.delete(listener);
       },
       pinListeners,
+    },
+    usageLimitStore: {
+      read: async () => ({ state: "unavailable" as const, reason: "Not read in this test." }),
     },
     providerAccountStore: {
       listProviders: async () => {
@@ -413,6 +417,7 @@ describe("A1.9 port registrations", () => {
       SessionPinStore,
       WorkspaceStatePort,
       UrlCatalogPort,
+      UsageLimitStore,
     ]
       .map((port) => port.name)
       .sort();

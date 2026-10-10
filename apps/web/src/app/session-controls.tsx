@@ -20,6 +20,7 @@ import {
 import { ContextStatusBar } from "@/modules/P7/context/status-bar";
 import {
   createContextUsagePort,
+  createUsageLimitsSource,
   createUsagePort,
   type SessionContextSource,
   type UsageStateSource,
@@ -209,9 +210,10 @@ export function SessionStatusBar({
     return {
       context: createContextUsagePort(contextSource),
       usage: createUsagePort(usageSource, client, threadId),
+      limits: createUsageLimitsSource(client),
     };
   }, [client, store, threadId]);
-  return <ContextStatusBar context={ports.context} usage={ports.usage} />;
+  return <ContextStatusBar context={ports.context} usage={ports.usage} limits={ports.limits} />;
 }
 
 function projection(store: OmpRuntimeStore, threadId: ThreadId) {

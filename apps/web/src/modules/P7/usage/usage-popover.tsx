@@ -1,7 +1,8 @@
 import { Popover } from "@base-ui/react/popover";
-import { useCallback, useState, useSyncExternalStore } from "react";
+import type { UsageLimitsResult } from "@omp-app/contracts";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
-import type { UsagePort, UsageTotals } from "../contract";
+import type { UsageLimitsSource, UsagePort, UsageTotals } from "../contract";
 
 function useUsageSnapshot(port: UsagePort) {
   const subscribe = useCallback(
@@ -30,6 +31,18 @@ function money(value: number): string {
 function cacheHitRate(totals: UsageTotals): number | null {
   const denominator = totals.cacheRead + totals.cacheWrite + totals.input;
   return denominator === 0 ? null : totals.cacheRead / denominator;
+}
+
+const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "long" });
+
+/** When a window resets, in plain words: "at 4:30 PM" on the same day, "on Tuesday at 4:30 PM" otherwise. */
+function resetWords(resetsAt: string | null, now: Date): string {
+  if (resetsAt === null) return "omp did not say when it resets";
+  const at = new Date(resetsAt);
+  if (Number.isNaN(at.getTime())) return "omp did not say when it resets";
+  if (at.toDateString() === now.toDateString()) return `resets at ${clock.format(at)}`;
+  return `resets on ${weekday.format(at)} at ${clock.format(at)}`;
 }
 
 function UsageTotalsTable({
@@ -89,15 +102,85 @@ function UsageTotalsTable({
   );
 }
 
-export function UsagePopover({ port }: { readonly port: UsagePort }) {
+/**
+ * omp's provider limits for the signed-in accounts: each window's share used and when it resets. It reads when it
+ * mounts; the popover remounts it on Refresh, and says why when omp's limits cannot be read.
+ */
+function ProviderLimitsSection({ limits }: { readonly limits: UsageLimitsSource }) {
+  const [result, setResult] = useState<UsageLimitsResult | undefined>(undefined);
+  useEffect(() => {
+    let active = true;
+    void limits.read().then((next) => {
+      if (active) setResult(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [limits]);
+  const now = new Date();
+  return (
+    <section
+      aria-labelledby="provider-limits-title"
+      className="border-border/60 border-b pb-3 last:border-b-0 last:pb-0"
+    >
+      <h3
+        id="provider-limits-title"
+        className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+      >
+        Provider limits
+      </h3>
+      {result === undefined ? (
+        <p role="status" className="mt-2 text-sm text-muted-foreground">
+          Reading provider limits…
+        </p>
+      ) : null}
+      {result?.state === "unavailable" ? (
+        <p className="mt-2 text-sm text-muted-foreground">{result.reason}</p>
+      ) : null}
+      {result?.state === "ready" && result.providers.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          omp reports no usage limits for your signed-in accounts.
+        </p>
+      ) : null}
+      {result?.state === "ready" && result.providers.length > 0 ? (
+        <ul className="mt-2 flex flex-col gap-2 text-sm">
+          {result.providers.map((provider) => (
+            <li key={provider.providerId}>
+              <p className="font-medium">{provider.providerId}</p>
+              <ul className="mt-1 flex flex-col gap-1 text-muted-foreground">
+                {provider.windows.map((window) => (
+                  <li key={window.label}>
+                    {window.label}: {Math.round(window.usedPercent)}% used,{" "}
+                    {resetWords(window.resetsAt, now)}
+                    {window.accounts > 1 ? ` (the fullest of ${window.accounts} accounts)` : ""}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+export function UsagePopover({
+  port,
+  limits,
+}: {
+  readonly port: UsagePort;
+  readonly limits: UsageLimitsSource;
+}) {
   const snapshot = useUsageSnapshot(port);
   const [busy, setBusy] = useState(false);
+  const [limitsKey, setLimitsKey] = useState(0);
   const refresh = async () => {
     setBusy(true);
     try {
       await port.refresh();
     } finally {
       setBusy(false);
+      setLimitsKey((key) => key + 1);
     }
   };
   return (
@@ -111,7 +194,8 @@ export function UsagePopover({ port }: { readonly port: UsagePort }) {
         ) : null}
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner sideOffset={8} align="end">
+        {/* Above the transcript footer, which would otherwise cover the header of this popup. */}
+        <Popover.Positioner sideOffset={8} align="end" className="z-50">
           <Popover.Popup
             role="dialog"
             aria-label="Session usage details"
@@ -148,9 +232,7 @@ export function UsagePopover({ port }: { readonly port: UsagePort }) {
             {snapshot.lastTurn ? (
               <UsageTotalsTable title="Last turn" totals={snapshot.lastTurn.usage} />
             ) : null}
-            <p className="text-xs text-muted-foreground">
-              Provider quota is unavailable from this host.
-            </p>
+            <ProviderLimitsSection key={limitsKey} limits={limits} />
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

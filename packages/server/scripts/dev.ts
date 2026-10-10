@@ -42,6 +42,7 @@ import { createRuleStore } from "../src/modules/A1/rules";
 import { createSessionImportStore } from "../src/modules/A1/session-import";
 import { createSessionFileStore } from "../src/modules/A1/sessions";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
+import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
 import {
   findExternalOmp,
@@ -289,6 +290,7 @@ export async function createCompositionServer(
   const ompCommandGateway = createOmpCommandGateway({ resolveSession });
   const sessionPinStore = createSessionPinStore({ env, homeDir, agentDir });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
+  const usageLimitStore = createUsageLimitStore({ env });
   const extensionCatalog = createExtensionCatalog({ env, homeDir, agentDir });
   const memoryStore = createMemoryStore({ gateway: ompCommandGateway });
   const ruleStore = createRuleStore({ env, homeDir, agentDir });
@@ -343,6 +345,7 @@ export async function createCompositionServer(
     ompCommandGateway,
     sessionPinStore,
     providerAccountStore,
+    usageLimitStore,
     extensionCatalog,
     memoryStore,
     ruleStore,

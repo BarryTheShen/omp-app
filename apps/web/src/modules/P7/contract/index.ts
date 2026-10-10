@@ -31,3 +31,4 @@ export {
   initialContextState,
   usageTotalsFromWire,
 } from "./ports";
+export { createUsageLimitsSource, type UsageLimitsSource } from "./usage-limits";

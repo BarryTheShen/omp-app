@@ -17,6 +17,7 @@ import type { RuleStoreService } from "../rules";
 import type { SessionImportStoreService } from "../session-import";
 import type { SessionFileStore } from "../sessions";
 import type { UrlCatalogService } from "../url-catalog";
+import type { UsageLimitStoreService } from "../usage-limits";
 import type { A1EventPublisher, A1StreamActivity } from "./helper";
 /** Stores and host seams composed by the main server; A1 handlers never create parallel stores. */
 export interface A1PortContext {
@@ -27,6 +28,7 @@ export interface A1PortContext {
   readonly ompCommandGateway: OmpCommandGatewayService;
   readonly sessionPinStore: SessionPinStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;
+  readonly usageLimitStore: UsageLimitStoreService;
   readonly extensionCatalog: ExtensionCatalogService;
   readonly attachmentStore: AttachmentStoreService;
   readonly memoryStore: MemoryStoreService;

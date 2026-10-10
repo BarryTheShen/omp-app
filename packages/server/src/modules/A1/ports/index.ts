@@ -18,6 +18,7 @@ import { createSessionFileStoreRegistration } from "./session-file-store";
 import { createSessionImportRegistration } from "./session-import";
 import { createSessionPinStoreRegistration } from "./session-pin-store";
 import { createUrlCatalogRegistration } from "./url-catalog";
+import { createUsageLimitStoreRegistration } from "./usage-limits";
 import { createGitStateRegistration, createWorkspaceStateRegistration } from "./workspace-state";
 
 /** All merged A1 registrations. Main composes these into PORT_REGISTRY. */
@@ -43,6 +44,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createRuleStoreRegistration(context),
     createGithubRefsRegistration(context),
     createUrlCatalogRegistration(context),
+    createUsageLimitStoreRegistration(context),
   ];
 }
 

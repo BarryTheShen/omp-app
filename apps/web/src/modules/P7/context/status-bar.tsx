@@ -1,4 +1,4 @@
-import type { ContextUsagePort, UsagePort } from "../contract";
+import type { ContextUsagePort, UsageLimitsSource, UsagePort } from "../contract";
 import { UsagePopover } from "../usage";
 import { percentLabel, useContextSnapshot } from "./context-meter";
 
@@ -19,9 +19,11 @@ function shortCount(tokens: number): string {
 export function ContextStatusBar({
   context,
   usage,
+  limits,
 }: {
   readonly context: ContextUsagePort;
   readonly usage: UsagePort;
+  readonly limits: UsageLimitsSource;
 }) {
   const snapshot = useContextSnapshot(context);
   const window = snapshot.usage;
@@ -54,7 +56,7 @@ export function ContextStatusBar({
         <span>Context usage unavailable</span>
       )}
       {snapshot.isCompacting ? <span role="status">Compacting…</span> : null}
-      <UsagePopover port={usage} />
+      <UsagePopover port={usage} limits={limits} />
     </section>
   );
 }

@@ -85,7 +85,29 @@ export function ContextUsagePlayground() {
         {/* The full card (for a panel) and the one-line version the app's status bar uses. */}
         <ContextMeter port={contextPort} />
         <div className="border-border rounded-xl border px-3 py-2" data-testid="p7-status-line">
-          <ContextStatusBar context={contextPort} usage={usagePort} />
+          <ContextStatusBar
+            context={contextPort}
+            usage={usagePort}
+            limits={{
+              read: async () => ({
+                state: "ready" as const,
+                fetchedAt: "2026-10-10T04:00:00.000Z",
+                providers: [
+                  {
+                    providerId: "anthropic",
+                    windows: [
+                      {
+                        label: "5 Hour",
+                        usedPercent: 41,
+                        resetsAt: "2026-10-10T08:30:00.000Z",
+                        accounts: 1,
+                      },
+                    ],
+                  },
+                ],
+              }),
+            }}
+          />
         </div>
         <CompactionControls port={compactionPort} />
       </div>
