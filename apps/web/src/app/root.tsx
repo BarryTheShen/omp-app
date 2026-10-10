@@ -149,12 +149,14 @@ import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
 import {
   freshSlashCommand,
+  guardOmpSend,
   hotkeysSlashCommand,
   loginSlashCommand,
   newChatSlashCommand,
   routeSubmit,
   runSlashRoute,
   settingsSlashCommand,
+  shareSlashCommand,
   useSlashCommands,
 } from "./slash-commands";
 import { finishedAnswerAt } from "./turn-end";
@@ -578,6 +580,7 @@ function ActiveThreadReady({
   const threadId = history.threadId as ThreadId;
   const connection = useAppConnection();
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
+  const guardedSend = useMemo(() => guardOmpSend(rpc.send), [rpc.send]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
   const agents = useThreadAgents({
     threadId,
@@ -887,7 +890,7 @@ function ActiveThreadReady({
     }),
     [attachmentManager],
   );
-  const p3Handlers = useP3RunHandlers({ store, send: rpc.send, openThread, runs: p3Runs });
+  const p3Handlers = useP3RunHandlers({ store, send: guardedSend, openThread, runs: p3Runs });
   // The banner of an omp that stopped on its own offers this: the server starts omp again on this chat.
   const restartOmp = useCallback(async (): Promise<void> => {
     await rpc.restart({ threadId });
@@ -897,7 +900,7 @@ function ActiveThreadReady({
   useComposerClipboardShortcuts({ notify: setCommandStatus, fail: setCommandError });
   const { controller: runtimeController, runtime } = useOmpRuntime({
     store,
-    send: rpc.send,
+    send: guardedSend,
     capabilities,
     attachments: runtimeAttachments,
     onEdit: p3Handlers.onEdit,
@@ -910,8 +913,8 @@ function ActiveThreadReady({
   const transcriptRootRef = useRef<HTMLDivElement | null>(null);
   const scrollController = useThreadScrollController(transcriptRootRef);
   const queueController = useMemo(
-    () => createQueueController({ store, send: rpc.send, capabilities }),
-    [capabilities, rpc.send, store],
+    () => createQueueController({ store, send: guardedSend, capabilities }),
+    [capabilities, guardedSend, store],
   );
   useLayoutEffect(() => {
     answerExtensionUiRef.current = (response, options) =>
@@ -967,6 +970,7 @@ function ActiveThreadReady({
     () => [
       newChatSlashCommand({ lifecycle, openThread }),
       freshSlashCommand({ lifecycle }),
+      shareSlashCommand(),
       loginSlashCommand({ openLogin }),
       settingsSlashCommand({
         openSettings: () => onOpenSettings(threadId, composerInput() ?? undefined),
@@ -995,6 +999,7 @@ function ActiveThreadReady({
       intent,
       hasAttachments: attachmentManager.toDraftRefs().length > 0,
       provider: slashProvider,
+      appCommands: appSlashCommands,
     });
     await chatDraft.submit(intent, (nextIntent) =>
       route === null
@@ -1101,7 +1106,7 @@ function ActiveThreadReady({
     rewind: useRewindPanel({
       threadId,
       store,
-      send: rpc.send,
+      send: guardedSend,
       capabilities,
       submitPrompt: runtimeController.submitPrompt,
       switchThread: openThread,

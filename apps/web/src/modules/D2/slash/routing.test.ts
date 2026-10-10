@@ -56,3 +56,44 @@ describe("D2.3 submit routing", () => {
     });
   });
 });
+
+describe("#957 every form of /share is answered by the app, never sent to omp", () => {
+  const share: SlashAppCommand = {
+    name: "share",
+    description: "Share this chat (not available yet)",
+    run: async () => ({}),
+  };
+
+  test("/share, with or without arguments, in any letter case and after leading spaces, is the app's", () => {
+    for (const text of [
+      "/share",
+      "/share now",
+      "/share:now",
+      "/SHARE",
+      "/Share now",
+      "  /share",
+      "\n/share\n",
+      "/share   ",
+    ]) {
+      expect(routeSlashText(text, entries, [share]), JSON.stringify(text)).toEqual({
+        kind: "app",
+        command: share,
+      });
+    }
+  });
+
+  test("a form of /share is refused by the app even when no handler is registered", async () => {
+    const route = routeSlashText("/share now", entries, []);
+    expect(route?.kind).toBe("app");
+    if (route?.kind !== "app") return;
+    await expect(route.command.run({})).rejects.toMatchObject({
+      appError: { code: "unavailable", retryable: false },
+    });
+  });
+
+  test("words that only start with share are not share", () => {
+    expect(routeSlashText("/sharex", entries, [share])).toBeNull();
+    expect(routeSlashText("/share/x", entries, [share])).toBeNull();
+    expect(routeSlashText("please /share", entries, [share])).toBeNull();
+  });
+});

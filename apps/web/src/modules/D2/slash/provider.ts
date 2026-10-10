@@ -17,7 +17,7 @@ import type {
 } from "../contract";
 import { createSlashCommandCatalog, type SlashCommandCatalogController } from "./catalog";
 import { rankSlashEntries, type SlashListEntry } from "./rank";
-import { routeSlashText, type SlashAppCommand, type SlashRoute } from "./routing";
+import { guardedRoute, routeSlashText, type SlashAppCommand, type SlashRoute } from "./routing";
 
 export interface SlashCommandProviderOptions {
   readonly client: AppClient;
@@ -138,9 +138,13 @@ export function createSlashCommandProvider(
   };
 
   const route = async (text: string): Promise<SlashRoute | null> => {
+    const appCommands = options.appCommands?.() ?? [];
+    // A guarded form is the app's whatever the catalog holds, so it is answered before any catalog read.
+    const guarded = guardedRoute(text, appCommands);
+    if (guarded !== null) return guarded;
     if (!text.startsWith("/")) return null;
     await ensureCatalog();
-    return routeSlashText(text, await listEntries(), options.appCommands?.() ?? []);
+    return routeSlashText(text, await listEntries(), appCommands);
   };
 
   const execute = (command: string, callOptions?: PortCallOptions): Promise<CommandRunResult> => {

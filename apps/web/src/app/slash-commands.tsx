@@ -1,9 +1,17 @@
 import type { AppClient } from "@omp-app/client";
-import { AppFailure, type CapabilityMap, type ThreadId } from "@omp-app/contracts";
+import {
+  AppFailure,
+  type CapabilityMap,
+  type RpcSessionSend,
+  type ThreadId,
+} from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createSlashCommandProvider,
   describeCommandResult,
+  guardedCommandName,
+  guardedRefusal,
+  guardedRoute,
   plainOutputText,
   type SlashAppCommand,
   type SlashCommandProvider,
@@ -184,21 +192,79 @@ export function hotkeysSlashCommand({
 }
 
 /**
- * Decides whether a submitted message is a command. Only a plain prompt with nothing attached can be one:
- * bash and Python input, pictures and files keep their normal path.
+ * `/share`: omp's own share uploads the whole chat with no question asked, so the app answers every form of it itself
+ * (`guardedRoute`). Until the share dialog (D4.4) is mounted, the answer is this plain refusal, and nothing is uploaded.
+ */
+export function shareSlashCommand(): SlashAppCommand {
+  return {
+    name: "share",
+    description: "Share this chat (not available yet)",
+    run: () =>
+      Promise.reject(
+        new AppFailure({
+          code: "unavailable",
+          message: "Sharing this chat isn't available yet. Nothing was uploaded.",
+          retryable: false,
+        }),
+      ),
+  };
+}
+
+/**
+ * Decides whether a submitted message is a command. Only a plain prompt can be one: bash and Python input keep their
+ * normal path. A guarded form (`/share` in any spelling) is the app's whatever is attached and whether or not the
+ * provider is ready, because omp would run its own command on it. Other commands need a plain prompt with nothing
+ * attached.
  */
 export function routeSubmit({
   intent,
   hasAttachments,
   provider,
+  appCommands = [],
 }: {
   readonly intent: PromptIntent;
   readonly hasAttachments: boolean;
   readonly provider: SlashCommandProvider | null;
+  /** The app's own commands, so a guarded form reaches the app's command of that name. */
+  readonly appCommands?: readonly SlashAppCommand[];
 }): Promise<SlashRoute | null> {
-  if (provider === null || intent.mode !== "prompt" || hasAttachments) return Promise.resolve(null);
+  if (intent.mode !== "prompt") return Promise.resolve(null);
+  const guarded = guardedRoute(intent.text, appCommands);
+  if (guarded !== null) return Promise.resolve(guarded);
+  if (provider === null || hasAttachments) return Promise.resolve(null);
   if ((intent.images?.length ?? 0) > 0) return Promise.resolve(null);
   return provider.route(intent.text);
+}
+
+/** The commands that send text to omp's model or to its command handling. Only these can run a guarded form. */
+const SENDS_TEXT_TO_OMP: Record<string, true> = {
+  prompt: true,
+  steer: true,
+  follow_up: true,
+  abort_and_prompt: true,
+};
+
+/** The text a command sends to omp, when it is one of those commands. */
+function textSentToOmp(command: unknown): string | undefined {
+  if (typeof command !== "object" || command === null) return undefined;
+  const type = "type" in command ? command.type : undefined;
+  const message = "message" in command ? command.message : undefined;
+  if (typeof type !== "string" || SENDS_TEXT_TO_OMP[type] !== true) return undefined;
+  return typeof message === "string" ? message : undefined;
+}
+
+/**
+ * The send path under every route that is not the composer's own submit (a retry, an edit, a queued message): a
+ * guarded form is refused before it leaves the browser. The composer routes these forms to the app first
+ * (`routeSubmit`), so this refusal is the net under the other paths.
+ */
+export function guardOmpSend(send: RpcSessionSend): RpcSessionSend {
+  return (args, options) => {
+    const text = textSentToOmp(args.command);
+    const name = text === undefined ? null : guardedCommandName(text);
+    if (name !== null) return Promise.reject(guardedRefusal(name));
+    return send(args, options);
+  };
 }
 
 /**

@@ -3,7 +3,7 @@ import {
   type ThreadMessage,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { AppFailure, type CapabilityMap, ThreadId } from "@omp-app/contracts";
+import { AppFailure, type CapabilityMap, type RpcSessionSend, ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -20,12 +20,14 @@ import type { PromptIntent } from "@/modules/U2/contract";
 import { ComposerTriggers } from "./composer-triggers";
 import {
   freshSlashCommand,
+  guardOmpSend,
   hotkeysSlashCommand,
   loginSlashCommand,
   newChatSlashCommand,
   routeSubmit,
   runSlashRoute,
   settingsSlashCommand,
+  shareSlashCommand,
 } from "./slash-commands";
 
 function RuntimeHarness({ children }: { readonly children: ReactNode }) {
@@ -328,5 +330,60 @@ describe("/settings and /hotkeys", () => {
     expect(routeSlashText("/hotkeys", [], [command])).toEqual({ kind: "app", command });
     await expect(command.run({})).resolves.toEqual({});
     expect(openShortcuts).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#957 /share never reaches omp unconfirmed", () => {
+  test("every form of /share goes to the app, with or without attachments, and before the provider is ready", async () => {
+    const route = vi.fn(async () => ({ kind: "omp" as const, command: "/share" }));
+    const provider = { route } as unknown as SlashCommandProvider;
+    const share = shareSlashCommand();
+    for (const text of ["/share", "/share now", " /SHARE"]) {
+      for (const hasAttachments of [false, true]) {
+        await expect(
+          routeSubmit({
+            intent: { ...prompt, text },
+            hasAttachments,
+            provider,
+            appCommands: [share],
+          }),
+          `${JSON.stringify(text)} with attachments: ${hasAttachments}`,
+        ).resolves.toEqual({ kind: "app", command: share });
+      }
+      await expect(
+        routeSubmit({
+          intent: { ...prompt, text },
+          hasAttachments: false,
+          provider: null,
+          appCommands: [share],
+        }),
+      ).resolves.toEqual({ kind: "app", command: share });
+    }
+    expect(route).not.toHaveBeenCalled();
+  });
+
+  test("the share command refuses in plain words", async () => {
+    await expect(shareSlashCommand().run({})).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message: "Sharing this chat isn't available yet. Nothing was uploaded.",
+        retryable: false,
+      },
+    });
+  });
+
+  test("a prompt, steer or follow-up in a form of /share never reaches omp, and other commands pass", async () => {
+    const send = vi.fn(async () => undefined) as unknown as RpcSessionSend;
+    const guarded = guardOmpSend(send);
+    const sent = (type: string, message: string) =>
+      guarded({ threadId, command: { type, message } } as unknown as Parameters<RpcSessionSend>[0]);
+    for (const type of ["prompt", "steer", "follow_up"]) {
+      await expect(sent(type, "/share extra")).rejects.toMatchObject({
+        appError: { code: "unavailable", retryable: false },
+      });
+    }
+    expect(send).not.toHaveBeenCalled();
+    await sent("prompt", "pong");
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });

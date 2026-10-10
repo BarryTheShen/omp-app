@@ -10,5 +10,12 @@ export {
   type SlashCommandProviderOptions,
 } from "./provider";
 export { rankSlashEntries, type SlashListEntry, sourceLabel } from "./rank";
-export { routeSlashText, type SlashAppCommand, type SlashRoute } from "./routing";
+export {
+  guardedCommandName,
+  guardedRefusal,
+  guardedRoute,
+  routeSlashText,
+  type SlashAppCommand,
+  type SlashRoute,
+} from "./routing";
 export { SlashComposerSlot, SlashTriggerSlot } from "./trigger-slot";
