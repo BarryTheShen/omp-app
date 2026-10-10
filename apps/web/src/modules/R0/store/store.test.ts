@@ -947,6 +947,50 @@ describe("OmpRuntimeStore", () => {
     ]);
   });
 
+  test("a history load that holds a message whose end was missed settles it: it is no longer streaming", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const user = { role: "user", content: "question", timestamp: 1 };
+    const started = { ...assistant("Hel"), timestamp: 2 };
+    const ended = { ...assistant("Hello there"), timestamp: 2 };
+    const entries = [
+      {
+        type: "message",
+        id: "u1",
+        parentId: null,
+        timestamp: "2026-10-05T00:00:00.000Z",
+        message: user,
+      },
+      {
+        type: "message",
+        id: "a1",
+        parentId: "u1",
+        timestamp: "2026-10-05T00:00:01.000Z",
+        message: ended,
+      },
+    ];
+    omp(store, { type: "message_start", messageId: "m-user", message: user }, 1);
+    omp(store, { type: "message_end", messageId: "m-user", message: user }, 2);
+    omp(store, { type: "message_start", messageId: "m-answer", message: started }, 3);
+    // omp's message_end for the answer never reaches the store: the answer stays a streaming copy.
+    store.pairEndedMessages(entries, "a1" as EntryId);
+    const shown = store.getSnapshot();
+    expect(shown.messageOrder).toEqual([
+      `entry:${threadId}:u1`,
+      expect.stringMatching(/^stream:.*:m-answer$/),
+    ]);
+    const answer = shown.messageOrder[1] as MessageKey;
+    expect(shown.messages[answer]).toMatchObject({
+      status: "ended",
+      message: { content: [{ type: "text", text: "Hello there" }] },
+    });
+    // The next history load pairs the answer with its entry, as it does after a message_end.
+    store.pairEndedMessages(entries, "a1" as EntryId);
+    expect(store.getSnapshot().messageOrder).toEqual([
+      `entry:${threadId}:u1`,
+      `entry:${threadId}:a1`,
+    ]);
+  });
+
   test("keeps what get_state says about the session, field by field", () => {
     const store = new OmpRuntimeStore({ threadId });
     const model = { provider: "anthropic", id: "claude-x", name: "Claude X", reasoning: true };

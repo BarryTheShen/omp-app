@@ -650,6 +650,21 @@ function streamedCopyKey(message: OmpMessage): string | undefined {
 }
 
 /**
+ * History holds the message the stream still shows as streaming: omp persisted it, so its end was missed (a
+ * gap in the stream), and the history's copy is the ended message. The stand-in takes that copy and ends, so
+ * it settles; it pairs with its entry at the next pairing, as a message_end would. A message_end that still
+ * arrives finds the same stand-in.
+ */
+function settleStreamedCopy(next: MutableSnapshot, key: MessageKey, message: OmpMessage): void {
+  const record = next.messages[key];
+  if (record?.status !== "streaming") return;
+  addOrReplaceMessage(next, key, { ...record, message, status: "ended" });
+  const pending = next.pendingEnded as ProvisionalMessageKey[];
+  const provisional = key as ProvisionalMessageKey;
+  if (!pending.includes(provisional)) pending.push(provisional);
+}
+
+/**
  * Where the live messages that history does not return go. A message still waiting for its entry is the newest and
  * goes last. An answer cut off by the process exiting is different: omp never saved it, so history never returns it,
  * and moving it behind the answers that came after would glue its text onto the next turn's answer. It keeps its
@@ -716,6 +731,7 @@ function hydratePersistedMessages(next: MutableSnapshot): void {
     const message = current?.message ?? messageFromEntry(entry);
     const live = takeLiveCopy(message);
     if (live !== undefined) {
+      if (message !== undefined) settleStreamedCopy(next, live, message);
       viewOrder.push(live);
       continue;
     }
