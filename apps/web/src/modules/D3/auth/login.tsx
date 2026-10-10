@@ -153,13 +153,11 @@ export function ProviderLoginPanel({ auth }: ProviderLoginPanelProps) {
           >
             <div className="min-w-0">
               <div className="text-sm font-medium">{provider.name}</div>
-              <div className="text-muted-foreground text-xs">
-                {provider.authenticated
-                  ? "Authenticated"
-                  : provider.available
-                    ? "Available"
-                    : "Unavailable"}
-              </div>
+              {!provider.authenticated && (
+                <div className="text-muted-foreground text-xs">
+                  {provider.available ? "Available" : "Unavailable"}
+                </div>
+              )}
             </div>
             {provider.authenticated ? (
               <span className="border-success/30 bg-success-surface text-success-surface-foreground rounded-full border px-2 py-1 text-xs">

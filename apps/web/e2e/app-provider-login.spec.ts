@@ -39,6 +39,11 @@ realTest(
     await page.keyboard.press("Enter");
     await expect(page.getByText("Provider login").first()).toBeVisible();
     await expect(page.getByText("Open a chat to sign in to a provider.")).toHaveCount(0);
+    // The signed-in Anthropic row (the test environment sets its key) shows its status once.
+    const providerList = page.getByTestId("d3-provider-list");
+    const anthropic = providerList.getByRole("listitem").filter({ hasText: "Anthropic" });
+    await expect(anthropic.getByText("Authenticated", { exact: true })).toHaveCount(1);
+    await expect(providerList.getByText("Authenticated", { exact: true })).toHaveCount(1);
     await mkdir(screenshots, { recursive: true });
     await waitForFiniteAnimations(page);
     await page.screenshot({
@@ -61,6 +66,9 @@ realTest(
     await openProvidersTab(page);
     await expect(page.locator("html")).toHaveClass(/dark/);
     await expect(page.getByText("Provider login").first()).toBeVisible();
+    await expect(
+      page.getByTestId("d3-provider-list").getByText("Authenticated", { exact: true }),
+    ).toHaveCount(1);
     await waitForFiniteAnimations(page);
     await page.screenshot({
       path: join(screenshots, "app-provider-login-dark.png"),

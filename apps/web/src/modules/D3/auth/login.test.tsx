@@ -57,4 +57,22 @@ describe("ProviderLoginPanel", () => {
     expect((await screen.findByRole("status")).textContent).toMatch(/discovery is unavailable/i);
     expect(await screen.findByText("No providers are configured.")).toBeTruthy();
   });
+
+  test("a signed-in provider shows Authenticated once and no Log in button", async () => {
+    render(
+      <ProviderLoginPanel
+        auth={auth({ getLoginProviders: async () => [{ ...provider, authenticated: true }] })}
+      />,
+    );
+    expect(await screen.findByText("Provider A")).toBeTruthy();
+    expect(screen.getAllByText("Authenticated")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Log in" })).toBeNull();
+  });
+
+  test("a provider that is not signed in shows its availability once, beside Log in", async () => {
+    render(<ProviderLoginPanel auth={auth()} />);
+    expect(await screen.findByText("Provider A")).toBeTruthy();
+    expect(screen.getAllByText("Available")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Log in" })).toBeTruthy();
+  });
 });
