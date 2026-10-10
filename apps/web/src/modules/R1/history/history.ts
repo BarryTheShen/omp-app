@@ -47,6 +47,8 @@ export interface SelectedThreadHistoryOptions {
     session: RpcSessionClient,
     store: OmpRuntimeStore,
   ) => SessionHistoryLoader;
+  /** Called when a chat whose turn was still running after it was left has ended that turn: its row may be new now. */
+  readonly onTurnSettled?: (threadId: ThreadId) => void;
 }
 
 function asFailure(error: unknown, fallback: string): AppFailure {
@@ -68,6 +70,15 @@ function unavailable(message: string): AppFailure {
     retryable: false,
     capability: "host.session-files",
   });
+}
+
+/** Whether an event ends the turn a chat was running: the turn settled, or omp stopped under it. */
+function turnEnded(payload: RpcSessionEvent): boolean {
+  if (payload.kind === "session_settled") return true;
+  return (
+    payload.kind === "process" &&
+    (payload.status === "stopped" || payload.status === "exited" || payload.status === "error")
+  );
 }
 
 /**
@@ -94,6 +105,13 @@ export class SelectedThreadHistoryController {
   private stopRefetchWatch: (() => void) | undefined;
   private listeners = new Set<(state: SelectedThreadHistoryState) => void>();
   private transitions: Promise<void> = Promise.resolve();
+  /** Chats left while their turn ran: each is held and watched until the turn ends (see `watchTurnEnd`). */
+  private readonly turnWatches = new Map<
+    ThreadId,
+    { readonly subscription: EventSubscription; readonly off: () => void }
+  >();
+  /** The chat opened again while its turn still ran: its turn's end is reported when it comes. */
+  private reopenedWhileRunning: ThreadId | undefined;
   /** The chat open most recently asked for, while that open is still pending (see `openExisting`). */
   private pendingOpen:
     | { readonly threadId: ThreadId; readonly open: Promise<OmpRuntimeStore> }
@@ -213,6 +231,9 @@ export class SelectedThreadHistoryController {
   }
 
   private async closeNow(): Promise<void> {
+    // A chat whose turn is still running is kept and watched until the turn ends (issue 935): the list must learn of the
+    // row it writes even though the chat is no longer open.
+    const running = this.state.store?.getSnapshot().prompt.streaming === true;
     this.loader?.dispose();
     this.stopRefetchWatch?.();
     this.loader = undefined;
@@ -222,7 +243,13 @@ export class SelectedThreadHistoryController {
     const subscription = this.subscription;
     this.subscription = undefined;
     const releasedThreadId = this.state.threadId;
-    if (subscription) await subscription.unsubscribe();
+    this.reopenedWhileRunning = undefined;
+    const watched =
+      running && subscription !== undefined && releasedThreadId !== undefined
+        ? { threadId: releasedThreadId, subscription }
+        : undefined;
+    if (watched) this.watchTurnEnd(watched.threadId, watched.subscription);
+    else if (subscription) await subscription.unsubscribe();
     this.commit({
       threadId: undefined,
       store: undefined,
@@ -232,8 +259,44 @@ export class SelectedThreadHistoryController {
     });
     // Tell the server this view is gone. Without it every chat the tab ever opened kept its omp
     // process (about 380 MB while idle) until the app quit. Not awaited: switching chats must not
-    // wait on the server, and `release` handles every failure itself.
-    if (releasedThreadId !== undefined) void this.release(releasedThreadId);
+    // wait on the server, and `release` handles every failure itself. A watched chat is let go when its turn ends.
+    if (releasedThreadId !== undefined && watched === undefined)
+      void this.release(releasedThreadId);
+  }
+
+  /** Watches a chat whose turn runs after it was left: when the turn ends, the chat is let go and the app is told. */
+  private watchTurnEnd(threadId: ThreadId, subscription: EventSubscription): void {
+    const off = subscription.onEvent((payload) => {
+      if (!turnEnded(payload)) return;
+      this.endTurnWatch(threadId);
+      this.options.onTurnSettled?.(threadId);
+    });
+    this.turnWatches.set(threadId, { subscription, off });
+  }
+
+  /** Ends a watch whose turn ended: its subscription is closed and the server hold let go. */
+  private endTurnWatch(threadId: ThreadId): void {
+    const watch = this.turnWatches.get(threadId);
+    if (watch === undefined) return;
+    this.turnWatches.delete(threadId);
+    watch.off();
+    watch.subscription.unsubscribe().catch((error: unknown) => {
+      console.error("[omp-app] could not stop watching a chat's turn", error);
+    });
+    void this.release(threadId);
+  }
+
+  /**
+   * A watched chat is opened again: the open takes its subscription over, and only the watch's hold is let go, since
+   * the open holds the chat now. Returns whether the chat was watched.
+   */
+  private takeOverTurnWatch(threadId: ThreadId): boolean {
+    const watch = this.turnWatches.get(threadId);
+    if (watch === undefined) return false;
+    this.turnWatches.delete(threadId);
+    watch.off();
+    void this.release(threadId);
+    return true;
   }
 
   /** Best effort: see `releaseThread`. */
@@ -251,6 +314,8 @@ export class SelectedThreadHistoryController {
     try {
       const result = await this.rpc.open(args);
       const threadId = result.threadId;
+      // A chat left while its turn ran, and opened again now: this open takes over that chat's watch.
+      if (this.takeOverTurnWatch(threadId)) this.reopenedWhileRunning = threadId;
       const store = this.options.createStore?.(threadId, this.rpc) ?? this.defaultStore(threadId);
       const loader =
         this.options.createLoader?.(threadId, this.rpc, store) ??
@@ -349,6 +414,11 @@ export class SelectedThreadHistoryController {
         if (store.getSnapshot().lastSeq === 0) store.resetSequence(seq - 1);
       }
       store.ingest(payload, seq);
+      // A turn that was still running when this chat was opened again: the app is told when it ends.
+      if (turnEnded(payload) && this.reopenedWhileRunning === threadId) {
+        this.reopenedWhileRunning = undefined;
+        this.options.onTurnSettled?.(threadId);
+      }
       // After each settled turn, omp has persisted the turn: refetch so its messages pair with their
       // entries (edit and branch need entry ids) and get_state brings the model, context and usage.
       // While the thread is still loading (replayed settles), the initial load covers it.

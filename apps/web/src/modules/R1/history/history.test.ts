@@ -541,6 +541,115 @@ describe("SelectedThreadHistoryController reopening a saved chat", () => {
   });
 });
 
+describe("SelectedThreadHistoryController turns that run after the chat is left", () => {
+  const settle = { kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent;
+  const start = { kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent;
+
+  /** The fake connection, with the chats it lets go of recorded in `released`. */
+  function recordingRpc(
+    open: (args: OpenThreadArgs) => unknown,
+    released: ThreadId[],
+  ): RpcSessionClient {
+    return {
+      ...createRpc(open),
+      close: async ({ threadId }: { readonly threadId: ThreadId }) => {
+        released.push(threadId);
+        return null;
+      },
+    } as unknown as RpcSessionClient;
+  }
+
+  function openAs(args: OpenThreadArgs): unknown {
+    return {
+      threadId: "threadId" in args ? args.threadId : threadTwo,
+      sessionFile: null,
+      capabilities: {},
+    };
+  }
+
+  function deliver(subscription: SubscriptionRecord | undefined, payload: RpcSessionEvent): void {
+    for (const listener of [...(subscription?.listeners ?? [])]) listener(payload, 2);
+  }
+
+  test("a chat left while its turn runs stays held, and the app is told when the turn ends", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const released: ThreadId[] = [];
+    const settled: ThreadId[] = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(recordingRpc(openAs, released), subscriptions),
+      folder,
+      onTurnSettled: (threadId) => settled.push(threadId),
+    });
+    const store = await controller.openExisting(threadOne);
+    store.ingest(start, 1);
+
+    await controller.openExisting(threadTwo);
+    expect(released).not.toContain(threadOne);
+    expect(subscriptions[0]?.unsubscribed).toBe(false);
+
+    deliver(subscriptions[0], settle);
+    await vi.waitFor(() => expect(released).toContain(threadOne));
+    expect(settled).toEqual([threadOne]);
+    expect(subscriptions[0]?.unsubscribed).toBe(true);
+  });
+
+  test("a chat left while idle is let go at once, and no turn end is reported", async () => {
+    const released: ThreadId[] = [];
+    const settled: ThreadId[] = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(recordingRpc(openAs, released), []),
+      folder,
+      onTurnSettled: (threadId) => settled.push(threadId),
+    });
+    await controller.openExisting(threadOne);
+
+    await controller.openExisting(threadTwo);
+
+    await vi.waitFor(() => expect(released).toEqual([threadOne]));
+    expect(settled).toEqual([]);
+  });
+
+  test("a chat opened again while its turn still runs takes its watch over, and its turn's end is reported once", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const released: ThreadId[] = [];
+    const settled: ThreadId[] = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(recordingRpc(openAs, released), subscriptions),
+      folder,
+      onTurnSettled: (threadId) => settled.push(threadId),
+    });
+    const store = await controller.openExisting(threadOne);
+    store.ingest(start, 1);
+    await controller.openExisting(threadTwo);
+
+    await controller.openExisting(threadOne);
+
+    await vi.waitFor(() => expect(released).toContain(threadOne));
+    expect(released.filter((threadId) => threadId === threadOne)).toEqual([threadOne]);
+    deliver(subscriptions[0], settle);
+    expect(settled).toEqual([]);
+    deliver(subscriptions[subscriptions.length - 1], settle);
+    expect(settled).toEqual([threadOne]);
+  });
+
+  test("a chat that stays open when its turn ends is not reported by the watch", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const settled: ThreadId[] = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(recordingRpc(openAs, []), subscriptions),
+      folder,
+      onTurnSettled: (threadId) => settled.push(threadId),
+    });
+    const store = await controller.openExisting(threadOne);
+    store.ingest(start, 1);
+
+    deliver(subscriptions[0], settle);
+
+    expect(settled).toEqual([]);
+    expect(store.getSnapshot().prompt.streaming).toBe(false);
+  });
+});
+
 describe("SelectedThreadHistoryController sharing a pending open", () => {
   test("requests for a chat that is still opening share one open, and all get its store", async () => {
     const opens: OpenThreadArgs[] = [];

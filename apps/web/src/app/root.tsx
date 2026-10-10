@@ -1321,8 +1321,14 @@ function ConnectedApp({
       folder,
       onThreadIdChange: (threadId) =>
         writeSessionValue(THREAD_KEY, threadId ? String(threadId) : null),
+      // A turn ended after its chat was left: the list gets the row the chat wrote, not when the person comes back.
+      onTurnSettled: () => {
+        const list = catalogCache.models.get(folder);
+        if (list)
+          void list.list({ filter: list.getSnapshot().filter, limit: 100 }).catch(() => undefined);
+      },
     });
-  }, [client, folder]);
+  }, [catalogCache, client, folder]);
   const remote = useMemo(
     () =>
       catalog
