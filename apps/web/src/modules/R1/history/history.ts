@@ -132,6 +132,11 @@ export class SelectedThreadHistoryController {
   private stopRefetchWatch: (() => void) | undefined;
   private listeners = new Set<(state: SelectedThreadHistoryState) => void>();
   private transitions: Promise<void> = Promise.resolve();
+  /** Switches the page started but has not yet asked this controller for their chat (see `holdSwitch`). */
+  private readonly holds = new Set<symbol>();
+  /** Opens asked for whose chat is not yet on screen: counted from the request until the commit, or the failure. */
+  private pendingOpens = 0;
+  private settleWaiters: Array<() => void> = [];
   /** Chats left while their turn ran: each is held and watched until the turn ends (see `watchTurnEnd`). */
   private readonly turnWatches = new Map<
     ThreadId,
@@ -186,6 +191,37 @@ export class SelectedThreadHistoryController {
   public async openLatest(): Promise<OmpRuntimeStore> {
     this.pendingOpen = undefined;
     return this.open({ folderPath: this.options.folder, start: "latest" });
+  }
+
+  /**
+   * Holds a chat switch the page started before it asked for its chat (the sidebar's New chat, before its open). The
+   * next open request takes the hold over (see `open`). Returns the release.
+   */
+  public holdSwitch(): () => void {
+    const token = Symbol("switch");
+    this.holds.add(token);
+    return () => {
+      if (this.holds.delete(token)) this.notifySettled();
+    };
+  }
+
+  /**
+   * Resolves once the chat on screen is the one asked for: no open is pending before its chat is committed (a failed
+   * open ends its wait too), and no switch is held. It does not wait for the chat's history to load: a new chat's
+   * history loads only once its first prompt arrives, and a send made meanwhile belongs to that chat.
+   */
+  public async whenSettled(): Promise<void> {
+    while (this.pendingOpens > 0 || this.holds.size > 0) {
+      await new Promise<void>((resolve) => {
+        this.settleWaiters.push(resolve);
+      });
+    }
+  }
+
+  private notifySettled(): void {
+    const waiters = this.settleWaiters;
+    this.settleWaiters = [];
+    for (const resolve of waiters) resolve();
   }
 
   /**
@@ -335,10 +371,25 @@ export class SelectedThreadHistoryController {
   }
 
   private open(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
-    return this.serialize(() => this.openNow(args));
+    // The open request is the switch now, so a hold made before it is covered (see `whenSettled`).
+    this.holds.clear();
+    this.pendingOpens += 1;
+    const settle = this.openSettler();
+    return this.serialize(() => this.openNow(args, settle)).finally(settle);
   }
 
-  private async openNow(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
+  /** Ends one open's pending state, once: at its commit, or when it fails. A later call does nothing. */
+  private openSettler(): () => void {
+    let ended = false;
+    return () => {
+      if (ended) return;
+      ended = true;
+      this.pendingOpens -= 1;
+      this.notifySettled();
+    };
+  }
+
+  private async openNow(args: OpenThreadArgs, settle: () => void): Promise<OmpRuntimeStore> {
     const openedNew = "start" in args && args.start === "new";
     await this.closeNow();
     this.commit({ isLoading: true, error: null });
@@ -360,6 +411,8 @@ export class SelectedThreadHistoryController {
         error: null,
         openedNew,
       });
+      // The chat is on screen: a send that waited for it may go now, though its history still loads below.
+      settle();
       // From here the composer takes text, so a reload or a restart must already find this chat: its id is saved now,
       // not after the history has loaded. Otherwise text typed in a new chat is lost when the app restarts in that window.
       this.options.onThreadIdChange?.(threadId);

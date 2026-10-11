@@ -1028,6 +1028,19 @@ describe("OmpRuntimeStore", () => {
     expect(store.getSnapshot().prompt.streaming).toBe(false);
   });
 
+  test("a turn that ends keeps the prompt streaming until the run ends, because omp is running until agent_end", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    omp(store, { type: "agent_start" }, 1);
+    omp(store, { type: "turn_start" }, 2);
+    omp(store, { type: "turn_end" }, 3);
+    // omp's own streaming flag stays true between two turns of one run, so the composer must still see a run.
+    expect(store.getSnapshot().prompt.streaming).toBe(true);
+    omp(store, { type: "turn_start" }, 4);
+    omp(store, { type: "turn_end" }, 5);
+    omp(store, { type: "agent_end" }, 6);
+    expect(store.getSnapshot().prompt.streaming).toBe(false);
+  });
+
   test("shows a reopened session's history on the active branch, oldest first", () => {
     const store = new OmpRuntimeStore({ threadId });
     const message = (id: string, parentId: string | null, role: string, text: string) => ({

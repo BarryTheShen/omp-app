@@ -280,8 +280,22 @@ function asTransportFailure(cause: unknown): AppFailure {
   return createFailure("omp_exited", "The omp RPC transport closed", true);
 }
 
+/** omp refuses a prompt that arrives while its agent is still running a turn: `AgentBusyError` (omp v18.6.1, packages/agent/src/agent.ts:103). */
+const AGENT_BUSY_REFUSAL = "Agent is already processing.";
+/** What the browser shows for that refusal: plain words, never omp's own text. */
+const AGENT_BUSY_MESSAGE = "omp is still working on something.";
+
+function isAgentBusyRefusal(message: string | undefined): boolean {
+  return message?.startsWith(AGENT_BUSY_REFUSAL) === true;
+}
+
+function agentBusyFailure(): AppFailure {
+  return createFailure("agent_busy", AGENT_BUSY_MESSAGE, true);
+}
+
 function commandFailure(response: OmpResponse): AppFailure {
   const message = typeof response.error === "string" ? response.error : "omp command failed";
+  if (isAgentBusyRefusal(message)) return agentBusyFailure();
   return createFailure("omp_error", message, false, {
     command: response.command,
     error: message,
@@ -291,6 +305,7 @@ function commandFailure(response: OmpResponse): AppFailure {
 
 function promptFailure(event: OmpWire.PromptResultEvent): AppFailure {
   const detail = event.error;
+  if (isAgentBusyRefusal(detail?.message)) return agentBusyFailure();
   return createFailure(
     "omp_error",
     detail?.message ?? "omp prompt failed",
@@ -771,7 +786,10 @@ export class RpcSession {
   }
 
   #handlePromptResult(event: OmpWire.PromptResultEvent): void {
-    this.#emit({ kind: "prompt_result", event });
+    // A refusal because omp is still running a turn is the failure of the prompt that asked, not an event of the thread.
+    if (!(event.status === "error" && isAgentBusyRefusal(event.error?.message))) {
+      this.#emit({ kind: "prompt_result", event });
+    }
     if (event.id === undefined) return;
     const pending = this.#pending.get(event.id);
     if (pending === undefined || pending.completion !== "prompt_result") return;

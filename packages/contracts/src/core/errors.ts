@@ -17,6 +17,8 @@ export const APP_ERROR_CODES = [
   "cancelled",
   /** The state changed underneath the call (stale cursor, busy session, concurrent write). */
   "conflict",
+  /** omp is still running a turn, so a new prompt was refused. The browser offers to queue it or to interrupt it. */
+  "agent_busy",
   "not_found",
   "permission",
   /** A bug in the app; never a user-facing condition. */

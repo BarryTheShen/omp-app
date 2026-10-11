@@ -422,3 +422,64 @@ describe("RpcSession shutdown", () => {
     expect(lastEvent).toMatchObject({ kind: "process", status: "exited" });
   });
 });
+
+describe("RpcSession agent_busy refusals", () => {
+  const BUSY_TEXT =
+    "Agent is already processing. Use steer() or followUp() to queue messages, or wait for completion.";
+
+  test("a prompt omp refuses because it is still running a turn fails as agent_busy, without omp's words", async () => {
+    const duplex = new FakeDuplex();
+    const timer = new ManualTimer();
+    const session = await readySession(duplex, timer);
+    const prompt = session.send({ type: "prompt", message: "hi" });
+    prompt.admitted.catch(() => undefined);
+    await flush();
+    const command = lastWrite(duplex);
+    duplex.emit({
+      type: "response",
+      id: command.id,
+      command: "prompt",
+      success: false,
+      error: BUSY_TEXT,
+    });
+    const failure: unknown = await prompt.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+    expect(failure.appError).toMatchObject({ code: "agent_busy", retryable: true });
+    expect(JSON.stringify(failure.appError)).not.toContain("Agent is already processing");
+  });
+
+  test("the prompt_result of a refused prompt is not an event of the thread", async () => {
+    const duplex = new FakeDuplex();
+    const timer = new ManualTimer();
+    const session = await readySession(duplex, timer);
+    const events: RpcSessionEvent[] = [];
+    session.onEvent((event) => events.push(event));
+    const prompt = session.send({ type: "prompt", message: "hi" });
+    prompt.admitted.catch(() => undefined);
+    await flush();
+    const command = lastWrite(duplex);
+    duplex.emit({
+      type: "prompt_result",
+      id: command.id,
+      agentInvoked: false,
+      status: "error",
+      sessionSettled: false,
+      error: { message: BUSY_TEXT, retryable: false },
+    });
+    duplex.emit({
+      type: "response",
+      id: command.id,
+      command: "prompt",
+      success: false,
+      error: BUSY_TEXT,
+    });
+    await prompt.then(
+      () => undefined,
+      () => undefined,
+    );
+    expect(events.map((event) => event.kind)).toEqual([]);
+  });
+});

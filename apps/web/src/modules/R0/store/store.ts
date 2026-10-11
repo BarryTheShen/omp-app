@@ -1512,7 +1512,8 @@ export class OmpRuntimeStore {
         updatePrompt(next, { streaming: false });
         return;
       case "turn_end":
-        updatePrompt(next, { streaming: false });
+        // A turn ending is not the run ending: omp's own isStreaming stays true until agent_end, so the composer
+        // still sees a run between two turns and sends a follow-up or a steer, never a new prompt omp would refuse.
         return;
       case "message_start":
         this.reduceMessageStart(next, event, seq);

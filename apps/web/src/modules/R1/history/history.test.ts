@@ -918,3 +918,77 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
     expect(controller.getSnapshot().threadId).toBe(threadOne);
   });
 });
+
+describe("SelectedThreadHistoryController whenSettled", () => {
+  test("waits for a chat that is still opening, and resolves once it is open", async () => {
+    const opened = Promise.withResolvers<{
+      threadId: ThreadId;
+      sessionFile: null;
+      capabilities: Record<string, never>;
+    }>();
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc(() => opened.promise),
+        [],
+      ),
+      folder,
+    });
+    const opening = controller.openExisting(threadOne);
+    let settled = false;
+    const waiting = controller.whenSettled().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    // The chat is still opening: a send made now must not be taken as the chat on screen.
+    expect(settled).toBe(false);
+    opened.resolve({ threadId: threadOne, sessionFile: null, capabilities: {} });
+    await opening;
+    await waiting;
+    expect(settled).toBe(true);
+    expect(controller.getSnapshot().threadId).toBe(threadOne);
+  });
+
+  test("a switch held before its open keeps the wait until the hold is released", async () => {
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} })),
+        [],
+      ),
+      folder,
+    });
+    const release = controller.holdSwitch();
+    let settled = false;
+    const waiting = controller.whenSettled().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    // The page has started a New chat but has not yet asked for its chat: a send must still wait.
+    expect(settled).toBe(false);
+    release();
+    await waiting;
+    expect(settled).toBe(true);
+  });
+
+  test("waiting for a chat to open ends when the chat is on screen, not when its history has loaded", async () => {
+    const entriesHeld = Promise.withResolvers<void>();
+    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const rpc = {
+      ...base,
+      send: async (args: { threadId: ThreadId; command: { type: string } }) => {
+        if (args.command.type === "get_entries") await entriesHeld.promise;
+        return args.command.type === "get_state"
+          ? { sessionId: args.threadId }
+          : { entries: [], leafId: null };
+      },
+    } as unknown as RpcSessionClient;
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+    // A new chat's history loads only once its first prompt arrives, so the open itself can stay pending.
+    void controller.openExisting(threadOne);
+    await controller.whenSettled();
+    expect(controller.getSnapshot()).toMatchObject({ threadId: threadOne, isLoading: true });
+  });
+});

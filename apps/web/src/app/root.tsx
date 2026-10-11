@@ -468,6 +468,11 @@ function DraftComposer({
 }
 
 interface ActiveThreadProps {
+  readonly deliverToOpenChat: (intent: PromptIntent) => Promise<void>;
+  readonly registerLiveChat: (
+    threadId: ThreadId,
+    deliver: (intent: PromptIntent) => Promise<void>,
+  ) => () => void;
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly history: SelectedThreadHistoryState;
   /** Loads the page of messages older than the ones shown; the thread offers it while history is older. */
@@ -509,6 +514,8 @@ function ActiveThreadReady({
   leftSidebar,
   onPromptSent,
   openThread,
+  deliverToOpenChat,
+  registerLiveChat,
   onOpenSettings,
   remote,
   title,
@@ -951,33 +958,49 @@ function ActiveThreadReady({
     capabilities,
     appCommands: appSlashCommands,
   });
+  // What a send does in the chat it is for: a slash command, or omp's prompt. It is read at the send, so a send that
+  // waited for a chat to open runs in the chat on screen, never in the one before it.
+  const deliver = useCallback(
+    async (intent: PromptIntent): Promise<void> => {
+      const route = await routeSubmit({
+        intent,
+        hasAttachments: attachmentManager.toDraftRefs().length > 0,
+        provider: slashProvider,
+        appCommands: appSlashCommands,
+      });
+      if (route === null) {
+        await runtimeController.submitPrompt({
+          ...intent,
+          attachmentRefs: attachmentManager.toDraftRefs(),
+        });
+        return;
+      }
+      await runSlashRoute({
+        route,
+        intent,
+        provider: slashProvider,
+        showStatus: setCommandStatus,
+        runMode: (request, options) => commandGateway.modeChange({ threadId, request }, options),
+      });
+    },
+    [
+      attachmentManager,
+      appSlashCommands,
+      commandGateway,
+      runtimeController,
+      slashProvider,
+      threadId,
+    ],
+  );
+  // The view for the chat on screen registers how a send reaches it (see `deliverToOpenChat` in the root).
+  useLayoutEffect(() => registerLiveChat(threadId, deliver), [deliver, registerLiveChat, threadId]);
   const submit = async (intent: PromptIntent): Promise<void> => {
     onPromptSent();
     // Sending shows the newest message, wherever the reader had scrolled to; the transcript then
     // keeps following by itself because it is at the bottom.
     scrollController.jumpToLatest();
-    // A known slash command goes to omp's command gateway; any other text is a prompt, as before.
-    const route = await routeSubmit({
-      intent,
-      hasAttachments: attachmentManager.toDraftRefs().length > 0,
-      provider: slashProvider,
-      appCommands: appSlashCommands,
-    });
-    await chatDraft.submit(intent, (nextIntent) =>
-      route === null
-        ? runtimeController.submitPrompt({
-            ...nextIntent,
-            attachmentRefs: attachmentManager.toDraftRefs(),
-          })
-        : runSlashRoute({
-            route,
-            intent: nextIntent,
-            provider: slashProvider,
-            showStatus: setCommandStatus,
-            runMode: (request, options) =>
-              commandGateway.modeChange({ threadId, request }, options),
-          }),
-    );
+    // The draft keeps the text until the send is admitted. The send goes to the chat that is open when it is delivered.
+    await chatDraft.submit(intent, deliverToOpenChat);
     if (intent.mode === "bash") void onRefreshAfterCommand?.();
     attachmentManager.clearAfterSend();
     scrollController.jumpToLatest();
@@ -1499,6 +1522,71 @@ function ConnectedApp({
     },
     [controller],
   );
+  // The sidebar's New chat holds the chat switch from its first step until its chat is open, so a send made meanwhile
+  // waits for the new chat instead of going to the chat before it.
+  const newChatHold = useRef<(() => void) | undefined>(undefined);
+  const reportNewChat = useCallback(
+    (status: NewChatStatus): void => {
+      setNewChat(status);
+      if (status.state === "opening") {
+        newChatHold.current ??= controller?.holdSwitch();
+        return;
+      }
+      newChatHold.current?.();
+      newChatHold.current = undefined;
+    },
+    [controller],
+  );
+  // The chat on screen registers how a send reaches it: the view that shows the open chat (see `deliverToOpenChat`).
+  const liveChat = useRef<{
+    readonly threadId: ThreadId;
+    readonly deliver: (intent: PromptIntent) => Promise<void>;
+  } | null>(null);
+  const liveChatChanged = useRef<Array<() => void>>([]);
+  const registerLiveChat = useCallback(
+    (threadId: ThreadId, deliver: (intent: PromptIntent) => Promise<void>): (() => void) => {
+      const live = { threadId, deliver };
+      liveChat.current = live;
+      const waiters = liveChatChanged.current;
+      liveChatChanged.current = [];
+      for (const wake of waiters) wake();
+      return () => {
+        if (liveChat.current === live) liveChat.current = null;
+      };
+    },
+    [],
+  );
+  // A send goes to the chat that is open when it is delivered, through the view that shows it. While a chat is still
+  // opening, the send waits until that chat is on screen: it is never written to the chat before it. If the chat did
+  // not open, nothing is sent and the text stays in the composer.
+  const deliverToOpenChat = useCallback(
+    async (intent: PromptIntent): Promise<void> => {
+      if (controller === null) {
+        throw new AppFailure({
+          code: "unavailable",
+          message: "Open a chat to send a message.",
+          retryable: false,
+        });
+      }
+      for (;;) {
+        await controller.whenSettled();
+        const open = controller.getSnapshot().threadId;
+        if (open === undefined) {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The chat did not open, so the message was not sent. Try again.",
+            retryable: true,
+          });
+        }
+        const live = liveChat.current;
+        if (live !== null && live.threadId === open) return live.deliver(intent);
+        await new Promise<void>((wake) => {
+          liveChatChanged.current.push(wake);
+        });
+      }
+    },
+    [controller],
+  );
   // A new chat, started the way the sidebar's New chat starts one. Sign-in runs in a chat's omp, so this gives
   // sign-in one when no chat is open.
   const startChat = useCallback(async (): Promise<ThreadId> => {
@@ -1579,7 +1667,7 @@ function ConnectedApp({
             onOpenThread={openThread}
             confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
             remote={remote}
-            onNewChatStatus={setNewChat}
+            onNewChatStatus={reportNewChat}
           />
         ) : null,
     },
@@ -1641,6 +1729,8 @@ function ConnectedApp({
         onOpenSettings={openSettings}
         onPromptSent={onPromptSent}
         openThread={openThread}
+        deliverToOpenChat={deliverToOpenChat}
+        registerLiveChat={registerLiveChat}
         remote={remote}
         title={title}
         p3Runs={p3Runs}

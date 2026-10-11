@@ -13,7 +13,7 @@ import {
 } from "react";
 import { chordLabel, isApplePlatform } from "@/shortcuts";
 import { Button } from "../../../components/ui/button";
-import type { PromptIntent } from "../../R0/runtime/runtime";
+import type { PromptDelivery, PromptIntent } from "../../R0/runtime/runtime";
 import {
   type ComposerDraft,
   type ComposerKeyChord,
@@ -179,7 +179,7 @@ export function ComposerSurface({
   const blockedId = useId();
   useRemeasureOnWidthChange(inputRef);
   const submit = useCallback(
-    async (keyChord: ComposerKeyChord) => {
+    async (keyChord: ComposerKeyChord, delivery?: PromptDelivery) => {
       if (
         disabled ||
         sendBlockedReason !== undefined ||
@@ -205,7 +205,7 @@ export function ComposerSurface({
           }
         } else {
           const input = decisionInput(text, attachments, isStreaming, keyChord);
-          const result = policy(input);
+          const result = delivery === undefined ? policy(input) : { delivery };
           intents = intentsForDecision(result, text, attachments);
           if (isStreaming && intents.some((intent) => intent.delivery === "new")) {
             throw new AppFailure({
@@ -370,13 +370,40 @@ export function ComposerSurface({
           )}
         </div>
         {error && (
-          <p
-            data-composer-error="true"
-            role="alert"
-            className="text-destructive px-(--space-md) text-sm"
-          >
-            {error.message}
-          </p>
+          <>
+            <p
+              data-composer-error="true"
+              role="alert"
+              className="text-destructive px-(--space-md) text-sm"
+            >
+              {error.message}
+            </p>
+            {error.code === "agent_busy" && (
+              <div
+                className="flex flex-wrap gap-(--space-xs) px-(--space-md)"
+                data-composer-busy-choices="true"
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSubmitting}
+                  onClick={() => void submit("enter", "followUp")}
+                >
+                  Queue it for after
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSubmitting}
+                  onClick={() => void submit("enter", "steer")}
+                >
+                  Interrupt and send
+                </Button>
+              </div>
+            )}
+          </>
         )}
         {sendBlockedReason !== undefined && (
           <p
