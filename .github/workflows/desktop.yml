@@ -9,6 +9,7 @@ on:
     paths:
       - "apps/desktop/**"
       - "packaging/build-desktop-deb.sh"
+      - "packaging/desktop-smoke-test.sh"
   workflow_dispatch:
 
 permissions:
@@ -85,6 +86,23 @@ jobs:
           set -euo pipefail
           cargo clippy --all-targets -- -D warnings
           cargo test
+      # The app runs the omp coding agent, so the smoke test needs omp. It is installed the way omp's
+      # README says (bun install -g), pinned to the version the local tests used, and checked here.
+      - name: Install omp (the coding agent the app runs)
+        run: |
+          set -euo pipefail
+          bun install -g @oh-my-pi/pi-coding-agent@18.8.9
+          omp --version
+
+      # Starts the packaged window on a virtual display and checks that it opens the app, starts its
+      # server, quits, and leaves no process behind. packaging/desktop-smoke-test.sh makes the checks;
+      # the screenshots it saves go into dist/desktop, which the upload below includes.
+      - name: Smoke-test the package under a virtual display
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y xvfb xdotool imagemagick dbus dbus-x11
+          deb=$(ls dist/desktop/omp-app-desktop_*_amd64.deb)
+          xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- bash packaging/desktop-smoke-test.sh "$deb"
 
       - name: Upload the package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
