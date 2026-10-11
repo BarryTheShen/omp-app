@@ -186,8 +186,8 @@ describe("I5 settings panel", () => {
   test("loads both ConfigStore-backed sections and keeps CAS revisions internal", async () => {
     render(<I5SettingsPanel client={configClient()} folder={null} layer="global" />);
     expect(await screen.findByRole("heading", { name: "Voice and speech" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Interaction / Speech" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Providers / Services" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Speech" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Services" })).toBeTruthy();
     expect(screen.queryByText("i5-revision-1")).toBeNull();
     expect((screen.getByLabelText("Provider name 1") as HTMLInputElement).value).toBe("openai");
     expect((screen.getByLabelText("Request limit 1") as HTMLInputElement).value).toBe("4");

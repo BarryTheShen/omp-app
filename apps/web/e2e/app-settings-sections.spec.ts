@@ -17,14 +17,14 @@ realTest(
     const settings = page.getByTestId("settings-screen");
     await settings.getByRole("button", { name: "Files", exact: true }).click();
     await expect(page.getByRole("listbox", { name: "Files settings sections" })).toBeVisible();
-    await expect(page.getByRole("option", { name: /Files \/ Editing/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: "Editing", exact: true })).toBeVisible();
     await settings.getByRole("button", { name: "Tools", exact: true }).click();
     await expect(page.getByRole("option", { name: /Available Tools/ })).toBeVisible();
     // Keyboard: focus the Providers tab and press Enter to open it.
     await settings.getByRole("button", { name: "Providers", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("listbox", { name: "Providers settings sections" })).toBeVisible();
-    await expect(page.getByRole("option", { name: /Providers \/ Services/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: "Services", exact: true })).toBeVisible();
     await mkdir(screenshots, { recursive: true });
     await waitForFiniteAnimations(page);
     await page.screenshot({
@@ -43,14 +43,14 @@ realTest("the settings tabs read in dark and at 390 px", async ({ realApp }, tes
   await expect(page.locator("html")).toHaveClass(/dark/);
   const settings = page.getByTestId("settings-screen");
   await settings.getByRole("button", { name: "Shell", exact: true }).click();
-  await expect(page.getByRole("option", { name: /Shell \/ Bash/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Bash", exact: true })).toBeVisible();
   await waitForFiniteAnimations(page);
   await page.screenshot({
     path: join(screenshots, "app-settings-sections-dark.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("option", { name: /Shell \/ Bash/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Bash", exact: true })).toBeVisible();
   await waitForFiniteAnimations(page);
   await page.screenshot({
     path: join(screenshots, "app-settings-sections-narrow.png"),

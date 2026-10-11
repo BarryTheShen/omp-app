@@ -75,9 +75,9 @@ test("S2.3 sections render ConfigStore state and descriptor-backed apply reports
   page,
 }) => {
   await page.goto("/s2-3-sections-playground.html");
-  await expect(page.getByRole("heading", { name: "Files / LSP" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Shell / Bash" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Shell / Eval & Runtimes" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "LSP", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bash", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Eval and Runtimes", exact: true })).toBeVisible();
   const reports = page.getByLabel("When settings take effect");
   await expect(reports).toHaveCount(3);
   await expect(reports.nth(0)).toContainText("Reload required: Lazy LSP Startup");
@@ -93,12 +93,12 @@ test("S2.3 sections render ConfigStore state and descriptor-backed apply reports
   await dark.addInitScript(() => document.documentElement.classList.add("dark"));
   await dark.goto("/s2-3-sections-playground.html?theme=dark");
   await expect(dark.locator("html")).toHaveClass(/dark/);
-  await expect(dark.getByRole("heading", { name: "Files / LSP" })).toBeVisible();
+  await expect(dark.getByRole("heading", { name: "LSP", exact: true })).toBeVisible();
   await expectCardToken(dark, true);
   await dark.screenshot({ path: join(SCREENSHOTS, "s2.3-sections-dark.png"), fullPage: true });
 
   await dark.setViewportSize({ width: 390, height: 844 });
-  await expect(dark.getByRole("heading", { name: "Shell / Eval & Runtimes" })).toBeVisible();
+  await expect(dark.getByRole("heading", { name: "Eval and Runtimes", exact: true })).toBeVisible();
   await expectCardToken(dark, true);
   const dimensions = await dark.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -109,7 +109,7 @@ test("S2.3 sections render ConfigStore state and descriptor-backed apply reports
   await dark.locator("html").evaluate((element) => {
     (element as HTMLElement).style.zoom = "200%";
   });
-  await expect(dark.getByRole("heading", { name: "Shell / Eval & Runtimes" })).toBeVisible();
+  await expect(dark.getByRole("heading", { name: "Eval and Runtimes", exact: true })).toBeVisible();
   const zoomedDimensions = await dark.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,

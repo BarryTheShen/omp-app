@@ -426,42 +426,42 @@ function section(
 export const FILES_EDITING_SECTION = section(
   "S2.filesEditing",
   "files/Editing",
-  "Files / Editing",
+  "Editing",
   ["S5.files-editing"],
   filesEditing,
 );
 export const FILES_READING_SECTION = section(
   "S2.filesReading",
   "files/Reading",
-  "Files / Reading",
+  "Reading",
   ["S5.files-reading"],
   filesReading,
 );
 export const FILES_READ_SUMMARIES_SECTION = section(
   "S2.filesReadSummaries",
   "files/Read Summaries",
-  "Files / Read Summaries",
+  "Read Summaries",
   ["S5.files-read-summaries"],
   filesReadSummaries,
 );
 export const FILES_LSP_SECTION = section(
   "S2.filesLsp",
   "files/LSP",
-  "Files / LSP",
+  "LSP",
   ["S5.files-lsp"],
   filesLsp,
 );
 export const SHELL_BASH_SECTION = section(
   "S2.shellBash",
   "shell/Bash",
-  "Shell / Bash",
+  "Bash",
   ["S5.shell-bash"],
   shellBash,
 );
 export const SHELL_EVAL_RUNTIMES_SECTION = section(
   "S2.shellEvalRuntimes",
   "shell/Eval & Runtimes",
-  "Shell / Eval & Runtimes",
+  "Eval and Runtimes",
   ["S5.shell-eval-runtimes"],
   shellEvalRuntimes,
 );

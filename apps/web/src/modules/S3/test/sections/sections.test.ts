@@ -388,22 +388,22 @@ describe("S3 Tools and Tasks sections", () => {
 });
 
 describe("S3 section titles", () => {
-  test("each title is its tab and omp v18.6.1's own group label, in the order the sections list", () => {
+  test("each title is omp v18.6.1's group label (with and for &), in the order the sections list", () => {
     expect(S3_SETTINGS_SECTIONS.map((section) => section.title)).toEqual([
-      "Tools / Available Tools",
-      "Tools / Grep & Browser",
-      "Tools / Computer",
-      "Tools / GitHub",
-      "Tools / Output Limits",
-      "Tools / Execution",
-      "Tools / Extensions",
-      "Tools / Developer",
-      "Tools / IDA Pro",
-      "Tools / Todos",
-      "Tasks / Commands & Skills",
-      "Tasks / Isolation",
-      "Tasks / Modes",
-      "Tasks / Subagents",
+      "Available Tools",
+      "Grep and Browser",
+      "Computer",
+      "GitHub",
+      "Output Limits",
+      "Execution",
+      "Extensions",
+      "Developer",
+      "IDA Pro",
+      "Todos",
+      "Commands and Skills",
+      "Isolation",
+      "Modes",
+      "Subagents",
     ]);
   });
 });

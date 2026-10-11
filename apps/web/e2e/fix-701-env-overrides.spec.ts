@@ -88,7 +88,7 @@ realTest(
 
     // Developer: Auto QA is off in omp (process environment). The endpoint URL carries a credential,
     // so it is hidden: a sentence replaces the field, and the credential is not in the page at all.
-    let panel = await openSection(settings, "Tools", "Tools / Developer");
+    let panel = await openSection(settings, "Tools", "Developer");
     const autoQa = panel.getByRole("checkbox", { name: "Auto QA", exact: true });
     await expect(autoQa).not.toBeChecked({ timeout: 20_000 });
     await expect(page.getByTestId("dev.autoqa-provenance")).toContainText(FROM_ENVIRONMENT);
@@ -101,7 +101,7 @@ realTest(
 
     // Execution: Intent Tracing is set only in the agent folder's `.env` file. The switch shows omp's
     // value, and a save writes the file without changing what omp uses.
-    panel = await openSection(settings, "Tools", "Tools / Execution");
+    panel = await openSection(settings, "Tools", "Execution");
     const intent = panel.getByRole("checkbox", { name: "Intent Tracing", exact: true });
     await expect(intent).not.toBeChecked({ timeout: 20_000 });
     await expect(page.getByTestId("tools.intentTracing-provenance")).toContainText(
@@ -114,8 +114,8 @@ realTest(
       FROM_ENVIRONMENT,
     );
 
-    // Grep & Browser: Tern Browser is off in omp through PI_BROWSER_TERN=0.
-    panel = await openSection(settings, "Tools", "Tools / Grep & Browser");
+    // Grep and Browser: Tern Browser is off in omp through PI_BROWSER_TERN=0.
+    panel = await openSection(settings, "Tools", "Grep and Browser");
     const tern = panel.getByRole("checkbox", { name: "Tern Browser", exact: true });
     await expect(tern).not.toBeChecked({ timeout: 20_000 });
     await expect(page.getByTestId("browser.tern-provenance")).toContainText(FROM_ENVIRONMENT);
@@ -136,7 +136,7 @@ realTest(
     await page.setViewportSize({ width: 390, height: 844 });
     await expectStyledSettings(page, "dark");
 
-    const panel = await openSection(settings, "Tools", "Tools / Developer");
+    const panel = await openSection(settings, "Tools", "Developer");
     const autoQa = panel.getByRole("checkbox", { name: "Auto QA", exact: true });
     await expect(autoQa).not.toBeChecked({ timeout: 20_000 });
     await expect(page.getByTestId("dev.autoqa-provenance")).toContainText(FROM_ENVIRONMENT);

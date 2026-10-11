@@ -914,98 +914,98 @@ function section(
 export const TOOLS_AVAILABLE_SECTION = section(
   "S3.toolsAvailable",
   "tools/Available Tools",
-  "Tools / Available Tools",
+  "Available Tools",
   ["S5.tools-available-tools"],
   toolsAvailable,
 );
 export const TOOLS_GREP_BROWSER_SECTION = section(
   "S3.toolsGrepBrowser",
   "tools/Grep & Browser",
-  "Tools / Grep & Browser",
+  "Grep and Browser",
   ["S5.tools-grep-browser"],
   toolsGrepBrowser,
 );
 export const TOOLS_COMPUTER_SECTION = section(
   "S3.toolsComputer",
   "tools/Computer",
-  "Tools / Computer",
+  "Computer",
   ["S5.tools-computer"],
   toolsComputer,
 );
 export const TOOLS_GITHUB_SECTION = section(
   "S3.toolsGithub",
   "tools/GitHub",
-  "Tools / GitHub",
+  "GitHub",
   ["S5.tools-github"],
   toolsGithub,
 );
 export const TOOLS_OUTPUT_LIMITS_SECTION = section(
   "S3.toolsOutputLimits",
   "tools/Output Limits",
-  "Tools / Output Limits",
+  "Output Limits",
   ["S5.tools-output-limits"],
   toolsOutputLimits,
 );
 export const TOOLS_EXECUTION_SECTION = section(
   "S3.toolsExecution",
   "tools/Execution",
-  "Tools / Execution",
+  "Execution",
   ["S5.tools-execution"],
   toolsExecution,
 );
 export const TOOLS_EXTENSIONS_SECTION = section(
   "S3.toolsExtensions",
   "tools/Extensions",
-  "Tools / Extensions",
+  "Extensions",
   ["S5.tools-extensions"],
   toolsExtensions,
 );
 export const TOOLS_DEVELOPER_SECTION = section(
   "S3.toolsDeveloper",
   "tools/Developer",
-  "Tools / Developer",
+  "Developer",
   ["S5.tools-developer"],
   toolsDeveloper,
 );
 export const TOOLS_IDA_PRO_SECTION = section(
   "S3.toolsIdaPro",
   "tools/IDA Pro",
-  "Tools / IDA Pro",
+  "IDA Pro",
   ["S5.tools-ida-pro"],
   toolsIdaPro,
 );
 export const TOOLS_TODOS_SECTION = section(
   "S3.toolsTodos",
   "tools/Todos",
-  "Tools / Todos",
+  "Todos",
   ["S5.tools-todos"],
   toolsTodos,
 );
 export const TASKS_COMMANDS_SKILLS_SECTION = section(
   "S3.tasksCommandsSkills",
   "tasks/Commands & Skills",
-  "Tasks / Commands & Skills",
+  "Commands and Skills",
   ["S5.tasks-commands-skills"],
   tasksCommandsSkills,
 );
 export const TASKS_ISOLATION_SECTION = section(
   "S3.tasksIsolation",
   "tasks/Isolation",
-  "Tasks / Isolation",
+  "Isolation",
   ["S5.tasks-isolation"],
   tasksIsolation,
 );
 export const TASKS_MODES_SECTION = section(
   "S3.tasksModes",
   "tasks/Modes",
-  "Tasks / Modes",
+  "Modes",
   ["S5.tasks-modes"],
   tasksModes,
 );
 export const TASKS_SUBAGENTS_SECTION = section(
   "S3.tasksSubagents",
   "tasks/Subagents",
-  "Tasks / Subagents",
+  "Subagents",
   ["S5.tasks-subagents"],
   tasksSubagents,
 );

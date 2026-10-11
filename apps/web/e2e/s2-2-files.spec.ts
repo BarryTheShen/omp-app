@@ -77,9 +77,9 @@ test("Files settings render ConfigStore provenance and dependent read-only contr
   page,
 }) => {
   await page.goto("/s2-2-files-playground.html");
-  await expect(page.getByRole("heading", { name: "Files / Editing" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Files / Reading" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Files / Read Summaries" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Editing", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reading", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Read Summaries", exact: true })).toBeVisible();
   await expect(page.getByTestId("read.defaultLimit-provenance")).toContainText(
     "Source: Saved for all projects",
   );
@@ -98,13 +98,13 @@ test("Files settings render ConfigStore provenance and dependent read-only contr
   await dark.addInitScript(() => document.documentElement.classList.add("dark"));
   await dark.goto("/s2-2-files-playground.html?theme=dark");
   await expect(dark.locator("html")).toHaveClass(/dark/);
-  await expect(dark.getByRole("heading", { name: "Files / Read Summaries" })).toBeVisible();
+  await expect(dark.getByRole("heading", { name: "Read Summaries", exact: true })).toBeVisible();
   await expect(dark.getByText("Turn on Read Summaries to edit this setting.")).toHaveCount(6);
   await expectCardToken(dark, true);
   await dark.screenshot({ path: join(SCREENSHOTS, "s2.2-files-dark.png"), fullPage: true });
 
   await dark.setViewportSize({ width: 390, height: 844 });
-  await expect(dark.getByRole("heading", { name: "Files / Reading" })).toBeVisible();
+  await expect(dark.getByRole("heading", { name: "Reading", exact: true })).toBeVisible();
   await expectCardToken(dark, true);
   const dimensions = await dark.evaluate(() => ({
     viewport: document.documentElement.clientWidth,

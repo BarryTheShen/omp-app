@@ -30,7 +30,7 @@ async function openOutputLimits(page: Page): Promise<Locator> {
   const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Tools", exact: true }).click();
-  await dialog.getByRole("option", { name: "Tools / Output Limits", exact: true }).click();
+  await dialog.getByRole("option", { name: "Output Limits", exact: true }).click();
   await expect(dialog.getByText(DESCRIPTION, { exact: true })).toBeVisible({ timeout: 20_000 });
   return dialog;
 }

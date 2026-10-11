@@ -42,7 +42,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     runtimes.push(runtime);
     render(<FilesHarness runtime={runtime} Section={FilesEditingSection} />);
 
-    await screen.findByRole("heading", { name: "Files / Editing" });
+    await screen.findByRole("heading", { name: "Editing" });
     expect(screen.getByTestId("edit.mode-provenance").textContent).toContain(
       "Source: omp's default",
     );
@@ -64,7 +64,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     const { runtime, state } = createFilesRuntime(FILES_EDITING_SECTION);
     runtimes.push(runtime);
     render(<FilesHarness runtime={runtime} Section={FilesEditingSection} />);
-    await screen.findByRole("heading", { name: "Files / Editing" });
+    await screen.findByRole("heading", { name: "Editing" });
 
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "1.2" } });
     expect(screen.getByRole("alert").textContent).toContain("Enter a number from 0 to 1.");
@@ -97,7 +97,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     runtimes.push(runtime);
     render(<FilesHarness runtime={runtime} Section={FilesReadingSection} />);
 
-    await screen.findByRole("heading", { name: "Files / Reading" });
+    await screen.findByRole("heading", { name: "Reading" });
     expect(runtime.getSnapshot().config?.folder).toBe(projectFolder);
     expect(screen.getByTestId("read.defaultLimit-provenance").textContent).toContain(
       "Source: Saved for this project · overrides settings for all projects",
@@ -134,7 +134,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     runtimes.push(runtime);
     render(<FilesHarness runtime={runtime} Section={FilesReadSummariesSection} />);
 
-    await screen.findByRole("heading", { name: "Files / Read Summaries" });
+    await screen.findByRole("heading", { name: "Read Summaries" });
     expect(screen.getAllByText("Turn on Read Summaries to edit this setting.")).toHaveLength(6);
     expect(screen.getAllByRole("checkbox")).toHaveLength(1);
     expect(screen.getByText("On")).toBeTruthy();
@@ -156,7 +156,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     const { runtime, state } = createFilesRuntime(FILES_READING_SECTION);
     runtimes.push(runtime);
     render(<FilesHarness runtime={runtime} Section={FilesReadingSection} />);
-    await screen.findByRole("heading", { name: "Files / Reading" });
+    await screen.findByRole("heading", { name: "Reading" });
     runtime.stage("read.defaultLimit", { secret: false, value: 500 });
     publishFilesChange(
       state,
@@ -239,7 +239,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     runtimes.push(runtime);
     render(<FilesHarness runtime={runtime} Section={FilesReadingSection} />);
 
-    await screen.findByRole("heading", { name: "Files / Reading" });
+    await screen.findByRole("heading", { name: "Reading" });
     expect(screen.getByTestId("read.defaultLimit-provenance").textContent).toContain(
       "Source: Set in the environment",
     );

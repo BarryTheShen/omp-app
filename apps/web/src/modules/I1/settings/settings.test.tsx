@@ -150,7 +150,7 @@ function createRuntime(state: FakeState): SettingsRuntime {
   return runtime;
 }
 
-describe("I1 Tools / Discovery & MCP settings", () => {
+describe("I1 Discovery and MCP settings", () => {
   test("publishes the complete typed section and the v18.6.1 controls", () => {
     expect(MCP_SETTINGS_CONFIG).toEqual({
       section: "tools/Discovery & MCP",
@@ -160,7 +160,7 @@ describe("I1 Tools / Discovery & MCP settings", () => {
     expect(MCP_SETTINGS_SECTION_DESCRIPTOR).toMatchObject({
       id: "I1.mcpSettings",
       section: "tools/Discovery & MCP",
-      title: "Tools / Discovery & MCP",
+      title: "Discovery and MCP",
       inventory: ["S5.tools-discovery-mcp"],
       requires: ["host.config"],
     });
@@ -240,7 +240,7 @@ describe("I1 Tools / Discovery & MCP settings", () => {
         staged={staged}
       />,
     );
-    expect(screen.getByRole("heading", { name: "Tools / Discovery & MCP" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Discovery and MCP" })).toBeTruthy();
     expect(screen.getAllByText("Source: omp's default")).toHaveLength(8);
     expect(screen.getByDisplayValue("250")).toBeTruthy();
     expect(screen.getAllByRole("checkbox").map((input) => input.matches(":checked"))).toEqual([

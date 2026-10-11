@@ -176,7 +176,7 @@ const controls: readonly ScalarSettingControl[] = [
 export const MCP_SETTINGS_SECTION_DESCRIPTOR: SettingsSectionDescriptor = {
   id: "I1.mcpSettings",
   section: "tools/Discovery & MCP",
-  title: "Tools / Discovery & MCP",
+  title: "Discovery and MCP",
   inventory: ["S5.tools-discovery-mcp"],
   controls,
   requires: [...HOST_CONFIG],

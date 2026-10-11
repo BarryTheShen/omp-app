@@ -48,7 +48,7 @@ function buildPlaygroundPage(): void {
 
 async function assertStyled(page: import("@playwright/test").Page): Promise<void> {
   const evidence = await page
-    .getByRole("heading", { name: "Interaction / Speech" })
+    .getByRole("heading", { name: "Speech", exact: true })
     .evaluate((heading) => {
       const section = heading.closest("section");
       const button = section?.querySelector("button");
@@ -81,8 +81,8 @@ test("renders complete voice and speech settings with provenance in light mode",
 }) => {
   await page.goto("/i5-4-settings.html");
   await expect(page.getByRole("heading", { name: "Voice and speech" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Interaction / Speech" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Providers / Services" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Speech", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Services", exact: true })).toBeVisible();
   await expect(
     page.getByText("Language used for speech recognition, for example en."),
   ).toBeVisible();
@@ -98,7 +98,7 @@ test("renders complete voice and speech settings with provenance in light mode",
     path: "../../.data/screenshots/i5-4-settings-light.png",
     fullPage: true,
   });
-  // The provider limits are an ordinary control inside Providers / Services, in descriptor order.
+  // The provider limits are an ordinary control inside the Services section, in descriptor order.
   const providerSection = page.locator('[data-i5-settings-section="I5.providersServices"]');
   const providerLimits = providerSection.locator('[data-slot="s1-structured-control"]');
   await expect(providerSection.getByText("Max In-Flight Requests")).toBeVisible();
@@ -114,7 +114,7 @@ test("starts dark before render and remains usable at narrow width", async ({ pa
   await page.addInitScript(() => document.documentElement.classList.add("dark"));
   await page.goto("/i5-4-settings.html?theme=dark");
   await expect(page.locator("html")).toHaveClass("dark");
-  await expect(page.getByRole("heading", { name: "Providers / Services" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Services", exact: true })).toBeVisible();
   await assertStyled(page);
   await page.screenshot({
     path: "../../.data/screenshots/i5-4-settings-dark.png",

@@ -407,7 +407,7 @@ function section(
 export const INTERACTION_SPEECH_SECTION = section(
   "I5.interactionSpeech",
   "interaction/Speech",
-  "Interaction / Speech",
+  "Speech",
   ["S3.interaction-speech"],
   [
     booleanControl("stt.enabled", "Enable speech-to-text input through the microphone.", "live"),
@@ -423,7 +423,7 @@ export const INTERACTION_SPEECH_SECTION = section(
 export const PROVIDERS_SERVICES_SECTION = section(
   "I5.providersServices",
   "providers/Services",
-  "Providers / Services",
+  "Services",
   ["S5.providers-services"],
   PROVIDER_SERVICE_CONTROLS,
 );

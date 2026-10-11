@@ -118,6 +118,24 @@ function sectionParts(descriptor: SettingsSectionDescriptor): {
   };
 }
 
+/**
+ * Whether a section matches a search (already trimmed and lower-cased): its title, omp's own name for it (so
+ * "grep & browser" still finds "Grep and Browser"), or a control's label or description.
+ */
+export function sectionMatchesSearch(
+  descriptor: SettingsSectionDescriptor,
+  normalizedSearch: string,
+): boolean {
+  const searchable = [
+    descriptor.title,
+    sectionParts(descriptor).name,
+    ...descriptor.controls.flatMap((control) => [control.label, control.description ?? ""]),
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+  return searchable.includes(normalizedSearch);
+}
+
 function orderedSections(tab: SettingTab): readonly SettingsSectionDescriptor[] {
   return SETTINGS_SECTIONS.filter((descriptor) => sectionParts(descriptor).tab === tab).sort(
     (left, right) => {
@@ -581,15 +599,7 @@ export function SettingsScreen({
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const visibleSections = useMemo(() => {
     if (normalizedSearch.length === 0) return sections;
-    return sections.filter((descriptor) => {
-      const searchable = [
-        descriptor.title,
-        ...descriptor.controls.flatMap((control) => [control.label, control.description ?? ""]),
-      ]
-        .join(" ")
-        .toLocaleLowerCase();
-      return searchable.includes(normalizedSearch);
-    });
+    return sections.filter((descriptor) => sectionMatchesSearch(descriptor, normalizedSearch));
   }, [normalizedSearch, sections]);
   const selectedId = selectedSections[activeTab];
   const activeSection =

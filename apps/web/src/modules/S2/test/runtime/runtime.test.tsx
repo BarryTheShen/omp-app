@@ -523,7 +523,7 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     const { runtime } = createFakeRuntime(SHELL_EVAL_RUNTIMES_SECTION, entries);
     await runtime.read();
     render(<ShellEvalRuntimesSection runtime={runtime} />);
-    await screen.findByRole("heading", { name: "Shell / Eval & Runtimes" });
+    await screen.findByRole("heading", { name: "Eval and Runtimes" });
     expect(secretSummary(secretEntry)).toEqual({ isSecret: true, isSet: true, source: "env" });
     expect(screen.getByTestId("python.interpreter-provenance").textContent).toContain(
       "Source: Set in the environment",

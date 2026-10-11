@@ -74,20 +74,20 @@ realTest(
     await expectStyledSettings(page, "light");
 
     // Execution: the concurrency label has no repeated noun; the async job cap is in plain words.
-    let panel = await openSection(settings, "Tools", "Tools / Execution");
+    let panel = await openSection(settings, "Tools", "Execution");
     const concurrency = panel.getByText("Speculative Execution Concurrency", { exact: true });
     await expect(concurrency).toBeVisible();
     await expect(panel.getByText("Maximum Concurrent Async Jobs", { exact: true })).toBeVisible();
     await capture(page, "s3-2-execution-light.png", concurrency);
 
-    panel = await openSection(settings, "Tools", "Tools / Output Limits");
+    panel = await openSection(settings, "Tools", "Output Limits");
     const tailLines = panel.getByText("Artifact Tail Lines", { exact: true });
     await expect(tailLines).toBeVisible();
     await capture(page, "s3-2-output-limits-light.png", tailLines);
 
     // Todos: the reminder limit label has no repeated noun; the terminal-only note is on screen,
     // and saving a live setting reads "Applied".
-    panel = await openSection(settings, "Tools", "Tools / Todos");
+    panel = await openSection(settings, "Tools", "Todos");
     await expect(panel.getByText("Todo Reminder Limit", { exact: true })).toBeVisible();
     const autoClear = panel.getByText("Todo Auto-Clear Delay (seconds)", { exact: true });
     await expect(autoClear).toBeVisible();
@@ -101,7 +101,7 @@ realTest(
     await capture(page, "s3-2-todos-applied-light.png", applied);
 
     // Extensions: the tool-call timeout reads as a plain description, not developer text.
-    panel = await openSection(settings, "Tools", "Tools / Extensions");
+    panel = await openSection(settings, "Tools", "Extensions");
     const timeout = panel.getByText("Tool Call Handler Timeout (ms)", { exact: true });
     await expect(timeout).toBeVisible();
     await expect(
@@ -113,7 +113,7 @@ realTest(
     await capture(page, "s3-2-extensions-light.png", timeout);
 
     // Subagents: three labels without the repeated noun.
-    panel = await openSection(settings, "Tasks", "Tasks / Subagents");
+    panel = await openSection(settings, "Tasks", "Subagents");
     const middle = panel.getByText("Max Task Recursion Depth", { exact: true });
     await expect(panel.getByText("Max Concurrent Tasks", { exact: true })).toBeVisible({
       timeout: 20_000,
@@ -125,7 +125,7 @@ realTest(
     await capture(page, "s3-2-subagents-soft-light.png", soft);
 
     // Modes: the two terminal-only notes, the editor-and-terminal notes, and the restart status.
-    panel = await openSection(settings, "Tasks", "Tasks / Modes");
+    panel = await openSection(settings, "Tasks", "Modes");
     const goalStatus = panel.getByText("Goal Status in Footer", { exact: true });
     await expect(goalStatus).toBeVisible({ timeout: 20_000 });
     await expect(panel.getByText(TERMINAL_ONLY_NOTE)).toHaveCount(2);
@@ -153,13 +153,13 @@ realTest(
     const settings = await openSettings(page);
     await expectStyledSettings(page, "dark");
 
-    let panel = await openSection(settings, "Tools", "Tools / Todos");
+    let panel = await openSection(settings, "Tools", "Todos");
     const autoClear = panel.getByText("Todo Auto-Clear Delay (seconds)", { exact: true });
     await expect(autoClear).toBeVisible({ timeout: 20_000 });
     await expect(panel.getByText(TERMINAL_ONLY_NOTE)).toHaveCount(1);
     await capture(page, "s3-2-todos-dark.png", autoClear);
 
-    panel = await openSection(settings, "Tasks", "Tasks / Modes");
+    panel = await openSection(settings, "Tasks", "Modes");
     const autosave = panel.getByText("Autosave Plans", { exact: true });
     await expect(autosave).toBeVisible({ timeout: 20_000 });
     await expect(panel.getByText(TERMINAL_AND_EDITOR_NOTE)).toHaveCount(2);
@@ -181,12 +181,12 @@ realTest(
     await page.setViewportSize({ width: 390, height: 844 });
     await expectStyledSettings(page, "dark");
 
-    let panel = await openSection(settings, "Tools", "Tools / Extensions");
+    let panel = await openSection(settings, "Tools", "Extensions");
     const timeout = panel.getByText("Tool Call Handler Timeout (ms)", { exact: true });
     await expect(timeout).toBeVisible({ timeout: 20_000 });
     await capture(page, "s3-2-extensions-narrow.png", timeout);
 
-    panel = await openSection(settings, "Tasks", "Tasks / Modes");
+    panel = await openSection(settings, "Tasks", "Modes");
     const startPlan = panel.getByRole("checkbox", { name: "Start in Plan Mode", exact: true });
     await expect(startPlan).toBeVisible({ timeout: 20_000 });
     await expect(panel.getByText(TERMINAL_ONLY_NOTE)).toHaveCount(2);
