@@ -179,6 +179,10 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     runtimes.push(runtime);
     await runtime.read();
     runtime.stage("read.defaultLimit", { secret: false, value: 500 });
+    // Someone else changed the same setting, so the value omp holds now differs from the one read.
+    state.entries = state.entries.map((entry) =>
+      entry.key === "read.defaultLimit" ? { ...entry, value: 400 } : entry,
+    );
     state.revision = "revision-external";
 
     await expect(runtime.save()).rejects.toMatchObject({ appError: { code: "conflict" } });
@@ -188,7 +192,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
         .conflict?.remote.entries.find((entry) => entry.key === "read.defaultLimit"),
     ).toMatchObject({
       secret: false,
-      value: 300,
+      value: 400,
     });
     runtime.resolveConflict("reload");
     expect(runtime.getSnapshot().staged?.edits).toEqual({});

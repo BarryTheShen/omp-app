@@ -55,7 +55,6 @@ type FakeState = {
   writes: ConfigWriteArgs[];
   scopes: string[];
   listeners: Set<(change: ConfigChanged) => void>;
-  nextWriteFailure: AppFailure | null;
   nextListFailure: AppFailure | null;
   /** Keys omp refuses once: that write fails and nothing is written. */
   refusedKeys: Set<string>;
@@ -68,7 +67,6 @@ function fakeState(): FakeState {
     writes: [],
     scopes: [],
     listeners: new Set(),
-    nextWriteFailure: null,
     nextListFailure: null,
     refusedKeys: new Set(),
   };
@@ -101,11 +99,6 @@ function fakeClient(state: FakeState): AppClient {
           message: "Cannot write configuration: the file changed.",
           retryable: true,
         });
-      }
-      if (state.nextWriteFailure) {
-        const failure = state.nextWriteFailure;
-        state.nextWriteFailure = null;
-        throw failure;
       }
       if (state.refusedKeys.delete(args.key)) {
         throw new AppFailure({
@@ -235,6 +228,14 @@ describe("S1.2 ConfigStore runtime", () => {
     await runtime.read();
     expect(state.scopes).toEqual(["/workspace/project"]);
     runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    // Someone else set the same setting, so the value omp holds now differs from the one read.
+    state.entries[0] = {
+      key: "appearance.mode",
+      secret: false,
+      value: "light",
+      source: "global",
+      overrides: [],
+    };
     state.revision = "revision-external";
     emit(
       state,
@@ -244,7 +245,7 @@ describe("S1.2 ConfigStore runtime", () => {
         {
           key: "appearance.mode",
           secret: false,
-          value: "system",
+          value: "light",
           source: "global",
           overrides: [],
         },
@@ -273,11 +274,15 @@ describe("S1.2 ConfigStore runtime", () => {
     runtimes.push(runtime);
     await runtime.read();
     runtime.stage("appearance.mode", { secret: false, value: "dark" });
-    state.nextWriteFailure = new AppFailure({
-      code: "conflict",
-      message: "changed elsewhere",
-      retryable: true,
-    });
+    // Someone else changed the same setting, so omp refuses the write and the value it holds differs.
+    state.entries[0] = {
+      key: "appearance.mode",
+      secret: false,
+      value: "light",
+      source: "global",
+      overrides: [],
+    };
+    state.revision = "revision-changed";
     await expect(runtime.save()).rejects.toMatchObject({ appError: { code: "conflict" } });
     expect(runtime.getSnapshot().phase).toBe("conflict");
     runtime.resolveConflict("reload");
@@ -333,5 +338,60 @@ describe("S1.2 ConfigStore runtime", () => {
     });
     expect(runtime.getSnapshot().phase).toBe("ready");
     expect(runtime.getSnapshot().unsavedKeys).toEqual([]);
+  });
+
+  test("an outside rewrite that leaves the edited settings alone is not a conflict", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    // omp rewrote the file with the same effective values: the revision moves and no event is sent.
+    state.revision = "revision-rewritten";
+    await runtime.save();
+    expect(state.writes.at(-1)).toMatchObject({
+      key: "appearance.mode",
+      expectedRevision: "revision-rewritten",
+    });
+    expect(runtime.getSnapshot().phase).toBe("ready");
+    expect(runtime.getSnapshot().conflict).toBeNull();
+  });
+
+  test("an outside change to another setting is not a conflict for this section's edits", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    state.revision = "revision-other";
+    emit(
+      state,
+      change("terminal.showImages", "revision-other", {
+        key: "terminal.showImages",
+        secret: false,
+        value: true,
+        source: "global",
+        overrides: [],
+      }),
+    );
+    await settle();
+    expect(runtime.getSnapshot().phase).toBe("editing");
+    expect(runtime.getSnapshot().conflict).toBeNull();
+    expect(runtime.getSnapshot().staged?.edits).toEqual({
+      "appearance.mode": { secret: false, value: "dark" },
+    });
+    await runtime.save();
+    expect(state.writes.at(-1)).toMatchObject({
+      key: "appearance.mode",
+      expectedRevision: "revision-other",
+    });
   });
 });

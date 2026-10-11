@@ -1,4 +1,4 @@
-import { type FSWatcher, statSync, watch } from "node:fs";
+import { type FSWatcher, statSync, type WatchListener, watch } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import {
   consumeSelfWrite,
@@ -15,6 +15,10 @@ export interface FileChangeEvent {
 export interface FileWatcherOptions {
   /** Defaults to 100 ms, matching the app's live-config debounce budget. */
   readonly debounceMs?: number;
+  /** How often the content is checked while no directory watch can run. Defaults to 1000 ms. */
+  readonly pollMs?: number;
+  /** Replaces node:fs `watch`, for tests that simulate a system with no file-watcher slots left. */
+  readonly watchDirectory?: (directory: string, listener: WatchListener<string>) => FSWatcher;
   /** Receives filesystem failures; required so watcher failures never escape as uncaught exceptions. */
   readonly onError: (error: unknown) => void;
 }
@@ -82,6 +86,9 @@ export function watchFile(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let currentHash = readFileHashSync(path);
   const debounceMs = Math.max(0, options.debounceMs ?? 100);
+  const pollMs = Math.max(1, options.pollMs ?? 1000);
+  let poll: ReturnType<typeof setInterval> | undefined;
+  let armFailureReported = false;
   const unregisterSelfWriteConsumer = registerSelfWriteConsumer(path);
   let watcher: FSWatcher | undefined;
   let watchedDirectory = nearestExistingDirectory(directory);
@@ -121,6 +128,24 @@ export function watchFile(
     watcher = undefined;
   };
 
+  const stopPolling = (): void => {
+    if (poll === undefined) return;
+    clearInterval(poll);
+    poll = undefined;
+  };
+
+  // No directory watch can run right now (the system's file-watcher slots are used up, or a started
+  // watch failed). Check the file's content on a timer until one can, so a change still arrives.
+  const startPolling = (): void => {
+    if (disposed || poll !== undefined) return;
+    poll = setInterval(() => {
+      if (disposed) return;
+      armWatcher();
+      if (poll !== undefined) void flush();
+    }, pollMs);
+    poll.unref();
+  };
+
   const armWatcher = (): void => {
     if (disposed) return;
     const nextDirectory = nearestExistingDirectory(directory);
@@ -128,7 +153,7 @@ export function watchFile(
     closeWatcher();
     watchedDirectory = nextDirectory;
     try {
-      watcher = watch(nextDirectory, { persistent: false }, (eventType, changedFilename) => {
+      const onDirectoryEvent: WatchListener<string> = (eventType, changedFilename) => {
         // An exception here would escape the event loop and take the whole server down, so every
         // failure goes to onError (A1.2's contract).
         try {
@@ -143,14 +168,30 @@ export function watchFile(
         } catch (error) {
           reportError(error, options.onError);
         }
+      };
+      const started = options.watchDirectory
+        ? options.watchDirectory(nextDirectory, onDirectoryEvent)
+        : watch(nextDirectory, { persistent: false }, onDirectoryEvent);
+      watcher = started;
+      started.on("error", (error) => {
+        reportError(error, options.onError);
+        if (watcher !== started) return;
+        closeWatcher();
+        startPolling();
       });
-      watcher.on("error", (error) => reportError(error, options.onError));
+      armFailureReported = false;
+      if (poll !== undefined) {
+        stopPolling();
+        schedule();
+      }
     } catch (error) {
       if (isMissingDirectory(error) && nextDirectory !== dirname(nextDirectory)) {
         armWatcher();
         return;
       }
-      reportError(error, options.onError);
+      if (!armFailureReported) reportError(error, options.onError);
+      armFailureReported = true;
+      startPolling();
     }
   };
 
@@ -169,6 +210,7 @@ export function watchFile(
         clearTimeout(timer);
         timer = undefined;
       }
+      stopPolling();
       closeWatcher();
       unregisterSelfWriteConsumer();
     },

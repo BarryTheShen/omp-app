@@ -50,7 +50,7 @@ function ActiveSectionView({
           role="alert"
         >
           <p className="text-warning-surface-foreground text-sm">
-            Another settings writer changed {section.conflict.changedKeys.join(", ")}.
+            Another settings writer changed {section.conflictLabels.join(", ")}.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button

@@ -64,6 +64,8 @@ export type AppearanceSettingsActiveSectionModel = {
   /** Their labels, in the order the section shows them, for the notice that names them. */
   readonly unsavedLabels: readonly string[];
   readonly selectorActions?: "theme" | "images";
+  /** Labels of the settings another writer changed, for the conflict card. */
+  readonly conflictLabels: readonly string[];
 };
 
 export type AppearanceSettingsSelectorModel =
@@ -505,6 +507,10 @@ export function useAppearanceSettingsController({
             conflict: activeSnapshot.conflict,
             applyStatus: activeSnapshot.applyStatus,
             error: activeSnapshot.error?.message,
+            conflictLabels: settingLabels(
+              activeDescriptor,
+              activeSnapshot.conflict?.changedKeys ?? [],
+            ),
             unsavedKeys: activeSnapshot.unsavedKeys,
             unsavedLabels: settingLabels(activeDescriptor, activeSnapshot.unsavedKeys),
             selectorActions:

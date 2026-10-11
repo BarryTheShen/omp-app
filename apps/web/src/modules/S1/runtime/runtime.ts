@@ -15,6 +15,7 @@ import {
   type ConfigChangeSource,
   type ConfigSnapshot,
   type ConfigStoreClient,
+  changedEditKeys,
   commit as commitSection,
   type PreviewResult,
   preview as previewEdit,
@@ -273,6 +274,10 @@ export class SettingsRuntime {
   }
 
   public async save(): Promise<CommitResult> {
+    return this.saveEdits(false);
+  }
+
+  private async saveEdits(retried: boolean): Promise<CommitResult> {
     const staged = this.snapshot.staged;
     if (!staged) throw unavailable("Settings are not loaded yet.");
     if (this.snapshot.conflict) {
@@ -313,7 +318,10 @@ export class SettingsRuntime {
         ),
       };
       if (failure.appError.code === "conflict") {
-        await this.enterConflict(unsaved, failure.appError);
+        // An edit whose setting did not change since it was made is not a conflict: carry the unwritten
+        // edits onto the current revision and save once more.
+        const carried = await this.enterConflict(unsaved, failure.appError);
+        if (carried && !retried) return this.saveEdits(true);
       } else {
         await this.keepUnsaved(unsaved, written, failure.appError);
       }
@@ -361,28 +369,27 @@ export class SettingsRuntime {
       const remote = await readSection(this.client, this.descriptor, this.folder);
       if (operation !== this.operation || this.disposed) return;
       const staged = this.snapshot.staged;
-      if (staged && Object.keys(staged.edits).length > 0) {
+      const changedKeys = staged ? changedEditKeys(staged, remote) : [];
+      if (staged && changedKeys.length > 0) {
         this.commit({
           config: remote,
           phase: "conflict",
-          conflict: {
-            local: staged,
-            remote,
-            changedKeys: [change.key],
-          },
+          conflict: { local: staged, remote, changedKeys },
           error: null,
           lastChange: change,
           unsavedKeys: [],
         });
       } else {
+        const edits = staged?.edits ?? {};
+        // Keys a save left unsaved stay unsaved after an outside change to other settings.
         this.commit({
           config: remote,
-          staged: { snapshot: remote, edits: {} },
-          phase: "ready",
+          staged: { snapshot: remote, edits },
+          phase: Object.keys(edits).length > 0 ? "editing" : "ready",
           conflict: null,
-          error: null,
+          error: this.snapshot.unsavedKeys.length > 0 ? this.snapshot.error : null,
           lastChange: change,
-          unsavedKeys: [],
+          unsavedKeys: this.snapshot.unsavedKeys,
         });
       }
     } catch (error) {
@@ -391,23 +398,39 @@ export class SettingsRuntime {
     }
   }
 
-  private async enterConflict(local: StagedSettings, error: AppError): Promise<void> {
+  /**
+   * Re-reads the section after omp refused a write. Edits whose settings did not change since they were
+   * made are carried onto the current revision, and the save can run again (returns true). A change to
+   * an edited setting is a conflict for the person to resolve (returns false).
+   */
+  private async enterConflict(local: StagedSettings, error: AppError): Promise<boolean> {
     try {
       const remote = await readSection(this.client, this.descriptor, this.folder);
+      const changedKeys = changedEditKeys(local, remote);
+      if (changedKeys.length === 0) {
+        this.commit({
+          config: remote,
+          staged: { snapshot: remote, edits: local.edits },
+          validation: {},
+          phase: "editing",
+          conflict: null,
+          error: null,
+          unsavedKeys: [],
+        });
+        return true;
+      }
       this.commit({
         config: remote,
         phase: "conflict",
-        conflict: {
-          local,
-          remote,
-          changedKeys: Object.keys(local.edits),
-        },
+        conflict: { local, remote, changedKeys },
         error,
         unsavedKeys: [],
       });
+      return false;
     } catch (readError) {
       const failure = asFailure(readError, "Reloading settings after a conflict failed.");
       this.commit({ phase: "error", error: failure.appError });
+      return false;
     }
   }
 

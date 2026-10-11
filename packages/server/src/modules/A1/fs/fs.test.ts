@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { watch } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppFailure } from "@omp-app/contracts";
@@ -26,6 +27,13 @@ async function makeTemporaryDirectory(): Promise<string> {
 async function waitForFilesystemEvents(): Promise<void> {
   // Real fs.watch delivery and debounce timers are the integration under test.
   await Bun.sleep(180);
+}
+
+/** Replaces a file the way an editor or omp does: write a temporary file, then rename it over the target. */
+async function replaceFile(path: string, content: string): Promise<void> {
+  const temporary = `${path}.tmp`;
+  await writeFile(temporary, content);
+  await rename(temporary, path);
 }
 
 afterEach(async () => {
@@ -217,6 +225,52 @@ describe("file watching", () => {
     expect(events).toEqual([hashContent("appeared")]);
     expect(errors).toEqual([]);
     watcher.dispose();
+  });
+
+  test("with no directory watch available, polls the file, reports the failure once, and watches again when one frees up", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "watched.txt");
+    await writeFile(path, "initial");
+    let slotsFree = false;
+    const errors: unknown[] = [];
+    const events: string[] = [];
+    let announce: (() => void) | undefined;
+    const watcher = watchFile(
+      path,
+      (event) => {
+        events.push(event.hash ?? "missing");
+        announce?.();
+      },
+      {
+        debounceMs: 25,
+        pollMs: 5,
+        onError: (error) => errors.push(error),
+        watchDirectory: (directoryToWatch, listener) => {
+          if (!slotsFree) throw Object.assign(new Error("too many open files"), { code: "EMFILE" });
+          return watch(directoryToWatch, { persistent: false }, listener);
+        },
+      },
+    );
+    try {
+      const firstEvent = new Promise<void>((resolve) => {
+        announce = resolve;
+      });
+      await replaceFile(path, "first");
+      await firstEvent;
+      expect(events).toEqual([hashContent("first")]);
+      expect(errors).toMatchObject([{ code: "EMFILE" }]);
+
+      slotsFree = true;
+      const secondEvent = new Promise<void>((resolve) => {
+        announce = resolve;
+      });
+      await replaceFile(path, "second");
+      await secondEvent;
+      expect(events).toEqual([hashContent("first"), hashContent("second")]);
+      expect(errors).toHaveLength(1);
+    } finally {
+      watcher.dispose();
+    }
   });
 });
 

@@ -258,11 +258,14 @@ function silentOutsideChange(store: FakeStore, entry: ConfigEntry): void {
   store.state.revision = `view-revision-outside-${store.state.outsideCount}`;
 }
 
-/** Another writer moves the revision without the change stream reporting it, so only a save finds out. */
-function silentOutsideWrite(store: FakeStore): void {
-  store.state.outsideCount += 1;
-  store.state.revision = `view-revision-outside-${store.state.outsideCount}`;
-}
+/** The Auto-Compact value another writer stores while this section holds an edit to it. */
+const AUTO_COMPACT_OUTSIDE: ConfigEntry = {
+  key: "compaction.enabled",
+  secret: false,
+  value: true,
+  source: "global",
+  overrides: [],
+};
 
 const MID_TURN_OUTSIDE: ConfigEntry = {
   key: "compaction.midTurnEnabled",
@@ -581,7 +584,7 @@ describe("a save that finds a conflict", () => {
     const store = fakeStore(withDefaults(COMPACTION_SECTION, []));
     const section = await renderSection(store, COMPACTION_SECTION);
     fireEvent.click(within(section).getByRole("checkbox", { name: "Auto-Compact" }));
-    silentOutsideWrite(store);
+    silentOutsideChange(store, AUTO_COMPACT_OUTSIDE);
     fireEvent.click(within(section).getByRole("button", { name: "Save changes" }));
 
     const alert = await within(section).findByRole("alert");
@@ -607,7 +610,7 @@ describe("a save that finds a conflict", () => {
     const store = fakeStore(withDefaults(COMPACTION_SECTION, []));
     const section = await renderSection(store, COMPACTION_SECTION);
     fireEvent.click(within(section).getByRole("checkbox", { name: "Auto-Compact" }));
-    silentOutsideWrite(store);
+    silentOutsideChange(store, AUTO_COMPACT_OUTSIDE);
     fireEvent.click(within(section).getByRole("button", { name: "Save changes" }));
 
     const alert = await within(section).findByRole("alert");
@@ -615,8 +618,11 @@ describe("a save that finds a conflict", () => {
 
     expect(
       (within(section).getByRole("checkbox", { name: "Auto-Compact" }) as HTMLInputElement).checked,
-    ).toBe(false);
+    ).toBe(true);
     expect(within(section).queryByRole("alert")).toBeNull();
+    expect(
+      (within(section).getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   test("Cancel puts back the stored values", async () => {

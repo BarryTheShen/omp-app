@@ -440,17 +440,21 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
   test("CAS conflicts expose the remote value and require an explicit retry choice", async () => {
     const { runtime, state } = createFakeRuntime(SHELL_BASH_SECTION);
     await runtime.read();
-    runtime.stage("bash.allowCompoundCommands", { secret: false, value: true });
+    runtime.stage("bash.direnvLoadTimeoutMs", { secret: false, value: 45_000 });
+    // Someone else changed the same setting, and the file's revision moved with it.
+    state.entries = state.entries.map((entry) =>
+      entry.key === "bash.direnvLoadTimeoutMs" ? { ...entry, value: 60_000 } : entry,
+    );
     state.revision = "revision-external";
     await expect(runtime.save()).rejects.toMatchObject({ appError: { code: "conflict" } });
     expect(runtime.getSnapshot().phase).toBe("conflict");
     expect(
       runtime
         .getSnapshot()
-        .conflict?.remote.entries.find((entry) => entry.key === "bash.allowCompoundCommands"),
+        .conflict?.remote.entries.find((entry) => entry.key === "bash.direnvLoadTimeoutMs"),
     ).toMatchObject({
       secret: false,
-      value: false,
+      value: 60_000,
     });
     expect(state.writes[0]?.expectedRevision).toBe("revision-1");
 

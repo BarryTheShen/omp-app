@@ -386,6 +386,20 @@ export function effectiveEntry(snapshot: ConfigSnapshot, key: string): ConfigEnt
   return snapshot.entries.find((entry) => entry.key === key);
 }
 
+/**
+ * The edited keys whose stored value differs from the snapshot each edit was made against: the only
+ * changes a person could be overwriting. A secret's value cannot be read back, so for a secret edit
+ * any change to the file counts.
+ */
+export function changedEditKeys(staged: StagedSettings, remote: ConfigSnapshot): readonly string[] {
+  return Object.keys(staged.edits).filter((key) => {
+    const before = effectiveEntry(staged.snapshot, key);
+    const now = effectiveEntry(remote, key);
+    if (JSON.stringify(before) !== JSON.stringify(now)) return true;
+    return (before?.secret ?? false) && remote.revision !== staged.snapshot.revision;
+  });
+}
+
 /** The labels of the settings in `keys`, in the order the section shows them. */
 export function settingLabels(
   descriptor: SettingsSectionDescriptor,
