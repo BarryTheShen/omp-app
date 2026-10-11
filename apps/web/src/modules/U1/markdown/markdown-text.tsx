@@ -50,6 +50,8 @@ function Link({
       <a {...props} href={href} rel="noopener noreferrer" target="_blank">
         {children}
       </a>
+      {/* The line may break here, before the address, so the address is not split inside its scheme (issue 944). */}
+      <wbr />
       <span className="text-muted-foreground ms-1 text-xs" data-link-destination>
         ({href})
       </span>

@@ -62,6 +62,16 @@ describe("U1.4 Markdown renderer", () => {
     expect(screen.getByText("(https://example.test/docs)")).toBeTruthy();
   });
 
+  test("a link's address follows a break opportunity, so a narrow line breaks before it and not inside its scheme", async () => {
+    render(<MarkdownHarness text="[Read docs](https://example.test/docs)" />);
+    const link = await screen.findByRole("link", { name: "Read docs" });
+    const destination = screen.getByText("(https://example.test/docs)");
+    expect(link.nextElementSibling?.tagName).toBe("WBR");
+    expect(link.nextElementSibling?.nextElementSibling).toBe(destination);
+    // The break opportunity adds no text: what is copied stays the same.
+    expect(link.parentElement?.textContent).toBe("Read docs(https://example.test/docs)");
+  });
+
   test("renders partial fences and GFM tables without a second renderer", async () => {
     render(<MarkdownHarness text={"```ts\nconst value = 1"} />);
     expect(document.querySelector("[data-code-view]")).toBeTruthy();
