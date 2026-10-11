@@ -79,7 +79,10 @@ describe("D1 model settings sections", () => {
     expect(modelSettingsSections[1]?.controls.map((control) => control.key)).toContain(
       "temperature",
     );
-    expect(modelSettingsSections[2]?.controls.map((control) => control.key)).toContain(
+    expect(modelSettingsSections[0]?.controls.map((control) => control.key)).toContain(
+      "modelRoleStorage",
+    );
+    expect(modelSettingsSections[2]?.controls.map((control) => control.key)).not.toContain(
       "modelRoleStorage",
     );
     expect(modelSettingsSections[3]?.controls.map((control) => control.key)).toContain(

@@ -203,6 +203,12 @@ export const modelThinkingSection = section("D1.modelThinking", "Thinking", [
     ["xhigh", "max"],
     "Highest level automatic thinking may choose.",
   ),
+  enumControl(
+    "modelRoleStorage",
+    "Model Role Storage",
+    ["global", "project"],
+    "Where role assignments and the saved default are persisted.",
+  ),
 ]);
 
 export const modelSamplingSection = section("D1.modelSampling", "Sampling", [
@@ -272,12 +278,6 @@ export const modelSamplingSection = section("D1.modelSampling", "Sampling", [
 ]);
 
 export const modelPromptSection = section("D1.modelPrompt", "Prompt", [
-  enumControl(
-    "modelRoleStorage",
-    "Model Role Storage",
-    ["global", "project"],
-    "Where role assignments and the saved default are persisted.",
-  ),
   enumControl(
     "inlineToolDescriptors",
     "Inline Tool Descriptors",

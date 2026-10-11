@@ -130,7 +130,7 @@ export const D1_DESCRIPTORS = [
     title: "Model / Prompt settings",
     covers: ["S2.model-prompt"],
     requires: ["host.config"],
-    key: "modelRoleStorage",
+    key: "inlineToolDescriptors",
     section: "model/Prompt",
   },
   {
