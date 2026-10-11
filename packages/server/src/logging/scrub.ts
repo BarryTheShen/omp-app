@@ -11,6 +11,14 @@ const REDACTED = "[redacted]";
 const SECRET_KEY_VALUE =
   /\b(token|access[_-]?token|api[_-]?key|apikey|secret|password|passwd|authorization|cookie)(["']?\s*[=:]\s*["']?)([^\s"',;&}]{6,})/gi;
 
+/** A bearer token, `Bearer <token>`, after an `Authorization:` header or alone. It runs before the key-value
+ * rule, which would take the word `Bearer` after `Authorization:` as the secret and leave the token behind. */
+const BEARER_TOKEN = /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi;
+
+/** The password in `scheme://user:password@host`, as git prints remote URLs. The user and the host stay, so the
+ * line still says where it failed. It runs before the key-value rule. */
+const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s/@]+(?=@)/gi;
+
 const SECRET_PATTERNS: readonly RegExp[] = [
   // Provider and service keys: OpenAI/Anthropic (sk-...), GitHub, Google, Slack, AWS.
   /\bsk-[A-Za-z0-9_-]{16,}/g,
@@ -19,8 +27,6 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /\bAIza[0-9A-Za-z_-]{30,}/g,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}/g,
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
-  // `Authorization: Bearer <token>` and bare bearer tokens.
-  /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi,
   // The launch link's fragment: `#token=...`.
   /#token=[^\s&"']+/gi,
   // Anything that looks like a long random secret: 32+ characters mixing lower case, upper case and
@@ -34,6 +40,8 @@ export function scrubText(text: string, known: readonly string[] = []): string {
   for (const secret of known) {
     if (secret.length >= 6) result = result.split(secret).join(REDACTED);
   }
+  result = result.replace(BEARER_TOKEN, REDACTED);
+  result = result.replace(URL_PASSWORD, `$1${REDACTED}`);
   result = result.replace(SECRET_KEY_VALUE, `$1$2${REDACTED}`);
   for (const pattern of SECRET_PATTERNS) result = result.replace(pattern, REDACTED);
   return result;

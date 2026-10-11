@@ -37,7 +37,7 @@ interface PendingCall {
 
 const INTERNAL_ERROR: AppError = {
   code: "internal",
-  message: "The port handler failed",
+  message: "The app ran into an unexpected problem.",
   retryable: false,
 };
 
@@ -65,6 +65,15 @@ function appErrorFromUnknown(error: unknown): AppError {
     if (parsed.success) return parsed.data;
   }
   return INTERNAL_ERROR;
+}
+
+/** The technical detail behind an AppFailure, for the debug log only, never the reply: the cause's code or
+ * name, and its message. The logger scrubs and cuts it like every other field. */
+function causeFields(cause: unknown): { readonly cause_code?: string; readonly cause?: string } {
+  if (cause === undefined) return {};
+  if (!(cause instanceof Error)) return { cause: String(cause) };
+  const code = "code" in cause && typeof cause.code === "string" ? cause.code : cause.name;
+  return { cause_code: code, cause: cause.message };
 }
 
 function decodeFrame(text: string | ArrayBuffer | Uint8Array): unknown {
@@ -303,6 +312,7 @@ export class DispatcherSession {
           code: error.appError.code,
           omp: error.appError.omp?.code,
           message: error.appError.message,
+          ...causeFields(error.cause),
         });
       }
       this.#sendError(id, appErrorFromUnknown(error));

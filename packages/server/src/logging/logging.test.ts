@@ -61,6 +61,8 @@ describe("scrubText", () => {
       "3bf5582874c60b97243cac35851bc7771b224f39",
       "a".repeat(64),
       "http://127.0.0.1:4317/ws",
+      "https://github.com/owner/repo.git",
+      "ssh://git@github.com/owner/repo.git",
     ];
     for (const text of kept) expect(scrubText(text)).toBe(text);
   });
@@ -71,6 +73,22 @@ describe("scrubText", () => {
     );
     // A secret too short to be one is left alone: replacing "a" would wreck the line.
     expect(scrubText("a b c", ["a"])).toBe("a b c");
+  });
+
+  test("removes a bearer token after an Authorization header, and keeps the header's name", () => {
+    expect(scrubText("Authorization: Bearer abcdefghijklmnop1234")).toBe(
+      "Authorization: [redacted]",
+    );
+  });
+
+  test("removes the password from a URL with credentials, and keeps the user and host", () => {
+    expect(
+      scrubText(
+        "unable to access 'https://alice:hunter2pass@github.com/owner/repo.git/': The requested URL returned error: 403",
+      ),
+    ).toBe(
+      "unable to access 'https://alice:[redacted]@github.com/owner/repo.git/': The requested URL returned error: 403",
+    );
   });
 });
 

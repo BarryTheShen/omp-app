@@ -90,15 +90,22 @@ function errorCode(error: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
+/** The catalog's own failure for a folder it cannot read: one plain sentence, the cause kept for the debug log. */
+function catalogFailure(error: unknown): AppFailure {
+  const denied = errorCode(error) === "EACCES" || errorCode(error) === "EPERM";
+  return new AppFailure(
+    {
+      code: denied ? "permission" : "internal",
+      message: "Unable to read the installed extensions.",
+      retryable: true,
+    },
+    { cause: error },
+  );
+}
+
 function reportError(callback: ExtensionCatalogOptions["onError"], error: unknown): void {
   if (!callback) return;
-  const appError = isAppFailure(error)
-    ? error
-    : failure(
-        errorCode(error) === "EACCES" || errorCode(error) === "EPERM" ? "permission" : "internal",
-        "Unable to refresh extension catalog.",
-        true,
-      );
+  const appError = isAppFailure(error) ? error : catalogFailure(error);
   try {
     callback(appError);
   } catch {
@@ -281,7 +288,7 @@ async function listChildren(path: string): Promise<string[]> {
   } catch (error) {
     const code = errorCode(error);
     if (code === "ENOENT" || code === "ENOTDIR") return [];
-    throw error;
+    throw catalogFailure(error);
   }
 }
 
@@ -676,7 +683,7 @@ export class ExtensionCatalogService {
     } catch (error) {
       const code = errorCode(error);
       if (code === "ENOENT" || code === "ENOTDIR") return false;
-      throw error;
+      throw catalogFailure(error);
     }
   }
 

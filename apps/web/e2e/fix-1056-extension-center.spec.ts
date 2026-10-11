@@ -10,9 +10,9 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
 
 const FAKE_EXTENSION = "fake-catalog-extension.ts";
 const FAKE_SOURCE = "export default function fakeCatalogExtension() {}\n";
-/** The panel's heading, and the sentence the server returns for a catalog that cannot be read (its port handler's). */
+/** The panel's heading, and the sentence the catalog gives for a folder it cannot read. */
 const FAILED_HEADING = "Unable to load this panel";
-const FAILED_SENTENCE = "The port handler failed";
+const FAILED_SENTENCE = "Unable to read the installed extensions.";
 
 /** Opens Settings from the header and selects its Tools tab, where the control center sits. */
 async function openToolsTab(page: Page): Promise<void> {
