@@ -59,6 +59,8 @@ describe("TranscriptDisplayPolicy", () => {
       expandTools: false,
       setThinking: () => undefined,
       toggleThinking: () => undefined,
+      toggleTools: () => undefined,
+      toggleExpandTools: () => undefined,
     };
 
     expect(shouldRenderReasoning({ active: true, policy })).toBe(true);

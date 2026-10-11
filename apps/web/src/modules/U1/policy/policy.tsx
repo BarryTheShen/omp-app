@@ -1,4 +1,3 @@
-import type { ShortcutDescriptor } from "@omp-app/contracts";
 import {
   createContext,
   type ReactNode,
@@ -8,17 +7,6 @@ import {
   useMemo,
   useState,
 } from "react";
-
-export const THINKING_VISIBILITY_SHORTCUT_DESCRIPTOR = {
-  id: "U1.thinking.toggle",
-  owner: "U1",
-  title: "Toggle thinking",
-  kind: "shortcut",
-  chord: "Alt+T",
-  scope: "transcript",
-  covers: [],
-  requires: [],
-} as const satisfies ShortcutDescriptor;
 
 export interface ThinkingVisibilityStore {
   get(key: string): boolean | undefined;
@@ -45,6 +33,10 @@ export interface TranscriptDisplayPolicy {
   readonly storageError?: string;
   readonly setThinking: (thinking: "visible" | "hidden") => void;
   readonly toggleThinking: () => void;
+  /** Shows or hides tool activity (omp's app.tools.toggleVisibility). Held for this chat's view only. */
+  readonly toggleTools: () => void;
+  /** Expands or collapses every tool output (omp's app.tools.expand). Held for this chat's view only. */
+  readonly toggleExpandTools: () => void;
 }
 
 export interface TranscriptDisplayPolicyProviderProps {
@@ -71,6 +63,8 @@ const DEFAULT_POLICY: TranscriptDisplayPolicy = {
   expandTools: false,
   setThinking: () => undefined,
   toggleThinking: () => undefined,
+  toggleTools: () => undefined,
+  toggleExpandTools: () => undefined,
 };
 const TranscriptDisplayPolicyContext = createContext<TranscriptDisplayPolicy>(DEFAULT_POLICY);
 
@@ -122,6 +116,8 @@ export function TranscriptDisplayPolicyProvider({
   const [activeThreadId, setActiveThreadId] = useState(threadId);
   const [thinking, setThinking] = useState<"visible" | "hidden">(initial.value);
   const [storageError, setStorageError] = useState<string | undefined>(initial.error);
+  const [tools, setTools] = useState<"visible" | "hidden">("visible");
+  const [expandTools, setExpandTools] = useState(false);
 
   useEffect(() => {
     if (activeThreadId === threadId) return;
@@ -129,6 +125,8 @@ export function TranscriptDisplayPolicyProvider({
     setActiveThreadId(threadId);
     setThinking(next.value);
     setStorageError(next.error);
+    setTools("visible");
+    setExpandTools(false);
   }, [activeThreadId, resolvedStorage, threadId]);
 
   useEffect(() => {
@@ -146,17 +144,34 @@ export function TranscriptDisplayPolicyProvider({
     () => setThinking((value) => (value === "visible" ? "hidden" : "visible")),
     [],
   );
+  const toggleTools = useCallback(
+    () => setTools((value) => (value === "visible" ? "hidden" : "visible")),
+    [],
+  );
+  const toggleExpandTools = useCallback(() => setExpandTools((value) => !value), []);
   const value = useMemo<TranscriptDisplayPolicy>(
     () => ({
       threadId,
       thinking,
-      tools: "visible",
-      expandTools: false,
+      tools,
+      expandTools,
       storageError,
       setThinking: setThinkingValue,
       toggleThinking,
+      toggleTools,
+      toggleExpandTools,
     }),
-    [setThinkingValue, storageError, thinking, threadId, toggleThinking],
+    [
+      setThinkingValue,
+      storageError,
+      thinking,
+      threadId,
+      tools,
+      expandTools,
+      toggleThinking,
+      toggleTools,
+      toggleExpandTools,
+    ],
   );
 
   return (

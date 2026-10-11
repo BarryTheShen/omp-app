@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useShortcutRegistry, useShortcutScope } from "@/shortcuts";
 import type { ShortcutAction, ShortcutRegistry } from "@/shortcuts/registry";
+import { useTranscriptDisplayPolicy } from "../policy/policy";
 import { U1ShortcutDescriptors } from "../registry/shortcuts";
 
 export interface U1ShortcutActions {
@@ -44,4 +45,28 @@ export function TranscriptShortcutScope({ actions, children }: TranscriptShortcu
   useShortcutScope("transcript");
   useEffect(() => registerU1ShortcutActions(registry, actions), [actions, registry]);
   return <>{children}</>;
+}
+
+interface TranscriptShortcutsProps {
+  /** Jumps the transcript to its latest message (the thread's scroll controller). */
+  readonly followLatest: () => void;
+  readonly children: ReactNode;
+}
+
+/**
+ * The transcript's shortcuts, wired to the display policy above it: Alt+T shows or hides thinking, Mod+O expands or
+ * collapses tool output, Mod+Shift+O shows or hides tool activity, and Alt+L jumps to the latest message.
+ */
+export function TranscriptShortcuts({ followLatest, children }: TranscriptShortcutsProps) {
+  const { toggleThinking, toggleTools, toggleExpandTools } = useTranscriptDisplayPolicy();
+  const actions = useMemo<U1ShortcutActions>(
+    () => ({
+      resetDisplay: followLatest,
+      toggleThinking,
+      toggleToolExpansion: toggleExpandTools,
+      toggleToolVisibility: toggleTools,
+    }),
+    [followLatest, toggleExpandTools, toggleThinking, toggleTools],
+  );
+  return <TranscriptShortcutScope actions={actions}>{children}</TranscriptShortcutScope>;
 }

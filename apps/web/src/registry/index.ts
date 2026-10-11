@@ -38,8 +38,8 @@ import { WEB_FETCH_DESCRIPTOR } from "../modules/T4/web-fetch";
 import { T5_TOOL_DESCRIPTORS } from "../modules/T5/descriptor";
 import { T6_TOOL_DESCRIPTORS } from "../modules/T6/descriptor";
 import { T7_TOOL_DESCRIPTORS } from "../modules/T7/descriptor";
-import { THINKING_VISIBILITY_SHORTCUT_DESCRIPTOR } from "../modules/U1/policy/policy";
 import { U1MessageDescriptors } from "../modules/U1/registry/messages";
+import { U1ShortcutDescriptors } from "../modules/U1/registry/shortcuts";
 import { U2Descriptors } from "../modules/U2/descriptors";
 import { U2_EXTERNAL_EDITOR_SHORTCUT } from "../modules/U2/shortcuts/shortcuts";
 import { U3_BASH_DESCRIPTOR } from "../modules/U3/tool-card/bash";
@@ -100,7 +100,7 @@ function withoutRenderer(descriptor: ToolRegistryDescriptor): Descriptor {
 
 export const DESCRIPTORS: readonly Descriptor[] = [
   ...U1MessageDescriptors,
-  THINKING_VISIBILITY_SHORTCUT_DESCRIPTOR,
+  ...U1ShortcutDescriptors,
   ...U2Descriptors,
   ...D1_DESCRIPTORS,
   U2_EXTERNAL_EDITOR_SHORTCUT,

@@ -1,5 +1,6 @@
 import { cn } from "cn";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { useTranscriptDisplayPolicy } from "@/modules/U1/policy/policy";
 import { Button } from "../../../components/ui/button";
 import {
   Collapsible,
@@ -86,6 +87,13 @@ export function ToolCard({
   const remembered = rememberedDisclosure.get(state.toolCallId);
   const [open, setOpen] = useState(remembered ?? state.defaultOpen);
   const [expandedOutput, setExpandedOutput] = useState(false);
+  const policy = useTranscriptDisplayPolicy();
+  // A change of the transcript's expand-all flag expands or collapses this card's own choice too.
+  const [seenExpandTools, setSeenExpandTools] = useState(policy.expandTools);
+  if (seenExpandTools !== policy.expandTools) {
+    setSeenExpandTools(policy.expandTools);
+    setExpandedOutput(false);
+  }
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "copiedShown" | "failed">(
     "idle",
   );
@@ -115,7 +123,8 @@ export function ToolCard({
   const cut = outputCutOf(state.result ?? state.partialResult);
   const contentRef = useRef<HTMLDivElement>(null);
   const full = useFullOutputFocus(cut, contentRef, "[data-u3-show-all]");
-  const output = previewOutput(resultRaw, state.outputMeta, expandedOutput);
+  const outputExpanded = expandedOutput || policy.expandTools;
+  const output = previewOutput(resultRaw, state.outputMeta, outputExpanded);
   const summary = suppliedSummary ?? summarize(state);
 
   const rememberOpen = (nextOpen: boolean) => {
@@ -148,6 +157,7 @@ export function ToolCard({
     await onShowMore?.(state);
   };
 
+  if (policy.tools === "hidden") return null;
   const Icon = status.icon;
   return (
     <Collapsible
@@ -254,7 +264,7 @@ export function ToolCard({
                 data-slot="u3-tool-card-truncation"
               >
                 <span>{truncationLabel(state.outputMeta)}</span>
-                {!expandedOutput && (
+                {!outputExpanded && (
                   <Button size="xs" type="button" variant="outline" onClick={() => void showMore()}>
                     Show more
                   </Button>

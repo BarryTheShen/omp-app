@@ -1,9 +1,14 @@
 import { normalizeChord } from "@omp-app/contracts";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ShortcutRegistry, ShortcutRegistryProvider } from "@/shortcuts";
+import {
+  MemoryThinkingVisibilityStore,
+  TranscriptDisplayPolicyProvider,
+  useTranscriptDisplayPolicy,
+} from "../../policy/policy";
 import { U1ShortcutDescriptors } from "../../registry/shortcuts";
-import { TranscriptShortcutScope } from "../../shortcuts";
+import { TranscriptShortcutScope, TranscriptShortcuts } from "../../shortcuts";
 
 function keyEvent(key: string, options: Partial<KeyboardEventInit> = {}): KeyboardEvent {
   return new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...options });
@@ -120,5 +125,29 @@ describe("U1 transcript shortcuts", () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(actions.toggleThinking).not.toHaveBeenCalled();
+  });
+
+  test("the policy-wired transcript scope turns Alt+T into the policy's thinking toggle", () => {
+    function ThinkingState() {
+      const policy = useTranscriptDisplayPolicy();
+      return <output data-testid="thinking">{policy.thinking}</output>;
+    }
+    render(
+      <ShortcutRegistryProvider descriptors={U1ShortcutDescriptors}>
+        <TranscriptDisplayPolicyProvider
+          storage={new MemoryThinkingVisibilityStore()}
+          threadId="thread-alt-t"
+        >
+          <TranscriptShortcuts followLatest={vi.fn()}>
+            <ThinkingState />
+          </TranscriptShortcuts>
+        </TranscriptDisplayPolicyProvider>
+      </ShortcutRegistryProvider>,
+    );
+    expect(screen.getByTestId("thinking").textContent).toBe("visible");
+    act(() => {
+      window.dispatchEvent(keyEvent("T", { altKey: true }));
+    });
+    expect(screen.getByTestId("thinking").textContent).toBe("hidden");
   });
 });

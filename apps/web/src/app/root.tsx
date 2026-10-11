@@ -86,12 +86,14 @@ import {
 import { createNativeRemoteThreadListAdapter, deleteChatFile } from "@/modules/R1/remote";
 import { type NewChatStatus, SessionCatalogSidebar } from "@/modules/R1/ui";
 import { MessageParts } from "@/modules/U1/parts";
+import { TranscriptDisplayPolicyProvider } from "@/modules/U1/policy";
 import {
   type ReadingPlace,
   readStoredReadingPlace,
   ScrollFollowControls,
   useThreadScrollController,
 } from "@/modules/U1/scroll";
+import { TranscriptShortcuts } from "@/modules/U1/shortcuts";
 import { ThreadShell, TurnCancelScope } from "@/modules/U1/thread";
 import { type ToolRendererResolver, ToolRendererResolverContext } from "@/modules/U1/tool-slots";
 import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
@@ -1193,59 +1195,71 @@ function ActiveThreadReady({
               }
               transcript={
                 store && threadId ? (
-                  <div className="h-full min-h-0" ref={transcriptRootRef}>
-                    <ThreadShell
-                      autoScroll
-                      credentialActions={credentialActions}
-                      readingPlace={{
-                        threadId,
-                        resumeAt: resumePlace,
-                        historyLoading: history.isLoading,
-                      }}
-                      footer={
-                        <>
-                          {area("threadFooter")}
-                          {area("threadOverlay")}
-                        </>
-                      }
-                      onLoadOlder={onLoadOlder}
-                      onLoadFullOutput={onLoadFullOutput}
-                      onRestartOmp={restartOmp}
-                      slots={{
-                        renderMessage: (message, renderNested) => {
-                          const branchSummary = branchSummaryOfRow(message);
-                          if (branchSummary !== undefined)
-                            return <BranchSummaryRow message={message} summary={branchSummary} />;
-                          return (
-                            <MessageParts
-                              message={message}
-                              actions={rowActions(message)}
-                              renderNested={(part) =>
-                                part.messages === undefined
-                                  ? undefined
-                                  : renderNested?.(part.messages, part.toolCallId, part.toolName)
-                              }
-                              toolRenderers={toolRenderers}
-                            />
-                          );
-                        },
-                        renderNested: (messages, taskId, toolName) => {
-                          const parsedTaskId = ToolCallId.safeParse(taskId);
-                          return (
-                            <NestedTranscript
-                              depth={0}
-                              key={taskId}
-                              messages={messages}
-                              parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
-                              taskName={toolName}
-                              toolRenderers={toolRenderers}
-                            />
-                          );
-                        },
-                      }}
-                      store={store}
-                    />
-                  </div>
+                  <TranscriptDisplayPolicyProvider threadId={threadId}>
+                    <TranscriptShortcuts followLatest={scrollController.followLatest}>
+                      <div className="h-full min-h-0" ref={transcriptRootRef}>
+                        <ThreadShell
+                          autoScroll
+                          credentialActions={credentialActions}
+                          readingPlace={{
+                            threadId,
+                            resumeAt: resumePlace,
+                            historyLoading: history.isLoading,
+                          }}
+                          footer={
+                            <>
+                              {area("threadFooter")}
+                              {area("threadOverlay")}
+                            </>
+                          }
+                          onLoadOlder={onLoadOlder}
+                          onLoadFullOutput={onLoadFullOutput}
+                          onRestartOmp={restartOmp}
+                          slots={{
+                            renderMessage: (message, renderNested) => {
+                              const branchSummary = branchSummaryOfRow(message);
+                              if (branchSummary !== undefined)
+                                return (
+                                  <BranchSummaryRow message={message} summary={branchSummary} />
+                                );
+                              return (
+                                <MessageParts
+                                  message={message}
+                                  actions={rowActions(message)}
+                                  renderNested={(part) =>
+                                    part.messages === undefined
+                                      ? undefined
+                                      : renderNested?.(
+                                          part.messages,
+                                          part.toolCallId,
+                                          part.toolName,
+                                        )
+                                  }
+                                  toolRenderers={toolRenderers}
+                                />
+                              );
+                            },
+                            renderNested: (messages, taskId, toolName) => {
+                              const parsedTaskId = ToolCallId.safeParse(taskId);
+                              return (
+                                <NestedTranscript
+                                  depth={0}
+                                  key={taskId}
+                                  messages={messages}
+                                  parentTaskId={
+                                    parsedTaskId.success ? parsedTaskId.data : undefined
+                                  }
+                                  taskName={toolName}
+                                  toolRenderers={toolRenderers}
+                                />
+                              );
+                            },
+                          }}
+                          store={store}
+                        />
+                      </div>
+                    </TranscriptShortcuts>
+                  </TranscriptDisplayPolicyProvider>
                 ) : (
                   <EmptyTranscript
                     copy={emptyStateCopy({ opening: history.isLoading, error: history.error })}

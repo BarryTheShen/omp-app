@@ -1,6 +1,7 @@
 import type { OmpWire } from "@omp-app/contracts";
 import { useContext, useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { useTranscriptDisplayPolicy } from "@/modules/U1/policy/policy";
 import { TurnCancelContext } from "@/modules/U1/thread";
 import { Button } from "../../../components/ui/button";
 import { Icons } from "../../../tokens";
@@ -401,7 +402,15 @@ function BashOutput({
   readonly onCancel?: () => void | Promise<void>;
   readonly onCopy?: CopyHandler;
 }) {
+  const policy = useTranscriptDisplayPolicy();
   const [expanded, setExpanded] = useState(false);
+  const outputExpanded = expanded || policy.expandTools;
+  // A change of the transcript's expand-all flag expands or collapses this output's own choice too.
+  const [seenExpandTools, setSeenExpandTools] = useState(policy.expandTools);
+  if (seenExpandTools !== policy.expandTools) {
+    setSeenExpandTools(policy.expandTools);
+    setExpanded(false);
+  }
   const outputRef = useRef<HTMLDivElement>(null);
   const full = useFullOutputFocus(cut, outputRef, "[data-u3-show-all]");
   if (result === undefined) {
@@ -424,7 +433,7 @@ function BashOutput({
   if ((state.phase === "error" || state.phase === "cancelled") && repeatsBanner(result))
     return null;
   const preview = previewOutput(result.output);
-  const output = expanded ? result.output : preview.text;
+  const output = outputExpanded ? result.output : preview.text;
   const shortened = shortenedNote(result);
   // While the app holds part of the output, the note below says so once and "Load full output" is the next
   // step. A "Show all" here would show only the loaded lines, so the preview controls wait for the full text.
@@ -490,8 +499,8 @@ function BashOutput({
           data-slot="u3-bash-shown"
         >
           {shortened !== undefined && <span>{shortened}</span>}
-          {previewControls && !expanded && <span>{shownNote}</span>}
-          {previewControls && (
+          {previewControls && !outputExpanded && <span>{shownNote}</span>}
+          {previewControls && !policy.expandTools && (
             <Button
               className="w-fit"
               data-u3-show-all

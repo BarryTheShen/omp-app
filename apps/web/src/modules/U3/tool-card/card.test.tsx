@@ -1,6 +1,11 @@
 import type { ToolCallId } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  MemoryThinkingVisibilityStore,
+  TranscriptDisplayPolicyProvider,
+  useTranscriptDisplayPolicy,
+} from "@/modules/U1/policy/policy";
 import { ToolCard } from "./card";
 import type { ToolCardPhase, ToolCardState } from "./contract";
 import { FullOutputProvider } from "./full-output";
@@ -252,5 +257,54 @@ describe("ToolCard output the app holds in part", () => {
 
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show all 40 lines" }));
     expect(screen.getByText("Full output loaded")).toBeTruthy();
+  });
+});
+
+/** Buttons that call the transcript policy's two tool toggles, inside the provider the cards read. */
+function PolicyControls() {
+  const policy = useTranscriptDisplayPolicy();
+  return (
+    <>
+      <button type="button" onClick={policy.toggleTools}>
+        Toggle tool activity
+      </button>
+      <button type="button" onClick={policy.toggleExpandTools}>
+        Toggle tool output
+      </button>
+    </>
+  );
+}
+
+describe("ToolCard under the transcript policy", () => {
+  test("the policy expands a card's output and hides the card, and each toggle reverses", () => {
+    const result = Array.from({ length: 20 }, (_, index) => `line-${index}`).join("\n");
+    const card = {
+      ...state("success", "policy"),
+      result,
+      outputMeta: {
+        truncation: { direction: "tail" as const, reason: "lines" as const, omittedLines: 8 },
+      },
+    };
+    render(
+      <TranscriptDisplayPolicyProvider
+        storage={new MemoryThinkingVisibilityStore()}
+        threadId="card-policy"
+      >
+        <PolicyControls />
+        <ToolCard state={card} />
+      </TranscriptDisplayPolicyProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
+    expect(screen.getByRole("button", { name: "Show more" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle tool output" }));
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle tool output" }));
+    expect(screen.getByRole("button", { name: "Show more" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle tool activity" }));
+    expect(screen.queryByTestId("tool-card-policy")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle tool activity" }));
+    expect(screen.getByTestId("tool-card-policy")).toBeTruthy();
   });
 });
