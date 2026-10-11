@@ -99,4 +99,31 @@ describe("createDraftBuffer", () => {
     ).not.toThrow();
     expect(reports).toHaveLength(1);
   });
+
+  test("keeps a scope's earlier draft until it is cleared, without touching its unsaved text", () => {
+    const storage = new MemoryDraftStorage();
+    const buffer = createDraftBuffer(storage, () => undefined);
+    const earlier = { text: "earlier", attachments: [attachment], failedSends: [] };
+
+    buffer.writeReplaced(folderScope, earlier);
+
+    expect(createDraftBuffer(storage, () => undefined).readReplaced(folderScope)).toEqual(earlier);
+    expect(buffer.read(folderScope)).toBeNull();
+    buffer.clearReplaced(folderScope);
+    expect(buffer.readReplaced(folderScope)).toBeNull();
+  });
+
+  test("drops and reports a stored earlier draft that is not a draft", () => {
+    const storage = new MemoryDraftStorage();
+    const reports: unknown[] = [];
+    const buffer = createDraftBuffer(storage, (error) => reports.push(error));
+    buffer.writeReplaced(folderScope, { text: "earlier", attachments: [], failedSends: [] });
+    for (const key of storage.keys()) {
+      storage.setItem(key, JSON.stringify({ text: "not the stored shape" }));
+    }
+
+    expect(buffer.readReplaced(folderScope)).toBeNull();
+    expect(storage.keys()).toEqual([]);
+    expect(reports).toHaveLength(1);
+  });
 });

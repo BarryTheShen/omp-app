@@ -2,7 +2,7 @@ import type { AttachmentRef, Draft, DraftChanged, DraftScope, Revision } from "@
 import { AppFailure, FolderPath } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
-import { createDraftBuffer, type DraftBufferStorage } from "./draft-buffer";
+import { createDraftBuffer, type DraftBuffer, type DraftBufferStorage } from "./draft-buffer";
 import {
   DraftController,
   type DraftLifecycleTarget,
@@ -788,6 +788,173 @@ describe("DraftController: a failed step and a conflict", () => {
     expect(controller.getSnapshot()).toMatchObject({
       status: "conflict",
       conflict: { local: { text: "local text" }, remote: { text: "remote text" } },
+    });
+  });
+});
+
+describe("DraftController: an earlier draft that text typed before it loaded would replace", () => {
+  const chat: DraftScope = { kind: "thread", threadId: "thread-replaced" as never };
+  const quiet = (): void => undefined;
+
+  function savedDraft(text: string, attachments: readonly AttachmentRef[] = []): Draft {
+    return {
+      scope: chat,
+      text,
+      attachments: [...attachments],
+      failedSends: [],
+      revision: "r0" as Revision,
+      updatedAt: new Date(1).toISOString(),
+    };
+  }
+
+  /** A store whose read of the saved draft waits until `release` runs, so the test types while the draft is loading. */
+  function heldStore(draft: Draft): { store: FakeDraftStore; release: () => void } {
+    const store = new FakeDraftStore();
+    store.draft = draft;
+    const gate = Promise.withResolvers<void>();
+    const read = store.get.bind(store);
+    store.get = async () => {
+      await gate.promise;
+      return read();
+    };
+    return { store, release: () => gate.resolve() };
+  }
+
+  /** Opens the chat whose saved draft is `earlier`, types `typed` before that draft has loaded, then lets it load. */
+  async function typeBeforeLoad(
+    earlier: Draft,
+    typed: string,
+    buffer: DraftBuffer,
+  ): Promise<{ store: FakeDraftStore; controller: DraftController }> {
+    const { store, release } = heldStore(earlier);
+    const controller = new DraftController({
+      store,
+      scope: chat,
+      timers: new FakeTimers(),
+      buffer,
+    });
+    const loading = controller.load();
+    controller.setDraft(typed, []);
+    release();
+    await loading;
+    return { store, controller };
+  }
+
+  test("keeps the earlier draft recoverable, and saves the typed text, which still wins", async () => {
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const { store, controller } = await typeBeforeLoad(
+      savedDraft("earlier draft"),
+      "typed first",
+      buffer,
+    );
+
+    expect(controller.getSnapshot()).toMatchObject({
+      text: "typed first",
+      replaced: { text: "earlier draft", attachments: [], failedSends: [] },
+    });
+    expect(buffer.readReplaced(chat)).toEqual({
+      text: "earlier draft",
+      attachments: [],
+      failedSends: [],
+    });
+    await controller.flush();
+    expect(store.draft?.text).toBe("typed first");
+  });
+
+  test("restoring the earlier draft puts it in front of the text typed since, and saves both", async () => {
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const { store, controller } = await typeBeforeLoad(
+      savedDraft("earlier draft"),
+      "typed first",
+      buffer,
+    );
+
+    controller.resolveReplaced("restore");
+
+    expect(controller.getSnapshot()).toMatchObject({
+      text: "earlier draft\n\ntyped first",
+      dirty: true,
+      replaced: null,
+    });
+    expect(buffer.readReplaced(chat)).toBeNull();
+    await controller.flush();
+    expect(store.draft?.text).toBe("earlier draft\n\ntyped first");
+  });
+
+  test("dismissing the earlier draft forgets it, and only the typed text is saved", async () => {
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const { store, controller } = await typeBeforeLoad(
+      savedDraft("earlier draft"),
+      "typed first",
+      buffer,
+    );
+
+    controller.resolveReplaced("dismiss");
+
+    expect(controller.getSnapshot().replaced).toBeNull();
+    expect(buffer.readReplaced(chat)).toBeNull();
+    await controller.flush();
+    expect(store.draft?.text).toBe("typed first");
+  });
+
+  test("a chat opened again in the same session offers the earlier draft until it is restored or dismissed", async () => {
+    const storage = new MemoryDraftStorage();
+    const { store, controller } = await typeBeforeLoad(
+      savedDraft("earlier draft"),
+      "typed first",
+      createDraftBuffer(storage, quiet),
+    );
+    await controller.flush();
+
+    const later = new DraftController({
+      store,
+      scope: chat,
+      timers: new FakeTimers(),
+      buffer: createDraftBuffer(storage, quiet),
+    });
+    await later.load();
+
+    expect(later.getSnapshot()).toMatchObject({
+      text: "typed first",
+      dirty: false,
+      replaced: { text: "earlier draft" },
+    });
+  });
+
+  test("an earlier draft that only had attachments is kept too", async () => {
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const { controller } = await typeBeforeLoad(
+      savedDraft("", [attachment]),
+      "typed first",
+      buffer,
+    );
+
+    expect(controller.getSnapshot().replaced).toMatchObject({
+      text: "",
+      attachments: [attachment],
+    });
+  });
+
+  test("a stored draft the typed text already equals is not kept as an earlier draft", async () => {
+    const buffer = createDraftBuffer(new MemoryDraftStorage(), quiet);
+    const { controller } = await typeBeforeLoad(savedDraft("same text"), "same text", buffer);
+
+    expect(controller.getSnapshot().replaced).toBeNull();
+    expect(buffer.readReplaced(chat)).toBeNull();
+  });
+
+  test("a load after a move adopted text keeps the draft the controller loaded as the text, not as an earlier draft", async () => {
+    const store = new FakeDraftStore();
+    store.draft = savedDraft("loaded draft");
+    const controller = new DraftController({ store, scope: chat, timers: new FakeTimers() });
+    await controller.load();
+    controller.adopt({ text: "moved text", attachments: [], failedSends: [] });
+
+    await controller.load();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      text: "loaded draft\n\nmoved text",
+      replaced: null,
     });
   });
 });

@@ -20,6 +20,10 @@ export interface DraftBuffer {
   read(scope: DraftScope): BufferedDraft | null;
   write(scope: DraftScope, held: BufferedDraft): void;
   clear(scope: DraftScope): void;
+  /** The draft that text typed before the scope loaded replaced, kept for this tab's session, or null. */
+  readReplaced(scope: DraftScope): DraftInput | null;
+  writeReplaced(scope: DraftScope, input: DraftInput): void;
+  clearReplaced(scope: DraftScope): void;
 }
 
 /** The part of Web Storage the buffer uses. The app passes `sessionStorage`, so the copy lives in this tab. */
@@ -37,6 +41,26 @@ const StoredDraft = z.strictObject({
   baseRevision: Revision.nullable(),
   saving: DraftInput.nullable(),
 });
+
+const StoredReplaced = z.strictObject({
+  version: z.literal(1),
+  input: DraftInput,
+});
+
+function replacedKeyFor(scope: DraftScope): string {
+  return `${KEY_PREFIX}replaced:${draftScopeStream(scope)}`;
+}
+
+function parseStoredReplaced(raw: string): DraftInput | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const parsed = StoredReplaced.safeParse(value);
+  return parsed.success ? parsed.data.input : null;
+}
 
 function keyFor(scope: DraftScope): string {
   return `${KEY_PREFIX}${draftScopeStream(scope)}`;
@@ -108,6 +132,30 @@ export function createDraftBuffer(
     },
     clear(scope) {
       attempt(onError, () => storage.removeItem(keyFor(scope)));
+    },
+    readReplaced(scope) {
+      const key = replacedKeyFor(scope);
+      const raw = storage.getItem(key);
+      if (raw === null) return null;
+      const input = parseStoredReplaced(raw);
+      if (input !== null) return input;
+      attempt(onError, () => storage.removeItem(key));
+      onError(
+        new AppFailure({
+          code: "internal",
+          message: "An earlier draft in this tab could not be read and was dropped",
+          retryable: false,
+        }),
+      );
+      return null;
+    },
+    writeReplaced(scope, input) {
+      attempt(onError, () =>
+        storage.setItem(replacedKeyFor(scope), JSON.stringify({ version: 1, input })),
+      );
+    },
+    clearReplaced(scope) {
+      attempt(onError, () => storage.removeItem(replacedKeyFor(scope)));
     },
   };
 }

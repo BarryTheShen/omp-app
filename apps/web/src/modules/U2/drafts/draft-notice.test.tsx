@@ -25,6 +25,7 @@ function snapshot(overrides: Partial<DraftSnapshot>): DraftSnapshot {
     dirty: false,
     conflict: null,
     error: null,
+    replaced: null,
     ...overrides,
   };
 }
@@ -65,6 +66,7 @@ describe("DraftNotice", () => {
         snapshot={conflictOver(remoteDraft("first line\n\nsecond   line"))}
         onRetry={vi.fn()}
         onResolve={onResolve}
+        onResolveReplaced={vi.fn()}
       />,
     );
 
@@ -83,6 +85,7 @@ describe("DraftNotice", () => {
         snapshot={conflictOver(remoteDraft(long))}
         onRetry={vi.fn()}
         onResolve={vi.fn(async () => undefined)}
+        onResolveReplaced={vi.fn()}
       />,
     );
 
@@ -98,6 +101,7 @@ describe("DraftNotice", () => {
         snapshot={conflictOver(null)}
         onRetry={vi.fn()}
         onResolve={vi.fn(async () => undefined)}
+        onResolveReplaced={vi.fn()}
       />,
     );
 
@@ -120,6 +124,7 @@ describe("DraftNotice", () => {
         })}
         onRetry={onRetry}
         onResolve={vi.fn(async () => undefined)}
+        onResolveReplaced={vi.fn()}
       />,
     );
 
@@ -134,10 +139,80 @@ describe("DraftNotice", () => {
         snapshot={snapshot({ status: "ready" })}
         onRetry={vi.fn()}
         onResolve={vi.fn(async () => undefined)}
+        onResolveReplaced={vi.fn()}
       />,
     );
 
     expect(container.textContent).toBe("");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("an earlier draft that was replaced says so, shows the start of it, and offers to restore or dismiss it", () => {
+    const onResolveReplaced = vi.fn();
+    render(
+      <DraftNotice
+        snapshot={snapshot({
+          text: "typed first",
+          dirty: true,
+          replaced: { text: "first line\n\nsecond   line", attachments: [], failedSends: [] },
+        })}
+        onRetry={vi.fn()}
+        onResolve={vi.fn(async () => undefined)}
+        onResolveReplaced={onResolveReplaced}
+      />,
+    );
+
+    expect(screen.getByRole("status").textContent).toContain(
+      "Your earlier draft was replaced by what you typed before it loaded.",
+    );
+    expect(screen.getByText("first line second line")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restore your earlier draft" }));
+    expect(onResolveReplaced).toHaveBeenLastCalledWith("restore");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onResolveReplaced).toHaveBeenLastCalledWith("dismiss");
+  });
+
+  test("an earlier draft that only had attachments says how many", () => {
+    render(
+      <DraftNotice
+        snapshot={snapshot({
+          replaced: {
+            text: "",
+            attachments: [
+              { id: "photo-1", name: "one.png", mediaType: "image/png" },
+              { id: "photo-2", name: "two.png", mediaType: "image/png" },
+            ],
+            failedSends: [],
+          },
+        })}
+        onRetry={vi.fn()}
+        onResolve={vi.fn(async () => undefined)}
+        onResolveReplaced={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("2 attachments")).toBeTruthy();
+  });
+
+  test("a failure is shown first, and the offer for an earlier draft waits behind it", () => {
+    render(
+      <DraftNotice
+        snapshot={snapshot({
+          status: "error",
+          replaced: { text: "earlier", attachments: [], failedSends: [] },
+          error: new AppFailure({
+            code: "unavailable",
+            message: "Moving the draft failed",
+            retryable: true,
+          }),
+        })}
+        onRetry={vi.fn()}
+        onResolve={vi.fn(async () => undefined)}
+        onResolveReplaced={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain("Moving the draft failed");
+    expect(screen.queryByRole("button", { name: "Restore your earlier draft" })).toBeNull();
   });
 });

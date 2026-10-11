@@ -440,7 +440,12 @@ function DraftComposer({
       showAttachmentNames={false}
       onDoubleLeftArrow={onDoubleLeftArrow}
     >
-      <DraftNotice onResolve={onResolve} onRetry={onRetry} snapshot={snapshot} />
+      <DraftNotice
+        onResolve={onResolve}
+        onResolveReplaced={(choice) => controller.resolveReplaced(choice)}
+        onRetry={onRetry}
+        snapshot={snapshot}
+      />
       {hasAttachmentOutput || footerOpen ? footer : null}
     </ComposerSurface>
   );

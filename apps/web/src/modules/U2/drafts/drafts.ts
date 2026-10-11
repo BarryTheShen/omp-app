@@ -145,6 +145,8 @@ export interface DraftSnapshot {
   readonly failedSends: readonly FailedSend[];
   readonly revision: Revision | null;
   readonly dirty: boolean;
+  /** The draft that text typed before this scope loaded replaced: kept until it is restored or dismissed. */
+  readonly replaced: DraftInput | null;
   readonly conflict: DraftConflict | null;
   readonly error: AppFailure | null;
 }
@@ -255,6 +257,7 @@ export class DraftController {
       failedSends: [],
       revision: null,
       dirty: false,
+      replaced: null,
       conflict: null,
       error: null,
     };
@@ -284,7 +287,9 @@ export class DraftController {
     // restored over it again (a load repeats when the composer's controller changes, after a restore).
     const holdsText = this.snapshot.dirty;
     this.loading = true;
-    this.setState({ status: "loading", error: null });
+    const replaced =
+      this.buffer === undefined ? this.snapshot.replaced : this.buffer.readReplaced(this.scope);
+    this.setState({ status: "loading", error: null, replaced });
     let held: BufferedDraft | null = null;
     try {
       await settledWrites(this.scope);
@@ -297,12 +302,14 @@ export class DraftController {
         return this.snapshot;
       }
       if (this.snapshot.dirty) {
-        // The person typed while this was loading. Their text is newer than the stored draft, so it
-        // stays. The stored revision is adopted so the next save is not taken for a conflict.
+        // The person typed while this was loading. Their text is newer than the stored draft, so it stays. The stored
+        // draft is kept for the person to restore, because the next save replaces it. The stored revision is adopted
+        // so the next save is not taken for a conflict.
         const stored = result.draft;
         this.setState({
           status: "ready",
           failedSends: stored === null ? [] : [...stored.failedSends],
+          replaced: stored === null ? this.snapshot.replaced : this.keepReplaced(stored),
           revision: stored === null ? null : stored.revision,
           conflict: null,
           error: null,
@@ -363,6 +370,46 @@ export class DraftController {
   /** P6's dequeue-to-edit seam: update the live draft, then let autosave persist it. */
   public restoreDraft(text: string, attachments: readonly AttachmentRef[]): void {
     this.setDraft(text, attachments);
+  }
+
+  /**
+   * Puts the draft that text typed before the scope loaded replaced back in front of the text typed since
+   * ("restore"), or forgets it ("dismiss"). Restoring is the person's choice: the text is saved as a draft, not sent.
+   */
+  public resolveReplaced(choice: "restore" | "dismiss"): void {
+    const replaced = this.snapshot.replaced;
+    if (replaced === null) return;
+    this.buffer?.clearReplaced(this.scope);
+    if (choice === "dismiss") {
+      this.setState({ replaced: null });
+      return;
+    }
+    const typed = draftInput(
+      this.snapshot.text,
+      this.snapshot.attachments,
+      this.snapshot.failedSends,
+    );
+    const merged = combineDrafts(replaced, typed);
+    this.setState({ replaced: null, failedSends: merged.failedSends });
+    this.setDraft(merged.text, merged.attachments);
+  }
+
+  /**
+   * The stored draft that the next save would replace is kept for the person to restore, after any draft already kept
+   * for this scope. Nothing is kept for a stored draft this controller has already shown, for an empty one, or for one
+   * the typed text equals: nothing typed or stored would be lost. Returns what is kept now.
+   */
+  private keepReplaced(stored: Draft): DraftInput | null {
+    const earlier = this.snapshot.replaced;
+    const kept = draftInput(stored.text, stored.attachments, []);
+    const typed = draftInput(this.snapshot.text, this.snapshot.attachments, []);
+    const hasContent = kept.text !== "" || kept.attachments.length > 0;
+    if (stored.revision === this.snapshot.revision || !hasContent || sameInput(kept, typed)) {
+      return earlier;
+    }
+    const replaced = earlier === null ? kept : combineDrafts(earlier, kept);
+    this.buffer?.writeReplaced(this.scope, replaced);
+    return replaced;
   }
 
   /**
