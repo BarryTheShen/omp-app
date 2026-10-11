@@ -310,7 +310,9 @@ export class ToolsSettingsStore {
     }
     const validation = { ...this.current.validation };
     delete validation[key];
-    this.update({ staged: result.state, validation, phase: "editing", error: null });
+    // A value staged over an outside change keeps the conflict until it is resolved, so a save stays refused.
+    const phase = this.current.phase === "conflict" ? "conflict" : "editing";
+    this.update({ staged: result.state, validation, phase, error: null });
     return result;
   }
 

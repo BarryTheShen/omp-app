@@ -510,6 +510,33 @@ describe("S3 Tools ConfigStore policy", () => {
     expect(store.getSnapshot()).toBe(beforeDisposeChange);
   });
 
+  test("staging after an outside change keeps the conflict, so the save is refused and nothing is written", async () => {
+    const { state, client, source } = fakeConfigStore();
+    const store = new ToolsSettingsStore(client, source, { folder: null, layer: "global" });
+    await store.read();
+
+    expect(store.stage("async.enabled", { secret: false, value: false }).ok).toBe(true);
+    // The same setting changes outside while the person's edit is staged: a conflict.
+    state.revision = "revision-2";
+    state.revisionIndex = 2;
+    state.entries.push(configValue("async.enabled", true));
+    emitChange(state, "async", state.revision, configValue("async.enabled", true));
+    await settle();
+    expect(store.getSnapshot()).toMatchObject({ phase: "conflict" });
+
+    // Staging another value must not clear the conflict, or the save would overwrite the outside value unseen.
+    expect(store.stage("async.enabled", { secret: false, value: true }).ok).toBe(true);
+    expect(store.getSnapshot()).toMatchObject({ phase: "conflict" });
+    await expect(store.save()).rejects.toMatchObject({
+      appError: {
+        code: "invalid_args",
+        message: "Resolve the Tools settings conflict before saving.",
+      },
+    });
+    expect(state.writes).toHaveLength(0);
+    store.dispose();
+  });
+
   test("exposes rejected edits as validation and does not stage them", async () => {
     const { client } = fakeConfigStore();
     const snapshot: ToolsConfigSnapshot = await readToolsSettings(client, null);
