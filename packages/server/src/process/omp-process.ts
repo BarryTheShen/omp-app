@@ -1,3 +1,6 @@
+import { realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import type {
   AppError,
   FolderPath,
@@ -32,6 +35,8 @@ export interface OmpProcessOptions {
   readonly threadId: ThreadId;
   /** The chat's folder; omp's cwd. */
   readonly folder: FolderPath;
+  /** The home folder the server runs under; defaults to the operating system's home. */
+  readonly homeDir?: string;
   /** Defaults to `OMP_BIN`, else `"omp"` resolved from `PATH`. */
   readonly ompBin?: string;
   /** Extra argv appended after the forced `--mode rpc-ui` (for example `--resume <id>`). */
@@ -153,6 +158,7 @@ class SpawnedOmpProcess implements OmpProcess {
   readonly folder: FolderPath;
   readonly #ompBin: string;
   readonly #args: readonly string[];
+  readonly #homeDir: string;
   readonly #envOverrides: Readonly<Record<string, string | undefined>>;
   readonly #maxStderrBytes: number;
   readonly #terminationGraceMs: number;
@@ -185,6 +191,7 @@ class SpawnedOmpProcess implements OmpProcess {
     this.folder = options.folder;
     this.#ompBin = options.ompBin ?? Bun.env.OMP_BIN ?? "omp";
     this.#args = options.args ?? [];
+    this.#homeDir = options.homeDir ?? homedir();
     this.#envOverrides = options.env ?? {};
     this.#maxStderrBytes = options.maxStderrBytes ?? DEFAULT_MAX_STDERR_BYTES;
     this.#terminationGraceMs = options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS;
@@ -285,9 +292,10 @@ class SpawnedOmpProcess implements OmpProcess {
   async #spawnChild(): Promise<void> {
     this.#setStatus("starting");
     const env = this.#buildEnv();
+    const homeArgs = await homeFolderArguments(this.folder, this.#homeDir);
     let child: OmpSubprocess;
     try {
-      child = Bun.spawn([this.#ompBin, ...OMP_MODE_ARGS, ...this.#args], {
+      child = Bun.spawn([this.#ompBin, ...OMP_MODE_ARGS, ...homeArgs, ...this.#args], {
         cwd: this.folder,
         env,
         stdin: "pipe",
@@ -487,4 +495,25 @@ class SpawnedOmpProcess implements OmpProcess {
 /** Spawns a fresh `omp --mode rpc-ui` child; the default `createProcess` for `OmpProcessRegistry`. */
 export function spawnOmpProcess(options: OmpProcessOptions): OmpProcess {
   return new SpawnedOmpProcess(options);
+}
+
+/**
+ * omp moves itself to `/tmp` when it starts in the home folder, so a chat opened there was saved in
+ * another folder (issue 1143). `--allow-home` keeps omp in the folder the chat names. It is passed for
+ * the home folder itself only, compared by real path; a subfolder or any other folder starts as before.
+ */
+export async function homeFolderArguments(
+  folder: string,
+  homeDir: string,
+): Promise<readonly string[]> {
+  const [chat, home] = await Promise.all([realPathOrResolved(folder), realPathOrResolved(homeDir)]);
+  return chat === home ? ["--allow-home"] : [];
+}
+
+async function realPathOrResolved(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
 }

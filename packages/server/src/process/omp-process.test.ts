@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
 import { FrameDecoder, type RpcSessionTimer } from "@omp-app/omp-rpc";
-import { type OmpProcess, type OmpProcessEvent, spawnOmpProcess } from "./omp-process";
+import {
+  homeFolderArguments,
+  type OmpProcess,
+  type OmpProcessEvent,
+  spawnOmpProcess,
+} from "./omp-process";
 
 const FAKE_OMP = resolve(import.meta.dir, "test-fixtures/fake-omp.ts");
 const threadId = ThreadId.parse("thread-a0-5-process");
@@ -400,5 +405,31 @@ describe("OmpProcess restart with backoff", () => {
 
     const backoffDelays = timer.delays.filter((delay) => delay !== 10);
     expect(backoffDelays).toEqual([50]);
+  });
+});
+
+describe("the arguments for the chat's folder (issue 1143)", () => {
+  test("only the home folder itself gets --allow-home; a subfolder or another folder does not", async () => {
+    const root = await temporaryFolder();
+    const home = join(root, "home");
+    const project = join(home, "project");
+    const other = join(root, "other");
+    await mkdir(project, { recursive: true });
+    await mkdir(other, { recursive: true });
+
+    expect(await homeFolderArguments(home, home)).toEqual(["--allow-home"]);
+    expect(await homeFolderArguments(project, home)).toEqual([]);
+    expect(await homeFolderArguments(other, home)).toEqual([]);
+  });
+
+  test("the home folder is compared by its real path, so a link to it counts, and a missing folder does not", async () => {
+    const root = await temporaryFolder();
+    const home = join(root, "home");
+    const link = join(root, "home-link");
+    await mkdir(home, { recursive: true });
+    await symlink(home, link);
+
+    expect(await homeFolderArguments(link, home)).toEqual(["--allow-home"]);
+    expect(await homeFolderArguments(join(root, "missing"), home)).toEqual([]);
   });
 });

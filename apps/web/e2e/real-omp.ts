@@ -176,6 +176,7 @@ async function startServer(
     readonly ompBinary: string | undefined;
     readonly noModel: boolean;
     readonly port: number;
+    readonly serverFolder: string;
   },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
   const script = join(root, "app-root-server.ts");
@@ -286,7 +287,7 @@ if (seededEntries.length > 0) {
 }
 const server = await createCompositionServer({
   port: ${options.port},
-  cwd: ${JSON.stringify(join(root, "workspace"))},
+  cwd: ${JSON.stringify(options.serverFolder)},
   env: process.env,
   homeDir: ${JSON.stringify(join(root, "home"))},
   agentDir: ${JSON.stringify(join(root, "agent"))},
@@ -343,6 +344,7 @@ export interface SeedWorkspace {
  * A spec that needs `@` file mentions seeds files with `realTest.use({ seedWorkspace: { files, gitRepo: true } })`; file search lists git files only.
  * A spec that needs omp's environment overrides (for example `PI_AUTO_QA=0`) starts the app with `realTest.use({ serverEnv: { PI_AUTO_QA: "0" } })`.
  * A spec that needs a value omp reads from the agent folder's `.env` file (not the process environment) writes it with `realTest.use({ seedAgentDotEnv: "PI_INTENT_TRACING=0\n" })` before the app starts.
+ * A spec whose default folder is the home folder, as on the desktop (the server runs in it), uses `realTest.use({ serverInHome: true })`.
  */
 export const realTest = test.extend<{
   realApp: RealApp;
@@ -359,6 +361,8 @@ export const realTest = test.extend<{
   serverPort: number;
   /** Extra environment for the app's server and the omp it starts (omp reads these as overrides). */
   serverEnv: Readonly<Record<string, string>>;
+  /** The app's default folder is the home folder: the server runs in it, as on the desktop. */
+  serverInHome: boolean;
 }>({
   idleCloseMs: [undefined, { option: true }],
   seedSessions: [0, { option: true }],
@@ -372,6 +376,7 @@ export const realTest = test.extend<{
   noModel: [false, { option: true }],
   serverPort: [0, { option: true }],
   serverEnv: [{}, { option: true }],
+  serverInHome: [false, { option: true }],
   realApp: async (
     {
       browser,
@@ -387,6 +392,7 @@ export const realTest = test.extend<{
       noModel,
       serverPort,
       serverEnv,
+      serverInHome,
     },
     use,
     testInfo,
@@ -447,6 +453,7 @@ export const realTest = test.extend<{
         ompBinary,
         noModel,
         port: serverPort,
+        serverFolder: serverInHome ? home : folder,
       });
       let url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
@@ -475,6 +482,7 @@ export const realTest = test.extend<{
           ompBinary,
           noModel,
           port: serverPort,
+          serverFolder: serverInHome ? home : folder,
         });
         url = server.url;
         serverPid = server.process.pid;
