@@ -1,6 +1,7 @@
 import type { OmpWire } from "@omp-app/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { TurnCancelContext } from "@/modules/U1/thread";
 import { Button } from "../../../components/ui/button";
 import { Icons } from "../../../tokens";
 import { copyStatusText, ToolCard } from "./card";
@@ -32,8 +33,9 @@ export interface BashCardProps {
   readonly onCopy?: CopyHandler;
 }
 
-/** Renders one normalized bash tool call; stop cancels the parent turn when supplied. */
+/** Renders one normalized bash tool call; stop cancels the parent turn: the one supplied, else the chat's. */
 export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
+  const chatCancel = useContext(TurnCancelContext);
   const normalized = normalizeToolRendererProps(rendererProps);
   const result = decodeBashResult(
     rendererProps.result ?? normalized.result ?? normalized.partialResult,
@@ -55,7 +57,7 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
           cut={outputCutOf(rendererProps.result)}
           result={result}
           state={state}
-          onCancel={onCancel}
+          onCancel={onCancel ?? chatCancel}
           onCopy={onCopy}
         />
       </ToolCard>
@@ -366,9 +368,16 @@ function BashOutput({
     // Output can still arrive only while the command runs; a stopped or failed command says what it has.
     const commandRunning = state.phase === "running" || state.phase === "partial";
     return (
-      <div className="text-muted-foreground px-3 py-2 text-xs" data-slot="u3-bash-empty">
-        {commandRunning ? "No output yet." : "No output was recorded."}
-      </div>
+      <>
+        <div className="text-muted-foreground px-3 py-2 text-xs" data-slot="u3-bash-empty">
+          {commandRunning ? "No output yet." : "No output was recorded."}
+        </div>
+        {commandRunning && onCancel !== undefined && (
+          <div className="px-3 pb-2">
+            <StopTurnButton onCancel={onCancel} />
+          </div>
+        )}
+      </>
     );
   }
   if ((state.phase === "error" || state.phase === "cancelled") && repeatsBanner(result))
@@ -464,18 +473,25 @@ function BashOutput({
         />
       )}
       {onCancel !== undefined && (state.phase === "running" || state.phase === "partial") && (
-        <Button
-          aria-label="Stop turn"
-          size="sm"
-          type="button"
-          variant="outline"
-          onClick={() => void onCancel()}
-        >
-          <Icons.stop aria-hidden="true" />
-          Stop turn
-        </Button>
+        <StopTurnButton onCancel={onCancel} />
       )}
     </div>
+  );
+}
+
+/** The turn's stop, offered while the command runs: it stops the chat's turn, as the composer's stop does. */
+function StopTurnButton({ onCancel }: { readonly onCancel: () => void | Promise<void> }) {
+  return (
+    <Button
+      aria-label="Stop turn"
+      size="sm"
+      type="button"
+      variant="outline"
+      onClick={() => void onCancel()}
+    >
+      <Icons.stop aria-hidden="true" />
+      Stop turn
+    </Button>
   );
 }
 

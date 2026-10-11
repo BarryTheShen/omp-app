@@ -92,7 +92,7 @@ import {
   ScrollFollowControls,
   useThreadScrollController,
 } from "@/modules/U1/scroll";
-import { ThreadShell } from "@/modules/U1/thread";
+import { ThreadShell, TurnCancelScope } from "@/modules/U1/thread";
 import { type ToolRendererResolver, ToolRendererResolverContext } from "@/modules/U1/tool-slots";
 import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
@@ -1151,79 +1151,81 @@ function ActiveThreadReady({
       />
       <ToolRunScope store={store}>
         <TaskSubagentsScope agents={agents}>
-          <AppShell
-            composer={composer}
-            leftSidebar={leftSidebar}
-            statusBar={area("statusBar")}
-            threadHeader={area("header")}
-            rightSidebar={
-              <>
-                {area("panels")}
-                <RevealAgentHub reveal={agentsReveal} />
-              </>
-            }
-            transcript={
-              store && threadId ? (
-                <div className="h-full min-h-0" ref={transcriptRootRef}>
-                  <ThreadShell
-                    autoScroll
-                    credentialActions={credentialActions}
-                    readingPlace={{
-                      threadId,
-                      resumeAt: resumePlace,
-                      historyLoading: history.isLoading,
-                    }}
-                    footer={
-                      <>
-                        {area("threadFooter")}
-                        {area("threadOverlay")}
-                      </>
-                    }
-                    onLoadOlder={onLoadOlder}
-                    onLoadFullOutput={onLoadFullOutput}
-                    onRestartOmp={restartOmp}
-                    slots={{
-                      renderMessage: (message, renderNested) => {
-                        const branchSummary = branchSummaryOfRow(message);
-                        if (branchSummary !== undefined)
-                          return <BranchSummaryRow message={message} summary={branchSummary} />;
-                        return (
-                          <MessageParts
-                            message={message}
-                            actions={rowActions(message)}
-                            renderNested={(part) =>
-                              part.messages === undefined
-                                ? undefined
-                                : renderNested?.(part.messages, part.toolCallId, part.toolName)
-                            }
-                            toolRenderers={toolRenderers}
-                          />
-                        );
-                      },
-                      renderNested: (messages, taskId, toolName) => {
-                        const parsedTaskId = ToolCallId.safeParse(taskId);
-                        return (
-                          <NestedTranscript
-                            depth={0}
-                            key={taskId}
-                            messages={messages}
-                            parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
-                            taskName={toolName}
-                            toolRenderers={toolRenderers}
-                          />
-                        );
-                      },
-                    }}
-                    store={store}
+          <TurnCancelScope cancel={cancel}>
+            <AppShell
+              composer={composer}
+              leftSidebar={leftSidebar}
+              statusBar={area("statusBar")}
+              threadHeader={area("header")}
+              rightSidebar={
+                <>
+                  {area("panels")}
+                  <RevealAgentHub reveal={agentsReveal} />
+                </>
+              }
+              transcript={
+                store && threadId ? (
+                  <div className="h-full min-h-0" ref={transcriptRootRef}>
+                    <ThreadShell
+                      autoScroll
+                      credentialActions={credentialActions}
+                      readingPlace={{
+                        threadId,
+                        resumeAt: resumePlace,
+                        historyLoading: history.isLoading,
+                      }}
+                      footer={
+                        <>
+                          {area("threadFooter")}
+                          {area("threadOverlay")}
+                        </>
+                      }
+                      onLoadOlder={onLoadOlder}
+                      onLoadFullOutput={onLoadFullOutput}
+                      onRestartOmp={restartOmp}
+                      slots={{
+                        renderMessage: (message, renderNested) => {
+                          const branchSummary = branchSummaryOfRow(message);
+                          if (branchSummary !== undefined)
+                            return <BranchSummaryRow message={message} summary={branchSummary} />;
+                          return (
+                            <MessageParts
+                              message={message}
+                              actions={rowActions(message)}
+                              renderNested={(part) =>
+                                part.messages === undefined
+                                  ? undefined
+                                  : renderNested?.(part.messages, part.toolCallId, part.toolName)
+                              }
+                              toolRenderers={toolRenderers}
+                            />
+                          );
+                        },
+                        renderNested: (messages, taskId, toolName) => {
+                          const parsedTaskId = ToolCallId.safeParse(taskId);
+                          return (
+                            <NestedTranscript
+                              depth={0}
+                              key={taskId}
+                              messages={messages}
+                              parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
+                              taskName={toolName}
+                              toolRenderers={toolRenderers}
+                            />
+                          );
+                        },
+                      }}
+                      store={store}
+                    />
+                  </div>
+                ) : (
+                  <EmptyTranscript
+                    copy={emptyStateCopy({ opening: history.isLoading, error: history.error })}
                   />
-                </div>
-              ) : (
-                <EmptyTranscript
-                  copy={emptyStateCopy({ opening: history.isLoading, error: history.error })}
-                />
-              )
-            }
-          />
+                )
+              }
+            />
+          </TurnCancelScope>
         </TaskSubagentsScope>
       </ToolRunScope>
     </AssistantRuntimeProvider>

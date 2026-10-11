@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { ReadOnlyNestedTranscript, TurnCancelContext } from "@/modules/U1/thread";
 import { BashCard, decodeBashResult, failureMessage } from "./bash";
 import type { ToolRendererProps } from "./contract";
 import { FullOutputProvider } from "./full-output";
@@ -93,6 +94,40 @@ describe("BashCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  test("a running bash card stops the chat's turn when it has no stop of its own", () => {
+    const chatCancel = vi.fn(async () => undefined);
+    render(
+      <TurnCancelContext.Provider value={chatCancel}>
+        <BashCard rendererProps={props(result(), { type: "running" })} />
+      </TurnCancelContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
+    expect(chatCancel).toHaveBeenCalledOnce();
+  });
+
+  test("a running bash card with no output yet still offers Stop turn, which the app's running card has until its output arrives", () => {
+    const onCancel = vi.fn();
+    render(<BashCard onCancel={onCancel} rendererProps={props(undefined, { type: "running" })} />);
+
+    expect(screen.getByText("No output yet.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  test("a running bash card in a read-only transcript has no Stop turn, even under the chat's turn stop", () => {
+    const chatCancel = vi.fn(async () => undefined);
+    render(
+      <TurnCancelContext.Provider value={chatCancel}>
+        <ReadOnlyNestedTranscript messages={[]}>
+          <BashCard rendererProps={props(undefined, { type: "running" })} />
+        </ReadOnlyNestedTranscript>
+      </TurnCancelContext.Provider>,
+    );
+    expect(screen.getByText("No output yet.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop turn" })).toBeNull();
   });
 
   test("shows the output of omp's bash tool result, with wall time apart from it", () => {

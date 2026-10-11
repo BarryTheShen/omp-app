@@ -40,6 +40,7 @@ import {
 } from "../scroll/anchor";
 import type { ReadingPlace } from "../scroll/reading-place";
 import { useReadingPlace } from "../scroll/use-reading-place";
+import { TurnCancelContext } from "./turn-cancel";
 
 const MESSAGE_DESCRIPTOR_BY_ROLE = {
   user: "U1.userMessage",
@@ -491,6 +492,10 @@ export function ThreadShell({
   );
 }
 
+/**
+ * A read-only transcript of a worker or a nested task. Its cards never offer the chat's turn stop: a worker's card
+ * is not the chat's turn.
+ */
 export function ReadOnlyNestedTranscript({
   messages,
   label,
@@ -509,7 +514,7 @@ export function ReadOnlyNestedTranscript({
       data-slot="u1-nested-transcript"
     >
       <legend className="text-muted-foreground px-1 text-xs">{legend}</legend>
-      {children}
+      <TurnCancelContext.Provider value={undefined}>{children}</TurnCancelContext.Provider>
     </fieldset>
   );
 }

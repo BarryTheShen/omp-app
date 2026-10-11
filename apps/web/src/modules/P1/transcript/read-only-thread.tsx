@@ -5,6 +5,7 @@ import {
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import type { ReactNode } from "react";
+import { TurnCancelContext } from "@/modules/U1/thread";
 
 /**
  * The inert store assistant-ui's own read-only host (CloudRendererHost) uses: no messages of its own,
@@ -19,7 +20,8 @@ const INERT_THREAD_STORE = {
 
 /**
  * A read-only thread around `messages`: the library's viewport and scroll state work on it, and nothing
- * in it can send, edit or branch. The runtime is its own, so the host app's thread does not leak in.
+ * in it can send, edit, branch or stop the chat's turn. The runtime is its own, so the host app's thread does
+ * not leak in.
  */
 export function ReadOnlyThread({
   messages,
@@ -31,7 +33,9 @@ export function ReadOnlyThread({
   const runtime = useExternalStoreRuntime<ThreadMessage>(INERT_THREAD_STORE);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ReadonlyThreadProvider messages={messages}>{children}</ReadonlyThreadProvider>
+      <ReadonlyThreadProvider messages={messages}>
+        <TurnCancelContext.Provider value={undefined}>{children}</TurnCancelContext.Provider>
+      </ReadonlyThreadProvider>
     </AssistantRuntimeProvider>
   );
 }
