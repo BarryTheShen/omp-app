@@ -83,7 +83,7 @@ import {
   type SelectedThreadHistoryController,
   type SelectedThreadHistoryState,
 } from "@/modules/R1/history";
-import { createNativeRemoteThreadListAdapter } from "@/modules/R1/remote";
+import { createNativeRemoteThreadListAdapter, deleteChatFile } from "@/modules/R1/remote";
 import { type NewChatStatus, SessionCatalogSidebar } from "@/modules/R1/ui";
 import { MessageParts } from "@/modules/U1/parts";
 import {
@@ -1301,9 +1301,11 @@ function ConnectedApp({
             open: rpc.open,
             close: rpc.close,
             rename: rpc.rename,
+            deleteThread: (threadId) =>
+              deleteChatFile({ threadId, catalog, sessionFiles, close: rpc.close }),
           })
         : null,
-    [catalog, rpc.open, rpc.close, rpc.rename],
+    [catalog, rpc.open, rpc.close, rpc.rename, sessionFiles],
   );
   useEffect(() => {
     let active = true;
