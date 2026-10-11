@@ -25,6 +25,9 @@ const MIN_SIDEBAR_WIDTH = 14;
 const MAX_SIDEBAR_WIDTH = 32;
 const MAX_SIDEBAR_VIEWPORT = "24vw";
 
+/** The drawer open in the narrow layout: one at a time, and none in the wide layout. */
+type Drawer = "left" | "right" | null;
+
 export interface AppShellProps {
   readonly leftSidebar?: ReactNode;
   readonly threadHeader?: ReactNode;
@@ -204,21 +207,25 @@ export function AppShell({
   const isNarrow = useMediaQuery(NARROW_QUERY);
   const { preferences, persistenceStatus, setLeftSidebarWidth, setRightSidebarWidth } =
     useShellPreferences();
+  // The desktop layout's open state. The narrow drawers have their own state, so narrowing and then
+  // widening again leaves this as it was.
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const [drawer, setDrawer] = useState<Drawer>(null);
+  const leftShown = isNarrow ? drawer === "left" : leftOpen;
+  const rightShown = isNarrow ? drawer === "right" : rightOpen;
   const showRightSidebar = useCallback(() => {
-    if (isNarrow) setLeftOpen(false);
-    setRightOpen(true);
+    if (isNarrow) setDrawer("right");
+    else setRightOpen(true);
   }, [isNarrow]);
   const rightSidebarControl = useMemo<RightSidebar>(
-    () => ({ open: rightOpen, show: showRightSidebar }),
-    [rightOpen, showRightSidebar],
+    () => ({ open: rightShown, show: showRightSidebar }),
+    [rightShown, showRightSidebar],
   );
 
+  // A drawer belongs to the narrow layout only: the wide layout never has one open.
   useEffect(() => {
-    if (!isNarrow) return;
-    setLeftOpen(false);
-    setRightOpen(false);
+    if (!isNarrow) setDrawer(null);
   }, [isNarrow]);
 
   useEffect(() => {
@@ -226,8 +233,7 @@ export function AppShell({
       if (event.defaultPrevented || event.isComposing || isEditableTarget(event.target)) return;
 
       if (event.key === "Escape" && isNarrow) {
-        if (rightOpen) setRightOpen(false);
-        else if (leftOpen) setLeftOpen(false);
+        setDrawer(null);
         return;
       }
 
@@ -236,25 +242,34 @@ export function AppShell({
 
       event.preventDefault();
       if (event.shiftKey) {
-        if (isNarrow) setLeftOpen(false);
-        setRightOpen((open) => !open);
+        if (isNarrow) setDrawer((current) => (current === "right" ? null : "right"));
+        else setRightOpen((open) => !open);
       } else {
-        if (isNarrow) setRightOpen(false);
-        setLeftOpen((open) => !open);
+        if (isNarrow) setDrawer((current) => (current === "left" ? null : "left"));
+        else setLeftOpen((open) => !open);
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isNarrow, leftOpen, rightOpen]);
+  }, [isNarrow]);
 
   const toggleLeft = () => {
-    if (isNarrow) setRightOpen(false);
-    setLeftOpen((open) => !open);
+    if (isNarrow) setDrawer((current) => (current === "left" ? null : "left"));
+    else setLeftOpen((open) => !open);
   };
   const toggleRight = () => {
-    if (isNarrow) setLeftOpen(false);
-    setRightOpen((open) => !open);
+    if (isNarrow) setDrawer((current) => (current === "right" ? null : "right"));
+    else setRightOpen((open) => !open);
+  };
+  // A side's own arrow closes it. In the narrow layout a drawer closes by leaving no drawer open.
+  const closeLeft = () => {
+    if (isNarrow) setDrawer(null);
+    else setLeftOpen(false);
+  };
+  const closeRight = () => {
+    if (isNarrow) setDrawer(null);
+    else setRightOpen(false);
   };
 
   const sidebarTrack = (width: number, open: boolean) =>
@@ -267,7 +282,7 @@ export function AppShell({
     if (isNarrow) return `calc(100% - ${spacingTokens.xl})`;
     return `min(${side === "left" ? preferences.leftSidebarWidth : preferences.rightSidebarWidth}rem, ${MAX_SIDEBAR_VIEWPORT})`;
   };
-  const hasDrawer = isNarrow && (leftOpen || rightOpen);
+  const hasDrawer = isNarrow && drawer !== null;
 
   return (
     <div
@@ -283,31 +298,28 @@ export function AppShell({
           style={{ zIndex: zIndexTokens.overlay - 1 }}
           tabIndex={-1}
           type="button"
-          onClick={() => {
-            if (rightOpen) setRightOpen(false);
-            else setLeftOpen(false);
-          }}
+          onClick={() => setDrawer(null)}
         />
       )}
 
       <nav
-        aria-hidden={!leftOpen}
+        aria-hidden={!leftShown}
         aria-label="Sessions"
         className={cn(
           "relative row-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar transition-[width,opacity] duration-200 motion-reduce:transition-none",
           isNarrow && "absolute inset-y-0 start-0 h-full shadow-overlay",
-          !leftOpen && "pointer-events-none opacity-0",
+          !leftShown && "pointer-events-none opacity-0",
         )}
-        data-open={leftOpen}
+        data-open={leftShown}
         data-shell-sidebar="left"
-        hidden={!leftOpen}
+        hidden={!leftShown}
         id="shell-sessions-sidebar"
         style={{
-          width: sidebarWidth("left", leftOpen),
+          width: sidebarWidth("left", leftShown),
           zIndex: isNarrow ? zIndexTokens.overlay : undefined,
         }}
       >
-        <SidebarHeader side="left" open={leftOpen} onToggle={() => setLeftOpen(false)} />
+        <SidebarHeader side="left" open={leftShown} onToggle={closeLeft} />
         <div className="flex min-h-0 flex-1 flex-col">{leftSidebar}</div>
         {!isNarrow && leftOpen && (
           <ResizeHandle
@@ -331,13 +343,13 @@ export function AppShell({
           className="flex min-h-12 items-center gap-2 border-b border-border px-3"
           data-shell-region="header"
         >
-          {leftOpen ? (
+          {leftShown ? (
             <span aria-hidden="true" className="size-7 shrink-0" />
           ) : (
             <SidebarToggle side="left" onToggle={toggleLeft} />
           )}
           {threadHeader}
-          {rightOpen ? (
+          {rightShown ? (
             <span aria-hidden="true" className="size-7 shrink-0" />
           ) : (
             <SidebarToggle side="right" onToggle={toggleRight} />
@@ -364,24 +376,24 @@ export function AppShell({
 
       {/* Its own column: a hidden sessions sidebar must not pull this one into the first column. */}
       <aside
-        aria-hidden={!rightOpen}
+        aria-hidden={!rightShown}
         aria-label="Panels"
         className={cn(
           "relative row-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden border-s border-sidebar-border bg-sidebar transition-[width,opacity] duration-200 motion-reduce:transition-none",
           isNarrow && "absolute inset-y-0 end-0 h-full shadow-overlay",
-          !rightOpen && "pointer-events-none opacity-0",
+          !rightShown && "pointer-events-none opacity-0",
         )}
-        data-open={rightOpen}
+        data-open={rightShown}
         data-shell-sidebar="right"
-        hidden={!rightOpen}
+        hidden={!rightShown}
         id="shell-panels-sidebar"
         style={{
           gridColumn: isNarrow ? undefined : "3",
-          width: sidebarWidth("right", rightOpen),
+          width: sidebarWidth("right", rightShown),
           zIndex: isNarrow ? zIndexTokens.overlay : undefined,
         }}
       >
-        <SidebarHeader side="right" open={rightOpen} onToggle={() => setRightOpen(false)} />
+        <SidebarHeader side="right" open={rightShown} onToggle={closeRight} />
         <RightSidebarContext.Provider value={rightSidebarControl}>
           <div className="flex min-h-0 flex-1 flex-col">{rightSidebar}</div>
         </RightSidebarContext.Provider>

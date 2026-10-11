@@ -77,9 +77,9 @@ realTest(
 
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    // The narrow layout collapsed the sidebar, and it stays collapsed at desktop width: open it to see the row again.
+    // The narrow layout closed the sidebar. At desktop width it is open again, as on a fresh load (#1179).
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.getByRole("button", { name: "Show sessions sidebar" }).click();
+    await expect(page.locator('[data-shell-sidebar="left"]')).toHaveAttribute("data-open", "true");
     await expect(chatRow(page, "Seeded chat 2")).toBeVisible();
     expect(await sessionFilesNamed(realApp.agentDir, SEEDED_CHAT_2_ID)).not.toEqual([]);
 

@@ -209,4 +209,43 @@ describe("narrow layout", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(document.getElementById("shell-panels-sidebar")?.hasAttribute("hidden")).toBe(true);
   });
+
+  test("widening again brings back both sidebars the wide layout had open", () => {
+    let narrow = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        get matches() {
+          return narrow && query === "(max-width: 48rem)";
+        },
+        media: query,
+        onchange: null,
+        addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+        removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    const setNarrow = (value: boolean) => {
+      narrow = value;
+      act(() => {
+        for (const listener of listeners) listener();
+      });
+    };
+    const hidden = (id: string) => document.getElementById(id)?.hasAttribute("hidden");
+
+    render(<AppShell />);
+    expect(hidden("shell-sessions-sidebar")).toBe(false);
+    expect(hidden("shell-panels-sidebar")).toBe(false);
+
+    setNarrow(true);
+    expect(hidden("shell-sessions-sidebar")).toBe(true);
+    expect(hidden("shell-panels-sidebar")).toBe(true);
+
+    setNarrow(false);
+    expect(hidden("shell-sessions-sidebar")).toBe(false);
+    expect(hidden("shell-panels-sidebar")).toBe(false);
+  });
 });
