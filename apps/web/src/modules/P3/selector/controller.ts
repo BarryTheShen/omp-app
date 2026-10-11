@@ -199,8 +199,9 @@ export function useP3PreviousMessageSelectorController(
       failureMessage = "Earlier messages could not be opened.";
       setViewModel({ state: "idle" });
       // The modal's FocusScope returns focus to the element focused when it mounts, so the trigger
-      // takes focus first. Passing restoreFocus instead switches that return off, and U4 then
-      // calls it while the focus trap still holds focus, which pulls focus back into the dialog.
+      // takes focus first. Passing restoreFocus would name the same element now that the dialog host
+      // calls it after the dialog has unmounted (issue 756); the trigger focus stays so that the return
+      // does not depend on that order.
       trigger.focus();
       const dialog = await optionsRef.current.dialogs.open(request, {
         threadId: requestThreadId,

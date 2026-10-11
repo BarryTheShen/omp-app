@@ -199,7 +199,29 @@ describe("DialogHostController", () => {
     expect(state.answers).toEqual([
       { type: "extension_ui_response", id: "abort-me", cancelled: true },
     ]);
-    expect(restored).toEqual(["restored"]);
+    // The restore runs once the dialog has unmounted and released its focus trap, so the check waits for it.
+    await waitFor(() => expect(restored).toEqual(["restored"]));
+  });
+  test("with restoreFocus, closing the dialog leaves focus on that element, not back inside the dialog", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    // Another element has focus when the dialog opens, so the overlay's own return cannot stand in for the target.
+    const elsewhere = document.createElement("button");
+    elsewhere.textContent = "Elsewhere";
+    document.body.appendChild(elsewhere);
+    try {
+      elsewhere.focus();
+      const target = screen.getByRole("button", { name: "Opener" });
+      const pending = open(controller, request("confirm", "restore-focus"), threadA, {
+        restoreFocus: () => target.focus(),
+      });
+      await screen.findByTestId("body-restore-focus");
+      fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+      await expect(pending).resolves.toMatchObject({ outcome: "answered" });
+      await waitFor(() => expect(document.activeElement).toBe(target));
+    } finally {
+      elsewhere.remove();
+    }
   });
   test("app confirms settle locally without requiring omp.ui or answering omp", async () => {
     const state = renderHarness({});

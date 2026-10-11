@@ -8,7 +8,8 @@ import type { ConfirmDialogRequest, DialogRequest } from "./dialog";
 import type { DialogResultFor } from "./responses";
 
 /** Returns focus to exactly the element that had it before the dialog opened. Supplied by the
- *  caller (U0's `FocusScope`, once merged); this contract carries no DOM type. */
+ *  caller (U0's `FocusScope`, once merged); this contract carries no DOM type. The host calls it
+ *  once the dialog has closed and released focus. */
 export type FocusRestoreHandle = () => void;
 export type DialogOrigin = "omp" | "app";
 

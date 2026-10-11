@@ -220,10 +220,13 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
       kind: "confirm",
       timedOut: false,
     });
-    expect(answers).toEqual([
-      { type: "extension_ui_response", id: "gate-confirm", cancelled: true },
-      "restored",
-    ]);
+    // The restore runs once the dialog has unmounted and released its focus trap, so the check waits for it.
+    await waitFor(() =>
+      expect(answers).toEqual([
+        { type: "extension_ui_response", id: "gate-confirm", cancelled: true },
+        "restored",
+      ]),
+    );
   });
 
   test("secret input never appears in the DOM or result text", async () => {

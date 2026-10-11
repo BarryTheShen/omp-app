@@ -29,7 +29,8 @@ function isConnectedElement(value: HTMLElement | null): value is HTMLElement {
   return value?.isConnected === true && !value.hidden && value.closest("[inert]") === null;
 }
 
-function resolveFocusTarget(target: FocusTarget | undefined): HTMLElement | null {
+/** `undefined` means a lookup has already moved focus itself, so the scope leaves focus where it is. */
+function resolveFocusTarget(target: FocusTarget | undefined): HTMLElement | null | undefined {
   if (typeof target === "function") return target();
   return target ?? null;
 }
@@ -98,7 +99,7 @@ export function FocusScope({
         if (initial === false) return;
         const root = rootRef.current;
         if (!root) return;
-        const explicitTarget = resolveFocusTarget(initial);
+        const explicitTarget = resolveFocusTarget(initial) ?? null;
         focusElement(explicitTarget);
         if (explicitTarget === null) focusFirst();
       });
@@ -114,7 +115,10 @@ export function FocusScope({
         if (mountedRef.current) return;
         const restore = restoreFocusRef.current;
         if (restore === false) return;
-        focusElement(resolveFocusTarget(restore) ?? openerRef.current);
+        const target = resolveFocusTarget(restore);
+        // A lookup that returns undefined has moved focus itself; the scope leaves focus where it is.
+        if (target === undefined) return;
+        focusElement(target ?? openerRef.current);
       });
     };
   }, [focusFirst]);

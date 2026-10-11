@@ -267,7 +267,8 @@ export class DialogHostController implements DialogHost {
         kind: "modal",
         label: dialogName(entry.request),
         content: () => this.render(entry.request, context),
-        restoreFocus: entry.restoreFocus === undefined ? undefined : false,
+        restoreFocus:
+          entry.restoreFocus === undefined ? undefined : () => this.restoreAfterClose(entry),
         // omp is waiting on these answers, so a stray press must not answer them; Escape still does.
         // The app's own dialogs keep closing on a press outside, as Escape does.
         closeOnOutsidePointer: entry.options.origin === "app",
@@ -342,10 +343,13 @@ export class DialogHostController implements DialogHost {
 
   private finishResolved(entry: DialogEntry, result: DialogResult): void {
     if (entry.state === "settled") return;
+    // A presented dialog's focus scope restores focus once it has unmounted (see `present`); a dialog that was
+    // never shown restores focus here.
+    const presented = entry.overlay !== null;
     this.finishEntry(entry);
     let restoreError: AppFailure | undefined;
     try {
-      this.restoreFocus(entry);
+      if (!presented) this.restoreFocus(entry);
     } catch (error) {
       restoreError = asFailure(error, "Restoring focus after the dialog failed.");
     }
@@ -356,10 +360,11 @@ export class DialogHostController implements DialogHost {
 
   private finishRejected(entry: DialogEntry, error: unknown): void {
     if (entry.state === "settled") return;
+    const presented = entry.overlay !== null;
     this.finishEntry(entry);
     let restoreError: AppFailure | undefined;
     try {
-      this.restoreFocus(entry);
+      if (!presented) this.restoreFocus(entry);
     } catch (focusError) {
       restoreError = asFailure(focusError, "Restoring focus after the dialog failed.");
     }
@@ -407,5 +412,11 @@ export class DialogHostController implements DialogHost {
     if (entry.restoreCalled) return;
     entry.restoreCalled = true;
     entry.restoreFocus?.();
+  }
+
+  /** Called by the overlay once its focus scope has unmounted and released the focus trap. */
+  private restoreAfterClose(entry: DialogEntry): undefined {
+    this.restoreFocus(entry);
+    return undefined;
   }
 }
