@@ -119,7 +119,10 @@ test("captures dark mode and disabled delete/archive capability reasons", async 
   const deleteButton = menu.getByRole("menuitem", { name: "Delete Pinned project kickoff" });
   const archiveButton = menu.getByRole("menuitem", { name: "Archive Pinned project kickoff" });
   await expect(deleteButton).toBeDisabled();
-  await expect(deleteButton).toHaveAttribute("title", "Delete is unavailable");
+  await expect(deleteButton).toHaveAttribute(
+    "title",
+    "Deleting a chat isn't available in the app yet.",
+  );
   await expect(archiveButton).toBeDisabled();
   await expect(archiveButton).toHaveAttribute(
     "title",

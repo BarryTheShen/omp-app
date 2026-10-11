@@ -89,7 +89,6 @@ function renderSidebar(
   const calls: string[] = [];
   const sidebar = (
     <SessionCatalogSidebar
-      confirmDelete={() => true}
       {...props}
       catalog={catalog}
       remote={props.remote ?? fakeRemote(calls)}
@@ -389,6 +388,22 @@ describe("SessionCatalogSidebar", () => {
         .disabled,
     ).toBe(true);
     expect(calls).toEqual([]);
+  });
+
+  test("Delete is shown disabled with the plain reason, even when the command gateway reports available", async () => {
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.command-gateway": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar catalog={modelWithSessions()} remote={fakeRemote([])} />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    const remove = within(menu).getByRole("menuitem", { name: "Delete Newest chat" });
+    expect((remove as HTMLButtonElement).disabled).toBe(true);
+    expect(remove.getAttribute("title")).toBe("Deleting a chat isn't available in the app yet.");
   });
 
   test("empty folders keep a recoverable New chat action", async () => {

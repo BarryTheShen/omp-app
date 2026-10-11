@@ -26,7 +26,6 @@ export interface SessionCatalogSidebarProps {
   readonly onNewChatStatus?: (status: NewChatStatus) => void;
   readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
-  readonly confirmDelete?: (session: SessionMetadata) => Promise<boolean> | boolean;
 }
 
 function highlight(text: string, query: string): React.ReactNode {
@@ -151,7 +150,6 @@ export function SessionCatalogSidebar({
   onNewChat,
   onNewChatStatus,
   onPinChange,
-  confirmDelete,
 }: SessionCatalogSidebarProps) {
   const snapshot = catalog.getSnapshot();
   const [query, setQuery] = useState(snapshot.filter.query);
@@ -175,11 +173,9 @@ export function SessionCatalogSidebar({
     [catalog],
   );
   const renameStatus = useCapabilityStatus("omp.cmd.set_session_name");
-  const deleteStatus = useCapabilityStatus("host.command-gateway");
   const archiveStatus = useCapabilityStatus("upstream.session-archive");
   const pinStatus = useCapabilityStatus("host.session-pins");
   const canRename = renameStatus?.state === "available" || renameStatus?.state === "fallback";
-  const canDelete = deleteStatus?.state === "available" || deleteStatus?.state === "fallback";
   const canPin = pinStatus?.state === "available" || pinStatus?.state === "fallback";
 
   useEffect(() => {
@@ -608,22 +604,12 @@ export function SessionCatalogSidebar({
                         </Button>
                         <Button
                           aria-label={`Delete ${title}`}
-                          disabled={!canDelete}
+                          disabled
                           role="menuitem"
                           size="xs"
-                          title={
-                            canDelete
-                              ? "Delete"
-                              : capabilityReason(deleteStatus, "Delete is unavailable")
-                          }
+                          title="Deleting a chat isn't available in the app yet."
                           type="button"
                           variant="ghost"
-                          onClick={async (event) => {
-                            event.stopPropagation();
-                            setMenuSessionId(undefined);
-                            if (!canDelete || !(await confirmDelete?.(session))) return;
-                            await remote.delete(session.id);
-                          }}
                         >
                           Delete
                         </Button>
