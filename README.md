@@ -9,11 +9,13 @@ The floor version is omp **18.6.1**. Features are switched on by capabilities om
 A package is built from `main` every 12 hours (01:00 and 13:00 UTC, which is 8 PM and 8 AM US Central in summer) when the product changed since the last one (`.github/workflows/release.yml`). The repository is private, so download from the [releases page](https://github.com/BarryTheShen/omp-app/releases) while signed in, or:
 
 ```bash
-gh release download --repo BarryTheShen/omp-app --pattern '*.deb'   # the latest package
-sudo apt install ./omp-app_*_amd64.deb                              # install
-omp-app                                                             # start it; your browser opens
-sudo apt remove omp-app                                             # uninstall
+gh release download --repo BarryTheShen/omp-app --pattern '*.deb'          # the latest packages (both)
+sudo apt install ./omp-app-desktop_*_amd64.deb                              # the window: then open "omp app" from the applications menu
+sudo apt install ./omp-app_*_amd64.deb                                      # the terminal command: then run omp-app
+sudo apt remove omp-app                                                     # uninstall the terminal command
 ```
+
+There are two packages of the same version. Take the window (`omp-app-desktop`) if you want the app in the applications menu, or the terminal command (`omp-app`) if you want to start it from a terminal, which opens your browser. Each release lists both, with one `SHA256SUMS` file. Remove the window with `sudo apt remove omp-app-desktop`.
 
 `omp` must be installed separately; the app finds it on your `PATH` (it also looks in `~/.bun/bin` and `~/.local/bin`, which a desktop launch does not have). `omp-app [folder]` works in that folder, and a second `omp-app` opens the browser on the instance that is already running. "omp app" is in the applications menu too. Build one yourself with `bash packaging/build-deb.sh <version>` and check it with `bash packaging/smoke-test.sh <package.deb>`.
 

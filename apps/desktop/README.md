@@ -50,8 +50,10 @@ cargo test
 
 ## Install and remove
 
+The window's package is `omp-app-desktop`. Each release lists it beside the terminal command's package (`omp-app`); the two do not depend on each other. To install the package built here:
+
 ```
-sudo apt install ./dist/desktop/omp-app-desktop_0.1.451_amd64.deb
+sudo apt install ./dist/desktop/omp-app-desktop_<version>_amd64.deb
 sudo apt remove omp-app-desktop
 ```
 
