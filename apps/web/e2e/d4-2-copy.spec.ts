@@ -218,7 +218,7 @@ realTest(
       path: join(screenshots, "d4.2-copy-by-hand-light.png"),
       fullPage: true,
     });
-    await denied.getByRole("button", { name: "Cancel", exact: true }).click();
+    await denied.getByRole("button", { name: "Done", exact: true }).click();
     await expect(denied.getByTestId("d4-2-open-picker")).toBeFocused();
     await expect(outcome).toHaveText(
       'Showed "Command 1 in message 1" (11 characters) so you can copy it by hand. Nothing was copied to the clipboard.',
@@ -275,6 +275,50 @@ realTest("the refused-clipboard dialogs in dark", async ({ realApp, browser }) =
   ).toHaveValue("echo inside");
   await waitForFiniteAnimations(dark);
   await dark.screenshot({ path: join(screenshots, "d4.2-copy-by-hand-dark.png"), fullPage: true });
-  await dark.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dark.getByRole("button", { name: "Done", exact: true }).click();
   expect(errors).toEqual([]);
 });
+
+realTest(
+  "the copy by hand view says Done, is read-only, and keeps a gap from the screen edges at 390 px",
+  async ({ realApp, browser }) => {
+    const origin = await buildChat(realApp, browser);
+    const variants = [
+      { name: "light", query: "?clipboard=denied", width: 1280 },
+      { name: "dark", query: "?clipboard=denied&theme=dark", width: 1280 },
+      { name: "narrow", query: "?clipboard=denied", width: 390 },
+    ] as const;
+    for (const variant of variants) {
+      const page = await openCheck(browser, checkUrl(origin, realApp.token, variant.query));
+      const errors = watchErrors(page);
+      await page.setViewportSize({ width: variant.width, height: 844 });
+      await choose(page, "Command 1 in message 1");
+      await page
+        .getByRole("listbox", { name: "The clipboard refused the copy" })
+        .getByRole("option", { name: "Show the text to copy by hand" })
+        .click();
+      await page.getByRole("button", { name: "Choose", exact: true }).click();
+
+      const byHand = page.getByRole("textbox", { name: 'Copy "Command 1 in message 1" by hand' });
+      await expect(byHand).toHaveValue("echo inside");
+      await expect(byHand).toBeEditable({ editable: false });
+      const dialog = page.getByRole("dialog").filter({ has: byHand });
+      await expect(dialog.getByRole("button", { name: "Done", exact: true })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
+      await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+      await expect(dialog.getByText("saves")).toHaveCount(0);
+      const box = await dialog.boundingBox();
+      expect(box?.x ?? 0).toBeGreaterThanOrEqual(12);
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(variant.width - 12);
+      await waitForFiniteAnimations(page);
+      await page.screenshot({
+        path: join(screenshots, `fix-814-by-hand-${variant.name}.png`),
+        fullPage: true,
+      });
+      await dialog.getByRole("button", { name: "Done", exact: true }).click();
+      await expect(byHand).toHaveCount(0);
+      expect(errors).toEqual([]);
+      await page.close();
+    }
+  },
+);

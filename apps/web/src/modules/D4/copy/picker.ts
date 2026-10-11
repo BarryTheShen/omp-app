@@ -123,6 +123,7 @@ export function createCopyPicker(deps: CopyPickerDeps): CopyPicker {
           id: requestId("show"),
           title: `Copy "${option.label}" by hand`,
           prefill: text,
+          readOnly: true,
         },
         dialog,
       );

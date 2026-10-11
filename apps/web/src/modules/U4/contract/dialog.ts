@@ -113,6 +113,11 @@ export const EditorDialogRequestSchema = z.strictObject({
   /** May be empty: an editor can open blank. No wire timeout (`research/modules/U4.md` §3.3). */
   prefill: z.string().optional(),
   promptStyle: z.boolean().optional(),
+  /**
+   * App dialogs only: the text is shown to select and copy by hand. It cannot be changed, the only
+   * button is Done, and nothing is saved. `toDialogRequest` never sets it.
+   */
+  readOnly: z.boolean().optional(),
 });
 export type EditorDialogRequest = z.infer<typeof EditorDialogRequestSchema>;
 

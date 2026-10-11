@@ -11,6 +11,7 @@ export function EditorDialog({
   readonly context: DialogRenderContext;
 }) {
   const [value, setValue] = useState(request.prefill ?? "");
+  const readOnly = request.readOnly === true;
 
   const submit = async () => {
     await context.answer({ kind: "editor", value });
@@ -20,19 +21,25 @@ export function EditorDialog({
     <DialogFrame
       title={request.title}
       actions={
-        <>
-          <CancelButton onCancel={context.cancel} />
-          <SubmitButton onClick={() => void submit()}>Save</SubmitButton>
-        </>
+        readOnly ? (
+          <SubmitButton onClick={() => void submit()}>Done</SubmitButton>
+        ) : (
+          <>
+            <CancelButton onCancel={context.cancel} />
+            <SubmitButton onClick={() => void submit()}>Save</SubmitButton>
+          </>
+        )
       }
     >
       <Textarea
         autoFocus
+        readOnly={readOnly}
         value={value}
         aria-label={request.title}
         className="min-h-40 resize-y"
         onChange={(event) => setValue(event.currentTarget.value)}
         onKeyDown={(event) => {
+          if (readOnly) return;
           if (
             request.promptStyle &&
             event.key === "Enter" &&
@@ -48,11 +55,13 @@ export function EditorDialog({
           }
         }}
       />
-      <p className="mt-2 text-xs text-muted-foreground">
-        {request.promptStyle
-          ? "Enter submits; use Shift+Enter for a new line."
-          : "Ctrl/Cmd+Enter saves."}
-      </p>
+      {readOnly ? null : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {request.promptStyle
+            ? "Enter submits; use Shift+Enter for a new line."
+            : "Ctrl/Cmd+Enter saves."}
+        </p>
+      )}
     </DialogFrame>
   );
 }

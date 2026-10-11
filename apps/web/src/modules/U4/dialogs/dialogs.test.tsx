@@ -163,6 +163,32 @@ describe("input and editor dialogs", () => {
     fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
     expect(result.answers).toEqual([{ kind: "editor", value: "one\ntwo" }]);
   });
+
+  test("a read-only editor offers one Done button, no Save or save hint, and text that cannot be changed", () => {
+    const result = renderRequest({
+      kind: "editor",
+      id: "editor-2" as UiRequestId,
+      title: 'Copy "Command 1" by hand',
+      prefill: "echo inside",
+      readOnly: true,
+    });
+    const editor = screen.getByRole("textbox", { name: 'Copy "Command 1" by hand' });
+    expect(editor.hasAttribute("readonly")).toBe(true);
+    expect(editor).toHaveProperty("value", "echo inside");
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(screen.queryByText(/saves/)).toBeNull();
+    fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+    expect(result.answers).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(result.answers).toEqual([{ kind: "editor", value: "echo inside" }]);
+  });
+
+  test("an editor that is not read-only keeps its Save button and save hint", () => {
+    renderRequest({ kind: "editor", id: "editor-3" as UiRequestId, title: "Notes", prefill: "" });
+    expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+    expect(screen.getByText("Ctrl/Cmd+Enter saves.")).toBeTruthy();
+  });
 });
 
 describe("rich Ask dialog and result card", () => {

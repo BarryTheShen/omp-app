@@ -132,7 +132,8 @@ function layerStyle(kind: OverlayKind, index: number): { zIndex: number } {
 function widthClass(width: OverlayWidth): string {
   switch (width) {
     case "viewport":
-      return "w-full max-w-lg";
+      // A centered modal keeps 1rem clear of each screen edge: `w-full` ran it edge to edge at 390 px.
+      return "w-[calc(100%_-_2rem)] max-w-lg";
     case "toast":
       return "w-full max-w-sm";
     case "content":

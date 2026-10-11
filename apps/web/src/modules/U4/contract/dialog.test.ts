@@ -124,6 +124,17 @@ describe("EditorDialogRequestSchema", () => {
         .success,
     ).toBe(false);
   });
+
+  test("accepts a read-only flag and rejects a non-boolean one", () => {
+    expect(
+      EditorDialogRequestSchema.safeParse({ kind: "editor", id, title: "Copy", readOnly: true })
+        .success,
+    ).toBe(true);
+    expect(
+      EditorDialogRequestSchema.safeParse({ kind: "editor", id, title: "Copy", readOnly: "yes" })
+        .success,
+    ).toBe(false);
+  });
 });
 
 describe("AskDialogRequestSchema", () => {

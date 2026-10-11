@@ -172,6 +172,7 @@ describe("createCopyPicker", () => {
     if (editor?.kind !== "editor") throw new Error("The by-hand view should be an editor.");
     expect(editor.title).toBe('Copy "Command 1 in message 1" by hand');
     expect(editor.prefill).toBe("echo inside");
+    expect(editor.readOnly).toBe(true);
     expect(written).toEqual([]);
     expect(downloads).toEqual([]);
   });
