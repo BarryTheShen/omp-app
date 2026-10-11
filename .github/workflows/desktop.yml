@@ -1,0 +1,95 @@
+# Desktop app (#1036): builds the omp-app-desktop package (the "omp app" window, its bundled server
+# and the web app), checks the Rust code, and uploads the .deb. Runs by hand, and on pull requests
+# that change the desktop app or its packaging. Only GitHub-owned actions are used (AGENTS.md), so
+# Rust and Bun are installed by run steps, as release.yml installs Bun.
+name: desktop
+
+on:
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "packaging/build-desktop-deb.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out the code with its history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The libraries Tauri 2 needs on Linux (v2.tauri.app/start/prerequisites), and dpkg-dev, which
+      # the .deb builder uses to list the package's shared-library dependencies.
+      - name: Install the Linux libraries
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev dpkg-dev
+
+      - name: Install Rust (stable, with rustfmt and clippy)
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path -c rustfmt -c clippy
+          echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
+
+      - name: Cache the Cargo registry and the desktop build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: desktop-cargo-${{ runner.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            desktop-cargo-${{ runner.os }}-
+
+      # Only GitHub-owned actions are allowed in this repository, so Bun comes straight from its
+      # official release, pinned to a version and checked against the release's checksum file.
+      - name: Install Bun 1.3.14
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          gh release download bun-v1.3.14 --repo oven-sh/bun --pattern bun-linux-x64.zip --pattern SHASUMS256.txt
+          grep ' bun-linux-x64.zip$' SHASUMS256.txt | sha256sum -c -
+          unzip -q bun-linux-x64.zip
+          mkdir -p "$HOME/.bun/bin"
+          install -m 0755 bun-linux-x64/bun "$HOME/.bun/bin/bun"
+          echo "$HOME/.bun/bin" >>"$GITHUB_PATH"
+          "$HOME/.bun/bin/bun" --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check the Rust formatting
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check
+
+      - name: Build the package (window, server, web app, .deb)
+        run: bash packaging/build-desktop-deb.sh "0.1.$(git rev-list --count HEAD)"
+
+      - name: Check the Rust code (clippy, then the unit tests)
+        working-directory: apps/desktop/src-tauri
+        run: |
+          set -euo pipefail
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+      - name: Upload the package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: omp-app-desktop
+          path: dist/desktop/
+          if-no-files-found: error
+          retention-days: 14
