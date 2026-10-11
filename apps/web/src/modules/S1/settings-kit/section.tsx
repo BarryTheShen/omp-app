@@ -1,5 +1,5 @@
 import type { ConfigEntry } from "@omp-app/contracts";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { InlineError, Section, SettingRow, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,8 @@ export type SettingsSectionProps = {
   readonly onPreview?: (key: string, preview: PreviewResult) => void;
   readonly onCommit?: () => void;
   readonly onCancel?: () => void;
+  /** List editors this section draws inside its card, after the rows and above Save and Cancel. */
+  readonly listControls?: ReactNode;
 };
 
 export function SettingsSection({
@@ -54,6 +56,7 @@ export function SettingsSection({
   onPreview,
   onCommit,
   onCancel,
+  listControls,
 }: SettingsSectionProps) {
   // The latest check of each control in this section, so errors show (and block Save) even when
   // the caller doesn't track `onPreview`; the caller's `validation` fills in the rest.
@@ -118,6 +121,7 @@ export function SettingsSection({
             onSecretAction={onSecretAction}
           />
         ))}
+        {listControls}
       </div>
       <div className="mt-5">
         <Toolbar ariaLabel="Settings actions" alignment="end">

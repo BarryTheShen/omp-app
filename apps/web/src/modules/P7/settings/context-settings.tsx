@@ -491,8 +491,8 @@ function ContextSettingsSectionController({
       config
         ? {
             ...descriptor,
-            // Lists are drawn below the card. A menu shows the value omp has stored, and a stored value
-            // that omp ignores says so on its row.
+            // Lists are drawn inside the card, after the rows. A menu shows the value omp has stored, and a
+            // stored value that omp ignores says so on its row.
             controls: descriptor.controls
               .filter((control) => control.kind !== "list")
               .map((control) => withStoredState(control, config)),
@@ -601,6 +601,17 @@ function ContextSettingsSectionView({
         disabled={disabled}
         applyStatus={applyStatus}
         unsavedKeys={state.unsavedKeys}
+        listControls={customControls.map((control) => (
+          <CustomListSetting
+            key={`${control.key}-${resetToken}`}
+            control={control}
+            snapshot={config}
+            staged={staged}
+            validation={state.validation[control.key]}
+            disabled={disabled}
+            onStage={(value) => actions.onCustomStage(control.key, value)}
+          />
+        ))}
         onStage={actions.onStage}
         onPreview={actions.onPreview}
         onCommit={actions.onCommit}
@@ -637,21 +648,6 @@ function ContextSettingsSectionView({
         <UnsavedSettingsNotice labels={unsavedLabels} reason={state.error?.message ?? ""} />
       ) : state.error ? (
         <InlineError message={state.error.message} variant="compact" />
-      ) : null}
-      {customControls.length > 0 ? (
-        <div className="divide-border/60 divide-y">
-          {customControls.map((control) => (
-            <CustomListSetting
-              key={`${control.key}-${resetToken}`}
-              control={control}
-              snapshot={config}
-              staged={staged}
-              validation={state.validation[control.key]}
-              disabled={disabled}
-              onStage={(value) => actions.onCustomStage(control.key, value)}
-            />
-          ))}
-        </div>
       ) : null}
     </div>
   );
@@ -765,7 +761,7 @@ function CompactionMethodOrderSetting({
                 Method {index + 1}
               </label>
               <select
-                className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 min-w-40 flex-1 basis-full rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2 md:basis-auto"
+                className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 min-w-0 flex-1 basis-full rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2 md:basis-auto md:min-w-40"
                 id={`p7-method-${index}`}
                 value={method}
                 disabled={disabled}
@@ -823,6 +819,7 @@ function CompactionMethodOrderSetting({
           <Button
             type="button"
             variant="outline"
+            className="h-auto min-h-8 max-w-full shrink whitespace-normal py-1"
             onClick={() => onStage({ secret: false, value: [...DEFAULT_COMPACTION_METHOD_ORDER] })}
             disabled={disabled}
           >

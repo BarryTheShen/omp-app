@@ -754,6 +754,29 @@ describe("stored values and menus", () => {
 });
 
 describe("the compaction method order and the list fields", () => {
+  test("each list field is drawn inside its section's card, above Save changes and Cancel", async () => {
+    const store = allSectionsStore();
+    const view = render(<ContextSettings client={appClient(store)} scope={{ layer: "global" }} />);
+    const lists = [
+      { id: GENERAL_SECTION, title: "General", field: "Additional Workspace Directories" },
+      { id: COMPACTION_SECTION, title: "Compaction", field: "Compaction Method Order" },
+      { id: "P7.contextRulesTtsr", title: "Rules (TTSR)", field: "Disabled Rules" },
+    ];
+    for (const { id, title, field } of lists) {
+      const section = await openSection(view, id);
+      const card = within(section).getByRole("region", { name: title });
+      const listField = within(card).getByText(field, { exact: true });
+      const save = within(card).getByRole("button", { name: "Save changes" });
+      const cancel = within(card).getByRole("button", { name: "Cancel" });
+      expect(
+        listField.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        listField.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
   test("Move down reorders the methods and saves the new order", async () => {
     const store = fakeStore(withDefaults(COMPACTION_SECTION, []));
     const section = await renderSection(store, COMPACTION_SECTION);

@@ -1,5 +1,5 @@
 import type { ConfigEntry, JsonValue } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -250,6 +250,24 @@ describe("S1 settings section", () => {
   test("keeps the unconfigured source label unchanged", () => {
     render(<SettingsSection descriptor={descriptor} snapshot={{ ...snapshot, entries: [] }} />);
     expect(screen.getAllByText("Source: not configured")).toHaveLength(controls.length);
+  });
+
+  test("draws list controls inside the card, after the rows and above Save and Cancel", () => {
+    render(
+      <SettingsSection
+        descriptor={descriptor}
+        snapshot={snapshot}
+        onCommit={() => undefined}
+        onCancel={() => undefined}
+        listControls={<p>Folder list editor</p>}
+      />,
+    );
+    const card = screen.getByRole("region", { name: descriptor.title });
+    const list = within(card).getByText("Folder list editor");
+    const save = within(card).getByRole("button", { name: "Save changes" });
+    const cancel = within(card).getByRole("button", { name: "Cancel" });
+    expect(list.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(list.compareDocumentPosition(cancel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test("shows a value the server hid as a sentence, not an empty box, with its source", () => {
