@@ -131,6 +131,7 @@ import { TodoStoreAdapter } from "@/modules/U5/todo/store/store";
 import { OverlayHost, useStableOverlayHost } from "@/overlay";
 import { type CommandPaletteHandler, CommandPaletteHost } from "@/palette";
 import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
+import { idleCommandHandlers } from "@/palette/idle-commands";
 import { DESCRIPTORS, RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
 import { AppShell, ComposerNote } from "@/shell";
@@ -1537,6 +1538,18 @@ function ConnectedApp({
     },
     [capabilities, client, folder, overlay, startChat],
   );
+  // The palette's commands with no chat open (see `idleCommandHandlers`). Once a chat opens, its own host takes over.
+  const idleHandlers = useMemo(
+    () =>
+      idleCommandHandlers({
+        newChat: async () => {
+          await startChat();
+        },
+        openSettings: () => openSettings(null),
+        setTheme: setThemePreference,
+      }),
+    [openSettings, startChat],
+  );
   // What each sidebar surface id renders. Where it goes: `@/layout` (LAYOUT).
   const sidebarSurfaces: SurfaceMap = {
     folder: {
@@ -1637,6 +1650,7 @@ function ConnectedApp({
   });
   return (
     <div className="h-dvh" data-app-root="true">
+      <CommandPaletteHost capabilities={capabilities} handlers={idleHandlers} />
       <AppShell
         composer={
           emptyCopy.composer === null ? undefined : (
