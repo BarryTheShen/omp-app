@@ -371,6 +371,20 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(resumeCreated[0]?.args).toEqual(["--resume", authorityFile]);
   });
 
+  test("a second connection that asks for the newest chat is refused in plain words, and the first viewer keeps its process", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+
+    await expect(
+      getHandler(handlers, "open")({ folderPath: folder, start: "latest" }, call("two")),
+    ).rejects.toMatchObject({
+      appError: { code: "conflict", message: "This chat is open in another tab or window." },
+    });
+    expect(runtimeContext.processRegistry.get(authorityThread)).toBe(created[0]);
+  });
+
   test("rejects a mismatched omp identity and releases the provisional process", async () => {
     const created: FakeProcess[] = [];
     const mismatch = {

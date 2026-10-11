@@ -823,6 +823,29 @@ export class RpcSessionPortRuntime {
     return provisionalBootstrap(args.folderPath, ["--continue"]);
   }
 
+  /**
+   * Moves a process to omp's id for the chat. The registry refuses an id another process already
+   * holds: that is a chat open in another tab or window, and a person is told so in plain words,
+   * not in the registry's own text.
+   */
+  #moveProcess(from: ThreadId, to: ThreadId): void {
+    try {
+      this.#context.processRegistry.rekey(from, to);
+    } catch (error) {
+      if (error instanceof AppFailure && error.appError.code === "conflict") {
+        throw new AppFailure(
+          {
+            code: "conflict",
+            message: "This chat is open in another tab or window.",
+            retryable: false,
+          },
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+  }
+
   async #rekeyEntry(
     entry: ThreadEntry,
     requestedThreadId: ThreadId | undefined,
@@ -841,7 +864,7 @@ export class RpcSessionPortRuntime {
       });
     }
     const provisional = entry.bootstrap.threadId;
-    this.#context.processRegistry.rekey(provisional, identity.threadId);
+    this.#moveProcess(provisional, identity.threadId);
     this.#entries.delete(provisional);
     entry.bootstrap = {
       ...entry.bootstrap,
@@ -872,7 +895,7 @@ export class RpcSessionPortRuntime {
     }
     // The registry's re-key can refuse (the new id is already registered); it runs first, so a refusal
     // leaves the stream and the process exactly as they were.
-    this.#context.processRegistry.rekey(current, identity.threadId);
+    this.#moveProcess(current, identity.threadId);
     // Browsers still attached to the old id hear that the chat moved, with the new id. The stream
     // carries on under the new id so their sequence numbers stay contiguous; the process is untouched.
     this.#context.replay.publish(entry.stream, {
