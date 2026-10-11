@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Dirent } from "node:fs";
+import type { Dirent, Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -52,8 +52,16 @@ export interface SessionReadOutcome {
   readonly missing: boolean;
 }
 
+/** What a delete removed: the chat's id and the path of its session file. */
+export interface SessionDeletion {
+  readonly id: string;
+  readonly sessionFile: string;
+  /** The artifacts directory that could not be removed: it stays, and the delete still succeeded. */
+  readonly artifactsKept?: string;
+}
+
 function appFailure(
-  code: "invalid_args" | "not_found" | "permission" | "internal",
+  code: "invalid_args" | "not_found" | "permission" | "internal" | "conflict",
   message: string,
   retryable: boolean,
   cause?: unknown,
@@ -75,6 +83,17 @@ function isMissing(error: unknown): boolean {
 
 function normalizeSessionFile(value: string): string {
   return path.resolve(value);
+}
+
+/** True when `child` is inside `parent`, compared as resolved paths; `parent` itself is not inside it. */
+function isInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return relative !== "" && relative.split(path.sep)[0] !== ".." && !path.isAbsolute(relative);
+}
+
+/** The refusal for a path the caller made up, or one that the folder's listing does not return. */
+function notListed(): AppFailure {
+  return appFailure("not_found", "Session file is not listed", false);
 }
 
 function parseCursor(cursor: string | undefined): number {
@@ -434,6 +453,45 @@ export class SessionFileStore {
     return { entry: await readOutputFromFile(sessionFile, args.entryId) };
   }
 
+  /**
+   * Deletes one chat: its session file and the artifacts directory beside it. Only a file that the listing of `folder`
+   * returns can be deleted. The path is resolved; it must lie inside the sessions root and be a regular file, not a
+   * symlink, that reads as a session. A chat omp holds, or whose turn is running, is refused, because omp would write
+   * it back. The artifacts directory is checked the same way before anything is removed. Once the chat's file is gone
+   * the delete succeeds: artifacts that cannot be removed stay, and are reported as `artifactsKept`.
+   */
+  async deleteSession(args: {
+    readonly folder: string;
+    readonly sessionFile: string;
+  }): Promise<SessionDeletion> {
+    const sessionFile = await this.#deletableSessionFile(args.folder, args.sessionFile);
+    const artifacts = await this.#artifactsDirectory(sessionFile);
+    const outcome = await this.#readSessionFile(sessionFile);
+    if (!outcome.file) throw notListed();
+    const { file } = outcome;
+    if (file.liveness.serverProcess || file.liveness.lease === "held") {
+      throw appFailure("conflict", "Close this chat before deleting it: omp has it open.", true);
+    }
+    if (file.turn === "running") {
+      throw appFailure("conflict", "Wait for this chat's turn to finish, then delete it.", true);
+    }
+    try {
+      await fs.rm(sessionFile);
+    } catch (error) {
+      if (isMissing(error)) throw notListed();
+      throw appFailure("permission", "Unable to delete the omp session file", true, error);
+    }
+    let artifactsKept: string | undefined;
+    if (artifacts !== undefined) {
+      try {
+        await fs.rm(artifacts, { recursive: true, force: true });
+      } catch {
+        artifactsKept = artifacts;
+      }
+    }
+    return { id: file.id, sessionFile, ...(artifactsKept === undefined ? {} : { artifactsKept }) };
+  }
+
   async #listedSessionFile(value: string): Promise<string> {
     const sessionFile = normalizeSessionFile(value);
     const candidates = await this.#candidates(undefined, []);
@@ -441,6 +499,57 @@ export class SessionFileStore {
       throw appFailure("not_found", "Session file is not listed", false);
     }
     return sessionFile;
+  }
+
+  /**
+   * The file to delete: resolved, inside the sessions root, a regular file (not a symlink), and listed for `folder`.
+   * Its real path must stay inside the real sessions root, so a symlinked folder cannot lead out of it.
+   */
+  async #deletableSessionFile(folder: string, value: string): Promise<string> {
+    const sessionFile = normalizeSessionFile(value);
+    if (!isInside(this.sessionsRoot, sessionFile)) throw notListed();
+    const listed = await this.#candidates(folder, []);
+    if (!listed.some((candidate) => candidate.file === sessionFile)) throw notListed();
+    let stat: Stats;
+    let real: string;
+    let realRoot: string;
+    try {
+      stat = await fs.lstat(sessionFile);
+      real = await fs.realpath(sessionFile);
+      realRoot = await fs.realpath(this.sessionsRoot);
+    } catch (error) {
+      if (isMissing(error)) throw notListed();
+      throw appFailure("permission", "Unable to read omp session file", true, error);
+    }
+    if (!stat.isFile() || !isInside(realRoot, real)) throw notListed();
+    return sessionFile;
+  }
+
+  /**
+   * The artifacts directory omp keeps beside a chat: its file name without `.jsonl`. It must be a real directory inside
+   * the sessions root (not a symlink, not a file) before anything is removed. Undefined when the chat has none.
+   */
+  async #artifactsDirectory(sessionFile: string): Promise<string | undefined> {
+    const artifacts = path.resolve(sessionFile.slice(0, -".jsonl".length));
+    if (path.dirname(artifacts) !== path.dirname(sessionFile)) throw notListed();
+    let stat: Stats;
+    let real: string;
+    let realRoot: string;
+    try {
+      stat = await fs.lstat(artifacts);
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      throw appFailure("permission", "Unable to read the chat's artifacts", true, error);
+    }
+    if (!stat.isDirectory()) throw notListed();
+    try {
+      real = await fs.realpath(artifacts);
+      realRoot = await fs.realpath(this.sessionsRoot);
+    } catch (error) {
+      throw appFailure("permission", "Unable to read the chat's artifacts", true, error);
+    }
+    if (!isInside(realRoot, real)) throw notListed();
+    return artifacts;
   }
 
   /** Read one session file and its nested transcript tree. */

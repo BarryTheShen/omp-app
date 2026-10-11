@@ -169,6 +169,24 @@ export const SessionFileChanged = z.strictObject({
 });
 export type SessionFileChanged = z.infer<typeof SessionFileChanged>;
 
+/**
+ * Deletes one chat: its session file and the artifacts directory beside it. `folder` is the chat's folder, and only a
+ * file that this folder's listing returns can be deleted. The server refuses (conflict) a chat omp holds or runs a turn
+ * in, so close the chat first.
+ */
+export const SessionDeleteArgs = z.strictObject({
+  folder: FolderPath,
+  sessionFile: SessionFilePath,
+});
+export type SessionDeleteArgs = z.infer<typeof SessionDeleteArgs>;
+
+export const SessionDeleteResult = z.strictObject({
+  id: ThreadId,
+  sessionFile: SessionFilePath,
+  removed: z.literal(true),
+});
+export type SessionDeleteResult = z.infer<typeof SessionDeleteResult>;
+
 export const SessionFileStore = definePort({
   name: "A1.sessionFileStore",
   methods: {
@@ -205,6 +223,11 @@ export const SessionFileStore = definePort({
     readEntryOutput: {
       args: SessionEntryOutputArgs,
       result: SessionEntryOutputResult,
+      capability: "host.session-files",
+    },
+    deleteSession: {
+      args: SessionDeleteArgs,
+      result: SessionDeleteResult,
       capability: "host.session-files",
     },
   },

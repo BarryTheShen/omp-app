@@ -5,7 +5,7 @@ import {
   CapabilityMap,
   FolderPath,
   SessionFilePath,
-  ThreadId,
+  type ThreadId,
 } from "@omp-app/contracts";
 import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
@@ -50,7 +50,7 @@ import { createPlanDocumentStore } from "../src/modules/A1/plans";
 import { type A1PortContext, createA1PortRegistrations } from "../src/modules/A1/ports";
 import { createRuleStore } from "../src/modules/A1/rules";
 import { createSessionImportStore } from "../src/modules/A1/session-import";
-import { createSessionFileStore } from "../src/modules/A1/sessions";
+import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
@@ -218,14 +218,10 @@ export async function createCompositionServer(
       ),
   });
   const replay = new EventReplayHub();
-  const sessionFileStore = createSessionFileStore({
+  const sessionFileStore = createServerSessionFileStore({
     sessionsRoot: join(agentDir, "sessions"),
     home: homeDir,
-    turnOf: (sessionId) => {
-      const busy = processRegistry.busyOf(ThreadId.parse(sessionId));
-      if (busy === undefined) return undefined;
-      return busy ? "running" : "idle";
-    },
+    chats: processRegistry,
   });
   const resolveThread: A0PortContext["resolveThread"] = async (threadId, _signal) => {
     const file = await sessionFileStore.findSession(threadId);

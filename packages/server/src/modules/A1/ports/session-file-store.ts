@@ -1,6 +1,7 @@
 import {
   type SessionFile as ContractSessionFile,
   type SubagentTranscript as ContractSubagentTranscript,
+  SessionDeleteResult,
   SessionFile,
   SessionFileChanged,
   SessionFilePath,
@@ -94,7 +95,24 @@ function sessionTurnBindings(context: A1PortContext): readonly A1EventBinding[] 
   ];
 }
 
+/**
+ * A removal publishes on the `changed` stream too. The delete handler calls every listener this binding registers, the
+ * same way the turn bindings publish `updated` from the process registry.
+ */
+function removalBinding(listeners: Set<(payload: unknown) => void>): A1EventBinding {
+  return {
+    event: "changed",
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
 export function createSessionFileStoreRegistration(context: A1PortContext): PortRegistration {
+  const removals = new Set<(payload: unknown) => void>();
   return createA1PortRegistration(
     SessionFileStore,
     {
@@ -154,9 +172,28 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
         assertNotAborted(handlerContext);
         return context.sessionFileStore.readEntryOutput(args);
       },
+      deleteSession: async (args, handlerContext) => {
+        assertNotAborted(handlerContext);
+        const deleted = await context.sessionFileStore.deleteSession(args);
+        if (deleted.artifactsKept !== undefined) {
+          context.logger?.warn("sessions.artifacts_kept", { path: deleted.artifactsKept });
+        }
+        const change = SessionFileChanged.parse({
+          folder: args.folder,
+          sessionFile: deleted.sessionFile,
+          id: deleted.id,
+          kind: "removed",
+        });
+        for (const listener of removals) listener(change);
+        return SessionDeleteResult.parse({
+          id: deleted.id,
+          sessionFile: deleted.sessionFile,
+          removed: true,
+        });
+      },
     },
     context.publish,
-    sessionTurnBindings(context),
+    [...sessionTurnBindings(context), removalBinding(removals)],
     context.watchStreamActivity,
   );
 }
