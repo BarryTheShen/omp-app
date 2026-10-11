@@ -69,6 +69,8 @@ export interface RuntimeMessageView {
   readonly joinedAssistantEntryIds?: readonly string[];
   /** Whether a tool result has a matching assistant tool call in this turn. */
   readonly toolResultMatched?: boolean;
+  /** Tool calls the person stopped (see `stoppedToolCallIds`): they read cancelled, not as failures. */
+  readonly stoppedToolCallIds?: readonly string[];
 }
 
 export interface RuntimeToolStateReference {
@@ -147,6 +149,29 @@ function stateFor(
     ?.state;
 }
 
+/**
+ * The state a call shows. A call the person stopped reads cancelled, not as a failure: the error omp recorded for it
+ * is the stop itself. A reopened chat has no live state for the call, so its record alone gives the cancelled state.
+ */
+function shownToolState(
+  state: ToolCallState | undefined,
+  toolCallId: string,
+  toolName: string,
+  stopped: readonly string[],
+): ToolCallState | undefined {
+  if (!stopped.includes(toolCallId)) return state;
+  if (state === undefined) {
+    return {
+      toolCallId: toolCallId as ToolCallState["toolCallId"],
+      toolName,
+      status: "cancelled",
+      isError: false,
+    };
+  }
+  if (state.status !== "error") return state;
+  return { ...state, status: "cancelled", isError: false };
+}
+
 function streamStatus(runtime: RuntimeMessage | undefined): MessagePartStreamStatus {
   if (runtime?.status === "streaming") return { type: "running" };
   if (runtime?.interrupted === true) return { type: "incomplete", reason: "cancelled" };
@@ -221,13 +246,14 @@ function toolPart(
   rawPart: Record<string, unknown>,
   toolStates: readonly RuntimeToolStateReference[],
   status: MessagePartStreamStatus,
+  stopped: readonly string[],
 ): Record<string, unknown> {
   const toolCallId = nonEmptyString(rawPart.id);
   const toolName = nonEmptyString(rawPart.name);
   if (!toolCallId || !toolName || !isRecord(rawPart.arguments)) {
     return textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" });
   }
-  const state = stateFor(toolStates, toolCallId);
+  const state = shownToolState(stateFor(toolStates, toolCallId), toolCallId, toolName, stopped);
   const argsText = nonEmptyString(rawPart.rawBlock) ?? safeJson(rawPart.arguments);
   const result = state?.result !== undefined ? state.result : state?.partialResult;
   const part: Record<string, unknown> = {
@@ -258,6 +284,7 @@ function assistantParts(
   content: unknown,
   runtime: RuntimeMessage | undefined,
   toolStates: readonly RuntimeToolStateReference[],
+  stopped: readonly string[],
 ): Record<string, unknown>[] {
   const status = streamStatus(runtime);
   if (!Array.isArray(content)) {
@@ -290,7 +317,7 @@ function assistantParts(
         break;
       }
       case "toolCall":
-        parts.push(toolPart(rawPart, toolStates, status));
+        parts.push(toolPart(rawPart, toolStates, status, stopped));
         break;
       default:
         parts.push(textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" }));
@@ -303,12 +330,13 @@ function assistantParts(
 function toolResultPart(
   message: Record<string, unknown>,
   toolStates: readonly RuntimeToolStateReference[],
+  stopped: readonly string[],
 ): Record<string, unknown> {
   const toolCallId = nonEmptyString(message.toolCallId);
   const toolName = nonEmptyString(message.toolName);
   if (!toolCallId || !toolName)
     return textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" });
-  const state = stateFor(toolStates, toolCallId);
+  const state = shownToolState(stateFor(toolStates, toolCallId), toolCallId, toolName, stopped);
   const result = state?.result !== undefined ? state.result : toolResultFromMessage(message);
   return {
     type: "tool-call",
@@ -357,6 +385,7 @@ export type ExternalMessage =
 function toolResultExternalMessage(
   message: Record<string, unknown>,
   toolStates: readonly RuntimeToolStateReference[],
+  stopped: readonly string[],
 ): ExternalMessage {
   const toolCallId = nonEmptyString(message.toolCallId);
   const toolName = nonEmptyString(message.toolName);
@@ -367,7 +396,7 @@ function toolResultExternalMessage(
       status: { type: "incomplete", reason: "other" },
     } as unknown as ThreadMessageLike;
   }
-  const state = stateFor(toolStates, toolCallId);
+  const state = shownToolState(stateFor(toolStates, toolCallId), toolCallId, toolName, stopped);
   const result = state?.result !== undefined ? state.result : toolResultFromMessage(message);
   return {
     role: "tool",
@@ -398,6 +427,7 @@ function convertRecord(
   external = false,
 ): ExternalMessage {
   const id = messageIdFor(runtime, index);
+  const stopped: readonly string[] = view?.stoppedToolCallIds ?? [];
   const message = runtime?.message ?? fallbackMessageValue;
   if (!isRecord(message) || typeof message.role !== "string") return fallbackMessage(id);
   const createdAt = isFiniteTimestamp(message.timestamp) ? new Date(message.timestamp) : undefined;
@@ -433,18 +463,18 @@ function convertRecord(
         role: "assistant",
         id,
         ...(createdAt ? { createdAt } : {}),
-        content: assistantParts(message.content, runtime, toolStates),
+        content: assistantParts(message.content, runtime, toolStates, stopped),
         status,
         metadata,
       } as unknown as ThreadMessageLike;
     case "toolResult":
       if (external && view?.toolResultMatched !== false)
-        return toolResultExternalMessage(message, toolStates);
+        return toolResultExternalMessage(message, toolStates, stopped);
       return {
         role: "assistant",
         id,
         ...(createdAt ? { createdAt } : {}),
-        content: [toolResultPart(message, toolStates)],
+        content: [toolResultPart(message, toolStates, stopped)],
         status,
         metadata,
       } as unknown as ThreadMessageLike;
@@ -595,6 +625,43 @@ function sameIds(left: readonly string[] | undefined, right: readonly string[]):
   );
 }
 
+/**
+ * The calls the person stopped. omp ends a stopped turn with an assistant record that has no content, placed after
+ * the error results of the calls that were running. Only that structure is read, never omp's text.
+ */
+export function stoppedToolCallIds(
+  snapshot: Pick<RuntimeSnapshot, "messageOrder" | "messages">,
+): readonly string[] {
+  const ids: string[] = [];
+  let running: string[] = [];
+  for (const key of snapshot.messageOrder) {
+    const record = snapshot.messages[key];
+    if (!record || isHiddenMessage(record.message)) continue;
+    const message = record.message;
+    if (!isRecord(message)) {
+      running = [];
+      continue;
+    }
+    if (message.role === "toolResult" && message.isError === true) {
+      const toolCallId = nonEmptyString(message.toolCallId);
+      if (toolCallId !== undefined) running.push(toolCallId);
+      continue;
+    }
+    if (isStoppedTurnEnd(message)) ids.push(...running);
+    running = [];
+  }
+  return ids;
+}
+
+function isStoppedTurnEnd(message: Record<string, unknown>): boolean {
+  return (
+    message.role === "assistant" &&
+    message.stopReason === "aborted" &&
+    Array.isArray(message.content) &&
+    message.content.length === 0
+  );
+}
+
 class RuntimeMessageProjector {
   private readonly entries = new WeakMap<
     object,
@@ -609,6 +676,7 @@ class RuntimeMessageProjector {
   public project(snapshot: RuntimeSnapshot): readonly RuntimeMessageView[] {
     const views: RuntimeMessageView[] = [];
     const metadata = projectedMessageMetadata(snapshot);
+    const stopped = stoppedToolCallIds(snapshot);
     for (const key of snapshot.messageOrder) {
       const record = snapshot.messages[key];
       if (!record || isHiddenMessage(record.message)) continue;
@@ -620,7 +688,8 @@ class RuntimeMessageProjector {
       if (previous) {
         let unchanged =
           sameIds(previous.view.joinedAssistantEntryIds, projected.joinedAssistantEntryIds) &&
-          previous.view.toolResultMatched === projected.toolResultMatched;
+          previous.view.toolResultMatched === projected.toolResultMatched &&
+          sameIds(previous.view.stoppedToolCallIds, stopped);
         for (const reference of previous.references) {
           if (
             snapshot.tools[reference.toolCallId as keyof typeof snapshot.tools] !== reference.state
@@ -646,6 +715,7 @@ class RuntimeMessageProjector {
         toolStates: references,
         joinedAssistantEntryIds: projected.joinedAssistantEntryIds,
         toolResultMatched: projected.toolResultMatched,
+        stoppedToolCallIds: stopped,
       };
       this.entries.set(record, { references, view });
       views.push(view);

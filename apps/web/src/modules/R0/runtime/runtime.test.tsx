@@ -25,6 +25,7 @@ import {
   convertMessage,
   createOmpRuntime,
   type RuntimeMessageView,
+  stoppedToolCallIds,
   useOmpRuntime,
 } from "./runtime";
 
@@ -761,5 +762,99 @@ describe("R0.3 assistant-ui runtime", () => {
       ) as RuntimeMessageView["record"],
     ) as { status?: unknown };
     expect(converted.status).toEqual({ type: "complete", reason: "unknown" });
+  });
+});
+
+describe("a call the person stopped", () => {
+  const callPart = {
+    type: "toolCall" as const,
+    id: "tool-1",
+    name: "bash",
+    arguments: { command: "sleep 7" },
+    rawBlock: '{"command":"sleep 7"}',
+  };
+  const errored = { ...toolResultMessage("tool-1", "bash", "Command aborted"), isError: true };
+  const stopped = {
+    ...assistantMessage([]),
+    stopReason: "aborted",
+    errorMessage: "Interrupted by user",
+  } as OmpMessage;
+
+  function snapshotOf(messages: readonly OmpMessage[]) {
+    const keys = messages.map((_, index) => `entry:runtime-test-thread:s${index}` as MessageKey);
+    const records = Object.fromEntries(
+      messages.map((message, index) => [keys[index], runtimeMessage(message, keys[index])]),
+    );
+    return { messageOrder: keys, messages: records } as unknown as Parameters<
+      typeof stoppedToolCallIds
+    >[0];
+  }
+
+  test("names the call whose error result comes right before the stopped turn's end", () => {
+    expect(
+      stoppedToolCallIds(snapshotOf([assistantMessage([callPart]), errored, stopped])),
+    ).toEqual(["tool-1"]);
+  });
+
+  test("a call whose result succeeded is not stopped, even when the turn was stopped later", () => {
+    const succeeded = toolResultMessage("tool-1", "bash", "done");
+    expect(
+      stoppedToolCallIds(snapshotOf([assistantMessage([callPart]), succeeded, stopped])),
+    ).toEqual([]);
+  });
+
+  test("an aborted record that carries an answer does not stop the calls before it", () => {
+    const answered = {
+      ...assistantMessage([{ type: "text", text: "partial answer" }]),
+      stopReason: "aborted",
+      errorMessage: "Interrupted by user",
+    } as OmpMessage;
+    expect(
+      stoppedToolCallIds(snapshotOf([assistantMessage([callPart]), errored, answered])),
+    ).toEqual([]);
+  });
+
+  test("a stopped call converts to a cancelled card state, not a failure, and keeps omp's result", () => {
+    const record = runtimeMessage(assistantMessage([callPart]), "entry:runtime-test-thread:call");
+    const failed = {
+      toolCallId: "tool-1" as never,
+      toolName: "bash",
+      args: { command: "sleep 7" },
+      status: "error" as const,
+      result: { content: [{ type: "text", text: "Command aborted" }], details: {} },
+      isError: true,
+    };
+    const toolParts = (view: RuntimeMessageView) =>
+      messageParts(convertMessage(view)).filter((part) => part.type === "tool-call");
+
+    expect(
+      toolParts({
+        record,
+        toolStates: [{ toolCallId: "tool-1", state: failed }],
+        stoppedToolCallIds: ["tool-1"],
+      }),
+    ).toEqual([
+      expect.objectContaining({ status: "cancelled", isError: false, result: failed.result }),
+    ]);
+    expect(toolParts({ record, toolStates: [{ toolCallId: "tool-1", state: failed }] })).toEqual([
+      expect.objectContaining({ status: "error", isError: true }),
+    ]);
+  });
+
+  test("a reopened chat, with no live state for the call, still reads the stopped call as cancelled", () => {
+    const record = runtimeMessage(errored, "entry:runtime-test-thread:stopped-result");
+    const [part] = messageParts(
+      convertMessage({
+        record,
+        toolStates: [{ toolCallId: "tool-1", state: undefined }],
+        stoppedToolCallIds: ["tool-1"],
+      }),
+    ).filter((candidate) => candidate.type === "tool-call");
+    expect(part).toEqual(
+      expect.objectContaining({
+        isError: false,
+        toolState: expect.objectContaining({ status: "cancelled" }),
+      }),
+    );
   });
 });

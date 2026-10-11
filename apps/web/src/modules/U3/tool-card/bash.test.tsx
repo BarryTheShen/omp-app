@@ -458,3 +458,20 @@ describe("BashCard output the app holds in part", () => {
     expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
   });
 });
+
+describe("a command the person stopped", () => {
+  test("reads Cancelled, with no error banner and no output that only repeats omp's abort line", () => {
+    render(
+      <BashCard
+        rendererProps={props(
+          { content: [{ type: "text", text: "Command aborted" }], details: {} },
+          { type: "incomplete", reason: "cancelled" },
+        )}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "bash: Cancelled" })).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Command aborted")).toBeNull();
+  });
+});

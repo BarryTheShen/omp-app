@@ -98,7 +98,7 @@ export function failureMessage(result: BashResult): string {
   return reason.length > 160 ? `${reason.slice(0, 157)}…` : reason;
 }
 
-/** A failure whose whole output is its banner sentence: the output block would only repeat it. */
+/** A failed or stopped command whose whole output is its banner sentence: the output block would only repeat it. */
 function repeatsBanner(result: BashResult): boolean {
   return (
     result.exitCode === undefined &&
@@ -127,7 +127,7 @@ function bashState(state: ToolCardState, result: BashResult | undefined): ToolCa
           timeout: result.timedOut === true,
         }
       : phase === "cancelled"
-        ? { code: "cancelled" as const, message: "Command cancelled.", retryable: false }
+        ? undefined
         : state.error;
   return {
     ...state,
@@ -371,7 +371,8 @@ function BashOutput({
       </div>
     );
   }
-  if (state.phase === "error" && repeatsBanner(result)) return null;
+  if ((state.phase === "error" || state.phase === "cancelled") && repeatsBanner(result))
+    return null;
   const preview = previewOutput(result.output);
   const output = expanded ? result.output : preview.text;
   const shortened = shortenedNote(result);
