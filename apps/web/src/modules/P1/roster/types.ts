@@ -2,16 +2,16 @@ import type { SessionFilePath, SubagentId, ThreadId } from "@omp-app/contracts";
 import type { P1ClientNotification, SubagentClient } from "@/modules/P1/client";
 import type { AgentRef, SubagentTranscriptPage } from "@/modules/P1/contract";
 
+/**
+ * A worker's progress as omp reported it. The roster reads one field from it, `durationMs`, which freezes a finished
+ * worker's time. The hub reads every other field from `raw` with omp's own keys (`readWorkerMetrics` in P1/panels).
+ */
 export interface AgentProgressMetrics {
-  readonly percent?: number;
-  readonly model?: string;
-  readonly role?: string;
-  readonly usage?: unknown;
-  readonly context?: unknown;
-  readonly cost?: unknown;
+  /** omp's `durationMs` at its last report; undefined until omp reports one. */
   readonly durationMs?: number;
   /** When the roster received these metrics, on the roster clock; a running worker's time moves on from here. */
   readonly receivedAt: number;
+  /** omp's progress record as omp sent it. */
   readonly raw: Readonly<Record<string, unknown>>;
 }
 

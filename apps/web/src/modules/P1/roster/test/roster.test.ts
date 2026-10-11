@@ -7,6 +7,38 @@ import { AgentRosterStore } from "../store";
 const threadId = ThreadId.parse("thread-roster");
 const TTL = 24 * 60 * 60 * 1000;
 
+/**
+ * A progress record omp sent for a running worker: recorded from real omp 18.8.9, a worker running `sleep 60` in bash
+ * (the fake model's `spawn_long_subagent` branch). Copied as omp sent it, so its keys and value types are omp's.
+ */
+const REAL_PROGRESS = {
+  index: 0,
+  id: "LongProbe",
+  agent: "task",
+  agentSource: "bundled",
+  status: "running",
+  task: "Complete assignment thoroughly:\n\nlong_probe_child: run one slow step.",
+  assignment: "long_probe_child: run one slow step.",
+  recentTools: [],
+  recentOutput: [],
+  toolCount: 1,
+  requests: 1,
+  tokens: 15,
+  cost: 0,
+  durationMs: 105,
+  modelOverride: ["fake/fake-model"],
+  contextWindow: 128000,
+  resolvedModelIdentity: "fake/fake-model",
+  resolvedThinkingLevel: "high",
+  resolvedModel: "fake/fake-model:high",
+  resolvedModelIsFallback: false,
+  contextTokens: 15,
+  currentTool: "bash",
+  currentToolArgs: "sleep 60; echo long-probe-done",
+  currentToolArgsKey: "command",
+  currentToolStartMs: 1791731667364,
+};
+
 function agent(id: string, index: number, sessionFile = `/workspace/${id}.jsonl`): AgentRef {
   return AgentRefSchema.parse({
     id: SubagentId.parse(id),
@@ -16,7 +48,7 @@ function agent(id: string, index: number, sessionFile = `/workspace/${id}.jsonl`
     status: "running",
     lastUpdate: 1_759_600_000_000 + index,
     task: `task-${id}`,
-    progress: { phase: "working" },
+    progress: REAL_PROGRESS,
     sessionFile,
     threadId,
   });
@@ -152,7 +184,7 @@ describe("P1 AgentRosterStore", () => {
         agent: "worker-b",
         agentSource: "project",
         task: "new task",
-        progress: { percent: 80, model: "model", usage: { tokens: 5 } },
+        progress: REAL_PROGRESS,
       },
     };
     now += 1;
@@ -160,8 +192,50 @@ describe("P1 AgentRosterStore", () => {
     const after = store.getSnapshot();
     expect(after.agents[aKey]).toBe(before.agents[aKey]);
     expect(after.agents[bKey]).not.toBe(before.agents[bKey]);
-    expect(after.agents[bKey]?.metrics.percent).toBe(80);
+    expect(after.agents[bKey]?.metrics.raw).toEqual(REAL_PROGRESS);
+    expect(after.agents[bKey]?.metrics.durationMs).toBe(105);
     expect(after.agents[bKey]?.task).toBe("new task");
+  });
+
+  test("a progress record's time is omp's durationMs: a field named duration is not read as one", () => {
+    let now = 1_000;
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      clock: { now: () => now },
+    });
+    store.mergeSnapshot([agent("a", 0)]);
+    const key = requireValue(store.getSnapshot().active[0]);
+    now += 1;
+    const progress: P1SubagentEvent = {
+      type: "subagent_progress",
+      payload: {
+        index: 0,
+        agent: "worker-a",
+        agentSource: "project",
+        task: "task-a",
+        progress: { duration: 5_000 },
+      },
+    };
+    store.ingestNotification(progress, 1);
+    expect(store.getSnapshot().agents[key]?.metrics.raw).toEqual({ duration: 5_000 });
+    expect(store.getSnapshot().agents[key]?.metrics.durationMs).toBeUndefined();
+  });
+
+  test("the metrics hold omp's record and its time, and nothing read from a key omp does not send", () => {
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      clock: { now: () => 1_000 },
+    });
+    store.mergeSnapshot([agent("a", 0)]);
+    const snapshot = store.getSnapshot();
+    const key = requireValue(snapshot.active[0]);
+    expect(Object.keys(requireValue(snapshot.agents[key]).metrics).sort()).toEqual([
+      "durationMs",
+      "raw",
+      "receivedAt",
+    ]);
   });
 
   test("a worker the roster held as running reads as ended from the moment omp says it is not running", () => {
@@ -180,6 +254,8 @@ describe("P1 AgentRosterStore", () => {
       terminalAt: 1_005,
     });
     expect(store.getSnapshot().recent).toEqual([key]);
+    // omp's durationMs (105) plus the 5 ms the worker ran on the roster's clock, then frozen at the end.
+    expect(store.getSnapshot().agents[key]?.metrics.durationMs).toBe(110);
 
     now += 60_000;
     const end = lifecycle("a", "completed", 0, 1);
@@ -188,6 +264,7 @@ describe("P1 AgentRosterStore", () => {
       status: "completed",
       terminalAt: 1_005,
     });
+    expect(store.getSnapshot().agents[key]?.metrics.durationMs).toBe(110);
   });
 
   test("a snapshot that still lists a worker as running cannot revive it, and an unknown worker is not marked", () => {

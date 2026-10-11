@@ -40,18 +40,8 @@ function metricsFromProgress(
     const value = progress[key];
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
   };
-  const string = (key: string): string | undefined => {
-    const value = progress[key];
-    return typeof value === "string" && value.length > 0 ? value : undefined;
-  };
   return Object.freeze({
-    percent: number("percent") ?? number("progress"),
-    model: string("model"),
-    role: string("role"),
-    usage: progress.usage,
-    context: progress.context,
-    cost: progress.cost,
-    durationMs: number("durationMs") ?? number("duration"),
+    durationMs: number("durationMs"),
     receivedAt,
     raw: Object.freeze({ ...progress }),
   });
