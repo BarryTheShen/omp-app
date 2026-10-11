@@ -300,6 +300,33 @@ describe("SessionCatalogSidebar", () => {
     expect(document.activeElement).toBe(second);
   });
 
+  test("Escape on a row's More actions button closes its menu and keeps the focus on the button", async () => {
+    renderSidebar();
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    const more = screen.getByRole("button", { name: "More actions for Newest chat" });
+    fireEvent.click(more);
+    expect(screen.getByRole("menu", { name: "Actions for Newest chat" })).toBeTruthy();
+    more.focus();
+    fireEvent.keyDown(more, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(more);
+  });
+
+  test("the tab stop starts on the open chat's row, so Tab back into the list lands on it", async () => {
+    renderSidebar({
+      catalog: modelWithSessions([
+        session("first", "2026-10-05T00:00:00.000Z", "First chat"),
+        session("second", "2026-10-04T00:00:00.000Z", "Second chat"),
+        session("third", "2026-10-03T00:00:00.000Z", "Third chat"),
+      ]),
+      currentThreadId: ThreadIdSchema.parse("second"),
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
+    const [first, second] = screen.getAllByRole("option");
+    expect(second?.getAttribute("tabindex")).toBe("0");
+    expect(first?.getAttribute("tabindex")).toBe("-1");
+  });
+
   test("the list is not a tab stop of its own: the focused row and its More actions button are", async () => {
     renderSidebar({
       catalog: modelWithSessions([

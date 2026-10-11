@@ -220,7 +220,8 @@ export function SessionCatalogSidebar({
   const activeSearch = snapshot.filter.query.trim();
   // The focused row is a chat, not a position: when the list reorders under it, the row and Enter still mean that
   // chat. A chat that has left the list, or none yet, puts the tab stop on the first row.
-  const focusedRow = sessions.findIndex((session) => session.id === focusedId);
+  // The tab stop starts on the open chat, so Tab back into the list lands on it (issue 973). A chat the person focused wins.
+  const focusedRow = sessions.findIndex((session) => session.id === (focusedId ?? currentThreadId));
   const activeIndex = focusedRow >= 0 ? focusedRow : 0;
 
   // After a rename (or Escape) the chat's own row takes focus and becomes the focused row. The focus is kept by
@@ -548,6 +549,14 @@ export function SessionCatalogSidebar({
                             onClick={(event) => {
                               event.stopPropagation();
                               setMenuSessionId(menuOpen ? undefined : session.id);
+                            }}
+                            onKeyDown={(event) => {
+                              // Escape closes the menu this button opened; the focus stays on the button (issue 973).
+                              if (event.key === "Escape" && menuOpen) {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setMenuSessionId(undefined);
+                              }
                             }}
                           >
                             <MoreHorizontalIcon aria-hidden="true" />
