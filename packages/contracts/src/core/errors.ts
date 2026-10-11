@@ -40,6 +40,10 @@ export const OmpErrorDetail = z.object({
 });
 export type OmpErrorDetail = z.infer<typeof OmpErrorDetail>;
 
+/** Why omp stopped before a chat could start, read from its last words: no model, no sign-in, or another reason. */
+export const StartupReason = z.enum(["no_model", "no_credentials", "other"]);
+export type StartupReason = z.infer<typeof StartupReason>;
+
 export const AppError = z.object({
   code: AppErrorCode,
   /** Human-readable; never contains secrets or unscrubbed home paths. */
@@ -49,6 +53,8 @@ export const AppError = z.object({
   /** The capability whose absence caused an `unavailable` error. */
   capability: CapabilityKey.optional(),
   omp: OmpErrorDetail.optional(),
+  /** Set when omp stopped before a New chat was ready: the typed reason (see `StartupReason`). */
+  startup: StartupReason.optional(),
 });
 export type AppError = z.infer<typeof AppError>;
 

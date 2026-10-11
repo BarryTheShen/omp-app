@@ -174,6 +174,7 @@ async function startServer(
     readonly seedToolResults: SeedToolResults | undefined;
     readonly seedEntries: SeedEntries | undefined;
     readonly ompBinary: string | undefined;
+    readonly noModel: boolean;
     readonly port: number;
   },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
@@ -291,7 +292,7 @@ const server = await createCompositionServer({
   agentDir: ${JSON.stringify(join(root, "agent"))},
   appDataDir: ${JSON.stringify(join(root, "app-data"))},
   ompBin: ${JSON.stringify(options.ompBinary ?? REAL_OMP)},
-  ompArgs: ["--model", "fake/fake-model"],
+  ompArgs: ${options.noModel ? "[]" : '["--model", "fake/fake-model"]'},
   staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
   idleCloseMs: ${options.idleCloseMs === undefined ? "undefined" : options.idleCloseMs},
   logger: createLogger({ dir: ${JSON.stringify(join(root, "logs"))} }),
@@ -354,6 +355,7 @@ export const realTest = test.extend<{
   seedAgentDotEnv: string | undefined;
   seedWorkspace: SeedWorkspace | undefined;
   ompBinary: string | undefined;
+  noModel: boolean;
   serverPort: number;
   /** Extra environment for the app's server and the omp it starts (omp reads these as overrides). */
   serverEnv: Readonly<Record<string, string>>;
@@ -367,6 +369,7 @@ export const realTest = test.extend<{
   seedAgentDotEnv: [undefined, { option: true }],
   seedWorkspace: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
+  noModel: [false, { option: true }],
   serverPort: [0, { option: true }],
   serverEnv: [{}, { option: true }],
   realApp: async (
@@ -381,6 +384,7 @@ export const realTest = test.extend<{
       seedAgentDotEnv,
       seedWorkspace,
       ompBinary,
+      noModel,
       serverPort,
       serverEnv,
     },
@@ -414,12 +418,16 @@ export const realTest = test.extend<{
       }
       if (seedWorkspace.gitRepo) execFileSync("git", ["init", "-q"], { cwd: folder });
     }
+    // A no-model run has no provider key, so omp has no model and says so (see chat-no-model.spec.ts).
+    const inherited: NodeJS.ProcessEnv = { ...process.env };
+    if (noModel)
+      for (const key of Object.keys(inherited)) if (key.endsWith("_API_KEY")) delete inherited[key];
     const env = {
-      ...process.env,
+      ...inherited,
       HOME: home,
       PI_CODING_AGENT_DIR: agentDir,
       OMP_APP_DATA_DIR: appDataDir,
-      ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-"),
+      ...(noModel ? {} : { ANTHROPIC_API_KEY: ["sk", "ant", "k".repeat(30)].join("-") }),
       ...serverEnv,
     };
     let provider: ChildProcess | undefined;
@@ -429,7 +437,7 @@ export const realTest = test.extend<{
     const problems: string[] = [];
     const allowed: RegExp[] = [];
     try {
-      provider = await startProvider(agentDir, env);
+      provider = noModel ? undefined : await startProvider(agentDir, env);
       server = await startServer(root, env, {
         idleCloseMs,
         seedSessions,
@@ -437,6 +445,7 @@ export const realTest = test.extend<{
         seedToolResults,
         seedEntries,
         ompBinary,
+        noModel,
         port: serverPort,
       });
       let url = server.url;
@@ -464,6 +473,7 @@ export const realTest = test.extend<{
           seedToolResults,
           seedEntries,
           ompBinary,
+          noModel,
           port: serverPort,
         });
         url = server.url;

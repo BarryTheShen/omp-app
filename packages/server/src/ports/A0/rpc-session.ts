@@ -36,6 +36,7 @@ import type {
 } from "../../process";
 import type { PortHandler, PortHandlerContext } from "../../registry/ports";
 import type { EventReplayHub } from "../../replay";
+import { startupReason } from "./startup-reason";
 
 export interface ThreadBootstrap {
   readonly threadId: ThreadId;
@@ -310,12 +311,11 @@ export class RpcSessionPortRuntime {
     } catch (error) {
       await session.close();
       this.#dropEntry(entry);
-      if (
-        "threadId" in args &&
-        error instanceof AppFailure &&
-        error.appError.code === "omp_exited"
-      ) {
-        throw notFound(error.appError.message);
+      if (error instanceof AppFailure && error.appError.code === "omp_exited") {
+        // omp stopped before the chat was ready. Its last words say why; the browser gets that as a typed reason.
+        if ("threadId" in args) throw notFound(error.appError.message);
+        await process.stderrSettled?.();
+        throw new AppFailure({ ...error.appError, startup: startupReason(process.stderrTail) });
       }
       throw error;
     }

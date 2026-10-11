@@ -32,4 +32,21 @@ describe("emptyStateCopy", () => {
       composer: null,
     });
   });
+
+  test("a startup failure with a typed reason says what happened and the next step, in plain words", () => {
+    const startupFailure = {
+      code: "omp_exited",
+      message: "The omp RPC transport closed before ready",
+      retryable: true,
+    } as const;
+    for (const [startup, words] of [
+      ["no_model", "omp stopped because no model is set up. Open a terminal, run `omp`"],
+      ["no_credentials", "omp stopped because it cannot sign in to a model."],
+      ["other", "omp stopped before the chat could start."],
+    ] as const) {
+      const copy = emptyStateCopy({ opening: false, error: { ...startupFailure, startup } });
+      expect(copy.detail).toContain(words);
+      expect(copy.detail).not.toMatch(/RPC transport/);
+    }
+  });
 });

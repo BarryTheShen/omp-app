@@ -72,6 +72,11 @@ export interface OmpProcess extends RpcDuplex {
   readonly processId: OmpProcessId | undefined;
   /** Bounded recent stderr text; never includes environment values or the command line. */
   readonly stderrTail: string;
+  /**
+   * Resolves once the stderr pipe has been read to its end, or after half a second: omp's last lines can arrive
+   * after it exits. Optional, so that test doubles need not implement it.
+   */
+  stderrSettled?(): Promise<void>;
   /** Spawns the child if this is the first call; later calls return the same promise. */
   start(): Promise<void>;
   /**
@@ -168,6 +173,8 @@ class SpawnedOmpProcess implements OmpProcess {
   #stabilityTimer: unknown;
   #stderrDecoder = new TextDecoder();
   #stderrText = "";
+  /** Settles when the stderr pipe has been read to its end (see `stderrSettled`). */
+  #stderrDone: Promise<void> = Promise.resolve();
   #hasHadChunkListener = false;
   #pendingChunks: Uint8Array[] = [];
   #pendingChunkBytes = 0;
@@ -298,7 +305,7 @@ class SpawnedOmpProcess implements OmpProcess {
     this.#stderrDecoder = new TextDecoder();
     this.#stderrText = "";
     void this.#pumpStdout(child.stdout);
-    void this.#pumpStderr(child.stderr);
+    this.#stderrDone = this.#pumpStderr(child.stderr);
     void child.exited.then((exitCode) => this.#onChildExited(exitCode));
     this.#setStatus("running");
     this.#armStability();
@@ -354,6 +361,17 @@ class SpawnedOmpProcess implements OmpProcess {
     this.#status = "exited";
     this.#emit({ status: "exited", error: failure.appError });
     this.#notifyClose(failure);
+  }
+
+  /** Resolves once the stderr pipe has been read to its end, or after half a second, whichever is first. */
+  stderrSettled(): Promise<void> {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const handle = this.#timer.setTimeout(() => resolve(), 500);
+    void this.#stderrDone.then(() => {
+      this.#timer.clearTimeout(handle);
+      resolve();
+    });
+    return promise;
   }
 
   async #pumpStdout(stream: ReadableStream<Uint8Array>): Promise<void> {
