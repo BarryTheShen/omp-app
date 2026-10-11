@@ -432,6 +432,26 @@ describe("P4 tree selector model and views", () => {
     ]);
   });
 
+  test("an empty branch summary, omp's discard marker, says a message was discarded here", () => {
+    const discardedId = EntryId.parse("entry-discarded");
+    const discarded: SessionEntryHead = {
+      type: "branch_summary",
+      id: discardedId,
+      parentId: null,
+      timestamp: "2026-10-06T00:00:04.000Z",
+      summary: "",
+    };
+    const nodes: readonly TreeNode[] = [{ entry: discarded, children: [] }];
+    const model = createP4TreeSelectorViewModel(
+      treeSnapshot(nodes, discardedId),
+      selectorState({ leafId: discardedId, selectedEntryId: null }),
+    );
+
+    expect(model.rows.map((row) => [row.role, row.preview])).toEqual([
+      ["Conversation summary", "A message was discarded here."],
+    ]);
+  });
+
   test("shows omp's todo reminder in plain words, without the system-reminder tags", () => {
     const reminderId = EntryId.parse("entry-reminder");
     const reminder = entry(

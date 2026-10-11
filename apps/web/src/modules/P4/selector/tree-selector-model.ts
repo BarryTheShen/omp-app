@@ -200,6 +200,9 @@ function entryPreview(entry: SessionEntryHead): string {
   }
   const summary = entry.summary;
   if (typeof summary === "string" && summary.length > 0) return summary;
+  // omp's discardEntryDurably writes an empty branch_summary when it discards a message from the
+  // active path. The chat shows no row for it; history says a message was discarded here.
+  if (entry.type === "branch_summary") return "A message was discarded here.";
   switch (entry.type) {
     case "label":
       return typeof entry.label === "string" && entry.label.length > 0
