@@ -97,15 +97,26 @@ export interface AppClient {
   subscribe<P extends Port, E extends keyof P["events"]>(
     port: P,
     event: E,
-    options?: SubscribeOptions,
+    options?: SubscribeOptions<PortEventValue<P, E>>,
   ): Promise<AppClientSubscription<PortEventValue<P, E>>>;
   dispose(): void;
 }
 
-export interface SubscribeOptions {
+export interface SubscribeOptions<Payload = unknown> {
   readonly scope?: string;
+  /**
+   * Where the subscription starts. Absent: live events only. A number, zero included: the events after it that the
+   * server still holds, so zero asks for every event it holds, including those sent before the subscription.
+   * When the server no longer holds the events after `afterSeq`, the subscription follows live events only.
+   */
   readonly afterSeq?: number;
   readonly signal?: PortCallOptions["signal"];
+  /**
+   * Called for every event the subscription delivers, including the events the server replays before it acknowledges
+   * the subscription. It is attached before the request, so no replayed event is missed. Passing the same function to
+   * `subscription.onEvent` adds nothing (it is one listener), and the detach that call returns removes it.
+   */
+  readonly onEvent?: (payload: Payload, seq: number) => void;
 }
 
 type PortEventValue<P extends Port, E extends keyof P["events"]> = z.output<
@@ -141,6 +152,7 @@ interface SubscriptionRecord {
   lastSeq: number;
   active: boolean;
   subscribed: boolean;
+  hasCursor: boolean;
 }
 
 interface OpenWaiter {
@@ -294,7 +306,7 @@ class AppClientImpl implements AppClient {
   async subscribe<P extends Port, E extends keyof P["events"]>(
     port: P,
     event: E,
-    options: SubscribeOptions = {},
+    options: SubscribeOptions<PortEventValue<P, E>> = {},
   ): Promise<AppClientSubscription<PortEventValue<P, E>>> {
     const eventName = String(event);
     const eventDefinitions: Record<string, { readonly payload: z.ZodType }> = port.events;
@@ -309,16 +321,29 @@ class AppClientImpl implements AppClient {
       throw appFailure("invalid_args", "afterSeq must be a non-negative integer", false);
     }
     const stream = streamKey(port.name, eventName, options.scope);
+    // Records dispatch only payloads their event's schema accepted, so the listener's payload type holds.
+    const listener = options.onEvent as ((payload: unknown, seq: number) => void) | undefined;
     const existing = this.subscriptions.get(stream);
-    if (existing) return existing.publicSubscription as AppClientSubscription<PortEventValue<P, E>>;
+    if (existing) {
+      // The stream is already subscribed (a chat kept for its running turn): the listener joins that subscription,
+      // and no second request is sent.
+      if (listener) existing.listeners.add(listener);
+      return existing.publicSubscription as AppClientSubscription<PortEventValue<P, E>>;
+    }
 
-    const record = this.createSubscription(stream, eventDefinition.payload, options.afterSeq ?? 0);
+    const record = this.createSubscription(
+      stream,
+      eventDefinition.payload,
+      options.afterSeq ?? 0,
+      options.afterSeq !== undefined,
+    );
+    if (listener) record.listeners.add(listener);
     this.subscriptions.set(stream, record);
     try {
       await this.waitForOpen(options.signal);
       await this.subscribeRecord(
         record,
-        record.lastSeq > 0 ? record.lastSeq : undefined,
+        record.hasCursor ? record.lastSeq : undefined,
         options.signal,
       );
       return record.publicSubscription as AppClientSubscription<PortEventValue<P, E>>;
@@ -519,12 +544,14 @@ class AppClientImpl implements AppClient {
     stream: StreamKey,
     payload: z.ZodType,
     lastSeq: number,
+    hasCursor: boolean,
   ): SubscriptionRecord {
     const record = {} as SubscriptionRecord;
     record.stream = stream;
     record.payload = payload;
     record.listeners = new Set();
     record.lastSeq = lastSeq;
+    record.hasCursor = hasCursor;
     record.subscribed = false;
     record.active = true;
     record.publicSubscription = {
@@ -574,8 +601,10 @@ class AppClientImpl implements AppClient {
       record.subscribed = true;
     } catch (error) {
       if (afterSeq !== undefined && isConflict(error)) {
+        // The server no longer holds the events after `afterSeq`. A consumer that had events must refetch; a first
+        // subscription from zero had none, so it follows live events without a resync.
+        if (record.lastSeq > 0) this.emitResync({ reason: "stale-resume", stream: record.stream });
         record.lastSeq = 0;
-        this.emitResync({ reason: "stale-resume", stream: record.stream });
         const retryId = this.nextRequestId();
         const retry = SubscribeFrame.parse({
           type: "subscribe",
@@ -597,7 +626,9 @@ class AppClientImpl implements AppClient {
       try {
         await this.subscribeRecord(
           record,
-          instanceChanged || record.lastSeq === 0 ? undefined : record.lastSeq,
+          instanceChanged || (record.lastSeq === 0 && !record.hasCursor)
+            ? undefined
+            : record.lastSeq,
           undefined,
         );
       } catch (error) {

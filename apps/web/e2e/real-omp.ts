@@ -18,7 +18,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
-const REAL_OMP = "/home/user/.bun/bin/omp";
+export const REAL_OMP = "/home/user/.bun/bin/omp";
 export const APP_ROOT = resolve(process.cwd(), "../..");
 const SERVER_SCRIPT = resolve(APP_ROOT, "packages/server/scripts/dev.ts");
 const FAKE_PROVIDER = resolve(APP_ROOT, "packages/omp-rpc/scripts/fake-openai-server.ts");

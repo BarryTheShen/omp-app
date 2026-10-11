@@ -9,6 +9,7 @@ import type {
 import { AppFailure, SessionFileStore, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { SessionHistoryLoader } from "@/modules/R0/history/history";
+import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import { createSelectedThreadHistoryController } from ".";
 
 const folder = "/workspace/project" as FolderPath;
@@ -53,7 +54,11 @@ interface SubscriptionRecord {
   unsubscribed: boolean;
 }
 
-function fakeClient(rpc: RpcSessionClient, subscriptions: SubscriptionRecord[]): AppClient {
+function fakeClient(
+  rpc: RpcSessionClient,
+  subscriptions: SubscriptionRecord[],
+  replayed: readonly RpcSessionEvent[] = [],
+): AppClient {
   return {
     connectionState: "open",
     instanceId: "instance-1",
@@ -63,11 +68,17 @@ function fakeClient(rpc: RpcSessionClient, subscriptions: SubscriptionRecord[]):
     subscribe: async (_port: unknown, _event: unknown, options?: SubscribeOptions) => {
       const record: SubscriptionRecord = { options, listeners: [], unsubscribed: false };
       subscriptions.push(record);
+      // Like the real client, the onEvent listener is attached before the request, and the events the server replays
+      // arrive before the subscription is acknowledged.
+      if (options?.onEvent) record.listeners.push(options.onEvent);
+      for (const [index, event] of replayed.entries()) {
+        options?.onEvent?.(event, index + 1);
+      }
       const subscription: AppClientSubscription<RpcSessionEvent> = {
         stream: "A0.rpcSession/event/thread" as never,
         lastSeq: options?.afterSeq ?? 0,
         onEvent: (listener) => {
-          record.listeners.push(listener);
+          if (!record.listeners.includes(listener)) record.listeners.push(listener);
           return () => {
             const index = record.listeners.indexOf(listener);
             if (index >= 0) record.listeners.splice(index, 1);
@@ -201,28 +212,27 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
     const client = fakeClient(rpc, subscriptions);
-    const liveOnly = client.subscribe.bind(client);
     const attempts: Array<number | undefined> = [];
     const controller = createSelectedThreadHistoryController({
       client: {
         ...client,
         subscribe: async (port: unknown, event: unknown, options?: SubscribeOptions) => {
           attempts.push(options?.afterSeq);
-          if (options?.afterSeq === 0) {
-            throw new AppFailure({
-              code: "conflict",
-              message: "The requested event history is no longer available",
-              retryable: true,
-            });
-          }
-          return liveOnly(port as never, event as never, options);
+          // The client itself follows live events when the server no longer holds the events after the cursor.
+          return client.subscribe(port as never, event as never, {
+            ...options,
+            afterSeq: undefined,
+          });
         },
       } as AppClient,
       folder,
     });
-    await controller.openExisting(threadOne);
-    expect(attempts).toEqual([0, undefined]);
+    const store = await controller.openExisting(threadOne);
+    expect(attempts).toEqual([0]);
     expect(controller.getSnapshot().threadId).toBe(threadOne);
+    // The first live event is where the stream is now: the baseline, not a gap.
+    subscriptions[0]?.listeners[0]?.({ kind: "process", status: "running" }, 41);
+    expect(store.getSnapshot().lastSeq).toBe(41);
   });
 
   test("resumes a reconnect from afterSeq without duplicate event application", async () => {
@@ -290,6 +300,85 @@ describe("SelectedThreadHistoryController open and paging", () => {
       Object.values(snapshot.tools).find((tool) => tool.toolCallId === "bash-1"),
     ).toMatchObject({ status: "running" });
     expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
+  });
+
+  test("an event the server replays before it acknowledges the subscription reaches the store, from the chat's first event", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions, [
+        { kind: "process", status: "ready" } as RpcSessionEvent,
+      ]),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    expect(subscriptions[0]?.options?.afterSeq).toBe(0);
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 1, process: { status: "ready" } });
+  });
+
+  test("a question the server replays before it acknowledges the subscription is not asked again, and a live one is", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions, [
+        {
+          kind: "notification",
+          frame: {
+            type: "extension_ui_request",
+            id: "ui-old",
+            method: "select",
+            title: "Which database?",
+            options: [],
+          },
+        } as RpcSessionEvent,
+      ]),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    expect(store.getSnapshot().lastSeq).toBe(1);
+    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    // A question asked after the chat opened is live: it opens.
+    subscriptions[0]?.listeners[0]?.(
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "ui-live",
+          method: "select",
+          title: "Which database?",
+          options: [],
+        },
+      } as RpcSessionEvent,
+      2,
+    );
+    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-live"]);
+  });
+
+  test("a chat opened again applies only what came after its last turn ended: the turns before are the session file's", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const store = new OmpRuntimeStore({ threadId: threadOne });
+    const notified: string[] = [];
+    store.subscribeNotifications(["extension_ui_request"], (frame) => {
+      notified.push("id" in frame ? String(frame.id) : frame.type);
+    });
+    const notice = (id: string, message: string) =>
+      ({
+        kind: "notification",
+        frame: { type: "extension_ui_request", id, method: "notify", message },
+      }) as RpcSessionEvent;
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions, [
+        notice("notice-turn-one", "Turn one"),
+        { kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent,
+        notice("notice-turn-two", "Turn two"),
+      ]),
+      createStore: () => store,
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    expect(notified).toEqual(["notice-turn-two"]);
+    expect(store.getSnapshot().lastSeq).toBe(3);
   });
 
   test("the open chat is saved as soon as it is open, before its history has loaded", async () => {

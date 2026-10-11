@@ -192,11 +192,13 @@ function createHistoryClient(
     subscribe: async (_port: unknown, _event: unknown, options?: SubscribeOptions) => {
       const record: SubscriptionRecord = { options, listeners: [], unsubscribed: false };
       subscriptions.push(record);
+      // Like the real client, the onEvent listener is attached before the request.
+      if (options?.onEvent) record.listeners.push(options.onEvent);
       const subscription: AppClientSubscription<RpcSessionEvent> = {
         stream: "A0.rpcSession/event/thread" as never,
         lastSeq: options?.afterSeq ?? 0,
         onEvent: (listener) => {
-          record.listeners.push(listener);
+          if (!record.listeners.includes(listener)) record.listeners.push(listener);
           return () => {
             const index = record.listeners.indexOf(listener);
             if (index >= 0) record.listeners.splice(index, 1);

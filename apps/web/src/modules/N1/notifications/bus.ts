@@ -2,6 +2,7 @@ import type { ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { Notification } from "../contract";
 import { Notification as NotificationSchema } from "../contract";
+import type { RetiredNotices } from "./retired";
 
 export interface NotificationBusSnapshot {
   readonly revision: number;
@@ -20,6 +21,15 @@ export const MAX_NOTIFICATIONS_PER_THREAD = 256;
  */
 export function notificationKey(threadId: ThreadId, dedupeKey: string): string {
   return `${JSON.stringify(String(threadId))}:${JSON.stringify(dedupeKey)}`;
+}
+
+/**
+ * Whether a key names a stream notice: `<kind>:<sequence>:<fingerprint>`, where the sequence is the stream event that
+ * produced it. Such a key comes back only from a replay of that event, so a dismissal of it can be remembered. A key
+ * without a sequence is reused for the same text, so it is not.
+ */
+export function isStreamNoticeKey(dedupeKey: string): boolean {
+  return /^(extension:notify|session:notice):\d+:/.test(dedupeKey);
 }
 
 function invalidNotification(): AppFailure {
@@ -69,15 +79,26 @@ function freezeSnapshot(
   });
 }
 
+export interface NotificationBusOptions {
+  /** The stream notices a person let go of: a publish of one is ignored, so a replay does not bring it back. */
+  readonly retired?: RetiredNotices;
+}
+
 /**
  * Immutable, thread-aware notification storage. A publish with the same `(threadId, dedupeKey)`
  * replaces the prior notice; an identical publish is ignored so reconnects cannot announce twice.
+ * A stream notice let go of (see `retire`, and expiry) is ignored when it is published again.
  * The bus owns no timers and never moves focus. Consumers decide how to render each placement.
  */
 export class NotificationBus {
   private readonly notices = new Map<string, Notification>();
   private readonly listeners = new Set<NotificationBusListener>();
+  private readonly retired: RetiredNotices | undefined;
   private snapshot: NotificationBusSnapshot = freezeSnapshot(0, EMPTY_NOTIFICATIONS);
+
+  public constructor(options: NotificationBusOptions = {}) {
+    this.retired = options.retired;
+  }
 
   public getSnapshot(): NotificationBusSnapshot {
     return this.snapshot;
@@ -96,6 +117,7 @@ export class NotificationBus {
     const parsed = NotificationSchema.safeParse(notification);
     if (!parsed.success) throw invalidNotification();
     const frozen = freezeNotification(parsed.data);
+    if (this.retired?.has(frozen.threadId, frozen.dedupeKey)) return "deduplicated";
     const key = notificationKey(frozen.threadId, frozen.dedupeKey);
     const previous = this.notices.get(key);
     if (previous && sameNotification(previous, frozen)) return "deduplicated";
@@ -111,6 +133,15 @@ export class NotificationBus {
     const removed = this.notices.delete(notificationKey(threadId, dedupeKey));
     if (removed) this.commit();
     return removed;
+  }
+
+  /**
+   * The person, or the notice's own timer, let it go: it leaves the feedback and is not shown again when its stream is
+   * replayed. A system removal (a resolved retry, a cleared projection error) is `dismiss`, which remembers nothing.
+   */
+  public retire(threadId: ThreadId, dedupeKey: string): boolean {
+    if (isStreamNoticeKey(dedupeKey)) this.retired?.remember(threadId, dedupeKey);
+    return this.dismiss(threadId, dedupeKey);
   }
 
   public clearForThread(threadId: ThreadId): number {
@@ -129,6 +160,8 @@ export class NotificationBus {
     for (const [key, notice] of this.notices) {
       if (notice.expiresAt !== undefined && notice.expiresAt <= now && this.notices.delete(key)) {
         removed += 1;
+        if (isStreamNoticeKey(notice.dedupeKey))
+          this.retired?.remember(notice.threadId, notice.dedupeKey);
       }
     }
     if (removed > 0) this.commit();

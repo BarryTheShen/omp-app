@@ -72,6 +72,8 @@ class FakeServer {
   readonly connections: FakeConnection[] = [];
   readonly cancelled = new Set<string>();
   readonly callIds: string[] = [];
+  /** Events the fake server replays to a subscription that asks for a cursor, sent before its result. */
+  readonly replay: ServerFrame[] = [];
   readonly subscribeAfterSeq: Array<number | undefined> = [];
   readonly resyncConflicts = new Set<number>();
   /** Connection indexes whose subscribe requests are refused with `not_found`. */
@@ -158,6 +160,17 @@ class FakeServer {
           error: { code: "conflict", message: "stale", retryable: false },
         });
         return;
+      }
+      if (frame.afterSeq !== undefined) {
+        for (const event of this.replay) {
+          if (
+            event.type === "event" &&
+            event.stream === frame.stream &&
+            event.seq > frame.afterSeq
+          ) {
+            socket.deliver(event);
+          }
+        }
       }
       connection.subscriptions.add(frame.stream);
       socket.deliver({ type: "result", id: frame.id, ok: true, value: { stream: frame.stream } });
@@ -279,6 +292,142 @@ describe("createAppClient", () => {
     await eventually(() => server.connections.length === 2 && client.connectionState === "open");
     expect(resync).toContain("stale-resume");
     expect(server.subscribeAfterSeq).toEqual([undefined, 1, undefined]);
+    client.dispose();
+  });
+
+  test("an onEvent listener gets the events the server replays before it acknowledges the subscription", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    server.replay.push(
+      EventFrame.parse({
+        type: "event",
+        stream: "A0.testEvents/updated/thread-1",
+        seq: 1,
+        payload: { value: "one" },
+      }),
+      EventFrame.parse({
+        type: "event",
+        stream: "A0.testEvents/updated/thread-1",
+        seq: 2,
+        payload: { value: "two" },
+      }),
+    );
+    const received: Array<{ value: string; seq: number }> = [];
+    const subscription = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      afterSeq: 0,
+      onEvent: (payload, seq) => received.push({ value: payload.value, seq }),
+    });
+    expect(received).toEqual([
+      { value: "one", seq: 1 },
+      { value: "two", seq: 2 },
+    ]);
+    expect(subscription.lastSeq).toBe(2);
+    expect(server.subscribeAfterSeq).toEqual([0]);
+    client.dispose();
+  });
+
+  test("an explicit afterSeq of zero is the cursor, and a reconnect before any event sends it again", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    await client.subscribe(EventPort, "updated", { scope: "thread-1", afterSeq: 0 });
+    server.closeCurrent();
+    await eventually(() => server.connections.length === 2 && client.connectionState === "open");
+    await eventually(() => server.subscribeAfterSeq.length === 2);
+    expect(server.subscribeAfterSeq).toEqual([0, 0]);
+    client.dispose();
+  });
+
+  test("a subscription without a cursor resumes live until it has seen an event", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    await client.subscribe(EventPort, "updated", { scope: "thread-1" });
+    server.closeCurrent();
+    await eventually(() => server.connections.length === 2 && client.connectionState === "open");
+    await eventually(() => server.subscribeAfterSeq.length === 2);
+    expect(server.subscribeAfterSeq).toEqual([undefined, undefined]);
+    client.dispose();
+  });
+
+  test("a second subscribe to a stream already subscribed takes its onEvent listener, with no second request", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const first = await client.subscribe(EventPort, "updated", { scope: "thread-1" });
+    const received: Array<{ value: string; seq: number }> = [];
+    const second = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (payload, seq) => received.push({ value: payload.value, seq }),
+    });
+    expect(second.stream).toBe(first.stream);
+    expect(server.subscribeAfterSeq).toEqual([undefined]);
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => received.length === 1);
+    expect(received).toEqual([{ value: "one", seq: 1 }]);
+    client.dispose();
+  });
+
+  test("a first subscribe the server cannot replay from zero is live-only, with no resync", async () => {
+    const server = new FakeServer();
+    server.resyncConflicts.add(0);
+    const client = await openClient(server);
+    const resyncs: string[] = [];
+    client.onResync((event) => resyncs.push(event.reason));
+    const seqs: number[] = [];
+    const subscription = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      afterSeq: 0,
+      onEvent: (_payload, seq) => seqs.push(seq),
+    });
+    expect(server.subscribeAfterSeq).toEqual([0, undefined]);
+    expect(resyncs).toEqual([]);
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => seqs.length === 1);
+    expect(subscription.lastSeq).toBe(1);
+    client.dispose();
+  });
+
+  test("a refused subscribe leaves no record: its retry sends a new request", async () => {
+    const server = new FakeServer();
+    server.refusedSubscriptions.add(0);
+    const client = await openClient(server);
+    await expect(
+      client.subscribe(EventPort, "updated", { scope: "thread-1" }),
+    ).rejects.toMatchObject({ appError: { code: "not_found" } });
+    server.refusedSubscriptions.delete(0);
+    const seqs: number[] = [];
+    const subscription = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (_payload, seq) => seqs.push(seq),
+    });
+    expect(server.subscribeAfterSeq).toEqual([undefined, undefined]);
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => seqs.length === 1);
+    expect(subscription.lastSeq).toBe(1);
+    client.dispose();
+  });
+
+  test("a listener attached twice gets each event once, and the detach its onEvent returns removes it", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const first: number[] = [];
+    await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (_payload, seq) => first.push(seq),
+    });
+    const second: number[] = [];
+    const onSecond = (_payload: { readonly value: string }, seq: number) => second.push(seq);
+    const subscription = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: onSecond,
+    });
+    const detach = subscription.onEvent(onSecond);
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => first.length === 1);
+    expect(second).toEqual([1]);
+    detach();
+    server.emit("A0.testEvents/updated/thread-1", 2, { value: "two" });
+    await eventually(() => first.length === 2);
+    expect(second).toEqual([1]);
     client.dispose();
   });
 

@@ -218,7 +218,7 @@ function NoticeStack({
         fallback: composerFocus() ?? (root === null ? null : shownFocusableBefore(root)),
       };
     }
-    projector.getBus().dismiss(notification.threadId, notification.dedupeKey);
+    projector.getBus().retire(notification.threadId, notification.dedupeKey);
   }
 
   return (

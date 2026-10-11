@@ -16,3 +16,5 @@ export type {
   WidgetHandoffProjection,
 } from "./projection";
 export { MAX_WIDGET_LINES, NotificationProjector, PROJECTION_ERROR_KEY } from "./projection";
+export type { RetiredNotices } from "./retired";
+export { sessionRetiredNotices } from "./retired";

@@ -58,7 +58,7 @@ import type {
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { SessionInfoModel } from "@/modules/D5/session/info";
 import { NotificationFeedback, NotificationNotices } from "@/modules/N1/feedback";
-import { NotificationProjector } from "@/modules/N1/notifications";
+import { NotificationProjector, sessionRetiredNotices } from "@/modules/N1/notifications";
 import {
   createP3Runs,
   P3EditSurface,
@@ -189,6 +189,7 @@ const EMPTY_CAPABILITIES: CapabilityMap = Object.freeze({});
 function useNotificationProjector(
   store: OmpRuntimeStore,
   onEditorText: (text: string, context: { readonly threadId: ThreadId }) => void,
+  instanceId: () => string | undefined,
 ): NotificationProjector {
   const projectorRef = useRef<NotificationProjector | null>(null);
   const generationRef = useRef(0);
@@ -197,6 +198,7 @@ function useNotificationProjector(
       source: store,
       events: store,
       onEditorText,
+      retired: sessionRetiredNotices(window.sessionStorage, instanceId),
     });
   }
   useEffect(() => {
@@ -905,7 +907,14 @@ function ActiveThreadReady({
     (text: string) => draftController.setDraft(text, attachmentManager.toDraftRefs()),
     [attachmentManager, draftController],
   );
-  const notificationProjector = useNotificationProjector(store, setEditorText);
+  // The server instance now, read through a ref that a layout effect refreshes, since the client can be replaced.
+  const instanceIdOf = useRef<() => string | undefined>(() => undefined);
+  useLayoutEffect(() => {
+    instanceIdOf.current = () => connection.client?.instanceId;
+  });
+  const notificationProjector = useNotificationProjector(store, setEditorText, () =>
+    instanceIdOf.current(),
+  );
   const shortcutRegistry = useShortcutRegistry();
   // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
   const appSlashCommands = useMemo(

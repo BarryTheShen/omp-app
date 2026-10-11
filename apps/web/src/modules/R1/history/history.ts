@@ -86,6 +86,25 @@ function turnEnded(payload: RpcSessionEvent): boolean {
   );
 }
 
+/** An event a subscription replayed, with its sequence. */
+interface ReplayedEvent {
+  readonly payload: RpcSessionEvent;
+  readonly seq: number;
+}
+
+/**
+ * The replayed events after the last turn's end: the running turn, or the events of a process that started after the last
+ * one ended. The turns before are history the session file holds, so they are not applied again. Applying their messages
+ * again duplicated them after a branch, whose stream carries the run it came from.
+ */
+function eventsAfterLastTurnEnd(events: readonly ReplayedEvent[]): readonly ReplayedEvent[] {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event !== undefined && turnEnded(event.payload)) return events.slice(index + 1);
+  }
+  return events;
+}
+
 /**
  * Owns only selected-thread lifecycle. A0 owns the socket and event resume; R0 owns event/store
  * reduction and history loading. Switching always disposes the old subscription before publishing
@@ -338,10 +357,9 @@ export class SelectedThreadHistoryController {
       // From here the composer takes text, so a reload or a restart must already find this chat: its id is saved now,
       // not after the history has loaded. Otherwise text typed in a new chat is lost when the app restarts in that window.
       this.options.onThreadIdChange?.(threadId);
-      // A live-only subscription: with afterSeq 0 the client sends no cursor (`packages/client/src/client.ts`), so
-      // the server replays nothing and the first event is the store's baseline; the history load below covers
-      // everything written before it. Without the subscription the store never sees the process become ready and
-      // can miss the start of the first prompt.
+      // The chat's stream starts at its first event the server still holds (afterSeq 0): the events omp sent before this
+      // browser subscribed, such as a startup notice or the process becoming ready, reach the store in order. The history
+      // load below reads what omp wrote to the session file.
       await this.attachSubscription(threadId, store, 0);
       await loader.loadInitial();
       this.stopRefetchWatch = loader.watchNeedsRefetch();
@@ -395,32 +413,21 @@ export class SelectedThreadHistoryController {
     const previous = this.subscription;
     this.subscription = undefined;
     if (previous) await previous.unsubscribe();
-    const subscribe = (from: number | undefined) =>
-      this.client.subscribe(RpcSessionPortSchema, "event", {
-        scope: threadId,
-        ...(from === undefined ? {} : { afterSeq: from }),
-      }) as Promise<EventSubscription>;
-    let subscription: EventSubscription;
-    try {
-      subscription = await subscribe(afterSeq);
-    } catch (error) {
-      // The server keeps the last few hundred events per thread. When the requested ones are gone,
-      // follow live events only; the history loader supplies everything older.
-      if (afterSeq === undefined || asFailure(error, "").appError.code !== "conflict") throw error;
-      subscription = await subscribe(undefined);
-    }
-    this.subscription = subscription;
-    // With afterSeq 0 the client sends no cursor, so the server replays nothing: the subscription is live only and
-    // its first event is where the stream is now, not a gap. The history load that follows reads everything written
-    // before that event, so the store starts its sequence there. Treating it as a gap dropped every live event
-    // until the refetch ended.
+    // With afterSeq 0 the server replays what it still holds. Only the events after the last turn's end are applied (see
+    // `eventsAfterLastTurnEnd`), in order, so the store takes the running turn from its first event. When the server no
+    // longer holds the events, the subscription follows live events only, and the first event it delivers is where the
+    // stream is now, not a gap.
     let baselined = afterSeq !== 0;
-    this.offEvents = subscription.onEvent((payload, seq) => {
+    // The events a subscription from the stream's start replays arrive before it is acknowledged. They are collected, and
+    // applied after the acknowledgement.
+    let replay: ReplayedEvent[] | undefined;
+    // A replayed event is applied as history: a question, host call or sign-in prompt in it is not asked again (see `ingest`).
+    const apply = (payload: RpcSessionEvent, seq: number, replayed: boolean) => {
       if (!baselined) {
         baselined = true;
         if (store.getSnapshot().lastSeq === 0) store.resetSequence(seq - 1);
       }
-      store.ingest(payload, seq);
+      store.ingest(payload, seq, replayed);
       // A turn that was still running when this chat was opened again: the app is told when it ends.
       if (turnEnded(payload) && this.reopenedWhileRunning === threadId) {
         this.reopenedWhileRunning = undefined;
@@ -439,7 +446,33 @@ export class SelectedThreadHistoryController {
       if (nextThreadId && nextThreadId !== this.state.threadId) {
         void this.rekeyInProcess(nextThreadId);
       }
-    });
+    };
+    const onEvent = (payload: RpcSessionEvent, seq: number) => {
+      if (replay !== undefined) replay.push({ payload, seq });
+      else apply(payload, seq, false);
+    };
+    // The handler is attached before the request: the server sends the events a stream replays before it acknowledges
+    // the subscription, and an event with no listener is lost. A cursor the server no longer holds is followed live by
+    // the client itself (see `subscribeRecord`); the history loader supplies everything older.
+    const collected: ReplayedEvent[] | undefined = afterSeq === 0 ? [] : undefined;
+    replay = collected;
+    let subscription: EventSubscription;
+    try {
+      subscription = await (this.client.subscribe(RpcSessionPortSchema, "event", {
+        scope: threadId,
+        ...(afterSeq === undefined ? {} : { afterSeq }),
+        onEvent,
+      }) as Promise<EventSubscription>);
+    } finally {
+      replay = undefined;
+    }
+    this.subscription = subscription;
+    if (collected !== undefined) {
+      for (const event of eventsAfterLastTurnEnd(collected)) apply(event.payload, event.seq, true);
+    }
+    // The same function as the handler above, so the client holds one listener. Its detach removes the handler when the
+    // chat is left.
+    this.offEvents = subscription.onEvent(onEvent);
   }
 
   private sessionIdFromEvent(event: RpcSessionEvent): ThreadId | undefined {

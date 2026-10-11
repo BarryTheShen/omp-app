@@ -16,6 +16,7 @@ import {
   TodoReminderSchema,
 } from "../contract";
 import { NotificationBus } from "./bus";
+import type { RetiredNotices } from "./retired";
 
 export interface NormalizedRuntimeEventSource {
   readonly subscribeOmpEvents: (
@@ -66,6 +67,8 @@ export interface NotificationProjectionSnapshot {
 export interface NotificationProjectorOptions {
   readonly source: RuntimeSnapshotSource;
   readonly bus?: NotificationBus;
+  /** Used when no `bus` is given: the stream notices a person let go of, which a replay must not bring back. */
+  readonly retired?: RetiredNotices;
   readonly events?: NormalizedRuntimeEventSource;
   readonly transcript?: TranscriptNoticeSink;
   readonly onEditorText?: (text: string, context: PresentationContext) => void;
@@ -466,7 +469,7 @@ export class NotificationProjector {
 
   public constructor(options: NotificationProjectorOptions) {
     this.source = options.source;
-    this.bus = options.bus ?? new NotificationBus();
+    this.bus = options.bus ?? new NotificationBus({ retired: options.retired });
     this.transcript = options.transcript;
     this.onEditorText = options.onEditorText;
     this.now = options.now ?? (() => Date.now());

@@ -241,6 +241,30 @@ const EMPTY_PENDING: PendingRequestsState = Object.freeze({
   hostUris: Object.freeze({}),
 });
 const EMPTY_PROCESS: ProcessState = Object.freeze({ status: "starting", error: null });
+/**
+ * Extension UI methods that ask the person for an answer or a click: the modal questions, and a sign-in prompt
+ * (`open_url`). A replayed one is never presented again (see `ingest`).
+ */
+const ASKING_EXTENSION_METHODS: ReadonlySet<string> = new Set([
+  "select",
+  "confirm",
+  "input",
+  "editor",
+  "ask",
+  "open_url",
+]);
+
+/** Whether a notification frame asks the person for something: a question, a host call, or a sign-in prompt. */
+function isAskingFrame(frame: unknown): boolean {
+  if (!isRecord(frame)) return false;
+  if (frame.type === "host_tool_call" || frame.type === "host_uri_request") return true;
+  return (
+    frame.type === "extension_ui_request" &&
+    typeof frame.method === "string" &&
+    ASKING_EXTENSION_METHODS.has(frame.method)
+  );
+}
+
 const EMPTY_SESSION: SessionInfoState = Object.freeze({
   model: null,
   thinkingLevel: null,
@@ -908,16 +932,23 @@ export class OmpRuntimeStore {
    * caller must refetch history and call `resetSequence` before the next event can change state,
    * except that a request omp is waiting on is recorded anyway (`ingestAcrossGap`). Every seq is
    * remembered (`latestSeenSeq`) so the refetch resumes where the stream really is.
+   *
+   * `fromHistory` marks an event that a subscription from the stream's start replays before it is acknowledged. Such an
+   * event is applied, except a frame that asks the person something (a question, a host call, a sign-in prompt): the
+   * answer is not in the stream, so a replayed request was either answered or belongs to a turn that has ended, and it
+   * must not open again.
    */
-  public ingest(event: RpcSessionEvent, seq: number): void {
+  public ingest(event: RpcSessionEvent, seq: number, fromHistory = false): void {
     if (!Number.isSafeInteger(seq) || seq < 1) {
       throw new RangeError("event seq must be a positive safe integer");
     }
     if (seq > this.latestSeenSeq) this.latestSeenSeq = seq;
     if (seq <= this.snapshot.lastSeq) return;
     const eventValue = event as unknown as Record<string, unknown>;
+    const askingFromHistory =
+      fromHistory && eventValue.kind === "notification" && isAskingFrame(eventValue.frame);
     if (this.snapshot.needsRefetch || seq !== this.snapshot.lastSeq + 1) {
-      this.ingestAcrossGap(eventValue, seq);
+      this.ingestAcrossGap(eventValue, seq, askingFromHistory);
       return;
     }
 
@@ -934,7 +965,7 @@ export class OmpRuntimeStore {
         cancelActiveTools(next);
         break;
       case "notification":
-        this.reduceNotification(next, eventValue.frame, seq);
+        if (!askingFromHistory) this.reduceNotification(next, eventValue.frame, seq);
         break;
       case "process": {
         const status = eventValue.status;
@@ -958,7 +989,8 @@ export class OmpRuntimeStore {
     next.lastSeq = seq;
     this.commit(next);
     if (event.kind === "omp") this.forwardOmpEvent(event.event, seq);
-    if (event.kind === "notification") this.forwardNotification(event.frame, seq);
+    if (event.kind === "notification" && !askingFromHistory)
+      this.forwardNotification(event.frame, seq);
   }
 
   /**
@@ -970,7 +1002,11 @@ export class OmpRuntimeStore {
    * answer nobody was shown (a fresh chat's first events predate the browser's subscription, which is
    * a gap by construction). Dropping a tool's start left its card reading Waiting until the call ended.
    */
-  private ingestAcrossGap(eventValue: Record<string, unknown>, seq: number): void {
+  private ingestAcrossGap(
+    eventValue: Record<string, unknown>,
+    seq: number,
+    askingFromHistory: boolean,
+  ): void {
     const next = mutableSnapshot(this.snapshot);
     const rawFrame = eventValue.frame;
     const isExtensionCancel =
@@ -978,7 +1014,8 @@ export class OmpRuntimeStore {
       isRecord(rawFrame) &&
       rawFrame.type === "extension_ui_request" &&
       rawFrame.method === "cancel";
-    if (eventValue.kind === "notification") {
+    // A question or host call from the history is not recorded (see `ingest`).
+    if (eventValue.kind === "notification" && !askingFromHistory) {
       this.reduceNotification(next, rawFrame, seq);
       if (isExtensionCancel) this.forwardNotification(rawFrame, seq);
     }

@@ -39,8 +39,8 @@ function assistant(
   };
 }
 
-function ingest(store: OmpRuntimeStore, event: unknown, seq: number): void {
-  store.ingest(event as RpcSessionEvent, seq);
+function ingest(store: OmpRuntimeStore, event: unknown, seq: number, fromHistory = false): void {
+  store.ingest(event as RpcSessionEvent, seq, fromHistory);
 }
 
 function omp(store: OmpRuntimeStore, event: unknown, seq: number): void {
@@ -872,6 +872,71 @@ describe("OmpRuntimeStore", () => {
     store.resetSequence();
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 10, needsRefetch: false });
     expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ask-2"]);
+  });
+
+  test("a question, host call or sign-in prompt from the history is not asked again, and a live one is", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const notified: string[] = [];
+    store.subscribeNotifications(
+      ["extension_ui_request", "host_tool_call", "host_uri_request"],
+      (frame) => notified.push("id" in frame ? String(frame.id) : String(frame.type)),
+    );
+    // What a subscription from the start replays: a question that was answered, a host call and a URI request whose
+    // turns ended, a sign-in prompt, and a notice, which is still shown.
+    const replayed = [
+      {
+        type: "extension_ui_request",
+        id: "ui-old",
+        method: "select",
+        title: "Which database?",
+        options: [],
+      },
+      {
+        type: "host_tool_call",
+        id: "host-old",
+        toolCallId: "call-1",
+        toolName: "lookup",
+        arguments: {},
+      },
+      { type: "host_uri_request", id: "uri-old", operation: "read", url: "app://notes/1" },
+      {
+        type: "extension_ui_request",
+        id: "link-old",
+        method: "open_url",
+        url: "https://example.com/sign-in",
+      },
+      {
+        type: "extension_ui_request",
+        id: "notice-old",
+        method: "notify",
+        message: "Startup notice",
+      },
+    ];
+    for (const [index, frame] of replayed.entries()) {
+      ingest(store, { kind: "notification", frame }, index + 1, true);
+    }
+    expect(store.getSnapshot().lastSeq).toBe(5);
+    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    expect(store.getSnapshot().pending.hostTools).toEqual({});
+    expect(store.getSnapshot().pending.hostUris).toEqual({});
+    expect(notified).toEqual(["notice-old"]);
+    // A question asked now is live: it opens and reaches the listeners.
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "ui-live",
+          method: "select",
+          title: "Which database?",
+          options: [],
+        },
+      },
+      6,
+    );
+    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-live"]);
+    expect(notified).toEqual(["notice-old", "ui-live"]);
   });
 
   test("records a tool call's start, progress and end across a gap, since history never restores them", () => {
