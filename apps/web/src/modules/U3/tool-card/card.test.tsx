@@ -1,8 +1,10 @@
 import type { ToolCallId } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ToolCard } from "./card";
 import type { ToolCardPhase, ToolCardState } from "./contract";
+import { FullOutputProvider } from "./full-output";
+import { TextOutput } from "./text-output";
 
 afterEach(() => cleanup());
 
@@ -213,5 +215,42 @@ describe("ToolCard body", () => {
     expect(screen.getByText("Body text")).toBeTruthy();
     fireEvent.click(trigger);
     expect(screen.queryByText("Body text")).toBeNull();
+  });
+});
+
+describe("ToolCard output the app holds in part", () => {
+  test("after Load full output, focus moves to the card's Show all lines, and the card says the full output loaded", async () => {
+    const held = Promise.withResolvers<void>();
+    const loadFull = vi.fn(() => held.promise);
+    const text = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n");
+    const cutState = {
+      ...state("success"),
+      defaultOpen: true,
+      result: { output: text, outputCut: { shownBytes: 65_536, totalBytes: 209_715 } },
+    };
+    const fullState = { ...cutState, result: { output: text } };
+    const { rerender } = render(
+      <FullOutputProvider value={loadFull}>
+        <ToolCard state={cutState}>
+          <TextOutput text={text} />
+        </ToolCard>
+      </FullOutputProvider>,
+    );
+    const load = screen.getByRole("button", { name: "Load full output" });
+    load.focus();
+    fireEvent.click(load);
+    expect(document.activeElement).toBe(load);
+
+    rerender(
+      <FullOutputProvider value={loadFull}>
+        <ToolCard state={fullState}>
+          <TextOutput text={text} />
+        </ToolCard>
+      </FullOutputProvider>,
+    );
+    await act(async () => held.resolve());
+
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show all 40 lines" }));
+    expect(screen.getByText("Full output loaded")).toBeTruthy();
   });
 });

@@ -11,7 +11,13 @@ import type {
   ToolRenderer,
   ToolRendererProps,
 } from "./contract";
-import { formatBytes, type OutputCut, OutputCutNote, outputCutOf } from "./full-output";
+import {
+  formatBytes,
+  type OutputCut,
+  OutputCutNote,
+  outputCutOf,
+  useFullOutputFocus,
+} from "./full-output";
 import { normalizeToolRendererProps } from "./normalize";
 import { OutputMetaSchema } from "./output-meta";
 import type { CopyKind } from "./slots";
@@ -364,6 +370,8 @@ function BashOutput({
   readonly onCopy?: CopyHandler;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const outputRef = useRef<HTMLDivElement>(null);
+  const full = useFullOutputFocus(cut, outputRef, "[data-u3-show-all]");
   if (result === undefined) {
     // Output can still arrive only while the command runs; a stopped or failed command says what it has.
     const commandRunning = state.phase === "running" || state.phase === "partial";
@@ -397,7 +405,7 @@ function BashOutput({
         : copyStatusText("copied");
   const stderr = result.stderr?.trim() ?? "";
   return (
-    <div className="flex min-w-0 flex-col gap-2 py-2" data-slot="u3-bash-output">
+    <div className="flex min-w-0 flex-col gap-2 py-2" data-slot="u3-bash-output" ref={outputRef}>
       <div
         className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
         data-slot="u3-bash-meta"
@@ -453,6 +461,7 @@ function BashOutput({
           {previewControls && (
             <Button
               className="w-fit"
+              data-u3-show-all
               size="xs"
               type="button"
               variant="outline"
@@ -463,12 +472,18 @@ function BashOutput({
                 : `Show all ${count(preview.total)} ${preview.unit}`}
             </Button>
           )}
+          {full.loaded && (
+            <span role="status" aria-live="polite">
+              Full output loaded
+            </span>
+          )}
         </div>
       )}
       {cut !== undefined && (
         <OutputCutNote
           cut={cut}
           lead={partialOutputNote(cut, preview)}
+          onLoaded={full.onLoaded}
           toolCallId={state.toolCallId}
         />
       )}

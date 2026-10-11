@@ -33,6 +33,7 @@ export function TextOutput({ text, testId }: TextOutputProps) {
       {foldable && (
         <Button
           className="w-fit self-start"
+          data-u3-show-all
           size="xs"
           type="button"
           variant="outline"

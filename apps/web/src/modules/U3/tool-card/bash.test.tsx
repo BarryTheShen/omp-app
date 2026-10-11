@@ -492,6 +492,36 @@ describe("BashCard output the app holds in part", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
   });
+
+  test("after Load full output, focus moves to Show all N lines, and the card says the full output loaded", async () => {
+    const held = Promise.withResolvers<void>();
+    const loadFull = vi.fn(() => held.promise);
+    const partial = {
+      ...toolResult(numbered(40)),
+      outputCut: { shownBytes: 65_536, totalBytes: 209_715 },
+    };
+    const { rerender } = render(
+      <FullOutputProvider value={loadFull}>
+        <BashCard rendererProps={props(partial)} />
+      </FullOutputProvider>,
+    );
+    const load = screen.getByRole("button", { name: "Load full output" });
+    load.focus();
+    fireEvent.click(load);
+    // While the output loads, the button keeps focus.
+    expect(document.activeElement).toBe(load);
+
+    // The thread replaces the partial result with the full one, and the load finishes.
+    rerender(
+      <FullOutputProvider value={loadFull}>
+        <BashCard rendererProps={props(toolResult(numbered(40)))} />
+      </FullOutputProvider>,
+    );
+    await act(async () => held.resolve());
+
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show all 40 lines" }));
+    expect(screen.getByText("Full output loaded")).toBeTruthy();
+  });
 });
 
 describe("a command the person stopped", () => {

@@ -8,7 +8,7 @@ import {
 } from "../../../components/ui/collapsible";
 import { Icons } from "../../../tokens";
 import type { OutputMeta, ToolCardPhase, ToolCardState } from "./contract";
-import { OutputCutNote, outputCutOf } from "./full-output";
+import { OutputCutNote, outputCutOf, useFullOutputFocus } from "./full-output";
 import type { CopyKind, CopySlot } from "./slots";
 
 const MAX_REMEMBERED_DISCLOSURES = 256;
@@ -113,6 +113,8 @@ export function ToolCard({
   const argsRaw = state.argsText;
   const resultRaw = rawResult ?? formatRaw(state.result ?? state.partialResult);
   const cut = outputCutOf(state.result ?? state.partialResult);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const full = useFullOutputFocus(cut, contentRef, "[data-u3-show-all]");
   const output = previewOutput(resultRaw, state.outputMeta, expandedOutput);
   const summary = suppliedSummary ?? summarize(state);
 
@@ -200,7 +202,7 @@ export function ToolCard({
           <Icons.chevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         )}
       </CollapsibleTrigger>
-      <CollapsibleContent id={contentId} data-slot="u3-tool-card-content">
+      <CollapsibleContent id={contentId} data-slot="u3-tool-card-content" ref={contentRef}>
         <div className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4">
           {state.error !== undefined && (
             <div
@@ -260,7 +262,14 @@ export function ToolCard({
               </div>
             )}
           </details>
-          {cut !== undefined && <OutputCutNote cut={cut} toolCallId={state.toolCallId} />}
+          {cut !== undefined && (
+            <OutputCutNote cut={cut} onLoaded={full.onLoaded} toolCallId={state.toolCallId} />
+          )}
+          {full.loaded && (
+            <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
+              Full output loaded
+            </span>
+          )}
           {copyStatus !== "idle" && (
             <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
               {copyStatusText(copyStatus)}

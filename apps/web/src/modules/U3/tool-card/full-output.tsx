@@ -1,4 +1,12 @@
-import { createContext, type ReactNode, useContext, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  type RefObject,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 /** Loads the full text of a tool output the thread shows shortened. Set by the thread shell. */
 export type LoadFullOutput = (toolCallId: string) => Promise<void>;
@@ -39,28 +47,39 @@ export function formatBytes(bytes: number): string {
  * thread that can load it. The note states the facts whether or not the action is there. A caller
  * that knows more (a bash card says how many of its lines it shows) passes `lead` in place of the
  * default sentence.
+ *
+ * While the output loads, the button says so with aria-disabled rather than disabled: a disabled
+ * button drops focus, and a keyboard user would land at the top of the page. When the output is
+ * there, `onLoaded` runs, and the card moves focus to its own "Show all" control (useFullOutputFocus).
  */
 export function OutputCutNote({
   cut,
   toolCallId,
   lead,
+  onLoaded,
 }: {
   readonly cut: OutputCut;
   readonly toolCallId: string;
   readonly lead?: string;
+  readonly onLoaded?: () => void;
 }): ReactNode {
   const loadFull = useContext(FullOutputContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  // A press while the output loads does nothing: the render that marks the button busy may not have happened yet.
+  const inFlight = useRef(false);
   const load = async (): Promise<void> => {
-    if (loadFull === undefined) return;
+    if (loadFull === undefined || inFlight.current) return;
+    inFlight.current = true;
     setLoading(true);
     setError(undefined);
     try {
       await loadFull(toolCallId);
+      onLoaded?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Loading the full output failed");
     } finally {
+      inFlight.current = false;
       setLoading(false);
     }
   };
@@ -79,8 +98,8 @@ export function OutputCutNote({
       </span>
       {loadFull !== undefined && (
         <button
-          className="border-border bg-background hover:bg-muted rounded-md border px-2 py-1 font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
-          disabled={loading}
+          aria-disabled={loading}
+          className="border-border bg-background hover:bg-muted rounded-md border px-2 py-1 font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:cursor-wait aria-disabled:opacity-60"
           type="button"
           onClick={() => void load()}
         >
@@ -94,4 +113,27 @@ export function OutputCutNote({
       )}
     </div>
   );
+}
+
+/**
+ * The focus and the notice of a loaded full output, for the card that holds the note. The note goes
+ * once the output is loaded, so focus moves to the card's own "Show all" control: the first element
+ * matching `control` inside `scope`, once the note is gone. `loaded` says the output arrived, for the
+ * card's status line.
+ */
+export function useFullOutputFocus(
+  cut: OutputCut | undefined,
+  scope: RefObject<HTMLElement | null>,
+  control: string,
+): { readonly loaded: boolean; readonly onLoaded: () => void } {
+  const [pending, setPending] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const cutGone = cut === undefined;
+  useEffect(() => {
+    if (!pending || !cutGone) return;
+    setPending(false);
+    setLoaded(true);
+    scope.current?.querySelector<HTMLElement>(control)?.focus();
+  }, [control, cutGone, pending, scope]);
+  return { loaded, onLoaded: () => setPending(true) };
 }
