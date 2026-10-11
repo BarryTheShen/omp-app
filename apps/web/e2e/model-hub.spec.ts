@@ -81,7 +81,9 @@ test.beforeAll(() => {
 test("model hub groups providers, gates reply scope, and stays readable", async ({ page }) => {
   await page.goto("/d1-model-hub-playground.html");
   await expect(page.getByRole("heading", { name: "Model hub" })).toBeVisible();
-  await expect(page.getByText("alpha", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "alpha models" }).getByText("alpha", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("region", { name: "beta models" })).toBeVisible();
   await expect(page.getByRole("button", { name: "This reply: not available" })).toBeVisible();
   await expect(page.getByText("omp has no per-reply model override.")).toBeVisible();
