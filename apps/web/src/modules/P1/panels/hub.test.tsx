@@ -32,6 +32,7 @@ function emptyModel(patch: Partial<HubModel>): HubModel {
     title: "Agent Hub",
     lifecycle: "empty",
     description: null,
+    running: false,
     error: null,
     view: "list",
     sections: [],
@@ -261,10 +262,14 @@ describe("AgentHub live roster", () => {
     fireEvent.click(screen.getByRole("option", { name: /Scan the repo/ }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel Scan the repo" }));
     expect(
-      await screen.findByText("This worker has already finished, so there is nothing to cancel."),
+      await screen.findByText(
+        "omp is no longer running this worker; it finished when its last turn ended.",
+      ),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(screen.queryByText("Subagent is no longer running")).toBeNull();
+    expect(screen.getByRole("option", { name: /Scan the repo/ }).textContent).toContain("Finished");
+    expect(screen.queryByRole("button", { name: "Cancel Scan the repo" })).toBeNull();
   });
 
   test("the transcript button explains why it cannot open, and opens through the callback when it can", async () => {
@@ -301,6 +306,7 @@ describe("AgentHub live roster", () => {
       cancels: {},
       cancelAction: { state: "available" },
       transcriptAction: NO_TRANSCRIPT,
+      now: store.now(),
     });
     render(<AgentHubPanel {...panelProps(model)} />);
     expect(screen.getByRole("listbox", { name: "Recent" })).toBeTruthy();

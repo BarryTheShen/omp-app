@@ -16,6 +16,7 @@ function inputFor(snapshot: AgentRosterStoreSnapshot, selectedKey: string): HubM
     load: { state: "ready" },
     view: "list",
     selectedKey,
+    now: FIXTURE_NOW,
     cancels: {},
     cancelAction: { state: "available" },
     transcriptAction: { state: "unavailable", reason: "The transcript view is not open here." },

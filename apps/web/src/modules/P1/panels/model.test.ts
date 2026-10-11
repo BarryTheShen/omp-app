@@ -37,6 +37,7 @@ function input(
     cancels: {},
     cancelAction: AVAILABLE,
     transcriptAction: NO_TRANSCRIPT,
+    now: FIXTURE_NOW,
     ...patch,
   };
 }
@@ -270,7 +271,7 @@ describe("buildHubModel inspector", () => {
     });
     expect(phase({ [key]: { state: "failed", error: gone.appError } })).toEqual({
       state: "failed",
-      message: "This worker has already finished, so there is nothing to cancel.",
+      message: "omp is no longer running this worker; it finished when its last turn ended.",
       retryable: false,
     });
   });
@@ -315,12 +316,61 @@ describe("buildHubModel inspector", () => {
       { label: "Tokens", value: "18,240" },
     ]);
   });
+
+  test("a running worker's time moves on between omp's reports, and a finished worker's stays where omp left it", async () => {
+    const store = await fixtureRoster({
+      clock: fixtureClock(),
+      workers: [
+        fixtureWorker("runner", 1, { progress: { currentTool: "bash", durationMs: 5_000 } }),
+        fixtureWorker("done", 2, { progress: { currentTool: "bash", durationMs: 5_000 } }),
+      ],
+      events: [{ at: FIXTURE_NOW + 10, seq: 1, event: lifecycleEvent("done", 2, "completed") }],
+    });
+    const roster = store.getSnapshot();
+    const later = FIXTURE_NOW + 3_000;
+    const running = buildHubModel(
+      input(roster, { selectedKey: keyOf(roster, "runner"), now: later }),
+    );
+    expect(running.running).toBe(true);
+    expect(running.inspector?.progress).toContainEqual({ label: "Running time", value: "8 s" });
+    const done = buildHubModel(input(roster, { selectedKey: keyOf(roster, "done"), now: later }));
+    expect(done.inspector?.progress).toContainEqual({ label: "Running time", value: "5 s" });
+  });
+
+  test("a cancel that omp answered as not running stays on the finished worker, with no retry", async () => {
+    const store = await fixtureRoster({
+      clock: fixtureClock(),
+      workers: [fixtureWorker("gone", 1)],
+      events: [{ at: FIXTURE_NOW + 10, seq: 1, event: lifecycleEvent("gone", 1, "completed") }],
+    });
+    const roster = store.getSnapshot();
+    const key = keyOf(roster, "gone");
+    const model = buildHubModel(
+      input(roster, {
+        selectedKey: key,
+        cancels: {
+          [key]: {
+            state: "failed",
+            error: {
+              code: "not_found",
+              message: "Subagent is no longer running",
+              retryable: false,
+            },
+          },
+        },
+      }),
+    );
+    expect(model.inspector?.cancel).toEqual({
+      state: "ended",
+      message: "omp is no longer running this worker; it finished when its last turn ended.",
+    });
+  });
 });
 
 describe("cancelFailureMessage", () => {
   test.each([
-    ["not_found", "This worker has already finished, so there is nothing to cancel."],
-    ["conflict", "This worker has already finished, so there is nothing to cancel."],
+    ["not_found", "omp is no longer running this worker; it finished when its last turn ended."],
+    ["conflict", "omp is no longer running this worker; it finished when its last turn ended."],
     ["unavailable", "Cancelling workers isn't available in this version of omp."],
     ["omp_error", "The worker could not be cancelled. Try again."],
     ["internal", "The worker could not be cancelled. Try again."],

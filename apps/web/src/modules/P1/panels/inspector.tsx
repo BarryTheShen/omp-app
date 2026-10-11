@@ -84,6 +84,8 @@ function CancelNotice({
           variant="message"
         />
       );
+    case "ended":
+      return <p className="text-muted-foreground text-sm">{cancel.message}</p>;
     case "unavailable":
       return (
         <p className="text-muted-foreground text-xs">Cancel is not available: {cancel.reason}</p>

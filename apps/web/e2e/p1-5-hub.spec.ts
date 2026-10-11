@@ -161,7 +161,8 @@ test.describe("P1.5 Agent Hub playground", () => {
     await expect(
       page.getByText("The transcript view is not connected in this playground."),
     ).toBeVisible();
-    await expect(page.getByText("Using read · 1 min 14 s")).toBeVisible();
+    // The scan worker is still running 90 s after its last report of 74 s, so its time has moved on to 2 min 44 s.
+    await expect(page.getByText("Using read · 2 min 44 s")).toBeVisible();
     await expect(factValue(page, "Tool calls")).toHaveText("6");
     await expect(factValue(page, "Tokens")).toHaveText("18,240");
     await expect(factValue(page, "Requests")).toHaveText("3");
@@ -246,9 +247,10 @@ test.describe("P1.5 Agent Hub playground", () => {
     await open("cancelling");
     await expect(page.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
     await open("cancel-failed");
-    await expect(page.getByRole("alert")).toContainText(
-      "This worker has already finished, so there is nothing to cancel.",
-    );
+    await expect(
+      page.getByText("omp is no longer running this worker; it finished when its last turn ended."),
+    ).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
     await page.screenshot({
       path: join(screenshots, "p1.5-hub-cancel-failed.png"),

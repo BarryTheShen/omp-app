@@ -125,19 +125,25 @@ export function workerTitle(agent: Pick<RosterAgent, "description" | "id">): str
   return agent.description?.trim() || agent.id;
 }
 
-function rowSummary(agent: RosterAgent): string {
+/** A worker's time: omp's last reported duration, moved on by the time since the roster received it while it runs. */
+function durationAt(agent: RosterAgent, now: number): number | null {
+  const { durationMs } = readWorkerMetrics(agent.metrics.raw);
+  if (durationMs === null || agent.status !== "running") return durationMs;
+  return durationMs + Math.max(0, now - agent.metrics.receivedAt);
+}
+
+function rowSummary(agent: RosterAgent, now: number): string {
   const metrics = readWorkerMetrics(agent.metrics.raw);
   const at = agent.terminalAt ?? agent.lastUpdate;
   switch (agent.status) {
     case "pending":
       return "Waiting to start";
-    case "running":
-      return [
-        metrics.step ?? "Working",
-        metrics.durationMs === null ? null : formatDuration(metrics.durationMs),
-      ]
+    case "running": {
+      const durationMs = durationAt(agent, now);
+      return [metrics.step ?? "Working", durationMs === null ? null : formatDuration(durationMs)]
         .filter((part): part is string => part !== null)
         .join(" · ");
+    }
     case "completed":
       return `Finished at ${formatClock(at)}`;
     case "failed":
@@ -176,6 +182,7 @@ export type CancelControl =
   | { readonly state: "sending" }
   | { readonly state: "sent" }
   | { readonly state: "failed"; readonly message: string; readonly retryable: boolean }
+  | { readonly state: "ended"; readonly message: string }
   | { readonly state: "unavailable"; readonly reason: string };
 
 export interface HubInspector {
@@ -195,6 +202,8 @@ export interface HubModel {
   readonly title: string;
   readonly lifecycle: PanelLifecycle;
   readonly description: string | null;
+  /** True while a worker runs, so the panel's clock moves on once a second. */
+  readonly running: boolean;
   readonly error: AppError | null;
   readonly view: HubView;
   readonly sections: readonly HubSection[];
@@ -222,6 +231,8 @@ export interface HubModelInput {
   readonly cancels: Readonly<Record<string, CancelPhase>>;
   readonly cancelAction: ActionAvailability;
   readonly transcriptAction: ActionAvailability;
+  /** The clock time durations are read at: a running worker's time is omp's report plus the time since. */
+  readonly now: number;
 }
 
 const UNKNOWN_PARENT = "";
@@ -250,11 +261,11 @@ function groupHeading(parent: string, numbers: ReadonlyMap<string, number>): str
   return number === undefined ? "Started from this chat" : `From task call ${number}`;
 }
 
-function toRow(agent: RosterAgent, selectedKey: string | null): WorkerRow {
+function toRow(agent: RosterAgent, selectedKey: string | null, now: number): WorkerRow {
   return {
     key: agent.key,
     title: workerTitle(agent),
-    summary: rowSummary(agent),
+    summary: rowSummary(agent, now),
     status: statusPresentation(agent.status),
     selected: agent.key === selectedKey,
   };
@@ -263,7 +274,7 @@ function toRow(agent: RosterAgent, selectedKey: string | null): WorkerRow {
 /** Plain words for a failed cancel: omp's own wording never reaches the page. */
 export function cancelFailureMessage(error: AppError): string {
   if (error.code === "not_found" || error.code === "conflict") {
-    return "This worker has already finished, so there is nothing to cancel.";
+    return "omp is no longer running this worker; it finished when its last turn ended.";
   }
   if (error.code === "unavailable") {
     return "Cancelling workers isn't available in this version of omp.";
@@ -271,16 +282,27 @@ export function cancelFailureMessage(error: AppError): string {
   return "The worker could not be cancelled. Try again.";
 }
 
+/** omp's "not running" answer to a cancel: it says why a worker that the panel showed as running reads Finished. */
+export function isNotRunningAnswer(phase: CancelPhase | undefined): boolean {
+  return phase?.state === "failed" && phase.error.code === "not_found";
+}
+
 function cancelControl(
   agent: RosterAgent,
   cancels: Readonly<Record<string, CancelPhase>>,
   cancelAction: ActionAvailability,
 ): CancelControl {
-  // omp cancels only a worker it lists as running; a finished or queued one has nothing to stop.
-  if (agent.terminalAt !== null || agent.status !== "running") return { state: "hidden" };
+  const phase = cancels[agent.key];
+  if (agent.terminalAt !== null) {
+    // omp's "not running" answer still says why a worker reads Finished: plain words, not an error.
+    return phase?.state === "failed" && isNotRunningAnswer(phase)
+      ? { state: "ended", message: cancelFailureMessage(phase.error) }
+      : { state: "hidden" };
+  }
+  // omp cancels only a worker it lists as running; a queued one has nothing to stop.
+  if (agent.status !== "running") return { state: "hidden" };
   if (cancelAction.state === "unavailable")
     return { state: "unavailable", reason: cancelAction.reason };
-  const phase = cancels[agent.key];
   if (phase === undefined) return { state: "ready" };
   if (phase.state === "failed") {
     return {
@@ -319,8 +341,9 @@ function buildInspector(
     progress.push({ label: "Tokens", value: COUNT_FORMAT.format(metrics.tokens) });
   }
   if (metrics.cost !== null) progress.push({ label: "Cost", value: formatCost(metrics.cost) });
-  if (metrics.durationMs !== null) {
-    progress.push({ label: "Running time", value: formatDuration(metrics.durationMs) });
+  const durationMs = durationAt(agent, input.now);
+  if (durationMs !== null) {
+    progress.push({ label: "Running time", value: formatDuration(durationMs) });
   }
   return {
     key: agent.key,
@@ -341,6 +364,7 @@ function sectionsFor(
   view: HubView,
   selectedKey: string | null,
   numbers: ReadonlyMap<string, number>,
+  now: number,
 ): readonly HubSection[] {
   const byIndex = [...agents].sort((left, right) => left.index - right.index);
   if (view === "byParent") {
@@ -352,7 +376,7 @@ function sectionsFor(
     return [...groups].map(([parent, members]) => ({
       key: `parent:${parent || "chat"}`,
       heading: groupHeading(parent, numbers),
-      rows: members.map((agent) => toRow(agent, selectedKey)),
+      rows: members.map((agent) => toRow(agent, selectedKey, now)),
     }));
   }
   const active = byIndex.filter(isActive);
@@ -366,14 +390,14 @@ function sectionsFor(
     sections.push({
       key: "active",
       heading: "Active",
-      rows: active.map((agent) => toRow(agent, selectedKey)),
+      rows: active.map((agent) => toRow(agent, selectedKey, now)),
     });
   }
   if (recent.length > 0) {
     sections.push({
       key: "recent",
       heading: "Recent",
-      rows: recent.map((agent) => toRow(agent, selectedKey)),
+      rows: recent.map((agent) => toRow(agent, selectedKey, now)),
     });
   }
   return sections;
@@ -423,8 +447,9 @@ export function buildHubModel(input: HubModelInput): HubModel {
     title: HUB_TITLE,
     ...lifecycleFor(input.load, agents.length),
     description: describeCounts(agents),
+    running: agents.some((agent) => agent.status === "running"),
     view: input.view,
-    sections: sectionsFor(agents, input.view, selected?.key ?? null, numbers),
+    sections: sectionsFor(agents, input.view, selected?.key ?? null, numbers, input.now),
     inspector: selected ? buildInspector(selected, numbers, input) : null,
   };
 }

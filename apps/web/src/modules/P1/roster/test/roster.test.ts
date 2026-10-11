@@ -163,4 +163,83 @@ describe("P1 AgentRosterStore", () => {
     expect(after.agents[bKey]?.metrics.percent).toBe(80);
     expect(after.agents[bKey]?.task).toBe("new task");
   });
+
+  test("a worker the roster held as running reads as ended from the moment omp says it is not running", () => {
+    let now = 1_000;
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      clock: { now: () => now },
+    });
+    store.mergeSnapshot([agent("a", 0)]);
+    const key = requireValue(store.getSnapshot().active[0]);
+    now += 5;
+    expect(store.markNotRunning(SubagentId.parse("a"))).toBe(true);
+    expect(store.getSnapshot().agents[key]).toMatchObject({
+      status: "completed",
+      terminalAt: 1_005,
+    });
+    expect(store.getSnapshot().recent).toEqual([key]);
+
+    now += 60_000;
+    const end = lifecycle("a", "completed", 0, 1);
+    store.ingestNotification(end.event, end.seq);
+    expect(store.getSnapshot().agents[key]).toMatchObject({
+      status: "completed",
+      terminalAt: 1_005,
+    });
+  });
+
+  test("a snapshot that still lists a worker as running cannot revive it, and an unknown worker is not marked", () => {
+    let now = 1_000;
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      clock: { now: () => now },
+    });
+    store.mergeSnapshot([agent("a", 0)]);
+    const key = requireValue(store.getSnapshot().active[0]);
+    store.markNotRunning(SubagentId.parse("a"));
+    now += 1;
+    store.mergeSnapshot([agent("a", 0)]);
+    expect(store.getSnapshot().agents[key]?.status).toBe("completed");
+    expect(store.markNotRunning(SubagentId.parse("missing"))).toBe(false);
+  });
+
+  test("a failed end after the roster was told omp no longer runs the worker ends it as Failed, and keeps its first end time", () => {
+    let now = 1_000;
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      clock: { now: () => now },
+    });
+    store.mergeSnapshot([agent("a", 0)]);
+    const key = requireValue(store.getSnapshot().active[0]);
+    now += 5;
+    store.markNotRunning(SubagentId.parse("a"));
+    now += 60_000;
+    const failed = lifecycle("a", "failed", 0, 1);
+    store.ingestNotification(failed.event, failed.seq);
+    expect(store.getSnapshot().agents[key]).toMatchObject({ status: "failed", terminalAt: 1_005 });
+  });
+
+  test("a new run started after the roster was told omp no longer runs the worker is a new row, and the ended row stays ended", () => {
+    let now = 1_000;
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      clock: { now: () => now },
+    });
+    store.mergeSnapshot([agent("a", 0)]);
+    const oldKey = requireValue(store.getSnapshot().active[0]);
+    now += 5;
+    store.markNotRunning(SubagentId.parse("a"));
+    now += 60_000;
+    const started = lifecycle("a", "started", 0, 1);
+    store.ingestNotification(started.event, started.seq);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.agents[oldKey]).toMatchObject({ status: "completed", terminalAt: 1_005 });
+    expect(snapshot.active).toHaveLength(1);
+    expect(snapshot.active[0]).not.toBe(oldKey);
+  });
 });

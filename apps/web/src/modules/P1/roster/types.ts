@@ -10,6 +10,8 @@ export interface AgentProgressMetrics {
   readonly context?: unknown;
   readonly cost?: unknown;
   readonly durationMs?: number;
+  /** When the roster received these metrics, on the roster clock; a running worker's time moves on from here. */
+  readonly receivedAt: number;
   readonly raw: Readonly<Record<string, unknown>>;
 }
 

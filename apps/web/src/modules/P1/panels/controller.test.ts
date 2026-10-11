@@ -59,9 +59,9 @@ describe("AgentHub controller cancel", () => {
       .fn<() => Promise<unknown>>()
       .mockRejectedValueOnce(
         new AppFailure({
-          code: "not_found",
-          message: "Subagent is no longer running",
-          retryable: false,
+          code: "omp_error",
+          message: "omp is busy with another turn",
+          retryable: true,
         }),
       )
       .mockResolvedValueOnce({ cancelled: true });
@@ -70,11 +70,67 @@ describe("AgentHub controller cancel", () => {
     await controller.cancel(key);
     expect(controller.getState().cancels[key]).toMatchObject({
       state: "failed",
-      error: { code: "not_found", message: "Subagent is no longer running", retryable: false },
+      error: { code: "omp_error", message: "omp is busy with another turn", retryable: true },
     });
     await controller.cancel(key);
     expect(run).toHaveBeenCalledTimes(2);
     expect(controller.getState().cancels[key]).toEqual({ state: "sent" });
+  });
+
+  test("a cancel that omp answers as not running records the worker as ended, keeps the answer, and offers no retry", async () => {
+    const clock = fixtureClock();
+    const store = await fixtureRoster({ clock, workers: [fixtureWorker("quiet", 1)] });
+    const key = keyOf(store.getSnapshot().order, "quiet");
+    const run = vi.fn<() => Promise<unknown>>().mockRejectedValue(
+      new AppFailure({
+        code: "not_found",
+        message: "Subagent is no longer running",
+        retryable: false,
+      }),
+    );
+    const controller = createAgentHubController({ roster: store, actions: actions(run) });
+
+    clock.set(FIXTURE_NOW + 500);
+    await controller.cancel(key);
+    expect(store.getSnapshot().agents[key]).toMatchObject({
+      status: "completed",
+      terminalAt: FIXTURE_NOW + 500,
+    });
+    expect(controller.getState().cancels[key]).toMatchObject({
+      state: "failed",
+      error: { code: "not_found", retryable: false },
+    });
+    await controller.cancel(key);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  test("the time a worker reads when omp ends it stays where the clock had moved it", async () => {
+    const clock = fixtureClock();
+    const store = await fixtureRoster({
+      clock,
+      workers: [
+        fixtureWorker("timed", 1, { progress: { currentTool: "bash", durationMs: 5_000 } }),
+      ],
+    });
+    const key = keyOf(store.getSnapshot().order, "timed");
+    const controller = createAgentHubController({
+      roster: store,
+      actions: actions(async () => {
+        throw new AppFailure({
+          code: "not_found",
+          message: "Subagent is no longer running",
+          retryable: false,
+        });
+      }),
+    });
+    clock.set(FIXTURE_NOW + 3_000);
+    await controller.cancel(key);
+    clock.set(FIXTURE_NOW + 60_000);
+    controller.select(key);
+    expect(controller.getState().model.inspector?.progress).toContainEqual({
+      label: "Running time",
+      value: "8 s",
+    });
   });
 
   test("a failure that is not an AppFailure becomes a retryable message, never a thrown error", async () => {

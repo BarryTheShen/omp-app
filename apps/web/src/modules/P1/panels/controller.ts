@@ -1,4 +1,4 @@
-import { type AppError, AppFailure } from "@omp-app/contracts";
+import { type AppError, AppFailure, type SubagentId } from "@omp-app/contracts";
 import type { AgentRef } from "@/modules/P1/contract";
 import type { AgentRosterStoreSnapshot } from "@/modules/P1/roster";
 import {
@@ -8,12 +8,18 @@ import {
   type HubLoad,
   type HubModel,
   type HubView,
+  isNotRunningAnswer,
 } from "./model";
 
-/** The read side of AgentRosterStore: its current snapshot and the notifications that change it. */
+/**
+ * The roster the panel reads, the clock its times are read by, and the one write the panel makes: recording that omp
+ * no longer runs a worker the roster still lists as running.
+ */
 export interface RosterSource {
   readonly getSnapshot: () => AgentRosterStoreSnapshot;
   readonly subscribe: (listener: (snapshot: AgentRosterStoreSnapshot) => void) => () => void;
+  readonly now: () => number;
+  readonly markNotRunning: (id: SubagentId) => boolean;
 }
 
 export type CancelAction =
@@ -50,6 +56,8 @@ export interface AgentHubController {
   /** Resolves when the cancel call settles; a failure is kept in the state, never thrown. */
   readonly cancel: (key: string) => Promise<void>;
   readonly openTranscript: (key: string) => void;
+  /** Re-reads the clock, so a running worker's time moves on; the panel calls it once a second while one runs. */
+  readonly tick: () => void;
 }
 
 export interface AgentHubControllerOptions {
@@ -70,13 +78,16 @@ function cancelFailure(error: unknown): AppError {
   return FALLBACK_CANCEL_FAILURE;
 }
 
-/** Keeps cancel phases only for workers that are still running. */
+/** Keeps cancel phases only for workers that are still running, or whose end a cancel answer explains. */
 function keepLiveCancels(
   cancels: Readonly<Record<string, CancelPhase>>,
   roster: AgentRosterStoreSnapshot,
 ): Readonly<Record<string, CancelPhase>> {
   return Object.fromEntries(
-    Object.entries(cancels).filter(([key]) => roster.agents[key]?.terminalAt === null),
+    Object.entries(cancels).filter(([key, phase]) => {
+      const agent = roster.agents[key];
+      return agent !== undefined && (agent.terminalAt === null || isNotRunningAnswer(phase));
+    }),
   );
 }
 
@@ -125,6 +136,7 @@ export function createAgentHubController(options: AgentHubControllerOptions): Ag
         cancels: liveCancels,
         cancelAction,
         transcriptAction,
+        now: options.roster.now(),
       }),
       load,
       view,
@@ -153,15 +165,20 @@ export function createAgentHubController(options: AgentHubControllerOptions): Ag
   function setCancel(key: string, phase: CancelPhase): void {
     const agent = options.roster.getSnapshot().agents[key];
     const next = { ...cancels };
-    // A worker that finished while its cancel call was in flight has nothing left to show.
-    if (agent === undefined || agent.terminalAt !== null) delete next[key];
-    else next[key] = phase;
+    // A worker that finished during its cancel call has nothing to show, unless omp's answer explains the end.
+    if (agent === undefined || (agent.terminalAt !== null && !isNotRunningAnswer(phase))) {
+      delete next[key];
+    } else next[key] = phase;
     cancels = next;
     notify();
   }
 
   function setLoad(next: HubLoad): void {
     load = next;
+    notify();
+  }
+
+  function tick(): void {
     notify();
   }
 
@@ -188,7 +205,11 @@ export function createAgentHubController(options: AgentHubControllerOptions): Ag
       await action.run(agent);
       setCancel(key, { state: "sent" });
     } catch (error) {
-      setCancel(key, { state: "failed", error: cancelFailure(error) });
+      const failure = cancelFailure(error);
+      // omp answers "not found" once it no longer runs the worker. The roster records that end now, so its
+      // row agrees with the answer the person just got.
+      if (failure.code === "not_found") options.roster.markNotRunning(agent.id);
+      setCancel(key, { state: "failed", error: failure });
     }
   }
 
@@ -198,5 +219,5 @@ export function createAgentHubController(options: AgentHubControllerOptions): Ag
     if (agent !== undefined && action.state === "available") action.open(agent);
   }
 
-  return { getState, subscribe, setLoad, select, setView, cancel, openTranscript };
+  return { getState, subscribe, setLoad, select, setView, cancel, openTranscript, tick };
 }

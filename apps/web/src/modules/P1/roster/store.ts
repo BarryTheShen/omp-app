@@ -32,7 +32,10 @@ function statusFromLifecycle(status: SubagentLifecyclePayload["status"]): Roster
   return status === "started" ? "running" : status;
 }
 
-function metricsFromProgress(progress: Readonly<Record<string, unknown>>): AgentProgressMetrics {
+function metricsFromProgress(
+  progress: Readonly<Record<string, unknown>>,
+  receivedAt: number,
+): AgentProgressMetrics {
   const number = (key: string): number | undefined => {
     const value = progress[key];
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -49,12 +52,20 @@ function metricsFromProgress(progress: Readonly<Record<string, unknown>>): Agent
     context: progress.context,
     cost: progress.cost,
     durationMs: number("durationMs") ?? number("duration"),
+    receivedAt,
     raw: Object.freeze({ ...progress }),
   });
 }
 
-function metricsFromAgent(agent: AgentRef): AgentProgressMetrics {
-  return metricsFromProgress(agent.progress ?? {});
+function metricsFromAgent(agent: AgentRef, receivedAt: number): AgentProgressMetrics {
+  return metricsFromProgress(agent.progress ?? {}, receivedAt);
+}
+
+/** A worker's metrics once it has ended: its time stops where the clock has moved it, not at omp's last report. */
+function metricsAtEnd(metrics: AgentProgressMetrics, now: number): AgentProgressMetrics {
+  if (metrics.durationMs === undefined) return metrics;
+  const durationMs = metrics.durationMs + Math.max(0, now - metrics.receivedAt);
+  return metricsFromProgress({ ...metrics.raw, durationMs }, now);
 }
 
 function createAgent(
@@ -64,7 +75,7 @@ function createAgent(
   terminalAt: number | null,
   lifecycleSeq: number | null,
   progressSeq: number | null,
-  metrics = metricsFromAgent(agent),
+  metrics: AgentProgressMetrics,
 ): RosterAgent {
   return Object.freeze({
     ...agent,
@@ -125,6 +136,11 @@ export class AgentRosterStore {
 
   public getSnapshot(): AgentRosterStoreSnapshot {
     return this.snapshot;
+  }
+
+  /** The roster's clock, so a reader that times what it shows uses the clock the roster records with. */
+  public now(): number {
+    return this.clock.now();
   }
 
   public subscribe(listener: AgentRosterListener): () => void {
@@ -198,11 +214,49 @@ export class AgentRosterStore {
       const key = this.makeKey(worker.agent.id, incarnation);
       this.latestById.set(worker.agent.id, key);
       this.incarnationById.set(worker.agent.id, incarnation);
-      const agent = createAgent(worker.agent, key, incarnation, worker.endedAt, null, null);
+      const agent = createAgent(
+        worker.agent,
+        key,
+        incarnation,
+        worker.endedAt,
+        null,
+        null,
+        metricsFromAgent(worker.agent, this.clock.now()),
+      );
       changed = this.insertAgent(agent) || changed;
     }
     changed = this.prune() || changed;
     if (changed) this.commit(this.snapshot.lastSeq);
+  }
+
+  /**
+   * omp answers a cancel with "not running" once it no longer runs the worker, so the roster records the worker
+   * as ended now and its row agrees with that answer. omp's own end, when its lifecycle frame arrives, sets the
+   * status; the time stays the one the roster first recorded. Returns false when the roster does not hold the
+   * worker as running.
+   */
+  public markNotRunning(id: SubagentId): boolean {
+    if (this.disposed) return false;
+    const key = this.latestById.get(id);
+    const current = key === undefined ? undefined : this.snapshot.agents[key];
+    if (current === undefined || current.status !== "running" || current.terminalAt !== null) {
+      return false;
+    }
+    const now = this.clock.now();
+    this.replaceAgent(
+      current.key,
+      createAgent(
+        { ...current, status: "completed", lastUpdate: now },
+        current.key,
+        current.incarnation,
+        now,
+        current.lifecycleSeq,
+        current.progressSeq,
+        metricsAtEnd(current.metrics, now),
+      ),
+    );
+    this.commit(this.snapshot.lastSeq);
+    return true;
   }
 
   /** Lists the chat's finished workers once the live roster is in, so a reload still shows them. */
@@ -257,6 +311,7 @@ export class AgentRosterStore {
           current.terminalAt,
           current.lifecycleSeq,
           current.progressSeq,
+          metricsFromAgent(agent, this.clock.now()),
         ),
       );
     }
@@ -273,6 +328,7 @@ export class AgentRosterStore {
           terminalAt,
           current.lifecycleSeq,
           current.progressSeq,
+          metricsFromAgent(agent, this.clock.now()),
         ),
       );
     }
@@ -280,7 +336,8 @@ export class AgentRosterStore {
     const key = this.makeKey(agent.id, incarnation);
     this.latestById.set(agent.id, key);
     this.incarnationById.set(agent.id, incarnation);
-    return this.insertAgent(createAgent(agent, key, incarnation, terminalAt, null, null));
+    const metrics = metricsFromAgent(agent, this.clock.now());
+    return this.insertAgent(createAgent(agent, key, incarnation, terminalAt, null, null, metrics));
   }
 
   private mergeLifecycle(payload: SubagentLifecyclePayload, seq: number): boolean {
@@ -309,6 +366,7 @@ export class AgentRosterStore {
         null,
         seq,
         null,
+        metricsFromProgress({}, this.clock.now()),
       );
       this.latestById.set(payload.id, key);
       this.incarnationById.set(payload.id, incarnation);
@@ -335,7 +393,7 @@ export class AgentRosterStore {
       terminalStatus(status) ? (current?.terminalAt ?? this.clock.now()) : null,
       seq,
       current?.progressSeq ?? null,
-      current?.metrics ?? metricsFromProgress({}),
+      current?.metrics ?? metricsFromProgress({}, this.clock.now()),
     );
     if (!current) {
       this.latestById.set(payload.id, next.key);
@@ -370,7 +428,7 @@ export class AgentRosterStore {
       current.terminalAt,
       current.lifecycleSeq,
       seq,
-      metricsFromProgress(payload.progress),
+      metricsFromProgress(payload.progress, this.clock.now()),
     );
     return this.replaceAgent(current.key, next);
   }
