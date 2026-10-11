@@ -82,7 +82,8 @@ function decodeModel(argsRaw: unknown, resultRaw: unknown): GithubModel {
   return {
     args: args.success ? args.data : undefined,
     details: details.success ? details.data : undefined,
-    malformed: !args.success || !details.success,
+    // A call with no result has no details to decode: it is unrecorded, not malformed.
+    malformed: !args.success || (resultRaw !== undefined && !details.success),
     rawPreview: bounded(resultRaw),
   };
 }

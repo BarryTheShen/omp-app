@@ -1,20 +1,24 @@
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
-import { decodeResolve } from "./models";
+import { decodeResolve, decodeResolveArgs } from "./models";
 
 type ResolveStatus = "approved" | "rejected" | "pending" | "unrecorded";
 
 export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const state = normalizeToolRendererProps(rendererProps);
-  const decoded = decodeResolve(state.result ?? state.partialResult);
+  const output = state.result ?? state.partialResult;
+  const decoded = decodeResolve(output);
   const details = decoded.ok ? decoded.value : undefined;
+  const requested = decodeResolveArgs(state.args);
   const rejectedTool = state.toolName === "reject";
   const status = resolveStatus(state.phase, rejectedTool, details?.action);
   const action = details?.action ?? (rejectedTool ? "discard" : "apply");
   const source = details?.sourceToolName ?? details?.label ?? "host action";
+  // The reason omp recorded; a call with no result still shows the reason its arguments carry.
   const reason =
     details?.reason ??
+    (requested.ok ? requested.value.reason : undefined) ??
     (state.phase === "running" ? "Waiting for the staged decision." : "No reason provided.");
 
   const hideRawDetails =
@@ -48,11 +52,14 @@ export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRen
             The staged action failed; it was not accepted.
           </p>
         )}
-        {!decoded.ok && state.phase !== "running" && state.phase !== "partial" && (
-          <p className="text-destructive mt-2 text-xs font-medium" role="alert">
-            Resolve details were malformed; the raw result remains available above.
-          </p>
-        )}
+        {!decoded.ok &&
+          output !== undefined &&
+          state.phase !== "running" &&
+          state.phase !== "partial" && (
+            <p className="text-destructive mt-2 text-xs font-medium" role="alert">
+              Resolve details were malformed; the raw result remains available above.
+            </p>
+          )}
       </section>
     </div>
   );

@@ -170,7 +170,7 @@ function EditBody({
           <span className="rounded border border-border px-2 py-0.5">
             {operationLabel(operation)}
           </span>
-          <span className={statusClass(phase)}>{status}</span>
+          {phase !== "unrecorded" && <span className={statusClass(phase)}>{status}</span>}
           {(stats.added > 0 || stats.removed > 0) && (
             <span className="rounded border border-border px-2 py-0.5" data-testid="t1-edit-stats">
               +{stats.added} −{stats.removed}

@@ -285,7 +285,8 @@ function model<TArgs, TDetails>(
     args: decodedArgs.value,
     details: decodedDetails.value,
     raw: result,
-    malformed: !decodedArgs.ok || !decodedDetails.ok,
+    // A call with no result has no details to decode: it is unrecorded, not malformed.
+    malformed: !decodedArgs.ok || (result !== undefined && !decodedDetails.ok),
     preview: bounded(output),
     outputMeta,
   };

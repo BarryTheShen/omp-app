@@ -62,6 +62,8 @@ export const CheckpointArgsSchema = z.looseObject({ goal: z.string() });
 export type CheckpointArgs = z.infer<typeof CheckpointArgsSchema>;
 export const RewindArgsSchema = z.looseObject({ report: z.string() });
 export type RewindArgs = z.infer<typeof RewindArgsSchema>;
+export const ResolveArgsSchema = z.looseObject({ reason: z.string().optional() });
+export type ResolveArgs = z.infer<typeof ResolveArgsSchema>;
 
 /**
  * omp v18.6.1 `CheckpointToolDetails`/`RewindToolDetails`
@@ -236,6 +238,8 @@ export const decodeHostUri = (raw: unknown): T7DetailDecode<HostUriModel> =>
   decode(HostUriModelSchema, raw, "host URI details");
 export const decodeResolve = (raw: unknown): T7DetailDecode<ResolveDetails> =>
   decode(ResolveDetailsSchema, raw, "resolve details");
+export const decodeResolveArgs = (raw: unknown): T7DetailDecode<ResolveArgs> =>
+  decode(ResolveArgsSchema, raw, "resolve arguments");
 export const decodeCheckpoint = (raw: unknown): T7DetailDecode<CheckpointDetails> =>
   decode(CheckpointDetailsSchema, raw, "checkpoint details");
 export const decodeCheckpointArgs = (raw: unknown): T7DetailDecode<CheckpointArgs> =>

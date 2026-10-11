@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { AlertCircleIcon, CheckCircle2Icon } from "lucide-react";
+import { AlertCircleIcon, CheckCircle2Icon, CircleIcon } from "lucide-react";
 import { z } from "zod";
 import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
@@ -62,6 +62,7 @@ export function RetainRenderer(props: ToolRendererProps) {
   const state = normalizeToolRendererProps(props);
   const model = normalizeRetain(props.args, props.result);
   const failedCall = state.phase === "error";
+  const unrecorded = state.phase === "unrecorded";
   const split = splitToolResult(props.result ?? state.result ?? state.partialResult);
   const callMessage = failedCallMessage(split);
   const resultText = split.text.trim();
@@ -101,7 +102,12 @@ export function RetainRenderer(props: ToolRendererProps) {
                   className={cn("flex items-start gap-1", failure !== undefined && "text-danger")}
                   key={`${item.scope ?? "unknown"}:${item.content}`}
                 >
-                  {failure === undefined ? (
+                  {unrecorded ? (
+                    <CircleIcon
+                      aria-hidden="true"
+                      className="text-muted-foreground mt-0.5 size-3.5 shrink-0"
+                    />
+                  ) : failure === undefined ? (
                     <CheckCircle2Icon
                       aria-hidden="true"
                       className="text-success mt-0.5 size-3.5 shrink-0"

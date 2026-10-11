@@ -13,13 +13,14 @@ interface ReplacementView {
 export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const state = normalizeToolRendererProps(rendererProps);
   const args = decodeAstEditArgs(rendererProps.args);
-  const details = decodeAstEditDetails(detailsSource(state.result ?? state.partialResult));
+  const output = state.result ?? state.partialResult;
+  const details = decodeAstEditDetails(detailsSource(output));
   const parsedDetails = details.ok ? details.value : undefined;
   const stateForCard =
     state.phase === "running" || state.phase === "partial" ? { ...state, argsText: "" } : state;
   const summary = summaryText(parsedDetails, state.phase);
   const replacements = parsedDetails === undefined ? [] : replacementViews(parsedDetails);
-  const rawResult = rawText(state.result ?? state.partialResult);
+  const rawResult = rawText(output);
 
   return (
     <div data-testid={`t1-ast-edit-card-${state.toolCallId}`}>
@@ -97,11 +98,14 @@ export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRen
               Match list truncated by a safety limit; some files may not be shown.
             </p>
           )}
-          {!details.ok && state.phase !== "running" && state.phase !== "partial" && (
-            <p className="text-danger mt-3 text-xs" role="alert">
-              Structured AST edit details were malformed; the raw result is preserved above.
-            </p>
-          )}
+          {!details.ok &&
+            output !== undefined &&
+            state.phase !== "running" &&
+            state.phase !== "partial" && (
+              <p className="text-danger mt-3 text-xs" role="alert">
+                Structured AST edit details were malformed; the raw result is preserved above.
+              </p>
+            )}
         </div>
       )}
     </div>

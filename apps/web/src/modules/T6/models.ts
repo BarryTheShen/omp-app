@@ -166,6 +166,10 @@ export interface MemoryEditModel {
   readonly malformed: boolean;
 }
 
+/**
+ * Decodes one part of a call. A call with no recorded result has no details to decode, so the normalizers flag it
+ * malformed only when a result is present and its details do not decode: a call with no result is unrecorded.
+ */
 function decode<T>(schema: z.ZodType<T>, raw: unknown, label: string): T6Decode<T> {
   const parsed = schema.safeParse(raw);
   if (parsed.success) return { ok: true, value: parsed.data, raw };
@@ -251,7 +255,7 @@ export function normalizeRecall(args: unknown, result: unknown): RecallModel {
     content,
     raw: result,
     details: details.value,
-    malformed: !decoded.ok || !details.ok,
+    malformed: !decoded.ok || (result !== undefined && !details.ok),
   };
 }
 
@@ -271,7 +275,7 @@ export function normalizeReflect(args: unknown, result: unknown): ReflectModel {
     noInformation: content.text.includes("No relevant information found"),
     raw: result,
     details: details.value,
-    malformed: !decoded.ok || !details.ok,
+    malformed: !decoded.ok || (result !== undefined && !details.ok),
   };
 }
 
@@ -315,7 +319,7 @@ export function normalizeRetain(args: unknown, result: unknown): RetainModel {
     status,
     details: details.value,
     raw: result,
-    malformed: !decoded.ok || !details.ok,
+    malformed: !decoded.ok || (result !== undefined && !details.ok),
   };
 }
 
@@ -347,7 +351,7 @@ export function normalizeLearn(args: unknown, result: unknown): LearnModel {
     skillStatus,
     raw: result,
     details: details.value,
-    malformed: !decoded.ok || !details.ok,
+    malformed: !decoded.ok || (result !== undefined && !details.ok),
   };
 }
 
@@ -376,7 +380,7 @@ export function normalizeManageSkill(args: unknown, result: unknown): ManageSkil
     status,
     raw: result,
     details: details.value,
-    malformed: !decoded.ok || !details.ok,
+    malformed: !decoded.ok || (result !== undefined && !details.ok),
   };
 }
 
@@ -395,7 +399,7 @@ export function normalizeMemoryEdit(args: unknown, result: unknown): MemoryEditM
       details.value?.status ?? contentText(record && "content" in record ? record.content : result),
     raw: result,
     details: details.value,
-    malformed: !decoded.ok || !details.ok,
+    malformed: !decoded.ok || (result !== undefined && !details.ok),
   };
 }
 

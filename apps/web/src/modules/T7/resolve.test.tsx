@@ -85,4 +85,19 @@ describe("ResolveCard with no result recorded", () => {
     expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
     expect(screen.queryByText("Approved")).toBeNull();
   });
+  test("reads the reason from its arguments, with no malformed alert", () => {
+    const call = props("resolve", undefined);
+    render(
+      <ResolveCard
+        rendererProps={{
+          ...call,
+          args: { action: "apply", reason: "Approve device access" },
+          argsText: '{"action":"apply","reason":"Approve device access"}',
+        }}
+      />,
+    );
+    expect(screen.getByText("Approve device access")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("No reason provided.")).toBeNull();
+  });
 });

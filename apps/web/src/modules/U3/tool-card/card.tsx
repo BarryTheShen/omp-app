@@ -125,7 +125,11 @@ export function ToolCard({
   const full = useFullOutputFocus(cut, contentRef, "[data-u3-show-all]");
   const outputExpanded = expandedOutput || policy.expandTools;
   const output = previewOutput(resultRaw, state.outputMeta, outputExpanded);
-  const summary = suppliedSummary ?? summarize(state);
+  // A call with no result says so in the card's own words, whatever summary its family gave: that summary describes a
+  // result there is none of, and it must not keep a success look.
+  const isUnrecorded = state.phase === "unrecorded";
+  const summary = isUnrecorded ? summarize(state) : (suppliedSummary ?? summarize(state));
+  const summaryTone = isUnrecorded ? undefined : summaryClassName;
 
   const rememberOpen = (nextOpen: boolean) => {
     userOverride.current = true;
@@ -190,7 +194,7 @@ export function ToolCard({
             "min-w-0 flex-1 text-xs",
             // A call with no result says so in full, so its one line wraps rather than being cut off.
             state.phase === "unrecorded" ? "break-words" : "truncate",
-            summaryClassName ?? "text-muted-foreground",
+            summaryTone ?? "text-muted-foreground",
           )}
           title={summary}
         >

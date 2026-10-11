@@ -94,11 +94,14 @@ export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRender
             {parsedDetails.error}
           </p>
         )}
-        {!details.ok && state.phase !== "running" && state.phase !== "partial" && (
-          <p className="text-destructive mt-3 text-xs" role="alert">
-            Glob details were malformed; the raw result remains available in Raw details.
-          </p>
-        )}
+        {!details.ok &&
+          result !== undefined &&
+          state.phase !== "running" &&
+          state.phase !== "partial" && (
+            <p className="text-destructive mt-3 text-xs" role="alert">
+              Glob details were malformed; the raw result remains available in Raw details.
+            </p>
+          )}
         {rawResult && (
           <details className="mt-3 text-xs" data-testid="t2-glob-raw-details">
             <summary className="cursor-pointer text-muted-foreground">Raw details</summary>
