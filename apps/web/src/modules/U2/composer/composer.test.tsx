@@ -67,7 +67,9 @@ describe("U2.2 ComposerSurface", () => {
   test("chooses steer while R0 reports a running turn and shows the hint", async () => {
     const submitPrompt = vi.fn(async () => undefined);
     renderComposer(true, submitPrompt);
-    expect(screen.getByText("Press Enter to steer this turn")).toBeTruthy();
+    expect(
+      screen.getByText("Enter steers this turn. Ctrl+Enter queues a message for after it."),
+    ).toBeTruthy();
     const input = screen.getByRole("textbox", { name: "Message input" });
     fireEvent.change(input, { target: { value: "steer text" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -77,6 +79,23 @@ describe("U2.2 ComposerSurface", () => {
       text: "steer text",
       delivery: "steer",
     });
+  });
+
+  test("on a Mac the steer hint names Cmd+Enter as the way to queue a message", () => {
+    const userAgent = vi
+      .spyOn(window.navigator, "userAgent", "get")
+      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15");
+    try {
+      renderComposer(
+        true,
+        vi.fn(async () => undefined),
+      );
+      expect(
+        screen.getByText("Enter steers this turn. Cmd+Enter queues a message for after it."),
+      ).toBeTruthy();
+    } finally {
+      userAgent.mockRestore();
+    }
   });
 
   test.each([
@@ -357,7 +376,9 @@ describe("U2.2 ComposerSurface", () => {
     const input = screen.getByRole("textbox", { name: "Message input" });
     fireEvent.change(input, { target: { value: "still typing" } });
 
-    expect(screen.queryByText("Press Enter to steer this turn")).toBeNull();
+    expect(
+      screen.queryByText("Enter steers this turn. Ctrl+Enter queues a message for after it."),
+    ).toBeNull();
     expect(screen.getByRole("button", { name: "Stop generating" }).hasAttribute("disabled")).toBe(
       true,
     );

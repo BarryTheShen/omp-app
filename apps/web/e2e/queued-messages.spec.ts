@@ -12,7 +12,7 @@ import {
 
 /**
  * Messages sent during a run are queued and shown (#819). `run_queued_pair` runs a bash that sleeps 20 seconds,
- * so the run stays open while messages are queued. A follow-up (Ctrl+Enter) waits under "After yield" until the
+ * so the run stays open while messages are queued. A follow-up (Ctrl+Enter) waits under "After this turn" until the
  * turn yields, with its own Remove and Promote buttons. A steer (Enter) goes out at the next tool boundary: omp
  * backgrounds the running bash for it, so the Steering lane empties at once and the bash returns early.
  */
@@ -95,7 +95,7 @@ realTest(
 );
 
 realTest(
-  "Ctrl+Enter queues a follow-up under After yield, and Enter steers; the queue empties in order",
+  "Ctrl+Enter queues a follow-up under After this turn, and Enter steers; the queue empties in order",
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
@@ -104,7 +104,7 @@ realTest(
     await composer.fill("follow later please");
     await composer.press("Control+Enter");
     await expect(
-      lane(page, "After yield").getByText("follow later please", { exact: true }),
+      lane(page, "After this turn").getByText("follow later please", { exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Remove follow-up message: follow later please" }),
@@ -156,7 +156,7 @@ realTest("a queued follow-up is readable in dark mode", async ({ realApp }) => {
   await composer.fill("follow later please");
   await composer.press("Control+Enter");
   await expect(
-    lane(page, "After yield").getByText("follow later please", { exact: true }),
+    lane(page, "After this turn").getByText("follow later please", { exact: true }),
   ).toBeVisible();
   await expect(page.locator("html")).toHaveClass(/\bdark\b/);
   await expectOwnLine(page);
@@ -178,7 +178,9 @@ realTest(
     await composer.press("Control+Enter");
     await composer.fill("promote me");
     await composer.press("Control+Enter");
-    await expect(lane(page, "After yield").getByText("promote me", { exact: true })).toBeVisible();
+    await expect(
+      lane(page, "After this turn").getByText("promote me", { exact: true }),
+    ).toBeVisible();
     await expectOwnLine(page);
 
     // Captured with three queued messages: light at desktop width, then at 390 px.
@@ -199,8 +201,12 @@ realTest(
     if (desktop) await page.setViewportSize(desktop);
 
     await page.getByRole("button", { name: "Remove follow-up message: drop this" }).click();
-    await expect(lane(page, "After yield").getByText("drop this", { exact: true })).toHaveCount(0);
-    await expect(lane(page, "After yield").getByText("keep first", { exact: true })).toBeVisible();
+    await expect(lane(page, "After this turn").getByText("drop this", { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      lane(page, "After this turn").getByText("keep first", { exact: true }),
+    ).toBeVisible();
 
     // Promote sends the message as steering now: the bash returns early for it, long before its 20 seconds end.
     await page.getByRole("button", { name: "Promote queued message: promote me" }).click();

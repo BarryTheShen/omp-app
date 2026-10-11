@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { chordLabel, isApplePlatform } from "@/shortcuts";
 import { Button } from "../../../components/ui/button";
 import type { PromptIntent } from "../../R0/runtime/runtime";
 import {
@@ -361,7 +362,7 @@ export function ComposerSurface({
               data-composer-steer-hint="true"
               className="text-muted-foreground px-(--space-md) text-xs"
             >
-              Press Enter to steer this turn
+              {`Enter steers this turn. ${chordLabel("Mod+Enter", { mac: isApplePlatform() })} queues a message for after it.`}
             </p>
           )}
         </div>

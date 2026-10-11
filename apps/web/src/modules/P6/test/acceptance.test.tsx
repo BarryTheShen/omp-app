@@ -168,7 +168,7 @@ describe("P6 CC2/CC6 acceptance gate", () => {
       }),
     );
     fireEvent.click(
-      within(screen.getByRole("group", { name: "After yield mode" })).getByRole("button", {
+      within(screen.getByRole("group", { name: "After this turn mode" })).getByRole("button", {
         name: "All",
       }),
     );

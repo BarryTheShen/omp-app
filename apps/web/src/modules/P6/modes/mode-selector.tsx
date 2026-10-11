@@ -44,8 +44,8 @@ const MODE_DESCRIPTIONS = {
     all: "All: deliver queued steering messages together at the next boundary.",
   },
   followUp: {
-    "one-at-a-time": "One at a time: deliver one After yield message per completed turn.",
-    all: "All: deliver queued After yield messages together after the turn.",
+    "one-at-a-time": "One at a time: deliver one queued message per completed turn.",
+    all: "All: deliver queued messages together after the turn.",
   },
   interrupt: {
     immediate: "Immediate: request cooperative interruption as soon as possible.",
@@ -161,8 +161,8 @@ export function QueueModeSelector({ port, open, onOpenChange }: QueueModeSelecto
         <DialogHeader>
           <DialogTitle>Queue modes</DialogTitle>
           <DialogDescription>
-            Modes apply to this session only. Steering interrupts the active turn; After yield waits
-            for the current turn to settle.
+            Modes apply to this session only. Steering interrupts the active turn; queued messages
+            wait for the current turn to settle.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
@@ -180,9 +180,9 @@ export function QueueModeSelector({ port, open, onOpenChange }: QueueModeSelecto
             </p>
           </fieldset>
           <fieldset className="grid gap-1.5 text-sm">
-            <legend className="font-medium">After yield</legend>
+            <legend className="font-medium">After this turn</legend>
             <SegmentedModeControl
-              ariaLabel="After yield mode"
+              ariaLabel="After this turn mode"
               disabled={saving}
               options={MODE_OPTIONS}
               value={draft.followUpMode}

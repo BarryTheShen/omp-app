@@ -57,8 +57,8 @@ function ModePlayground() {
         <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-4 px-6 py-8">
           <h1 className="text-lg font-semibold">Queue mode selector</h1>
           <p className="text-muted-foreground text-sm">
-            Modes are session-scoped. Steering controls the active turn; After yield drains queued
-            follow-ups.
+            Modes are session-scoped. Steering controls the active turn; queued follow-ups wait for
+            it to finish.
           </p>
           <QueueModeSelector onOpenChange={setOpen} open={open} port={port} />
         </div>

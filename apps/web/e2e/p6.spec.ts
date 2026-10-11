@@ -59,7 +59,9 @@ test("renders session queue modes in light, dark and narrow states", async ({ pa
       .getByRole("button", { name: "One at a time" }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    dialog.getByRole("group", { name: "After yield mode" }).getByRole("button", { name: "All" }),
+    dialog
+      .getByRole("group", { name: "After this turn mode" })
+      .getByRole("button", { name: "All" }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
     dialog.getByText("One at a time: deliver one queued steering message per tool boundary."),

@@ -62,7 +62,7 @@ describe("QueueModeSelector", () => {
     render(<QueueModeSelector open onOpenChange={() => undefined} port={state.port} />);
 
     fireEvent.click(
-      within(screen.getByRole("group", { name: "After yield mode" })).getByRole("button", {
+      within(screen.getByRole("group", { name: "After this turn mode" })).getByRole("button", {
         name: "One at a time",
       }),
     );

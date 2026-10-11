@@ -65,7 +65,7 @@ describe("QueueLaneBar", () => {
 
     expect(screen.getByRole("complementary", { name: "Queued messages" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Steering" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "After yield" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "After this turn" })).toBeTruthy();
     expect(screen.getByText("fix the failing test")).toBeTruthy();
     expect(screen.getByText("summarize after yield")).toBeTruthy();
   });

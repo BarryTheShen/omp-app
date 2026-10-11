@@ -50,7 +50,7 @@ test("renders both queue lanes with token styles and captures the light view", a
   await expect(page.getByRole("region", { name: "Steering" })).toContainText(
     "Fix the failing test",
   );
-  await expect(page.getByRole("region", { name: "After yield" })).toContainText(
+  await expect(page.getByRole("region", { name: "After this turn" })).toContainText(
     "Summarize the changes after yield",
   );
   expect(await page.locator('link[rel="stylesheet"]').count()).toBeGreaterThan(0);
@@ -76,7 +76,7 @@ test("keeps both lanes reachable in a narrow viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/p6-bar-playground.html");
   await expect(page.getByRole("region", { name: "Steering" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "After yield" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "After this turn" })).toBeVisible();
   const screenshot = await page.screenshot({
     path: "../../.data/screenshots/p6-2-narrow.png",
     fullPage: true,
