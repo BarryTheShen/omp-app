@@ -231,6 +231,48 @@ describe("SessionCatalogModel older pages", () => {
     expect(snapshot.moreError).toBeNull();
   });
 
+  test("a loadMore the server refuses as a stale cursor reads the list again, and the next try works", async () => {
+    const { sessionFiles } = pagedFolder(120);
+    let firstPageIsStale = true;
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        ...sessionFiles,
+        listSessions: async (args) => {
+          // The server refuses a cursor it did not issue, as it does for one from before it changed.
+          if (args.cursor === "stale") {
+            throw new AppFailure({
+              code: "invalid_args",
+              message: "Invalid session-list cursor",
+              retryable: false,
+            });
+          }
+          const page = await sessionFiles.listSessions(args);
+          if (args.cursor === undefined && firstPageIsStale) {
+            firstPageIsStale = false;
+            return { ...page, nextCursor: "stale" };
+          }
+          return page;
+        },
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    expect(model.getSnapshot().nextCursor).toBe("stale");
+
+    await model.loadMore(50);
+    let snapshot = model.getSnapshot();
+    // The refused cursor is dropped without a message, and the first page is read again.
+    expect(snapshot.moreError).toBeNull();
+    expect(snapshot.error).toBeNull();
+    expect(snapshot.sessions).toHaveLength(50);
+    expect(snapshot.nextCursor).toBe("50");
+
+    await model.loadMore(50);
+    snapshot = model.getSnapshot();
+    expect(snapshot.sessions).toHaveLength(100);
+    expect(snapshot.moreError).toBeNull();
+  });
+
   test("a page that arrives after a newer list began is dropped", async () => {
     const { sessionFiles } = pagedFolder(120);
     const gate = Promise.withResolvers<void>();

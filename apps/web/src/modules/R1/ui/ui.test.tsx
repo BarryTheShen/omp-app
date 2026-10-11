@@ -572,6 +572,52 @@ describe("SessionCatalogSidebar", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  test("a 'Show older chats' the server refuses reads the list again with no message, and the next click loads older chats", async () => {
+    const all = Array.from({ length: 70 }, (_, index) =>
+      session(
+        `chat-${String(index).padStart(2, "0")}`,
+        new Date(Date.UTC(2026, 9, 5) - index * 60_000).toISOString(),
+        `Chat number ${index}`,
+      ),
+    );
+    let firstPageIsStale = true;
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async ({ cursor, limit }) => {
+          if (cursor === "stale") {
+            throw new AppFailure({
+              code: "invalid_args",
+              message: "Invalid session-list cursor",
+              retryable: false,
+            });
+          }
+          const start = cursor === undefined ? 0 : Number.parseInt(cursor, 10);
+          const end = Math.min(start + (limit ?? 100), all.length);
+          // The first page came from before the server changed, so the cursor it gave is stale.
+          const stale = cursor === undefined && firstPageIsStale;
+          if (stale) firstPageIsStale = false;
+          return {
+            sessions: all.slice(start, end),
+            nextCursor: stale ? "stale" : end < all.length ? String(end) : null,
+          };
+        },
+        readSession: async () => all[0] as SessionFile,
+      },
+    });
+    renderSidebar({ catalog: model });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(50));
+    fireEvent.click(screen.getByRole("button", { name: "Show older chats" }));
+    // The list is read again from its start: the cursor is replaced, and no message says why.
+    await waitFor(() => expect(model.getSnapshot().nextCursor).toBe("50"));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(50);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show older chats" }));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(70));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   test("Enter in the rename box saves the title and keeps the current chat open", async () => {
     const opened: string[] = [];
     const { calls } = renderSidebar({

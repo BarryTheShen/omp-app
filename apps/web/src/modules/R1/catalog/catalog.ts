@@ -65,6 +65,14 @@ function internalFailure(error: unknown, fallback: string): AppFailure {
   );
 }
 
+/**
+ * A page request names a folder, a cursor and a limit. The app always sends a valid limit, so
+ * `invalid_args` from one means the server refused its cursor (one from before it changed).
+ */
+function isRefusedCursor(error: unknown): boolean {
+  return error instanceof AppFailure && error.appError.code === "invalid_args";
+}
+
 function unavailable(message: string, capability: `host.${string}`): AppFailure {
   return new AppFailure({ code: "unavailable", message, retryable: false, capability });
 }
@@ -279,6 +287,12 @@ export class SessionCatalogModel {
       });
     } catch (error) {
       if (generation !== this.listGeneration) return;
+      if (isRefusedCursor(error)) {
+        // The refused cursor is dropped: the list is read again from its start, so the next try
+        // asks for a cursor the server accepts. The person sees no message for it.
+        await this.list({ filter: this.snapshot.filter, limit });
+        return;
+      }
       this.commit({
         isLoadingMore: false,
         moreError: internalFailure(error, "Loading older chats failed").appError,
