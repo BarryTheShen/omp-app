@@ -277,6 +277,20 @@ mod tests {
         line.trim().parse().expect("the script printed a pid")
     }
 
+    /// Calls `check` until it returns Some, for at most `deadline`, and checks every few milliseconds.
+    fn poll_until<T>(deadline: Duration, mut check: impl FnMut() -> Option<T>) -> Option<T> {
+        let started = Instant::now();
+        loop {
+            if let Some(found) = check() {
+                return Some(found);
+            }
+            if started.elapsed() >= deadline {
+                return None;
+            }
+            sleep(Duration::from_millis(5));
+        }
+    }
+
     #[test]
     fn stopping_the_tree_ends_the_leader_and_its_background_children() {
         let (mut child, leader) = spawn_group("sleep 120 & sleep 120 & wait");
@@ -294,9 +308,11 @@ mod tests {
         // sleep is still its child, so the tree check finds it; it is ended after the leader too.
         let (mut child, leader) = spawn_group("setsid sleep 120 >/dev/null 2>&1 & echo $!; wait");
         let escapee_pid = first_pid(&mut child);
-        sleep(Duration::from_millis(300));
-        let escapee = read_proc(escapee_pid).expect("the escapee runs");
-        assert_ne!(escapee.pgrp, leader.pid, "the escapee left the group");
+        // setsid runs a moment after the shell starts it: wait, up to ten seconds, until the sleep has left the group.
+        let escapee = poll_until(Duration::from_secs(10), || {
+            read_proc(escapee_pid).filter(|process| process.pgrp != leader.pid)
+        })
+        .expect("the escapee left the group");
         let survivors = stop_tree(leader, Duration::from_secs(1), Duration::from_secs(1));
         assert!(survivors.is_empty(), "left over: {survivors:?}");
         let _ = child.wait();
