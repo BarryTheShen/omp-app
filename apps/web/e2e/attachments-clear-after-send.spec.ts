@@ -1,8 +1,11 @@
+import { mkdir, readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import type { RealApp } from "./real-omp";
-import { expect, realTest, startChat } from "./real-omp";
+import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
 const ATTACHMENTS = '[data-slot="u2-composer-attachments"]';
+const SAVED = { timeout: 45_000 } as const;
 
 async function addFile(page: Page, composer: Locator, name: string): Promise<void> {
   await composer.evaluate((input, fileName) => {
@@ -15,6 +18,44 @@ async function addFile(page: Page, composer: Locator, name: string): Promise<voi
 
 async function expectNoAttachments(page: Page): Promise<void> {
   await expect(page.locator(ATTACHMENTS)).toHaveCount(0);
+}
+
+/** A websocket message as a JSON object. A message that is not JSON reads as empty, and is forwarded unchanged. */
+function parseFrame(message: string | Buffer): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(String(message));
+    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The attachment names of the draft the app stored in one of its draft folders, or null when none is stored. */
+async function storedAttachmentNames(
+  appDataDir: string,
+  folder: "threads" | "folders",
+): Promise<string[] | null> {
+  const dir = join(appDataDir, "drafts", folder);
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch {
+    return null;
+  }
+  for (const file of files) {
+    const value: unknown = JSON.parse(await readFile(join(dir, file), "utf8"));
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "kind" in value &&
+      value.kind === "draft" &&
+      "attachments" in value &&
+      Array.isArray(value.attachments)
+    ) {
+      return value.attachments.map((ref: { name?: unknown }) => String(ref.name));
+    }
+  }
+  return null;
 }
 
 realTest(
@@ -48,19 +89,30 @@ realTest(
           (webSocket) => {
             const server = webSocket.connectToServer();
             webSocket.onMessage((message) => {
-              let isPrompt = false;
-              try {
-                const frame = JSON.parse(String(message)) as Record<string, unknown>;
-                isPrompt =
-                  frame.type === "call" &&
-                  frame.port === "A0.rpcSession" &&
-                  frame.method === "send";
-              } catch {
-                // Non-JSON frames are forwarded unchanged.
-              }
-              if (failNextPrompt && isPrompt) {
+              const frame = parseFrame(message);
+              // Only a prompt is refused: the app also sends other commands over the same port (state reads, for one).
+              const command = (frame.args as { command?: { type?: unknown } } | undefined)?.command;
+              if (
+                failNextPrompt &&
+                frame.type === "call" &&
+                frame.port === "A0.rpcSession" &&
+                frame.method === "send" &&
+                command?.type === "prompt"
+              ) {
                 failNextPrompt = false;
-                void webSocket.close({ code: 1011, reason: "test failure" });
+                // The server refuses the prompt before omp takes it: the send fails, and the connection stays open.
+                void webSocket.send(
+                  JSON.stringify({
+                    type: "result",
+                    id: frame.id,
+                    ok: false,
+                    error: {
+                      code: "unavailable",
+                      message: "The prompt was refused before omp took it.",
+                      retryable: true,
+                    },
+                  }),
+                );
                 return;
               }
               server.send(message);
@@ -72,11 +124,38 @@ realTest(
     const composer = await startChat(page);
 
     await addFile(page, composer, "kept-after-failure.txt");
+    // The chip gets its remove button when its upload has finished. Enter comes after that, as it does when a person
+    // types after dropping a file.
+    await expect(page.getByRole("button", { name: "Remove kept-after-failure.txt" })).toBeVisible();
     failNextPrompt = true;
     await composer.fill("This send should fail before admission");
     await composer.press("Enter");
     await expect(page.locator('[data-composer-error="true"]')).toBeVisible({ timeout: 30_000 });
+    // The send failed before omp took it: the chip is still in the composer, with the text.
     await expect(page.locator(ATTACHMENTS)).toContainText("kept-after-failure.txt");
+    await expect(composer).toHaveValue("This send should fail before admission");
+
+    const composerArea = page.getByRole("region", { name: "Composer" });
+    await mkdir(screenshots, { recursive: true });
+    await waitForFiniteAnimations(page);
+    await composerArea.screenshot({ path: join(screenshots, "fix-1024-failed-send-light.png") });
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await waitForFiniteAnimations(page);
+    await composerArea.screenshot({ path: join(screenshots, "fix-1024-failed-send-dark.png") });
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForFiniteAnimations(page);
+    await composerArea.screenshot({ path: join(screenshots, "fix-1024-failed-send-narrow.png") });
+
+    // The saved draft keeps the attachment, and a reload restores it with the text.
+    await expect
+      .poll(() => storedAttachmentNames(realApp.appDataDir, "folders"), SAVED)
+      .toEqual(["kept-after-failure.txt"]);
+    await page.reload();
+    await expect(page.locator(ATTACHMENTS)).toContainText("kept-after-failure.txt", {
+      timeout: 60_000,
+    });
+    await expect(composer).toHaveValue("This send should fail before admission");
     expect(realApp.problems).toEqual([]);
   },
 );

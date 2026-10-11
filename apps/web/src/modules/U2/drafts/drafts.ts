@@ -226,6 +226,8 @@ export class DraftController {
   private loading = false;
   /** The load in progress, if any: a second call while it runs gets the same promise. */
   private loadInFlight: Promise<DraftSnapshot> | undefined;
+  /** Whether the draft has loaded: a save loads it first, so the save carries the revision the store holds. */
+  private loaded = false;
   /** The text of the save this controller sent and has not heard back about; the buffer keeps it until it lands. */
   private saving: DraftInput | null = null;
   private lifecycle: DraftLifecycleTarget | undefined;
@@ -297,6 +299,7 @@ export class DraftController {
       held = holdsText ? null : (this.buffer?.read(this.scope) ?? null);
       const result = await this.store.get({ scope: this.scope });
       this.loading = false;
+      this.loaded = true;
       if (held !== null) {
         this.restore(held, result.draft);
         return this.snapshot;
@@ -516,12 +519,15 @@ export class DraftController {
     submitPrompt: (intent: PromptIntent) => Promise<void>,
   ): Promise<void> {
     const text = composerTextForIntent(intent);
-    this.setDraft(text, intent.attachmentRefs ?? []);
+    // The draft's own attachments are the ones sent. A send names them only by id, name and media type, which would
+    // replace the full references the composer holds and make the composer reload them.
+    const attachments = [...this.snapshot.attachments];
+    this.setDraft(text, attachments);
     try {
       await submitPrompt(intent);
       await this.clearAfterAdmission(intent.text);
     } catch (error) {
-      await this.recordFailedSend(intent, text, error);
+      await this.recordFailedSend(text, attachments, error);
       throw error;
     }
   }
@@ -652,6 +658,11 @@ export class DraftController {
   }
 
   private async saveCurrent(): Promise<void> {
+    // A draft that has not loaded has no revision to save over: it loads first, so its save is not taken for a conflict.
+    if (!this.loaded) {
+      await this.load().catch(() => undefined);
+      if (!this.loaded) return;
+    }
     if (!this.snapshot.dirty || this.snapshot.conflict !== null) return;
     const input = draftInput(
       this.snapshot.text,
@@ -695,14 +706,14 @@ export class DraftController {
   }
 
   private async recordFailedSend(
-    intent: PromptIntent,
     text: string,
+    attachments: readonly AttachmentRef[],
     error: unknown,
   ): Promise<void> {
     const failed: FailedSend = {
       attemptedAt: this.now().toISOString(),
       text,
-      attachments: [...(intent.attachmentRefs ?? [])],
+      attachments: [...attachments],
       reason: scrubFailureReason(error),
     };
     this.setState({

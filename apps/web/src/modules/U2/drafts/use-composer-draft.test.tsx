@@ -1,7 +1,8 @@
-import { type DraftScope, ThreadId } from "@omp-app/contracts";
-import { act, cleanup, render } from "@testing-library/react";
+import { AppFailure, type AttachmentRef, type DraftScope, ThreadId } from "@omp-app/contracts";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { useMemo, useState } from "react";
 import { afterEach, describe, expect, test } from "vitest";
+import { type AttachmentBlobStore, AttachmentManager, type StoredAttachment } from "../attachments";
 import { DraftController, type DraftTimer } from "./drafts";
 import { ScopedDraftStore } from "./test-support";
 import { useComposerDraft } from "./use-composer-draft";
@@ -36,9 +37,12 @@ class HeldReadStore extends ScopedDraftStore {
   }
 }
 
+const NO_ATTACHMENTS = { pending: [], complete: [], error: null };
 const noAttachments = {
   restore: async () => undefined,
   toDraftRefs: () => [],
+  getState: () => NO_ATTACHMENTS,
+  subscribe: () => () => undefined,
 };
 const notRecalled = () => false;
 
@@ -48,12 +52,17 @@ interface ShownComposer {
   type(text: string): void;
 }
 
+/** The attachments a composer binds to: the app's attachment manager, or a stand-in. */
+type ComposerAttachments = Parameters<typeof useComposerDraft>[0]["attachments"];
+
 function Composer({
   controller,
   shown,
+  attachments,
 }: {
   readonly controller: DraftController;
   readonly shown: ShownComposer;
+  readonly attachments: ComposerAttachments;
 }) {
   const [text, setText] = useState("");
   const composer = useMemo(() => ({ setText }), []);
@@ -63,21 +72,90 @@ function Composer({
     controller,
     text,
     composer,
-    attachments: noAttachments,
+    attachments,
     isRecalledPrompt: notRecalled,
   });
   return null;
 }
 
 /** Renders the composer that stays mounted across chats, as the app does, and switches the chat it binds to. */
-function renderComposer(controller: DraftController) {
+function renderComposer(
+  controller: DraftController,
+  attachments: ComposerAttachments = noAttachments,
+) {
   const shown: ShownComposer = { text: "", type: () => undefined };
-  const view = render(<Composer controller={controller} shown={shown} />);
+  const view = render(<Composer attachments={attachments} controller={controller} shown={shown} />);
   return {
     shown,
     switchTo: (next: DraftController) =>
-      view.rerender(<Composer controller={next} shown={shown} />),
+      view.rerender(<Composer attachments={attachments} controller={next} shown={shown} />),
   };
+}
+
+/**
+ * Blobs in memory, as the app's blob store keeps them: a stored attachment is found again by its ref. The server names a
+ * blob by its own id (`serverIdPrefix` stands for that), not by the id the composer gave the file.
+ */
+class MemoryBlobStore implements AttachmentBlobStore {
+  private readonly values = new Map<string, StoredAttachment>();
+  private readonly serverIdPrefix: string;
+
+  constructor(serverIdPrefix = "") {
+    this.serverIdPrefix = serverIdPrefix;
+  }
+
+  async put(input: { readonly id: string; readonly file: File }): Promise<StoredAttachment> {
+    const id = `${this.serverIdPrefix}${input.id}`;
+    const uri = `attachment://${id}`;
+    const ref: AttachmentRef = {
+      id,
+      name: input.file.name,
+      mediaType: input.file.type,
+      sizeBytes: input.file.size,
+      uri,
+    };
+    const stored: StoredAttachment = { ref, content: [{ type: "image", image: uri }] };
+    this.values.set(id, stored);
+    return stored;
+  }
+
+  async get(ref: AttachmentRef): Promise<StoredAttachment> {
+    const stored = this.values.get(ref.id);
+    if (stored === undefined) throw new Error("missing blob");
+    return stored;
+  }
+
+  async delete(ref: AttachmentRef): Promise<void> {
+    this.values.delete(ref.id);
+  }
+}
+
+/** Blobs that cannot be read back: what a restore meets when the connection drops during a send. */
+class UnreachableBlobStore extends MemoryBlobStore {
+  override async get(): Promise<StoredAttachment> {
+    throw new Error("connection closed");
+  }
+}
+
+/** Blobs in memory, except the ones lost: a lost blob cannot be read back, as when the server no longer has it. */
+class FlakyBlobStore extends MemoryBlobStore {
+  private readonly lost = new Set<string>();
+
+  lose(name: string): void {
+    this.lost.add(name);
+  }
+
+  override async get(ref: AttachmentRef): Promise<StoredAttachment> {
+    if (this.lost.has(ref.name)) throw new Error("missing blob");
+    return super.get(ref);
+  }
+}
+
+/** A drop of one image file: the composer adds it and sends it, as the app does. Returns the chip as the composer named it. */
+async function drop(manager: AttachmentManager, name: string) {
+  const pending = await manager.add({ file: new File(["png bytes"], name, { type: "image/png" }) });
+  await manager.send(pending);
+  return pending;
 }
 
 describe("useComposerDraft: text typed before the chat's draft loads", () => {
@@ -331,5 +409,284 @@ describe("useComposerDraft: the controller's text changed without the composer",
     });
 
     expect(store.text(chatScope("chat-j2"))).toBe("same text");
+  });
+});
+
+describe("useComposerDraft: attachments", () => {
+  test("an attachment dropped without text is saved when its chat is left, and comes back when the chat is opened again", async () => {
+    const store = new ScopedDraftStore();
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
+    const first = new DraftController({ store, scope: chatScope("chat-l1"), timers: noTimers });
+    const { switchTo } = renderComposer(first, manager);
+    await act(async () => {
+      await first.load();
+      await drop(manager, "photo.png");
+    });
+
+    // Leaving the chat disposes its controller, which saves what that controller holds.
+    const second = new DraftController({ store, scope: chatScope("chat-l2"), timers: noTimers });
+    await act(async () => {
+      await first.dispose();
+      switchTo(second);
+      await second.load();
+    });
+
+    const back = new DraftController({ store, scope: chatScope("chat-l1"), timers: noTimers });
+    await act(async () => {
+      await second.dispose();
+      switchTo(back);
+      await back.load();
+    });
+
+    await waitFor(() => {
+      expect(manager.toDraftRefs().map((ref) => ref.name)).toEqual(["photo.png"]);
+    });
+    const saved = await store.get({ scope: chatScope("chat-l1") });
+    expect(saved.draft?.text).toBe("");
+    expect(saved.draft?.attachments.map((ref) => ref.name)).toEqual(["photo.png"]);
+  });
+
+  test("the previous chat's attachment is not in the next chat, nor saved into it by text typed before it loads", async () => {
+    const store = new HeldReadStore();
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
+    const first = new DraftController({ store, scope: chatScope("chat-m1"), timers: noTimers });
+    const { shown, switchTo } = renderComposer(first, manager);
+    await act(async () => {
+      await first.load();
+      await drop(manager, "photo.png");
+    });
+
+    store.hold();
+    const second = new DraftController({ store, scope: chatScope("chat-m2"), timers: noTimers });
+    let loading: Promise<unknown> = Promise.resolve();
+    await act(async () => {
+      await first.dispose();
+      switchTo(second);
+      loading = second.load();
+    });
+    expect(manager.toDraftRefs()).toEqual([]);
+
+    act(() => shown.type("typed before load"));
+    await act(async () => {
+      store.release();
+      await loading;
+      await second.flush();
+    });
+    expect(store.text(chatScope("chat-m2"))).toBe("typed before load");
+    expect((await store.get({ scope: chatScope("chat-m2") })).draft?.attachments).toEqual([]);
+  });
+
+  test("an attachment removed from the chat is removed from the draft saved for it", async () => {
+    const store = new ScopedDraftStore();
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
+    const chat = new DraftController({ store, scope: chatScope("chat-n"), timers: noTimers });
+    renderComposer(chat, manager);
+    await act(async () => {
+      await chat.load();
+      await drop(manager, "first.png");
+      await drop(manager, "second.png");
+    });
+
+    const [removed] = manager.getState().complete;
+    await act(async () => {
+      if (removed !== undefined) await manager.remove(removed);
+      await chat.flush();
+    });
+    const saved = await store.get({ scope: chatScope("chat-n") });
+    expect(saved.draft?.attachments.map((ref) => ref.name)).toEqual(["second.png"]);
+  });
+
+  test("a send that fails before admission keeps the attachment in the composer and the draft, without reloading it", async () => {
+    const store = new ScopedDraftStore();
+    const manager = new AttachmentManager({ blobStore: new UnreachableBlobStore() });
+    const chat = new DraftController({ store, scope: chatScope("chat-q"), timers: noTimers });
+    const { shown } = renderComposer(chat, manager);
+    const dropped = await act(async () => {
+      await chat.load();
+      return drop(manager, "photo.png");
+    });
+    act(() => shown.type("send this"));
+
+    // A send names the chip by the id the composer gave it before the upload, with its name and media type only.
+    const intent = {
+      mode: "prompt" as const,
+      text: "send this",
+      delivery: "new" as const,
+      attachmentRefs: [{ id: dropped.id, name: "photo.png", mediaType: "image/png" }],
+    };
+    await act(async () => {
+      await expect(
+        chat.submit(intent, async () => {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The connection closed",
+            retryable: true,
+          });
+        }),
+      ).rejects.toMatchObject({ appError: { code: "unavailable" } });
+    });
+
+    expect(manager.toDraftRefs().map((ref) => ref.name)).toEqual(["photo.png"]);
+    expect(chat.getSnapshot().attachments.map((ref) => ref.name)).toEqual(["photo.png"]);
+    expect(chat.getSnapshot().failedSends[0]?.attachments.map((ref) => ref.name)).toEqual([
+      "photo.png",
+    ]);
+  });
+
+  test("Enter on a chip whose upload has finished keeps the chip; the draft keeps it, and a reload restores it", async () => {
+    const store = new ScopedDraftStore();
+    // The server names a blob by its own id, not by the id the composer gave the file.
+    const blobs = new MemoryBlobStore("blob-");
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const chat = new DraftController({ store, scope: chatScope("chat-s1"), timers: noTimers });
+    const { shown } = renderComposer(chat, manager);
+    const dropped = await act(async () => {
+      await chat.load();
+      return drop(manager, "photo.png");
+    });
+    act(() => shown.type("send this"));
+
+    // Enter names the chip the way the composer does: the id it had before the upload, with its name and media type.
+    const intent = {
+      mode: "prompt" as const,
+      text: "send this",
+      delivery: "new" as const,
+      attachmentRefs: [{ id: dropped.id, name: "photo.png", mediaType: "image/png" }],
+    };
+    await act(async () => {
+      await expect(
+        chat.submit(intent, async () => {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The connection closed",
+            retryable: true,
+          });
+        }),
+      ).rejects.toMatchObject({ appError: { code: "unavailable" } });
+    });
+
+    // Nothing restores the chip from the composer's id, so the chip stays and the draft keeps its stored reference.
+    expect(manager.toDraftRefs().map((ref) => ref.name)).toEqual(["photo.png"]);
+    await act(async () => {
+      await chat.flush();
+    });
+    const saved = await store.get({ scope: chatScope("chat-s1") });
+    expect(saved.draft?.attachments.map((ref) => ref.id)).toEqual(
+      manager.toDraftRefs().map((ref) => ref.id),
+    );
+
+    // After a reload, a new composer and controller over the same store restore the attachment.
+    const reloadedManager = new AttachmentManager({ blobStore: blobs });
+    const reloaded = new DraftController({ store, scope: chatScope("chat-s1"), timers: noTimers });
+    renderComposer(reloaded, reloadedManager);
+    await act(async () => {
+      await reloaded.load();
+    });
+    await waitFor(() => {
+      expect(reloadedManager.toDraftRefs().map((ref) => ref.name)).toEqual(["photo.png"]);
+    });
+  });
+
+  test("a restore that stops at a blob it cannot read keeps the other attachments in the draft, so typing does not drop them", async () => {
+    const store = new ScopedDraftStore();
+    const blobs = new FlakyBlobStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const first = new DraftController({ store, scope: chatScope("chat-p1"), timers: noTimers });
+    const { shown, switchTo } = renderComposer(first, manager);
+    await act(async () => {
+      await first.load();
+      await drop(manager, "notes.txt");
+      await drop(manager, "missing.png");
+    });
+
+    // The chat is left, the blob of its second attachment is lost, and the chat is opened again: the restore stops there.
+    blobs.lose("missing.png");
+    const reopened = new DraftController({ store, scope: chatScope("chat-p1"), timers: noTimers });
+    await act(async () => {
+      await first.dispose();
+      switchTo(reopened);
+      await reopened.load();
+    });
+    await waitFor(() => {
+      expect(manager.toDraftRefs().map((ref) => ref.name)).toEqual(["notes.txt"]);
+    });
+
+    // Typing saves the draft, and the attachment that could not be restored stays in it.
+    act(() => shown.type("x"));
+    await act(async () => {
+      await reopened.flush();
+    });
+    const saved = await store.get({ scope: chatScope("chat-p1") });
+    expect(saved.draft?.attachments.map((ref) => ref.name)).toEqual(["notes.txt", "missing.png"]);
+  });
+
+  test("an attachment dropped before the chat's draft loads is kept when the draft loads, and saved with it", async () => {
+    const store = new ScopedDraftStore();
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
+    const chat = new DraftController({ store, scope: chatScope("chat-d1"), timers: noTimers });
+    renderComposer(chat, manager);
+    // The image is dropped while the chat's draft is still loading.
+    await act(async () => {
+      await drop(manager, "photo.png");
+    });
+    await act(async () => {
+      await chat.load();
+    });
+    await waitFor(() => {
+      expect(manager.toDraftRefs().map((ref) => ref.name)).toEqual(["photo.png"]);
+    });
+    await act(async () => {
+      await chat.flush();
+    });
+    const saved = await store.get({ scope: chatScope("chat-d1") });
+    expect(saved.draft?.attachments.map((ref) => ref.name)).toEqual(["photo.png"]);
+  });
+
+  test("an attachment dropped before the chat's draft loads is saved when the chat is left, and comes back when it is opened again", async () => {
+    const store = new ScopedDraftStore();
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
+    const first = new DraftController({ store, scope: chatScope("chat-d2"), timers: noTimers });
+    const { switchTo } = renderComposer(first, manager);
+    // The image is dropped, and the chat is left before its draft has loaded.
+    await act(async () => {
+      await drop(manager, "photo.png");
+    });
+    const second = new DraftController({ store, scope: chatScope("chat-d3"), timers: noTimers });
+    await act(async () => {
+      await first.dispose();
+      switchTo(second);
+      await second.load();
+    });
+    const back = new DraftController({ store, scope: chatScope("chat-d2"), timers: noTimers });
+    await act(async () => {
+      await second.dispose();
+      switchTo(back);
+      await back.load();
+    });
+    await waitFor(() => {
+      expect(manager.toDraftRefs().map((ref) => ref.name)).toEqual(["photo.png"]);
+    });
+  });
+
+  test("an attachment dropped before a chat with a stored draft has loaded is saved when the chat is left", async () => {
+    const store = new ScopedDraftStore();
+    // The chat already has a draft stored: a save from a chat whose draft has not loaded must not conflict with it.
+    const earlier = new DraftController({ store, scope: chatScope("chat-d4"), timers: noTimers });
+    await act(async () => {
+      await earlier.load();
+      earlier.setDraft("earlier text", []);
+      await earlier.flush();
+    });
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
+    const chat = new DraftController({ store, scope: chatScope("chat-d4"), timers: noTimers });
+    renderComposer(chat, manager);
+    await act(async () => {
+      await drop(manager, "photo.png");
+    });
+    await act(async () => {
+      await chat.dispose();
+    });
+    const saved = await store.get({ scope: chatScope("chat-d4") });
+    expect(saved.draft?.attachments.map((ref) => ref.name)).toEqual(["photo.png"]);
   });
 });
