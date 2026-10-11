@@ -233,7 +233,7 @@ export function ModelPresetControls({ presets }: { readonly presets: ModelPreset
         Saved presets
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Save and switch role maps through A1.4 with CAS protection.
+        Save a set of models for each role and switch between them.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <label htmlFor="model-preset-name" className="flex min-w-48 flex-1 flex-col gap-1 text-sm">

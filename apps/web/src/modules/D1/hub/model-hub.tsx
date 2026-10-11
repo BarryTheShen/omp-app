@@ -319,7 +319,7 @@ export function ModelHub({
               role="status"
               className="rounded-lg border border-border/70 px-3 py-4 text-sm text-muted-foreground"
             >
-              Saved roles are unavailable until the ConfigStore connects.
+              Saved model sets are unavailable until omp's settings load.
             </p>
           ) : roleEntries.length === 0 ? (
             <p className="rounded-lg border border-border/70 px-3 py-4 text-sm text-muted-foreground">
@@ -356,8 +356,7 @@ export function ModelHub({
               <div>
                 <h2 className="text-sm font-semibold">Fallback / cycle order</h2>
                 <p className="text-xs text-muted-foreground">
-                  The next role is used when cycling models; order is persisted in the selected
-                  config layer.
+                  The next role is used when cycling models; the order is saved with your settings.
                 </p>
               </div>
               {roleSnapshot?.settings.cycleOrder.map((role, index, order) => (
@@ -399,7 +398,7 @@ export function ModelHub({
               <div>
                 <h2 className="text-sm font-semibold">Saved presets</h2>
                 <p className="text-xs text-muted-foreground">
-                  Save or switch the complete role map through the selected ConfigStore layer.
+                  Saved for all workspaces or only for this workspace, as set in Settings.
                 </p>
               </div>
               <div className="flex flex-wrap items-end gap-2">
