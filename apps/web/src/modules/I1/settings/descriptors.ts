@@ -37,7 +37,7 @@ function nonNegativeNumberValidator(value: SettingValue): ValidationResult {
   return {
     valid: false,
     code: "non-negative-number",
-    message: "Enter a finite, non-negative number.",
+    message: "Enter a number, 0 or more.",
   };
 }
 

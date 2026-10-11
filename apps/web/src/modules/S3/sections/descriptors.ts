@@ -7,7 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { settingOptions } from "../../S1/settings-kit";
+import { numberRangeWords, settingOptions } from "../../S1/settings-kit";
 
 /**
  * Keys mirror omp v18.6.1's UI registrations in tools/settings.ts, tools/browser/settings.ts,
@@ -61,9 +61,7 @@ function numberValidator(minimum: number, maximum: number, integer = true): Vali
       : {
           valid: false,
           code: "range",
-          message: integer
-            ? `Enter a whole number from ${minimum} to ${maximum}.`
-            : `Enter a number from ${minimum} to ${maximum}.`,
+          message: `Enter ${numberRangeWords(integer, minimum, maximum)}.`,
         };
   };
 }

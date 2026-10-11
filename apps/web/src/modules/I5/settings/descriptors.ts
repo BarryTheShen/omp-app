@@ -7,7 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { settingOptions } from "../../S1/settings-kit";
+import { numberRangeWords, settingOptions } from "../../S1/settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const;
 
@@ -47,9 +47,7 @@ function numberValidator(minimum: number, maximum: number, integer = true): Vali
       : {
           valid: false,
           code: "range",
-          message: integer
-            ? `Enter a whole number from ${minimum} to ${maximum}.`
-            : `Enter a number from ${minimum} to ${maximum}.`,
+          message: `Enter ${numberRangeWords(integer, minimum, maximum)}.`,
         };
   };
 }

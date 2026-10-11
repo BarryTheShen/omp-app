@@ -8,7 +8,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../settings-kit";
-import { settingOptions } from "../settings-kit";
+import { numberRangeWords, settingOptions } from "../settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 const HOST_CONFIG_AND_GIT = ["host.config", "host.git"] as const satisfies readonly CapabilityKey[];
@@ -69,7 +69,7 @@ function validateNumber(minimum: number, maximum: number, integer = false) {
       (!integer || Number.isInteger(candidate));
     return valid
       ? { valid: true }
-      : invalid("range", `Enter a ${integer ? "whole " : ""}number from ${minimum} to ${maximum}.`);
+      : invalid("range", `Enter ${numberRangeWords(integer, minimum, maximum)}.`);
   };
 }
 

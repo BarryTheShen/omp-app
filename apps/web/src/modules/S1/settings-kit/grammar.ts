@@ -179,6 +179,18 @@ export function optionLabel(value: string): string {
 }
 
 /**
+ * The words after "Enter" that state a number's allowed range: "a whole number, 0 or more", or "a
+ * number from 0 to 100". No maximum, or Number.MAX_VALUE, is no upper limit, so the words say "or more"
+ * and never print that number (1.7976931348623157e+308). The S1, S2, S3 and I5 validators that state a range use this.
+ */
+export function numberRangeWords(integer: boolean, minimum: number, maximum?: number): string {
+  const kind = integer ? "a whole number" : "a number";
+  return maximum === undefined || maximum >= Number.MAX_VALUE
+    ? `${kind}, ${minimum} or more`
+    : `${kind} from ${minimum} to ${maximum}`;
+}
+
+/**
  * Choices for an enum control. Every module builds its options here so no raw value reaches the UI;
  * `labels` covers what `optionLabel` can't spell (acronyms, product names, "xhigh").
  */

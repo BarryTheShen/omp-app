@@ -7,7 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { settingOptions } from "../../S1/settings-kit";
+import { numberRangeWords, settingOptions } from "../../S1/settings-kit";
 
 /**
  * Keys and labels mirror omp v18.6.1's registered UI settings:
@@ -57,9 +57,7 @@ function validateNumber(
     : {
         valid: false,
         code: "range",
-        message: integer
-          ? `Enter a whole number from ${minimum} to ${maximum}.`
-          : `Enter a number from ${minimum} to ${maximum}.`,
+        message: `Enter ${numberRangeWords(integer, minimum, maximum)}.`,
       };
 }
 
