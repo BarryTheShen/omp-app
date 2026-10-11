@@ -144,7 +144,7 @@ test("modes omp does not report start with neither button set, in every layout",
   }
   await expect(
     page.getByText(
-      "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
+      "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
       { exact: true },
     ),
   ).toHaveCount(3);
@@ -189,8 +189,10 @@ test("a failed Fast change keeps the last value omp reported, in every layout", 
   ).toHaveCount(1);
   await fast.getByRole("button", { name: "Turn on" }).click();
   await page.mouse.move(0, 0);
-  await expect(page.getByText("The execution setting could not be changed")).toBeVisible();
-  await expect(page.getByText("Fast mode could not be changed.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Fast mode could not be changed.")).toBeVisible();
+  await expect(
+    page.getByText("The app could not reach omp. Try again.", { exact: true }),
+  ).toBeVisible();
   await expect(fast.getByRole("button", { name: "Turn off" })).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -220,7 +222,7 @@ test("a failed Fast change keeps the last value omp reported, in every layout", 
     .getByRole("button", { name: "Turn on" })
     .click();
   await dark.mouse.move(0, 0);
-  await expect(dark.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(dark.getByText("Fast mode could not be changed.")).toBeVisible();
   await expect(dark.getByRole("button", { name: "Try again" })).toBeVisible();
   await assertStyled(dark);
   await dark.screenshot({
@@ -249,9 +251,9 @@ test("a failed change to Computer use keeps both buttons enabled, in every layou
   const computer = page.getByRole("group", { name: "Computer use controls" });
   await computer.getByRole("button", { name: "Turn on" }).click();
   await page.mouse.move(0, 0);
-  await expect(page.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(page.getByText("Computer use could not be changed.")).toBeVisible();
   await expect(
-    page.getByText("The execution-mode command could not finish.", { exact: true }),
+    page.getByText("The app could not reach omp. Try again.", { exact: true }),
   ).toBeVisible();
   // omp never reported Computer use, so neither choice is set; both stay enabled for another try.
   await expect(computer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
@@ -279,7 +281,7 @@ test("a failed change to Computer use keeps both buttons enabled, in every layou
   const darkComputer = dark.getByRole("group", { name: "Computer use controls" });
   await darkComputer.getByRole("button", { name: "Turn on" }).click();
   await dark.mouse.move(0, 0);
-  await expect(dark.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(dark.getByText("Computer use could not be changed.")).toBeVisible();
   await expect(darkComputer.getByRole("button", { name: "Turn off" })).toBeEnabled();
   await assertStyled(dark);
   await dark.screenshot({
@@ -312,7 +314,7 @@ test("a failed Turn off keeps the On that omp accepted, in every layout", async 
   );
   await computer.getByRole("button", { name: "Turn off" }).click();
   await page.mouse.move(0, 0);
-  await expect(page.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(page.getByText("Computer use could not be changed.")).toBeVisible();
   await expect(computer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -349,7 +351,7 @@ test("a failed Turn off keeps the On that omp accepted, in every layout", async 
   );
   await darkComputer.getByRole("button", { name: "Turn off" }).click();
   await dark.mouse.move(0, 0);
-  await expect(dark.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(dark.getByText("Computer use could not be changed.")).toBeVisible();
   await expect(darkComputer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
     "aria-pressed",
     "true",

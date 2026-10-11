@@ -120,7 +120,7 @@ describe("ModeController", () => {
     controller.dispose();
   });
 
-  test("does not call a missing command capability and reports a visible reason", async () => {
+  test("does not call a missing command capability and reports a plain reason", async () => {
     let called = false;
     const controller = new ModeController({
       threadId,
@@ -150,7 +150,7 @@ describe("ModeController", () => {
       capability: "host.command-gateway",
     });
     expect(called).toBe(false);
-    expect(result.reason).toBe("The command service is offline.");
+    expect(result.reason).toBe("These settings are not available in this chat.");
     controller.dispose();
   });
 
@@ -246,7 +246,7 @@ describe("a mode omp does not report", () => {
     const result = await controller.request({ mode: "fast", scope: "session", requested: true });
     expect(result).toMatchObject({
       ok: false,
-      error: { message: "Fast mode could not be changed.", retryable: true },
+      error: { message: "The app could not reach omp. Try again.", retryable: true },
     });
     expect(controller.getSnapshot().fast).toMatchObject({ enabled: false, state: "known" });
     expect(controller.getSnapshot().fast.requested).toBeUndefined();
@@ -368,7 +368,7 @@ describe.each(MODE_CHANGES)(
       const failed = await change(controller, true);
       expect(failed).toMatchObject({
         ok: false,
-        error: { message: "The execution-mode command could not finish." },
+        error: { message: "The app could not reach omp. Try again." },
       });
       expect(chosen(controller)).toBeUndefined();
       expect(controller.getSnapshot().modes[mode]?.state).toBe("fallback");

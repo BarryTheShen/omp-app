@@ -15,6 +15,8 @@ export interface ModeControlsModel {
   readonly error: AppError | null;
   /** Which action failed: a failed refresh is not reported as a failed setting change. */
   readonly errorKind?: ModeErrorKind;
+  /** The mode whose change failed, so the heading names it; null when no single mode failed. */
+  readonly errorMode?: D73Mode | null;
 }
 
 export interface ModeControlsActions {
@@ -37,7 +39,7 @@ function modeState(snapshot: ModeSnapshot, mode: D73Mode): ModeStateLike | undef
 
 /** The one status line a mode shows, in plain words. Standard execution shows none. */
 function statusText(mode: D73Mode, state: ModeStateLike | undefined): string {
-  if (state === undefined) return "Waiting for the session to connect.";
+  if (state === undefined) return "Waiting for the chat to connect.";
   switch (state.state) {
     case "known":
       return knownText(mode, state);
@@ -48,25 +50,25 @@ function statusText(mode: D73Mode, state: ModeStateLike | undefined): string {
     case "fallback":
       return unknownText(mode, state);
     case "unavailable":
-      return state.reason ? `Not available. ${state.reason}` : "Not available.";
+      return state.reason ?? "Not available.";
   }
 }
 
 /**
  * omp does not report this mode's state. The line says so and what the person can do: a setting they
- * chose in this session reads as set, and until they choose one, the choice is theirs.
+ * chose in this chat reads as set, and until they choose one, the choice is theirs.
  */
 function unknownText(mode: D73Mode, state: ModeStateLike): string {
   if (mode === "fast") return "omp has not reported Fast mode yet. Refresh status to check it.";
   const chosen = state.requested !== undefined;
   if (mode === "browser") {
     return chosen
-      ? "Set for this session. omp does not report which window mode is in use."
-      : "omp does not report which window mode is in use. Choose Headless or Visible window for this session.";
+      ? "Set for this chat. omp does not say whether its browser window is visible."
+      : "omp does not say whether its browser window is visible. Choose Headless or Visible window for this chat.";
   }
   return chosen
-    ? "Set for this session. omp does not report whether it is on."
-    : "omp does not report whether this is on. Choose Turn on or Turn off for this session.";
+    ? "Set for this chat. omp does not report whether it is on."
+    : "omp does not report whether this is on. Choose Turn on or Turn off for this chat.";
 }
 
 /** On or off as omp reported it; for Fast mode, also whether the current model uses the tier. */
@@ -91,18 +93,21 @@ function isDisabled(state: ModeStateLike | undefined, busy: boolean): boolean {
 function ErrorMessage({
   error,
   kind,
+  mode,
   onRetry,
 }: {
   readonly error: AppError;
   readonly kind: ModeErrorKind;
+  /** The mode whose change failed; null when no single mode is named. */
+  readonly mode: D73Mode | null;
   readonly onRetry: (() => void) | undefined;
 }) {
   return (
     <InlineError
       heading={
         kind === "refresh"
-          ? "The execution state could not be loaded"
-          : "The execution setting could not be changed"
+          ? "The settings could not be loaded"
+          : `${mode === null ? "This setting" : MODE_LABELS[mode]} could not be changed.`
       }
       message={error.message}
       onRetry={error.retryable ? onRetry : undefined}
@@ -114,13 +119,18 @@ function ErrorMessage({
 function ModeStateText({
   mode,
   state,
+  shownError,
 }: {
   readonly mode: D73Mode;
   readonly state: ModeStateLike | undefined;
+  /** The message the error block already shows; the row does not repeat it. */
+  readonly shownError: string | null;
 }) {
+  // A failed change shows its message once, in the error block above; this row's line stays empty.
+  const repeats = shownError !== null && state?.reason === shownError;
   return (
     <span aria-live="polite" className="text-muted-foreground text-xs" role="status">
-      {statusText(mode, state)}
+      {repeats ? "" : statusText(mode, state)}
     </span>
   );
 }
@@ -133,6 +143,7 @@ function ToggleRow({
   state,
   busy,
   onRequest,
+  shownError,
 }: {
   readonly mode: D73Mode;
   readonly title: string;
@@ -141,13 +152,14 @@ function ToggleRow({
   readonly state: ModeState | ModeSnapshot["fast"] | undefined;
   readonly busy: boolean;
   readonly onRequest: (mode: D73Mode, requested: boolean) => void;
+  readonly shownError: string | null;
 }) {
   const unavailable = state?.state === "unavailable";
   return (
     <SettingRow
       title={title}
       description={description}
-      detail={<ModeStateText mode={mode} state={state} />}
+      detail={<ModeStateText mode={mode} shownError={shownError} state={state} />}
     >
       <Toolbar ariaLabel={`${title} controls`}>
         <Button
@@ -192,6 +204,7 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
   useEffect(() => {
     if (model.error) errorBlock.current?.scrollIntoView?.({ block: "nearest" });
   }, [model.error]);
+  const shownError = model.error?.message ?? null;
   return (
     <div aria-busy={busy} className="flex min-w-0 flex-col gap-4" data-d7-mode-controls>
       {model.error ? (
@@ -199,18 +212,19 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
           <ErrorMessage
             error={model.error}
             kind={model.errorKind ?? "change"}
+            mode={model.errorMode ?? null}
             onRetry={actions.onRetry}
           />
         </div>
       ) : null}
       <Section
-        description="Choose how omp runs. Settings marked as saved apply to every conversation."
+        description="Choose how omp runs. Settings marked as saved apply to every chat."
         heading="Execution modes"
       >
         <div className="divide-border divide-y">
           <SettingRow
-            description="Choose whether browser work runs with a visible window or without one. Saved for every conversation."
-            detail={<ModeStateText mode="browser" state={browser} />}
+            description="Choose whether browser work runs with a visible window or without one. Saved for every chat."
+            detail={<ModeStateText mode="browser" shownError={shownError} state={browser} />}
             title="Browser use"
           >
             <Toolbar ariaLabel="Browser visibility controls">
@@ -235,46 +249,50 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
             </Toolbar>
           </SettingRow>
           <ToggleRow
-            description="Allow omp to use the computer-control tool in this conversation."
+            description="Allow omp to use the computer-control tool in this chat."
             mode="computer"
             onRequest={actions.onRequest}
             chosen={model.snapshot.modes.computer?.requested}
             state={computer}
             title="Computer use"
             busy={busy}
+            shownError={shownError}
           />
           <ToggleRow
-            description="Ask omp to use its wider context policy. Saved for every conversation."
+            description="Use larger context windows where the model supports them. This can cost more. Saved for every chat."
             mode="extended-context"
             onRequest={actions.onRequest}
             chosen={model.snapshot.modes["extended-context"]?.requested}
             state={extendedContext}
             title="Extended context"
             busy={busy}
+            shownError={shownError}
           />
           <ToggleRow
-            description="Enable the provider's fast tier when omp supports it."
+            description="Get faster replies when the model supports it."
             mode="fast"
             onRequest={actions.onRequest}
             chosen={fastChoice(model.snapshot.fast)}
             state={fast}
             title="Fast mode"
             busy={busy}
+            shownError={shownError}
           />
           <ToggleRow
-            description="Use the slower execution tier when the command is available. Saved for every conversation."
+            description="Use the provider's slower, lower-cost option when it has one. Saved for every chat."
             mode="slow"
             onRequest={actions.onRequest}
             chosen={model.snapshot.modes.slow?.requested}
             state={slow}
             title="Slow mode"
             busy={busy}
+            shownError={shownError}
           />
           <SettingRow
-            description="The standard path is used when no special execution mode is active."
+            description="Replies run as usual when none of the settings above is on."
             title={MODE_LABELS.default}
           >
-            <span className="text-muted-foreground text-sm">Always available as the baseline.</span>
+            <span className="text-muted-foreground text-sm">Always available.</span>
           </SettingRow>
         </div>
       </Section>
@@ -312,11 +330,13 @@ export function ConnectedModeControls({
   const [busyMode, setBusyMode] = useState<ModeControlsModel["busyMode"]>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [errorKind, setErrorKind] = useState<ModeErrorKind>("change");
+  const [errorMode, setErrorMode] = useState<D73Mode | null>(null);
   // "Try again" repeats the last action that was started, so a failed change is never replaced by a refresh.
   const lastAttempt = useRef<() => void>(() => undefined);
   const run = useCallback(
     async (
       kind: ModeErrorKind,
+      mode: D73Mode | null,
       action: () => Promise<{ readonly ok: boolean; readonly error?: AppError }>,
     ) => {
       setError(null);
@@ -324,22 +344,25 @@ export function ConnectedModeControls({
         const result = await action();
         if (!result.ok) {
           setErrorKind(kind);
+          setErrorMode(mode);
           setError(
             result.error ?? {
               code: "internal",
-              message: "The mode request failed.",
+              message: "The app could not reach omp. Try again.",
               retryable: true,
             },
           );
         }
       } catch (cause) {
         setErrorKind(kind);
+        setErrorMode(mode);
         if (cause instanceof AppFailure) {
           setError(cause.appError);
         } else {
+          // Not a typed answer from omp, so the app says it could not reach omp; omp is not blamed.
           setError({
             code: "internal",
-            message: cause instanceof Error ? cause.message : "The mode request failed.",
+            message: "The app could not reach omp. Try again.",
             retryable: true,
           });
         }
@@ -353,7 +376,7 @@ export function ConnectedModeControls({
     (mode: D73Mode, requested: boolean) => {
       const attempt = () => {
         setBusyMode(mode);
-        void run("change", () => controller.request({ mode, scope: "session", requested }));
+        void run("change", mode, () => controller.request({ mode, scope: "session", requested }));
       };
       lastAttempt.current = attempt;
       attempt();
@@ -364,7 +387,7 @@ export function ConnectedModeControls({
     (visibility: BrowserVisibility) => {
       const attempt = () => {
         setBusyMode("browser");
-        void run("change", () => controller.requestBrowserVisibility(visibility));
+        void run("change", "browser", () => controller.requestBrowserVisibility(visibility));
       };
       lastAttempt.current = attempt;
       attempt();
@@ -374,7 +397,7 @@ export function ConnectedModeControls({
   const onRefresh = useCallback(() => {
     const attempt = () => {
       setBusyMode(null);
-      void run("refresh", () => controller.refresh().then(() => ({ ok: true })));
+      void run("refresh", null, () => controller.refresh().then(() => ({ ok: true })));
     };
     lastAttempt.current = attempt;
     attempt();
@@ -392,6 +415,7 @@ export function ConnectedModeControls({
         busyMode,
         error,
         errorKind,
+        errorMode,
       }}
     />
   );

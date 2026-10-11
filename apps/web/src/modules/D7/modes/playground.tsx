@@ -4,6 +4,22 @@ import { ConnectedModeControls, ModeController } from "./index";
 
 const threadId: ThreadId = ThreadIdSchema.parse("d7-playground-thread");
 
+/**
+ * The reply omp gives for each command, as omp words it (omp v18.6.1 source and real omp runs). The rows show
+ * omp's reply as it is; the tests check that the words around it are plain.
+ */
+const OMP_REPLIES: Readonly<Record<string, string>> = {
+  "/computer on":
+    "Computer use enabled for this session. Computer use: enabled · prelude: active · configured: display=active, maxWidth=3840, maxHeight=2400",
+  "/computer off": "Computer use disabled for this session.",
+  "/extended-context on": "Extended context enabled.",
+  "/extended-context off": "Extended context disabled.",
+  "/slow on": "Slow mode on: requests use the flex tier (lower cost, higher latency).",
+  "/slow off": "Slow mode off.",
+  "/browser visible": "Browser mode: visible",
+  "/browser headless": "Browser mode: headless",
+};
+
 function createController(): ModeController {
   // `?fast=fails` makes every Fast mode change fail, so the error path can be captured.
   const failFast = new URLSearchParams(window.location.search).get("fast") === "fails";
@@ -25,13 +41,14 @@ function createController(): ModeController {
           throw new Error("omp did not answer the execution-mode command.");
         }
         answered += 1;
+        const reply = OMP_REPLIES[command] ?? "";
         return {
           command,
           status: "completed",
           agentInvoked: false,
           promptSettled: true,
           sessionSettled: true,
-          outputs: [],
+          outputs: reply === "" ? [] : [{ text: reply }],
           sessionUpdates: [],
           configUpdates: [],
         };

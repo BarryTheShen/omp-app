@@ -147,8 +147,7 @@ export const ModeCommandResult = z.strictObject({
 export type ModeCommandResult = z.infer<typeof ModeCommandResult>;
 
 export const D7_AP6_CAPABILITY = "upstream.execution-mode-state" as const;
-export const D7_AP6_REASON =
-  "Authoritative execution-mode state is unavailable until omp exposes a typed RPC capability.";
+export const D7_AP6_REASON = "The app cannot read this setting from omp yet.";
 
 /** Capability gates from the D7 research row; absent keys are treated as unavailable by C0. */
 export const D7_CAPABILITIES = [

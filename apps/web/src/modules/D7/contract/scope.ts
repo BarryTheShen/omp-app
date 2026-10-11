@@ -53,7 +53,8 @@ export function unavailableMode(
     source,
     capability,
     reason:
-      reason ?? (capability === D7_AP6_CAPABILITY ? D7_AP6_REASON : "The mode is unavailable."),
+      reason ??
+      (capability === D7_AP6_CAPABILITY ? D7_AP6_REASON : "This setting is not available."),
   });
 }
 
@@ -146,7 +147,7 @@ export function toolAvailability(
       state: "fallback",
       ...(options.mode ? { mode: options.mode } : {}),
       ...(capability ? { capability } : {}),
-      reason: status.detail ?? options.fallbackReason ?? "The host fallback is limited.",
+      reason: options.fallbackReason ?? "The app can only partly provide this tool.",
     };
   }
   if (capability === undefined) return { tool, state: "unknown" };
@@ -155,6 +156,6 @@ export function toolAvailability(
     state: "unavailable",
     ...(options.mode ? { mode: options.mode } : {}),
     capability,
-    reason: status?.detail ?? options.fallbackReason ?? "The required capability is unavailable.",
+    reason: options.fallbackReason ?? "This tool is not available here.",
   };
 }

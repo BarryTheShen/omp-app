@@ -148,10 +148,6 @@ function modeCommandResult(
   };
 }
 
-function stateReason(capabilities: CapabilityMap, capability: CapabilityKey): string | undefined {
-  return capabilities[capability]?.detail;
-}
-
 function initialFastState(
   capabilities: CapabilityMap,
   fastRpc: FastModeRpc | undefined,
@@ -161,9 +157,8 @@ function initialFastState(
     const error = unavailableError(
       capability,
       fastRpc === undefined
-        ? "Fast mode is unavailable until the session RPC is connected."
-        : (stateReason(capabilities, capability) ??
-            "Fast mode is unavailable in this omp session."),
+        ? "Fast mode is not available until the app is connected to omp."
+        : "Fast mode is not available in this chat.",
     );
     return FastModeState.parse({
       enabled: false,
@@ -200,14 +195,19 @@ function initialModeState(
   }
   const capability = TOOL_CAPABILITIES[mode] ?? "host.command-gateway";
   if (gateway === undefined) {
-    const error = unavailableError(capability, "Execution controls are unavailable in this view.");
+    const error = unavailableError(capability, "These settings are not available here.");
     return stateWithError(mode, "session", "omp-command", error);
   }
   if (!isCapabilityUsable(capabilities, capability)) {
-    return unavailableMode(mode, "session", "omp-command", stateReason(capabilities, capability));
+    return unavailableMode(
+      mode,
+      "session",
+      "omp-command",
+      "These settings are not available in this chat.",
+    );
   }
   return modeState(mode, "session", "omp-command", "fallback", capabilities, {
-    reason: "omp has not reported a live status for this mode.",
+    reason: "omp has not reported this setting yet.",
   });
 }
 
@@ -300,10 +300,7 @@ export class ModeController implements ModeControllerPort {
     }
     const capability: CapabilityKey = "omp.cmd.get_state";
     if (!isCapabilityUsable(this.capabilities, capability)) {
-      const error = unavailableError(
-        capability,
-        stateReason(this.capabilities, capability) ?? "The session state command is unavailable.",
-      );
+      const error = unavailableError(capability, "omp cannot report these settings in this chat.");
       this.fast = this.fastFromValues(false, false, "unavailable", error.message, error);
       this.commit();
       throw new AppFailure(error);
@@ -317,7 +314,7 @@ export class ModeController implements ModeControllerPort {
           this.fast.enabled,
           this.fast.active,
           "requested",
-          "omp did not include fast-mode state in its response.",
+          "omp did not say whether Fast mode is on.",
         );
       } else {
         this.reportFast(enabled, active);
@@ -325,7 +322,7 @@ export class ModeController implements ModeControllerPort {
       this.commit();
       return this.snapshot;
     } catch (cause) {
-      const error = errorFrom(cause, "The session state could not be refreshed.", capability);
+      const error = errorFrom(cause, "The app could not reach omp. Try again.", capability);
       this.fast = this.fastFromValues(false, false, "unavailable", error.message, error);
       this.commit();
       throw new AppFailure(error, { cause });
@@ -340,7 +337,7 @@ export class ModeController implements ModeControllerPort {
     if (parsed.mode === "force") {
       const error = unavailableError(
         undefined,
-        "Force execution is omp's one-shot choice for its next turn, not a mode, so this panel does not offer it.",
+        "Force execution applies only to omp's next reply, so this dialog does not offer it.",
       );
       return modeCommandResult(
         { mode: parsed.mode, requested: true },
@@ -354,7 +351,7 @@ export class ModeController implements ModeControllerPort {
     if (!isD73Mode(parsed.mode)) {
       const error = unavailableError(
         "host.command-gateway",
-        "This execution mode is handled by another part of the app.",
+        "This setting is changed somewhere else in the app.",
       );
       return modeCommandResult(
         { mode: parsed.mode, requested: true },
@@ -370,7 +367,7 @@ export class ModeController implements ModeControllerPort {
     if (parsed.mode === "default") {
       const error = unavailableError(
         undefined,
-        "Standard execution is the baseline and has no command to run.",
+        "Standard execution is always on, so there is nothing to change.",
       );
       return modeCommandResult(
         { mode: parsed.mode, requested: parsed.requested },
@@ -415,8 +412,8 @@ export class ModeController implements ModeControllerPort {
       const error = unavailableError(
         capability,
         this.fastRpc === undefined
-          ? "Fast mode is unavailable until the session RPC is connected."
-          : (stateReason(this.capabilities, capability) ?? "Fast mode is unavailable."),
+          ? "Fast mode is not available until the app is connected to omp."
+          : "Fast mode is not available in this chat.",
       );
       this.fast = this.fastFromValues(false, false, "unavailable", error.message, error);
       this.commit();
@@ -457,7 +454,7 @@ export class ModeController implements ModeControllerPort {
         capability,
       );
     } catch (cause) {
-      const error = errorFrom(cause, "Fast mode could not be changed.", capability);
+      const error = errorFrom(cause, "The app could not reach omp. Try again.", capability);
       this.restoreFast();
       this.commit();
       return modeCommandResult(
@@ -478,10 +475,7 @@ export class ModeController implements ModeControllerPort {
   ): Promise<ModeCommandResult> {
     const command = modeCommand(action);
     if (command === null) {
-      const error = unavailableError(
-        undefined,
-        "This mode does not expose a command through the connected omp session.",
-      );
+      const error = unavailableError(undefined, "This setting cannot be changed in this chat.");
       return modeCommandResult(action, "mode command", false, "unavailable", error, error.message);
     }
     const capability: CapabilityKey = "host.command-gateway";
@@ -489,8 +483,8 @@ export class ModeController implements ModeControllerPort {
       const error = unavailableError(
         capability,
         this.gateway === undefined
-          ? "Execution controls are unavailable until the command gateway is connected."
-          : (stateReason(this.capabilities, capability) ?? "Execution controls are unavailable."),
+          ? "These settings are not available until the app is connected to omp."
+          : "These settings are not available in this chat.",
       );
       this.modeStates[action.mode] = stateWithError(action.mode, "command", "omp-command", error);
       this.commit();
@@ -530,7 +524,7 @@ export class ModeController implements ModeControllerPort {
         commandOptions(options?.signal ?? this.signal),
       );
       if (result.status === "aborted") {
-        const error = cancelledError("The execution-mode command was cancelled.");
+        const error = cancelledError("The change was cancelled.");
         this.modeStates[action.mode] = previous;
         if (action.mode === "browser") this.browserVisibility = previousVisibility;
         this.commit();
@@ -552,7 +546,7 @@ export class ModeController implements ModeControllerPort {
         .join("\n");
       const reason =
         capabilityState === "fallback"
-          ? (stateReason(this.capabilities, capability) ?? "The host command gateway is limited.")
+          ? "The app can only partly change these settings right now."
           : reply || undefined;
       this.modeStates[action.mode] = modeState(
         action.mode,
@@ -565,7 +559,7 @@ export class ModeController implements ModeControllerPort {
       this.commit();
       return modeCommandResult(action, command, true, state, undefined, reason, capability);
     } catch (cause) {
-      const error = errorFrom(cause, "The execution-mode command could not finish.", capability);
+      const error = errorFrom(cause, "The app could not reach omp. Try again.", capability);
       this.modeStates[action.mode] = previous;
       if (action.mode === "browser") this.browserVisibility = previousVisibility;
       this.commit();

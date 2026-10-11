@@ -92,7 +92,7 @@ describe("D7 mode controls", () => {
     const headless = screen.getByRole("button", { name: "Headless" });
     expect(headless).toHaveProperty("disabled", true);
     expect(screen.getAllByRole("status")[0]?.textContent).toBe(
-      "Not available. Execution controls are unavailable in this view.",
+      "These settings are not available here.",
     );
     controller.dispose();
   });
@@ -113,7 +113,7 @@ describe("D7 mode controls", () => {
 
     const computer = screen.getByRole("group", { name: "Computer use controls" });
     fireEvent.click(within(computer).getByRole("button", { name: "Turn on" }));
-    expect(await screen.findByText("The execution setting could not be changed")).toBeTruthy();
+    expect(await screen.findByText("Computer use could not be changed.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(commands).toEqual(["/computer on", "/computer on"]));
     controller.dispose();
@@ -148,11 +148,11 @@ describe("D7 mode controls", () => {
       />,
     );
     expect(screen.getAllByRole("status").map((element) => element.textContent)).toEqual([
-      "omp does not report which window mode is in use. Choose Headless or Visible window for this session.",
-      "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
-      "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
-      "Not available. Fast mode is unavailable until the session RPC is connected.",
-      "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
+      "omp does not say whether its browser window is visible. Choose Headless or Visible window for this chat.",
+      "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
+      "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
+      "Fast mode is not available until the app is connected to omp.",
+      "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
     ]);
     controller.dispose();
   });
@@ -300,7 +300,7 @@ describe("a mode omp does not report", () => {
     }
     expect(
       screen.getAllByText(
-        "omp does not report whether this is on. Choose Turn on or Turn off for this session.",
+        "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
         { exact: true },
       ),
     ).toHaveLength(3);
@@ -349,7 +349,7 @@ describe("a mode omp does not report", () => {
       "false",
     );
     expect(
-      screen.getByText("Set for this session. omp does not report whether it is on.", {
+      screen.getByText("Set for this chat. omp does not report whether it is on.", {
         exact: true,
       }),
     ).toBeTruthy();
@@ -377,8 +377,10 @@ describe("a mode omp does not report", () => {
     const fast = within(screen.getByRole("group", { name: "Fast mode controls" }));
     fireEvent.click(fast.getByRole("button", { name: "Turn on" }));
 
-    expect(await screen.findByText("The execution setting could not be changed")).toBeTruthy();
-    expect(screen.getByText("Fast mode could not be changed.", { exact: true })).toBeTruthy();
+    expect(await screen.findByText("Fast mode could not be changed.")).toBeTruthy();
+    expect(
+      screen.getByText("The app could not reach omp. Try again.", { exact: true }),
+    ).toBeTruthy();
     expect(screen.getByText("Off", { exact: true })).toBeTruthy();
     expect(fast.getByRole("button", { name: "Turn off" }).getAttribute("aria-pressed")).toBe(
       "true",
@@ -408,7 +410,7 @@ describe("a mode omp does not report", () => {
     const fast = within(screen.getByRole("group", { name: "Fast mode controls" }));
     fireEvent.click(fast.getByRole("button", { name: "Turn on" }));
 
-    expect(await screen.findByText("The execution setting could not be changed")).toBeTruthy();
+    expect(await screen.findByText("Fast mode could not be changed.")).toBeTruthy();
     expect(fast.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe(
       "false",
     );

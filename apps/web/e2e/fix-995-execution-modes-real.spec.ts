@@ -136,7 +136,9 @@ realTest(
       }),
     ).toHaveAttribute("aria-pressed", "true", { timeout: 60_000 });
     await askFastModeOn(dialog);
-    await expect(dialog.getByText("The execution setting could not be changed")).toBeVisible();
+    await expect(
+      dialog.getByText("Fast mode could not be changed.", { exact: true }),
+    ).toBeVisible();
     await expectOffAndUsable(dialog);
     await expectStylesLoaded(page);
     await waitForFiniteAnimations(page);
