@@ -783,6 +783,14 @@ function setError(next: MutableSnapshot, error: AppError): void {
   next.error = cloneValue(error);
 }
 
+/**
+ * Clears the error omp reported for earlier work (a failed prompt, a notice) when a new run starts. The process's own
+ * failure stays: a run cannot start while the process is down, and the process clears its own failure when it is ready.
+ */
+function clearEarlierOmpError(next: MutableSnapshot): void {
+  if (!next.process.error && next.error?.code === "omp_error") next.error = null;
+}
+
 const TOOL_LIFECYCLE_EVENTS: Record<string, true> = {
   tool_execution_start: true,
   tool_execution_update: true,
@@ -1425,6 +1433,9 @@ export class OmpRuntimeStore {
     switch (event.type) {
       case "agent_start":
       case "turn_start":
+        // A run that starts is new work: an error omp reported for earlier work no longer describes
+        // the conversation.
+        if (event.type === "agent_start") clearEarlierOmpError(next);
         updatePrompt(next, {
           admitted: true,
           streaming: true,

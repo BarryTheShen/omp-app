@@ -590,6 +590,39 @@ describe("OmpRuntimeStore", () => {
       retryable: true,
     });
   });
+  test("a run that starts clears the error an earlier prompt reported, but not the process's own failure", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    omp(store, { type: "agent_start" }, 1);
+    ingest(
+      store,
+      {
+        kind: "prompt_result",
+        event: {
+          type: "prompt_result",
+          agentInvoked: true,
+          status: "error",
+          sessionSettled: true,
+          id: "p1",
+          error: { message: "400 fake provider failure", retryable: false, httpStatus: 400 },
+        },
+      },
+      2,
+    );
+    expect(store.getSnapshot().error).toMatchObject({
+      code: "omp_error",
+      message: "400 fake provider failure",
+    });
+
+    // A later prompt is accepted: the conversation goes on, so the earlier failure no longer shows.
+    omp(store, { type: "agent_start" }, 3);
+    expect(store.getSnapshot().error).toBeNull();
+
+    // The process's own failure stays until the process is ready again.
+    ingest(store, { kind: "process", status: "exited" }, 4);
+    expect(store.getSnapshot().error).toMatchObject({ code: "omp_exited" });
+    omp(store, { type: "agent_start" }, 5);
+    expect(store.getSnapshot().error).toMatchObject({ code: "omp_exited" });
+  });
   test("forwards selected raw notifications in order and deduplicates sequence replays", () => {
     const store = new OmpRuntimeStore({ threadId });
     const lifecycle = { type: "subagent_lifecycle", payload: { id: "a", status: "started" } };
