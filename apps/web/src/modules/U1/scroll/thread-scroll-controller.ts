@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { captureVisibleMessageAnchor, retainVisibleMessageAnchor } from "./anchor";
 import { isViewportAtBottom } from "./reading-place";
 import { READER_INPUT, scrollToLatest } from "./scroll-to-latest";
@@ -9,19 +10,37 @@ const VIEWPORT_SELECTOR = '[data-slot="u1-thread-viewport"]';
 const TEXT_ENTRY_SELECTOR =
   "textarea, input, select, [contenteditable]:not([contenteditable='false'])";
 
+/**
+ * How far from the bottom a reader who scrolls down is back at the bottom, and the follow resumes. assistant-ui accepts one
+ * pixel, but a reader chasing a growing reply ends each wheel gesture some pixels above the moving end, which that test
+ * never accepts (issue 1183). A step up off the bottom still pauses the follow from the exact bottom.
+ */
+const RESUME_PX = 64;
+
+/** The content below the viewport's bottom edge, in pixels. */
+function distanceFromBottom(viewport: HTMLElement): number {
+  return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+}
+
 export interface ThreadScrollController {
+  /** True while the reader is at the newest message. The controller reads it from the viewport, so the Jump control agrees with the transcript. */
   readonly isAtBottom: boolean;
+  /**
+   * True while the reader has scrolled away from the bottom. assistant-ui's `autoScroll` is off then, so a streamed reply
+   * cannot pull the reader back (issue 1183). The app passes `!followPaused` as `autoScroll`.
+   */
+  readonly followPaused: boolean;
   /** Scrolls to the newest message and focuses the transcript (the Jump to latest button). */
   readonly followLatest: () => void;
   /** Scrolls to the newest message and leaves the focus alone (a message was just sent). */
   readonly jumpToLatest: () => void;
-  readonly onAtBottomChange: (isAtBottom: boolean) => void;
 }
 
 /**
- * assistant-ui owns the bottom state. The custom observers retain the visible row when
- * content-visibility changes row sizes while the reader is away from the latest message, and
- * `jumpToLatest` scrolls to the real bottom (rows far away are drawn lazily).
+ * assistant-ui owns the bottom state. The custom observers retain the visible row when content-visibility changes row
+ * sizes while the reader is away from the latest message, and `jumpToLatest` scrolls to the real bottom (rows far away
+ * are drawn lazily). While the reader is away the thread's own follow is paused (`followPaused`), so a stream cannot pull
+ * them back (issue 1183).
  */
 export function useThreadScrollController(
   transcriptRootRef: RefObject<HTMLElement | null>,
@@ -32,9 +51,29 @@ export function useThreadScrollController(
   const isAtBottomRef = useRef(true);
   /** True from a send, or Jump to latest, until the reader scrolls or steers: the newest message stays in view. */
   const followingRef = useRef(false);
-  const onAtBottomChange = useCallback((next: boolean) => {
-    isAtBottomRef.current = next;
-    setIsAtBottom(next);
+  /** The state above, read by the scroll listeners, which must not wait for a render. */
+  const followPausedRef = useRef(false);
+  const [followPaused, setFollowPaused] = useState(false);
+  /**
+   * The reader scrolled away from the bottom. The state is committed at once, so assistant-ui's follow is off before the
+   * next layout: a content resize in the same frame must not scroll the reader back down. The bottom state says so too:
+   * assistant-ui's own check skips a step up when the stream grew since its last check, and then "Jump to latest" would
+   * stay hidden (issue 1183).
+   */
+  const pauseFollowing = useCallback(() => {
+    if (followPausedRef.current) return;
+    followPausedRef.current = true;
+    isAtBottomRef.current = false;
+    flushSync(() => {
+      setIsAtBottom(false);
+      setFollowPaused(true);
+    });
+  }, []);
+  /** The reader is back at the bottom, or has sent a message: assistant-ui's own follow may run again. */
+  const resumeFollowing = useCallback(() => {
+    if (!followPausedRef.current) return;
+    followPausedRef.current = false;
+    setFollowPaused(false);
   }, []);
 
   useEffect(() => {
@@ -66,8 +105,41 @@ export function useThreadScrollController(
         followBottom(viewport);
       });
     };
+    // The reader's own wheel gestures, by direction. An upward one holds the follow off while it lasts; a downward one
+    // resumes it near the bottom. A scroll down that the reader did not make (assistant-ui following a streamed reply during
+    // the reader's upward gesture) resumes nothing (issue 1183).
+    const READER_GESTURE_MS = 250;
+    let readerUpUntil = 0;
+    let readerDownUntil = 0;
+    // The scroll position at the previous scroll tells a step up, which is the reader's: a step up off the bottom pauses
+    // the follow.
+    let previousScrollTop = viewport.scrollTop;
     const handleScroll = (): void => {
       anchor = captureVisibleMessageAnchor(viewport);
+      const steppedUp = viewport.scrollTop < previousScrollTop;
+      previousScrollTop = viewport.scrollTop;
+      const now = performance.now();
+      // The bottom state is the controller's own, read from the viewport on every scroll: assistant-ui's check can miss a
+      // step up when the stream grew since its last check, and then the Jump control would stay hidden (issue 1183).
+      const atBottom = isViewportAtBottom(viewport);
+      if (atBottom !== isAtBottomRef.current) {
+        isAtBottomRef.current = atBottom;
+        setIsAtBottom(atBottom);
+      }
+      if (steppedUp) {
+        // A step up within the pixel of tolerance is not the reader leaving the bottom: the follow stays as it is.
+        if (!isViewportAtBottom(viewport)) {
+          followingRef.current = false;
+          pauseFollowing();
+        }
+      } else if (now <= readerDownUntil && distanceFromBottom(viewport) <= RESUME_PX) {
+        // The reader scrolled down into the bottom area: the follow resumes.
+        followingRef.current = true;
+        resumeFollowing();
+      } else if (!followPausedRef.current && now > readerUpUntil && isViewportAtBottom(viewport)) {
+        // At the bottom, not paused, and the reader is not scrolling up: the follow runs.
+        followingRef.current = true;
+      }
       if (followingRef.current) scheduleFollow();
     };
     let resizeFrame: number | null = null;
@@ -123,6 +195,10 @@ export function useThreadScrollController(
       if (event.target instanceof Element && event.target.closest(TEXT_ENTRY_SELECTOR) !== null)
         return;
       followingRef.current = false;
+      if (event instanceof WheelEvent) {
+        if (event.deltaY < 0) readerUpUntil = performance.now() + READER_GESTURE_MS;
+        if (event.deltaY > 0) readerDownUntil = performance.now() + READER_GESTURE_MS;
+      }
     };
     for (const name of READER_INPUT)
       viewport.addEventListener(name, stopFollowing, { passive: true });
@@ -136,7 +212,7 @@ export function useThreadScrollController(
       if (followFrame !== null) window.cancelAnimationFrame(followFrame);
       viewportRef.current = null;
     };
-  }, [transcriptRootRef]);
+  }, [transcriptRootRef, pauseFollowing, resumeFollowing]);
   const stopScrollRef = useRef<(() => void) | null>(null);
   useEffect(() => () => stopScrollRef.current?.(), []);
   /**
@@ -149,16 +225,17 @@ export function useThreadScrollController(
     const viewport = viewportRef.current;
     if (viewport === null) return;
     followingRef.current = true;
+    resumeFollowing();
     stopScrollRef.current?.();
     stopScrollRef.current = scrollToLatest(viewport);
-  }, []);
+  }, [resumeFollowing]);
   /** The "Jump to latest" action: scroll there and put the keyboard focus back on the transcript. */
   const followLatest = useCallback(() => {
     jumpToLatest();
     viewportRef.current?.focus({ preventScroll: true });
   }, [jumpToLatest]);
   return useMemo(
-    () => ({ isAtBottom, followLatest, jumpToLatest, onAtBottomChange }),
-    [followLatest, isAtBottom, jumpToLatest, onAtBottomChange],
+    () => ({ isAtBottom, followPaused, followLatest, jumpToLatest }),
+    [followLatest, followPaused, isAtBottom, jumpToLatest],
   );
 }

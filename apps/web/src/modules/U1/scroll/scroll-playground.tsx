@@ -277,11 +277,11 @@ function ScrollPlayground() {
                 <ThreadShell
                   slots={{ renderMessage: (message) => <MessageParts message={message} /> }}
                   store={fixture.store}
-                  autoScroll
+                  autoScroll={!scrollController.followPaused}
                   footer={
                     <ScrollFollowControls
                       onFollowLatest={scrollController.followLatest}
-                      onAtBottomChange={scrollController.onAtBottomChange}
+                      isAtBottom={scrollController.isAtBottom}
                     />
                   }
                 />

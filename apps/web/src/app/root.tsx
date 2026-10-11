@@ -1136,7 +1136,7 @@ function ActiveThreadReady({
       render: () => (
         <ScrollFollowControls
           onFollowLatest={scrollController.followLatest}
-          onAtBottomChange={scrollController.onAtBottomChange}
+          isAtBottom={scrollController.isAtBottom}
         />
       ),
     },
@@ -1226,7 +1226,7 @@ function ActiveThreadReady({
                     <TranscriptShortcuts followLatest={scrollController.followLatest}>
                       <div className="h-full min-h-0" ref={transcriptRootRef}>
                         <ThreadShell
-                          autoScroll
+                          autoScroll={!scrollController.followPaused}
                           credentialActions={credentialActions}
                           readingPlace={{
                             threadId,

@@ -23,12 +23,6 @@ function ScrollFixture() {
       <button type="button" onClick={controller.jumpToLatest}>
         Message sent
       </button>
-      <button type="button" onClick={() => controller.onAtBottomChange(false)}>
-        The latest message is below
-      </button>
-      <button type="button" onClick={() => controller.onAtBottomChange(true)}>
-        The latest message is here
-      </button>
     </div>
   );
 }
@@ -46,14 +40,17 @@ function sizedViewport() {
 afterEach(() => cleanup());
 
 describe("U1 scroll interaction policy", () => {
-  test("mirrors assistant-ui's bottom state for anchor retention", () => {
+  test("the bottom state is the viewport's: away while the reader is above the newest rows, at the bottom again when they return", () => {
     render(<ScrollFixture />);
+    const { viewport, position } = layoutViewport();
     expect(screen.getByTestId("is-at-bottom").textContent).toBe("true");
 
-    fireEvent.click(screen.getByRole("button", { name: "The latest message is below" }));
+    position.top = 300;
+    fireEvent.scroll(viewport);
     expect(screen.getByTestId("is-at-bottom").textContent).toBe("false");
 
-    fireEvent.click(screen.getByRole("button", { name: "The latest message is here" }));
+    position.top = 800;
+    fireEvent.scroll(viewport);
     expect(screen.getByTestId("is-at-bottom").textContent).toBe("true");
   });
 

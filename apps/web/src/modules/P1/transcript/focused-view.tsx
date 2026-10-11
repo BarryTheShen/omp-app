@@ -1,5 +1,5 @@
-import { ThreadPrimitive, useThreadViewport } from "@assistant-ui/react";
-import { type KeyboardEvent, useEffect, useMemo, useRef } from "react";
+import { ThreadPrimitive } from "@assistant-ui/react";
+import { type KeyboardEvent, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import type { AgentStatus, FocusedAgentRuntime } from "@/modules/P1/contract";
 import { ScrollFollowControls, useThreadScrollController } from "@/modules/U1/scroll";
@@ -31,24 +31,19 @@ export interface FocusedAgentTranscriptProps {
 }
 
 interface FollowFooterProps {
-  readonly onAtBottomChange: (isAtBottom: boolean) => void;
+  readonly isAtBottom: boolean;
   readonly onFollowLatest: () => void;
 }
 
 /**
  * The "Jump to latest" row. It is mounted only while the reader is away from the newest message, so an
- * idle transcript has no empty band above the editor. The library's viewport decides when that is, and
- * the scroll controller is told the same answer.
+ * idle transcript has no empty band above the editor. The scroll controller decides that from the viewport.
  */
-function FollowFooter({ onAtBottomChange, onFollowLatest }: FollowFooterProps) {
-  const atBottom = useThreadViewport((state) => state.isAtBottom);
-  useEffect(() => {
-    onAtBottomChange(atBottom);
-  }, [atBottom, onAtBottomChange]);
-  if (atBottom) return null;
+function FollowFooter({ isAtBottom, onFollowLatest }: FollowFooterProps) {
+  if (isAtBottom) return null;
   return (
     <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 items-center justify-end border-t border-border bg-background px-4">
-      <ScrollFollowControls onAtBottomChange={onAtBottomChange} onFollowLatest={onFollowLatest} />
+      <ScrollFollowControls isAtBottom={isAtBottom} onFollowLatest={onFollowLatest} />
     </ThreadPrimitive.ViewportFooter>
   );
 }
@@ -120,10 +115,7 @@ export function FocusedAgentTranscript({
                 toolRenderers={toolRenderers}
                 transcript={transcript}
               />
-              <FollowFooter
-                onAtBottomChange={scroll.onAtBottomChange}
-                onFollowLatest={scroll.followLatest}
-              />
+              <FollowFooter isAtBottom={scroll.isAtBottom} onFollowLatest={scroll.followLatest} />
             </ThreadPrimitive.Viewport>
           </ThreadPrimitive.Root>
         </ReadOnlyThread>
