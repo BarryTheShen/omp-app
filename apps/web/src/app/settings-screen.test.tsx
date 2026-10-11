@@ -25,6 +25,8 @@ type FakeConfig = {
   failingReads: number;
   /** The keys written, in order. */
   writes: string[];
+  /** Environment variables that supply a written key's value, by key: the write then reports that source. */
+  environmentKeys?: Readonly<Record<string, string>>;
 };
 
 function fakeConfigStore(state: FakeConfig): ConfigStoreClient {
@@ -60,12 +62,14 @@ function fakeConfigStore(state: FakeConfig): ConfigStoreClient {
       if (args.value.secret) throw new Error("The notification settings are not secrets.");
       state.writes.push(args.key);
       const revision = `revision-${state.writes.length + 1}`;
+      const variable = state.environmentKeys?.[args.key];
       const entry: ConfigEntry = {
         key: args.key,
         secret: false,
         value: JsonValue.parse(args.value.value),
-        source: args.layer,
+        source: variable === undefined ? args.layer : "env",
         overrides: [],
+        ...(variable === undefined ? {} : { overriddenBy: variable }),
       };
       state.revision = revision;
       const index = state.entries.findIndex((item) => item.key === args.key);
@@ -191,5 +195,36 @@ describe("the generic settings panel after a save omp refuses in part", () => {
     expect(await screen.findByRole("button", { name: "Retry" })).toBeTruthy();
     expect(screen.queryByText(/Not saved/)).toBeNull();
     expect(state.writes).toEqual(["completion.notify"]);
+  });
+});
+
+describe("the generic settings panel after a save the environment overrides", () => {
+  test("names the variable that overrides the saved setting, and does not say Applied", async () => {
+    const state = notificationsConfig([]);
+    state.environmentKeys = { "completion.notify": "PI_NOTIFY_COMPLETION" };
+    render(
+      <SettingsScreen
+        client={fakeAppClient(state)}
+        capabilities={CAPABILITIES}
+        folder={null}
+        onClose={() => undefined}
+        threadId={null}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Interaction" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Notifications" }));
+    await screen.findByRole("combobox", { name: "Error Notification" });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Completion Notification" }), {
+      target: { value: "off" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(
+      await screen.findByText(
+        "Saved, but omp still uses the environment variable PI_NOTIFY_COMPLETION until it is removed.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Applied")).toBeNull();
   });
 });

@@ -40,6 +40,7 @@ import {
 } from "@/modules/S1/settings";
 import {
   type ApplyStatus,
+  environmentOverrideText,
   SettingsSection,
   type SettingsSectionDescriptor,
   type StagedSettings,
@@ -371,9 +372,19 @@ function SettingsRuntimeEditor({
 
   const disabled =
     snapshot.phase === "loading" || snapshot.phase === "saving" || snapshot.phase === "conflict";
-  const status = snapshot.applyStatus
+  const applied = snapshot.applyStatus
     ? applyStatusLabel(snapshot.applyStatus)
     : phaseLabel(snapshot.phase);
+  // A save that omp keeps overriding with the environment is not "Applied": the section states it in a sentence of its
+  // own, which wraps on a narrow screen (the status pill does not), and the pill keeps only a status other than applied.
+  const override = snapshot.environmentOverride;
+  const notice = override === null ? undefined : environmentOverrideText(override);
+  const status =
+    notice === undefined
+      ? applied
+      : snapshot.applyStatus && snapshot.applyStatus !== "applied"
+        ? applyStatusLabel(snapshot.applyStatus)
+        : undefined;
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <SettingsSection
@@ -383,6 +394,7 @@ function SettingsRuntimeEditor({
         disabled={disabled}
         validation={{ ...snapshot.validation, ...localValidation }}
         applyStatus={status}
+        notice={notice}
         unsavedKeys={snapshot.unsavedKeys}
         onStage={(next) => {
           for (const [key, value] of changedEdits(staged, next)) {

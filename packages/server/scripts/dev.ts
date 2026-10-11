@@ -31,7 +31,11 @@ import {
 import { createProviderAccountStore } from "../src/modules/A1/accounts";
 import { AttachmentStoreService } from "../src/modules/A1/attachments";
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
-import { createConfigStoreWithOmpDefaults, ompEnvironmentValues } from "../src/modules/A1/config";
+import {
+  createConfigStoreWithOmpDefaults,
+  ompEnvironmentValues,
+  ompEnvironmentVariableNames,
+} from "../src/modules/A1/config";
 import { createDraftStore } from "../src/modules/A1/drafts";
 import { createExtensionCatalog } from "../src/modules/A1/extensions";
 import { searchWorkspaceFiles } from "../src/modules/A1/file-search";
@@ -290,6 +294,7 @@ export async function createCompositionServer(
       appDataDir,
       environmentValues: (projectDir) =>
         ompEnvironmentValues({ processEnv: env, homeDir, agentDir, projectDir }),
+      environmentVariables: ompEnvironmentVariableNames,
     },
     {
       binary: ompBinary,

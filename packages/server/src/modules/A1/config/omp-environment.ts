@@ -45,6 +45,11 @@ const OMP_ENVIRONMENT_SETTINGS = [
   { key: "browser.tern", variable: "PI_BROWSER_TERN", type: "boolean" },
 ] as const;
 
+/** The environment variable that sets each setting above, by setting id: an entry names the variable that overrides it. */
+export const ompEnvironmentVariableNames: Readonly<Record<string, string>> = Object.fromEntries(
+  OMP_ENVIRONMENT_SETTINGS.map((setting) => [setting.key, setting.variable]),
+);
+
 /** omp's variable-name rule (packages/utils/src/env.ts:9 and 16-18). */
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

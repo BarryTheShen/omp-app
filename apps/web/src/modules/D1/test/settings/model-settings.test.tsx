@@ -35,6 +35,7 @@ function runtime(
         : null,
     error: null,
     applyStatus: null,
+    environmentOverride: null,
     lastChange: null,
     unsavedKeys: [],
   };

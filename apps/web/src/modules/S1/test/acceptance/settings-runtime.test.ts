@@ -35,6 +35,8 @@ type FakeConfig = {
   listFolders: Array<string | null>;
   listeners: Set<(change: ConfigChanged) => void>;
   conflictNextWrite: boolean;
+  /** Environment variables that supply a written key's value, by key: the write then reports that source. */
+  environmentKeys?: Readonly<Record<string, string>>;
 };
 
 const liveRuntimes: SettingsRuntime[] = [];
@@ -120,7 +122,7 @@ function fakeClient(state: FakeConfig): ConfigStoreClient {
             key: args.key,
             secret: false,
             value: args.value.value,
-            source: args.layer,
+            ...writtenSource(state, args.key, args.layer),
             overrides,
           };
       updateEntry(state, entry);
@@ -143,6 +145,16 @@ function changeSource(state: FakeConfig): ConfigChangeSource {
       return () => state.listeners.delete(listener);
     },
   };
+}
+
+/** Where a written value comes from: the environment variable that supplies the key, when the test marks one. */
+function writtenSource(
+  state: FakeConfig,
+  key: string,
+  layer: ConfigWriteArgs["layer"],
+): Pick<ConfigEntry, "source"> & { readonly overriddenBy?: string } {
+  const variable = state.environmentKeys?.[key];
+  return variable === undefined ? { source: layer } : { source: "env", overriddenBy: variable };
 }
 
 function runtimeFor(state: FakeConfig, descriptor: SettingsSectionDescriptor): SettingsRuntime {
@@ -406,5 +418,17 @@ describe("S1.5 ConfigStore fixture and grammar gate", () => {
     await settle();
     expect(changedRuntime.getSnapshot().phase).toBe("conflict");
     expect(changedRuntime.getSnapshot().conflict?.changedKeys).toEqual(["steeringMode"]);
+  });
+});
+
+describe("S1 settings runtime after a save the environment overrides", () => {
+  test("reports the variable that overrides the saved setting", async () => {
+    const state = fakeConfig();
+    state.environmentKeys = { "theme.dark": "PI_THEME_DARK" };
+    const runtime = runtimeFor(state, THEME_SETTINGS_SECTION);
+    await runtime.read();
+    expect(runtime.stage("theme.dark", { secret: false, value: "custom-theme" }).ok).toBe(true);
+    await runtime.save();
+    expect(runtime.getSnapshot().environmentOverride).toEqual({ variables: ["PI_THEME_DARK"] });
   });
 });

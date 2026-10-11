@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { ConfigStoreService } from "./config-store";
-import { type OmpEnvironmentSources, ompEnvironmentValues } from "./omp-environment";
+import {
+  type OmpEnvironmentSources,
+  ompEnvironmentValues,
+  ompEnvironmentVariableNames,
+} from "./omp-environment";
 
 const temporaryDirectories: string[] = [];
 
@@ -504,6 +508,36 @@ describe("omp environment values in the ConfigStore", () => {
       overrides: ["global"],
     });
     expect(await readFile(join(agent, "config.yml"), "utf8")).toContain("autoqa: true");
+    store.dispose();
+  });
+
+  test("an environment value names the variable that sets it, and a saved value names none", async () => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    await writeText(join(agent, "config.yml"), "tools:\n  intentTracing: true\n");
+    const store = new ConfigStoreService({
+      agentDir: agent,
+      appDataDir: join(root, "app"),
+      environmentValues: () =>
+        ompEnvironmentValues(
+          sourcesIn(root, {
+            processEnv: { PI_AUTO_QA: "0", PI_AUTO_QA_PUSH_URL: "https://env.example.test/v1" },
+          }),
+        ),
+      environmentVariables: ompEnvironmentVariableNames,
+    });
+    expect(await store.read({ key: "dev.autoqa", folder: null })).toMatchObject({
+      source: "env",
+      overriddenBy: "PI_AUTO_QA",
+    });
+    expect(await store.read({ key: "dev.autoqaPush.endpoint", folder: null })).toMatchObject({
+      secret: false,
+      source: "env",
+      overriddenBy: "PI_AUTO_QA_PUSH_URL",
+    });
+    const saved = await store.read({ key: "tools.intentTracing", folder: null });
+    expect(saved).toMatchObject({ source: "global" });
+    expect(saved).not.toHaveProperty("overriddenBy");
     store.dispose();
   });
 

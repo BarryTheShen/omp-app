@@ -6,6 +6,8 @@ import {
   type ConfigSnapshot,
   type ConfigStoreClient,
   commit,
+  environmentOverrideOf,
+  environmentOverrideText,
   type MapSettingControl,
   preview,
   provenanceLabel,
@@ -580,5 +582,40 @@ describe("S1 structured settings", () => {
       },
     );
     expect(result).toMatchObject({ ok: false, validation: { code: "read-only" } });
+  });
+});
+
+describe("S1 environment overrides after a save", () => {
+  test("names the variable that overrides a saved setting, and says omp still uses it", () => {
+    const entries: ConfigEntry[] = [
+      {
+        key: "appearance.enabled",
+        secret: false,
+        value: true,
+        source: "env",
+        overrides: ["global"],
+        overriddenBy: "PI_APPEARANCE_ENABLED",
+      },
+      { key: "appearance.mode", secret: false, value: "system", source: "global", overrides: [] },
+      { key: "appearance.notes", secret: false, value: "hi", source: "env", overrides: [] },
+    ];
+    expect(environmentOverrideOf(entries, ["appearance.enabled", "appearance.mode"])).toEqual({
+      variables: ["PI_APPEARANCE_ENABLED"],
+    });
+    expect(environmentOverrideOf(entries, ["appearance.mode"])).toBeNull();
+    // An environment value whose variable is not named still says omp uses it.
+    expect(environmentOverrideOf(entries, ["appearance.notes"])).toEqual({ variables: [] });
+    expect(environmentOverrideText({ variables: ["PI_AUTO_QA"] })).toBe(
+      "Saved, but omp still uses the environment variable PI_AUTO_QA until it is removed.",
+    );
+    expect(environmentOverrideText({ variables: ["PI_AUTO_QA", "PI_INTENT_TRACING"] })).toBe(
+      "Saved, but omp still uses the environment variables PI_AUTO_QA and PI_INTENT_TRACING until they are removed.",
+    );
+    expect(environmentOverrideText({ variables: ["A", "B", "C"] })).toBe(
+      "Saved, but omp still uses the environment variables A, B and C until they are removed.",
+    );
+    expect(environmentOverrideText({ variables: [] })).toBe(
+      "Saved, but omp still uses the value from the environment until the variable is removed.",
+    );
   });
 });

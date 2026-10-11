@@ -80,6 +80,8 @@ export interface ConfigStoreOptions {
   readonly environmentValues?: (
     folder: string | null,
   ) => Promise<Readonly<Record<string, unknown>>>;
+  /** The environment variable omp reads for each key the environment supplies, so an entry can name it. */
+  readonly environmentVariables?: Readonly<Record<string, string>>;
   /** Optional values supplied by the running omp process's runtime layer. */
   readonly runtimeValues?: Readonly<Record<string, unknown>>;
   /** Optional values supplied by an explicit `--config`/`PI_CONFIG_FILES` overlay. */
@@ -844,6 +846,11 @@ export class ConfigStoreService {
       throw failure("not_found", "Configuration key was not found.");
     }
     const provenance = this.provenance(resolved);
+    const names = this.options.environmentVariables;
+    const variable =
+      resolved.source === "env" && names !== undefined && Object.hasOwn(names, key)
+        ? names[key]
+        : undefined;
     if (this.isSecretEntry(key, resolved.value) || hidesUrlSetting(key, resolved.value)) {
       return {
         key,
@@ -852,6 +859,7 @@ export class ConfigStoreService {
         source: resolved.source,
         overrides: resolved.overrides,
         provenance,
+        ...(variable === undefined ? {} : { overriddenBy: variable }),
       };
     }
     return {
@@ -861,6 +869,7 @@ export class ConfigStoreService {
       source: resolved.source,
       overrides: resolved.overrides,
       provenance,
+      ...(variable === undefined ? {} : { overriddenBy: variable }),
     };
   }
 

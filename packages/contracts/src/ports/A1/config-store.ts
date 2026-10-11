@@ -25,6 +25,8 @@ export const ConfigValue = z.strictObject({
   source: ConfigSource,
   overrides: ConfigOverrides,
   provenance: Provenance.optional(),
+  /** The environment variable that sets this value, when the environment supplies it (omp's own name for it). */
+  overriddenBy: z.string().min(1).optional(),
 });
 export type ConfigValue = z.infer<typeof ConfigValue>;
 
@@ -36,6 +38,8 @@ export const SecretStatus = z.strictObject({
   source: ConfigSource,
   overrides: ConfigOverrides,
   provenance: Provenance.optional(),
+  /** The environment variable that sets this value, when the environment supplies it (omp's own name for it). */
+  overriddenBy: z.string().min(1).optional(),
 });
 export type SecretStatus = z.infer<typeof SecretStatus>;
 

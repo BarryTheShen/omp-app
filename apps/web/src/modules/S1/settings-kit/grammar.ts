@@ -145,6 +145,9 @@ export type CommitResult = {
   readonly status: ApplyStatus;
 };
 
+/** The variables that override settings a save just wrote: omp keeps using them until they are removed. */
+export type EnvironmentOverride = { readonly variables: readonly string[] };
+
 export type ConfigStoreClient = Pick<PortClient<typeof ConfigStore>, "read" | "list" | "write">;
 
 export type ConfigChangeSource = {
@@ -348,6 +351,36 @@ export function applyStatusOf(
   return descriptor.controls
     .filter((control) => keys.includes(control.key))
     .reduce<ApplyStatus>((status, control) => maxApplyStatus(status, control.apply), "applied");
+}
+
+/**
+ * The environment override of the written settings: null when the environment supplies none of them. A written
+ * setting omp reads from the environment counts even when its variable is not named, so the notice still shows.
+ */
+export function environmentOverrideOf(
+  entries: readonly ConfigEntry[],
+  keys: readonly string[],
+): EnvironmentOverride | null {
+  const overridden = entries.filter((entry) => keys.includes(entry.key) && entry.source === "env");
+  if (overridden.length === 0) return null;
+  const variables = new Set<string>();
+  for (const entry of overridden) {
+    if (entry.overriddenBy !== undefined) variables.add(entry.overriddenBy);
+  }
+  return { variables: [...variables] };
+}
+
+/** The plain sentence for a save that omp keeps overriding with the environment: the value is saved, and it is not in use. */
+export function environmentOverrideText(override: EnvironmentOverride): string {
+  const names = override.variables;
+  if (names.length === 0) {
+    return "Saved, but omp still uses the value from the environment until the variable is removed.";
+  }
+  const last = names.at(-1) ?? "";
+  if (names.length === 1) {
+    return `Saved, but omp still uses the environment variable ${last} until it is removed.`;
+  }
+  return `Saved, but omp still uses the environment variables ${names.slice(0, -1).join(", ")} and ${last} until they are removed.`;
 }
 
 export function subscribeChanged(

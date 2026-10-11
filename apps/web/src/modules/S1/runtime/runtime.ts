@@ -17,6 +17,8 @@ import {
   type ConfigStoreClient,
   changedEditKeys,
   commit as commitSection,
+  type EnvironmentOverride,
+  environmentOverrideOf,
   type PreviewResult,
   preview as previewEdit,
   readSection,
@@ -55,6 +57,8 @@ export type SettingsRuntimeSnapshot = {
   readonly conflict: SettingsRuntimeConflict | null;
   readonly error: AppError | null;
   readonly applyStatus: ApplyStatus | null;
+  /** The variables that override what the last save wrote, when the environment supplies a written setting. */
+  readonly environmentOverride: EnvironmentOverride | null;
   readonly lastChange: ConfigChanged | null;
   /** Keys of the last save that omp did not write; they stay staged for the next save. */
   readonly unsavedKeys: readonly string[];
@@ -187,6 +191,7 @@ export class SettingsRuntime {
       conflict: null,
       error: null,
       applyStatus: null,
+      environmentOverride: null,
       lastChange: null,
       unsavedKeys: [],
     });
@@ -218,6 +223,7 @@ export class SettingsRuntime {
         conflict: null,
         error: null,
         applyStatus: null,
+        environmentOverride: null,
         lastChange: null,
         unsavedKeys: [],
       });
@@ -303,6 +309,7 @@ export class SettingsRuntime {
         conflict: null,
         error: null,
         applyStatus: result.status,
+        environmentOverride: environmentOverrideOf(config.entries, written),
         lastChange: null,
         unsavedKeys: [],
       });
@@ -458,6 +465,7 @@ export class SettingsRuntime {
         conflict: null,
         error,
         applyStatus,
+        environmentOverride: environmentOverrideOf(config.entries, written),
         lastChange: null,
         unsavedKeys,
       });
@@ -470,6 +478,7 @@ export class SettingsRuntime {
         error: failure.appError,
         staged: unsaved,
         applyStatus,
+        environmentOverride: null,
         unsavedKeys,
       });
     }

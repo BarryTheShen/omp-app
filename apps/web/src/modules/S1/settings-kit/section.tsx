@@ -30,6 +30,8 @@ export type SettingsSectionProps = {
   readonly disabled?: boolean;
   readonly validation?: Readonly<Record<string, ValidationResult>>;
   readonly applyStatus?: string;
+  /** A sentence under the heading for a save that the environment still overrides; it wraps, unlike the pill. */
+  readonly notice?: string;
   readonly unsavedKeys?: readonly string[];
   readonly onStage?: (state: StagedSettings) => void;
   readonly onSecretAction?: (key: string, action: "set" | "unset") => void;
@@ -45,6 +47,7 @@ export function SettingsSection({
   disabled = false,
   validation = {},
   applyStatus,
+  notice,
   unsavedKeys = [],
   onStage,
   onSecretAction,
@@ -82,6 +85,7 @@ export function SettingsSection({
         ) : null
       }
     >
+      {notice ? <p className="text-foreground mb-3 text-sm">{notice}</p> : null}
       <div className="divide-border/60 divide-y">
         {descriptor.controls.map((control) => (
           <SettingControlRow
