@@ -36,6 +36,15 @@ const TriggerKeyScopeContext = createContext<TriggerKeyScopeValue | null>(null);
 /** The Enter events `pressEnterAgain` dispatches: the scopes let them through to the composer. */
 const replayed = new WeakSet<Event>();
 
+/** Keys that change no text: a press of one of them, or of Enter itself, leaves a held Enter armed. */
+const TEXT_UNCHANGING_KEYS: Readonly<Record<string, true>> = {
+  Enter: true,
+  Shift: true,
+  Control: true,
+  Alt: true,
+  Meta: true,
+};
+
 /** The option the composer's textarea points at, when a list is open with one highlighted. */
 function highlightedOption(textarea: HTMLTextAreaElement): HTMLElement | null {
   const activeId = textarea.getAttribute("aria-activedescendant");
@@ -108,7 +117,8 @@ export function TriggerKeyScope({
   );
   const onKeyDownCapture = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (replayed.has(event.nativeEvent)) return;
-    if (event.key === "Escape") kept.current = null;
+    // Any key that can change the text drops a held Enter, so only the text the person confirmed with Enter is ever sent (issue 866).
+    if (!Object.hasOwn(TEXT_UNCHANGING_KEYS, event.key)) kept.current = null;
     if (event.key !== "Enter" && event.key !== "Tab") return;
     if (event.shiftKey) return;
     if (!(event.target instanceof HTMLTextAreaElement)) return;

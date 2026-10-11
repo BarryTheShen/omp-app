@@ -211,4 +211,41 @@ describe("#818: Enter waits for a list that is still loading", () => {
     await promise;
     expect(submitted).not.toHaveBeenCalled();
   });
+
+  test.each(["x", "Backspace", "ArrowLeft"])(
+    "a %s typed after an Enter kept while the list loads drops it, so nothing is sent when the list answers",
+    async (key) => {
+      const submitted = vi.fn(async () => undefined);
+      const { input, held } = heldFileComposer(submitted);
+      fireEvent.change(input, { target: { value: "@zz" } });
+      input.setSelectionRange(3, 3);
+      await waitFor(() =>
+        expect(screen.getByRole("listbox", { name: "File suggestions" })).toBeTruthy(),
+      );
+
+      fireEvent.keyDown(input, { key: "Enter" });
+      fireEvent.keyDown(input, { key });
+      held.release();
+      // Long enough for the list to answer: its search runs after a debounce, and a shorter wait can pass before it lands.
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 300);
+      await promise;
+      expect(submitted).not.toHaveBeenCalled();
+    },
+  );
+
+  test("a Shift press after an Enter kept while the list loads changes no text, so the Enter is still pressed again", async () => {
+    const submitted = vi.fn(async () => undefined);
+    const { input, held } = heldFileComposer(submitted);
+    fireEvent.change(input, { target: { value: "@zz" } });
+    input.setSelectionRange(3, 3);
+    await waitFor(() =>
+      expect(screen.getByRole("listbox", { name: "File suggestions" })).toBeTruthy(),
+    );
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Shift" });
+    held.release();
+    await waitFor(() => expect(submitted).toHaveBeenCalledTimes(1));
+  });
 });
