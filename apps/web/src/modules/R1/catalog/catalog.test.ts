@@ -566,3 +566,104 @@ describe("SessionCatalogModel refresh after a rename", () => {
     expect(model.getSnapshot().error).not.toBeNull();
   });
 });
+
+describe("SessionCatalogModel: a list or an update that overlaps another", () => {
+  test("a list that began before a turn ended keeps the chat's ended row, not its running copy", async () => {
+    const running: SessionFile = { ...session("one", "2026-10-03T00:00:00.000Z"), turn: "running" };
+    const ended: SessionFile = { ...session("one", "2026-10-03T00:00:05.000Z"), turn: "idle" };
+    const listed = Promise.withResolvers<{ sessions: SessionFile[]; nextCursor: null }>();
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: () => listed.promise,
+        readSession: async () => ended,
+      },
+    });
+    const pending = model.list({ filter: { scope, query: "" }, limit: 20 });
+    await model.reconcile({
+      folder,
+      sessionFile: ended.sessionFile,
+      id: ended.id,
+      kind: "updated",
+    });
+    listed.resolve({ sessions: [running], nextCursor: null });
+    await pending;
+
+    expect(model.getSnapshot().sessions).toMatchObject([{ id: ended.id, turn: "idle" }]);
+  });
+
+  test("an update that began before a list is not dropped by that list", async () => {
+    const before = session("one", "2026-10-03T00:00:00.000Z");
+    const after: SessionFile = { ...before, turn: "idle", updatedAt: "2026-10-03T00:00:05.000Z" };
+    const read = Promise.withResolvers<SessionFile>();
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [before], nextCursor: null }),
+        readSession: () => read.promise,
+      },
+    });
+    const update = model.reconcile({
+      folder,
+      sessionFile: after.sessionFile,
+      id: after.id,
+      kind: "updated",
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    read.resolve(after);
+    await update;
+
+    expect(model.getSnapshot().sessions).toMatchObject([
+      { id: after.id, turn: "idle", updatedAt: after.updatedAt },
+    ]);
+  });
+
+  test("a chat removed while a list is loading is left out of the list that finishes", async () => {
+    const gone = session("gone", "2026-10-03T00:00:00.000Z");
+    const kept = session("kept", "2026-10-02T00:00:00.000Z");
+    const listed = Promise.withResolvers<{ sessions: SessionFile[]; nextCursor: null }>();
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: () => listed.promise,
+        readSession: async () => gone,
+      },
+    });
+    const pending = model.list({ filter: { scope, query: "" }, limit: 20 });
+    await model.reconcile({ folder, sessionFile: gone.sessionFile, id: gone.id, kind: "removed" });
+    listed.resolve({ sessions: [gone, kept], nextCursor: null });
+    await pending;
+
+    expect(model.getSnapshot().sessions.map((item) => item.id)).toEqual([kept.id]);
+  });
+
+  test("a failed refresh that an update overtook still reports its error", async () => {
+    const listed = session("one", "2026-10-03T00:00:00.000Z");
+    let failing = false;
+    const held = Promise.withResolvers<{ sessions: SessionFile[]; nextCursor: null }>();
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: () =>
+          failing ? held.promise : Promise.resolve({ sessions: [listed], nextCursor: null }),
+        readSession: async () => listed,
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    failing = true;
+    const refresh = model.list({ filter: { scope, query: "" }, limit: 20 });
+    await model.reconcile({
+      folder,
+      sessionFile: listed.sessionFile,
+      id: listed.id,
+      kind: "updated",
+    });
+    held.reject(
+      new AppFailure({ code: "unavailable", message: "the disk is busy", retryable: true }),
+    );
+    await expect(refresh).rejects.toMatchObject({ appError: { message: "the disk is busy" } });
+
+    expect(model.getSnapshot().error).toMatchObject({ message: "the disk is busy" });
+    expect(model.getSnapshot().sessions).toHaveLength(1);
+  });
+});

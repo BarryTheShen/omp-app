@@ -117,6 +117,26 @@ describe("SessionCatalogSidebar", () => {
     expect(calls).toEqual([]);
   });
 
+  test("a chat whose turn is running shows a spinner and a screen-reader Running; an idle chat shows neither", async () => {
+    const busy: SessionFile = {
+      ...session("busy", "2026-10-03T00:00:00.000Z", "Busy chat"),
+      turn: "running",
+    };
+    const quiet: SessionFile = {
+      ...session("quiet", "2026-10-02T00:00:00.000Z", "Quiet chat"),
+      turn: "idle",
+    };
+    renderSidebar({ catalog: modelWithSessions([busy, quiet]) });
+    await waitFor(() => expect(screen.getByText("Busy chat")).toBeTruthy());
+
+    const busyRow = screen.getByRole("option", { name: /Busy chat/ });
+    expect(within(busyRow).getByText("Running")).toBeTruthy();
+    expect(busyRow.querySelector('[data-slot="r1-session-running"]')).not.toBeNull();
+    const quietRow = screen.getByRole("option", { name: /Quiet chat/ });
+    expect(within(quietRow).queryByText("Running")).toBeNull();
+    expect(quietRow.querySelector('[data-slot="r1-session-running"]')).toBeNull();
+  });
+
   test("keeps loaded rows, scroll and the selected session during a background refresh", async () => {
     const files = Array.from({ length: 40 }, (_, index) =>
       session(

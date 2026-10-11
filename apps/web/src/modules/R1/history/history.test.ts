@@ -609,6 +609,38 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     expect(settled).toEqual([]);
   });
 
+  test("a chat left while its turn runs is reported to onLeftRunning", async () => {
+    const released: ThreadId[] = [];
+    const leftRunning: ThreadId[] = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(recordingRpc(openAs, released), []),
+      folder,
+      onLeftRunning: (threadId) => leftRunning.push(threadId),
+    });
+    const store = await controller.openExisting(threadOne);
+    store.ingest(start, 1);
+
+    await controller.openExisting(threadTwo);
+
+    expect(leftRunning).toEqual([threadOne]);
+  });
+
+  test("a chat left while idle, and a chat opened, are not reported to onLeftRunning", async () => {
+    const released: ThreadId[] = [];
+    const leftRunning: ThreadId[] = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(recordingRpc(openAs, released), []),
+      folder,
+      onLeftRunning: (threadId) => leftRunning.push(threadId),
+    });
+    await controller.openExisting(threadOne);
+    expect(leftRunning).toEqual([]);
+
+    await controller.openExisting(threadTwo);
+
+    expect(leftRunning).toEqual([]);
+  });
+
   test("a chat opened again while its turn still runs takes its watch over, and its turn's end is reported once", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const released: ThreadId[] = [];

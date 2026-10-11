@@ -75,6 +75,7 @@ import { createQueueController, type QueueController } from "@/modules/R0/action
 import { useOmpRuntime } from "@/modules/R0/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
+import { watchSessionFileChanges } from "@/modules/R1/catalog/session-changes";
 import {
   createSelectedThreadHistoryController,
   type SelectedThreadHistoryController,
@@ -1258,17 +1259,22 @@ function ConnectedApp({
   }, [catalogCache, folder]);
   const controller = useMemo<SelectedThreadHistoryController | null>(() => {
     if (!folder) return null;
+    // The open folder's list is read again, so each row shows the state its chat has now.
+    const readList = () => {
+      const list = catalogCache.models.get(folder);
+      if (list)
+        void list.list({ filter: list.getSnapshot().filter, limit: 100 }).catch(() => undefined);
+    };
     return createSelectedThreadHistoryController({
       client,
       folder,
       onThreadIdChange: (threadId) =>
         writeSessionValue(THREAD_KEY, threadId ? String(threadId) : null),
+      // A chat left while its turn runs: its file is written after the turn starts, so no change event announces the
+      // turn. The list is read now, and the row shows the turn as running.
+      onLeftRunning: readList,
       // A turn ended after its chat was left: the list gets the row the chat wrote, not when the person comes back.
-      onTurnSettled: () => {
-        const list = catalogCache.models.get(folder);
-        if (list)
-          void list.list({ filter: list.getSnapshot().filter, limit: 100 }).catch(() => undefined);
-      },
+      onTurnSettled: readList,
     });
   }, [catalogCache, client, folder]);
   const remote = useMemo(
@@ -1368,6 +1374,14 @@ function ConnectedApp({
     if (controller && history.threadId)
       void controller.openExisting(history.threadId).catch(() => undefined);
   }, [client.instanceId, connection.state, controller, history.threadId]);
+  // A chat's turn starting or settling changes its row. The server names the chat, and each open folder's list reads it again.
+  useEffect(
+    () =>
+      watchSessionFileChanges(client, (change) => {
+        for (const list of catalogCache.models.values()) void list.reconcile(change);
+      }),
+    [catalogCache, client],
+  );
   // A list that failed while the connection was down is loaded again once the app is back.
   useEffect(() => {
     if (connection.state !== "connected" || catalog === null) return;

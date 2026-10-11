@@ -1,6 +1,6 @@
 import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import { AppFailure, type ThreadId } from "@omp-app/contracts";
-import { MoreHorizontalIcon, PinIcon } from "lucide-react";
+import { Loader2Icon, MoreHorizontalIcon, PinIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
@@ -414,6 +414,7 @@ export function SessionCatalogSidebar({
                 const isEditing = editingId === session.id;
                 const title = sessionTitle(session);
                 const activity = activityPreview(session.updatedAt);
+                const running = session.turn === "running";
                 const source =
                   session.parentSession === null
                     ? undefined
@@ -482,6 +483,16 @@ export function SessionCatalogSidebar({
                               </span>
                             )}
                             <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate text-xs">
+                              {running && (
+                                <span className="flex shrink-0 items-center" title="Running">
+                                  <Loader2Icon
+                                    aria-hidden="true"
+                                    className="size-3 animate-spin motion-reduce:animate-none"
+                                    data-slot="r1-session-running"
+                                  />
+                                  <span className="sr-only">Running</span>
+                                </span>
+                              )}
                               <time dateTime={session.updatedAt} title={activity.title}>
                                 {activity.label}
                               </time>

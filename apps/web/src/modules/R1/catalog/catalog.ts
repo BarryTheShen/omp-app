@@ -139,6 +139,15 @@ export class SessionCatalogModel {
   private operation = 0;
   /** Bumped by `list` only: a page `loadMore` fetched before a newer `list` began is dropped. */
   private listGeneration = 0;
+  /** Counts row changes: a list that began earlier keeps the newer copy of a row changed since (see `overlayChangedRows`). */
+  private changeClock = 0;
+  /** The change clock at each row change, kept while a list or a page load is in flight. */
+  private readonly changedAt = new Map<ThreadId, number>();
+  /** Lists and page loads in flight: while one is, row changes are noted for it. */
+  private loadsInFlight = 0;
+  /** The newest update begun for each chat: an older one that finishes later is dropped. */
+  private readonly reconcileBegun = new Map<ThreadId, number>();
+  private updateCount = 0;
   private pins: ReadonlySet<ThreadId> = new Set();
 
   public constructor(options: CatalogModelOptions) {
@@ -194,6 +203,8 @@ export class SessionCatalogModel {
       error: null,
       moreError: null,
     });
+    const since = this.changeClock;
+    this.loadsInFlight += 1;
     try {
       const git = await this.readGit(filter.scope);
       const pins = await this.readPins();
@@ -212,7 +223,8 @@ export class SessionCatalogModel {
         for (const session of more.sessions) byId.set(session.id, session);
         nextCursor = more.nextCursor;
       }
-      if (operation !== this.operation) return this.pageFromSnapshot();
+      if (generation !== this.listGeneration) return this.pageFromSnapshot();
+      this.overlayChangedRows(byId, since, filter.query);
       const sessions = [...byId.values()].sort(compareSessions);
       this.commit({
         filter,
@@ -227,8 +239,12 @@ export class SessionCatalogModel {
       return { sessions, nextCursor };
     } catch (error) {
       const failure = internalFailure(error, "Loading the session catalog failed");
-      if (operation === this.operation) this.commit({ isLoading: false, error: failure.appError });
+      if (generation === this.listGeneration)
+        this.commit({ isLoading: false, error: failure.appError });
       throw failure;
+    } finally {
+      this.loadsInFlight -= 1;
+      if (this.loadsInFlight === 0) this.changedAt.clear();
     }
   }
 
@@ -242,6 +258,7 @@ export class SessionCatalogModel {
     if (cursor === null || this.snapshot.isLoading || this.snapshot.isLoadingMore) return;
     const generation = this.listGeneration;
     this.commit({ isLoadingMore: true, moreError: null });
+    this.loadsInFlight += 1;
     try {
       const pins = await this.readPins();
       const fetched = await this.fetchSessions(this.snapshot.filter, this.snapshot.git, pins, {
@@ -253,7 +270,8 @@ export class SessionCatalogModel {
       const byId = new Map(this.snapshot.sessions.map((session) => [session.id, session]));
       // A chat already shown may have been refreshed by an event: its copy stays.
       for (const session of fetched.sessions)
-        if (!byId.has(session.id)) byId.set(session.id, session);
+        if (!byId.has(session.id) && !this.tombstones.has(session.id))
+          byId.set(session.id, session);
       this.commit({
         sessions: [...byId.values()].sort(compareSessions),
         nextCursor: fetched.nextCursor,
@@ -265,6 +283,9 @@ export class SessionCatalogModel {
         isLoadingMore: false,
         moreError: internalFailure(error, "Loading older chats failed").appError,
       });
+    } finally {
+      this.loadsInFlight -= 1;
+      if (this.loadsInFlight === 0) this.changedAt.clear();
     }
   }
 
@@ -286,23 +307,31 @@ export class SessionCatalogModel {
     });
   }
 
-  /** Reconcile one A1 changed event; stale updates after a remove are ignored. */
+  /**
+   * Reconcile one A1 changed event. An update is dropped when a newer update for its chat has begun or the chat was
+   * removed, so a stale update cannot resurrect it. A list that begins meanwhile does not drop it: the list's copy of
+   * the chat is older, and the overlay of changed rows keeps this one.
+   */
   public async reconcile(change: SessionFileChanged): Promise<void> {
     if (!this.eventInScope(change)) return;
-    const operation = ++this.operation;
     if (change.kind === "removed") {
+      const operation = ++this.operation;
       this.rememberRemoval(change.id, operation);
+      this.markChanged(change.id);
       this.commit({
         sessions: this.snapshot.sessions.filter((session) => session.id !== change.id),
       });
       return;
     }
     if (this.tombstones.has(change.id)) return;
+    const begun = ++this.updateCount;
+    this.reconcileBegun.set(change.id, begun);
     try {
       const file = await this.options.sessionFiles.readSession({ sessionFile: change.sessionFile });
-      if (operation !== this.operation || this.tombstones.has(change.id)) return;
+      if (this.reconcileBegun.get(change.id) !== begun || this.tombstones.has(change.id)) return;
       const metadata = metadataFromFile(file, this.snapshot.scope, this.pins);
       if (!changedInScope(this.snapshot.scope, metadata)) {
+        this.markChanged(change.id);
         this.commit({
           sessions: this.snapshot.sessions.filter((session) => session.id !== change.id),
         });
@@ -310,6 +339,7 @@ export class SessionCatalogModel {
       }
       const index = this.snapshot.sessions.findIndex((session) => session.id === metadata.id);
       if (index < 0) {
+        this.markChanged(change.id);
         this.commit({ sessions: [...this.snapshot.sessions, metadata].sort(compareSessions) });
       } else {
         const current = this.snapshot.sessions[index];
@@ -317,12 +347,15 @@ export class SessionCatalogModel {
         const sessions = [...this.snapshot.sessions];
         sessions[index] = metadata;
         sessions.sort(compareSessions);
+        this.markChanged(change.id);
         this.commit({ sessions });
       }
     } catch (error) {
       this.commit({
         error: internalFailure(error, "Reconciling the session catalog failed").appError,
       });
+    } finally {
+      if (this.reconcileBegun.get(change.id) === begun) this.reconcileBegun.delete(change.id);
     }
   }
 
@@ -338,6 +371,7 @@ export class SessionCatalogModel {
     const sessions = this.snapshot.sessions
       .map((session) => (session.id === sessionId ? { ...session, pinned } : session))
       .sort(compareSessions);
+    this.markChanged(sessionId);
     this.commit({ sessions, pinsRevision: revision });
   }
 
@@ -356,6 +390,7 @@ export class SessionCatalogModel {
       if (!current || this.tombstones.has(threadId)) return;
       const metadata = metadataFromFile(file, this.snapshot.scope, this.pins);
       if (sameSession(current, metadata)) return;
+      this.markChanged(threadId);
       this.commit({
         sessions: this.snapshot.sessions
           .map((session) => (session.id === threadId ? metadata : session))
@@ -429,6 +464,29 @@ export class SessionCatalogModel {
   private clearTombstonesBefore(operation: number): void {
     for (const [id, removalOperation] of this.tombstones) {
       if (removalOperation < operation) this.tombstones.delete(id);
+    }
+  }
+
+  /** Notes a row change for the lists and page loads in flight, which may have begun with an older copy of the row. */
+  private markChanged(id: ThreadId): void {
+    if (this.loadsInFlight > 0) this.changedAt.set(id, ++this.changeClock);
+  }
+
+  /**
+   * A list reads the chats as they were when it began. A row that changed since (a turn ended, a chat was removed) has a
+   * newer copy in the catalog, which wins over the list's copy. A chat removed since, or one the search no longer
+   * matches, is left out.
+   */
+  private overlayChangedRows(
+    byId: Map<ThreadId, SessionMetadata>,
+    since: number,
+    query: string,
+  ): void {
+    for (const [id, at] of this.changedAt) {
+      if (at <= since) continue;
+      const current = this.snapshot.sessions.find((session) => session.id === id);
+      if (current && queryMatches(current, query)) byId.set(id, current);
+      else byId.delete(id);
     }
   }
 

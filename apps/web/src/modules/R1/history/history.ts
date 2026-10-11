@@ -49,6 +49,11 @@ export interface SelectedThreadHistoryOptions {
   ) => SessionHistoryLoader;
   /** Called when a chat whose turn was still running after it was left has ended that turn: its row may be new now. */
   readonly onTurnSettled?: (threadId: ThreadId) => void;
+  /**
+   * Called when a chat is left while its turn still runs: the list is read so the chat's row shows the turn. Omp writes
+   * a new chat's file after its turn starts, so no change event announces that start.
+   */
+  readonly onLeftRunning?: (threadId: ThreadId) => void;
 }
 
 function asFailure(error: unknown, fallback: string): AppFailure {
@@ -262,6 +267,8 @@ export class SelectedThreadHistoryController {
     // wait on the server, and `release` handles every failure itself. A watched chat is let go when its turn ends.
     if (releasedThreadId !== undefined && watched === undefined)
       void this.release(releasedThreadId);
+    // A chat left mid-turn is reported, so its row shows the turn (see `onLeftRunning`).
+    if (running && releasedThreadId !== undefined) this.options.onLeftRunning?.(releasedThreadId);
   }
 
   /** Watches a chat whose turn runs after it was left: when the turn ends, the chat is let go and the app is told. */
