@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { useThreadScrollController } from "../../scroll";
@@ -82,5 +82,84 @@ describe("U1 scroll interaction policy", () => {
 
     expect(scrollTo).toHaveBeenCalledWith({ top: 800, behavior: "instant" });
     expect(document.activeElement).toBe(send);
+  });
+});
+
+function delay(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+}
+
+/** The viewport's position as the browser keeps it, so a test moves it the way layout and the reader do. */
+function layoutViewport() {
+  const viewport = screen.getByTestId("viewport");
+  const position = { top: 0 };
+  const scrollTo = vi.fn((options: ScrollToOptions) => {
+    // 1,000 px of content in a 200 px viewport: the browser stops at 800.
+    position.top = Math.min(options.top ?? 0, 800);
+  });
+  Object.defineProperty(viewport, "scrollHeight", { configurable: true, value: 1_000 });
+  Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 200 });
+  Object.defineProperty(viewport, "scrollTo", { configurable: true, value: scrollTo });
+  Object.defineProperty(viewport, "scrollTop", {
+    configurable: true,
+    get: () => position.top,
+    set: (value: number) => {
+      position.top = value;
+    },
+  });
+  return { viewport, scrollTo, position };
+}
+
+describe("U1 scroll follow after a send", () => {
+  test("after a send, the transcript returns to the newest message when layout moves it away", async () => {
+    render(<ScrollFixture />);
+    const { viewport, scrollTo, position } = layoutViewport();
+    fireEvent.click(screen.getByRole("button", { name: "Message sent" }));
+    await waitFor(() => expect(position.top).toBe(800));
+    // The jump's own scroll settles in a few frames; only the follow may move the viewport after that.
+    await delay(100);
+
+    // Something the reader did not do moves the viewport off the bottom: a row drawn later, an animation.
+    position.top = 500;
+    fireEvent.scroll(viewport);
+
+    await waitFor(() => expect(position.top).toBe(800));
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 800, behavior: "instant" });
+  });
+
+  test("the reader's wheel ends the follow: after it, the transcript stays where the reader scrolls", async () => {
+    render(<ScrollFixture />);
+    const { viewport, position } = layoutViewport();
+    fireEvent.click(screen.getByRole("button", { name: "Message sent" }));
+    await waitFor(() => expect(position.top).toBe(800));
+    await delay(100);
+    position.top = 500;
+    fireEvent.scroll(viewport);
+    await waitFor(() => expect(position.top).toBe(800));
+
+    fireEvent.wheel(viewport);
+    position.top = 300; // the reader's own scroll
+    fireEvent.scroll(viewport);
+
+    await delay(50);
+    expect(position.top).toBe(300);
+  });
+
+  test("typing in a text field inside the transcript does not end the follow", async () => {
+    render(<ScrollFixture />);
+    const { viewport, position } = layoutViewport();
+    const field = document.createElement("textarea");
+    viewport.append(field);
+    fireEvent.click(screen.getByRole("button", { name: "Message sent" }));
+    await waitFor(() => expect(position.top).toBe(800));
+    await delay(100);
+
+    fireEvent.keyDown(field, { key: "a" });
+    position.top = 500;
+    fireEvent.scroll(viewport);
+
+    await waitFor(() => expect(position.top).toBe(800));
   });
 });

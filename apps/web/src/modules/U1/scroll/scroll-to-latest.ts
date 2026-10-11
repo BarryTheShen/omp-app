@@ -3,7 +3,7 @@ const MAX_FRAMES = 30;
 /** Frames the bottom must stay put before the scroll counts as landed. */
 const STABLE_FRAMES = 2;
 /** What a reader does to scroll or to take over: any of these ends the follow-up scrolling. */
-const READER_INPUT = ["wheel", "touchstart", "touchmove", "pointerdown", "keydown"] as const;
+export const READER_INPUT = ["wheel", "touchstart", "touchmove", "pointerdown", "keydown"] as const;
 
 /**
  * Scrolls to the newest message, and again for as long as the bottom keeps moving.

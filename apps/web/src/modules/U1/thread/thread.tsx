@@ -459,7 +459,8 @@ export function ThreadShell({
             autoScroll={autoScroll && !place.resuming}
             // R0 turns `isRunning` off and on at every turn boundary, so a "run start" also fires in the
             // middle of an answer and would pull a reader who scrolled away down to the bottom. Sending
-            // scrolls explicitly instead (the app root calls followLatest when a message is sent).
+            // scrolls explicitly instead: the app root calls jumpToLatest when a message is sent, and
+            // the transcript then follows the reply (see thread-scroll-controller.ts).
             scrollToBottomOnRunStart={false}
             scrollToBottomOnInitialize={!place.startsAtPlace}
             turnAnchor="bottom"
