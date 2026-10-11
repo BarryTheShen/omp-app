@@ -4,6 +4,7 @@ import {
   AppFailure,
   type CapabilityKey,
   type CapabilityMap,
+  modeChangeCommand,
   type PortCallOptions,
   type ThreadId,
 } from "@omp-app/contracts";
@@ -29,8 +30,9 @@ import {
   type D73Mode,
   isD73Mode,
   type ModeAction,
-  modeCommand,
+  modeChangeRequest,
 } from "./commands";
+import { modeOutcomeRetryable, modeOutcomeText } from "./outcomes";
 
 /** The subset of R0's projection needed by mode controls. */
 export interface ModeSessionProjection {
@@ -98,6 +100,14 @@ function errorFrom(cause: unknown, fallback: string, capability?: CapabilityKey)
   };
 }
 
+/** A cancelled change says so in the app's words, whichever layer raised the cancellation. */
+function changeFailure(cause: unknown, capability: CapabilityKey): AppError {
+  const error = errorFrom(cause, "The app could not reach omp. Try again.", capability);
+  return error.code === "cancelled"
+    ? { code: "cancelled", message: "The change was cancelled.", retryable: false, capability }
+    : error;
+}
+
 function unavailableError(capability: CapabilityKey | undefined, message: string): AppError {
   return {
     code: "unavailable",
@@ -105,10 +115,6 @@ function unavailableError(capability: CapabilityKey | undefined, message: string
     retryable: false,
     ...(capability ? { capability } : {}),
   };
-}
-
-function cancelledError(message: string): AppError {
-  return { code: "cancelled", message, retryable: false };
 }
 
 function stateWithError(
@@ -473,11 +479,12 @@ export class ModeController implements ModeControllerPort {
     action: ModeAction,
     options?: ModeRequestOptions,
   ): Promise<ModeCommandResult> {
-    const command = modeCommand(action);
-    if (command === null) {
+    const request = modeChangeRequest(action);
+    if (request === null) {
       const error = unavailableError(undefined, "This setting cannot be changed in this chat.");
       return modeCommandResult(action, "mode command", false, "unavailable", error, error.message);
     }
+    const command = modeChangeCommand(request);
     const capability: CapabilityKey = "host.command-gateway";
     if (this.gateway === undefined || !isCapabilityUsable(this.capabilities, capability)) {
       const error = unavailableError(
@@ -519,47 +526,98 @@ export class ModeController implements ModeControllerPort {
     if (action.mode === "browser") this.browserVisibility = action.visibility;
     this.commit();
     try {
-      const result = await this.gateway.run(
-        { threadId: this.threadId, command },
+      const outcome = await this.gateway.change(
+        { threadId: this.threadId, request },
         commandOptions(options?.signal ?? this.signal),
       );
-      if (result.status === "aborted") {
-        const error = cancelledError("The change was cancelled.");
-        this.modeStates[action.mode] = previous;
-        if (action.mode === "browser") this.browserVisibility = previousVisibility;
-        this.commit();
-        return modeCommandResult(
-          action,
-          command,
-          false,
-          "unavailable",
-          error,
-          error.message,
-          capability,
-        );
+      switch (outcome.outcome) {
+        case "applied": {
+          // omp made the change. A toggle reads as the value omp confirmed; a browser window reads as set, because
+          // omp does not report which window is showing.
+          if (outcome.mode === "browser") {
+            this.browserVisibility = outcome.visibility;
+            this.modeStates[action.mode] = modeState(
+              action.mode,
+              "command",
+              "omp-command",
+              "fallback",
+              this.capabilities,
+              { requested: true },
+            );
+            this.commit();
+            return modeCommandResult(
+              action,
+              command,
+              true,
+              "fallback",
+              undefined,
+              undefined,
+              capability,
+            );
+          }
+          // A limited host link cannot claim omp's value, so the change reads as set, as the other states do.
+          const state: ModeStateKind =
+            this.capabilities[capability]?.state === "fallback" ? "fallback" : "known";
+          this.modeStates[action.mode] = modeState(
+            action.mode,
+            "command",
+            "omp-command",
+            state,
+            this.capabilities,
+            { requested: outcome.on, enabled: outcome.on },
+          );
+          this.commit();
+          return modeCommandResult(action, command, true, state, undefined, undefined, capability);
+        }
+        case "refused":
+        case "unsupported": {
+          // omp did not make the change: the mode goes back to the value omp last left it at, and the reason is said.
+          const error: AppError = {
+            code: "unavailable",
+            message: modeOutcomeText(outcome),
+            retryable: modeOutcomeRetryable(outcome),
+            capability,
+          };
+          this.modeStates[action.mode] = previous;
+          if (action.mode === "browser") this.browserVisibility = previousVisibility;
+          this.commit();
+          return modeCommandResult(
+            action,
+            command,
+            false,
+            "unavailable",
+            error,
+            error.message,
+            capability,
+          );
+        }
+        case "unknown": {
+          // omp's reply is one the app does not recognise. It is shown as omp wrote it, as before, and the change is
+          // not claimed as made.
+          const reply = outcome.outputs
+            .map((text) => text.trim())
+            .filter((text) => text.length > 0)
+            .join("\n");
+          const capabilityState = this.capabilities[capability]?.state;
+          const state: ModeStateKind = capabilityState === "fallback" ? "fallback" : "requested";
+          const reason =
+            capabilityState === "fallback"
+              ? "The app can only partly change these settings right now."
+              : reply || undefined;
+          this.modeStates[action.mode] = modeState(
+            action.mode,
+            "command",
+            "omp-command",
+            state,
+            this.capabilities,
+            { requested, reason },
+          );
+          this.commit();
+          return modeCommandResult(action, command, true, state, undefined, reason, capability);
+        }
       }
-      const capabilityState = this.capabilities[capability]?.state;
-      const state: ModeStateKind = capabilityState === "fallback" ? "fallback" : "requested";
-      const reply = result.outputs
-        .map((output) => output.text.trim())
-        .filter((text) => text.length > 0)
-        .join("\n");
-      const reason =
-        capabilityState === "fallback"
-          ? "The app can only partly change these settings right now."
-          : reply || undefined;
-      this.modeStates[action.mode] = modeState(
-        action.mode,
-        "command",
-        "omp-command",
-        state,
-        this.capabilities,
-        { requested, reason },
-      );
-      this.commit();
-      return modeCommandResult(action, command, true, state, undefined, reason, capability);
     } catch (cause) {
-      const error = errorFrom(cause, "The app could not reach omp. Try again.", capability);
+      const error = changeFailure(cause, capability);
       this.modeStates[action.mode] = previous;
       if (action.mode === "browser") this.browserVisibility = previousVisibility;
       this.commit();

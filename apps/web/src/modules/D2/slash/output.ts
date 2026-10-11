@@ -37,9 +37,20 @@ function isFinalByte(code: number): boolean {
  * a command that printed nothing says that it ran.
  */
 export function describeCommandResult(result: CommandRunResult, command: string): string {
+  return describeOutputs(
+    result.outputs.map((output) => output.text),
+    command,
+  );
+}
+
+/**
+ * The one line the header shows for the texts omp printed for a command; a command that printed nothing says that it
+ * ran. omp's words come through as text, and the app never reads what they mean.
+ */
+export function describeOutputs(texts: readonly string[], command: string): string {
   // The header is one line: every run of spaces and line breaks becomes a single space.
-  const oneLine = result.outputs
-    .map((output) => plainOutputText(output.text))
+  const oneLine = texts
+    .map((text) => plainOutputText(text))
     .join(" ")
     .split(/\s+/u)
     .filter((word) => word !== "")

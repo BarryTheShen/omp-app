@@ -2,6 +2,8 @@ import {
   AppFailure,
   CommandOutputEvent,
   DumpReport,
+  ModeChangeResult,
+  modeChangeCommand,
   OmpCommandGateway,
   ShareResult,
 } from "@omp-app/contracts";
@@ -37,6 +39,22 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
           { signal: handlerContext.signal },
         );
         return typedReply(data, (value) => DumpReport.parse(value), command);
+      },
+      modeChange: async (args, handlerContext): Promise<ModeChangeResult> => {
+        const command = modeChangeCommand(args.request);
+        try {
+          const { data } = await context.ompCommandGateway.runWithParser<ModeChangeResult>(
+            { threadId: args.threadId, command },
+            { signal: handlerContext.signal },
+          );
+          return typedReply(data, (value) => ModeChangeResult.parse(value), command);
+        } catch (cause) {
+          // The gateway fails with `unavailable` only when omp's command list lacks the command, before any prompt.
+          if (cause instanceof AppFailure && cause.appError.code === "unavailable") {
+            return { outcome: "unsupported", mode: args.request.mode, reason: "not-offered" };
+          }
+          throw cause;
+        }
       },
     },
     context.publish,

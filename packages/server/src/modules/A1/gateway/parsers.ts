@@ -1,5 +1,6 @@
 import { AppFailure, DumpReport, type DumpScope, HttpsUrl, ShareResult } from "@omp-app/contracts";
 import type { CommandParserContext, OmpCommandGatewayService } from "./gateway";
+import { registerModeChangeParsers } from "./mode-parsers";
 
 /*
  * Typed parsers for the `/share` and `/dump` replies of omp v18.6.1 (issue #793). Each command prints
@@ -138,4 +139,5 @@ export function parseDumpReply(context: CommandParserContext): DumpReport {
 export function registerOmpCommandParsers(gateway: OmpCommandGatewayService): void {
   gateway.registerCommandParser("share", parseShareReply);
   gateway.registerCommandParser("dump", parseDumpReply);
+  registerModeChangeParsers(gateway);
 }

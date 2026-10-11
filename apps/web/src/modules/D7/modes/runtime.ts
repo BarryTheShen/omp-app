@@ -20,5 +20,5 @@ export function createFastModeRpc(client: AppClient, threadId: ThreadId): FastMo
 /** A1.9 typed command-gateway adapter; D7 never talks to omp JSONL directly. */
 export function createModeCommandGateway(client: AppClient): ModeCommandGateway {
   const gateway = client.port(OmpCommandGateway);
-  return { run: (args, options) => gateway.run(args, options) };
+  return { change: (args, options) => gateway.modeChange(args, options) };
 }

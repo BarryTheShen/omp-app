@@ -965,6 +965,8 @@ function ActiveThreadReady({
             intent: nextIntent,
             provider: slashProvider,
             showStatus: setCommandStatus,
+            runMode: (request, options) =>
+              commandGateway.modeChange({ threadId, request }, options),
           }),
     );
     if (intent.mode === "bash") void onRefreshAfterCommand?.();

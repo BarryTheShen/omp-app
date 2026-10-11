@@ -1,11 +1,13 @@
 import {
   type CapabilityMap,
   CapabilityStatus,
-  type CommandRunResult,
+  type ModeChangeRequest,
+  type ModeChangeResult,
   type ThreadId,
 } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { ModeCommandGateway } from "../contract";
 import { ModeController } from "./controller";
 import { ConnectedModeControls, ModeControls } from "./view";
 
@@ -24,22 +26,27 @@ function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
   };
 }
 
-/** A completed command; `text` is the reply omp gave, when it gave one. */
-function completed(command: string, text?: string): CommandRunResult {
-  return {
-    command: command as CommandRunResult["command"],
-    status: "completed",
-    agentInvoked: false,
-    promptSettled: true,
-    sessionSettled: true,
-    outputs: text === undefined ? [] : [{ text }],
-    sessionUpdates: [],
-    configUpdates: [],
-  };
+/** The typed outcome omp gives a change it made: exactly the value the request asked for. */
+function appliedFor(request: ModeChangeRequest): ModeChangeResult {
+  return request.mode === "browser"
+    ? { outcome: "applied", mode: "browser", visibility: request.visibility }
+    : { outcome: "applied", mode: request.mode, on: request.requested };
 }
 
-/** A gateway that completes every command, with no reply. */
-const silent = { run: async ({ command }: { readonly command: string }) => completed(command) };
+/** A reply the app does not recognise, carrying omp's words as sent (none when `words` is empty). */
+function unknownReply(words: readonly string[]): ModeChangeResult {
+  return { outcome: "unknown", mode: "slow", outputs: [...words] };
+}
+
+/** A gateway that answers each change with `answer(request)`. */
+function gatewayAnswering(
+  answer: (request: ModeChangeRequest) => ModeChangeResult,
+): ModeCommandGateway {
+  return { change: async ({ request }) => answer(request) };
+}
+
+/** A gateway that answers every change with a reply the app does not recognise, with no words. */
+const silent: ModeCommandGateway = gatewayAnswering(() => unknownReply([]));
 
 const fastRpc = {
   getState: async () => ({ sessionId: "session", fastModeEnabled: false, fastModeActive: false }),
@@ -67,8 +74,8 @@ function renderControls(controller: ModeController) {
 }
 
 /**
- * The controls' text as a person reads the words the app wrote: omp's own reply after "Sent to omp." is left
- * out, because omp words its replies itself.
+ * The controls' text as a person reads the words the app wrote: omp's own words after "Sent to omp." are left
+ * out, because they are the one place omp's text is shown (a reply the app does not recognise).
  */
 function appWrittenText(root: HTMLElement): string {
   const copy = root.cloneNode(true) as HTMLElement;
@@ -145,7 +152,7 @@ describe("plain words in the status lines", () => {
       capabilities: capabilities({
         "host.command-gateway": CapabilityStatus.parse({ state: "fallback", via: "host" }),
       }),
-      gateway: silent,
+      gateway: gatewayAnswering(appliedFor),
     });
     await controller.requestBrowserVisibility("visible");
     renderControls(controller);
@@ -157,12 +164,12 @@ describe("plain words in the status lines", () => {
     controller.dispose();
   });
 
-  test("shows omp's reply after Sent to omp., exactly as omp wrote it", async () => {
-    const reply = "Slow mode on: requests use the flex tier (lower cost, higher latency).";
+  test("a reply the app does not recognise reads Sent to omp, then omp's words exactly as omp wrote them", async () => {
+    const reply = "Slow mode is on for this chat.";
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: { run: async ({ command }) => completed(command, reply) },
+      gateway: gatewayAnswering(() => unknownReply([reply])),
     });
     await controller.request({ mode: "slow", scope: "session", requested: true });
     renderControls(controller);
@@ -227,7 +234,7 @@ describe("plain words in the failure messages", () => {
         threadId,
         capabilities: capabilities(),
         gateway: {
-          run: async () => {
+          change: async () => {
             throw new Error("the connection dropped");
           },
         },
@@ -249,7 +256,7 @@ describe("plain words in the failure messages", () => {
       threadId,
       capabilities: capabilities(),
       gateway: {
-        run: async () => {
+        change: async () => {
           throw new Error("the connection dropped");
         },
       },
@@ -349,7 +356,7 @@ describe("a failed change shows its message once", () => {
       threadId,
       capabilities: capabilities(),
       gateway: {
-        run: async () => {
+        change: async () => {
           throw new Error("the connection dropped");
         },
       },
@@ -365,20 +372,17 @@ describe("a failed change shows its message once", () => {
   });
 });
 
-describe("plain words around omp's real replies", () => {
-  test("the words the app wrote stay plain while omp's replies are shown", async () => {
-    const replies: Record<string, string> = {
-      "/computer on":
-        "Computer use enabled for this session. Computer use: enabled · prelude: active · configured: display=active, maxWidth=3840, maxHeight=2400",
-      "/extended-context on": "Extended context enabled.",
-      "/slow on":
-        "The current model has no slow mode: /slow uses the flex tier on OpenAI/Google models.",
-      "/browser visible": "Browser mode: visible",
-    };
+describe("plain words around omp's typed outcomes", () => {
+  test("every typed outcome reads in plain words, and no omp words are shown", async () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: { run: async ({ command }) => completed(command, replies[command]) },
+      gateway: gatewayAnswering((request) => {
+        if (request.mode === "slow") {
+          return { outcome: "unsupported", mode: "slow", reason: "model-has-no-slow-mode" };
+        }
+        return appliedFor(request);
+      }),
     });
     await controller.request({ mode: "computer", scope: "session", requested: true });
     await controller.request({ mode: "extended-context", scope: "session", requested: true });
@@ -386,7 +390,7 @@ describe("plain words around omp's real replies", () => {
     await controller.requestBrowserVisibility("visible");
     const { container } = renderControls(controller);
     const statuses = screen.getAllByRole("status").map((element) => element.textContent ?? "");
-    expect(statuses.filter((text) => text.startsWith("Sent to omp."))).toHaveLength(4);
+    expect(statuses.filter((text) => text.startsWith("Sent to omp."))).toHaveLength(0);
     expect(appWrittenText(controlsOf(container))).not.toMatch(INTERNAL_WORDS);
     controller.dispose();
   });

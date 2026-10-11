@@ -2,6 +2,10 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   type CapabilityMap,
+  type ModeChangeRequest,
+  type ModeChangeResult,
+  modeChangeFromCommand,
+  type PortCallOptions,
   type RpcSessionSend,
   type ThreadId,
 } from "@omp-app/contracts";
@@ -9,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createSlashCommandProvider,
   describeCommandResult,
+  describeOutputs,
   guardedCommandName,
   guardedRoute,
   plainOutputText,
@@ -17,6 +22,7 @@ import {
   type SlashRoute,
 } from "@/modules/D2/slash";
 import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
+import { modeOutcomeText } from "@/modules/D7/modes";
 import { createMcpProtocolCatalogs } from "@/modules/I1/protocol";
 import type { PromptIntent } from "@/modules/U2/contract";
 
@@ -269,25 +275,43 @@ function refusedSend(name: string): AppFailure {
 }
 
 /**
- * Runs a routed command. A finished omp command shows omp's words in the header. A command that fails
- * throws its message, and the composer shows it and keeps the typed text, as it does for any send.
+ * Runs a routed command. The four mode commands run through the typed gateway, and their status says what omp did in
+ * plain words; omp's own words show only for a reply the app does not recognise. Any other finished omp command shows
+ * omp's words in the header. A command that fails throws its message, and the composer shows it and keeps the typed
+ * text, as it does for any send.
  */
 export async function runSlashRoute({
   route,
   intent,
   provider,
   showStatus,
+  runMode,
 }: {
   readonly route: SlashRoute;
   readonly intent: PromptIntent;
   readonly provider: SlashCommandProvider | null;
   readonly showStatus: (text: string | null) => void;
+  /** The typed gateway for the four mode commands; without it they run as any other command. */
+  readonly runMode?: (
+    request: ModeChangeRequest,
+    options: PortCallOptions,
+  ) => Promise<ModeChangeResult>;
 }): Promise<void> {
   showStatus(null);
   const signal = intent.signal === undefined ? {} : { signal: intent.signal };
   if (route.kind === "app") {
     const outcome = await route.command.run(signal);
     if (outcome.message !== undefined) showStatus(outcome.message);
+    return;
+  }
+  const request = runMode === undefined ? null : modeChangeFromCommand(route.command);
+  if (runMode !== undefined && request !== null) {
+    const outcome = await runMode(request, signal);
+    showStatus(
+      outcome.outcome === "unknown"
+        ? describeOutputs(outcome.outputs, route.command)
+        : modeOutcomeText(outcome),
+    );
     return;
   }
   if (provider === null) {

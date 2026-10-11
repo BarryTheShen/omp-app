@@ -1,7 +1,8 @@
 import {
+  AppFailure,
   type CapabilityMap,
   CapabilityStatus,
-  type CommandRunResult,
+  type ModeChangeResult,
   type ThreadId,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
@@ -19,18 +20,9 @@ function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
   };
 }
 
-/** A completed command; `text` is the reply omp gave, when it gave one. */
-function completed(command: string, text?: string): CommandRunResult {
-  return {
-    command: command as CommandRunResult["command"],
-    status: "completed",
-    agentInvoked: false,
-    promptSettled: true,
-    sessionSettled: true,
-    outputs: text === undefined ? [] : [{ text }],
-    sessionUpdates: [],
-    configUpdates: [],
-  };
+/** A reply the app does not recognise, carrying omp's words as sent (none when `words` is empty). */
+function unknownReply(words: readonly string[]): ModeChangeResult {
+  return { outcome: "unknown", mode: "computer", outputs: [...words] };
 }
 
 const fastState = { sessionId: "session", fastModeEnabled: false, fastModeActive: false };
@@ -172,7 +164,7 @@ describe("plain reasons for the other modes", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: { run: async ({ command }) => completed(command) },
+      gateway: { change: async () => unknownReply([]) },
     });
     expect(controller.getSnapshot().modes.computer?.reason).toBe(
       "omp has not reported this setting yet.",
@@ -207,7 +199,7 @@ describe("plain reasons for the other modes", () => {
       capabilities: capabilities({
         "host.command-gateway": CapabilityStatus.parse({ state: "unavailable", via: "host" }),
       }),
-      gateway: { run: async ({ command }) => completed(command) },
+      gateway: { change: async () => unknownReply([]) },
     });
     const result = await controller.request({
       mode: "computer",
@@ -228,7 +220,7 @@ describe("plain reasons for the other modes", () => {
           detail: "omp did not return a command response before the probe timed out",
         }),
       }),
-      gateway: { run: async ({ command }) => completed(command) },
+      gateway: { change: async () => unknownReply([]) },
     });
     const result = await controller.request({
       mode: "computer",
@@ -240,13 +232,13 @@ describe("plain reasons for the other modes", () => {
     controller.dispose();
   });
 
-  test("says the app can only partly change these settings when its gateway is limited", async () => {
+  test("says the app can only partly change these settings when its gateway is limited and omp's reply is not recognised", async () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities({
         "host.command-gateway": CapabilityStatus.parse({ state: "fallback", via: "host" }),
       }),
-      gateway: { run: async ({ command }) => completed(command) },
+      gateway: { change: async () => unknownReply([]) },
     });
     const result = await controller.request({
       mode: "computer",
@@ -258,16 +250,53 @@ describe("plain reasons for the other modes", () => {
     controller.dispose();
   });
 
-  test("keeps omp's own reply exactly as omp wrote it", async () => {
-    const reply = "Slow mode on: requests use the flex tier (lower cost, higher latency).";
+  test("a change omp applied is not shown as omp's words, and a limited link reads it as set, not as known", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities({
+        "host.command-gateway": CapabilityStatus.parse({ state: "fallback", via: "host" }),
+      }),
+      gateway: {
+        change: async ({ request }) =>
+          request.mode === "browser"
+            ? { outcome: "applied", mode: "browser", visibility: request.visibility }
+            : { outcome: "applied", mode: request.mode, on: request.requested },
+      },
+    });
+    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
+    expect(result).toMatchObject({ ok: true, state: "fallback" });
+    expect(result.reason).toBeUndefined();
+    expect(controller.getSnapshot().modes.slow?.state).toBe("fallback");
+    controller.dispose();
+  });
+
+  test("an unrecognised reply is shown as omp wrote it", async () => {
+    const words = "Slow mode is on for this chat.";
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: { run: async ({ command }) => completed(command, reply) },
+      gateway: {
+        change: async () => ({ outcome: "unknown", mode: "slow", outputs: [words] }),
+      },
     });
     const result = await controller.request({ mode: "slow", scope: "session", requested: true });
-    expect(result.reason).toBe(reply);
-    expect(controller.getSnapshot().modes.slow?.reason).toBe(reply);
+    expect(result.reason).toBe(words);
+    expect(controller.getSnapshot().modes.slow?.reason).toBe(words);
+    controller.dispose();
+  });
+
+  test("a recognised reply is not shown as omp's words: the row reads the app's own sentence", async () => {
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      gateway: {
+        change: async () => ({ outcome: "applied", mode: "slow", on: true }),
+      },
+    });
+    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
+    expect(result).toMatchObject({ ok: true, state: "known" });
+    expect(result.reason).toBeUndefined();
+    expect(controller.getSnapshot().modes.slow?.reason).toBeUndefined();
     controller.dispose();
   });
 
@@ -276,7 +305,13 @@ describe("plain reasons for the other modes", () => {
       threadId,
       capabilities: capabilities(),
       gateway: {
-        run: async ({ command }) => ({ ...completed(command), status: "aborted" as const }),
+        change: async () => {
+          throw new AppFailure({
+            code: "cancelled",
+            message: "The command was cancelled.",
+            retryable: false,
+          });
+        },
       },
     });
     const result = await controller.request({ mode: "slow", scope: "session", requested: true });
@@ -289,7 +324,7 @@ describe("plain reasons for the other modes", () => {
       threadId,
       capabilities: capabilities(),
       gateway: {
-        run: async () => {
+        change: async () => {
           throw new Error("the connection dropped");
         },
       },

@@ -1,9 +1,8 @@
-import type { SlashCommand } from "@omp-app/contracts";
-import { SlashCommand as SlashCommandSchema } from "@omp-app/contracts";
+import type { BrowserVisibility, ModeChangeRequest } from "@omp-app/contracts";
 import type { ExecutionMode } from "../contract";
 
 /** The browser mode has two explicit, server-supported visibility choices. */
-export type BrowserVisibility = "headless" | "visible";
+export type { BrowserVisibility } from "@omp-app/contracts";
 
 /** Modes with a boolean command state in omp's released slash-command grammar. */
 export type ToggleMode = "computer" | "extended-context" | "slow";
@@ -29,29 +28,13 @@ export const MODE_LABELS: Readonly<Record<ExecutionMode, string>> = {
 };
 
 /**
- * Maps only the exact commands owned by D7 to their wire-facing slash spelling.
- * No command result text is inspected here; the gateway owns admission and settlement.
+ * The typed request an action asks omp for, or null for standard execution, which has no command. The server owns
+ * the command's spelling and reads omp's reply; no command text is built or matched here.
  */
-export function modeCommand(action: ModeAction): SlashCommand | null {
-  let command: string | null;
-  switch (action.mode) {
-    case "browser":
-      command = `/browser ${action.visibility}`;
-      break;
-    case "computer":
-      command = `/computer ${action.requested ? "on" : "off"}`;
-      break;
-    case "extended-context":
-      command = `/extended-context ${action.requested ? "on" : "off"}`;
-      break;
-    case "slow":
-      command = `/slow ${action.requested ? "on" : "off"}`;
-      break;
-    case "default":
-      command = null;
-      break;
-  }
-  return command === null ? null : SlashCommandSchema.parse(command);
+export function modeChangeRequest(action: ModeAction): ModeChangeRequest | null {
+  if (action.mode === "default") return null;
+  if (action.mode === "browser") return { mode: "browser", visibility: action.visibility };
+  return { mode: action.mode, requested: action.requested };
 }
 
 /** The D7.3 scope deliberately excludes commands implemented by D7.4. */

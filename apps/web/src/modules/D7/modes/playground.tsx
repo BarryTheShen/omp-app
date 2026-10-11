@@ -1,24 +1,28 @@
-import { CapabilityStatus, type ThreadId, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
+import {
+  CapabilityStatus,
+  type ModeChangeRequest,
+  type ModeChangeResult,
+  type ThreadId,
+  ThreadId as ThreadIdSchema,
+} from "@omp-app/contracts";
 import { useEffect, useMemo } from "react";
 import { ConnectedModeControls, ModeController } from "./index";
 
 const threadId: ThreadId = ThreadIdSchema.parse("d7-playground-thread");
 
 /**
- * The reply omp gives for each command, as omp words it (omp v18.6.1 source and real omp runs). The rows show
- * omp's reply as it is; the tests check that the words around it are plain.
+ * The typed outcome the server gives each mode change on the fake model: the toggles and the browser window
+ * change, and slow mode is not offered (the fake model has no slow mode).
  */
-const OMP_REPLIES: Readonly<Record<string, string>> = {
-  "/computer on":
-    "Computer use enabled for this session. Computer use: enabled · prelude: active · configured: display=active, maxWidth=3840, maxHeight=2400",
-  "/computer off": "Computer use disabled for this session.",
-  "/extended-context on": "Extended context enabled.",
-  "/extended-context off": "Extended context disabled.",
-  "/slow on": "Slow mode on: requests use the flex tier (lower cost, higher latency).",
-  "/slow off": "Slow mode off.",
-  "/browser visible": "Browser mode: visible",
-  "/browser headless": "Browser mode: headless",
-};
+function outcomeFor(request: ModeChangeRequest): ModeChangeResult {
+  if (request.mode === "browser") {
+    return { outcome: "applied", mode: "browser", visibility: request.visibility };
+  }
+  if (request.mode === "slow") {
+    return { outcome: "unsupported", mode: "slow", reason: "model-has-no-slow-mode" };
+  }
+  return { outcome: "applied", mode: request.mode, on: request.requested };
+}
 
 function createController(): ModeController {
   // `?fast=fails` makes every Fast mode change fail, so the error path can be captured.
@@ -36,22 +40,12 @@ function createController(): ModeController {
     threadId,
     capabilities,
     gateway: {
-      run: async ({ command }) => {
+      change: async ({ request }) => {
         if (commands === "fails" || (commands === "fails-after-first" && answered > 0)) {
           throw new Error("omp did not answer the execution-mode command.");
         }
         answered += 1;
-        const reply = OMP_REPLIES[command] ?? "";
-        return {
-          command,
-          status: "completed",
-          agentInvoked: false,
-          promptSettled: true,
-          sessionSettled: true,
-          outputs: reply === "" ? [] : [{ text: reply }],
-          sessionUpdates: [],
-          configUpdates: [],
-        };
+        return outcomeFor(request);
       },
     },
     fastRpc: {

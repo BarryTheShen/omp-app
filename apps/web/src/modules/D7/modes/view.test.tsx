@@ -1,6 +1,13 @@
-import { type CapabilityMap, CapabilityStatus, type ThreadId } from "@omp-app/contracts";
+import {
+  type CapabilityMap,
+  CapabilityStatus,
+  type ModeChangeRequest,
+  type ModeChangeResult,
+  type ThreadId,
+} from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { ModeCommandGateway } from "../contract";
 import { ModeController } from "./controller";
 import { ConnectedModeControls, ModeControls } from "./view";
 
@@ -15,6 +22,31 @@ function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
   };
 }
 
+/** The typed outcome omp gives a change it made: exactly the value the request asked for. */
+function appliedFor(request: ModeChangeRequest): ModeChangeResult {
+  return request.mode === "browser"
+    ? { outcome: "applied", mode: "browser", visibility: request.visibility }
+    : { outcome: "applied", mode: request.mode, on: request.requested };
+}
+
+/** A gateway that answers each change with `answer(request)`, and records each request it is sent. */
+function gatewayAnswering(
+  answer: (request: ModeChangeRequest) => ModeChangeResult,
+  requests: ModeChangeRequest[] = [],
+): ModeCommandGateway {
+  return {
+    change: async ({ request }) => {
+      requests.push(request);
+      return answer(request);
+    },
+  };
+}
+
+/** A reply the app does not recognise, carrying omp's words as sent. */
+function unknownReply(words: readonly string[]): ModeChangeResult {
+  return { outcome: "unknown", mode: "computer", outputs: [...words] };
+}
+
 afterEach(cleanup);
 
 describe("D7 mode controls", () => {
@@ -22,18 +54,7 @@ describe("D7 mode controls", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: {
-        run: async ({ command }) => ({
-          command,
-          status: "completed",
-          agentInvoked: false,
-          promptSettled: true,
-          sessionSettled: true,
-          outputs: [],
-          sessionUpdates: [],
-          configUpdates: [],
-        }),
-      },
+      gateway: gatewayAnswering(() => unknownReply([])),
     });
     const actions = {
       onRequest: vi.fn(),
@@ -98,13 +119,13 @@ describe("D7 mode controls", () => {
   });
 
   test("try again repeats the change that failed instead of refreshing", async () => {
-    const commands: string[] = [];
+    const requests: ModeChangeRequest[] = [];
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
       gateway: {
-        run: async ({ command }) => {
-          commands.push(command);
+        change: async ({ request }) => {
+          requests.push(request);
           throw new Error("The gateway dropped the connection.");
         },
       },
@@ -115,7 +136,12 @@ describe("D7 mode controls", () => {
     fireEvent.click(within(computer).getByRole("button", { name: "Turn on" }));
     expect(await screen.findByText("Computer use could not be changed.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    await waitFor(() => expect(commands).toEqual(["/computer on", "/computer on"]));
+    await waitFor(() =>
+      expect(requests).toEqual([
+        { mode: "computer", requested: true },
+        { mode: "computer", requested: true },
+      ]),
+    );
     controller.dispose();
   });
 
@@ -123,18 +149,7 @@ describe("D7 mode controls", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: {
-        run: async ({ command }) => ({
-          command,
-          status: "completed",
-          agentInvoked: false,
-          promptSettled: true,
-          sessionSettled: true,
-          outputs: [],
-          sessionUpdates: [],
-          configUpdates: [],
-        }),
-      },
+      gateway: gatewayAnswering(() => unknownReply([])),
     });
     render(
       <ModeControls
@@ -193,22 +208,11 @@ describe("D7 mode controls", () => {
     },
   );
 
-  test("a sent command reads Sent to omp, then omp's reply", async () => {
+  test("a reply the app does not recognise reads Sent to omp, then omp's own words", async () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: {
-        run: async ({ command }) => ({
-          command,
-          status: "completed",
-          agentInvoked: false,
-          promptSettled: true,
-          sessionSettled: true,
-          outputs: [{ text: "Computer use is unavailable in this session." }],
-          sessionUpdates: [],
-          configUpdates: [],
-        }),
-      },
+      gateway: gatewayAnswering(() => unknownReply(["This output is opaque to the view."])),
     });
     await controller.request({ mode: "computer", scope: "session", requested: true });
     render(
@@ -223,7 +227,7 @@ describe("D7 mode controls", () => {
       />,
     );
     expect(
-      screen.getByText("Sent to omp. Computer use is unavailable in this session.", {
+      screen.getByText("Sent to omp. This output is opaque to the view.", {
         exact: true,
       }),
     ).toBeTruthy();
@@ -268,7 +272,7 @@ describe("a mode omp does not report", () => {
       threadId,
       capabilities: capabilities(),
       gateway: {
-        run: async () => {
+        change: async () => {
           throw new Error("The command was not expected in this test.");
         },
       },
@@ -307,7 +311,7 @@ describe("a mode omp does not report", () => {
     controller.dispose();
   });
 
-  test("reads as set once the person chooses it in this session", async () => {
+  test("reads as set once the person chooses it in this chat, while the host link is limited", async () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities({
@@ -317,18 +321,7 @@ describe("a mode omp does not report", () => {
           detail: "Commands run without a status reply.",
         }),
       }),
-      gateway: {
-        run: async ({ command }) => ({
-          command,
-          status: "completed",
-          agentInvoked: false,
-          promptSettled: true,
-          sessionSettled: true,
-          outputs: [],
-          sessionUpdates: [],
-          configUpdates: [],
-        }),
-      },
+      gateway: gatewayAnswering(appliedFor),
     });
     await controller.request({ mode: "slow", scope: "session", requested: true });
     render(

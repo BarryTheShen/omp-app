@@ -1,17 +1,17 @@
 import type {
   AbortSignalLike,
   CapabilityMap,
-  CommandRunArgs,
-  CommandRunResult,
+  ModeChangeArgs,
+  ModeChangeResult,
   OmpCommandMap,
   PortCallOptions,
   ThreadId,
 } from "@omp-app/contracts";
 import type { ModeCommandResult, ModeRequest, ModeSnapshot, ToolAvailability } from "./models";
 
-/** AP4 gateway seam; D7 never matches command_output text or sends raw wire frames. */
+/** AP4 gateway seam: the server reads omp's reply into a typed outcome; D7 never matches command text. */
 export interface ModeCommandGateway {
-  readonly run: (args: CommandRunArgs, options?: PortCallOptions) => Promise<CommandRunResult>;
+  readonly change: (args: ModeChangeArgs, options?: PortCallOptions) => Promise<ModeChangeResult>;
 }
 
 /** A0.8 direct RPC seam used by fast mode; params/results stay owned by @omp-app/contracts. */

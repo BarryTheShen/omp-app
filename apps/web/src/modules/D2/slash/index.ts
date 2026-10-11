@@ -3,7 +3,7 @@ export {
   type SlashCommandCatalogController,
   type SlashCommandCatalogOptions,
 } from "./catalog";
-export { describeCommandResult, plainOutputText } from "./output";
+export { describeCommandResult, describeOutputs, plainOutputText } from "./output";
 export {
   createSlashCommandProvider,
   type SlashCommandProvider,

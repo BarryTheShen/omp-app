@@ -2,7 +2,9 @@ import type { AppClient } from "@omp-app/client";
 import {
   type CapabilityMap,
   CapabilityStatus,
-  type CommandRunResult,
+  type ModeChangeRequest,
+  type ModeChangeResult,
+  modeChangeCommand,
   OmpCommandGateway,
   type ThreadId,
 } from "@omp-app/contracts";
@@ -36,18 +38,15 @@ const AVAILABLE: CapabilityMap = {
 function fakeClient(): { readonly client: AppClient; readonly commands: string[] } {
   const commands: string[] = [];
   const gateway = {
-    run: async ({ command }: { readonly command: string }): Promise<CommandRunResult> => {
-      commands.push(command);
-      return {
-        command: command as CommandRunResult["command"],
-        status: "completed",
-        agentInvoked: false,
-        promptSettled: true,
-        sessionSettled: true,
-        outputs: [],
-        sessionUpdates: [],
-        configUpdates: [],
-      };
+    modeChange: async ({
+      request,
+    }: {
+      readonly request: ModeChangeRequest;
+    }): Promise<ModeChangeResult> => {
+      commands.push(modeChangeCommand(request));
+      return request.mode === "browser"
+        ? { outcome: "applied", mode: "browser", visibility: request.visibility }
+        : { outcome: "applied", mode: request.mode, on: request.requested };
     },
   };
   const rpc = {
