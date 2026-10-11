@@ -119,35 +119,28 @@ function DefaultStatusBar({ persistenceStatus }: { persistenceStatus: "ready" | 
   );
 }
 
+/** The header arrow that opens a side panel while it is closed. An open panel's own arrow closes it (see SidebarHeader). */
 function SidebarToggle({
   side,
-  open,
   onToggle,
 }: {
   readonly side: "left" | "right";
-  readonly open: boolean;
   readonly onToggle: () => void;
 }) {
   const label = side === "left" ? "sessions" : "panels";
   return (
     <Button
       aria-controls={`shell-${label}-sidebar`}
-      aria-expanded={open}
-      aria-label={`${open ? "Hide" : "Show"} ${label} sidebar`}
+      aria-expanded={false}
+      aria-label={`Show ${label} sidebar`}
       aria-keyshortcuts={side === "left" ? "Control+B Meta+B" : "Control+Shift+B Meta+Shift+B"}
       data-shell-sidebar-toggle={side}
       size="icon-sm"
-      title={`${open ? "Hide" : "Show"} ${label} sidebar`}
+      title={`Show ${label} sidebar`}
       variant="ghost"
       onClick={onToggle}
     >
       {side === "left" ? (
-        open ? (
-          <Icons.chevronLeft aria-hidden="true" />
-        ) : (
-          <Icons.chevronRight aria-hidden="true" />
-        )
-      ) : open ? (
         <Icons.chevronRight aria-hidden="true" />
       ) : (
         <Icons.chevronLeft aria-hidden="true" />
@@ -170,11 +163,12 @@ function SidebarHeader({
     <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-3">
       <h2 className="text-sm font-semibold tracking-tight">{label}</h2>
       <Button
-        aria-label={`Collapse ${label.toLowerCase()} sidebar`}
+        aria-keyshortcuts={side === "left" ? "Control+B Meta+B" : "Control+Shift+B Meta+Shift+B"}
+        aria-label={`Hide ${label.toLowerCase()} sidebar`}
         aria-expanded={open}
         data-shell-sidebar-collapse={side}
         size="icon-sm"
-        title={`Collapse ${label.toLowerCase()} sidebar`}
+        title={`Hide ${label.toLowerCase()} sidebar`}
         variant="ghost"
         onClick={onToggle}
       >
@@ -337,9 +331,17 @@ export function AppShell({
           className="flex min-h-12 items-center gap-2 border-b border-border px-3"
           data-shell-region="header"
         >
-          <SidebarToggle side="left" open={leftOpen} onToggle={toggleLeft} />
+          {leftOpen ? (
+            <span aria-hidden="true" className="size-7 shrink-0" />
+          ) : (
+            <SidebarToggle side="left" onToggle={toggleLeft} />
+          )}
           {threadHeader}
-          <SidebarToggle side="right" open={rightOpen} onToggle={toggleRight} />
+          {rightOpen ? (
+            <span aria-hidden="true" className="size-7 shrink-0" />
+          ) : (
+            <SidebarToggle side="right" onToggle={toggleRight} />
+          )}
         </header>
         {/* A labelled region, not role="log": a log is a live region, so every streamed token
             would be announced. U1.8's polite status announces new content instead. */}
@@ -360,6 +362,7 @@ export function AppShell({
         </section>
       </main>
 
+      {/* Its own column: a hidden sessions sidebar must not pull this one into the first column. */}
       <aside
         aria-hidden={!rightOpen}
         aria-label="Panels"
@@ -373,6 +376,7 @@ export function AppShell({
         hidden={!rightOpen}
         id="shell-panels-sidebar"
         style={{
+          gridColumn: isNarrow ? undefined : "3",
           width: sidebarWidth("right", rightOpen),
           zIndex: isNarrow ? zIndexTokens.overlay : undefined,
         }}

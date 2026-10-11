@@ -159,7 +159,7 @@ realTest(
     await exchange(page, composer, "alpha question", 1);
     await exchange(page, composer, "bravo question", 2);
 
-    await page.getByRole("button", { name: "Collapse panels sidebar" }).click();
+    await page.getByRole("button", { name: "Hide panels sidebar" }).click();
     await expectPanelsOpen(page, false);
 
     await composer.focus();

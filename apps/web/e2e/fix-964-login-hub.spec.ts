@@ -136,7 +136,7 @@ realTest(
     const running = agentHub(page).getByRole("option", { name: /Running/ });
     await expect(running).toHaveCount(1, { timeout: 120_000 });
 
-    await page.getByRole("button", { name: "Collapse panels sidebar" }).click();
+    await page.getByRole("button", { name: "Hide panels sidebar" }).click();
     await expect(panels(page)).toHaveAttribute("data-open", "false");
 
     await doubleTapLeft(page, composer);

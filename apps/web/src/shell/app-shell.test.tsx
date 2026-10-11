@@ -52,7 +52,7 @@ describe("right sidebar requests", () => {
     }
     render(<AppShell rightSidebar={<Panel />} />);
     const panels = screen.getByRole("complementary", { name: "Panels" });
-    fireEvent.click(screen.getByRole("button", { name: "Collapse panels sidebar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide panels sidebar" }));
     expect(panels.getAttribute("data-open")).toBe("false");
     expect(seen.current?.open).toBe(false);
     act(() => {
@@ -91,6 +91,33 @@ describe("sidebar controls", () => {
     fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
     expect(sessions.hasAttribute("hidden")).toBe(false);
     expect(panels.hasAttribute("hidden")).toBe(false);
+  });
+
+  test("an open side panel has one control that closes it, and a closed one has one control that opens it", () => {
+    render(<AppShell />);
+    const closers = (label: string) =>
+      screen.queryAllByRole("button", { name: new RegExp(`^(Hide|Collapse) ${label} sidebar$`) });
+    const openers = (label: string) =>
+      screen.queryAllByRole("button", { name: `Show ${label} sidebar` });
+
+    expect(closers("sessions")).toHaveLength(1);
+    expect(openers("sessions")).toHaveLength(0);
+    expect(closers("panels")).toHaveLength(1);
+    expect(openers("panels")).toHaveLength(0);
+
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+    expect(closers("sessions")).toHaveLength(0);
+    expect(openers("sessions")).toHaveLength(1);
+
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
+    expect(closers("panels")).toHaveLength(0);
+    expect(openers("panels")).toHaveLength(1);
+  });
+
+  test("the Panels sidebar keeps its own column when the sessions sidebar is hidden", () => {
+    render(<AppShell />);
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true });
+    expect(screen.getByRole("complementary", { name: "Panels" }).style.gridColumn).toBe("3");
   });
 
   test("does not hijack the typing shortcut inside an editable control", () => {

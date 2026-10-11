@@ -16,13 +16,13 @@ describe("the Agent Hub reveal", () => {
   test("a new reveal opens a collapsed Panels sidebar; the same reveal again leaves it closed", () => {
     const { rerender } = render(shell(0));
     const panels = screen.getByRole("complementary", { name: "Panels" });
-    fireEvent.click(screen.getByRole("button", { name: "Collapse panels sidebar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide panels sidebar" }));
     expect(panels.getAttribute("data-open")).toBe("false");
 
     rerender(shell(1));
     expect(panels.getAttribute("data-open")).toBe("true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Collapse panels sidebar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide panels sidebar" }));
     rerender(shell(1));
     expect(panels.getAttribute("data-open")).toBe("false");
   });
