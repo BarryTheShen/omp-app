@@ -4,7 +4,7 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
-import { type FC, type HTMLAttributes, memo, type ReactNode } from "react";
+import { type FC, type HTMLAttributes, isValidElement, memo, type ReactNode } from "react";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
@@ -35,6 +35,57 @@ function CodeBlock({ className, children, ...props }: HTMLAttributes<HTMLElement
   return <CodeView className="my-3" code={code} language={language} />;
 }
 
+/** A host name at the start of a link's text, not run on into more of a word. */
+const HOST_NAME_AT_START = /^((?:[a-z0-9-]+\.)+[a-z]{2,})(?![\w-]|\.[\w-])/i;
+/** The host of the first scheme-and-host address inside a link's text. */
+const ADDRESS_IN_TEXT = /[a-z][a-z0-9+.-]*:\/\/([^/\s?#:]*)/i;
+
+/** The text a node shows: its strings, and the text inside the elements it holds. */
+function visibleText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(visibleText).join("");
+  if (isValidElement<{ readonly children?: ReactNode }>(node)) {
+    return visibleText(node.props.children);
+  }
+  return "";
+}
+
+/**
+ * The host a link's text names, when the text reads as an address: a scheme and host anywhere in it, or a host name
+ * at its start. "" when it names a scheme but no host; undefined when it reads as no address.
+ */
+function namedHost(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (trimmed.includes("://")) return ADDRESS_IN_TEXT.exec(trimmed)?.[1] ?? "";
+  return HOST_NAME_AT_START.exec(trimmed)?.[1];
+}
+
+function normalizeHost(host: string): string {
+  return host
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .replace(/^www\./, "");
+}
+
+function hostOf(href: string): string | undefined {
+  try {
+    return new URL(href).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a link shows its address next to its text. A link does not (issue 825): its address is its tooltip. The
+ * exception is a text that names another host than the link's own, a disguised link, which keeps its address visible.
+ */
+function showsAddressNextToText(text: string, href: string): boolean {
+  const named = namedHost(text);
+  if (named === undefined) return false;
+  const actual = hostOf(href);
+  return actual === undefined || normalizeHost(named) !== normalizeHost(actual);
+}
+
 function Link({
   href,
   children,
@@ -45,6 +96,16 @@ function Link({
 }) {
   const safe = href?.startsWith("https://") === true || href?.startsWith("http://") === true;
   if (!safe) return <span {...props}>{children}</span>;
+  const text = visibleText(children);
+  if (!showsAddressNextToText(text, href)) {
+    // A bare URL's text is its address, so it shows once and needs no tooltip.
+    const title = text.trim() === href ? undefined : href;
+    return (
+      <a {...props} href={href} rel="noopener noreferrer" target="_blank" title={title}>
+        {children}
+      </a>
+    );
+  }
   return (
     <span className="inline">
       <a {...props} href={href} rel="noopener noreferrer" target="_blank">

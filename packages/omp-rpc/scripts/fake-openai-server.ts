@@ -268,6 +268,19 @@ function reply(request: Request): Reply {
     const word = /count_reply\s+(\S+)/.exec(prompt)?.[1] ?? "";
     return { text: `count-${countedReplies} ${word}`, thinking: "I will count this turn." };
   }
+  // A reply with a markdown link and a bare URL, for the link-address spec (issue #825).
+  if (prompt.includes("link_probe"))
+    return {
+      text: "A [link to example](https://example.com/page) and a bare https://example.org link. Check [example.com](https://evil.test/login) before you sign in.",
+    };
+  // A link to another host whose text is a host name of N characters, for the 390 px wrap spec (issue 944): where
+  // the address starts on a 390 px line decides whether a line can break inside its scheme.
+  if (prompt.includes("link_wrap_probe")) {
+    const label = Number(/link_wrap_probe\s+(\d+)/.exec(prompt)?.[1] ?? 0);
+    return {
+      text: `Read this: [${"x".repeat(label)}.example.test](https://other.example.net/login/page/one) is the page to use.`,
+    };
+  }
   return { text: "pong", thinking: "I will answer pong." };
 }
 

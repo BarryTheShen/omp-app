@@ -54,22 +54,25 @@ describe("U1.4 Markdown renderer", () => {
     expect(await screen.findByText(/safe/)).toBeTruthy();
   });
 
-  test("opens safe links in a new tab with a visible destination", async () => {
+  test("opens safe links in a new tab, and the address is the tooltip rather than text after the link", async () => {
     render(<MarkdownHarness text="[Read docs](https://example.test/docs)" />);
     const link = await screen.findByRole("link", { name: "Read docs" });
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toContain("noopener");
-    expect(screen.getByText("(https://example.test/docs)")).toBeTruthy();
+    expect(link.getAttribute("title")).toBe("https://example.test/docs");
+    expect(screen.queryByText("(https://example.test/docs)")).toBeNull();
   });
 
-  test("a link's address follows a break opportunity, so a narrow line breaks before it and not inside its scheme", async () => {
-    render(<MarkdownHarness text="[Read docs](https://example.test/docs)" />);
-    const link = await screen.findByRole("link", { name: "Read docs" });
-    const destination = screen.getByText("(https://example.test/docs)");
+  test("a link whose text names another host shows its address after a break opportunity, so a narrow line breaks before it and not inside its scheme", async () => {
+    render(<MarkdownHarness text="[docs.example.test](https://other.example.net/login)" />);
+    const link = await screen.findByRole("link", { name: "docs.example.test" });
+    const destination = screen.getByText("(https://other.example.net/login)");
     expect(link.nextElementSibling?.tagName).toBe("WBR");
     expect(link.nextElementSibling?.nextElementSibling).toBe(destination);
     // The break opportunity adds no text: what is copied stays the same.
-    expect(link.parentElement?.textContent).toBe("Read docs(https://example.test/docs)");
+    expect(link.parentElement?.textContent).toBe(
+      "docs.example.test(https://other.example.net/login)",
+    );
   });
 
   test("renders partial fences and GFM tables without a second renderer", async () => {
