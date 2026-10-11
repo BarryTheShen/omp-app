@@ -51,6 +51,8 @@ export interface CatalogSnapshot extends SessionCatalogState {
   readonly scope: SessionScope;
   readonly git: GitState | null;
   readonly pinsRevision: Revision | null;
+  /** The message the last chat action got from the server (a refused delete), until the next action starts. */
+  readonly actionError?: string;
 }
 
 function internalFailure(error: unknown, fallback: string): AppFailure {
@@ -185,6 +187,15 @@ export class SessionCatalogModel {
   public subscribe(listener: (snapshot: CatalogSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * Holds the message of the last chat action the server refused, until the next action starts. It lives on the list,
+   * not on the sidebar that started the action, so it still shows after that sidebar is rebuilt (a chat switch does it).
+   */
+  public setActionError(message: string | undefined): void {
+    if (this.snapshot.actionError === message) return;
+    this.commit({ actionError: message });
   }
 
   public async list(args: SessionCatalogPageArgs): Promise<SessionCatalogPage> {

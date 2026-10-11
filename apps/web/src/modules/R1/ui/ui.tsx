@@ -26,6 +26,8 @@ export interface SessionCatalogSidebarProps {
   readonly onNewChatStatus?: (status: NewChatStatus) => void;
   readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
+  /** Asks before a chat is deleted; the chat is deleted only when this resolves true. `title` is the chat's name. */
+  readonly confirmDelete?: (session: SessionMetadata, title: string) => Promise<boolean> | boolean;
 }
 
 function highlight(text: string, query: string): React.ReactNode {
@@ -150,6 +152,7 @@ export function SessionCatalogSidebar({
   onNewChat,
   onNewChatStatus,
   onPinChange,
+  confirmDelete,
 }: SessionCatalogSidebarProps) {
   const snapshot = catalog.getSnapshot();
   const [query, setQuery] = useState(snapshot.filter.query);
@@ -175,8 +178,10 @@ export function SessionCatalogSidebar({
   const renameStatus = useCapabilityStatus("omp.cmd.set_session_name");
   const archiveStatus = useCapabilityStatus("upstream.session-archive");
   const pinStatus = useCapabilityStatus("host.session-pins");
+  const deleteStatus = useCapabilityStatus("host.session-files");
   const canRename = renameStatus?.state === "available" || renameStatus?.state === "fallback";
   const canPin = pinStatus?.state === "available" || pinStatus?.state === "fallback";
+  const canDelete = deleteStatus?.state === "available" || deleteStatus?.state === "fallback";
 
   useEffect(() => {
     const unsubscribe = catalog.subscribe(() => {
@@ -234,11 +239,13 @@ export function SessionCatalogSidebar({
   }, [focusRowId]);
 
   const openSession = async (session: SessionMetadata): Promise<void> => {
+    catalog.setActionError(undefined);
     const initialized = await unlessSuperseded(remote.initialize(session.id));
     if (initialized) await onOpenThread?.(initialized.remoteId as ThreadId);
   };
 
   const createNewChat = async (): Promise<void> => {
+    catalog.setActionError(undefined);
     onNewChatStatus?.({ state: "opening" });
     try {
       const initialized = await unlessSuperseded(remote.initialize("new"));
@@ -256,6 +263,7 @@ export function SessionCatalogSidebar({
   };
 
   const beginRename = (session: SessionMetadata): void => {
+    catalog.setActionError(undefined);
     setEditingId(session.id);
     // The box opens with the title the row shows (omp's, else the first prompt), and it is selected.
     setEditingTitle(sessionTitle(session));
@@ -364,7 +372,10 @@ export function SessionCatalogSidebar({
           aria-label="Search sessions"
           placeholder="Search sessions"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            catalog.setActionError(undefined);
+            setQuery(event.target.value);
+          }}
         />
       </div>
       {snapshot.isLoading && !snapshot.isLoaded && (
@@ -390,6 +401,11 @@ export function SessionCatalogSidebar({
       {renameError && (
         <p className="text-destructive px-3 py-1 text-xs leading-snug" role="alert">
           {renameError}
+        </p>
+      )}
+      {snapshot.actionError && (
+        <p className="text-destructive px-3 py-1 text-xs leading-snug" role="alert">
+          {snapshot.actionError}
         </p>
       )}
       {snapshot.isLoaded && sessions.length === 0 && activeSearch.length === 0 && (
@@ -550,6 +566,7 @@ export function SessionCatalogSidebar({
                             variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
+                              catalog.setActionError(undefined);
                               setMenuSessionId(menuOpen ? undefined : session.id);
                             }}
                             onKeyDown={(event) => {
@@ -615,12 +632,38 @@ export function SessionCatalogSidebar({
                         </Button>
                         <Button
                           aria-label={`Delete ${title}`}
-                          disabled
+                          disabled={!canDelete}
                           role="menuitem"
                           size="xs"
-                          title="Deleting a chat isn't available in the app yet."
+                          title={
+                            canDelete
+                              ? "Delete"
+                              : capabilityReason(
+                                  deleteStatus,
+                                  "Deleting a chat isn't available in the app yet.",
+                                )
+                          }
                           type="button"
                           variant="ghost"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            setMenuSessionId(undefined);
+                            if (!canDelete || !(await confirmDelete?.(session, title))) return;
+                            catalog.setActionError(undefined);
+                            try {
+                              // The view leaves an open chat first. The server then sees nobody watching it, stops its
+                              // omp and deletes the file. A refusal is kept on the catalog, so it still shows if this
+                              // sidebar is rebuilt in the meantime.
+                              if (session.id === currentThreadId) await createNewChat();
+                              await remote.delete(session.id);
+                            } catch (error) {
+                              catalog.setActionError(
+                                error instanceof Error
+                                  ? error.message
+                                  : "The chat could not be deleted.",
+                              );
+                            }
+                          }}
                         >
                           Delete
                         </Button>

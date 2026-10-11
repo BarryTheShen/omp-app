@@ -19,10 +19,15 @@ export function DialogFrame({
   return (
     <div className="flex max-h-[70dvh] flex-col gap-4" data-testid="dialog-frame">
       <header className="flex flex-col gap-1">
-        <h2 id={labelledBy} className="text-base font-medium text-popover-foreground">
+        <h2
+          id={labelledBy}
+          className="text-base font-medium text-popover-foreground [overflow-wrap:anywhere]"
+        >
           {title}
         </h2>
-        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+        {description ? (
+          <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{description}</p>
+        ) : null}
       </header>
       <div className="min-h-0 overflow-y-auto text-sm">{children}</div>
       <footer className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">

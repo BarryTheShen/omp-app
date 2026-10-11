@@ -417,11 +417,186 @@ describe("SessionCatalogSidebar", () => {
     expect(calls).toEqual([]);
   });
 
-  test("Delete is shown disabled with the plain reason, even when the command gateway reports available", async () => {
+  test("Delete asks first, and a chat stays when the question is answered no", async () => {
+    const calls: string[] = [];
+    const asked: string[] = [];
     render(
       withRegistry(
         createRegistry([]),
-        { "host.command-gateway": { state: "available", via: "rpc" } },
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={(_session, title) => {
+            asked.push(title);
+            return false;
+          }}
+          remote={fakeRemote(calls)}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+    await waitFor(() => expect(asked).toEqual(["Newest chat"]));
+    expect(calls).toEqual([]);
+    expect(screen.getByText("Newest chat")).toBeTruthy();
+  });
+
+  test("deleting the open chat starts a new chat first, and a refusal from the server is shown as its sentence", async () => {
+    const calls: string[] = [];
+    const refused = new AppFailure({
+      code: "conflict",
+      message: "Close this chat before deleting it: omp has it open.",
+      retryable: true,
+    });
+    const remote = {
+      ...fakeRemote(calls),
+      delete: async (id: string) => {
+        calls.push(`delete:${id}`);
+        throw refused;
+      },
+    };
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={() => true}
+          currentThreadId={ThreadIdSchema.parse("new")}
+          remote={remote}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Close this chat before deleting it: omp has it open.");
+    expect(calls).toEqual(["initialize:new", "delete:new"]);
+  });
+
+  test("a refusal still shows after the sidebar that started the delete is rebuilt, because the catalog holds it", async () => {
+    const calls: string[] = [];
+    const gate = Promise.withResolvers<void>();
+    const catalog = modelWithSessions();
+    const remote = {
+      ...fakeRemote(calls),
+      delete: async (id: string) => {
+        calls.push(`delete:${id}`);
+        await gate.promise;
+        throw new AppFailure({
+          code: "conflict",
+          message: "Close this chat before deleting it: omp has it open.",
+          retryable: true,
+        });
+      },
+    };
+    const registry = { "host.session-files": { state: "available", via: "rpc" } } as const;
+    const sidebar = (
+      <SessionCatalogSidebar
+        catalog={catalog}
+        confirmDelete={() => true}
+        currentThreadId={ThreadIdSchema.parse("other")}
+        remote={remote}
+      />
+    );
+    const first = render(withRegistry(createRegistry([]), registry, sidebar));
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    // The chat switch rebuilds the sidebar while the server is still answering.
+    first.unmount();
+    render(withRegistry(createRegistry([]), registry, sidebar));
+    gate.resolve();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Close this chat before deleting it: omp has it open.");
+  });
+
+  /** Renders a sidebar whose Delete the server refuses, and waits until the refusal shows. */
+  async function showRefusedDelete(): Promise<void> {
+    const calls: string[] = [];
+    const remote = {
+      ...fakeRemote(calls),
+      delete: async (id: string) => {
+        calls.push(`delete:${id}`);
+        throw new AppFailure({
+          code: "conflict",
+          message: "Close this chat before deleting it: omp has it open.",
+          retryable: true,
+        });
+      },
+    };
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={() => true}
+          currentThreadId={ThreadIdSchema.parse("other")}
+          remote={remote}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+    await screen.findByRole("alert");
+  }
+
+  test("a refusal stays on the list until the person does something in it", async () => {
+    await showRefusedDelete();
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Close this chat before deleting it: omp has it open.",
+    );
+  });
+
+  test("opening a chat clears a refusal", async () => {
+    await showRefusedDelete();
+    fireEvent.click(screen.getByRole("option", { name: /Newest chat/ }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  test("starting a new chat clears a refusal", async () => {
+    await showRefusedDelete();
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  test("opening a chat's menu clears a refusal", async () => {
+    await showRefusedDelete();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  test("starting a rename clears a refusal", async () => {
+    await showRefusedDelete();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename Newest chat" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  test("typing in the search clears a refusal", async () => {
+    await showRefusedDelete();
+    fireEvent.change(screen.getByPlaceholderText("Search sessions"), {
+      target: { value: "newest" },
+    });
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  test("Delete is disabled, with a reason, when the session-file port is not available", async () => {
+    render(
+      withRegistry(
+        createRegistry([]),
+        {},
         <SessionCatalogSidebar catalog={modelWithSessions()} remote={fakeRemote([])} />,
       ),
     );

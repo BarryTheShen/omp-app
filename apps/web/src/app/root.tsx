@@ -116,6 +116,7 @@ import {
   type HostRequestAnswer,
 } from "@/modules/U4/contract/host-answers";
 import { renderDialogRequest } from "@/modules/U4/dialogs";
+import { openChatDeleteConfirm } from "@/modules/U4/dialogs/confirm-chat-delete";
 import { DialogHostController, useDisposeWhenReplaced } from "@/modules/U4/host";
 import {
   ExtensionUiRequestRouterController,
@@ -666,6 +667,7 @@ function ActiveThreadReady({
               await openThread(selectedThreadId);
               close("programmatic");
             }}
+            confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
             remote={remote}
           />
         </div>
@@ -1515,6 +1517,7 @@ function ConnectedApp({
             currentThreadId={history.threadId}
             onNewChat={openThread}
             onOpenThread={openThread}
+            confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
             remote={remote}
             onNewChatStatus={setNewChat}
           />
