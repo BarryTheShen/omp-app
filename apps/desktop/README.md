@@ -60,6 +60,17 @@ sudo apt remove omp-app-desktop
 
 Removing the package leaves the `omp-app` command package and omp itself alone.
 
+## Checks by hand
+
+These two need a person at a real desktop: the automated runs use a virtual display, where the input method and the window manager differ (see #1124, which stays open until these are answered).
+
+1. Open "omp app" from the applications menu. Click New chat, click the message box, press Ctrl+K, and type `deb`. Expected: `deb` appears in the "Search commands" box. Press Escape. Expected: the palette closes. Write down what you see for each.
+2. In a terminal, run this line. Expected: the input-method and display settings of the window, one per line (for example `XMODIFIERS=...`). If nothing prints, open "omp app" first, then run it again.
+
+   ```
+   tr '\0' '\n' < /proc/$(pgrep -n omp-app-desktop)/environ | grep -E 'XMODIFIERS|GTK_IM|QT_IM|GDK_BACKEND'
+   ```
+
 ## Limits
 
 - If the window process is killed outright (for example with `kill -9`), the kernel tells the server to stop, and the server ends the omp processes it started. A command that omp runs in its own session can keep running after that, because the stop does not reach it.
