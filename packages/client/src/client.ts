@@ -633,10 +633,14 @@ class AppClientImpl implements AppClient {
         );
       } catch (error) {
         // A disconnect during resume is retried on the next welcome. A refusal from the server is
-        // final for this record: stop it and tell consumers instead of going silent.
+        // final for this record: stop it and tell consumers instead of going silent. The record leaves the map, so a
+        // later subscribe to the stream makes a fresh record instead of joining this dead one.
         if (!this.welcomeReceived || this.disposed) continue;
         record.active = false;
         record.subscribed = false;
+        if (this.subscriptions.get(record.stream) === record)
+          this.subscriptions.delete(record.stream);
+        record.listeners.clear();
         this.emitResync({
           reason: "subscription-failed",
           stream: record.stream,

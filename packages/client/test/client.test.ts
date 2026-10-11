@@ -406,6 +406,31 @@ describe("createAppClient", () => {
     client.dispose();
   });
 
+  test("a refused resubscribe leaves no record: a later subscribe sends a new request and its events arrive", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const failures: string[] = [];
+    client.onResync((event) => {
+      if (event.reason === "subscription-failed") failures.push(event.reason);
+    });
+    await client.subscribe(EventPort, "updated", { scope: "thread-1" });
+    server.refusedSubscriptions.add(1);
+    server.closeCurrent();
+    await eventually(() => failures.length === 1);
+    // The server takes subscribes again: a later subscribe must make a new record, not join the refused one.
+    server.refusedSubscriptions.delete(1);
+    const seqs: number[] = [];
+    const later = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (_payload, seq) => seqs.push(seq),
+    });
+    expect(server.subscribeAfterSeq).toHaveLength(3);
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => seqs.length === 1);
+    expect(later.lastSeq).toBe(1);
+    client.dispose();
+  });
+
   test("a listener attached twice gets each event once, and the detach its onEvent returns removes it", async () => {
     const server = new FakeServer();
     const client = await openClient(server);
