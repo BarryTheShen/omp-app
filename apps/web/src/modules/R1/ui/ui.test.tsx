@@ -280,6 +280,27 @@ describe("SessionCatalogSidebar", () => {
     await waitFor(() => expect(opened).toEqual(["third"]));
   });
 
+  test("Alt, Ctrl, Meta and Shift combinations are left to the browser: the arrow keys do not move the list", async () => {
+    renderSidebar({
+      catalog: modelWithSessions([
+        session("first", "2026-10-05T00:00:00.000Z", "First chat"),
+        session("second", "2026-10-04T00:00:00.000Z", "Second chat"),
+      ]),
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const [first, second] = screen.getAllByRole("option");
+    if (!first || !second) throw new Error("Expected two chat rows.");
+    first.focus();
+    expect(fireEvent.keyDown(first, { key: "ArrowDown", altKey: true })).toBe(true);
+    expect(fireEvent.keyDown(first, { key: "ArrowDown", shiftKey: true })).toBe(true);
+    expect(fireEvent.keyDown(first, { key: "End", ctrlKey: true })).toBe(true);
+    expect(fireEvent.keyDown(first, { key: "ArrowDown", metaKey: true })).toBe(true);
+    expect(document.activeElement).toBe(first);
+    // A plain arrow still moves to the next row.
+    expect(fireEvent.keyDown(first, { key: "ArrowDown" })).toBe(false);
+    expect(document.activeElement).toBe(second);
+  });
+
   test("the list is not a tab stop of its own: the focused row and its More actions button are", async () => {
     renderSidebar({
       catalog: modelWithSessions([

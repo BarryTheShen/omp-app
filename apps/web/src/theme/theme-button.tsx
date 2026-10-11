@@ -32,6 +32,8 @@ export function ThemeButton() {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: ThemePreference): void => {
+    // Alt, Ctrl, Meta and Shift combinations belong to the browser (Alt+Left is Back): only plain arrows step.
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const step =
       event.key === "ArrowRight" || event.key === "ArrowDown"
         ? 1

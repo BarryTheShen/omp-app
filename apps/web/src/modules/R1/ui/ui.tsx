@@ -336,6 +336,8 @@ export function SessionCatalogSidebar({
     else if (event.key === "Home") next = 0;
     else if (event.key === "End") next = last;
     if (next !== undefined) {
+      // Alt, Ctrl, Meta and Shift combinations belong to the browser (Alt+Left is Back): the list keeps plain keys only.
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       // The focus itself moves, so the row the arrow keys reach is the row Enter opens.
       event.preventDefault();
       const row = sessions[next];

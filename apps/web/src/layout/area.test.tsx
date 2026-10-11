@@ -129,6 +129,28 @@ describe("LayoutArea", () => {
     expect(document.activeElement).toBe(todo);
   });
 
+  test("Alt, Ctrl, Meta and Shift combinations are left to the browser: the tabs do not move", () => {
+    render(
+      <LayoutArea
+        area="panels"
+        layout={layoutWith({ panels: ["todo", "queue", "model"] })}
+        surfaces={surfaces}
+      />,
+    );
+    const todo = screen.getByRole("tab", { name: "Todo checklist" });
+    todo.focus();
+    // fireEvent.keyDown returns false when a handler prevented the default, so these must stay true.
+    expect(fireEvent.keyDown(todo, { key: "ArrowRight", altKey: true })).toBe(true);
+    expect(fireEvent.keyDown(todo, { key: "ArrowLeft", shiftKey: true })).toBe(true);
+    expect(fireEvent.keyDown(todo, { key: "End", ctrlKey: true })).toBe(true);
+    expect(fireEvent.keyDown(todo, { key: "Home", metaKey: true })).toBe(true);
+    expect(document.activeElement).toBe(todo);
+    expect(todo.getAttribute("aria-selected")).toBe("true");
+    // A plain arrow still moves along the tabs.
+    expect(fireEvent.keyDown(todo, { key: "ArrowRight" })).toBe(false);
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Queued messages" }));
+  });
+
   test("only the selected tab is in the Tab order; each tab is linked to the tabpanel", () => {
     render(
       <LayoutArea

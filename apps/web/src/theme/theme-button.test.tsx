@@ -140,4 +140,15 @@ describe("the theme control", () => {
     fireEvent.keyDown(radio("System"), { key: "ArrowLeft" });
     expect(radio("Dark").getAttribute("aria-checked")).toBe("true");
   });
+
+  test("Alt, Ctrl, Meta and Shift combinations are left to the browser: the choice does not move", () => {
+    renderApp();
+    radio("System").focus();
+    expect(fireEvent.keyDown(radio("System"), { key: "ArrowRight", altKey: true })).toBe(true);
+    expect(fireEvent.keyDown(radio("System"), { key: "ArrowLeft", shiftKey: true })).toBe(true);
+    expect(fireEvent.keyDown(radio("System"), { key: "ArrowDown", ctrlKey: true })).toBe(true);
+    expect(fireEvent.keyDown(radio("System"), { key: "ArrowUp", metaKey: true })).toBe(true);
+    expect(radio("System").getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(radio("System"));
+  });
 });

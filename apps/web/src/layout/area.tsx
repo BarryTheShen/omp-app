@@ -152,6 +152,8 @@ function PanelArea({ panels }: { readonly panels: ListedPanels }) {
   const panelId = `${idPrefix}-panel`;
   /** Focus and selection move to the tab a key names; any other key is left alone. */
   function moveToTab(event: KeyboardEvent<HTMLButtonElement>, from: SurfaceId): void {
+    // Alt, Ctrl, Meta and Shift combinations belong to the browser (Alt+Left is Back), so the tabs keep plain keys only.
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const target = tabKeyTarget(
       event.key,
       panels.map(([id]) => id),
