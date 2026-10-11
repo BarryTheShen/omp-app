@@ -125,9 +125,10 @@ describe("BashCard", () => {
     expect(screen.queryByText("Waiting for bash output…")).toBeNull();
   });
 
-  test("says it is waiting for output only while the command can still print", () => {
+  test("says no output has come yet while the command runs, and never that it is waiting", () => {
     const { unmount } = render(<BashCard rendererProps={props(undefined, { type: "running" })} />);
-    expect(screen.getByText("Waiting for bash output…")).toBeTruthy();
+    expect(screen.getByText("No output yet.")).toBeTruthy();
+    expect(screen.queryByText(/Waiting/)).toBeNull();
     unmount();
 
     render(
@@ -139,7 +140,7 @@ describe("BashCard", () => {
       />,
     );
     // A command that was stopped before it printed anything has one state, not two.
-    expect(screen.queryByText("Waiting for bash output…")).toBeNull();
+    expect(screen.queryByText("No output yet.")).toBeNull();
     expect(screen.getByText("No output was recorded.")).toBeTruthy();
     expect(screen.getByTestId("tool-card-stopped-call").getAttribute("data-phase")).toBe(
       "cancelled",
