@@ -14,7 +14,7 @@ const viewports = [
 async function expectComposerStyles(page: Page, dark: boolean): Promise<void> {
   const styles = await page.evaluate(() => {
     const input = document.querySelector<HTMLTextAreaElement>('[aria-label="Message input"]');
-    const surface = input?.parentElement;
+    const surface = input?.closest("[data-composer-card]");
     if (!input || !surface) {
       return {
         dark: document.documentElement.classList.contains("dark"),
@@ -123,7 +123,7 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
         send.boundingBox(),
         composer.boundingBox(),
         composer.evaluate((input) => {
-          const surface = input.parentElement;
+          const surface = input.closest("[data-composer-card]");
           if (!surface) throw new Error("Composer card is missing");
           const rect = surface.getBoundingClientRect();
           return {

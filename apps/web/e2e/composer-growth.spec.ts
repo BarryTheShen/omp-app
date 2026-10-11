@@ -14,7 +14,7 @@ const viewports = [
 async function expectComposerStyles(page: Page, dark: boolean) {
   const styles = await page.evaluate(() => {
     const input = document.querySelector<HTMLTextAreaElement>('[aria-label="Message input"]');
-    const surface = input?.parentElement;
+    const surface = input?.closest("[data-composer-card]");
     if (!surface) {
       return {
         dark: document.documentElement.classList.contains("dark"),
@@ -62,7 +62,7 @@ async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Pr
         .poll(inputHeight, { message: `${theme} ${viewport.name}px: empty input is one line` })
         .toBeLessThanOrEqual(32);
       const emptyMetrics = await composer.evaluate((input) => {
-        const card = input.parentElement;
+        const card = input.closest("[data-composer-card]");
         if (!card) throw new Error("Composer card is missing");
         return {
           inputHeight: input.getBoundingClientRect().height,
@@ -82,7 +82,7 @@ async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Pr
         .poll(inputHeight, { message: `${theme} ${viewport.name}px: reaches its cap` })
         .toBeGreaterThanOrEqual(200);
       const cappedInput = await composer.evaluate((input) => {
-        const card = input.parentElement;
+        const card = input.closest("[data-composer-card]");
         if (!card) throw new Error("Composer card is missing");
         return {
           height: input.getBoundingClientRect().height,

@@ -323,7 +323,10 @@ export function ComposerSurface({
     >
       <ComposerPrimitive.AttachmentDropzone
         render={
-          <div className="border-border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring/50 focus-within:ring-offset-2 data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-(--space-sm) rounded-(--radius) border p-(--space-sm) outline-none transition-[border-color,box-shadow] data-[dragging=true]:border-dashed" />
+          <div
+            data-composer-card="true"
+            className="border-border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring/50 focus-within:ring-offset-2 data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-(--space-sm) rounded-(--radius) border p-(--space-sm) outline-none transition-[border-color,box-shadow] data-[dragging=true]:border-dashed"
+          />
         }
       >
         <div
