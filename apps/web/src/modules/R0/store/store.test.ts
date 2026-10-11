@@ -1362,4 +1362,25 @@ describe("OmpRuntimeStore", () => {
     // One row, now keyed by its saved entry: no second copy from the history.
     expect(store.getSnapshot().messageOrder).toEqual([`entry:${threadId}:c1`]);
   });
+
+  test("a state frame the server holds reaches the subscribers as a replayed frame, and moves no sequence", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "process", status: "ready" }, 1);
+    const heard: Array<{ id: string; seq: number; replayed: boolean }> = [];
+    store.subscribeNotifications(["extension_ui_request"], (frame, seq, replayed) => {
+      heard.push({ id: "id" in frame ? String(frame.id) : frame.type, seq, replayed });
+    });
+    store.recordState(
+      {
+        type: "extension_ui_request",
+        id: "state-build",
+        method: "setStatus",
+        statusKey: "build",
+        statusText: "Running",
+      },
+      2,
+    );
+    expect(heard).toEqual([{ id: "state-build", seq: 2, replayed: true }]);
+    expect(store.getSnapshot().lastSeq).toBe(1);
+  });
 });

@@ -503,4 +503,44 @@ describe("NotificationProjector", () => {
     ).toBe(threadId);
     projector.dispose();
   });
+
+  test("a replayed omp notice is shown but not read aloud again, at any level; a new one is read politely", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const projector = new NotificationProjector({ source: store, events: store });
+    const omp = (message: string, level: "info" | "warning") =>
+      ({ kind: "omp", event: { type: "notice", level, message } }) as unknown as RpcSessionEvent;
+    store.ingest(omp("Replayed info", "info"), 1, true);
+    store.ingest(omp("Replayed warning", "warning"), 2, true);
+    store.ingest(omp("New warning", "warning"), 3);
+    const live = Object.fromEntries(
+      projector
+        .getBus()
+        .getSnapshot()
+        .notifications.map((item) => [item.message, item.live]),
+    );
+    expect(live).toEqual({
+      "Replayed info": "off",
+      "Replayed warning": "off",
+      "New warning": "polite",
+    });
+    projector.dispose();
+  });
+
+  test("a replayed notice shows, but is not live, so it is not read aloud again", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const projector = new NotificationProjector({ source: store });
+    projector.present(
+      { kind: "notify", message: "Replayed notice", notifyType: "error" },
+      { threadId, replayed: true },
+    );
+    projector.present({ kind: "notify", message: "New notice", notifyType: "error" }, { threadId });
+    const live = Object.fromEntries(
+      projector
+        .getBus()
+        .getSnapshot()
+        .notifications.map((notification) => [notification.message, notification.live]),
+    );
+    expect(live).toEqual({ "Replayed notice": "off", "New notice": "assertive" });
+    projector.dispose();
+  });
 });

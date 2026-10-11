@@ -19,6 +19,8 @@ export interface RouterContext {
   readonly threadId: ThreadId;
   readonly signal?: AbortSignal;
   readonly sequence?: number;
+  /** Replayed from the chat's history rather than new; a replayed notice is shown but not announced again. */
+  readonly replayed?: boolean;
 }
 
 export interface ExtensionUiRequestRouter {

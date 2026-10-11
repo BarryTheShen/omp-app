@@ -217,6 +217,71 @@ export const OpenQuestions = z.array(
 );
 export type OpenQuestionRecord = z.infer<typeof OpenQuestions>[number];
 
+/**
+ * A state omp holds for the page: a status, a widget or a title. omp sends each as an event that describes the state
+ * now, and does not send it again, so a page that was not subscribed when it was sent never sees it. The server keeps
+ * the latest of each (see `stateFrames`).
+ */
+export type StateFrame = Extract<
+  OmpWire.ExtensionUiRequest,
+  { readonly method: "setStatus" | "setWidget" | "setTitle" }
+>;
+
+const STATE_METHODS: Record<string, true> = {
+  setStatus: true,
+  setWidget: true,
+  setTitle: true,
+};
+
+/** Whether an extension UI request describes state that stays until omp replaces or clears it. */
+export function isStateFrame(request: OmpWire.ExtensionUiRequest): request is StateFrame {
+  return STATE_METHODS[request.method] === true;
+}
+
+/** The key a state frame replaces: a status by its key, a widget by its key, and the title alone. */
+export function stateFrameKey(frame: StateFrame): string {
+  switch (frame.method) {
+    case "setStatus":
+      return `status:${frame.statusKey}`;
+    case "setWidget":
+      return `widget:${frame.widgetKey}`;
+    case "setTitle":
+      return "title";
+  }
+}
+
+/** Whether a state frame clears what it names: omp sends a status or a widget with no text or lines to clear it. */
+export function clearsStateFrame(frame: StateFrame): boolean {
+  switch (frame.method) {
+    case "setStatus":
+      return frame.statusText === undefined;
+    case "setWidget":
+      return frame.widgetLines === undefined;
+    case "setTitle":
+      return false;
+  }
+}
+
+const StateFrameSchema = z.custom<StateFrame>(
+  (value) => {
+    const parsed = WireRecord.safeParse(value);
+    return (
+      parsed.success &&
+      parsed.data.type === "extension_ui_request" &&
+      UiRequestId.safeParse(parsed.data.id).success &&
+      typeof parsed.data.method === "string" &&
+      STATE_METHODS[parsed.data.method] === true
+    );
+  },
+  { message: "expected a status, widget or title" },
+);
+
+/** The state a chat's omp holds, each frame with the sequence of the event that set it, oldest first. */
+export const StateFrames = z.array(
+  z.strictObject({ seq: z.int().min(1), request: StateFrameSchema }),
+);
+export type StateFrameRecord = z.infer<typeof StateFrames>[number];
+
 export const AnswerHostToolArgs = z
   .object({
     threadId: ThreadId,
@@ -439,6 +504,10 @@ export const RpcSessionPort = definePort({
     openQuestions: {
       args: ThreadRef,
       result: OpenQuestions,
+    },
+    stateFrames: {
+      args: ThreadRef,
+      result: StateFrames,
     },
     answerHostTool: {
       args: AnswerHostToolArgs,

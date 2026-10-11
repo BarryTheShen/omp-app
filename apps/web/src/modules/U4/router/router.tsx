@@ -332,7 +332,7 @@ export function subscribeNonModalExtensionUi(
 ): () => void {
   return store.subscribeNotifications(
     ["extension_ui_request"],
-    (frame, seq) => void router.routeNotification(frame, seq, context),
+    (frame, seq, replayed) => void router.routeNotification(frame, seq, { ...context, replayed }),
   );
 }
 

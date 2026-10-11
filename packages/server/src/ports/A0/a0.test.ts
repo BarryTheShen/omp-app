@@ -906,6 +906,97 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(openQuestions()).toEqual([]);
   });
 
+  test("keeps the status, widget and title omp last set until each is replaced or cleared, and a restart drops them", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const stateFrames = () =>
+      getHandler(handlers, "stateFrames")({ threadId: authorityThread }, call("one")) as Array<{
+        seq: number;
+        request: { id: string };
+      }>;
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "status-1",
+      method: "setStatus",
+      statusKey: "build",
+      statusText: "Running",
+    });
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "widget-1",
+      method: "setWidget",
+      widgetKey: "build",
+      widgetLines: ["Building"],
+    });
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "status-2",
+      method: "setStatus",
+      statusKey: "build",
+      statusText: "Done",
+    });
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "status-lint",
+      method: "setStatus",
+      statusKey: "lint",
+      statusText: "Clean",
+    });
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "title-1",
+      method: "setTitle",
+      title: "Build status",
+    });
+    const stream = (await getHandler(handlers, "subscribe")(
+      { threadId: authorityThread },
+      call("one"),
+    )) as { stream: StreamKey };
+    const replay = runtimeContext.replay.replay(stream.stream, 0);
+    if ("error" in replay) throw new Error("unexpected replay conflict");
+    // Each key holds its latest frame, with the sequence that set it, oldest first.
+    expect(stateFrames().map((frame) => frame.request.id)).toEqual([
+      "widget-1",
+      "status-2",
+      "status-lint",
+      "title-1",
+    ]);
+    expect(stateFrames().map((frame) => frame.seq)).toEqual([
+      seqOfRequest(replay.frames, "widget-1"),
+      seqOfRequest(replay.frames, "status-2"),
+      seqOfRequest(replay.frames, "status-lint"),
+      seqOfRequest(replay.frames, "title-1"),
+    ]);
+    // A status or a widget sent with no text or lines clears what it names.
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "status-clear",
+      method: "setStatus",
+      statusKey: "build",
+    });
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "widget-clear",
+      method: "setWidget",
+      widgetKey: "build",
+    });
+    expect(stateFrames().map((frame) => frame.request.id)).toEqual(["status-lint", "title-1"]);
+    // A later title replaces the earlier one: the title key holds only the latest.
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "title-2",
+      method: "setTitle",
+      title: "Build done",
+    });
+    expect(stateFrames().map((frame) => frame.request.id)).toEqual(["status-lint", "title-2"]);
+    await getHandler(handlers, "restart")({ threadId: authorityThread }, call("one"));
+    expect(stateFrames()).toEqual([]);
+  });
+
   test("a restart drops the questions of the omp it replaces, since the new omp cannot answer them", async () => {
     const created: FakeProcess[] = [];
     const runtimeContext = context(created);

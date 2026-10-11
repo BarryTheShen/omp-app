@@ -7,8 +7,10 @@ import {
   AppFailure,
   type AppHealth,
   type CapabilityMap,
+  clearsStateFrame,
   type FolderPath,
   isOpenQuestion,
+  isStateFrame,
   type OmpWire,
   type OpenQuestionRecord,
   type OpenThreadArgs,
@@ -21,8 +23,10 @@ import {
   type SessionRenameArgs,
   type SetEventFilterArgs,
   type SetSubagentSubscriptionArgs,
+  type StateFrameRecord,
   type StreamKey,
   type SubscribeArgs,
+  stateFrameKey,
   ThreadId,
 } from "@omp-app/contracts";
 import { type CommandFuture, RpcSession } from "@omp-app/omp-rpc";
@@ -107,6 +111,8 @@ interface ThreadEntry {
   readonly startupEvents: RpcSessionEvent[];
   /** The questions omp is still waiting on: omp reports none, so the server keeps them (see `#publishEvent`). */
   readonly openQuestions: Map<string, OpenQuestionRecord>;
+  /** The state omp holds for the page (its statuses, widgets and title), each with the sequence that set it. */
+  readonly stateFrames: Map<string, StateFrameRecord>;
   hostToolRegistrations: Map<string, Map<string, readonly OmpWire.HostToolDefinition[]>>;
   hostUriRegistrations: Map<string, Map<string, readonly OmpWire.HostUriSchemeDefinition[]>>;
   hostRegistrationQueue: Promise<void>;
@@ -243,6 +249,7 @@ export class RpcSessionPortRuntime {
     subscribe: (args, call) => this.subscribe(args as SubscribeArgs, call),
     answerExtensionUi: (args, call) => this.answerExtensionUi(args as AnswerExtensionUiArgs, call),
     openQuestions: (args, call) => this.openQuestions(args as { threadId: ThreadId }, call),
+    stateFrames: (args, call) => this.stateFrames(args as { threadId: ThreadId }, call),
     answerHostTool: (args, call) => this.answerHostTool(args as AnswerHostToolArgs, call),
     answerHostUri: (args, call) => this.answerHostUri(args as AnswerHostUriArgs, call),
     setSubagentSubscription: (args, call) =>
@@ -292,6 +299,7 @@ export class RpcSessionPortRuntime {
       preferences: new Map(),
       startupEvents: [],
       openQuestions: new Map(),
+      stateFrames: new Map(),
       hostToolRegistrations: new Map(),
       hostUriRegistrations: new Map(),
       hostRegistrationQueue: Promise.resolve(),
@@ -627,6 +635,12 @@ export class RpcSessionPortRuntime {
     return [...entry.openQuestions.values()].sort((left, right) => left.seq - right.seq);
   }
 
+  /** The state omp holds for a chat (its statuses, widgets and title), oldest first; see `#publishEvent`. */
+  stateFrames(args: { threadId: ThreadId }, _call: PortHandlerContext): StateFrameRecord[] {
+    const entry = this.#entry(args.threadId);
+    return [...entry.stateFrames.values()].sort((left, right) => left.seq - right.seq);
+  }
+
   async answerHostTool(args: AnswerHostToolArgs, _call: PortHandlerContext): Promise<null> {
     await this.#entry(args.threadId).session.answerHostTool(args.response);
     return null;
@@ -726,6 +740,7 @@ export class RpcSessionPortRuntime {
     entry.unsubscribeEvents();
     // The questions of the process being replaced can never be answered: the new omp does not have them.
     entry.openQuestions.clear();
+    entry.stateFrames.clear();
     await entry.session.close();
     const session = this.#context.createSession?.(process) ?? new RpcSession(process);
     entry.bootstrap = { ...entry.bootstrap, args };
@@ -859,6 +874,10 @@ export class RpcSessionPortRuntime {
     if (notice.method === "cancel") entry.openQuestions.delete(notice.targetId);
     else if (isOpenQuestion(notice))
       entry.openQuestions.set(notice.id, { seq: frame.seq, request: notice });
+    if (isStateFrame(notice)) {
+      if (clearsStateFrame(notice)) entry.stateFrames.delete(stateFrameKey(notice));
+      else entry.stateFrames.set(stateFrameKey(notice), { seq: frame.seq, request: notice });
+    }
   }
 
   /**

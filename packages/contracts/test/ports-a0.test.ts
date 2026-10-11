@@ -261,6 +261,37 @@ describe("RpcSessionPort", () => {
     ).toBe(false);
   });
 
+  test("reads the state a chat's omp holds: its statuses, widgets and title, and nothing else", () => {
+    const parses = (value: unknown) =>
+      RpcSessionPort.methods.stateFrames.result.safeParse(value).success;
+    const status = {
+      type: "extension_ui_request",
+      id: "status-1",
+      method: "setStatus",
+      statusKey: "build",
+      statusText: "Running",
+    };
+    const title = {
+      type: "extension_ui_request",
+      id: "title-1",
+      method: "setTitle",
+      title: "Build status",
+    };
+    expect(
+      parses([
+        { seq: 4, request: status },
+        { seq: 5, request: title },
+      ]),
+    ).toBe(true);
+    expect(parses([{ seq: 0, request: status }])).toBe(false);
+    expect(
+      parses([{ seq: 4, request: { ...status, method: "notify", message: "heads up" } }]),
+    ).toBe(false);
+    expect(
+      parses([{ seq: 4, request: { ...status, method: "confirm", title: "Go on?", message: "" } }]),
+    ).toBe(false);
+  });
+
   test("exposes command capabilities and a correlated typed send", async () => {
     expect(ompCommandCapability("prompt")).toBe("omp.cmd.prompt");
     expect(RpcSessionPort.methods.answerExtensionUi.capability).toBe("omp.ui");

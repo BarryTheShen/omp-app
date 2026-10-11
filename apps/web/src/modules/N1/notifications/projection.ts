@@ -21,7 +21,7 @@ import type { RetiredNotices } from "./retired";
 export interface NormalizedRuntimeEventSource {
   readonly subscribeOmpEvents: (
     types: readonly string[] | undefined,
-    listener: (event: OmpEvent, seq: number) => void,
+    listener: (event: OmpEvent, seq: number, replayed: boolean) => void,
   ) => () => void;
 }
 
@@ -41,6 +41,8 @@ export interface TranscriptNoticeSink {
 export interface PresentationContext {
   readonly threadId: ThreadId;
   readonly sequence?: number;
+  /** Replayed from the chat's history (a reopen or a reconnect): shown, but not read aloud again. */
+  readonly replayed?: boolean;
 }
 
 export interface StatusHandoffProjection {
@@ -78,6 +80,8 @@ export interface NotificationProjectorOptions {
 export interface ProjectionEventContext {
   readonly threadId: ThreadId;
   readonly sequence?: number;
+  /** Replayed from the chat's history: shown, but not read aloud again. */
+  readonly replayed?: boolean;
 }
 
 export const MAX_WIDGET_LINES = 10;
@@ -431,7 +435,7 @@ function handoffNotification(
         placement: "toast",
         message: cleanText(handoff.message),
         source: "extension",
-        live: liveForSeverity(severity),
+        live: context.replayed === true ? "off" : liveForSeverity(severity),
       });
     }
     case "setStatus":
@@ -486,8 +490,8 @@ export class NotificationProjector {
       error: null,
     });
     this.stopSource = this.source.subscribe(this.onRuntimeSnapshot);
-    this.stopEvents = options.events?.subscribeOmpEvents(undefined, (event, seq) => {
-      this.ingest(event, { threadId: this.runtimeSnapshot.threadId, sequence: seq });
+    this.stopEvents = options.events?.subscribeOmpEvents(undefined, (event, seq, replayed) => {
+      this.ingest(event, { threadId: this.runtimeSnapshot.threadId, sequence: seq, replayed });
     });
   }
 
@@ -591,7 +595,10 @@ export class NotificationProjector {
     }
 
     const published: Notification[] = [];
-    for (const next of notifications) {
+    // A replayed event was read when it first arrived: it is shown, but not announced again.
+    const replayed = context.replayed === true;
+    for (const candidate of notifications) {
+      const next: Notification = replayed ? { ...candidate, live: "off" } : candidate;
       if (this.publishNotification(next)) published.push(next);
     }
     return published;

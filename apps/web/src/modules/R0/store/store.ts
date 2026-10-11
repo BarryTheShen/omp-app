@@ -191,8 +191,12 @@ export interface RuntimeSnapshot {
 
 export type RuntimeStoreListener = (snapshot: RuntimeSnapshot) => void;
 export type RuntimeNotificationFrame = RpcSessionNotification;
-export type RuntimeNotificationListener = (frame: RuntimeNotificationFrame, seq: number) => void;
-export type RuntimeOmpEventListener = (event: OmpEvent, seq: number) => void;
+export type RuntimeNotificationListener = (
+  frame: RuntimeNotificationFrame,
+  seq: number,
+  replayed: boolean,
+) => void;
+export type RuntimeOmpEventListener = (event: OmpEvent, seq: number, replayed: boolean) => void;
 
 interface OmpEventSubscription {
   readonly types: ReadonlySet<string> | undefined;
@@ -948,7 +952,7 @@ export class OmpRuntimeStore {
     const askingFromHistory =
       fromHistory && eventValue.kind === "notification" && isAskingFrame(eventValue.frame);
     if (this.snapshot.needsRefetch || seq !== this.snapshot.lastSeq + 1) {
-      this.ingestAcrossGap(eventValue, seq, askingFromHistory);
+      this.ingestAcrossGap(eventValue, seq, askingFromHistory, fromHistory);
       return;
     }
 
@@ -988,9 +992,9 @@ export class OmpRuntimeStore {
     if (setsPromptLifecycle(eventValue)) this.promptEventSeq = seq;
     next.lastSeq = seq;
     this.commit(next);
-    if (event.kind === "omp") this.forwardOmpEvent(event.event, seq);
+    if (event.kind === "omp") this.forwardOmpEvent(event.event, seq, fromHistory);
     if (event.kind === "notification" && !askingFromHistory)
-      this.forwardNotification(event.frame, seq);
+      this.forwardNotification(event.frame, seq, fromHistory);
   }
 
   /**
@@ -1006,6 +1010,7 @@ export class OmpRuntimeStore {
     eventValue: Record<string, unknown>,
     seq: number,
     askingFromHistory: boolean,
+    fromHistory: boolean,
   ): void {
     const next = mutableSnapshot(this.snapshot);
     const rawFrame = eventValue.frame;
@@ -1017,7 +1022,7 @@ export class OmpRuntimeStore {
     // A question or host call from the history is not recorded (see `ingest`).
     if (eventValue.kind === "notification" && !askingFromHistory) {
       this.reduceNotification(next, rawFrame, seq);
-      if (isExtensionCancel) this.forwardNotification(rawFrame, seq);
+      if (isExtensionCancel) this.forwardNotification(rawFrame, seq, false);
     }
     const toolEvent = eventValue.kind === "omp" && isToolLifecycleEvent(eventValue.event);
     if (toolEvent) this.reduceOmp(next, eventValue.event, seq);
@@ -1026,7 +1031,7 @@ export class OmpRuntimeStore {
     if (this.snapshot.needsRefetch && !recorded) return;
     next.needsRefetch = true;
     this.commit(next);
-    if (toolEvent) this.forwardOmpEvent(eventValue.event as OmpEvent, seq);
+    if (toolEvent) this.forwardOmpEvent(eventValue.event as OmpEvent, seq, fromHistory);
   }
 
   /**
@@ -1280,6 +1285,15 @@ export class OmpRuntimeStore {
     this.commit(next);
   }
 
+  /**
+   * Shows a status, widget or title omp holds for this chat when the chat is opened again (see the server's
+   * `stateFrames`). Like `recordOpenQuestion`, it does not move the sequence: the frame's event was replayed before, or
+   * is still to come.
+   */
+  public recordState(frame: OmpWire.ExtensionUiRequest, seq: number): void {
+    this.forwardNotification(frame, seq, true);
+  }
+
   private fail(error: AppError): void {
     const next = mutableSnapshot(this.snapshot);
     setError(next, error);
@@ -1336,19 +1350,19 @@ export class OmpRuntimeStore {
     updatePrompt(next, { streaming: false });
   }
 
-  private forwardNotification(rawFrame: unknown, seq: number): void {
+  private forwardNotification(rawFrame: unknown, seq: number, replayed: boolean): void {
     if (!isRecord(rawFrame) || typeof rawFrame.type !== "string") return;
     for (const subscription of this.notificationSubscriptions) {
       if (subscription.types.has(rawFrame.type)) {
-        subscription.listener(rawFrame as unknown as RuntimeNotificationFrame, seq);
+        subscription.listener(rawFrame as unknown as RuntimeNotificationFrame, seq, replayed);
       }
     }
   }
 
-  private forwardOmpEvent(event: OmpEvent, seq: number): void {
+  private forwardOmpEvent(event: OmpEvent, seq: number, replayed: boolean): void {
     for (const subscription of this.ompEventSubscriptions) {
       if (subscription.types === undefined || subscription.types.has(event.type)) {
-        subscription.listener(event, seq);
+        subscription.listener(event, seq, replayed);
       }
     }
   }

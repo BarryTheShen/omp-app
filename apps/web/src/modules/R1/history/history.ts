@@ -368,6 +368,7 @@ export class SelectedThreadHistoryController {
       // load below reads what omp wrote to the session file.
       await this.attachSubscription(threadId, store, 0);
       await this.recordOpenQuestions(threadId, store);
+      await this.recordStateFrames(threadId, store);
       await loader.loadInitial();
       this.stopRefetchWatch = loader.watchNeedsRefetch();
       this.commit({
@@ -492,6 +493,15 @@ export class SelectedThreadHistoryController {
   private async recordOpenQuestions(threadId: ThreadId, store: OmpRuntimeStore): Promise<void> {
     const open = await this.rpc.openQuestions({ threadId });
     for (const question of open) store.recordOpenQuestion(question.request, question.seq);
+  }
+
+  /**
+   * Shows the status, widgets and title omp holds for a chat when it is opened again. The replay covers only the events
+   * after the last turn's end, so a status set earlier is not in it; the server keeps the latest of each (`stateFrames`).
+   */
+  private async recordStateFrames(threadId: ThreadId, store: OmpRuntimeStore): Promise<void> {
+    const state = await this.rpc.stateFrames({ threadId });
+    for (const frame of state) store.recordState(frame.request, frame.seq);
   }
 
   private sessionIdFromEvent(event: RpcSessionEvent): ThreadId | undefined {

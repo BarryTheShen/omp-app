@@ -42,6 +42,7 @@ function createRpc(
     subscribe: async () => ({ stream: "A0.rpcSession/event/thread" as never }),
     answerExtensionUi: async () => null,
     openQuestions: async () => questions,
+    stateFrames: async () => [],
     answerHostTool: async () => null,
     answerHostUri: async () => null,
     setSubagentSubscription: async () => ({ level: "off" }),
