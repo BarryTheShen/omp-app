@@ -69,9 +69,6 @@ export function ThinkingSelector({
           </h2>
           <p className="text-xs text-muted-foreground">Session reasoning depth</p>
         </div>
-        <span className="rounded-full border border-border/70 px-2 py-1 text-xs text-muted-foreground">
-          session
-        </span>
       </header>
       {unavailable ? (
         <p
