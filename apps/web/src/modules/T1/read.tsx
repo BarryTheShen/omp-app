@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Icons } from "../../tokens";
 import { fileLanguageLabel } from "../U1/markdown/code-language";
@@ -9,6 +10,7 @@ import { omittedOf, type TruncationMeta } from "../U3/tool-card/output-meta";
 import { splitToolResult } from "../U3/tool-card/result";
 import { TextOutput } from "../U3/tool-card/text-output";
 import { decodeReadArgs, decodeReadDetails, type ReadToolDetails } from "./models";
+import { READ_IMAGE_MAX_BYTES, type ReadImagePreview, readImagePreviews } from "./read-image";
 import { dispatchReadUrl, type ReadUrlRenderer } from "./read-url-seam";
 
 export interface ReadGroupItem {
@@ -30,6 +32,7 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
   const rawResult = rawText(detailSource);
   // omp's result is `{ content, details }`: the details are decoded, the text is the fallback.
   const split = splitToolResult(detailSource);
+  const images = readImagePreviews(detailSource);
   const details = detailSource === undefined ? undefined : decodeReadDetails(split.details ?? {});
   // A failed read is its error banner (omp's own words); a body under it would say the same again.
   if (details === undefined || normalized.phase === "error") {
@@ -117,6 +120,7 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
         args={args.ok ? args.value : undefined}
         details={details.value}
         fallbackText={split.text}
+        images={images}
         groupedReads={groupedReads}
         target={target}
         urlAvailable={details.value.kind !== "url" || urlRenderer !== undefined}
@@ -141,6 +145,7 @@ function ReadBody({
   details,
   fallbackText,
   groupedReads,
+  images,
   target,
   urlAvailable,
 }: {
@@ -149,15 +154,17 @@ function ReadBody({
   /** The text omp returned; shown when the details hold no lines to display (a directory, a database, a summary). */
   readonly fallbackText: string;
   readonly groupedReads?: readonly ReadGroupItem[];
+  /** Image parts omp returned in the result; each is checked before it is drawn. */
+  readonly images: readonly ReadImagePreview[];
   readonly target: string;
   readonly urlAvailable: boolean;
 }) {
   const selector = selectorText(args, details);
   const content = details.displayContent?.text;
   const mimeType = contentTypeFor(details);
-  const isImage = mimeType?.startsWith("image/") === true;
+  const expectsImage =
+    mimeType?.startsWith("image/") === true || READ_IMAGE_NOTE.test(fallbackText);
   const isBinary = binaryContentFor(details, mimeType);
-  const imageSource = imageSourceFor(details);
   const notes = details.notes
     ?.slice(0, 4)
     .map((note) => middleEllipsis(note, 240))
@@ -189,13 +196,14 @@ function ReadBody({
           <p>Directory listing</p>
           {fallbackText !== "" && <TextOutput text={fallbackText} testId="t1-read-text" />}
         </div>
-      ) : imageSource !== undefined ? (
-        <div className="border-border bg-muted/30 flex items-center justify-center rounded-lg border p-3">
-          <img alt={target} className="max-h-64 max-w-full object-contain" src={imageSource} />
-        </div>
-      ) : isImage ? (
-        <div className="border-border bg-muted/30 flex min-h-24 items-center justify-center rounded-lg border p-3 text-sm text-muted-foreground">
-          Image preview supplied by the read result.
+      ) : images.length > 0 ? (
+        <ReadImages alt={target} caption={fallbackText} previews={images} />
+      ) : expectsImage ? (
+        <div
+          className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground"
+          data-slot="t1-read-image-note"
+        >
+          {MISSING_IMAGE}
         </div>
       ) : isBinary ? (
         <div
@@ -301,18 +309,80 @@ function TruncationNotice({ meta }: { readonly meta: TruncationMeta }) {
   );
 }
 
-function imageSourceFor(details: ReadToolDetails): string | undefined {
-  const mimeType = contentTypeFor(details);
-  if (mimeType?.startsWith("image/") !== true) return undefined;
-  const data = "data" in details && typeof details.data === "string" ? details.data : undefined;
-  const image = "image" in details && typeof details.image === "string" ? details.image : undefined;
-  const value = image ?? data;
-  if (value === undefined) return undefined;
-  if (value.startsWith("data:")) {
-    return value.startsWith("data:image/") ? value : undefined;
+/** omp's own words for an image read. The picture rides in the result as an image part, not in `details`. */
+const READ_IMAGE_NOTE = /^Read image file \[image\//m;
+
+const MISSING_IMAGE = "The image is not in omp's result, so it cannot be shown.";
+
+function ReadImages({
+  alt,
+  caption,
+  previews,
+}: {
+  readonly alt: string;
+  /** omp's text for the read, shown under the picture. */
+  readonly caption: string;
+  readonly previews: readonly ReadImagePreview[];
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2" data-slot="t1-read-images">
+      {previews.map((preview) =>
+        preview.kind === "shown" ? (
+          <ReadImageView alt={alt} key={`shown:${preview.src.length}`} src={preview.src} />
+        ) : (
+          <p
+            className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground"
+            data-slot="t1-read-image-note"
+            key={preview.kind}
+          >
+            {imageNote(preview)}
+          </p>
+        ),
+      )}
+      {caption !== "" && <p className="text-xs text-muted-foreground">{caption}</p>}
+    </div>
+  );
+}
+
+/** One picture in a bounded box; the button shows it at its own size, scrolling inside the card. */
+function ReadImageView({ alt, src }: { readonly alt: string; readonly src: string }) {
+  const [fullSize, setFullSize] = useState(false);
+  return (
+    <figure
+      className="border-border bg-muted/30 flex min-w-0 flex-col items-center gap-2 rounded-lg border p-3"
+      data-slot="t1-read-image"
+    >
+      <div className={fullSize ? "max-w-full overflow-auto" : "flex max-w-full justify-center"}>
+        <img
+          alt={alt}
+          className={fullSize ? "max-w-none" : "max-h-64 max-w-full object-contain"}
+          src={src}
+        />
+      </div>
+      <Button
+        aria-expanded={fullSize}
+        onClick={() => setFullSize((open) => !open)}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        {fullSize ? "Show smaller" : "Show full size"}
+      </Button>
+    </figure>
+  );
+}
+
+function imageNote(preview: Exclude<ReadImagePreview, { readonly kind: "shown" }>): string {
+  switch (preview.kind) {
+    case "too-large":
+      return `This image is ${(preview.bytes / (1024 * 1024)).toFixed(1)} MB. This card shows images up to ${READ_IMAGE_MAX_BYTES / (1024 * 1024)} MB, so it is not drawn here.`;
+    case "not-loaded":
+      return `This image is not in the saved chat: it is over the ${READ_IMAGE_MAX_BYTES / (1024 * 1024)} MB this card shows, or its saved copy is missing.`;
+    case "unsupported":
+      return "This type of image cannot be shown here.";
+    case "unreadable":
+      return "This image could not be shown: omp's result does not hold readable picture data.";
   }
-  if (value.startsWith("http://") || value.startsWith("https://")) return undefined;
-  return `data:${mimeType};base64,${value}`;
 }
 
 function contentTypeFor(details: ReadToolDetails): string | undefined {

@@ -299,6 +299,8 @@ async function inBatches<T, R>(items: readonly T[], work: (item: T) => Promise<R
  */
 export class SessionFileStore {
   readonly sessionsRoot: string;
+  /** omp's blob store, where the pictures it saves beside a session are kept. */
+  readonly blobsDir: string;
   readonly ownersRoot: string;
   readonly #options: SessionFileStoreOptions;
   readonly #summaries = new Map<string, CachedSummary>();
@@ -309,6 +311,8 @@ export class SessionFileStore {
     this.sessionsRoot = path.resolve(
       options.sessionsRoot ?? defaultSessionsRoot({ home: options.home }),
     );
+    // omp keeps its blob store beside its sessions folder: `<agent>/blobs` next to `<agent>/sessions`.
+    this.blobsDir = path.join(path.dirname(this.sessionsRoot), "blobs");
     this.ownersRoot = path.resolve(options.ownersRoot ?? defaultSessionOwnersRoot(options.home));
   }
 
@@ -443,6 +447,7 @@ export class SessionFileStore {
       ...(args.leafId === undefined ? {} : { leafId: args.leafId }),
       ...(args.before === undefined ? {} : { before: args.before }),
       ...(args.byteBudget === undefined ? {} : { byteBudget: args.byteBudget }),
+      blobsDir: this.blobsDir,
     });
     return { sessionFile: args.sessionFile, ...window };
   }

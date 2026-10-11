@@ -20,6 +20,26 @@ function props(
   } as unknown as ToolRendererProps;
 }
 
+/** omp's real result for a picture read: a text line, then the picture as an image part. */
+function pictureProps(toolCallId: string, path: string, data: string): ToolRendererProps {
+  const args = { path };
+  return {
+    type: "tool-call",
+    toolCallId,
+    toolName: "read",
+    args,
+    argsText: JSON.stringify(args),
+    result: {
+      content: [
+        { type: "text", text: "Read image file [image/png]" },
+        { type: "image", data, mimeType: "image/png" },
+      ],
+      details: { fileSize: 96, meta: { source: { type: "path", value: path } } },
+    },
+    status: { type: "complete" },
+  } as unknown as ToolRendererProps;
+}
+
 function ReadPlayground() {
   return (
     <main
@@ -50,12 +70,11 @@ function ReadPlayground() {
           })}
         />
         <ReadCard
-          rendererProps={props("read-image", {
-            kind: "file",
-            displayTarget: "assets/logo.png",
-            contentType: "image/png",
-            data: "iVBORw0KGgoAAAANSUhEUgAAABgAAAAYAQMAAADaua+7AAAAA1BMVEUlY+vg9LpFAAAADElEQVQI12NgoC0AAABgAAE3kBd4AAAAAElFTkSuQmCC",
-          })}
+          rendererProps={pictureProps(
+            "read-image",
+            "assets/logo.png",
+            "iVBORw0KGgoAAAANSUhEUgAAABgAAAAYAQMAAADaua+7AAAAA1BMVEUlY+vg9LpFAAAADElEQVQI12NgoC0AAABgAAE3kBd4AAAAAElFTkSuQmCC",
+          )}
         />
       </section>
     </main>

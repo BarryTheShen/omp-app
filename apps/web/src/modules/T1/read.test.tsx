@@ -1,7 +1,8 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { ReadCard } from "./read";
+import { READ_IMAGE_MAX_BYTES } from "./read-image";
 
 afterEach(() => cleanup());
 
@@ -147,33 +148,114 @@ describe("ReadCard", () => {
     expect(screen.getByText("URL renderer unavailable")).toBeTruthy();
   });
 
-  test("renders directory and image states without reading local paths", () => {
-    const second = render(
+  test("draws the image omp returned in the result, with a full-size toggle", () => {
+    const { unmount } = render(
       <ReadCard
-        rendererProps={props({
-          kind: "file",
-          contentType: "image/png",
-          displayTarget: "image.png",
-        })}
+        rendererProps={rendererProps(
+          {
+            content: [
+              { type: "text", text: "Read image file [image/png]" },
+              { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+            ],
+            details: {
+              fileSize: 9,
+              meta: { source: { type: "path", value: "/workspace/pixel.png" } },
+            },
+          },
+          { path: "/workspace/pixel.png" },
+        )}
       />,
     );
-    expect(screen.getByText("Image preview supplied by the read result.")).toBeTruthy();
-    second.unmount();
-
-    const third = render(
-      <ReadCard
-        rendererProps={props({
-          kind: "file",
-          contentType: "image/png",
-          displayTarget: "image.png",
-          data: "iVBORw0KGgo=",
-        })}
-      />,
-    );
-    expect(screen.getByRole("img", { name: "image.png" }).getAttribute("src")).toBe(
+    expect(screen.getByRole("img", { name: "/workspace/pixel.png" }).getAttribute("src")).toBe(
       "data:image/png;base64,iVBORw0KGgo=",
     );
-    third.unmount();
+    expect(screen.getByText("Read image file [image/png]")).toBeTruthy();
+    const toggle = screen.getByRole("button", { name: "Show full size" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Show smaller" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    unmount();
+  });
+
+  test("says in plain words when an image is missing, too large or of a type it cannot draw", () => {
+    const missing = render(
+      <ReadCard
+        rendererProps={rendererProps(
+          {
+            content: [{ type: "text", text: "Read image file [image/png]" }],
+            details: { fileSize: 9 },
+          },
+          { path: "/workspace/pixel.png" },
+        )}
+      />,
+    );
+    expect(
+      screen.getByText("The image is not in omp's result, so it cannot be shown."),
+    ).toBeTruthy();
+    expect(missing.container.querySelector("img")).toBeNull();
+    missing.unmount();
+
+    const tooLargeData = "A".repeat(Math.ceil(((READ_IMAGE_MAX_BYTES + 1) * 4) / 3 / 4) * 4);
+    const tooLarge = render(
+      <ReadCard
+        rendererProps={rendererProps(
+          {
+            content: [{ type: "image", data: tooLargeData, mimeType: "image/png" }],
+            details: { fileSize: READ_IMAGE_MAX_BYTES + 1 },
+          },
+          { path: "/workspace/big.png" },
+        )}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "This image is 4.0 MB. This card shows images up to 4 MB, so it is not drawn here.",
+      ),
+    ).toBeTruthy();
+    expect(tooLarge.container.querySelector("img")).toBeNull();
+    tooLarge.unmount();
+
+    const svg = render(
+      <ReadCard
+        rendererProps={rendererProps(
+          {
+            content: [{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/svg+xml" }],
+            details: { fileSize: 9 },
+          },
+          { path: "/workspace/icon.svg" },
+        )}
+      />,
+    );
+    expect(screen.getByText("This type of image cannot be shown here.")).toBeTruthy();
+    expect(svg.container.querySelector("img")).toBeNull();
+  });
+
+  test("says a saved picture the history could not load is not in the chat, with no image", () => {
+    const { container, unmount } = render(
+      <ReadCard
+        rendererProps={rendererProps(
+          {
+            content: [
+              { type: "image", data: `blob:sha256:${"a".repeat(64)}`, mimeType: "image/png" },
+            ],
+            details: { fileSize: 9 },
+          },
+          { path: "/workspace/saved.png" },
+        )}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "This image is not in the saved chat: it is over the 4 MB this card shows, or its saved copy is missing.",
+      ),
+    ).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
+    unmount();
+  });
+
+  test("keeps a binary read as a size note, not a picture", () => {
     render(
       <ReadCard
         rendererProps={props({

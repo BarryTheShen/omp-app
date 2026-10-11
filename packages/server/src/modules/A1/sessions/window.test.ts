@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { EntryId, SessionFilePath } from "@omp-app/contracts";
 import { isJsonObject } from "./parser";
 import { SessionFileStore } from "./store";
-import { OUTPUT_CUT_BYTES, readEntryOutput, readEntryWindow } from "./window";
+import { IMAGE_BLOB_MAX_BYTES, OUTPUT_CUT_BYTES, readEntryOutput, readEntryWindow } from "./window";
 
 const WORKTREE_DATA = path.resolve(import.meta.dir, "../../../../../../.data");
 
@@ -317,3 +317,68 @@ describe("session entry windows", () => {
     }
   });
 });
+
+describe("session entry pictures", () => {
+  test("carries the bytes of a picture omp saved beside the session, and keeps references it cannot load", async () => {
+    const root = await makeTempRoot();
+    try {
+      const file = path.join(root, "pictures.jsonl");
+      const blobs = path.join(root, "blobs");
+      await mkdir(blobs, { recursive: true });
+      const saved = Buffer.from("a saved picture");
+      const savedHex = "a".repeat(64);
+      const missingHex = "b".repeat(64);
+      const largeHex = "c".repeat(64);
+      await writeFile(path.join(blobs, savedHex), saved);
+      await writeFile(path.join(blobs, largeHex), Buffer.alloc(IMAGE_BLOB_MAX_BYTES + 1));
+      await writeFile(
+        file,
+        `${[
+          header("p"),
+          pictureResult("p1", null, `blob:sha256:${savedHex}`),
+          pictureResult("p2", "p1", `blob:sha256:${missingHex}`),
+          pictureResult("p3", "p2", `blob:sha256:${largeHex}`),
+        ].join("\n")}\n`,
+        "utf8",
+      );
+
+      const window = await readEntryWindow(file, { blobsDir: blobs });
+      expect(window.entries.map(pictureData)).toEqual([
+        saved.toString("base64"),
+        `blob:sha256:${missingHex}`,
+        `blob:sha256:${largeHex}`,
+      ]);
+
+      const withoutBlobs = await readEntryWindow(file, {});
+      expect(pictureData(withoutBlobs.entries[0])).toBe(`blob:sha256:${savedHex}`);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+function pictureResult(id: string, parentId: string | null, data: string): string {
+  return JSON.stringify({
+    type: "message",
+    id,
+    parentId,
+    timestamp: "2026-10-04T12:00:00.000Z",
+    message: {
+      role: "toolResult",
+      toolCallId: `call-${id}`,
+      toolName: "read",
+      content: [
+        { type: "text", text: "Read image file [image/png]" },
+        { type: "image", data, mimeType: "image/png" },
+      ],
+      isError: false,
+    },
+  });
+}
+
+/** The data of an entry's second content part, the picture; undefined when there is none. */
+function pictureData(entry: Record<string, unknown> | undefined): unknown {
+  const parts = messageField(entry, "content");
+  const part: unknown = Array.isArray(parts) ? parts[1] : undefined;
+  return isJsonObject(part) ? part.data : undefined;
+}

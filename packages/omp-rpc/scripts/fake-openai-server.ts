@@ -256,6 +256,8 @@ function reply(request: Request): Reply {
     };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
+  if (prompt.includes("read_image"))
+    return { tool: "read", args: { path: "pixel.png" }, thinking: "I should read the image." };
   if (prompt.includes("slow_tool"))
     return {
       tool: "bash",
@@ -445,6 +447,11 @@ await Bun.write(
     "      - id: a-model-with-a-deliberately-long-identifier-for-layout-checks-20261007",
     "        name: A model with a deliberately long display name to check that rows are cut with an ellipsis, not clipped",
     "        reasoning: true",
+    "        contextWindow: 128000",
+    "      - id: fake-vision",
+    "        name: Fake Vision",
+    "        reasoning: true",
+    "        input: [text, image]",
     "        contextWindow: 128000",
     "",
   ].join("\n"),

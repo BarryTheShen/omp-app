@@ -1,5 +1,6 @@
 import type { FileHandle } from "node:fs/promises";
-import { open } from "node:fs/promises";
+import { open, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { AppFailure, EntryId } from "@omp-app/contracts";
 import { isJsonObject } from "./parser";
 
@@ -9,6 +10,10 @@ const OUTPUT_HEAD_BYTES = 48 * 1024;
 const OUTPUT_TAIL_BYTES = 16 * 1024;
 /** The serialized entries of one window: about 4 MB, well under the 5 MB first-frame goal. */
 export const DEFAULT_WINDOW_BYTES = 4 * 1024 * 1024;
+/** The largest saved picture a window carries: the read card draws no bigger one (apps/web T1 read-image). */
+export const IMAGE_BLOB_MAX_BYTES = 4 * 1024 * 1024;
+/** omp saves a picture beside the session and keeps `blob:sha256:<hex>` in place of its bytes. */
+const IMAGE_BLOB_REF = /^blob:sha256:([0-9a-f]{64})$/;
 
 const SCAN_CHUNK_BYTES = 1024 * 1024;
 const HEAD_FINGERPRINT_BYTES = 256;
@@ -38,6 +43,8 @@ export interface WindowRequest {
   readonly leafId?: EntryId;
   readonly before?: EntryId;
   readonly byteBudget?: number;
+  /** omp's blob folder beside the sessions: where the pictures a window's references point at are kept. */
+  readonly blobsDir?: string;
 }
 
 export interface WindowResult {
@@ -239,6 +246,50 @@ export function cutOutputs(entry: Record<string, unknown>): Record<string, unkno
 }
 
 /**
+ * The picture parts of one entry with their bytes: omp keeps a saved picture as `blob:sha256:<hex>`, so
+ * the window reads the file and carries it as base64. A file that is missing or over the limit stays a
+ * reference, and the card says the picture is not loaded.
+ */
+async function withImageBlobs(
+  entry: Record<string, unknown>,
+  blobsDir: string | undefined,
+): Promise<Record<string, unknown>> {
+  if (blobsDir === undefined) return entry;
+  const resolved = await resolveImageBlobs(entry, blobsDir);
+  return isJsonObject(resolved) ? resolved : entry;
+}
+
+async function resolveImageBlobs(value: unknown, blobsDir: string): Promise<unknown> {
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((item) => resolveImageBlobs(item, blobsDir)));
+  }
+  if (!isJsonObject(value)) return value;
+  if (value.type === "image" && typeof value.data === "string") {
+    const hex = IMAGE_BLOB_REF.exec(value.data)?.[1];
+    const bytes = hex === undefined ? undefined : await readImageBlob(blobsDir, hex);
+    return bytes === undefined ? value : { ...value, data: bytes.toString("base64") };
+  }
+  const fields = await Promise.all(
+    Object.entries(value).map(
+      async ([key, item]) => [key, await resolveImageBlobs(item, blobsDir)] as const,
+    ),
+  );
+  return Object.fromEntries(fields);
+}
+
+/** A saved picture's bytes, when its file is there and no bigger than the limit; otherwise undefined. */
+async function readImageBlob(blobsDir: string, hex: string): Promise<Buffer | undefined> {
+  const file = join(blobsDir, hex);
+  try {
+    const info = await stat(file);
+    if (!info.isFile() || info.size > IMAGE_BLOB_MAX_BYTES) return undefined;
+    return await readFile(file);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The newest entries of one branch that fit the byte budget, oldest first. `before` asks for the
  * window of entries older than that one on the same branch. The first entry is always included, so a
  * window is never empty while entries are left.
@@ -271,7 +322,7 @@ export async function readEntryWindow(file: string, request: WindowRequest): Pro
     const id = path[next];
     const record = id === undefined ? undefined : index.records.get(id);
     if (id === undefined || record === undefined) break;
-    const entry = cutOutputs(await readEntry(file, record));
+    const entry = await withImageBlobs(cutOutputs(await readEntry(file, record)), request.blobsDir);
     const size = Buffer.byteLength(JSON.stringify(entry), "utf8");
     if (chosen.length > 0 && used + size > budget) break;
     chosen.push(entry);
