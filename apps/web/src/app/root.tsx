@@ -379,6 +379,7 @@ function DraftComposer({
   toolbar,
   footer,
   footerOpen,
+  editing,
   manager,
   onRetry,
   onResolve,
@@ -394,6 +395,7 @@ function DraftComposer({
   readonly toolbar: ReactNode;
   readonly footer: ReactNode;
   readonly footerOpen: boolean;
+  readonly editing: boolean;
   readonly manager: AttachmentManager;
   /** Runs the step that failed again: the composer's Retry. */
   readonly onRetry: () => void;
@@ -440,6 +442,7 @@ function DraftComposer({
       capabilities={capabilities}
       cancel={cancel}
       disabled={snapshot.status === "error"}
+      replaced={editing}
       policy={policy}
       sendBlockedReason={sendBlockedReason}
       submitPrompt={submit}
@@ -1147,6 +1150,7 @@ function ActiveThreadReady({
           controller={draftController}
           footer={area("composerFooter")}
           footerOpen={editing !== null}
+          editing={editing !== null}
           manager={attachmentManager}
           onResolve={chatDraft.resolveConflict}
           onRetry={chatDraft.retry}

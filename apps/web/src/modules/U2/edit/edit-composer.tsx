@@ -144,6 +144,7 @@ function EditComposerBody({ source, policy, autoFocus, composer, hooks }: EditCo
         cancel={handleCancel}
         policy={policy}
         autoFocus={autoFocus}
+        inputLabel="Edit message"
       >
         <Button type="button" variant="ghost" size="sm" onClick={handleCancel}>
           Cancel edit

@@ -103,7 +103,7 @@ realTest.describe("edit and regenerate from the transcript", () => {
       const firstTurn = row(page, "user", "count_reply first");
       await firstTurn.hover();
       await firstTurn.getByRole("button", { name: "Edit", exact: true }).click();
-      const editorInput = editor(page).getByRole("textbox", { name: "Message input" });
+      const editorInput = editor(page).getByRole("textbox", { name: "Edit message" });
       await expect(editor(page)).toBeVisible();
       await expect(editorInput).toHaveValue("count_reply first");
       await expect(editorInput).toBeFocused();
@@ -184,7 +184,7 @@ realTest.describe("edit and regenerate from the transcript", () => {
       // Escape cancels too.
       await secondEdit.click();
       await expect(editor(page)).toBeVisible();
-      await editor(page).getByRole("textbox", { name: "Message input" }).press("Escape");
+      await editor(page).getByRole("textbox", { name: "Edit message" }).press("Escape");
       await expect(editor(page)).toHaveCount(0);
       await expect(secondEdit).toBeFocused();
 

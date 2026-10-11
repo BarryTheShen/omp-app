@@ -132,7 +132,7 @@ test("selects an earlier message, restores focus, and edits its exact source", a
   const selectionDialog = await openSelector(page);
   await selectionDialog.getByRole("option", { name: /Use the attached notes/ }).click();
   await selectionDialog.getByRole("button", { name: "Choose" }).click();
-  const input = page.getByRole("textbox", { name: "Message input" });
+  const input = page.getByRole("textbox", { name: "Edit message" });
   await expect(input).toHaveValue(
     "Use the attached notes to explain how caching improves response time.",
   );
@@ -144,7 +144,7 @@ test("selects an earlier message, restores focus, and edits its exact source", a
   const retrySelectionDialog = await openSelector(page);
   await retrySelectionDialog.getByRole("option", { name: /Use the attached notes/ }).click();
   await retrySelectionDialog.getByRole("button", { name: "Choose" }).click();
-  const replacementInput = page.getByRole("textbox", { name: "Message input" });
+  const replacementInput = page.getByRole("textbox", { name: "Edit message" });
   await expect(replacementInput).toHaveValue(
     "Use the attached notes to explain how caching improves response time.",
   );

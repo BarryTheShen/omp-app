@@ -44,7 +44,7 @@ describe("P3 edit composer handoff", () => {
       />,
     );
 
-    const input = screen.getByRole("textbox", { name: "Message input" });
+    const input = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect(input).toHaveProperty("value", "Original prompt"));
     expect(screen.getByText("notes.txt")).toBeTruthy();
     fireEvent.change(input, { target: { value: "Unsent change" } });
@@ -75,7 +75,7 @@ describe("P3 edit composer handoff", () => {
       </>,
     );
 
-    const input = screen.getByRole("textbox", { name: "Message input" });
+    const input = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect(input).toHaveProperty("value", "Original prompt"));
     fireEvent.keyDown(input, { key: "Escape" });
     expect(document.activeElement).toBe(screen.getByRole("button", { name: opener }));
@@ -96,7 +96,7 @@ describe("P3 edit composer handoff", () => {
       />,
     );
 
-    const input = screen.getByRole("textbox", { name: "Message input" });
+    const input = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect(input).toHaveProperty("value", "Original prompt"));
     expect(screen.getByText("notes.txt")).toBeTruthy();
     fireEvent.change(input, { target: { value: "Replacement prompt" } });
@@ -129,11 +129,11 @@ describe("P3 edit composer handoff", () => {
       restoreFocus: () => undefined,
     };
     const { rerender } = render(<P3EditComposerHandoff {...props} selection={first} />);
-    const input = screen.getByRole("textbox", { name: "Message input" });
+    const input = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect(input).toHaveProperty("value", "First thread prompt"));
 
     rerender(<P3EditComposerHandoff {...props} selection={second} />);
-    const updatedInput = screen.getByRole("textbox", { name: "Message input" });
+    const updatedInput = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect(updatedInput).toHaveProperty("value", "Second thread prompt"));
     fireEvent.change(updatedInput, { target: { value: "Updated second thread" } });
     fireEvent.keyDown(updatedInput, { key: "Enter" });
@@ -150,7 +150,7 @@ describe("P3 edit composer handoff", () => {
     const { rerender } = render(
       <P3EditComposerHandoff {...props} onSubmitReplacement={firstSubmit} />,
     );
-    const input = screen.getByRole("textbox", { name: "Message input" });
+    const input = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect(input).toHaveProperty("value", "Original prompt"));
 
     rerender(<P3EditComposerHandoff {...props} onSubmitReplacement={latestSubmit} />);

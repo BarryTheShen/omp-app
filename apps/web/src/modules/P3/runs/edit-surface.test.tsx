@@ -60,7 +60,7 @@ describe("P3 edit surface", () => {
     );
 
     expect(screen.getByText("Editing an earlier message")).toBeTruthy();
-    const composer = screen.getByRole("textbox", { name: "Message input" });
+    const composer = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect(composer).toHaveProperty("value", "Explain"));
     fireEvent.click(screen.getByRole("button", { name: "Cancel edit" }));
 
@@ -79,7 +79,7 @@ describe("P3 edit surface", () => {
         target={{ entryId: userEntry, trigger: rowTrigger() }}
       />,
     );
-    const composer = screen.getByRole("textbox", { name: "Message input" });
+    const composer = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect(composer).toHaveProperty("value", "Explain"));
 
     fireEvent.change(composer, { target: { value: "Explain again" } });

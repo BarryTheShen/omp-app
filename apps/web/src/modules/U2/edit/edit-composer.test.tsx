@@ -67,7 +67,7 @@ describe("U2.7 EditComposer", () => {
         onCancel={() => undefined}
       />,
     );
-    const input = screen.getByRole("textbox", { name: "Message input" });
+    const input = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("original text"));
     await waitFor(() => expect(screen.getByText("notes.txt")).toBeTruthy());
   });
@@ -78,7 +78,7 @@ describe("U2.7 EditComposer", () => {
     render(
       <EditComposer source={source} submitReplacement={submitReplacement} onCancel={cancel} />,
     );
-    const input = screen.getByRole("textbox", { name: "Message input" });
+    const input = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("original text"));
     fireEvent.change(input, { target: { value: "draft replacement" } });
     fireEvent.keyDown(input, { key: "Escape" });
@@ -98,7 +98,7 @@ describe("U2.7 EditComposer", () => {
         onCancel={() => undefined}
       />,
     );
-    const input = screen.getByRole("textbox", { name: "Message input" });
+    const input = screen.getByRole("textbox", { name: "Edit message" });
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("original text"));
     fireEvent.change(input, { target: { value: "replacement" } });
     fireEvent.keyDown(input, { key: "Enter" });

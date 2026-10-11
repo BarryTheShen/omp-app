@@ -37,6 +37,13 @@ export interface ComposerSurfaceProps {
   readonly policy?: SubmitPolicy;
   readonly autoFocus?: boolean;
   readonly disabled?: boolean;
+  /** The text box's accessible name. An edit box names itself, so it is not confused with the composer. */
+  readonly inputLabel?: string;
+  /**
+   * While an edit box takes this composer's place, its own input, attachments and actions are hidden and the
+   * footer (the edit box) is the only composer on screen. The draft stays in the runtime, so nothing is lost.
+   */
+  readonly replaced?: boolean;
   /**
    * Why the composer cannot send right now (the app is reconnecting). While set, Enter and Send do nothing,
    * the reason is shown, and the text stays in the composer.
@@ -147,6 +154,8 @@ export function ComposerSurface({
   capabilities = NO_CAPABILITIES,
   autoFocus = true,
   disabled = false,
+  inputLabel = "Message input",
+  replaced = false,
   sendBlockedReason,
   showAttachmentNames = true,
   toolbar,
@@ -316,41 +325,46 @@ export function ComposerSurface({
           <div className="border-border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring/50 focus-within:ring-offset-2 data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-(--space-sm) rounded-(--radius) border p-(--space-sm) outline-none transition-[border-color,box-shadow] data-[dragging=true]:border-dashed" />
         }
       >
-        {showAttachmentNames && (
-          <ComposerPrimitive.Attachments>
-            {({ attachment }) => (
-              <span className="text-muted-foreground px-2 text-xs">{attachment.name}</span>
-            )}
-          </ComposerPrimitive.Attachments>
-        )}
-        <ComposerPrimitive.Input
-          ref={inputRef}
-          aria-label="Message input"
-          aria-describedby={sendBlockedReason === undefined ? undefined : blockedId}
-          data-focus-ring="parent"
-          autoFocus={autoFocus}
-          cancelOnEscape={false}
-          disabled={disabled || isSubmitting}
-          onCompositionEnd={() => {
-            composingRef.current = false;
-          }}
-          onCompositionStart={() => {
-            composingRef.current = true;
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Send a message..."
-          rows={1}
-          submitMode="none"
-          className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
-        />
-        {isStreaming && sendBlockedReason === undefined && modeForText(text) === "prompt" && (
-          <p
-            data-composer-steer-hint="true"
-            className="text-muted-foreground px-(--space-md) text-xs"
-          >
-            Press Enter to steer this turn
-          </p>
-        )}
+        <div
+          className="flex flex-col gap-(--space-sm)"
+          style={replaced ? { display: "none" } : undefined}
+        >
+          {showAttachmentNames && (
+            <ComposerPrimitive.Attachments>
+              {({ attachment }) => (
+                <span className="text-muted-foreground px-2 text-xs">{attachment.name}</span>
+              )}
+            </ComposerPrimitive.Attachments>
+          )}
+          <ComposerPrimitive.Input
+            ref={inputRef}
+            aria-label={inputLabel}
+            aria-describedby={sendBlockedReason === undefined ? undefined : blockedId}
+            data-focus-ring="parent"
+            autoFocus={autoFocus}
+            cancelOnEscape={false}
+            disabled={disabled || isSubmitting}
+            onCompositionEnd={() => {
+              composingRef.current = false;
+            }}
+            onCompositionStart={() => {
+              composingRef.current = true;
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Send a message..."
+            rows={1}
+            submitMode="none"
+            className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
+          />
+          {isStreaming && sendBlockedReason === undefined && modeForText(text) === "prompt" && (
+            <p
+              data-composer-steer-hint="true"
+              className="text-muted-foreground px-(--space-md) text-xs"
+            >
+              Press Enter to steer this turn
+            </p>
+          )}
+        </div>
         {error && (
           <p
             data-composer-error="true"
@@ -369,7 +383,10 @@ export function ComposerSurface({
             {sendBlockedReason}
           </p>
         )}
-        <div className="flex min-w-0 items-center gap-(--space-xs)">
+        <div
+          className="flex min-w-0 items-center gap-(--space-xs)"
+          style={replaced ? { display: "none" } : undefined}
+        >
           <ComposerPrimitive.AddAttachment
             render={
               <Button

@@ -148,6 +148,20 @@ describe("U2.2 ComposerSurface", () => {
     expect(row?.contains(footer)).toBe(false);
   });
 
+  test("while an edit box takes its place, the composer's own input and send are hidden and the footer stays", () => {
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface cancel={() => undefined} submitPrompt={async () => undefined} replaced>
+          <span data-testid="composer-footer">Edit box</span>
+        </ComposerSurface>
+      </RuntimeProvider>,
+    );
+
+    expect(screen.queryByRole("textbox", { name: "Message input" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
+    expect(screen.getByTestId("composer-footer")).toBeTruthy();
+  });
+
   test("maps the cancel button to R0.3 cancel", async () => {
     const cancel = vi.fn(async () => undefined);
     renderComposer(
