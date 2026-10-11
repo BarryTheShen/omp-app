@@ -53,7 +53,14 @@ export interface CatalogSnapshot extends SessionCatalogState {
   readonly pinsRevision: Revision | null;
   /** The message the last chat action got from the server (a refused delete), until the next action starts. */
   readonly actionError?: string;
+  /** Where keyboard focus should go in the list once it can: a chat's row, or New chat (see requestFocus). */
+  readonly focus?: FocusRequest;
 }
+
+/** Where keyboard focus should go in the list: a chat's row, or New chat. */
+export type FocusRequest =
+  | { readonly kind: "row"; readonly id: ThreadId }
+  | { readonly kind: "newChat" };
 
 function internalFailure(error: unknown, fallback: string): AppFailure {
   if (error instanceof AppFailure) return error;
@@ -196,6 +203,15 @@ export class SessionCatalogModel {
   public setActionError(message: string | undefined): void {
     if (this.snapshot.actionError === message) return;
     this.commit({ actionError: message });
+  }
+
+  /**
+   * Asks the list to move keyboard focus to a row, or to New chat, as soon as it can. A sidebar that a chat switch
+   * rebuilds takes the request when it mounts, so focus does not fall to the page body. `undefined` clears it.
+   */
+  public requestFocus(request: FocusRequest | undefined): void {
+    if (request === undefined && this.snapshot.focus === undefined) return;
+    this.commit({ focus: request });
   }
 
   public async list(args: SessionCatalogPageArgs): Promise<SessionCatalogPage> {

@@ -592,6 +592,124 @@ describe("SessionCatalogSidebar", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
+  /** A remote whose delete takes the chat out of the catalog, as the server's removed event does. */
+  function removingRemote(catalog: SessionCatalogModel, files: SessionFile[]) {
+    return {
+      ...fakeRemote([]),
+      delete: async (id: string) => {
+        const gone = files.find((file) => file.id === id);
+        if (gone === undefined) throw new Error(`no chat ${id}`);
+        files.splice(files.indexOf(gone), 1);
+        await act(async () => {
+          await catalog.reconcile({
+            folder,
+            sessionFile: gone.sessionFile,
+            id: gone.id,
+            kind: "removed",
+          });
+        });
+      },
+    };
+  }
+
+  /** Renders a sidebar over the given chats, with the session-file port available. */
+  function renderOverRemote(
+    catalog: SessionCatalogModel,
+    remote: ReturnType<typeof removingRemote>,
+  ) {
+    return render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={catalog}
+          confirmDelete={() => true}
+          currentThreadId={ThreadIdSchema.parse("other")}
+          remote={remote}
+        />,
+      ),
+    );
+  }
+
+  /** Deletes the chat with this title from its More actions menu. */
+  function deleteFromMenu(title: string): void {
+    fireEvent.click(screen.getByRole("button", { name: `More actions for ${title}` }));
+    fireEvent.click(
+      within(screen.getByRole("menu", { name: `Actions for ${title}` })).getByRole("menuitem", {
+        name: `Delete ${title}`,
+      }),
+    );
+  }
+
+  test("deleting a chat moves focus to the next row, and the tab stop follows it", async () => {
+    const files = [
+      session("old", "2026-10-01T00:00:00.000Z", "Old chat"),
+      session("new", "2026-10-03T00:00:00.000Z", "Newest chat"),
+      session("middle", "2026-10-02T00:00:00.000Z", "Middle chat"),
+    ];
+    const catalog = modelWithSessions(files);
+    renderOverRemote(catalog, removingRemote(catalog, files));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
+
+    deleteFromMenu("Middle chat");
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const next = screen.getByRole("option", { name: /Old chat/ });
+    await waitFor(() => expect(document.activeElement).toBe(next));
+    expect(next.getAttribute("tabindex")).toBe("0");
+  });
+
+  test("deleting the last row moves focus to the row above it", async () => {
+    const files = [
+      session("old", "2026-10-01T00:00:00.000Z", "Old chat"),
+      session("new", "2026-10-03T00:00:00.000Z", "Newest chat"),
+    ];
+    const catalog = modelWithSessions(files);
+    renderOverRemote(catalog, removingRemote(catalog, files));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+
+    deleteFromMenu("Old chat");
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
+    const above = screen.getByRole("option", { name: /Newest chat/ });
+    await waitFor(() => expect(document.activeElement).toBe(above));
+    expect(above.getAttribute("tabindex")).toBe("0");
+  });
+
+  test("a refused delete leaves focus on the chat's own row", async () => {
+    const files = [
+      session("old", "2026-10-01T00:00:00.000Z", "Old chat"),
+      session("new", "2026-10-03T00:00:00.000Z", "Newest chat"),
+    ];
+    const catalog = modelWithSessions(files);
+    const refusing = {
+      ...fakeRemote([]),
+      delete: async () => {
+        throw new AppFailure({
+          code: "conflict",
+          message: "Close this chat before deleting it: omp has it open.",
+          retryable: true,
+        });
+      },
+    };
+    renderOverRemote(catalog, refusing);
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+
+    deleteFromMenu("Newest chat");
+    await screen.findByRole("alert");
+    const own = screen.getByRole("option", { name: /Newest chat/ });
+    await waitFor(() => expect(document.activeElement).toBe(own));
+  });
+
+  test("deleting the only chat moves focus to New chat", async () => {
+    const files = [session("only", "2026-10-02T00:00:00.000Z", "Only chat")];
+    const catalog = modelWithSessions(files);
+    renderOverRemote(catalog, removingRemote(catalog, files));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
+
+    deleteFromMenu("Only chat");
+    await waitFor(() => expect(screen.queryAllByRole("option")).toHaveLength(0));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("New chat"));
+  });
+
   test("Delete is disabled, with a reason, when the session-file port is not available", async () => {
     render(
       withRegistry(

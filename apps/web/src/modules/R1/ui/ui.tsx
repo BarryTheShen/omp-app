@@ -168,6 +168,7 @@ export function SessionCatalogSidebar({
   const [menuSessionId, setMenuSessionId] = useState<ThreadId | undefined>();
   const previousCatalog = useRef(catalog);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const newChatRef = useRef<HTMLButtonElement | null>(null);
   const attachList = useCallback(
     (element: HTMLDivElement | null) => {
       listRef.current = element;
@@ -237,6 +238,27 @@ export function SessionCatalogSidebar({
     rowElements.current.get(focusRowId)?.querySelector<HTMLElement>('[role="option"]')?.focus();
     setFocusRowId(undefined);
   }, [focusRowId]);
+
+  // A delete asks for focus through the catalog (see requestFocus), so the request lands here even when a chat switch
+  // rebuilt the sidebar, and a row that is not in the list yet takes it when it arrives.
+  const focusRequest = snapshot.focus;
+  useEffect(() => {
+    if (focusRequest === undefined) return;
+    if (focusRequest.kind === "newChat") {
+      newChatRef.current?.focus();
+      catalog.requestFocus(undefined);
+      return;
+    }
+    // The row takes the request once the list holds it; until then the request waits for the next change of the list.
+    if (!sessions.some((session) => session.id === focusRequest.id)) return;
+    const option = rowElements.current
+      .get(focusRequest.id)
+      ?.querySelector<HTMLElement>('[role="option"]');
+    if (!option) return;
+    option.focus();
+    setFocusedId(focusRequest.id);
+    catalog.requestFocus(undefined);
+  }, [catalog, focusRequest, sessions]);
 
   const openSession = async (session: SessionMetadata): Promise<void> => {
     catalog.setActionError(undefined);
@@ -363,7 +385,7 @@ export function SessionCatalogSidebar({
       className="flex min-h-0 w-full flex-col bg-sidebar text-sidebar-foreground"
     >
       <div className="flex shrink-0 items-center justify-end border-b border-sidebar-border p-2">
-        <Button type="button" size="sm" onClick={() => void createNewChat()}>
+        <Button ref={newChatRef} type="button" size="sm" onClick={() => void createNewChat()}>
           New chat
         </Button>
       </div>
@@ -650,18 +672,27 @@ export function SessionCatalogSidebar({
                             setMenuSessionId(undefined);
                             if (!canDelete || !(await confirmDelete?.(session, title))) return;
                             catalog.setActionError(undefined);
+                            // Focus moves to the neighbouring row once the chat is gone: the next row, else the one above.
+                            const index = sessions.findIndex((item) => item.id === session.id);
+                            const neighbour =
+                              index < 0 ? undefined : (sessions[index + 1] ?? sessions[index - 1]);
                             try {
                               // The view leaves an open chat first. The server then sees nobody watching it, stops its
                               // omp and deletes the file. A refusal is kept on the catalog, so it still shows if this
                               // sidebar is rebuilt in the meantime.
                               if (session.id === currentThreadId) await createNewChat();
                               await remote.delete(session.id);
+                              catalog.requestFocus(
+                                neighbour ? { kind: "row", id: neighbour.id } : { kind: "newChat" },
+                              );
                             } catch (error) {
                               catalog.setActionError(
                                 error instanceof Error
                                   ? error.message
                                   : "The chat could not be deleted.",
                               );
+                              // The chat stays, so focus stays on its row rather than falling to the page body.
+                              catalog.requestFocus({ kind: "row", id: session.id });
                             }
                           }}
                         >
