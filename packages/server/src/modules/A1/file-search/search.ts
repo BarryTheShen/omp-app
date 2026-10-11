@@ -258,6 +258,8 @@ async function collectFromGit(
   }
   const repositoryRoot = await budget.wait(realpath(resolve(rootText)));
   if (!isInside(repositoryRoot, folder)) return null;
+  // Git lists nothing under a folder that the repository ignores, so such a folder is searched as a plain folder (issue 827).
+  if (await isIgnoredByRepository(repositoryRoot, folder, budget, options)) return null;
 
   const listed = await runGitList(folder, budget, scan, scanBytes, options);
   if (shouldUseWalk(listed)) return null;
@@ -277,6 +279,27 @@ async function collectFromGit(
     candidates: [...candidates].map(([path, kind]) => ({ path, kind })),
     truncated: listed.truncated || scan.truncated,
   };
+}
+
+/**
+ * Whether the repository's ignore rules hide this folder. The repository lists nothing under an ignored folder.
+ */
+async function isIgnoredByRepository(
+  repositoryRoot: string,
+  folder: string,
+  budget: SearchBudget,
+  options: FileSearchOptions,
+): Promise<boolean> {
+  const relativeFolder = relative(repositoryRoot, folder);
+  // The repository root itself is never ignored.
+  if (!isRelativePath(relativeFolder)) return false;
+  const result = await runGitText(
+    repositoryRoot,
+    ["check-ignore", "--quiet", "--", relativeFolder.split(sep).join("/")],
+    budget,
+    options,
+  );
+  return result.kind === "completed" && result.exitCode === 0;
 }
 
 function shouldUseWalk(result: GitTextResult | GitListResult): boolean {

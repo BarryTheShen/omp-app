@@ -45,6 +45,21 @@ describe("searchWorkspaceFiles", () => {
     expect(directories.results.map((candidate) => candidate.path)).toContain("src");
   });
 
+  test("a folder that its own repository ignores is searched as a folder, not as an empty listing", async () => {
+    const repository = await temporaryDirectory();
+    await write(join(repository, ".gitignore"), "hidden/\n");
+    await mkdir(join(repository, "hidden"), { recursive: true });
+    await write(join(repository, "hidden", "README.md"), "# notes\n");
+    await git(repository, ["init", "-q", "-b", "main"]);
+
+    const result = await searchWorkspaceFiles({
+      folder: join(repository, "hidden"),
+      query: "readme",
+      limit: 10,
+    });
+    expect(result.results.map((candidate) => candidate.path)).toContain("README.md");
+  });
+
   test("ranks an exact basename ahead of longer fuzzy matches", async () => {
     const folder = await temporaryDirectory();
     await mkdir(join(folder, "src"), { recursive: true });
