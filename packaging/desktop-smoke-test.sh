@@ -358,4 +358,35 @@ for round in 1 2 3; do
   note "T7 round $round: the server ended by the kernel's death signal, and nothing of the run is left"
 done
 
+note "== T8: New chat in the window starts omp for the chat; closing the window leaves no omp (no message is sent, so no model is called)"
+launch "$app"
+p=$LAUNCHED
+wid=$(wait_window 120) || fail "T8: no window"
+info=$(server_info 90) || fail "T8: the server never answered"
+read -r side _ <<<"$info"
+sleep 5
+# The sidebar's New chat button: its place is fixed by the window's size and an empty workspace folder.
+xdotool mousemove --window "$wid" 241 169 click 1 || fail "T8: could not click New chat"
+wait_log 'status=running' 90 || fail "T8: New chat did not start omp (the server logged no running omp)"
+omp_pid=$(grep -o 'status=running pid=[0-9]*' "$state/omp-app.log" | tail -n 1 | cut -d= -f3)
+[[ -n $omp_pid ]] || fail "T8: New chat did not start omp"
+cwd=$(readlink "/proc/$omp_pid/cwd" 2>/dev/null || echo "already ended")
+[[ $cwd == "$work/home" || $cwd == "already ended" ]] || fail "T8: omp runs in $cwd, not the workspace folder"
+note "T8 New chat started omp (pid $omp_pid), working in the workspace folder: $cwd"
+sleep 4
+outcome=$(grep 'omp.process' "$state/omp-app.log" | tail -n 1 | grep -o 'status=[a-z]*')
+note "T8 omp reported $outcome for the new chat (without a model or key, omp stops; the window says so)"
+shot "$wid" new-chat
+close_window "$wid"
+wait_gone "$p" 40 || fail "T8: the app did not exit after its window closed"
+wait "$p"
+note "T8 the window closed and the app exited (status $?)"
+wait_gone "$side" 30 || fail "T8: the server $side is still running"
+for pid in $(grep -o 'pid=[0-9]*' "$state/omp-app.log" | cut -d= -f2 | sort -u); do
+  is_alive "$pid" && fail "T8: process $pid is still running after the window closed"
+done
+leftover=$(run_processes | tr '\n' ' ')
+[[ -z $leftover ]] || fail "T8: processes of this run left: $leftover"
+note "T8 no omp and no server of this run is left after the window closed"
+
 finish 0
