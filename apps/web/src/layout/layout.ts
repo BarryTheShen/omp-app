@@ -37,7 +37,8 @@ export type SurfaceId =
   | "connection"
   | "theme"
   | "rewind"
-  | "agents";
+  | "agents"
+  | "executionModes";
 
 export type AppLayout = Readonly<Record<LayoutAreaName, readonly SurfaceId[]>>;
 
@@ -52,7 +53,7 @@ export const LAYOUT: AppLayout = {
    */
   panels: ["todo", "contextCard", "agents", "rewind"],
   /** The inline control row inside the composer, left to right. */
-  composerToolbar: ["mode", "queue"],
+  composerToolbar: ["mode", "executionModes", "queue"],
   /** Under that row. */
   composerFooter: ["editHandoff", "attachments"],
   /** At the bottom of the transcript. */

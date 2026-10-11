@@ -145,6 +145,7 @@ import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
 import { browserClipboard, useCopyFromChat } from "./copy/use-copy-from-chat";
 import { type EmptyStateCopy, emptyStateCopy } from "./empty-state";
+import { useExecutionModesSurface } from "./execution-modes";
 import { FolderSwitcher } from "./folder-switcher";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
@@ -1045,6 +1046,7 @@ function ActiveThreadReady({
       submitPrompt: runtimeController.submitPrompt,
       switchThread: openThread,
     }),
+    executionModes: useExecutionModesSurface({ client, threadId, capabilities }),
     mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
     queue: {
       title: "Queued messages",

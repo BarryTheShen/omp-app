@@ -176,6 +176,8 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
       await page.keyboard.press("Tab");
       await expect(bash).toBeFocused();
       await page.keyboard.press("Tab");
+      await expect(page.getByRole("button", { name: "Execution modes" })).toBeFocused();
+      await page.keyboard.press("Tab");
       await expect(send).toBeFocused();
       await composer.fill("");
       await composer.focus();

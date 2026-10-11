@@ -9,6 +9,7 @@ export type {
   ModeSessionSource,
 } from "./controller";
 export { createModeController, ModeController } from "./controller";
+export { D7_EXECUTION_MODES_COMMAND } from "./descriptors";
 export { createFastModeRpc, createModeCommandGateway } from "./runtime";
 export type {
   ConnectedModeControlsProps,

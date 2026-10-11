@@ -187,8 +187,22 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
   const extendedContext = modeState(model.snapshot, "extended-context");
   const slow = modeState(model.snapshot, "slow");
   const busy = model.busyMode !== null;
+  // The controls are a long list and the message sits at its top: a new message scrolls into view.
+  const errorBlock = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (model.error) errorBlock.current?.scrollIntoView?.({ block: "nearest" });
+  }, [model.error]);
   return (
     <div aria-busy={busy} className="flex min-w-0 flex-col gap-4" data-d7-mode-controls>
+      {model.error ? (
+        <div ref={errorBlock}>
+          <ErrorMessage
+            error={model.error}
+            kind={model.errorKind ?? "change"}
+            onRetry={actions.onRetry}
+          />
+        </div>
+      ) : null}
       <Section
         description="Choose how omp runs. Settings marked as saved apply to every conversation."
         heading="Execution modes"
@@ -264,13 +278,6 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
           </SettingRow>
         </div>
       </Section>
-      {model.error ? (
-        <ErrorMessage
-          error={model.error}
-          kind={model.errorKind ?? "change"}
-          onRetry={actions.onRetry}
-        />
-      ) : null}
       <div className="flex items-center justify-end gap-3">
         <Button
           disabled={busy}

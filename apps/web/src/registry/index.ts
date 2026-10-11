@@ -13,6 +13,7 @@ import { D3_LOGIN_DESCRIPTORS } from "../modules/D3/descriptors";
 import { D4_COPY_DESCRIPTORS } from "../modules/D4/copy/descriptors";
 import { D4_SHARE_DESCRIPTORS } from "../modules/D4/share/descriptors";
 import { D5_LIFECYCLE_COMMAND_DESCRIPTORS } from "../modules/D5/descriptors";
+import { D7_EXECUTION_MODES_COMMAND } from "../modules/D7/modes/descriptors";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { I1_SETTINGS_SECTIONS } from "../modules/I1/settings/descriptors";
 import { I5_SETTINGS_SECTIONS } from "../modules/I5/settings";
@@ -109,6 +110,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...P1_AGENT_HUB_DESCRIPTORS,
   ...P3_SHORTCUT_DESCRIPTORS,
   ...U0_PALETTE_COMMANDS,
+  D7_EXECUTION_MODES_COMMAND,
   // S1's Settings command, so the palette can offer it; its handler is mounted with the open thread.
   ...S1_DESCRIPTORS.filter((descriptor) => descriptor.kind === "command"),
   ...D4_COPY_DESCRIPTORS,
