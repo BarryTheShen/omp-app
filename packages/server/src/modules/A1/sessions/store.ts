@@ -456,9 +456,12 @@ export class SessionFileStore {
   /**
    * Deletes one chat: its session file and the artifacts directory beside it. Only a file that the listing of `folder`
    * returns can be deleted. The path is resolved; it must lie inside the sessions root and be a regular file, not a
-   * symlink, that reads as a session. A chat omp holds, or whose turn is running, is refused, because omp would write
-   * it back. The artifacts directory is checked the same way before anything is removed. Once the chat's file is gone
-   * the delete succeeds: artifacts that cannot be removed stay, and are reported as `artifactsKept`.
+   * symlink, that reads as a session. This server first stops its own omp for the chat when nobody watches it and no
+   * turn runs (`stopUnwatched`), then reads the chat again. A chat that is still watched, one a viewer opened during the
+   * stop, or one whose turn runs, is refused, because omp would write it back. The server's own chats are checked once
+   * more with no await before the removal. The artifacts directory is checked the same way before anything is removed.
+   * Once the chat's file is gone the delete succeeds: artifacts that cannot be removed stay, and are reported as
+   * `artifactsKept`.
    */
   async deleteSession(args: {
     readonly folder: string;
@@ -466,14 +469,23 @@ export class SessionFileStore {
   }): Promise<SessionDeletion> {
     const sessionFile = await this.#deletableSessionFile(args.folder, args.sessionFile);
     const artifacts = await this.#artifactsDirectory(sessionFile);
+    const first = await this.#readSessionFile(sessionFile);
+    if (!first.file) throw notListed();
+    // The id comes from the file, so the stop follows the first read. Stopping waits for a stop already under way, so
+    // the chat is not read while omp is still exiting.
+    await this.#options.stopUnwatched?.(first.file.id);
     const outcome = await this.#readSessionFile(sessionFile);
     if (!outcome.file) throw notListed();
     const { file } = outcome;
+    if (file.turn === "running") {
+      throw appFailure("conflict", "Wait for this chat's turn to finish, then delete it.", true);
+    }
     if (file.liveness.serverProcess || file.liveness.lease === "held") {
       throw appFailure("conflict", "Close this chat before deleting it: omp has it open.", true);
     }
-    if (file.turn === "running") {
-      throw appFailure("conflict", "Wait for this chat's turn to finish, then delete it.", true);
+    // No await between this check and the removal below: a viewer that came in while the lease was probed is refused.
+    if (serverOwnsSession(this.#options, file.id, sessionFile)) {
+      throw appFailure("conflict", "Close this chat before deleting it: omp has it open.", true);
     }
     try {
       await fs.rm(sessionFile);

@@ -515,4 +515,38 @@ describe("OmpProcessRegistry", () => {
     expect(registry.has(hostOptions.threadId)).toBe(false);
     expect(timer.callbacks.size).toBe(0);
   });
+
+  test("stopIfUnwatched waits for an exit already under way, even when the registry has forgotten the thread", async () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const thread = ThreadId.parse("thread-exit-under-way");
+    registry.acquire(options(thread, "/workspace/exit-under-way"));
+    const process = createdAt(created, 0);
+    const exit = Promise.withResolvers<void>();
+    process.stop = () => exit.promise;
+    registry.release(thread);
+
+    // The first call starts the stop: the registry forgets the thread at once, and omp exits later.
+    const earlier = registry.stopIfUnwatched(thread);
+    let waited = false;
+    const waiting = registry.stopIfUnwatched(thread).then(() => {
+      waited = true;
+    });
+    // Queued promise callbacks run before the exit; no clock is involved.
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    expect(waited).toBe(false);
+
+    exit.resolve();
+    await earlier;
+    await waiting;
+    expect(waited).toBe(true);
+  });
 });

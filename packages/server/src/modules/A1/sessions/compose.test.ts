@@ -94,12 +94,109 @@ async function exists(file: string): Promise<boolean> {
   );
 }
 
+/** A value a test settles later, so the order of two async steps is the test's choice. */
+function deferred<T = void>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+/** A timer that never fires: the idle close is not what these tests are about. */
+function quietTimer() {
+  return { setTimeout: () => undefined, clearTimeout: () => undefined };
+}
+
+/** The error a promise rejects with, or undefined when it resolves. */
+function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
+  return promise.then(
+    () => undefined,
+    (failure: unknown) => failure,
+  );
+}
+
+/** The first item of a list the test has already filled. */
+function firstOf<T>(items: readonly T[]): T {
+  const [item] = items;
+  if (item === undefined) throw new Error("the test expected a first item");
+  return item;
+}
+
+/** A stub whose stop waits until the test lets it finish, so a viewer can arrive while omp is stopping. */
+class SlowStopProcess extends StubProcess {
+  readonly stopping = deferred();
+  readonly finish = deferred();
+
+  override stop(): Promise<void> {
+    this.stopping.resolve();
+    return this.finish.promise.then(() => super.stop());
+  }
+}
+
+/** A registry whose processes are stubs, kept in the order they were created. */
+function recordingRegistry(): {
+  readonly chats: OmpProcessRegistry;
+  readonly processes: StubProcess[];
+} {
+  const processes: StubProcess[] = [];
+  const chats = new OmpProcessRegistry({
+    timer: quietTimer(),
+    createProcess: (options) => {
+      const process = new StubProcess(options);
+      processes.push(process);
+      return process;
+    },
+  });
+  return { chats, processes };
+}
+
+/** A registry whose processes stop only when the test lets them. */
+function slowStopRegistry(): {
+  readonly chats: OmpProcessRegistry;
+  readonly processes: SlowStopProcess[];
+} {
+  const processes: SlowStopProcess[] = [];
+  const chats = new OmpProcessRegistry({
+    timer: quietTimer(),
+    createProcess: (options) => {
+      const process = new SlowStopProcess(options);
+      processes.push(process);
+      return process;
+    },
+  });
+  return { chats, processes };
+}
+
+/** A chat in a store composed over `chats`: the store, the chat's file and the options that open it. */
+async function chatFor(root: string, chats: OmpProcessRegistry, name: string) {
+  const cwd = "/workspace/app";
+  const store = createServerSessionFileStore({
+    sessionsRoot: path.join(root, "sessions"),
+    home: root,
+    chats,
+  });
+  const file = path.join(store.bucketPath(cwd), `${name}.jsonl`);
+  await writeSession(file, name, cwd);
+  const threadId = ThreadId.parse(name);
+  return {
+    store,
+    cwd,
+    file,
+    threadId,
+    options: { threadId, folder: FolderPath.parse(cwd), ompBin: "stub" },
+  };
+}
+
 /**
  * The store the server composes, with the server's real process registry as its chats. These tests go through the
  * composition, not an injected option, so they fail if `serverOwnsSession` is not wired.
  */
 describe("the session store the server composes", () => {
-  test("a chat the server holds open and idle is refused with conflict, and its file stays", async () => {
+  test("a chat a viewer still watches is refused with conflict, and its file stays", async () => {
     const root = await makeTempRoot();
     try {
       const cwd = "/workspace/app";
@@ -191,6 +288,140 @@ describe("the session store the server composes", () => {
 
       expect(published).toEqual([]);
       expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat nobody watches is stopped first, then its file is deleted", async () => {
+    const root = await makeTempRoot();
+    try {
+      const { chats, processes } = recordingRegistry();
+      const { store, cwd, file, threadId, options } = await chatFor(root, chats, "unwatched");
+      chats.acquire(options);
+      chats.release(threadId);
+
+      const result = await store.deleteSession({ folder: cwd, sessionFile: file });
+
+      expect(result).toEqual({ id: "unwatched", sessionFile: file });
+      expect(await exists(file)).toBe(false);
+      expect(firstOf(processes).status).toBe("stopped");
+      expect(chats.has(threadId)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat a second viewer still watches is refused with its sentence, and its omp is kept", async () => {
+    const root = await makeTempRoot();
+    try {
+      const { chats, processes } = recordingRegistry();
+      const { store, cwd, file, threadId, options } = await chatFor(root, chats, "two-viewers");
+      chats.acquire(options);
+      chats.acquire(options); // a second tab
+      chats.release(threadId); // the first tab lets go; the second still watches
+
+      const error = await rejectionOf(store.deleteSession({ folder: cwd, sessionFile: file }));
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "Close this chat before deleting it: omp has it open.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+      expect(firstOf(processes).status).toBe("running");
+      expect(chats.has(threadId)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat whose turn is running is refused with its sentence, and its omp is kept", async () => {
+    const root = await makeTempRoot();
+    try {
+      const { chats, processes } = recordingRegistry();
+      const { store, cwd, file, threadId, options } = await chatFor(root, chats, "turn-running");
+      chats.acquire(options);
+      chats.release(threadId);
+      chats.setBusy(threadId, true);
+
+      const error = await rejectionOf(store.deleteSession({ folder: cwd, sessionFile: file }));
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "Wait for this chat's turn to finish, then delete it.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+      expect(firstOf(processes).status).toBe("running");
+      expect(chats.has(threadId)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a viewer that arrives while omp is asked whether it has settled keeps the chat", async () => {
+    const root = await makeTempRoot();
+    try {
+      const chats = new OmpProcessRegistry({
+        timer: quietTimer(),
+        createProcess: (options) => new StubProcess(options),
+      });
+      const asked = deferred();
+      const settled = deferred<boolean>();
+      chats.setIdleHooks({
+        isSettled: () => {
+          asked.resolve();
+          return settled.promise;
+        },
+        stopping: () => undefined,
+      });
+      const { store, cwd, file, threadId, options } = await chatFor(root, chats, "asked");
+      chats.acquire(options);
+      chats.release(threadId);
+
+      const refused = rejectionOf(store.deleteSession({ folder: cwd, sessionFile: file }));
+      await asked.promise; // the stop waits for omp's answer
+      chats.acquire(options); // a second tab opens the chat meanwhile
+      settled.resolve(true);
+
+      expect(await refused).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "Close this chat before deleting it: omp has it open.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+      expect(chats.has(threadId)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a viewer that arrives while omp is stopping keeps the chat", async () => {
+    const root = await makeTempRoot();
+    try {
+      const { chats, processes } = slowStopRegistry();
+      const { store, cwd, file, threadId, options } = await chatFor(root, chats, "stopping");
+      chats.acquire(options);
+      chats.release(threadId);
+
+      const refused = rejectionOf(store.deleteSession({ folder: cwd, sessionFile: file }));
+      const first = firstOf(processes);
+      await first.stopping.promise; // omp has been asked to stop
+      chats.acquire(options); // a second tab opens the chat while omp exits
+      first.finish.resolve();
+
+      expect(await refused).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "Close this chat before deleting it: omp has it open.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+      expect(chats.has(threadId)).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

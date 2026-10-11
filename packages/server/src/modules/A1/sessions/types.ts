@@ -187,6 +187,11 @@ export interface SessionFileStoreOptions {
   readonly ownersRoot?: string;
   readonly serverSessionIds?: ReadonlySet<string> | (() => ReadonlySet<string>);
   readonly serverOwnsSession?: (sessionId: string, sessionFile: string) => boolean;
+  /**
+   * Stops this server's omp for the chat when nobody watches it and no turn runs, and resolves once it has stopped. A
+   * delete calls it first, so a chat the view let go of does not keep its omp for the idle time.
+   */
+  readonly stopUnwatched?: (sessionId: string) => Promise<void>;
   /** The turn state of the chat's omp on this server; `undefined` when this server runs no omp for the chat. */
   readonly turnOf?: (sessionId: string) => SessionTurn | undefined;
 }

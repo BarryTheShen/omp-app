@@ -172,15 +172,18 @@ export class OmpProcessRegistry {
   }
 
   /**
-   * Stops a thread's process now if nobody watches it and it is not busy: a host started only for
-   * one job (a rename of a chat nobody has open) stops as soon as the job is done, not after the
-   * idle wait. A watched or busy process is left alone, and the idle timer still applies to it.
+   * Stops a thread's process now if nobody watches it, it is not busy, and omp reports it settled: a host started only
+   * for one job (a rename of a chat nobody has open) stops as soon as the job is done, not after the idle wait. A
+   * watched or busy process is left alone, and the idle timer still applies to it. Resolves once any stop of the
+   * thread's process has finished (omp holds the session file until it exits), so a caller that reads or removes the
+   * file next does not race that exit.
    */
   async stopIfUnwatched(threadId: ThreadId): Promise<void> {
     const entry = this.#entries.get(threadId);
-    if (entry === undefined || entry.watchers > 0 || entry.busy) return;
-    this.#cancelIdle(entry);
-    await this.#closeIfIdle(entry);
+    if (entry !== undefined && entry.watchers === 0 && !entry.busy) {
+      this.#cancelIdle(entry);
+      await this.#closeIfIdle(entry);
+    }
     await this.whenStopped(threadId);
   }
 
