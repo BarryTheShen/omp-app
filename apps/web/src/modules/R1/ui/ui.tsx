@@ -257,7 +257,8 @@ export function SessionCatalogSidebar({
 
   const beginRename = (session: SessionMetadata): void => {
     setEditingId(session.id);
-    setEditingTitle(session.title ?? "");
+    // The box opens with the title the row shows (omp's, else the first prompt), and it is selected.
+    setEditingTitle(sessionTitle(session));
     setRenameError(undefined);
   };
 
@@ -272,7 +273,7 @@ export function SessionCatalogSidebar({
     // Enter pressed again while a save runs is ignored: the first one owns the rename.
     if (renamingRef.current) return;
     const nextTitle = editingTitle.trim();
-    if (nextTitle.length === 0 || nextTitle === session.title) {
+    if (nextTitle.length === 0 || nextTitle === sessionTitle(session)) {
       endRename(session);
       return;
     }
@@ -464,6 +465,7 @@ export function SessionCatalogSidebar({
                             value={editingTitle}
                             onChange={(event) => setEditingTitle(event.target.value)}
                             onClick={(event) => event.stopPropagation()}
+                            onFocus={(event) => event.currentTarget.select()}
                             onKeyDown={(event) => {
                               if (event.key === "Enter") {
                                 event.preventDefault();

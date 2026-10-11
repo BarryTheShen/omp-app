@@ -917,3 +917,36 @@ describe("SessionCatalogSidebar New chat status", () => {
     );
   });
 });
+
+describe("SessionCatalogSidebar rename box", () => {
+  const untitled = () =>
+    modelWithSessions([session("untitled", "2026-10-05T12:00:00.000Z", null, "Parser notes")]);
+
+  test("opens with the title the row shows, all of it selected, and Escape cancels", async () => {
+    const { calls } = renderSidebar({ renameAvailable: true, catalog: untitled() });
+    await waitFor(() => expect(screen.getByText("Parser notes")).toBeTruthy());
+    startRename("Parser notes");
+    const box = screen.getByRole("textbox", { name: "Rename Parser notes" }) as HTMLInputElement;
+    expect(box.value).toBe("Parser notes");
+    expect(box.selectionStart).toBe(0);
+    expect(box.selectionEnd).toBe("Parser notes".length);
+    fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Rename Parser notes" })).toBeNull(),
+    );
+    expect(calls).toEqual([]);
+  });
+
+  test("Enter without a change renames nothing", async () => {
+    const { calls } = renderSidebar({ renameAvailable: true, catalog: untitled() });
+    await waitFor(() => expect(screen.getByText("Parser notes")).toBeTruthy());
+    startRename("Parser notes");
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Rename Parser notes" }), {
+      key: "Enter",
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Rename Parser notes" })).toBeNull(),
+    );
+    expect(calls).toEqual([]);
+  });
+});
