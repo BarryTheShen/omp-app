@@ -1,0 +1,449 @@
+//! The bundled server: starts it, waits until it answers, opens the app in the window, and stops it,
+//! with everything it started, when the app quits or the server ends on its own.
+//!
+//! The window opens at once on a starting page. The omp lookup runs on a helper thread; the server is
+//! started on the main thread, because the kernel's death signal is tied to the thread that starts a
+//! process (see `spawn`). So if this window process dies, even from SIGKILL, the kernel sends the
+//! server SIGTERM, and the server ends the omp processes it started before it exits. `procs.rs` ends
+//! whatever is left after a quit. The server's address is fixed (see `DESKTOP_PORT`), so the web app
+//! keeps its stored settings from one launch to the next.
+//!
+//! Each start has a few threads: one reads the server's output for its address and for "already
+//! running", one drains its error output (never shown or logged: it can hold the launch token), one
+//! waits for the server to end and decides what the window shows, and one waits for the address and
+//! then for the server to answer, before it opens the app in the window.
+
+use std::ffi::OsStr;
+use std::io::{self, BufRead, BufReader};
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStderr, ChildStdout, Command as StdCommand, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex, PoisonError};
+use std::thread;
+use std::time::Duration;
+
+use tauri::webview::NewWindowResponse;
+use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+
+use crate::address::{self, LaunchAddress};
+use crate::omp;
+use crate::procs::{self, Proc};
+use crate::WINDOW_LABEL;
+
+/// The sidecar's file name: the bundler installs it next to the window binary under this name.
+const SIDECAR: &str = "omp-app-desktop-server";
+/// The port the server is asked for. Fixed, so the window's address, and with it the web app's stored
+/// settings, is the same at every launch. It is below the system's ephemeral ports and is not the
+/// omp-app command's 4317. If it is busy, the server picks a free port itself, as it does for the command.
+const DESKTOP_PORT: &str = "27183";
+/// The page shown at once, while the server starts, served from apps/desktop/ui.
+const STARTING_PAGE: &str = "starting.html";
+/// The page for "the app could not start", served from apps/desktop/ui.
+const ERROR_PAGE: &str = "error.html";
+/// The page for "omp is not installed", served from apps/desktop/ui.
+const NO_OMP_PAGE: &str = "no-omp.html";
+const WINDOW_TITLE: &str = "omp app";
+/// How long the server has to print its address, and then to answer.
+const START_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long a stopping server gets to end the omp processes it started by itself.
+const STOP_GRACE: Duration = Duration::from_secs(10);
+/// How long the processes that are left get after SIGTERM before SIGKILL.
+const KILL_WAIT: Duration = Duration::from_secs(2);
+
+/// What the threads share. Only ever locked for a moment; never held while stopping a server.
+#[derive(Default)]
+pub struct Shared {
+    state: Mutex<State>,
+}
+
+#[derive(Default)]
+struct State {
+    /// Set when the app quits: nothing may start after this, and no error is shown.
+    quitting: bool,
+    /// The server this app started, until it is stopped or it turns out to be another instance's.
+    server: Option<Server>,
+}
+
+/// One server this app started. Its process group id is its pid.
+struct Server {
+    /// The server's identity (pid and start time). None if it had already ended when checked.
+    leader: Option<Proc>,
+}
+
+impl Server {
+    /// Ends the server and every process it started, and reports any that would not end.
+    fn stop(self) {
+        let Some(leader) = self.leader else {
+            return;
+        };
+        let left = procs::stop_tree(leader, STOP_GRACE, KILL_WAIT);
+        if !left.is_empty() {
+            let pids: Vec<i32> = left.iter().map(|process| process.pid).collect();
+            eprintln!("omp app: {} process(es) did not stop: {pids:?}", pids.len());
+        }
+    }
+}
+
+fn with_state<T>(app: &AppHandle, change: impl FnOnce(&mut State) -> T) -> T {
+    let shared = app.state::<Shared>();
+    let mut state = shared.state.lock().unwrap_or_else(PoisonError::into_inner);
+    change(&mut state)
+}
+
+/// Opens the window at once on the starting page, then finds omp and starts the server. Called once,
+/// from the app's setup, which runs on the main thread.
+pub fn start(app: AppHandle) {
+    if let Err(error) = new_window(&app, WebviewUrl::App(STARTING_PAGE.into())).build() {
+        eprintln!("omp app: the window did not open: {error}");
+        app.exit(1);
+        return;
+    }
+    let helper_app = app.clone();
+    thread::spawn(move || {
+        // The window finds omp itself (see omp.rs), because a window started from the applications
+        // menu does not have the user's PATH. An OMP_BIN the user set is used as it is.
+        let user_set = std::env::var_os("OMP_BIN").is_some_and(|value| !value.is_empty());
+        let omp = if user_set {
+            None
+        } else {
+            match omp::from_environment() {
+                Some(path) => Some(path),
+                None => {
+                    // A quit cancels the lookup, which then finds nothing: there is no page to show then.
+                    if with_state(&helper_app, |state| state.quitting) {
+                        return;
+                    }
+                    eprintln!("omp app: omp was not found on this computer");
+                    show_page(&helper_app, NO_OMP_PAGE);
+                    return;
+                }
+            }
+        };
+        let start_app = helper_app.clone();
+        let _ = helper_app.run_on_main_thread(move || start_server(&start_app, omp));
+    });
+}
+
+/// Starts the server, on the main thread (see `spawn`), and the threads that watch it.
+fn start_server(app: &AppHandle, omp: Option<PathBuf>) {
+    if with_state(app, |state| state.quitting) {
+        return;
+    }
+    let (child, leader) = match spawn(app, omp.as_deref()) {
+        Ok(started) => started,
+        Err(problem) => {
+            eprintln!("omp app: the server did not start: {problem}");
+            show_error(app);
+            return;
+        }
+    };
+    // A quit may have come while the server was being spawned: it must not outlive the app.
+    let rejected = with_state(app, |state| {
+        let server = Server { leader };
+        if state.quitting {
+            Some(server)
+        } else {
+            state.server = Some(server);
+            None
+        }
+    });
+    if let Some(server) = rejected {
+        server.stop();
+        return;
+    }
+    watch(app.clone(), child);
+}
+
+/// Starts the server on the desktop port (or a free one, when it is busy), with the browser opening
+/// switched off. The server gets the kernel's death signal (SIGTERM when this process dies, even from
+/// SIGKILL) and its own process group, so every process it starts stays in that group. `omp` is the
+/// omp to use, if the window found one.
+fn spawn(app: &AppHandle, omp: Option<&Path>) -> Result<(Child, Option<Proc>), String> {
+    let folder = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_dir())
+        .ok_or("the home folder was not found")?;
+    let web_root = app
+        .path()
+        .resource_dir()
+        .map_err(|error| error.to_string())?
+        .join("web");
+    // The server would fall back to other folders if this one were missing; that must not happen.
+    if !web_root.join("index.html").is_file() {
+        return Err(format!("the web app is not in {}", web_root.display()));
+    }
+    let sidecar = std::env::current_exe()
+        .map_err(|error| error.to_string())?
+        .parent()
+        .ok_or("the app's folder was not found")?
+        .join(SIDECAR);
+    // This process's pid. The server must still have it as its parent once the death signal is set;
+    // if it does not, this process died first, and the server must not start.
+    let parent = libc::pid_t::try_from(std::process::id()).map_err(|error| error.to_string())?;
+    let mut command = StdCommand::new(&sidecar);
+    command
+        .args([folder.as_os_str(), OsStr::new("--no-open")])
+        .current_dir(&folder)
+        .env("OMP_APP_WEB_ROOT", &web_root)
+        // The server takes this port when it is free, and otherwise a free port (see DESKTOP_PORT).
+        .env("OMP_APP_PORT", DESKTOP_PORT)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .process_group(0);
+    if let Some(omp) = omp {
+        command.env("OMP_BIN", omp);
+    }
+    // SAFETY: the closure runs in the child between fork and exec. It makes two system calls and
+    // allocates nothing, which is all that is allowed at that point.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_ulong) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if libc::getppid() != parent {
+                return Err(io::Error::from_raw_os_error(libc::ESRCH));
+            }
+            Ok(())
+        });
+    }
+    let child = command.spawn().map_err(|error| error.to_string())?;
+    let leader = procs::identify(child.id());
+    Ok((child, leader))
+}
+
+/// Watches the server until it ends: its output, its error output, and the end itself.
+fn watch(app: AppHandle, mut child: Child) {
+    let attached = Arc::new(AtomicBool::new(false));
+    let (found_tx, found_rx) = mpsc::channel();
+    let stdout = child.stdout.take();
+    let reader_attached = Arc::clone(&attached);
+    let reader = thread::spawn(move || read_output(stdout, found_tx, &reader_attached));
+    if let Some(stderr) = child.stderr.take() {
+        thread::spawn(move || drain(stderr));
+    }
+    let ender_app = app.clone();
+    thread::spawn(move || {
+        let _ = child.wait();
+        // The end is decided only after the output is read: an "already running" line may be the last.
+        let _ = reader.join();
+        if attached.load(Ordering::SeqCst) {
+            // Another instance serves the window, so this server was not started for the app to keep:
+            // forget it. A later quit must not sweep a process group whose id may have been reused.
+            with_state(&ender_app, |state| state.server.take());
+        } else {
+            // The server ended on its own (a quit has already taken it). The omp processes it left
+            // behind are still in its process group: end them, then say so.
+            stop_server(&ender_app);
+            show_error(&ender_app);
+        }
+    });
+    thread::spawn(move || open_when_answering(app, found_rx));
+}
+
+/// Reads the server's output until it ends. The first launch address goes to the thread that waits
+/// for it. A server that found another instance running says so before it ends.
+fn read_output(
+    stdout: Option<ChildStdout>,
+    found: mpsc::Sender<LaunchAddress>,
+    attached: &AtomicBool,
+) {
+    let Some(stdout) = stdout else {
+        return;
+    };
+    let mut lines = BufReader::new(stdout);
+    let mut found = Some(found);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        match lines.read_until(b'\n', &mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        // The text is never logged: it can hold the launch token.
+        let text = String::from_utf8_lossy(&line);
+        if address::says_already_running(&text) {
+            attached.store(true, Ordering::SeqCst);
+        }
+        if let Some(launch) = address::find(&text) {
+            if let Some(sender) = found.take() {
+                let _ = sender.send(launch);
+            }
+        }
+    }
+}
+
+/// Reads the server's error output to its end, so that the server never blocks on it. Never shown or
+/// logged: it can hold the launch token.
+fn drain(mut stderr: ChildStderr) {
+    let _ = io::copy(&mut stderr, &mut io::sink());
+}
+
+/// Waits for the server's address and then for the server to answer, and opens the app in the window.
+/// If either never comes, the server is stopped and the error page is shown. The server's start can
+/// take a long time on a busy computer, so the window shows the starting page until it answers.
+fn open_when_answering(app: AppHandle, found: mpsc::Receiver<LaunchAddress>) {
+    let answered = match found.recv_timeout(START_TIMEOUT) {
+        Ok(launch) => address::wait_for_answer(launch.port, START_TIMEOUT).then_some(launch.url),
+        Err(_) => None,
+    };
+    match answered.and_then(|url| Url::parse(&url).ok()) {
+        Some(url) => open_server_page(&app, url),
+        None => {
+            stop_server(&app);
+            show_error(&app);
+        }
+    }
+}
+
+/// Stops the server this app started, if it is still known. Taking it out of the state means it is
+/// stopped once, whichever thread gets there first.
+fn stop_server(app: &AppHandle) {
+    if let Some(server) = with_state(app, |state| state.server.take()) {
+        server.stop();
+    }
+}
+
+/// The app is quitting: stops the server and everything it started.
+pub fn stop(app: &AppHandle) {
+    let server = with_state(app, |state| {
+        state.quitting = true;
+        state.server.take()
+    });
+    // A login-shell lookup still running is ended with its group, so nothing it started outlives the app.
+    omp::cancel_lookup();
+    if let Some(server) = server {
+        server.stop();
+    }
+}
+
+/// The window was closed: the app ends once the server and what it started are stopped. This runs on
+/// its own thread, so the window (already hidden) and the event loop are not held up meanwhile.
+pub fn quit(app: AppHandle) {
+    thread::spawn(move || {
+        stop(&app);
+        app.exit(0);
+    });
+}
+
+fn new_window(
+    app: &AppHandle,
+    page: WebviewUrl,
+) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
+    WebviewWindowBuilder::new(app, WINDOW_LABEL, page)
+        .title(WINDOW_TITLE)
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(640.0, 480.0)
+        .on_navigation(|target| {
+            let inside = is_app_address(target);
+            if !inside {
+                open_externally(target);
+            }
+            inside
+        })
+        .on_new_window(|target, _features| {
+            open_externally(&target);
+            NewWindowResponse::Deny
+        })
+        // The web app saves a file (the debug log) as a download. wry picks the Downloads folder and the
+        // suggested name only when a download handler is set, so one is set here and allows every download.
+        .on_download(|_webview, _event| true)
+}
+
+/// Shows the app in the window: the starting page becomes the server's address. Nothing happens once
+/// the app is quitting.
+fn open_server_page(app: &AppHandle, url: Url) {
+    if with_state(app, |state| state.quitting) {
+        return;
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || match handle.get_webview_window(WINDOW_LABEL) {
+        Some(window) => {
+            if let Err(error) = window.navigate(url) {
+                eprintln!("omp app: the app did not open in the window: {error}");
+            }
+        }
+        None => {
+            if let Err(error) = new_window(&handle, WebviewUrl::External(url)).build() {
+                // Without a window nothing can be shown: quit, and the exit stops the server.
+                eprintln!("omp app: the window did not open: {error}");
+                handle.exit(1);
+            }
+        }
+    });
+}
+
+/// Shows the error page in the window, or in a new window when none is open yet.
+fn show_error(app: &AppHandle) {
+    show_page(app, ERROR_PAGE);
+}
+
+/// Shows one of the bundled pages in the window, or in a new window when none is open yet.
+fn show_page(app: &AppHandle, page: &'static str) {
+    if with_state(app, |state| state.quitting) {
+        return;
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || match handle.get_webview_window(WINDOW_LABEL) {
+        Some(window) => {
+            if let Ok(url) = Url::parse(&format!("tauri://localhost/{page}")) {
+                let _ = window.navigate(url);
+            }
+        }
+        None => {
+            if let Err(error) = new_window(&handle, WebviewUrl::App(page.into())).build() {
+                // Without a window nothing can be shown: quit, and the exit stops the server.
+                eprintln!("omp app: the page did not open: {error}");
+                handle.exit(1);
+            }
+        }
+    });
+}
+
+/// The app's own pages: the bundled pages and the local server. Everything else is a link.
+fn is_app_address(url: &Url) -> bool {
+    match url.scheme() {
+        "tauri" | "about" => true,
+        "http" => url.host_str() == Some("127.0.0.1"),
+        // The web app saves a file (the debug log) through a blob link. The address after `blob:` is the
+        // app's own page's address, so the link is the app's own.
+        "blob" => Url::parse(url.path()).is_ok_and(|inner| is_app_address(&inner)),
+        _ => false,
+    }
+}
+
+/// Opens a web or mail link in the default app, the way a browser tab would.
+fn open_externally(url: &Url) {
+    if !matches!(url.scheme(), "http" | "https" | "mailto") {
+        return;
+    }
+    match StdCommand::new("xdg-open")
+        .arg(url.as_str())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(mut child) => {
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        Err(error) => eprintln!("omp app: could not open a link: {error}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_app_and_its_blob_links_are_app_addresses_and_other_links_are_not() {
+        let is_app =
+            |text: &str| is_app_address(&Url::parse(text).expect("the test address parses"));
+        assert!(is_app("blob:http://127.0.0.1:27183/x"));
+        assert!(!is_app("blob:https://example.com/x"));
+        assert!(!is_app("http://example.com"));
+    }
+}

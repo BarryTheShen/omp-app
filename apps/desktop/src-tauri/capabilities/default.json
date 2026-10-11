@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The window grants no commands to any page. The app's pages and the local server's pages call no desktop commands.",
+  "windows": ["main"],
+  "permissions": []
+}
