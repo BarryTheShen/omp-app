@@ -183,4 +183,20 @@ describe("omp environment overrides in the typed Tools policy", () => {
       await closeHarness(harness);
     }
   });
+
+  test("the policy shows the push token as set from the environment, and its value never reaches the policy", async () => {
+    const harness = await openHarness({ PI_AUTO_QA_PUSH_TOKEN: TOKEN }, SAVED_GLOBAL_CONFIG);
+    try {
+      const policy = projectToolsPolicy(await readToolsSettings(harness.client, null));
+
+      expect(policy.developer.autoqaPushToken).toMatchObject({
+        isSet: true,
+        provenance: { source: "env" },
+      });
+      expect(policy.redacted).toContain("dev.autoqaPush.token");
+      expect(JSON.stringify(policy)).not.toContain(TOKEN);
+    } finally {
+      await closeHarness(harness);
+    }
+  });
 });

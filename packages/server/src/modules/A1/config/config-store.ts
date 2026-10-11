@@ -329,27 +329,37 @@ function credentialLike(key: string): boolean {
   return segments.some((segment) => CREDENTIAL_SEGMENT.test(segment));
 }
 
-/** A query or fragment parameter whose last name segment is a credential word (`token`, `api_key`, `X-Auth-Token`). */
-const SECRET_PARAMETER_SEGMENT = /^(?:token|key|secret|password|auth|sig|signature)$/i;
+/** The settings the app shows as URLs (the Tools descriptors' `url` controls). Each can carry a credential. */
+const URL_SETTING_KEYS: ReadonlySet<string> = new Set([
+  "browser.cdpUrl",
+  "browser.relayUrl",
+  "dev.autoqaPush.endpoint",
+]);
+/** A query (`?`), a fragment (`#`) or userinfo (`@`) can carry a credential, so a URL setting with one is hidden. */
+const URL_CREDENTIAL_DELIMITER = /[?#@]/;
 
 /**
- * Whether an environment value carries a credential in its query or fragment (for example `?token=`). omp reads
- * such an endpoint as given, so a plain read would show the credential in the page.
+ * Whether a key's value is hidden because it is, or carries, one of those URL settings in a form that can hold a
+ * credential. Such a setting is shown only as a plain URL, whatever its parameter is named (`apiKey`, `%74oken`,
+ * `;token=`, `token@host`). Parent entries (`dev`, `dev.autoqaPush`) carry the setting in their values, so they are
+ * hidden with it, and so are the parts of a setting that is a map. A token in the path of a plain URL, one with no
+ * query, fragment or userinfo, stays visible: a plain URL must stay visible, so the rule cannot tell them apart. The
+ * token belongs in PI_AUTO_QA_PUSH_TOKEN. Only reads use this rule: the write check does not, so a plain value can
+ * still replace a hidden one.
  */
-function carriesSecretParameter(value: string): boolean {
-  return value
-    .split(/[?&#]/)
-    .slice(1)
-    .some((pair) => SECRET_PARAMETER_SEGMENT.test(pair.split("=")[0]?.split(/[_.-]/).at(-1) ?? ""));
-}
-
-/** A value the environment supplies that carries a credential in its URL: it is hidden, as a secret is. */
-function isHiddenEnvironmentValue(resolved: ResolvedSetting): boolean {
-  return (
-    resolved.source === "env" &&
-    typeof resolved.value === "string" &&
-    carriesSecretParameter(resolved.value)
-  );
+function hidesUrlSetting(key: string, value: JsonValue): boolean {
+  if (value === null) return false;
+  if ([...URL_SETTING_KEYS].some((setting) => key.startsWith(`${setting}.`))) return true;
+  for (const [path, nested] of collectValues(value, key)) {
+    if (
+      URL_SETTING_KEYS.has(path) &&
+      nested !== null &&
+      (typeof nested !== "string" || URL_CREDENTIAL_DELIMITER.test(nested))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** True when a value, or anything nested in it, is credential-shaped by key or by value. */
@@ -834,7 +844,7 @@ export class ConfigStoreService {
       throw failure("not_found", "Configuration key was not found.");
     }
     const provenance = this.provenance(resolved);
-    if (this.isSecretEntry(key, resolved.value) || isHiddenEnvironmentValue(resolved)) {
+    if (this.isSecretEntry(key, resolved.value) || hidesUrlSetting(key, resolved.value)) {
       return {
         key,
         secret: true,

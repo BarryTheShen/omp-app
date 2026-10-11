@@ -35,6 +35,8 @@ const OMP_ENVIRONMENT_SETTINGS = [
   { key: "tools.intentTracing", variable: "PI_INTENT_TRACING", type: "boolean" },
   // Read directly, not through the registry: packages/coding-agent/src/tools/report-tool-issue.ts:365-370 and 385.
   { key: "dev.autoqaPush.endpoint", variable: "PI_AUTO_QA_PUSH_URL", type: "string" },
+  // Read the same way (packages/coding-agent/src/tools/report-tool-issue.ts:365-370 and 389): trimmed, never shown.
+  { key: "dev.autoqaPush.token", variable: "PI_AUTO_QA_PUSH_TOKEN", type: "string" },
   // packages/coding-agent/src/tools/browser/relay/kind.ts:36.
   { key: "browser.relay", variable: "PI_BROWSER_RELAY", type: "boolean" },
   // packages/coding-agent/src/tools/browser/cmux/rpc.ts:187.

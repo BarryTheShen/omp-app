@@ -172,6 +172,18 @@ describe("ompEnvironmentValues", () => {
       await ompEnvironmentValues(sourcesIn(root, { processEnv: { OMP_PROFILE: "work" } })),
     ).toEqual({ "dev.autoqa": false });
   });
+
+  test("reads the push token from PI_AUTO_QA_PUSH_TOKEN, trimmed, as the token omp pushes with", async () => {
+    const root = await temporaryRoot();
+    expect(
+      await ompEnvironmentValues(
+        sourcesIn(root, { processEnv: { PI_AUTO_QA_PUSH_TOKEN: `  ${TOKEN}  ` } }),
+      ),
+    ).toEqual({ "dev.autoqaPush.token": TOKEN });
+    expect(
+      await ompEnvironmentValues(sourcesIn(root, { processEnv: { PI_AUTO_QA_PUSH_TOKEN: "  " } })),
+    ).toEqual({});
+  });
 });
 
 describe("omp environment values in the ConfigStore", () => {
@@ -213,47 +225,147 @@ describe("omp environment values in the ConfigStore", () => {
     store.dispose();
   });
 
-  test("hides every credential-named query parameter, and keeps the other query values visible", async () => {
-    const root = await temporaryRoot();
-    for (const name of [
+  // A credential sits only in a URL's query, fragment or userinfo, so an endpoint with any of them is hidden, whatever
+  // the parameter is named or how it is written. A query without a credential is hidden too: the rule is structural.
+  const hiddenEndpoints = [
+    ...[
       "token",
       "api_key",
       "X-Auth-Token",
+      "access_token",
+      "id_token",
+      "client_secret",
+      "private_key",
+      "x-api-key",
       "password",
       "secret",
       "auth",
       "key",
       "sig",
-    ]) {
-      const store = new ConfigStoreService({
-        agentDir: join(root, "agent"),
-        appDataDir: join(root, "app"),
-        environmentValues: () =>
-          ompEnvironmentValues(
-            sourcesIn(root, {
-              processEnv: { PI_AUTO_QA_PUSH_URL: `https://qa.example.test/v1?${name}=${TOKEN}` },
-            }),
-          ),
-      });
-      expect(await store.read({ key: "dev.autoqaPush.endpoint", folder: null })).toMatchObject({
-        secret: true,
-      });
-      store.dispose();
-    }
-    for (const name of ["author", "monkey", "keyword", "region", "page"]) {
-      const url = `https://qa.example.test/v1?${name}=${TOKEN}`;
+      "signature",
+      "apiKey",
+      "apikey",
+      "accessToken",
+      "authorization",
+      "Authorization",
+      "bearer",
+      "jwt",
+      "credential",
+      "credentials",
+      "pwd",
+      "passwd",
+      "pass",
+      "secretKey",
+      "sessionid",
+      "session",
+      "code",
+      "sas",
+      "apitoken",
+      "authtoken",
+      "key_id",
+    ].map((name) => `https://qa.example.test/v1?${name}=${TOKEN}`),
+    `https://qa.example.test/v1?%74oken=${TOKEN}`,
+    `https://qa.example.test/v1?token%3D${TOKEN}`,
+    `https://qa.example.test/v1?region=eu&amp;token=${TOKEN}`,
+    `https://qa.example.test/v1?region=eu;token=${TOKEN}`,
+    `https://qa.example.test/v1? token=${TOKEN}`,
+    `https://qa.example.test/v1#access_token=${TOKEN}`,
+    `https://${TOKEN}@qa.example.test/v1`,
+    `https://user:${TOKEN}@qa.example.test/v1`,
+    `qa.example.test/v1?apiKey=${TOKEN}`,
+    "https://qa.example.test/v1?region=eu",
+  ];
+  const plainEndpoints = [
+    "https://qa.example.test/v1",
+    "https://qa.example.test/v1/",
+    "https://qa.omp.sh/v1/grievances",
+  ];
+
+  test.each(hiddenEndpoints)(
+    "hides the push endpoint %s when the environment sets it",
+    async (url) => {
+      const root = await temporaryRoot();
       const store = new ConfigStoreService({
         agentDir: join(root, "agent"),
         appDataDir: join(root, "app"),
         environmentValues: () =>
           ompEnvironmentValues(sourcesIn(root, { processEnv: { PI_AUTO_QA_PUSH_URL: url } })),
       });
-      expect(await store.read({ key: "dev.autoqaPush.endpoint", folder: null })).toMatchObject({
+      const read = await store.read({ key: "dev.autoqaPush.endpoint", folder: null });
+      expect(read).toMatchObject({
+        key: "dev.autoqaPush.endpoint",
+        secret: true,
+        isSet: true,
+        source: "env",
+      });
+      expect(JSON.stringify(read)).not.toContain(TOKEN);
+      expect(JSON.stringify(await store.list({ folder: null }))).not.toContain(TOKEN);
+      store.dispose();
+    },
+  );
+
+  test.each(hiddenEndpoints)("hides the push endpoint %s when it is saved", async (url) => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    await writeText(
+      join(agent, "config.yml"),
+      `dev:\n  autoqaPush:\n    endpoint: ${JSON.stringify(url)}\n`,
+    );
+    const store = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+    const saved = await store.read({ key: "dev.autoqaPush.endpoint", folder: null });
+    expect(saved).toMatchObject({ secret: true, isSet: true, source: "global" });
+    expect(JSON.stringify(saved)).not.toContain(TOKEN);
+    expect(JSON.stringify(await store.list({ folder: null }))).not.toContain(TOKEN);
+    expect(JSON.stringify(await store.read({ key: "dev", folder: null }))).not.toContain(TOKEN);
+    store.dispose();
+  });
+
+  test.each(plainEndpoints)(
+    "shows the plain push endpoint %s, from the environment and when saved",
+    async (url) => {
+      const root = await temporaryRoot();
+      const fromEnvironment = new ConfigStoreService({
+        agentDir: join(root, "agent"),
+        appDataDir: join(root, "app"),
+        environmentValues: () =>
+          ompEnvironmentValues(sourcesIn(root, { processEnv: { PI_AUTO_QA_PUSH_URL: url } })),
+      });
+      expect(
+        await fromEnvironment.read({ key: "dev.autoqaPush.endpoint", folder: null }),
+      ).toMatchObject({
         secret: false,
         value: url,
+        source: "env",
       });
-      store.dispose();
-    }
+      fromEnvironment.dispose();
+      const agent = join(root, "saved");
+      await writeText(
+        join(agent, "config.yml"),
+        `dev:\n  autoqaPush:\n    endpoint: ${JSON.stringify(url)}\n`,
+      );
+      const saved = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+      expect(await saved.read({ key: "dev.autoqaPush.endpoint", folder: null })).toMatchObject({
+        secret: false,
+        value: url,
+        source: "global",
+      });
+      saved.dispose();
+    },
+  );
+
+  test("shows a shell prefix with a credential-named flag: the endpoint rule applies to the push endpoint only", async () => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    await writeText(
+      join(agent, "config.yml"),
+      `bash:\n  prefix: ${JSON.stringify("cd /tmp && make --key=1")}\n`,
+    );
+    const store = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+    expect(await store.read({ key: "bash.prefix", folder: null })).toMatchObject({
+      secret: false,
+      value: "cd /tmp && make --key=1",
+    });
+    store.dispose();
   });
 
   test("a saved edit to a hidden environment URL is written to the file, and the value stays hidden", async () => {
@@ -392,6 +504,71 @@ describe("omp environment values in the ConfigStore", () => {
       overrides: ["global"],
     });
     expect(await readFile(join(agent, "config.yml"), "utf8")).toContain("autoqa: true");
+    store.dispose();
+  });
+
+  test("the push token from the environment is a secret: its status is set and its value never leaves the server", async () => {
+    const root = await temporaryRoot();
+    const store = new ConfigStoreService({
+      agentDir: join(root, "agent"),
+      appDataDir: join(root, "app"),
+      environmentValues: () =>
+        ompEnvironmentValues(sourcesIn(root, { processEnv: { PI_AUTO_QA_PUSH_TOKEN: TOKEN } })),
+    });
+    expect(await store.read({ key: "dev.autoqaPush.token", folder: null })).toMatchObject({
+      key: "dev.autoqaPush.token",
+      secret: true,
+      isSet: true,
+      source: "env",
+    });
+    expect(JSON.stringify(await store.list({ folder: null }))).not.toContain(TOKEN);
+    store.dispose();
+  });
+
+  test("a saved endpoint whose query carries a credential is hidden, and a plain endpoint can replace it", async () => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    await writeText(
+      join(agent, "config.yml"),
+      `dev:\n  autoqaPush:\n    endpoint: https://qa.example.test/v1?token=${TOKEN}\n`,
+    );
+    const store = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+    const saved = await store.read({ key: "dev.autoqaPush.endpoint", folder: null });
+    expect(saved).toMatchObject({ secret: true, isSet: true, source: "global" });
+    expect(JSON.stringify(saved)).not.toContain(TOKEN);
+    expect(JSON.stringify(await store.list({ folder: null }))).not.toContain(TOKEN);
+
+    const revision = (await store.list({ folder: null })).revision;
+    await store.write({
+      key: "dev.autoqaPush.endpoint",
+      layer: "global",
+      folder: null,
+      expectedRevision: revision,
+      value: { secret: false, value: "https://qa.example.test/v1" },
+    });
+    expect(await store.read({ key: "dev.autoqaPush.endpoint", folder: null })).toMatchObject({
+      secret: false,
+      value: "https://qa.example.test/v1",
+    });
+    store.dispose();
+  });
+
+  test("a browser URL with a credential is hidden like the push endpoint, and a plain one is shown", async () => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    await writeText(
+      join(agent, "config.yml"),
+      `browser:\n  cdpUrl: ${JSON.stringify(`https://127.0.0.1:9222/?token=${TOKEN}`)}\n  relayUrl: http://127.0.0.1:9224\n`,
+    );
+    const store = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+    const cdp = await store.read({ key: "browser.cdpUrl", folder: null });
+    expect(cdp).toMatchObject({ secret: true, isSet: true, source: "global" });
+    expect(JSON.stringify(cdp)).not.toContain(TOKEN);
+    expect(JSON.stringify(await store.list({ folder: null }))).not.toContain(TOKEN);
+    expect(await store.read({ key: "browser.relayUrl", folder: null })).toMatchObject({
+      secret: false,
+      value: "http://127.0.0.1:9224",
+    });
     store.dispose();
   });
 });
