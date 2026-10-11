@@ -1,3 +1,5 @@
+export type { ChordLabelOptions } from "./chord-label";
+export { chordLabel, isApplePlatform } from "./chord-label";
 export type { ShortcutRegistryProviderProps } from "./context";
 export {
   ShortcutRegistryProvider,

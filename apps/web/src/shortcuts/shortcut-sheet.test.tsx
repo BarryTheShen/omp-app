@@ -1,6 +1,6 @@
 import type { Descriptor } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { ShortcutRegistryProvider, ShortcutSheet, ShortcutSheetHost } from "./index";
 import { MemoryPreferenceStore } from "./registry";
 
@@ -86,6 +86,37 @@ describe("ShortcutSheet", () => {
     expect(screen.getByText("Send message")).toBeTruthy();
     expect(screen.queryByText("Toggle thinking")).toBeNull();
   });
+  test("reads each chord the way the person's keyboard names it, and searches by that name too", () => {
+    render(
+      <Provider>
+        <ShortcutSheet open onOpenChange={() => undefined} />
+      </Provider>,
+    );
+    expect(screen.getByRole("button", { name: "Ctrl+Enter" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Alt+T" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Mod+Enter" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search shortcuts" }), {
+      target: { value: "ctrl+enter" },
+    });
+    expect(screen.getByText("Send message")).toBeTruthy();
+    expect(screen.queryByText("Toggle thinking")).toBeNull();
+  });
+  test("on a Mac the same chords read with Cmd and Option", () => {
+    const userAgent = vi
+      .spyOn(navigator, "userAgent", "get")
+      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15");
+    try {
+      render(
+        <Provider>
+          <ShortcutSheet open onOpenChange={() => undefined} />
+        </Provider>,
+      );
+      expect(screen.getByRole("button", { name: "Cmd+Enter" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Option+T" })).toBeTruthy();
+    } finally {
+      userAgent.mockRestore();
+    }
+  });
   test("marks browser-reserved default chords", () => {
     render(
       <Provider>
@@ -125,8 +156,9 @@ describe("ShortcutSheet", () => {
         <ShortcutSheet open onOpenChange={() => undefined} />
       </Provider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Mod+Enter" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl+Enter" }));
     const input = screen.getByRole("textbox", { name: "Rebind Send message" });
+    expect(input).toHaveProperty("value", "Mod+Enter");
     fireEvent.change(input, { target: { value: "Mod+Shift+Enter" } });
     fireEvent.blur(input);
     expect(screen.getByRole("alert").textContent).toContain("U0 and U2");

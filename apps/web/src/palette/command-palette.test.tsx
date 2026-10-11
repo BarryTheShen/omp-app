@@ -345,10 +345,30 @@ describe("U0 command palette: commands a feature registers", () => {
     );
     await openPalette();
     const option = optionFor(TREE);
-    expect(within(option).getByText("Mod+Shift+H")).toBeTruthy();
+    expect(within(option).getByText("Ctrl+Shift+H")).toBeTruthy();
     fireEvent.click(option);
     await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
     await expectPaletteClosed();
+  });
+
+  test("lists the same chord as Cmd on a Mac, never as the stored Mod", async () => {
+    const userAgent = vi
+      .spyOn(navigator, "userAgent", "get")
+      .mockReturnValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15");
+    try {
+      renderPalette(
+        capabilitiesFor([TREE], "available"),
+        new Map(),
+        new Map(),
+        <CommandRegistrar run={vi.fn<() => void>()} />,
+      );
+      await openPalette();
+      const option = optionFor(TREE);
+      expect(within(option).getByText("Cmd+Shift+H")).toBeTruthy();
+      expect(within(option).queryByText(/Mod/)).toBeNull();
+    } finally {
+      userAgent.mockRestore();
+    }
   });
 
   test("does not list a command that no feature registered", async () => {

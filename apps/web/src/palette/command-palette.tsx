@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { type OverlayCloseReason, type OverlayOpenResult, useOverlayHost } from "@/overlay";
 import { DESCRIPTORS } from "@/registry";
 import { capabilityStatus, isDescriptorAvailable, useCapabilities } from "@/registry-core";
-import { useShortcutRegistry, useShortcutScope } from "@/shortcuts";
+import { chordLabel, isApplePlatform, useShortcutRegistry, useShortcutScope } from "@/shortcuts";
 import type { ShortcutRegistry } from "@/shortcuts/registry";
 import { U0_COMMAND_PALETTE_SHORTCUT } from "./descriptor";
 
@@ -124,6 +124,7 @@ function CommandPaletteDialog({
   readonly unavailableReasons: ReadonlyMap<DescriptorId, string>;
 }) {
   const listId = useId();
+  const apple = isApplePlatform();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -265,7 +266,7 @@ function CommandPaletteDialog({
                   <span className="flex shrink-0 items-center gap-(--space-xs)">
                     {entry.shortcut === undefined ? null : (
                       <kbd className="border-border text-muted-foreground rounded-md border px-1.5 text-xs">
-                        {entry.shortcut}
+                        {chordLabel(entry.shortcut, { mac: apple })}
                       </kbd>
                     )}
                     {entry.descriptor.slash && (

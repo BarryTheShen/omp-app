@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { capabilityStatus, useCapabilities } from "@/registry-core";
+import { chordLabel, isApplePlatform } from "./chord-label";
 import {
   useShortcutBindings,
   useShortcutError,
@@ -28,6 +29,7 @@ function formatScope(scope: string): string {
 /** Searchable grouped shortcut sheet with conflict-safe rebinding and reset. */
 export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
   const registry = useShortcutRegistry();
+  const apple = isApplePlatform();
   const shortcutError = useShortcutError();
   const shortcutPreferenceError = useShortcutPreferenceError();
   const bindings = useShortcutBindings();
@@ -47,11 +49,11 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
             return state === "available" || state === "fallback";
           }) &&
           (normalizedQuery.length === 0 ||
-            `${binding.title} ${binding.scope} ${binding.chord}`
+            `${binding.title} ${binding.scope} ${binding.chord} ${chordLabel(binding.chord, { mac: apple })}`
               .toLowerCase()
               .includes(normalizedQuery)),
       ),
-    [bindings, capabilities, normalizedQuery],
+    [apple, bindings, capabilities, normalizedQuery],
   );
   const groups = new Map<string, typeof visible>();
   for (const binding of visible)
@@ -140,7 +142,7 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
                             variant="outline"
                             onClick={() => setEditingId(binding.id)}
                           >
-                            {binding.chord}
+                            {chordLabel(binding.chord, { mac: apple })}
                           </Button>
                           {binding.chord !== binding.defaultChord && (
                             <Button

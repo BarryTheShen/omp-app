@@ -123,7 +123,7 @@ realTest(
     await palette.getByRole("combobox", { name: "Search commands" }).fill("conversation tree");
     const row = palette.getByRole("option", { name: /Conversation tree/ });
     // The palette row shows the chord that runs the same panel.
-    await expect(row).toContainText("Mod+Shift+H");
+    await expect(row).toContainText("Ctrl+Shift+H");
     await row.click();
 
     const tree = page.getByRole("tree", TREE);
