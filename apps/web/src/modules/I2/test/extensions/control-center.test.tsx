@@ -48,6 +48,16 @@ function catalog(): { catalog: ExtensionCatalog; reload: ReturnType<typeof vi.fn
   };
 }
 
+/** The accessible name of a provider tab: its label, and a count only once a snapshot was read. */
+function tabLabel(id: "extensions" | "skills" | "prompts" | "plugins"): string | null {
+  return screen.getByTestId(`extension-tab-${id}`).getAttribute("aria-label");
+}
+
+const available = { "host.extension-catalog": { state: "available", via: "host" } } as const;
+const hostStopped = () =>
+  Promise.reject(
+    new AppFailure({ code: "internal", message: "The host stopped.", retryable: true }),
+  );
 afterEach(() => cleanup());
 
 describe("ExtensionControlCenter", () => {
@@ -128,8 +138,80 @@ describe("ExtensionControlCenter", () => {
         capabilities={{ "host.extension-catalog": { state: "available", via: "host" } }}
       />,
     );
-    await waitFor(() => expect(screen.getByTestId("extension-catalog-error")).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText("The host stopped.").length).toBeGreaterThan(0));
     expect(screen.queryByText(/^No (matching|extensions|skills|prompts|plugins)/)).toBeNull();
+  });
+
+  test("the Prompts tab counts prompts, not the extensions beside them", async () => {
+    const mixed: ExtensionCatalogSnapshot = {
+      revision: "revision-prompts",
+      extensions: [
+        {
+          id: "extension-one",
+          name: "Extension One",
+          provider: "demo",
+          source: "extension",
+          version: "1.0.0",
+          enabled: true,
+          shadowed: false,
+          capabilities: ["tools"],
+          description: "One extension",
+        },
+      ],
+      skills: [],
+      prompts: [
+        { name: "prompt-one", provider: "demo", source: "extension", enabled: true },
+        { name: "prompt-two", provider: "demo", source: "extension", enabled: true },
+      ],
+      sources: [{ source: "extension", provider: "demo", total: 1, enabled: 1, shadowed: 0 }],
+      truncated: false,
+    };
+    const withPrompts: ExtensionCatalog = {
+      list: vi.fn(async () => mixed),
+      reload: vi.fn(async () => mixed),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(
+      <ExtensionControlCenter catalog={withPrompts} folder={folder} capabilities={available} />,
+    );
+    await waitFor(() => expect(tabLabel("prompts")).toBe("Prompts, 2 items"));
+    expect(tabLabel("extensions")).toBe("Extensions, 1 item");
+  });
+
+  test("a tab names no count while the catalog is loading", () => {
+    const pending: ExtensionCatalog = {
+      list: vi.fn(() => new Promise<ExtensionCatalogSnapshot>(() => undefined)),
+      reload: vi.fn(() => new Promise<ExtensionCatalogSnapshot>(() => undefined)),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(<ExtensionControlCenter catalog={pending} folder={folder} capabilities={available} />);
+    expect(tabLabel("extensions")).toBe("Extensions");
+    expect(tabLabel("skills")).toBe("Skills");
+    expect(tabLabel("prompts")).toBe("Prompts");
+    expect(tabLabel("plugins")).toBe("Plugins");
+  });
+
+  test("a tab names no count after a failed load", async () => {
+    const failing: ExtensionCatalog = {
+      list: vi.fn(hostStopped),
+      reload: vi.fn(hostStopped),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(<ExtensionControlCenter catalog={failing} folder={folder} capabilities={available} />);
+    await waitFor(() => expect(screen.getAllByText("The host stopped.").length).toBeGreaterThan(0));
+    expect(tabLabel("extensions")).toBe("Extensions");
+    expect(tabLabel("plugins")).toBe("Plugins");
+  });
+
+  test("a failed load shows its sentence once", async () => {
+    const failing: ExtensionCatalog = {
+      list: vi.fn(hostStopped),
+      reload: vi.fn(hostStopped),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(<ExtensionControlCenter catalog={failing} folder={folder} capabilities={available} />);
+    await waitFor(() => expect(screen.getAllByText("The host stopped.").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("The host stopped.")).toHaveLength(1);
   });
 
   test("reloads through the typed catalog and gates unavailable capability", async () => {

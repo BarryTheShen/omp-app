@@ -7,7 +7,6 @@ import { PanelShell } from "@/modules/U5/panel/shell";
 import { useMediaQuery } from "@/shell/use-media-query";
 import { Icons } from "@/tokens";
 import type {
-  CatalogSourceSummary,
   ExtensionCatalog,
   ExtensionCatalogSnapshot,
   ExtensionMetadata,
@@ -81,12 +80,14 @@ function tabItems(snapshot: ExtensionCatalogSnapshot, tab: ProviderTab): readonl
   }
 }
 
-function sourceSummary(sources: readonly CatalogSourceSummary[], tab: ProviderTab): string {
+/** The number a tab names: the prompts it lists, or the items its sources total. Undefined until a snapshot was read. */
+function tabCount(snapshot: ExtensionCatalogSnapshot | null, tab: ProviderTab): number | undefined {
+  if (snapshot === null) return undefined;
+  if (tab === "prompts") return snapshot.prompts.length;
   const source = tab === "skills" ? "skill" : tab === "plugins" ? "plugin" : "extension";
-  const total = sources
+  return snapshot.sources
     .filter((item) => item.source === source)
     .reduce((sum, item) => sum + item.total, 0);
-  return `${total}`;
 }
 
 function securityLabel(item: ControlItem): string {
@@ -247,32 +248,39 @@ export function ExtensionControlCenter({
           ) : (
             <>
               <div className="flex flex-wrap gap-1" role="tablist" aria-label="Extension providers">
-                {TABS.map((entry) => (
-                  <Button
-                    aria-label={`${entry.label}, ${sourceSummary(catalogState.snapshot?.sources ?? [], entry.id)} ${sourceSummary(catalogState.snapshot?.sources ?? [], entry.id) === "1" ? "item" : "items"}`}
-                    data-testid={`extension-tab-${entry.id}`}
-                    key={entry.id}
-                    role="tab"
-                    aria-selected={tab === entry.id}
-                    size="sm"
-                    type="button"
-                    variant={tab === entry.id ? "secondary" : "ghost"}
-                    onClick={() => {
-                      setTab(entry.id);
-                      setSelectedId(null);
-                    }}
-                  >
-                    {entry.label}
-                    {catalogState.snapshot && (
-                      <span
-                        aria-hidden="true"
-                        className="bg-muted text-muted-foreground ms-1 rounded-full px-1.5 py-0.5 text-xs"
-                      >
-                        {sourceSummary(catalogState.snapshot?.sources ?? [], entry.id)}
-                      </span>
-                    )}
-                  </Button>
-                ))}
+                {TABS.map((entry) => {
+                  const count = tabCount(catalogState.snapshot, entry.id);
+                  return (
+                    <Button
+                      aria-label={
+                        count === undefined
+                          ? entry.label
+                          : `${entry.label}, ${count} ${count === 1 ? "item" : "items"}`
+                      }
+                      data-testid={`extension-tab-${entry.id}`}
+                      key={entry.id}
+                      role="tab"
+                      aria-selected={tab === entry.id}
+                      size="sm"
+                      type="button"
+                      variant={tab === entry.id ? "secondary" : "ghost"}
+                      onClick={() => {
+                        setTab(entry.id);
+                        setSelectedId(null);
+                      }}
+                    >
+                      {entry.label}
+                      {count !== undefined && (
+                        <span
+                          aria-hidden="true"
+                          className="bg-muted text-muted-foreground ms-1 rounded-full px-1.5 py-0.5 text-xs"
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </Button>
+                  );
+                })}
               </div>
               <div className="flex gap-2">
                 <Input
@@ -292,11 +300,6 @@ export function ExtensionControlCenter({
                   <Icons.undo aria-hidden="true" />
                 </Button>
               </div>
-              {catalogState.error && (
-                <p className="text-danger text-xs" data-testid="extension-catalog-error">
-                  {catalogState.error.appError.message}
-                </p>
-              )}
               {catalogState.status === "loading" && (
                 <p className="text-muted-foreground text-sm" role="status">
                   Loading extension catalog…
