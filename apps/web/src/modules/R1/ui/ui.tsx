@@ -165,6 +165,7 @@ export function SessionCatalogSidebar({
   const renamingRef = useRef(false);
   const [focusRowId, setFocusRowId] = useState<ThreadId | undefined>();
   const rowElements = useRef(new Map<ThreadId, HTMLDivElement>());
+  const moreButtons = useRef(new Map<ThreadId, HTMLButtonElement>());
   const [menuSessionId, setMenuSessionId] = useState<ThreadId | undefined>();
   const previousCatalog = useRef(catalog);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -577,6 +578,10 @@ export function SessionCatalogSidebar({
                       trailing={
                         <Toolbar ariaLabel={`Actions for ${title}`}>
                           <Button
+                            ref={(element) => {
+                              if (element) moreButtons.current.set(session.id, element);
+                              else moreButtons.current.delete(session.id);
+                            }}
                             aria-expanded={menuOpen}
                             aria-haspopup="menu"
                             aria-label={`More actions for ${title}`}
@@ -614,6 +619,8 @@ export function SessionCatalogSidebar({
                           if (event.key === "Escape") {
                             event.preventDefault();
                             setMenuSessionId(undefined);
+                            // The item that had focus leaves with the menu, so the chat's More actions button takes it back (issue 1059).
+                            moreButtons.current.get(session.id)?.focus();
                           }
                         }}
                       >

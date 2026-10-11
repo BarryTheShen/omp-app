@@ -312,6 +312,20 @@ describe("SessionCatalogSidebar", () => {
     expect(document.activeElement).toBe(more);
   });
 
+  test("Escape inside the menu closes it and puts the focus back on that chat's More actions button", async () => {
+    renderSidebar({ renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    const more = screen.getByRole("button", { name: "More actions for Newest chat" });
+    fireEvent.click(more);
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    // Tab from the More actions button lands on the menu's first item, Rename.
+    const rename = within(menu).getByRole("menuitem", { name: "Rename Newest chat" });
+    rename.focus();
+    fireEvent.keyDown(rename, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(more);
+  });
+
   test("the tab stop starts on the open chat's row, so Tab back into the list lands on it", async () => {
     renderSidebar({
       catalog: modelWithSessions([
