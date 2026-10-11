@@ -239,3 +239,138 @@ test("a failed Fast change keeps the last value omp reported, in every layout", 
   });
   expect([...problems, ...darkProblems]).toEqual([]);
 });
+
+test("a failed change to Computer use keeps both buttons enabled, in every layout", async ({
+  page,
+}) => {
+  const problems = collectProblems(page);
+  await page.goto(`${PLAYGROUND}?commands=fails`);
+  await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
+  const computer = page.getByRole("group", { name: "Computer use controls" });
+  await computer.getByRole("button", { name: "Turn on" }).click();
+  await page.mouse.move(0, 0);
+  await expect(page.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(
+    page.getByText("The execution-mode command could not finish.", { exact: true }),
+  ).toBeVisible();
+  // omp never reported Computer use, so neither choice is set; both stay enabled for another try.
+  await expect(computer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(computer.getByRole("button", { name: "Turn off" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(computer.getByRole("button", { name: "Turn on" })).toBeEnabled();
+  await expect(computer.getByRole("button", { name: "Turn off" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await assertStyled(page);
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-command-failed-light.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+
+  const dark = await page.context().newPage();
+  const darkProblems = collectProblems(dark);
+  await dark.goto(`${PLAYGROUND}?commands=fails&theme=dark`);
+  await expect(dark.locator("html")).toHaveClass(/dark/);
+  const darkComputer = dark.getByRole("group", { name: "Computer use controls" });
+  await darkComputer.getByRole("button", { name: "Turn on" }).click();
+  await dark.mouse.move(0, 0);
+  await expect(dark.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(darkComputer.getByRole("button", { name: "Turn off" })).toBeEnabled();
+  await assertStyled(dark);
+  await dark.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-command-failed-dark.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  await dark.close();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(computer.getByRole("button", { name: "Turn on" })).toBeEnabled();
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-command-failed-narrow.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  expect([...problems, ...darkProblems]).toEqual([]);
+});
+
+test("a failed Turn off keeps the On that omp accepted, in every layout", async ({ page }) => {
+  const problems = collectProblems(page);
+  await page.goto(`${PLAYGROUND}?commands=fails-after-first`);
+  await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
+  const computer = page.getByRole("group", { name: "Computer use controls" });
+  await computer.getByRole("button", { name: "Turn on" }).click();
+  await expect(computer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await computer.getByRole("button", { name: "Turn off" }).click();
+  await page.mouse.move(0, 0);
+  await expect(page.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(computer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(computer.getByRole("button", { name: "Turn off" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  // Both choices stay enabled; the chosen one is only marked aria-disabled, so this reads the real attribute.
+  await expect(computer.getByRole("button", { name: "Turn on" })).toHaveJSProperty(
+    "disabled",
+    false,
+  );
+  await expect(computer.getByRole("button", { name: "Turn off" })).toHaveJSProperty(
+    "disabled",
+    false,
+  );
+  await assertStyled(page);
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-command-kept-light.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+
+  const dark = await page.context().newPage();
+  const darkProblems = collectProblems(dark);
+  await dark.goto(`${PLAYGROUND}?commands=fails-after-first&theme=dark`);
+  await expect(dark.locator("html")).toHaveClass(/dark/);
+  const darkComputer = dark.getByRole("group", { name: "Computer use controls" });
+  await darkComputer.getByRole("button", { name: "Turn on" }).click();
+  await expect(darkComputer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await darkComputer.getByRole("button", { name: "Turn off" }).click();
+  await dark.mouse.move(0, 0);
+  await expect(dark.getByText("The execution setting could not be changed")).toBeVisible();
+  await expect(darkComputer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await assertStyled(dark);
+  await dark.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-command-kept-dark.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  await dark.close();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(computer.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "d7.3-modes-command-kept-narrow.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  expect([...problems, ...darkProblems]).toEqual([]);
+});

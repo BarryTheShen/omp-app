@@ -516,6 +516,10 @@ export class ModeController implements ModeControllerPort {
         requested,
       },
     );
+    // The value omp last left this mode as: a change that omp does not complete goes back to it.
+    const previous =
+      this.modeStates[action.mode] ??
+      initialModeState(action.mode, this.capabilities, this.gateway);
     this.modeStates[action.mode] = pending;
     const previousVisibility = this.browserVisibility;
     if (action.mode === "browser") this.browserVisibility = action.visibility;
@@ -527,7 +531,7 @@ export class ModeController implements ModeControllerPort {
       );
       if (result.status === "aborted") {
         const error = cancelledError("The execution-mode command was cancelled.");
-        this.modeStates[action.mode] = stateWithError(action.mode, "command", "omp-command", error);
+        this.modeStates[action.mode] = previous;
         if (action.mode === "browser") this.browserVisibility = previousVisibility;
         this.commit();
         return modeCommandResult(
@@ -562,7 +566,7 @@ export class ModeController implements ModeControllerPort {
       return modeCommandResult(action, command, true, state, undefined, reason, capability);
     } catch (cause) {
       const error = errorFrom(cause, "The execution-mode command could not finish.", capability);
-      this.modeStates[action.mode] = stateWithError(action.mode, "command", "omp-command", error);
+      this.modeStates[action.mode] = previous;
       if (action.mode === "browser") this.browserVisibility = previousVisibility;
       this.commit();
       return modeCommandResult(
