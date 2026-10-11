@@ -1,4 +1,4 @@
-import { FolderPath } from "@omp-app/contracts";
+import { AppFailure, FolderPath } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { ExtensionCatalog, ExtensionCatalogSnapshot } from "../../catalog";
@@ -69,11 +69,67 @@ describe("ExtensionControlCenter", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Search extensions" }), {
       target: { value: "missing" },
     });
-    expect(screen.getByText("No matching providers.")).toBeTruthy();
+    expect(screen.getByText("No matching plugins.")).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox", { name: "Search extensions" }), {
       target: { value: "plugin" },
     });
     expect(screen.getByTestId("extension-item-plugin-one")).toBeTruthy();
+  });
+
+  test("an empty tab says what is missing in its own words, and a search with no result says so", async () => {
+    const empty: ExtensionCatalogSnapshot = {
+      revision: "revision-empty",
+      extensions: [],
+      skills: [],
+      prompts: [],
+      sources: [],
+      truncated: false,
+    };
+    const emptyCatalog: ExtensionCatalog = {
+      list: vi.fn(async () => empty),
+      reload: vi.fn(async () => empty),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(
+      <ExtensionControlCenter
+        catalog={emptyCatalog}
+        folder={folder}
+        capabilities={{ "host.extension-catalog": { state: "available", via: "host" } }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("No extensions installed.")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("extension-tab-skills"));
+    await waitFor(() => expect(screen.getByText("No skills found.")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("extension-tab-prompts"));
+    await waitFor(() => expect(screen.getByText("No prompts found.")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    await waitFor(() => expect(screen.getByText("No plugins installed.")).toBeTruthy());
+    fireEvent.change(screen.getByRole("textbox", { name: "Search extensions" }), {
+      target: { value: "zzz" },
+    });
+    expect(screen.getByText("No matching plugins.")).toBeTruthy();
+    expect(screen.queryByText("No matching providers.")).toBeNull();
+  });
+
+  test("a failed load shows its error, and no tab says it is empty", async () => {
+    const failure = () =>
+      Promise.reject(
+        new AppFailure({ code: "internal", message: "The host stopped.", retryable: true }),
+      );
+    const failing: ExtensionCatalog = {
+      list: vi.fn(failure),
+      reload: vi.fn(failure),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(
+      <ExtensionControlCenter
+        catalog={failing}
+        folder={folder}
+        capabilities={{ "host.extension-catalog": { state: "available", via: "host" } }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("extension-catalog-error")).toBeTruthy());
+    expect(screen.queryByText(/^No (matching|extensions|skills|prompts|plugins)/)).toBeNull();
   });
 
   test("reloads through the typed catalog and gates unavailable capability", async () => {

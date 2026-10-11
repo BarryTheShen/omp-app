@@ -25,6 +25,16 @@ const TABS: readonly { readonly id: ProviderTab; readonly label: string }[] = [
   { id: "plugins", label: "Plugins" },
 ];
 
+/** What an empty tab says in its own words; a search that finds nothing says "No matching ..." instead. */
+const EMPTY_TAB_TEXT: Readonly<
+  Record<ProviderTab, { readonly empty: string; readonly noMatch: string }>
+> = {
+  extensions: { empty: "No extensions installed.", noMatch: "No matching extensions." },
+  skills: { empty: "No skills found.", noMatch: "No matching skills." },
+  prompts: { empty: "No prompts found.", noMatch: "No matching prompts." },
+  plugins: { empty: "No plugins installed.", noMatch: "No matching plugins." },
+};
+
 interface CatalogState {
   readonly status: "loading" | "ready" | "error" | "unavailable";
   readonly snapshot: ExtensionCatalogSnapshot | null;
@@ -292,9 +302,11 @@ export function ExtensionControlCenter({
                   Loading extension catalog…
                 </p>
               )}
-              {catalogState.status !== "loading" && items.length === 0 && (
+              {catalogState.status === "ready" && items.length === 0 && (
                 <p className="text-muted-foreground text-sm" role="status">
-                  No matching providers.
+                  {query.trim().length > 0
+                    ? EMPTY_TAB_TEXT[tab].noMatch
+                    : EMPTY_TAB_TEXT[tab].empty}
                 </p>
               )}
               <div className="grid min-h-0 gap-3 md:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
