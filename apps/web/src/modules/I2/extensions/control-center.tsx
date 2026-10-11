@@ -13,6 +13,7 @@ import type {
   PromptMetadata,
 } from "../catalog";
 import { I2CapabilityKeys, isI2CapabilityAvailable } from "../catalog";
+import { itemOriginText } from "./item-origin";
 
 type ProviderTab = "extensions" | "skills" | "prompts" | "plugins";
 type ControlItem = ExtensionMetadata | PromptMetadata;
@@ -61,10 +62,6 @@ function itemId(item: ControlItem): string {
 
 function itemName(item: ControlItem): string {
   return item.name;
-}
-
-function itemProvider(item: ControlItem): string {
-  return item.provider;
 }
 
 function tabItems(snapshot: ExtensionCatalogSnapshot, tab: ProviderTab): readonly ControlItem[] {
@@ -193,7 +190,7 @@ export function ExtensionControlCenter({
     const normalized = query.trim().toLocaleLowerCase();
     return tabItems(catalogState.snapshot, tab).filter((item) => {
       if (normalized.length === 0) return true;
-      return `${itemName(item)} ${itemProvider(item)} ${item.description ?? ""}`
+      return `${itemName(item)} ${itemOriginText(item)} ${item.description ?? ""}`
         .toLocaleLowerCase()
         .includes(normalized);
     });
@@ -328,7 +325,7 @@ export function ExtensionControlCenter({
                         >
                           <span className="truncate font-medium">{itemName(item)}</span>
                           <span className="truncate text-xs text-muted-foreground">
-                            {itemProvider(item)}
+                            {itemOriginText(item)}
                           </span>
                         </button>
                       </li>
@@ -405,6 +402,10 @@ function Inspector({
         </span>
       </div>
       <dl className="mt-3 space-y-2 text-xs">
+        <div>
+          <dt className="text-muted-foreground">Where it comes from</dt>
+          <dd>{itemOriginText(item)}</dd>
+        </div>
         <div>
           <dt className="text-muted-foreground">Provider</dt>
           <dd>{item.provider}</dd>

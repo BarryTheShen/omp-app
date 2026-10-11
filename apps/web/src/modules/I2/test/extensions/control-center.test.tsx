@@ -263,4 +263,82 @@ describe("ExtensionControlCenter", () => {
       "false",
     );
   });
+
+  test("says where each item came from in plain words; the raw provider name is only in the details", async () => {
+    const sources: ExtensionCatalogSnapshot = {
+      revision: "revision-sources",
+      extensions: [
+        {
+          id: "own-extension",
+          name: "Own Extension",
+          provider: "native",
+          source: "extension",
+          enabled: true,
+          shadowed: false,
+          capabilities: ["tools"],
+        },
+        {
+          id: "plugin-tool",
+          name: "Plugin Tool",
+          provider: "plugin-package",
+          source: "plugin",
+          enabled: true,
+          shadowed: false,
+          capabilities: ["tools"],
+        },
+      ],
+      skills: [
+        {
+          id: "own-skill",
+          name: "Own Skill",
+          provider: "native",
+          source: "skill",
+          enabled: true,
+          shadowed: false,
+          capabilities: [],
+        },
+        {
+          id: "managed-skill",
+          name: "Managed Skill",
+          provider: "omp-managed",
+          source: "skill",
+          enabled: true,
+          shadowed: false,
+          capabilities: [],
+        },
+      ],
+      prompts: [],
+      sources: [],
+      truncated: false,
+    };
+    const fake: ExtensionCatalog = {
+      list: vi.fn(async () => sources),
+      reload: vi.fn(async () => sources),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(<ExtensionControlCenter catalog={fake} folder={folder} capabilities={available} />);
+    await waitFor(() => expect(screen.getByTestId("extension-item-own-extension")).toBeTruthy());
+    expect(screen.getByTestId("extension-item-own-extension").textContent).toContain(
+      "From your extensions folder",
+    );
+    expect(screen.queryByText("native")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    await waitFor(() => expect(screen.getByTestId("extension-item-plugin-tool")).toBeTruthy());
+    expect(screen.getByTestId("extension-item-plugin-tool").textContent).toContain("From a plugin");
+
+    fireEvent.click(screen.getByTestId("extension-tab-skills"));
+    await waitFor(() => expect(screen.getByTestId("extension-item-own-skill")).toBeTruthy());
+    expect(screen.getByTestId("extension-item-own-skill").textContent).toContain(
+      "From your skills folder",
+    );
+    expect(screen.getByTestId("extension-item-managed-skill").textContent).toContain(
+      "Managed by omp",
+    );
+
+    fireEvent.click(screen.getByTestId("extension-item-own-skill"));
+    const inspector = screen.getByTestId("extension-inspector").textContent ?? "";
+    expect(inspector).toContain("From your skills folder");
+    expect(inspector).toContain("native");
+  });
 });
