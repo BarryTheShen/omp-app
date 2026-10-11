@@ -19,3 +19,4 @@ export {
   type TokenStorageLike,
   websocketUrl,
 } from "./token";
+export { useWatchNotice, WatchNotice } from "./watch-notice";

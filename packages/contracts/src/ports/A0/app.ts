@@ -32,8 +32,8 @@ export const AppHealth = z
   .object({
     status: AppHealthStatus,
     detail: z.string().optional(),
-    /** Set when the page can say what to do: `no_model`, omp runs but has no model to chat with. */
-    code: z.enum(["no_model"]).optional(),
+    /** Set when the page can say what to do: `no_model` (omp has no model to chat with), `watch_limited` (watched files cannot be watched right now). */
+    code: z.enum(["no_model", "watch_limited"]).optional(),
   })
   .strict();
 export type AppHealth = z.infer<typeof AppHealth>;

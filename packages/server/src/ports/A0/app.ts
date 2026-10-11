@@ -8,8 +8,21 @@ import {
   type DebugReport,
 } from "@omp-app/contracts";
 import { truncate } from "../../logging";
+import { fileWatchMessage } from "../../modules/A1/fs/file-watch-registry";
 import type { PortHandlerContext, PortRegistration } from "../../registry/ports";
 import type { A0PortContext } from "./rpc-session";
+
+/**
+ * The health the page reads: the start-up checks, and the watched files the app cannot see changes for right now.
+ * When the checks passed, a watch that cannot be opened makes the app degraded, not unavailable.
+ */
+export function currentHealth(context: Pick<A0PortContext, "health" | "fileWatch">): AppHealth {
+  const base = context.health;
+  if (base.status !== "ok" || context.fileWatch === undefined) return base;
+  const watching = context.fileWatch.snapshot();
+  if (watching.state === "ok") return base;
+  return { status: "degraded", detail: fileWatchMessage(watching), code: "watch_limited" };
+}
 
 /** A page stuck in a loop must not fill the log: at most this many reports a minute are written. */
 const CLIENT_ERRORS_PER_MINUTE = 30;
@@ -28,7 +41,7 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
       capabilities: (_args: unknown, _call: PortHandlerContext) =>
         CapabilityMap.parse(context.capabilities),
       health: (_args: unknown, _call: PortHandlerContext): AppHealth =>
-        AppHealth.parse(context.health),
+        AppHealth.parse(currentHealth(context)),
       reportClientError: (args: unknown, _call: PortHandlerContext): null => {
         const report = args as ClientErrorReport;
         const now = Date.now();

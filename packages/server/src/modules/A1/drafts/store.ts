@@ -19,6 +19,7 @@ import {
   compareAndSwapFile,
   type FileSnapshot,
   type FileWatcher,
+  type FileWatchRegistry,
   hashContent,
   readFileSnapshot,
   resolveAppDataDir,
@@ -44,6 +45,8 @@ export interface DraftStoreOptions {
   readonly onError?: (error: AppFailure) => void;
   /** Defaults to the fs watcher debounce. */
   readonly watchDebounceMs?: number;
+  /** Records the watched files this store cannot watch right now, so the person can be told. */
+  readonly watchRegistry?: FileWatchRegistry;
 }
 
 export type DraftChangeListener = (change: DraftChanged) => void | Promise<void>;
@@ -384,6 +387,7 @@ export class DraftStoreService {
         const fileWatcher = watchFile(path, () => this.handleFileChange(key), {
           debounceMs: this.#options.watchDebounceMs,
           onError: (error) => reportError(this.#options.onError, error),
+          registry: this.#options.watchRegistry,
         });
         watcher = { scope, path, watcher: fileWatcher, listeners: new Set() };
         this.#watchers.set(key, watcher);

@@ -39,6 +39,7 @@ import {
 import { createDraftStore } from "../src/modules/A1/drafts";
 import { createExtensionCatalog } from "../src/modules/A1/extensions";
 import { searchWorkspaceFiles } from "../src/modules/A1/file-search";
+import { FileWatchRegistry } from "../src/modules/A1/fs";
 import { createOmpCommandGateway } from "../src/modules/A1/gateway";
 import { readWorkspaceState } from "../src/modules/A1/git";
 import { createGithubRefs } from "../src/modules/A1/github-refs";
@@ -83,6 +84,8 @@ export interface CompositionServerOptions {
   readonly logger?: Logger;
   /** How often the memory and process figures are logged; the default is 30 seconds. */
   readonly statsIntervalMs?: number;
+  /** Test and embedding override for how watched files are opened and recorded; the default watches the real files. */
+  readonly fileWatch?: FileWatchRegistry;
 }
 
 export interface CompositionServer extends AppServer {
@@ -234,6 +237,7 @@ export async function createCompositionServer(
     };
   };
   let launchToken = "";
+  const fileWatch = options.fileWatch ?? new FileWatchRegistry();
   const a0Context: A0PortContext = {
     processRegistry,
     replay,
@@ -254,6 +258,7 @@ export async function createCompositionServer(
       ...(options.logger === undefined ? {} : { logFile: logger.path }),
     },
     health,
+    fileWatch,
     logger,
     ...(options.logger === undefined
       ? {}
@@ -294,6 +299,7 @@ export async function createCompositionServer(
       appDataDir,
       environmentValues: (projectDir) =>
         ompEnvironmentValues({ processEnv: env, homeDir, agentDir, projectDir }),
+      watchRegistry: fileWatch,
       environmentVariables: ompEnvironmentVariableNames,
     },
     {
@@ -302,7 +308,7 @@ export async function createCompositionServer(
       pathEnvironment: env.PATH ?? "",
     },
   );
-  const draftStore = createDraftStore({ env, homeDir, appDataDir });
+  const draftStore = createDraftStore({ env, homeDir, appDataDir, watchRegistry: fileWatch });
   const checkpointStore = new CheckpointStoreService({ appDataDir });
   const attachmentStore = new AttachmentStoreService({
     appDataDir,
@@ -311,12 +317,22 @@ export async function createCompositionServer(
   const sessionImportStore = createSessionImportStore();
   await attachmentStore.cleanup({ orphanAgeMs: 24 * 60 * 60 * 1000 });
   const ompCommandGateway = createOmpCommandGateway({ resolveSession });
-  const sessionPinStore = createSessionPinStore({ env, homeDir, agentDir });
+  const sessionPinStore = createSessionPinStore({
+    env,
+    homeDir,
+    agentDir,
+    watchRegistry: fileWatch,
+  });
   const providerAccountStore = createProviderAccountStore({ env, homeDir, agentDir });
   const usageLimitStore = createUsageLimitStore({ env });
-  const extensionCatalog = createExtensionCatalog({ env, homeDir, agentDir });
+  const extensionCatalog = createExtensionCatalog({
+    env,
+    homeDir,
+    agentDir,
+    watchRegistry: fileWatch,
+  });
   const memoryStore = createMemoryStore({ gateway: ompCommandGateway });
-  const ruleStore = createRuleStore({ env, homeDir, agentDir });
+  const ruleStore = createRuleStore({ env, homeDir, agentDir, watchRegistry: fileWatch });
   const githubRefs = createGithubRefs({ env });
   const planDocumentStore = createPlanDocumentStore({ appDataDir });
   const urlCatalog = createUrlCatalog({

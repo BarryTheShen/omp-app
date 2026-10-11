@@ -21,6 +21,7 @@ import {
   compareAndSwapFile,
   type FileSnapshot,
   type FileWatcher,
+  type FileWatchRegistry,
   hashContent,
   readFileSnapshot,
   watchFile,
@@ -36,6 +37,8 @@ export interface RuleStoreOptions {
   readonly agentDir?: string;
   readonly onError?: (error: AppFailure) => void;
   readonly watchDebounceMs?: number;
+  /** Records the watched files this store cannot watch right now, so the person can be told. */
+  readonly watchRegistry?: FileWatchRegistry;
 }
 
 export type RuleChangeListener = (change: RuleChanged) => void | Promise<void>;
@@ -482,6 +485,7 @@ export class RuleStoreService {
         watchFile(file.path, () => this.handleFileChange(scope), {
           debounceMs: this.#options.watchDebounceMs,
           onError: (error) => reportError(this.#options.onError, error),
+          registry: this.#options.watchRegistry,
         }),
       );
     }

@@ -6,6 +6,7 @@ import {
   readFileHashSync,
   registerSelfWriteConsumer,
 } from "./atomic-file";
+import type { FileWatchRegistry, WatchDirectory } from "./file-watch-registry";
 
 export interface FileChangeEvent {
   readonly path: string;
@@ -21,6 +22,8 @@ export interface FileWatcherOptions {
   readonly watchDirectory?: (directory: string, listener: WatchListener<string>) => FSWatcher;
   /** Receives filesystem failures; required so watcher failures never escape as uncaught exceptions. */
   readonly onError: (error: unknown) => void;
+  /** Records the watches that cannot run, so the page can tell the person; see file-watch-registry.ts. */
+  readonly registry?: FileWatchRegistry;
 }
 
 export interface FileWatcher {
@@ -82,6 +85,8 @@ export function watchFile(
   const path = resolve(filePath);
   const directory = dirname(path);
   const filename = basename(path);
+  // Identifies this watch in the registry, so its failure and its recovery are recorded against it.
+  const token = {};
   let disposed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let currentHash = readFileHashSync(path);
@@ -89,6 +94,11 @@ export function watchFile(
   const pollMs = Math.max(1, options.pollMs ?? 1000);
   let poll: ReturnType<typeof setInterval> | undefined;
   let armFailureReported = false;
+  // The directory watch to open: a test's or embedding's replacement, else the registry's, else node:fs `watch`.
+  const openDirectory: WatchDirectory =
+    options.watchDirectory ??
+    options.registry?.watchDirectory ??
+    ((target, listener) => watch(target, { persistent: false }, listener));
   const unregisterSelfWriteConsumer = registerSelfWriteConsumer(path);
   let watcher: FSWatcher | undefined;
   let watchedDirectory = nearestExistingDirectory(directory);
@@ -169,17 +179,17 @@ export function watchFile(
           reportError(error, options.onError);
         }
       };
-      const started = options.watchDirectory
-        ? options.watchDirectory(nextDirectory, onDirectoryEvent)
-        : watch(nextDirectory, { persistent: false }, onDirectoryEvent);
+      const started = openDirectory(nextDirectory, onDirectoryEvent);
       watcher = started;
       started.on("error", (error) => {
         reportError(error, options.onError);
         if (watcher !== started) return;
         closeWatcher();
+        options.registry?.fail(token, path, error);
         startPolling();
       });
       armFailureReported = false;
+      options.registry?.clear(token);
       if (poll !== undefined) {
         stopPolling();
         schedule();
@@ -191,6 +201,7 @@ export function watchFile(
       }
       if (!armFailureReported) reportError(error, options.onError);
       armFailureReported = true;
+      options.registry?.fail(token, path, error);
       startPolling();
     }
   };
@@ -212,6 +223,7 @@ export function watchFile(
       }
       stopPolling();
       closeWatcher();
+      options.registry?.clear(token);
       unregisterSelfWriteConsumer();
     },
   };

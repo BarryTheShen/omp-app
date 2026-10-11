@@ -15,6 +15,7 @@ import { z } from "zod";
 import {
   type FileSnapshot,
   type FileWatcher,
+  type FileWatchRegistry,
   hashContent,
   readFileSnapshot,
   watchFile,
@@ -31,6 +32,8 @@ export interface ExtensionCatalogOptions {
   /** Optional A1.8-backed `/reload-plugins` operation; discovery remains read-only here. */
   readonly reload?: (folder: string | null) => void | Promise<void>;
   readonly watchDebounceMs?: number;
+  /** Records the watched files this store cannot watch right now, so the person can be told. */
+  readonly watchRegistry?: FileWatchRegistry;
   readonly onError?: (error: AppFailure) => void;
 }
 
@@ -698,6 +701,7 @@ export class ExtensionCatalogService {
           watchFile(path, () => this.scheduleRefresh(scope), {
             debounceMs: this.#options.watchDebounceMs,
             onError: (error) => reportError(this.#options.onError, error),
+            registry: this.#options.watchRegistry,
           }),
         );
       } catch (error) {

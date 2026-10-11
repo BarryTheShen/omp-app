@@ -15,6 +15,7 @@ import {
   compareAndSwapFile,
   type FileSnapshot,
   type FileWatcher,
+  type FileWatchRegistry,
   hashContent,
   readFileSnapshot,
   watchFile,
@@ -33,6 +34,8 @@ export interface SessionPinStoreOptions {
   readonly onError?: (error: AppFailure) => void;
   /** Defaults to the fs watcher debounce. */
   readonly watchDebounceMs?: number;
+  /** Records the watched files this store cannot watch right now, so the person can be told. */
+  readonly watchRegistry?: FileWatchRegistry;
 }
 
 export type SessionPinChangeListener = (change: SessionPinChanged) => void | Promise<void>;
@@ -264,6 +267,7 @@ export class SessionPinStoreService {
       this.#watcher = watchFile(this.filePath, () => this.handleFileChange(), {
         debounceMs: this.#options.watchDebounceMs,
         onError: (error) => reportError(this.#options.onError, error),
+        registry: this.#options.watchRegistry,
       });
     } catch (error) {
       reportError(this.#options.onError, error);

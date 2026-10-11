@@ -19,6 +19,7 @@ import {
   compareAndSwapFile,
   type FileSnapshot,
   type FileWatcher,
+  type FileWatchRegistry,
   hashContent,
   readFileSnapshot,
   watchFile,
@@ -96,6 +97,8 @@ export interface ConfigStoreOptions {
   readonly onError?: (error: AppFailure) => void;
   /** Defaults to the fs helper's 100ms debounce. */
   readonly watchDebounceMs?: number;
+  /** Records the watched files this store cannot watch right now, so the person can be told. */
+  readonly watchRegistry?: FileWatchRegistry;
 }
 
 export type ConfigChangeListener = (change: ConfigChanged) => void | Promise<void>;
@@ -946,6 +949,7 @@ export class ConfigStoreService {
         const watcher = watchFile(descriptor.path, () => this.handleFileChange(descriptor), {
           debounceMs: this.options.watchDebounceMs,
           onError: (error) => reportError(this.options.onError, error),
+          registry: this.options.watchRegistry,
         });
         this.watchedPaths.set(descriptor.path, {
           ...descriptor,

@@ -35,6 +35,7 @@ export type SurfaceId =
   | "notifications"
   | "notices"
   | "connection"
+  | "watchNotice"
   | "theme"
   | "rewind"
   | "agents"
@@ -57,7 +58,7 @@ export const LAYOUT: AppLayout = {
   /** Under that row. */
   composerFooter: ["editHandoff", "attachments"],
   /** At the bottom of the transcript. */
-  threadFooter: ["connection", "editRun", "scrollFollow"],
+  threadFooter: ["connection", "watchNotice", "editRun", "scrollFollow"],
   /**
    * Over the end of the transcript, just above its footer: the notices float here and never cover the
    * footer's controls (Jump to latest), and the composer and the status bar do not move for them.

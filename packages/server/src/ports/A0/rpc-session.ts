@@ -5,6 +5,7 @@ import {
   type AnswerHostToolArgs,
   type AnswerHostUriArgs,
   AppFailure,
+  type AppHealth,
   type CapabilityMap,
   type FolderPath,
   type OmpWire,
@@ -26,6 +27,7 @@ import { type CommandFuture, RpcSession } from "@omp-app/omp-rpc";
 import { z } from "zod";
 import { capabilitiesForProtocol } from "../../capabilities";
 import type { Logger } from "../../logging";
+import type { FileWatchRegistry } from "../../modules/A1/fs/file-watch-registry";
 import type {
   ExternalOmpState,
   OmpProcess,
@@ -54,7 +56,9 @@ export interface A0PortContext {
     /** Where the debug log is written; absent without one. */
     readonly logFile?: string;
   };
-  readonly health: { readonly status: "ok" | "degraded" | "unhealthy"; readonly detail?: string };
+  readonly health: AppHealth;
+  /** The watched files, when the server watches them: their failures show in the health the page reads. */
+  readonly fileWatch?: FileWatchRegistry;
   /** Required catalog seam: A1 resolves the omp-authoritative session file and cwd for a ThreadId. */
   readonly resolveThread: (
     threadId: ThreadId,

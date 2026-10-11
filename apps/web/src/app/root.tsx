@@ -42,6 +42,8 @@ import {
   rememberLogFile,
   SEND_BLOCKED_TEXT,
   useAppConnection,
+  useWatchNotice,
+  WatchNotice,
 } from "@/launch";
 import { LayoutArea, type LayoutAreaName, type Surface, type SurfaceMap } from "@/layout";
 import type { CredentialActions } from "@/modules/D3/auth/credential-actions";
@@ -476,6 +478,8 @@ interface ActiveThreadProps {
   readonly resumePlace: ReadingPlace | null;
   /** The connection banner's surface: over the chat while the app reconnects (`connection` in `LAYOUT`). */
   readonly connectionSurface: Surface;
+  /** The watch notice's surface: over the chat while the server cannot watch some files (`watchNotice` in `LAYOUT`). */
+  readonly watchSurface: Surface;
 }
 
 function ActiveThreadContent(props: ActiveThreadProps) {
@@ -498,6 +502,7 @@ function ActiveThreadReady({
   p3Runs,
   resumePlace,
   connectionSurface,
+  watchSurface,
   onLoadOlder,
   onLoadFullOutput,
   onRefreshAfterCommand,
@@ -1097,6 +1102,7 @@ function ActiveThreadReady({
       render: () => <NotificationNotices projector={notificationProjector} />,
     },
     connection: connectionSurface,
+    watchNotice: watchSurface,
   };
   const area = (name: LayoutAreaName) => (
     <LayoutArea area={name} capabilities={capabilities} surfaces={threadSurfaces} />
@@ -1226,10 +1232,12 @@ function ConnectedApp({
   client,
   capabilities,
   launchFolder,
+  watchNotice,
 }: {
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly capabilities: CapabilityMap;
   readonly launchFolder: FolderPath;
+  readonly watchNotice: string | undefined;
 }) {
   const connection = useAppConnection();
   const overlay = useStableOverlayHost();
@@ -1538,7 +1546,16 @@ function ConnectedApp({
     open: connection.state === "reconnecting",
     render: () => <ConnectionBanner unreachable={connection.unreachable} />,
   };
-  const emptyTranscriptSurfaces: SurfaceMap = { connection: connectionSurface };
+  // The watch notice: while the server cannot watch some files, changes made outside the app do not show yet.
+  const watchSurface: Surface = {
+    title: "Watched files",
+    open: watchNotice !== undefined,
+    render: () => (watchNotice === undefined ? null : <WatchNotice detail={watchNotice} />),
+  };
+  const emptyTranscriptSurfaces: SurfaceMap = {
+    connection: connectionSurface,
+    watchNotice: watchSurface,
+  };
   if (history.store && history.threadId) {
     return (
       <ActiveThreadContent
@@ -1549,6 +1566,7 @@ function ConnectedApp({
         history={history}
         resumePlace={resumePlace}
         connectionSurface={connectionSurface}
+        watchSurface={watchSurface}
         onLoadOlder={controller === null ? undefined : () => controller.loadOlder()}
         onLoadFullOutput={controller === null ? undefined : (id) => controller.loadFullOutput(id)}
         onRefreshAfterCommand={
@@ -1644,6 +1662,12 @@ function ConnectedRoot() {
       setClientErrorSink(undefined);
     };
   }, [client]);
+  // The page reads the server's watches now and then, so the notice shows and clears while the app runs.
+  const readHealth = useMemo(
+    () => (client ? () => client.port(AppPort).health({}) : undefined),
+    [client],
+  );
+  const watchNotice = useWatchNotice(readHealth);
   if (client && !serverInfo && startFailed) {
     return (
       <LaunchStatusScreen
@@ -1666,6 +1690,7 @@ function ConnectedRoot() {
                 capabilities={capabilities}
                 client={client}
                 launchFolder={serverInfo.launchFolder}
+                watchNotice={watchNotice}
               />
             </OverlayHost>
           </ShortcutSheetHost>
