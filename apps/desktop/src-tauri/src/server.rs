@@ -13,7 +13,8 @@
 //! waits for the server to end and decides what the window shows, and one waits for the address and
 //! then for the server to answer, before it opens the app in the window.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
+use std::fs;
 use std::io::{self, BufRead, BufReader};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -23,10 +24,11 @@ use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-use tauri::webview::NewWindowResponse;
+use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 
 use crate::address::{self, LaunchAddress};
+use crate::downloads;
 use crate::omp;
 use crate::procs::{self, Proc};
 use crate::WINDOW_LABEL;
@@ -346,9 +348,37 @@ fn new_window(
             open_externally(&target);
             NewWindowResponse::Deny
         })
-        // The web app saves a file (the debug log) as a download. wry picks the Downloads folder and the
-        // suggested name only when a download handler is set, so one is set here and allows every download.
-        .on_download(|_webview, _event| true)
+        // The web app saves a file (the debug log) as a download. The window sets where it goes: the
+        // account's Downloads folder (see `downloads.rs`), not the folder the window was started from.
+        .on_download(|webview, event| match event {
+            DownloadEvent::Requested { destination, .. } => {
+                choose_destination(webview.app_handle(), destination)
+            }
+            _ => true,
+        })
+}
+
+/// Puts a download in the account's Downloads folder, keeping its name, or in a numbered name if that name is
+/// taken. Returns false, which cancels the download, when no folder can be used; the reason goes to the log.
+fn choose_destination(app: &AppHandle, destination: &mut PathBuf) -> bool {
+    let folder =
+        downloads::download_folder(app.path().download_dir().ok(), app.path().home_dir().ok());
+    let Some(folder) = folder else {
+        eprintln!("omp app: a download was not saved: the account has no home folder");
+        return false;
+    };
+    if let Err(error) = fs::create_dir_all(&folder) {
+        eprintln!(
+            "omp app: a download was not saved: {}: {error}",
+            folder.display()
+        );
+        return false;
+    }
+    let name = destination
+        .file_name()
+        .map_or_else(|| OsString::from("download"), OsStr::to_os_string);
+    *destination = downloads::unique_path(&folder, &name, |path| path.exists());
+    true
 }
 
 /// Shows the app in the window: the starting page becomes the server's address. Nothing happens once

@@ -6,10 +6,11 @@
 
 use std::ffi::OsStr;
 use std::fs::{self, File};
+use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -101,7 +102,7 @@ fn ask_login_shell(shell: &Path, timeout: Duration, lookup: &Lookup) -> Option<P
         state.answer = Some(answer_path.clone());
         file
     };
-    let found = run_shell(shell, answer, timeout, lookup).and_then(|()| read_answer(&answer_path));
+    let found = run_shell(shell, &answer, timeout, lookup).and_then(|()| read_answer(&answer_path));
     let mut state = lookup.lock();
     state.answer = None;
     let _ = fs::remove_file(&answer_path);
@@ -123,18 +124,36 @@ fn answer_file() -> Option<PathBuf> {
     )))
 }
 
+/// Starts the login shell with `answer` as its output: its own process group, so a shell that hangs, and
+/// what it started, can be ended together. The retry below is explained where it is.
+fn spawn_login_shell(shell: &Path, answer: &File) -> io::Result<Child> {
+    let mut attempts = 0;
+    loop {
+        let started = Command::new(shell)
+            .args(["-ilc", "command -v omp"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(answer.try_clone()?))
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn();
+        // The retry is for a shell file that was written a moment ago, as a package upgrade does and as the
+        // tests do. Until every process that holds the file open for writing has started its own program (a
+        // fork that is still starting does), starting the file fails with ETXTBSY ("text file busy"). Only that
+        // error is retried, 25 times 20 ms apart (half a second); every other error is returned at once.
+        match started {
+            Err(error) if error.raw_os_error() == Some(libc::ETXTBSY) && attempts < 25 => {
+                attempts += 1;
+                thread::sleep(Duration::from_millis(20));
+            }
+            other => return other,
+        }
+    }
+}
+
 /// Runs the login shell until it exits, or ends it with its process group after `timeout`. Returns
 /// Some once the shell has exited, whatever it answered.
-fn run_shell(shell: &Path, answer: File, timeout: Duration, lookup: &Lookup) -> Option<()> {
-    let mut child = Command::new(shell)
-        .args(["-ilc", "command -v omp"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(answer))
-        .stderr(Stdio::null())
-        // Its own process group: a shell that hangs, and what it started, can be ended together.
-        .process_group(0)
-        .spawn()
-        .ok()?;
+fn run_shell(shell: &Path, answer: &File, timeout: Duration, lookup: &Lookup) -> Option<()> {
+    let mut child = spawn_login_shell(shell, answer).ok()?;
     let group = child.id() as libc::pid_t;
     {
         let mut state = lookup.lock();

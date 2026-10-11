@@ -5,6 +5,7 @@
 //! that is already open. The window finds the omp coding agent itself (see `omp.rs`).
 
 mod address;
+mod downloads;
 mod omp;
 mod procs;
 mod server;

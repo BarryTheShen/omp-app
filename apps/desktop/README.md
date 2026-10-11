@@ -3,6 +3,7 @@
 A desktop window for the omp app. It finds the omp coding agent, starts the app's own server (inside the package, nothing else to install) on this computer, and opens the app in a window. The window opens at once on a starting page, and shows the app when the server answers. When the window closes, it hides at once; then the server and every omp process it started are stopped, and the app ends (this can take a few seconds while omp is busy). A second launch brings the open window forward.
 
 The server uses port 27183 when that port is free, so the web app keeps its stored settings (theme, sidebar, last chat) from one launch to the next. When the port is busy, the server takes a free port instead.
+"Save debug log" (in the command palette) saves its file into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from.
 
 omp must already be installed. The window looks for it on the PATH of your session, in `~/.bun/bin`, `~/.local/bin`, `/usr/local/bin` and `/usr/bin`, and then in your login shell (a window started from the applications menu does not get your shell's PATH). If it finds none, it shows a page that says omp is not installed and where to get it.
 
