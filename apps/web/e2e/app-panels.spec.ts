@@ -234,7 +234,7 @@ realTest(
 
     const transcript = page.getByRole("region", { name: /^Transcript of / });
     await expect(transcript).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole("button", { name: "Back" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Back", exact: true })).toBeFocused();
 
     const editor = page.getByRole("textbox", { name: "Message to this worker" });
     await expect(editor).toBeEnabled({ timeout: 60_000 });
@@ -447,7 +447,7 @@ realTest(
     await darkLook(page);
     await page.screenshot({ path: join(screenshots, "yield-finished-dark.png"), fullPage: true });
     await page.evaluate(() => document.documentElement.classList.remove("dark"));
-    await page.getByRole("button", { name: "Back" }).click();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
 
     // Live: the long worker's pending bash call is still running, so it reads as Running, never as Streaming.
     await sendPrompt(composer, "spawn_long_subagent");
@@ -461,7 +461,7 @@ realTest(
     await expect(live.getByText("Streaming", { exact: true })).toHaveCount(0);
     await settle(page);
     await page.screenshot({ path: join(screenshots, "yield-live-light.png"), fullPage: true });
-    await page.getByRole("button", { name: "Back" }).click();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
     await hub.getByRole("button", { name: /^Cancel / }).click();
     await expect(hub.getByRole("option", { name: /Cancelled/ })).toHaveCount(1, {
       timeout: 60_000,

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { TurnCancelContext } from "@/modules/U1/thread";
 import { Button } from "../../../components/ui/button";
 import { Icons } from "../../../tokens";
-import { copyStatusText, ToolCard } from "./card";
+import { copyStatusText, ToolCard, type ToolCardOutcome } from "./card";
 import type {
   ToolCardState,
   ToolRegistryDescriptor,
@@ -25,10 +25,21 @@ import type { CopyKind } from "./slots";
 const MAX_OUTPUT_LINES = 12;
 const MAX_OUTPUT_CHARS = 8_000;
 
+/** A command omp moved to the background. Its chip reads "In background" with the muted look of the unrecorded phase: nothing failed, and nothing more is known. */
+const BACKGROUND_OUTCOME: ToolCardOutcome = { label: "In background", phase: "unrecorded" };
+
 type BashResult = OmpWire.BashResult & {
   readonly stderr?: string;
   readonly wallTimeMs?: number;
+  /** Set when omp moved the command to the background: the card names the job and never shows omp's text for the model. */
+  readonly background?: BackgroundJob;
 };
+
+/** omp's record of a command it moved to the background (`details.async`, the record the eval card reads). */
+interface BackgroundJob {
+  readonly jobId: string;
+  readonly state: string;
+}
 
 /** The thread's copy handler, when it gives one; otherwise the clipboard is used. */
 type CopyHandler = (raw: string, kind: CopyKind) => void | Promise<void>;
@@ -50,6 +61,7 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
   const command = commandFromArgs(rendererProps.args);
   const cwd = cwdFromArgs(rendererProps.args) ?? result?.workingDir;
   const summary = singleLine(command);
+  const outcome = result?.background === undefined ? undefined : BACKGROUND_OUTCOME;
 
   return (
     <div data-slot="u3-bash-card" data-testid="u3-bash-card" title={command}>
@@ -57,6 +69,7 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, outputMeta: undefined, result: undefined, partialResult: undefined }}
         summary={summary}
+        outcome={outcome}
       >
         <BashCommand command={command} cwd={cwd} onCopy={onCopy} />
         <BashOutput
@@ -163,10 +176,14 @@ const BashToolResultSchema = z.looseObject({
       exitCode: z.number().optional(),
       timedOut: z.boolean().optional(),
       meta: z.unknown().optional(),
+      // Checked by BackgroundJobSchema, not here: an unexpected shape must not hide the rest of the result.
+      async: z.unknown().optional(),
     })
     .optional(),
 });
 const TextPartSchema = z.looseObject({ type: z.literal("text"), text: z.string() });
+/** omp's `details.async` for a command moved to the background: the job's number and its state. */
+const BackgroundJobSchema = z.looseObject({ jobId: z.string(), state: z.string() });
 
 /** The RPC `bash` command's result (`packages/coding-agent/src/exec/bash-executor.ts:87-102`). */
 const BashCommandResultSchema = z.looseObject({
@@ -225,6 +242,21 @@ function decodeBashToolResult(result: z.infer<typeof BashToolResultSchema>): Bas
     })
     .join("");
   const details = result.details ?? {};
+  const job = BackgroundJobSchema.safeParse(details.async);
+  if (job.success) {
+    // A command moved to the background: the text is omp's notice for the model, so the card shows the job instead.
+    return {
+      output: "",
+      cancelled: false,
+      truncated: false,
+      totalLines: 0,
+      totalBytes: 0,
+      outputLines: 0,
+      outputBytes: 0,
+      background: { jobId: job.data.jobId, state: job.data.state },
+      ...(details.wallTimeMs === undefined ? {} : { wallTimeMs: Math.round(details.wallTimeMs) }),
+    };
+  }
   const withoutWallTime =
     details.wallTimeMs === undefined ? text : text.replace(WALL_TIME_SUFFIX, "");
   const output = withoutWallTime.replace(/\n+$/, "");
@@ -388,6 +420,7 @@ function BashOutput({
       </>
     );
   }
+  if (result.background !== undefined) return <BackgroundNote job={result.background} />;
   if ((state.phase === "error" || state.phase === "cancelled") && repeatsBanner(result))
     return null;
   const preview = previewOutput(result.output);
@@ -491,6 +524,19 @@ function BashOutput({
         <StopTurnButton onCancel={onCancel} />
       )}
     </div>
+  );
+}
+
+/** omp moved the command to the background: the card names the job and shows none of omp's words for the model. */
+function BackgroundNote({ job }: { readonly job: BackgroundJob }) {
+  const text =
+    job.state === "running"
+      ? `Running in the background as job ${job.jobId}. Its output is added to the conversation when it finishes.`
+      : `Background job ${job.jobId}.`;
+  return (
+    <p className="text-muted-foreground px-3 py-2 text-xs" data-slot="u3-bash-background">
+      {text}
+    </p>
   );
 }
 

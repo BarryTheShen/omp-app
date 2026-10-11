@@ -117,7 +117,7 @@ test.describe("I2.2 Extension Control Center", () => {
     await expectStylesLoaded(page);
     await expect(page.locator('[data-panel-layout="drawer"]')).toBeVisible();
     await page.getByTestId("extension-item-extension-two").click();
-    await expect(page.getByRole("button", { name: "Back" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Back", exact: true })).toBeVisible();
     await expect(page.getByTestId("extension-inspector")).toContainText("Review assistant");
     await page.screenshot({
       path: "../../.data/screenshots/i2.2-control-narrow.png",

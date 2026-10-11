@@ -540,3 +540,31 @@ describe("a command the person stopped", () => {
     expect(screen.queryByText("Command aborted")).toBeNull();
   });
 });
+
+describe("a command omp moved to the background", () => {
+  // The tool result omp sent the app when a steer backgrounded a running `sleep 20` (real omp 18.8.9, recorded from
+  // the app's live run): the text is omp's notice for the model; `details.async` is omp's record of the job.
+  const backgrounded = {
+    content: [
+      {
+        type: "text",
+        text: "Backgrounded early to handle an incoming message; the command keeps running.\n\nBackgrounded as job bg_1 (killed once it has run 300s in total; `timeout: 0` disables the deadline); its output is injected into the conversation as a follow-up the moment it finishes. Do NOT poll for it (no `sleep`, `ps`, `pgrep`, `top`, `pidwait`, log tailing): every poll is a wasted turn. Do other work, or end your reply and wait to be woken.",
+      },
+    ],
+    details: { async: { state: "running", jobId: "bg_1", type: "bash" }, timeoutSeconds: 300 },
+    isError: false,
+  };
+
+  test("says it runs in the background with its job number, and shows none of omp's words for the model", () => {
+    render(<BashCard rendererProps={props(backgrounded)} />);
+    expect(
+      screen.getByText(
+        "Running in the background as job bg_1. Its output is added to the conversation when it finishes.",
+        { exact: true },
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("In background")).toBeTruthy();
+    expect(screen.queryByText(/Do NOT poll/)).toBeNull();
+    expect(screen.queryByText(/Backgrounded early/)).toBeNull();
+  });
+});
