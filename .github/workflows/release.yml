@@ -1,6 +1,7 @@
-# Release (the owner, 2026-10-07): builds an installable package of main twice a day, and only when
-# the product changed since the last release. The package is a .deb (one self-contained command,
-# the built web app, a desktop entry); the release page lists what changed.
+# Release (the owner, 2026-10-07): builds the installable packages of main twice a day, and only when
+# the product changed since the last release. There are two packages of the same version: the window
+# (omp-app-desktop: the "omp app" window with its bundled server) and the terminal command (omp-app,
+# which opens the app in the browser). The release page lists both, and what changed.
 #
 #   scheduled: 01:00 and 13:00 UTC (8 PM and 8 AM US Central in summer, 7 PM and 7 AM in winter)
 #   by hand:   gh workflow run release.yml            (add -f force=true to build without changes)
@@ -8,6 +9,8 @@
 # "Changed" means a file under apps/, packages/ or packaging/, or bun.lock, package.json or
 # tsconfig.base.json, differs from the commit of the latest release. The version is
 # 0.1.<number of commits on main>, so it only goes up and names exactly one commit.
+# Each package is smoke-tested before anything is published: when a test fails, the release fails and
+# nothing is published.
 # The workflow only ever builds main and writes only releases and tags (contents: write).
 name: release
 
@@ -31,7 +34,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out main with its history and tags
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,32 +94,69 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: bash packaging/smoke-test.sh "dist/release/omp-app_${{ steps.changes.outputs.version }}_amd64.deb"
 
+      # The window (omp-app-desktop) is built and checked the way desktop.yml does it: the libraries
+      # Tauri 2 needs, Rust, the Cargo cache, the package, then a smoke test under a virtual display that
+      # opens the app, closes it, and leaves nothing behind.
+      - name: Install the libraries the window needs, and its smoke test's tools
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xdotool imagemagick dbus dbus-x11
+
+      - name: Install Rust (stable)
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path
+          echo "$HOME/.cargo/bin" >>"$GITHUB_PATH"
+
+      - name: Cache the Cargo registry and the window's build
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: desktop-cargo-${{ runner.os }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            desktop-cargo-${{ runner.os }}-
+
+      - name: Build the window's package
+        if: steps.changes.outputs.changed == 'true'
+        run: bash packaging/build-desktop-deb.sh "${{ steps.changes.outputs.version }}"
+
+      # The window runs the omp coding agent, so its smoke test needs omp: installed the way desktop.yml does.
+      - name: Install omp (the coding agent the window runs)
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          bun install -g @oh-my-pi/pi-coding-agent@18.8.9
+          omp --version
+
+      - name: Check that the window's package works
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- bash packaging/desktop-smoke-test.sh "dist/desktop/omp-app-desktop_${{ steps.changes.outputs.version }}_amd64.deb"
+
+      - name: Add the window's package and its checksum to the release
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.changes.outputs.version }}
+        run: |
+          set -euo pipefail
+          cp "dist/desktop/omp-app-desktop_${VERSION}_amd64.deb" dist/release/
+          (cd dist/release && sha256sum "omp-app-desktop_${VERSION}_amd64.deb" >>SHA256SUMS)
+          cat dist/release/SHA256SUMS
+
       - name: Write the release notes
         if: steps.changes.outputs.changed == 'true'
         env:
           VERSION: ${{ steps.changes.outputs.version }}
           LAST: ${{ steps.changes.outputs.last }}
-        run: |
-          set -euo pipefail
-          {
-            echo "## Install"
-            echo
-            echo '```'
-            echo "sudo apt install ./omp-app_${VERSION}_amd64.deb"
-            echo '```'
-            echo
-            echo 'Then run `omp-app`, or open "omp app" from the applications menu. omp must already be installed. Remove it with `sudo apt remove omp-app`.'
-            echo
-            if [[ -n $LAST ]]; then
-              echo "## What changed since $LAST"
-              echo
-              git log --pretty='- %s' "$LAST^{commit}..HEAD" -- apps packages packaging | head -80
-            else
-              echo "## What is in it"
-              echo
-              git log --pretty='- %s' -40 -- apps packages packaging
-            fi
-          } >dist/release/notes.md
+        run: bash packaging/release-notes.sh "$VERSION" "$LAST" dist/release/notes.md
 
       - name: Publish the release
         if: steps.changes.outputs.changed == 'true'
@@ -125,5 +165,7 @@ jobs:
           VERSION: ${{ steps.changes.outputs.version }}
         run: |
           gh release create "v$VERSION" \
-            "dist/release/omp-app_${VERSION}_amd64.deb" dist/release/SHA256SUMS \
+            "dist/release/omp-app_${VERSION}_amd64.deb" \
+            "dist/release/omp-app-desktop_${VERSION}_amd64.deb" \
+            dist/release/SHA256SUMS \
             --target "$GITHUB_SHA" --title "omp app $VERSION" --notes-file dist/release/notes.md
