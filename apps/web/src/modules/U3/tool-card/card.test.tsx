@@ -184,6 +184,22 @@ describe("ToolCard queued call", () => {
   });
 });
 
+describe("ToolCard outcome", () => {
+  test("an outcome names what the call's work came to, in its phase's colours, in place of the phase's words", () => {
+    const { container } = render(
+      <ToolCard
+        state={state("success", "outcome")}
+        outcome={{ label: "Failed", phase: "error" }}
+        summary="Failed · 1 agent"
+      />,
+    );
+    const chip = container.querySelector("[data-slot='u3-tool-card-status']");
+    expect(chip?.textContent).toBe("Failed");
+    expect(chip?.className).toContain("bg-danger-surface");
+    expect(screen.queryByText("Complete")).toBeNull();
+  });
+});
+
 describe("ToolCard body", () => {
   test("keeps its children inside the disclosure: they show only while it is open", () => {
     render(

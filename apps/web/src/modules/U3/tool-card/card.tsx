@@ -43,6 +43,12 @@ const TONE_CLASSES: Record<VisualState["tone"], string> = {
   muted: "border-border bg-muted text-muted-foreground",
 };
 
+/** What the call's work came to, for its chip: the words to show, in the colours of the phase they stand for. */
+export interface ToolCardOutcome {
+  readonly label: string;
+  readonly phase: ToolCardPhase;
+}
+
 export interface ToolCardProps {
   readonly state: ToolCardState;
   readonly summary?: string;
@@ -52,6 +58,8 @@ export interface ToolCardProps {
   readonly onCopy?: (raw: string, kind: CopyKind) => void | Promise<void>;
   readonly onShowMore?: (state: ToolCardState) => void | Promise<void>;
   readonly className?: string;
+  /** What the call's work came to: the chip shows its label in its phase's colours (a task whose job failed). */
+  readonly outcome?: ToolCardOutcome;
   /** The card's body: it sits inside the disclosure, so collapsing the card hides it. */
   readonly children?: ReactNode;
 }
@@ -60,6 +68,7 @@ export function ToolCard({
   state,
   summary: suppliedSummary,
   summaryClassName,
+  outcome,
   rawResult,
   copySlot,
   onCopy,
@@ -69,9 +78,11 @@ export function ToolCard({
 }: ToolCardProps) {
   const contentId = useId();
   const visual = state.queued === true ? QUEUED_VISUAL : VISUAL_BY_PHASE[state.phase];
+  const shown =
+    outcome === undefined ? visual : { ...VISUAL_BY_PHASE[outcome.phase], label: outcome.label };
   const status = state.timedOut
-    ? { ...visual, label: "Timed out", tone: "warning" as const }
-    : visual;
+    ? { ...shown, label: "Timed out", tone: "warning" as const }
+    : shown;
   const remembered = rememberedDisclosure.get(state.toolCallId);
   const [open, setOpen] = useState(remembered ?? state.defaultOpen);
   const [expandedOutput, setExpandedOutput] = useState(false);

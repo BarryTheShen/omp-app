@@ -44,6 +44,7 @@ realTest(
     await expect(card.locator('[data-slot="u3-tool-card-trigger"]')).toContainText(
       "Failed · 1 agent",
     );
+    await expect(card.locator('[data-slot="u3-tool-card-status"]')).toHaveText("Failed");
     await expect(card.locator('[data-slot="t5-task-job"]')).toContainText("Failed");
     await expect(card.locator('[data-slot="t5-task-job"]')).not.toContainText("Running");
     await expect(card.locator('[data-slot="t5-task-transcripts"]')).toContainText("Failed");

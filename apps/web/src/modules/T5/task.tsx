@@ -2,7 +2,7 @@ import type { ToolCallId } from "@omp-app/contracts";
 import { createContext, useContext } from "react";
 import type { AgentRef, NestedTranscriptSource } from "@/modules/P1/contract";
 import { NestedAgentTranscript } from "@/modules/P1/transcript";
-import { ToolCard } from "../U3/tool-card/card";
+import { ToolCard, type ToolCardOutcome } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { detailsSource, splitToolResult } from "../U3/tool-card/result";
@@ -52,12 +52,14 @@ export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRender
     (worker) => worker.id,
   );
   const subagents = lookup === undefined ? [] : lookup(normalized.toolCallId, workerIds);
+  const outcome = state.isError ? undefined : jobOutcome(details, subagents);
   return (
     <div className="min-w-0" data-slot="t5-task-card" data-testid="t5-task-card">
       <ToolCard
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={taskSummary(details, state.isError, subagents)}
+        outcome={outcome}
       />
       <RawDetails state={state} />
       <TaskBody
@@ -283,6 +285,15 @@ function jobState(
   return subagents.length < (details?.progress?.length ?? 0) ? snapshot : "completed";
 }
 
+/** The chip's words for a job that failed: the words its status shows, in the failed colours. */
+function jobOutcome(
+  details: TaskDetails | undefined,
+  subagents: readonly TaskSubagent[],
+): ToolCardOutcome | undefined {
+  if (jobState(details, subagents) !== "failed") return undefined;
+  return { label: statusLabel("failed"), phase: "error" };
+}
+
 function taskSummary(
   details: TaskDetails | undefined,
   isError: boolean,
@@ -296,6 +307,11 @@ function taskSummary(
     return "No agents reported";
   }
   const state = jobState(details, subagents);
+  const failed = subagents.filter((item) => item.agent.status === "failed").length;
+  const completed = subagents.some((item) => item.agent.status === "completed");
+  if (state === "failed" && failed > 0 && completed && subagents.length === progress.length) {
+    return `${failed} of ${progress.length} agents failed`;
+  }
   return [
     state === undefined ? undefined : statusLabel(state),
     progress.length > 0 ? countOf(progress.length, "agent") : undefined,

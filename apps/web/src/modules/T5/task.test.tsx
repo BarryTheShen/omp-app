@@ -146,6 +146,42 @@ describe("T5.2 task card worker transcripts", () => {
     const job = container.querySelector("[data-slot='t5-task-job']");
     expect(job?.textContent).toContain("Failed");
     expect(job?.textContent).not.toContain("Running");
+    expect(container.querySelector("[data-slot='u3-tool-card-status']")?.textContent).toBe(
+      "Failed",
+    );
+  });
+
+  test("a job with one failed and one completed worker says how many failed, and its chip reads Failed", () => {
+    const failed = agentRef({
+      id: "one",
+      index: 1,
+      parentToolCallId: "task-call",
+      status: "failed",
+    });
+    const completed = agentRef({
+      id: "two",
+      index: 2,
+      parentToolCallId: "task-call",
+      status: "completed",
+    });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call"
+        ? [
+            { agent: failed, source: workerSource(failed, "the failed worker's text") },
+            { agent: completed, source: workerSource(completed, "the finished worker's text") },
+          ]
+        : [];
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={recorded("task: two reviewers started in the background")} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    expect(screen.getByText("1 of 2 agents failed")).toBeTruthy();
+    expect(container.querySelector("[data-slot='u3-tool-card-status']")?.textContent).toBe(
+      "Failed",
+    );
   });
 
   test("a worker the roster reports completed makes the job Completed, whatever the call's snapshot said", () => {
