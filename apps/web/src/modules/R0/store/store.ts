@@ -797,6 +797,9 @@ function isToolLifecycleEvent(value: unknown): boolean {
   );
 }
 
+/** The states a call keeps once it has ended: a later tool update adds progress, but never makes the call running again. */
+const ENDED_TOOL_STATUSES: Record<string, true> = { success: true, error: true, cancelled: true };
+
 const PROMPT_LIFECYCLE_EVENTS: Record<string, true> = {
   agent_start: true,
   turn_start: true,
@@ -1636,7 +1639,11 @@ export class OmpRuntimeStore {
       toolName,
       args: event.args === undefined ? previous?.args : cloneValue(event.args),
       intent: previous?.intent,
-      status: "partial",
+      // A late update (a worker reports after its call returned) adds progress; it leaves an ended call's state alone.
+      status:
+        previous !== undefined && ENDED_TOOL_STATUSES[previous.status] === true
+          ? previous.status
+          : "partial",
       partialResult: stream ? previous?.partialResult : cloneValue(event.partialResult),
       streamProjection: stream ? cloneValue(event.update) : previous?.streamProjection,
       result: previous?.result,

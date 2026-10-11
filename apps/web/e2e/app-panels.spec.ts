@@ -84,6 +84,28 @@ async function darkLook(page: Page): Promise<void> {
   await settle(page);
 }
 
+/**
+ * Scrolls the card into view and waits until it is attached and on screen. The chat re-renders its thread when it
+ * reloads its history: every message gets a new element, and a scroll that resolved the old card then fails with
+ * "Element is not attached to the DOM". Each attempt resolves the card again, so the scroll follows the new element.
+ */
+async function bringCardIntoView(card: Locator): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        await card.scrollIntoViewIfNeeded().catch(() => undefined);
+        return card
+          .evaluate((el) => {
+            const box = el.getBoundingClientRect();
+            return box.bottom > 0 && box.top < window.innerHeight;
+          })
+          .catch(() => false);
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+}
+
 realTest.setTimeout(420_000);
 
 realTest(
@@ -333,22 +355,25 @@ realTest(
     // The parent turn runs on after the worker ends (its job result, then its reply): wait for it to settle before
     // the card is scrolled and shot, as the sibling specs do.
     await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
-    // The thread runs on below the card: open the card and bring it into view, so each shot shows the worker.
+    // The thread runs on below the card: open the card and bring it into view, so each shot shows the worker. The
+    // chat reloads its history while the thread runs on, and each reload re-renders every message as a new element;
+    // a scroll that lands in that re-render finds its card detached. So each scroll retries until the card is attached
+    // and on screen (bringCardIntoView), instead of failing on the one element it resolved.
     const trigger = card.locator('[data-slot="u3-tool-card-trigger"]').first();
     if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
-    await card.scrollIntoViewIfNeeded();
+    await bringCardIntoView(card);
     await settle(page);
     await page.screenshot({
       path: join(screenshots, "app-panels-finished-worker-light.png"),
     });
     await darkLook(page);
-    await card.scrollIntoViewIfNeeded();
+    await bringCardIntoView(card);
     await settle(page);
     await page.screenshot({
       path: join(screenshots, "app-panels-finished-worker-dark.png"),
     });
     await page.setViewportSize(NARROW);
-    await card.scrollIntoViewIfNeeded();
+    await bringCardIntoView(card);
     await settle(page);
     await page.screenshot({
       path: join(screenshots, "app-panels-finished-worker-narrow.png"),

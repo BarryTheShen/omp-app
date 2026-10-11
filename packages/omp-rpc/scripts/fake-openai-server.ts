@@ -235,6 +235,25 @@ function reply(request: Request): Reply {
       ],
       thinking: "I should run bash, then write.",
     };
+  // A task call and a 10 s bash call in one message: the worker (a 7 s bash of its own, from the slow_tool branch)
+  // reports its end while this turn is still running, after the task call has already returned.
+  if (prompt.includes("spawn_slow_with_sleep"))
+    return {
+      tools: [
+        {
+          tool: "task",
+          args: {
+            name: "SlowProbe",
+            agent: "task",
+            task: "slow_tool: run one slow step, then report.",
+            solutionSpace: "one slow step",
+          },
+          id: "call_task_slow",
+        },
+        { tool: "bash", args: { command: "sleep 10; echo parent-slept" }, id: "call_parent_sleep" },
+      ],
+      thinking: "I should start one slow worker and wait for it.",
+    };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
   if (prompt.includes("slow_tool"))

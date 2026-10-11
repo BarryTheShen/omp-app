@@ -415,6 +415,54 @@ describe("OmpRuntimeStore", () => {
     });
   });
 
+  test("a late tool update keeps an ended call's state through the turn's settle, and records its progress", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const event = (type: string, extra: Record<string, unknown>) => ({
+      type,
+      toolName: "task",
+      ...extra,
+    });
+    omp(store, event("tool_execution_start", { toolCallId: "done" }), 1);
+    omp(store, event("tool_execution_end", { toolCallId: "done", result: "spawned" }), 2);
+    omp(store, event("tool_execution_start", { toolCallId: "failed" }), 3);
+    omp(
+      store,
+      event("tool_execution_end", { toolCallId: "failed", result: "boom", isError: true }),
+      4,
+    );
+    // omp's worker reports after both calls returned, while the turn still runs: they keep their ended state.
+    omp(
+      store,
+      event("tool_execution_update", { toolCallId: "done", partialResult: "worker done" }),
+      5,
+    );
+    omp(
+      store,
+      event("tool_execution_update", { toolCallId: "failed", partialResult: "worker failed" }),
+      6,
+    );
+    expect(store.getSnapshot().tools["done" as ToolCallId]).toMatchObject({
+      status: "success",
+      partialResult: "worker done",
+      result: "spawned",
+    });
+    expect(store.getSnapshot().tools["failed" as ToolCallId]).toMatchObject({
+      status: "error",
+      partialResult: "worker failed",
+      result: "boom",
+      isError: true,
+    });
+    ingest(store, { kind: "session_settled", event: { type: "session_settled" } }, 7);
+    expect(store.getSnapshot().tools["done" as ToolCallId]).toMatchObject({ status: "success" });
+    expect(store.getSnapshot().tools["failed" as ToolCallId]).toMatchObject({ status: "error" });
+
+    // A call the settle already cancelled stays cancelled when a late update arrives: the turn is over.
+    omp(store, event("tool_execution_start", { toolCallId: "cut" }), 8);
+    ingest(store, { kind: "session_settled", event: { type: "session_settled" } }, 9);
+    omp(store, event("tool_execution_update", { toolCallId: "cut", partialResult: "late" }), 10);
+    expect(store.getSnapshot().tools["cut" as ToolCallId]).toMatchObject({ status: "cancelled" });
+  });
+
   test("follows the todo tool like omp: successful results other than view replace the phases", () => {
     const store = new OmpRuntimeStore({ threadId });
     const phases = [{ name: "Build", tasks: [{ content: "write", status: "completed" }] }];
