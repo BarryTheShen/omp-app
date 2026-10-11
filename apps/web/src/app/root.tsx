@@ -1001,18 +1001,29 @@ function ActiveThreadReady({
       title: "Conversation",
       grow: true,
       render: () => (
-        <div className="min-w-0">
+        <div className="relative min-w-0">
           <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
           <p className="text-muted-foreground truncate text-xs">{title}</p>
-          {commandStatus && (
-            <p className="text-muted-foreground text-xs" role="status">
-              {commandStatus}
-            </p>
-          )}
-          {commandError && (
-            <p className="text-danger text-xs" role="alert">
-              {commandError}
-            </p>
+          {/* A message about a command floats over the top of the chat, so the header keeps its height. */}
+          {(commandStatus !== null || commandError !== null) && (
+            <div className="absolute start-0 top-full z-10 flex w-max max-w-[min(26rem,calc(100vw-4.5rem))] flex-col gap-1 pt-1">
+              {commandStatus && (
+                <p
+                  className="border-border bg-popover text-popover-foreground shadow-overlay rounded-md border px-3 py-2 text-xs"
+                  role="status"
+                >
+                  {commandStatus}
+                </p>
+              )}
+              {commandError && (
+                <p
+                  className="border-border bg-popover text-danger shadow-overlay rounded-md border px-3 py-2 text-xs"
+                  role="alert"
+                >
+                  {commandError}
+                </p>
+              )}
+            </div>
           )}
         </div>
       ),
