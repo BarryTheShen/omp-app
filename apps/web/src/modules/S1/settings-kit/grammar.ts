@@ -161,12 +161,33 @@ function controlFor(
   return descriptor.controls.find((control) => control.key === key);
 }
 
+/**
+ * How long a settings read may take before it fails with a message and a Retry. A read the server never
+ * answers would otherwise keep its section on "Loading" with no error.
+ */
+export const SETTINGS_READ_TIMEOUT_MS = 15_000;
+
+/** Races a read against SETTINGS_READ_TIMEOUT_MS, so a read the server never answers becomes an error. */
+function withReadDeadline<T>(read: Promise<T>): Promise<T> {
+  const deadline = Promise.withResolvers<never>();
+  const timer = setTimeout(() => {
+    deadline.reject(
+      new AppFailure({
+        code: "timeout",
+        message: "Settings took too long to load.",
+        retryable: true,
+      }),
+    );
+  }, SETTINGS_READ_TIMEOUT_MS);
+  return Promise.race([read, deadline.promise]).finally(() => clearTimeout(timer));
+}
+
 export async function readSection(
   client: ConfigStoreClient,
   descriptor: SettingsSectionDescriptor,
   folder: FolderPath | null,
 ): Promise<ConfigSnapshot> {
-  const result = await client.list({ folder });
+  const result = await withReadDeadline(client.list({ folder }));
   const keys = new Set(descriptor.controls.map((control) => control.key));
   return Object.freeze({
     folder,

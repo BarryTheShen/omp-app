@@ -7,9 +7,9 @@ import {
   type ConfigWriteResult,
   type FolderPath,
 } from "@omp-app/contracts";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createSettingsRuntime, type SettingsRuntime } from "../../runtime";
-import type { SettingsSectionDescriptor } from "../../settings-kit";
+import { SETTINGS_READ_TIMEOUT_MS, type SettingsSectionDescriptor } from "../../settings-kit";
 
 const descriptor: SettingsSectionDescriptor = {
   id: "S1.runtimeTest",
@@ -56,6 +56,8 @@ type FakeState = {
   scopes: string[];
   listeners: Set<(change: ConfigChanged) => void>;
   nextListFailure: AppFailure | null;
+  /** The next list never answers, so a read has to end in the timeout. */
+  hangNextList: boolean;
   /** Keys omp refuses once: that write fails and nothing is written. */
   refusedKeys: Set<string>;
   /** omp rewrites the file (no value changes) right after the next list: an outside rewrite between a conflict's read and its retry. */
@@ -72,6 +74,7 @@ function fakeState(): FakeState {
     scopes: [],
     listeners: new Set(),
     nextListFailure: null,
+    hangNextList: false,
     refusedKeys: new Set(),
     revisionAfterNextList: null,
     revisionAfterNextWrite: null,
@@ -87,6 +90,10 @@ function fakeClient(state: FakeState): AppClient {
       return entry;
     },
     list: async (_args: { readonly folder: string | null }) => {
+      if (state.hangNextList) {
+        state.hangNextList = false;
+        return Promise.withResolvers<never>().promise;
+      }
       if (state.nextListFailure) {
         const failure = state.nextListFailure;
         state.nextListFailure = null;
@@ -462,5 +469,33 @@ describe("S1.2 ConfigStore runtime", () => {
     ]);
     expect(runtime.getSnapshot().phase).toBe("ready");
     expect(runtime.getSnapshot().applyStatus).toBe("restart-required");
+  });
+
+  test("a read the server never answers ends in a timeout the section can retry", async () => {
+    vi.useFakeTimers();
+    try {
+      const state = fakeState();
+      state.hangNextList = true;
+      const runtime = createSettingsRuntime(fakeClient(state), {
+        descriptor,
+        folder: null,
+        layer: "global",
+      });
+      runtimes.push(runtime);
+      const outcome = runtime.read().then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(SETTINGS_READ_TIMEOUT_MS);
+      expect(runtime.getSnapshot().phase).toBe("error");
+      expect(await outcome).toMatchObject({
+        appError: { code: "timeout", message: "Settings took too long to load.", retryable: true },
+      });
+
+      await runtime.retry();
+      expect(runtime.getSnapshot().phase).toBe("ready");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

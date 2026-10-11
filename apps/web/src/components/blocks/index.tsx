@@ -83,11 +83,12 @@ export function Panel({
         {actions}
       </header>
       {status}
-      <div className="relative min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         {bodyOverlay}
+        {/* h-full would size the body to its content in WebKitGTK; as a flex child it stays the scroller. */}
         <div
           ref={bodyRef}
-          className="h-full min-h-0 overflow-y-auto overscroll-contain px-3 py-3"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3"
           data-panel-scroll="body"
           onScroll={onBodyScroll}
         >
