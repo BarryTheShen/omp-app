@@ -175,6 +175,48 @@ export const AnswerExtensionUiArgs = z
   .strict();
 export type AnswerExtensionUiArgs = z.infer<typeof AnswerExtensionUiArgs>;
 
+/**
+ * A question omp is still waiting on: an extension UI request that asks the person for an answer. omp writes no event
+ * when one is answered, so the server keeps the open questions of each chat (see `openQuestions`).
+ */
+export type OpenQuestion = Extract<
+  OmpWire.ExtensionUiRequest,
+  { readonly method: "select" | "confirm" | "input" | "editor" | "ask" }
+>;
+
+const QUESTION_METHODS: Record<string, true> = {
+  select: true,
+  confirm: true,
+  input: true,
+  editor: true,
+  ask: true,
+};
+
+/** Whether an extension UI request asks the person a question that omp waits on. */
+export function isOpenQuestion(request: OmpWire.ExtensionUiRequest): request is OpenQuestion {
+  return QUESTION_METHODS[request.method] === true;
+}
+
+const OpenQuestionSchema = z.custom<OpenQuestion>(
+  (value) => {
+    const parsed = WireRecord.safeParse(value);
+    return (
+      parsed.success &&
+      parsed.data.type === "extension_ui_request" &&
+      UiRequestId.safeParse(parsed.data.id).success &&
+      typeof parsed.data.method === "string" &&
+      QUESTION_METHODS[parsed.data.method] === true
+    );
+  },
+  { message: "expected an open extension UI question" },
+);
+
+/** The questions a chat's omp is still waiting on, each with the sequence of the event that asked it. */
+export const OpenQuestions = z.array(
+  z.strictObject({ seq: z.int().min(1), request: OpenQuestionSchema }),
+);
+export type OpenQuestionRecord = z.infer<typeof OpenQuestions>[number];
+
 export const AnswerHostToolArgs = z
   .object({
     threadId: ThreadId,
@@ -393,6 +435,10 @@ export const RpcSessionPort = definePort({
       args: AnswerExtensionUiArgs,
       result: z.null(),
       capability: "omp.ui",
+    },
+    openQuestions: {
+      args: ThreadRef,
+      result: OpenQuestions,
     },
     answerHostTool: {
       args: AnswerHostToolArgs,

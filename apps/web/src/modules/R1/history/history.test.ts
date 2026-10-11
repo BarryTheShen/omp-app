@@ -1,6 +1,7 @@
 import type { AppClient, AppClientSubscription, SubscribeOptions } from "@omp-app/client";
 import type {
   FolderPath,
+  OpenQuestionRecord,
   OpenThreadArgs,
   RpcSessionClient,
   RpcSessionEvent,
@@ -19,6 +20,7 @@ const threadTwo = ThreadIdSchema.parse("thread-two");
 function createRpc(
   open: (args: OpenThreadArgs) => unknown,
   calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [],
+  questions: readonly OpenQuestionRecord[] = [],
 ): RpcSessionClient {
   const send = async (args: {
     threadId: ThreadId;
@@ -39,6 +41,7 @@ function createRpc(
     send: send as RpcSessionClient["send"],
     subscribe: async () => ({ stream: "A0.rpcSession/event/thread" as never }),
     answerExtensionUi: async () => null,
+    openQuestions: async () => questions,
     answerHostTool: async () => null,
     answerHostUri: async () => null,
     setSubagentSubscription: async () => ({ level: "off" }),
@@ -326,6 +329,55 @@ describe("SelectedThreadHistoryController open and paging", () => {
     const store = await controller.openExisting(threadOne);
     expect(subscriptions[0]?.options?.afterSeq).toBe(0);
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 1, process: { status: "ready" } });
+  });
+
+  test("a question omp is still waiting on is shown again when its chat is opened, and one it answered is not", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [
+        {
+          seq: 3,
+          request: {
+            type: "extension_ui_request",
+            id: "ui-open",
+            method: "confirm",
+            title: "Go on?",
+            message: "",
+          },
+        },
+      ],
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions, [
+        {
+          kind: "notification",
+          frame: {
+            type: "extension_ui_request",
+            id: "ui-done",
+            method: "confirm",
+            title: "Done?",
+            message: "",
+          },
+        } as RpcSessionEvent,
+        {
+          kind: "notification",
+          frame: {
+            type: "extension_ui_request",
+            id: "ui-open",
+            method: "confirm",
+            title: "Go on?",
+            message: "",
+          },
+        } as RpcSessionEvent,
+      ]),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    // Both were replayed as history, so the replay asks neither; the open one comes from the server's record.
+    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-open"]);
+    expect(store.getSnapshot().pending.extensionUi["ui-open"]).toMatchObject({ receivedSeq: 3 });
   });
 
   test("a question the server replays before it acknowledges the subscription is not asked again, and a live one is", async () => {

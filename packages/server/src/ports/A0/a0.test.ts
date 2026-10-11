@@ -263,6 +263,16 @@ function processStatus(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null || !("status" in value)) return undefined;
   return typeof value.status === "string" ? value.status : undefined;
 }
+
+/** The sequence of the replayed event that carries a request; the test fails when no replayed event does. */
+function seqOfRequest(
+  frames: readonly { readonly seq: number; readonly payload: unknown }[],
+  requestId: string,
+): number {
+  const frame = frames.find((item) => JSON.stringify(item.payload).includes(`"id":"${requestId}"`));
+  if (frame === undefined) throw new Error(`no replayed event carries ${requestId}`);
+  return frame.seq;
+}
 function call(connectionId: string): ServerPortHandlerContext {
   return {
     signal: new AbortController().signal,
@@ -830,6 +840,94 @@ describe("A0.7 RpcSessionPort handlers", () => {
       result: { content: [] },
     });
     expect(replay.frames.some((frame) => payloadKind(frame.payload) === "process")).toBe(true);
+  });
+
+  test("keeps the questions omp waits on until each is answered or cancelled, each with the sequence that asked it", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const openQuestions = () =>
+      getHandler(handlers, "openQuestions")({ threadId: authorityThread }, call("one")) as Array<{
+        seq: number;
+        request: { id: string };
+      }>;
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "ui-1",
+      method: "confirm",
+      title: "Go on?",
+      message: "",
+    });
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "note-1",
+      method: "notify",
+      message: "heads up",
+    });
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "ui-2",
+      method: "input",
+      title: "Name?",
+    });
+    const stream = (await getHandler(handlers, "subscribe")(
+      { threadId: authorityThread },
+      call("one"),
+    )) as { stream: StreamKey };
+    const replay = runtimeContext.replay.replay(stream.stream, 0);
+    if ("error" in replay) throw new Error("unexpected replay conflict");
+    const open = openQuestions();
+    expect(open.map((question) => question.request.id)).toEqual(["ui-1", "ui-2"]);
+    expect(open.map((question) => question.seq)).toEqual([
+      seqOfRequest(replay.frames, "ui-1"),
+      seqOfRequest(replay.frames, "ui-2"),
+    ]);
+    await getHandler(handlers, "answerExtensionUi")(
+      {
+        threadId: authorityThread,
+        response: {
+          type: "extension_ui_response",
+          id: UiRequestId.parse("ui-1"),
+          confirmed: true,
+        },
+      },
+      call("one"),
+    );
+    expect(openQuestions().map((question) => question.request.id)).toEqual(["ui-2"]);
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "cancel-2",
+      method: "cancel",
+      targetId: "ui-2",
+    });
+    expect(openQuestions()).toEqual([]);
+  });
+
+  test("a restart drops the questions of the omp it replaces, since the new omp cannot answer them", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const first = created[0];
+    if (first === undefined) throw new Error("missing fake process");
+    first.emitRequest({
+      type: "extension_ui_request",
+      id: "ui-9",
+      method: "confirm",
+      title: "Go on?",
+      message: "",
+    });
+    expect(
+      getHandler(handlers, "openQuestions")({ threadId: authorityThread }, call("one")),
+    ).toHaveLength(1);
+    await getHandler(handlers, "restart")({ threadId: authorityThread }, call("one"));
+    expect(created).toHaveLength(2);
+    expect(
+      getHandler(handlers, "openQuestions")({ threadId: authorityThread }, call("one")),
+    ).toEqual([]);
   });
 
   test("a command sent after omp crashed starts omp again on the same chat and tells it what the old one had been told", async () => {

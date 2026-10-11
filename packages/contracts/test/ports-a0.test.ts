@@ -231,6 +231,36 @@ describe("RpcSessionPort", () => {
     expect(RpcSessionPort.methods.restart.args.safeParse({}).success).toBe(false);
   });
 
+  test("reads the questions a chat's omp is still waiting on, and only those", () => {
+    const parses = (value: unknown) =>
+      RpcSessionPort.methods.openQuestions.result.safeParse(value).success;
+    const confirm = {
+      type: "extension_ui_request",
+      id: "ui-1",
+      method: "confirm",
+      title: "Go on?",
+      message: "",
+    };
+    expect(parses([{ seq: 4, request: confirm }])).toBe(true);
+    expect(parses([{ seq: 0, request: confirm }])).toBe(false);
+    expect(
+      parses([{ seq: 4, request: { ...confirm, method: "notify", message: "heads up" } }]),
+    ).toBe(false);
+    expect(
+      parses([
+        {
+          seq: 4,
+          request: {
+            type: "extension_ui_request",
+            id: "cancel-1",
+            method: "cancel",
+            targetId: "ui-1",
+          },
+        },
+      ]),
+    ).toBe(false);
+  });
+
   test("exposes command capabilities and a correlated typed send", async () => {
     expect(ompCommandCapability("prompt")).toBe("omp.cmd.prompt");
     expect(RpcSessionPort.methods.answerExtensionUi.capability).toBe("omp.ui");

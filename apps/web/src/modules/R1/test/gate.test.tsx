@@ -170,6 +170,7 @@ function createHistoryRpc(
     send,
     subscribe: async () => ({ stream: "A0.rpcSession/event/thread" }) as never,
     answerExtensionUi: async () => null,
+    openQuestions: async () => [],
     answerHostTool: async () => null,
     answerHostUri: async () => null,
     setSubagentSubscription: async () => ({ level: "off" }),

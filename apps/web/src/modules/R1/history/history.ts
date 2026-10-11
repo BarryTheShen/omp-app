@@ -367,6 +367,7 @@ export class SelectedThreadHistoryController {
       // browser subscribed, such as a startup notice or the process becoming ready, reach the store in order. The history
       // load below reads what omp wrote to the session file.
       await this.attachSubscription(threadId, store, 0);
+      await this.recordOpenQuestions(threadId, store);
       await loader.loadInitial();
       this.stopRefetchWatch = loader.watchNeedsRefetch();
       this.commit({
@@ -428,7 +429,8 @@ export class SelectedThreadHistoryController {
     // The events a subscription from the stream's start replays arrive before it is acknowledged. They are collected, and
     // applied after the acknowledgement.
     let replay: ReplayedEvent[] | undefined;
-    // A replayed event is applied as history: a question, host call or sign-in prompt in it is not asked again (see `ingest`).
+    // A replayed event is applied as history: a question, host call or sign-in prompt in it is not asked again (see
+    // `ingest`). The questions still open are recorded by `recordOpenQuestions`.
     const apply = (payload: RpcSessionEvent, seq: number, replayed: boolean) => {
       if (!baselined) {
         baselined = true;
@@ -480,6 +482,16 @@ export class SelectedThreadHistoryController {
     // The same function as the handler above, so the client holds one listener. Its detach removes the handler when the
     // chat is left.
     this.offEvents = subscription.onEvent(onEvent);
+  }
+
+  /**
+   * Records the questions omp is still waiting on, so their dialogs show again. The replay applies a question as history
+   * and does not ask it again, because it cannot tell an answered question from an open one. The server keeps the open
+   * ones (`openQuestions`), and only those are shown again.
+   */
+  private async recordOpenQuestions(threadId: ThreadId, store: OmpRuntimeStore): Promise<void> {
+    const open = await this.rpc.openQuestions({ threadId });
+    for (const question of open) store.recordOpenQuestion(question.request, question.seq);
   }
 
   private sessionIdFromEvent(event: RpcSessionEvent): ThreadId | undefined {

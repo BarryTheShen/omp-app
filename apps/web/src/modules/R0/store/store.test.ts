@@ -939,6 +939,38 @@ describe("OmpRuntimeStore", () => {
     expect(notified).toEqual(["notice-old", "ui-live"]);
   });
 
+  test("a question omp is still waiting on is recorded as pending without moving the sequence, once", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "process", status: "ready" }, 1);
+    store.recordOpenQuestion(
+      {
+        type: "extension_ui_request",
+        id: "ask-open",
+        method: "confirm",
+        title: "Go on?",
+        message: "",
+      },
+      7,
+    );
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 1 });
+    expect(store.getSnapshot().pending.extensionUi["ask-open"]).toMatchObject({
+      receivedSeq: 7,
+      request: { method: "confirm" },
+    });
+    const revision = store.getSnapshot().revision;
+    store.recordOpenQuestion(
+      {
+        type: "extension_ui_request",
+        id: "ask-open",
+        method: "confirm",
+        title: "Go on?",
+        message: "",
+      },
+      7,
+    );
+    expect(store.getSnapshot().revision).toBe(revision);
+  });
+
   test("records a tool call's start, progress and end across a gap, since history never restores them", () => {
     const store = new OmpRuntimeStore({ threadId });
     // A fresh chat's first events predate the browser's subscription, so the first one it sees is a gap.

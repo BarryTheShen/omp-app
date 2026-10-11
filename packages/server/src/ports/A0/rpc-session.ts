@@ -8,7 +8,9 @@ import {
   type AppHealth,
   type CapabilityMap,
   type FolderPath,
+  isOpenQuestion,
   type OmpWire,
+  type OpenQuestionRecord,
   type OpenThreadArgs,
   type RpcSessionEvent,
   RpcSessionPort,
@@ -103,6 +105,8 @@ interface ThreadEntry {
   readonly viewers: Map<string, number>;
   readonly preferences: Map<string, ViewerPreference>;
   readonly startupEvents: RpcSessionEvent[];
+  /** The questions omp is still waiting on: omp reports none, so the server keeps them (see `#publishEvent`). */
+  readonly openQuestions: Map<string, OpenQuestionRecord>;
   hostToolRegistrations: Map<string, Map<string, readonly OmpWire.HostToolDefinition[]>>;
   hostUriRegistrations: Map<string, Map<string, readonly OmpWire.HostUriSchemeDefinition[]>>;
   hostRegistrationQueue: Promise<void>;
@@ -238,6 +242,7 @@ export class RpcSessionPortRuntime {
     send: (args, call) => this.send(args as SendCommandArgs, call),
     subscribe: (args, call) => this.subscribe(args as SubscribeArgs, call),
     answerExtensionUi: (args, call) => this.answerExtensionUi(args as AnswerExtensionUiArgs, call),
+    openQuestions: (args, call) => this.openQuestions(args as { threadId: ThreadId }, call),
     answerHostTool: (args, call) => this.answerHostTool(args as AnswerHostToolArgs, call),
     answerHostUri: (args, call) => this.answerHostUri(args as AnswerHostUriArgs, call),
     setSubagentSubscription: (args, call) =>
@@ -286,6 +291,7 @@ export class RpcSessionPortRuntime {
       viewers: new Map(),
       preferences: new Map(),
       startupEvents: [],
+      openQuestions: new Map(),
       hostToolRegistrations: new Map(),
       hostUriRegistrations: new Map(),
       hostRegistrationQueue: Promise.resolve(),
@@ -298,7 +304,7 @@ export class RpcSessionPortRuntime {
         entry.startupEvents.push(event);
         return;
       }
-      this.#context.replay.publish(entry.stream, event satisfies RpcSessionEvent);
+      this.#publishEvent(entry, event);
     });
     this.#aliases.delete(bootstrap.threadId);
     this.#entries.set(bootstrap.threadId, entry);
@@ -606,8 +612,19 @@ export class RpcSessionPortRuntime {
   }
 
   async answerExtensionUi(args: AnswerExtensionUiArgs, _call: PortHandlerContext): Promise<null> {
-    await this.#entry(args.threadId).session.answerExtensionUi(args.response);
+    const entry = this.#entry(args.threadId);
+    await entry.session.answerExtensionUi(args.response);
+    entry.openQuestions.delete(args.response.id);
     return null;
+  }
+
+  /**
+   * The questions a chat's omp is still waiting on, oldest first. A browser that opens the chat again shows them: the
+   * replay carries the questions too, but nothing in it says whether one has been answered since.
+   */
+  openQuestions(args: { threadId: ThreadId }, _call: PortHandlerContext): OpenQuestionRecord[] {
+    const entry = this.#entry(args.threadId);
+    return [...entry.openQuestions.values()].sort((left, right) => left.seq - right.seq);
   }
 
   async answerHostTool(args: AnswerHostToolArgs, _call: PortHandlerContext): Promise<null> {
@@ -707,6 +724,8 @@ export class RpcSessionPortRuntime {
       args,
     });
     entry.unsubscribeEvents();
+    // The questions of the process being replaced can never be answered: the new omp does not have them.
+    entry.openQuestions.clear();
     await entry.session.close();
     const session = this.#context.createSession?.(process) ?? new RpcSession(process);
     entry.bootstrap = { ...entry.bootstrap, args };
@@ -714,7 +733,7 @@ export class RpcSessionPortRuntime {
     entry.session = session;
     entry.unsubscribeEvents = session.onEvent((event) => {
       this.#trackTurn(entry.bootstrap.threadId, event);
-      this.#context.replay.publish(entry.stream, event satisfies RpcSessionEvent);
+      this.#publishEvent(entry, event);
     });
     entry.appliedLevel = undefined;
     entry.appliedEvents = undefined;
@@ -828,6 +847,21 @@ export class RpcSessionPortRuntime {
   }
 
   /**
+   * Publishes one of omp's events on the chat's stream, and keeps the chat's open questions in step. A question is open
+   * from the moment it is published until it is answered, cancelled, or omp is replaced. omp reports none of them and
+   * writes nothing when one is answered, so the server is the only place that knows which ones omp still waits on.
+   */
+  #publishEvent(entry: ThreadEntry, event: RpcSessionEvent): void {
+    const frame = this.#context.replay.publish(entry.stream, event);
+    if (event.kind !== "notification") return;
+    const notice = event.frame;
+    if (notice.type !== "extension_ui_request") return;
+    if (notice.method === "cancel") entry.openQuestions.delete(notice.targetId);
+    else if (isOpenQuestion(notice))
+      entry.openQuestions.set(notice.id, { seq: frame.seq, request: notice });
+  }
+
+  /**
    * Moves a process to omp's id for the chat. The registry refuses an id another process already
    * holds: that is a chat open in another tab or window, and a person is told so in plain words,
    * not in the registry's own text.
@@ -880,7 +914,7 @@ export class RpcSessionPortRuntime {
     entry.rekeyed = true;
     const startupEvents = entry.startupEvents.splice(0);
     for (const event of startupEvents) {
-      this.#context.replay.publish(entry.stream, event satisfies RpcSessionEvent);
+      this.#publishEvent(entry, event);
     }
   }
 
@@ -902,7 +936,7 @@ export class RpcSessionPortRuntime {
     this.#moveProcess(current, identity.threadId);
     // Browsers still attached to the old id hear that the chat moved, with the new id. The stream
     // carries on under the new id so their sequence numbers stay contiguous; the process is untouched.
-    this.#context.replay.publish(entry.stream, {
+    this.#publishEvent(entry, {
       kind: "notification",
       frame: { type: "session_info_update", sessionId: identity.threadId },
     } satisfies RpcSessionEvent);

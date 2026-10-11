@@ -934,9 +934,9 @@ export class OmpRuntimeStore {
    * remembered (`latestSeenSeq`) so the refetch resumes where the stream really is.
    *
    * `fromHistory` marks an event that a subscription from the stream's start replays before it is acknowledged. Such an
-   * event is applied, except a frame that asks the person something (a question, a host call, a sign-in prompt): the
-   * answer is not in the stream, so a replayed request was either answered or belongs to a turn that has ended, and it
-   * must not open again.
+   * event is applied, except a frame that asks the person something (a question, a host call, a sign-in prompt): a replay
+   * cannot say whether such a request was answered since, so it is not asked again. The questions a chat's omp still
+   * waits on are recorded from the server's record instead (`recordOpenQuestion`).
    */
   public ingest(event: RpcSessionEvent, seq: number, fromHistory = false): void {
     if (!Number.isSafeInteger(seq) || seq < 1) {
@@ -1263,6 +1263,20 @@ export class OmpRuntimeStore {
     if (this.snapshot.error === null) return;
     const next = mutableSnapshot(this.snapshot);
     next.error = null;
+    this.commit(next);
+  }
+
+  /**
+   * Shows a question omp is still waiting on, when its chat is opened again. The replay cannot say which of its questions
+   * were answered (omp writes nothing when one is), so the server's record of the open ones is recorded here. It does not
+   * move the sequence: the question's event was replayed before, or is still to come.
+   */
+  public recordOpenQuestion(request: OmpWire.ExtensionUiRequest, seq: number): void {
+    if (this.snapshot.pending.extensionUi[request.id] !== undefined) return;
+    const next = mutableSnapshot(this.snapshot);
+    const pending = copyPending(next);
+    pending.extensionUi[request.id] = { request: cloneValue(request), receivedSeq: seq };
+    setPending(next, pending);
     this.commit(next);
   }
 
