@@ -280,10 +280,14 @@ export class SettingsRuntime {
   }
 
   public async save(): Promise<CommitResult> {
-    return this.saveEdits(false);
+    return this.saveEdits(false, []);
   }
 
-  private async saveEdits(retried: boolean): Promise<CommitResult> {
+  /**
+   * One save, which may take two attempts. `earlier` lists the keys an earlier attempt of this save already
+   * wrote, so the retry reports the apply status and environment overrides of all of them.
+   */
+  private async saveEdits(retried: boolean, earlier: readonly string[]): Promise<CommitResult> {
     const staged = this.snapshot.staged;
     if (!staged) throw unavailable("Settings are not loaded yet.");
     if (this.snapshot.conflict) {
@@ -292,7 +296,7 @@ export class SettingsRuntime {
     if (Object.keys(staged.edits).length === 0) {
       return { entries: [], revision: staged.snapshot.revision, status: "applied" };
     }
-    const written: string[] = [];
+    const written: string[] = [...earlier];
     this.writing = true;
     this.commit({ phase: "saving", error: null });
     try {
@@ -301,6 +305,8 @@ export class SettingsRuntime {
       );
       const config = await readSection(this.client, this.descriptor, this.folder);
       this.writing = false;
+      // The status of every key this save wrote, including the keys an earlier attempt of it wrote.
+      const applyStatus = applyStatusOf(this.descriptor, written);
       this.commit({
         config,
         staged: { snapshot: config, edits: {} },
@@ -308,12 +314,12 @@ export class SettingsRuntime {
         phase: "ready",
         conflict: null,
         error: null,
-        applyStatus: result.status,
+        applyStatus,
         environmentOverride: environmentOverrideOf(config.entries, written),
         lastChange: null,
         unsavedKeys: [],
       });
-      return result;
+      return { ...result, status: applyStatus };
     } catch (error) {
       this.writing = false;
       const failure = asFailure(error, "Saving settings failed.");
@@ -328,7 +334,20 @@ export class SettingsRuntime {
         // An edit whose setting did not change since it was made is not a conflict: carry the unwritten
         // edits onto the current revision and save once more.
         const carried = await this.enterConflict(unsaved, failure.appError);
-        if (carried && !retried) return this.saveEdits(true);
+        if (carried && !retried) return this.saveEdits(true, written);
+        if (carried) {
+          // The retry met another outside rewrite. Nothing more was written, so the edits stay staged and
+          // the notice names them with the reason.
+          this.commit({
+            error: new AppFailure({
+              code: "conflict",
+              message:
+                "Settings changed elsewhere while this save ran, so these were not written. Save again to write them.",
+              retryable: true,
+            }).appError,
+            unsavedKeys: Object.keys(unsaved.edits),
+          });
+        }
       } else {
         await this.keepUnsaved(unsaved, written, failure.appError);
       }

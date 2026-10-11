@@ -58,6 +58,10 @@ type FakeState = {
   nextListFailure: AppFailure | null;
   /** Keys omp refuses once: that write fails and nothing is written. */
   refusedKeys: Set<string>;
+  /** omp rewrites the file (no value changes) right after the next list: an outside rewrite between a conflict's read and its retry. */
+  revisionAfterNextList: string | null;
+  /** omp rewrites the file right after the next successful write: an outside rewrite between two keys of one save. */
+  revisionAfterNextWrite: string | null;
 };
 
 function fakeState(): FakeState {
@@ -69,6 +73,8 @@ function fakeState(): FakeState {
     listeners: new Set(),
     nextListFailure: null,
     refusedKeys: new Set(),
+    revisionAfterNextList: null,
+    revisionAfterNextWrite: null,
   };
 }
 
@@ -86,10 +92,12 @@ function fakeClient(state: FakeState): AppClient {
         state.nextListFailure = null;
         throw failure;
       }
-      return {
-        entries: [...state.entries],
-        revision: state.revision,
-      };
+      const listing = { entries: [...state.entries], revision: state.revision };
+      if (state.revisionAfterNextList) {
+        state.revision = state.revisionAfterNextList;
+        state.revisionAfterNextList = null;
+      }
+      return listing;
     },
     write: async (args: ConfigWriteArgs): Promise<ConfigWriteResult> => {
       state.writes.push(args);
@@ -127,6 +135,10 @@ function fakeClient(state: FakeState): AppClient {
           };
       if (index < 0) state.entries.push(entry);
       else state.entries[index] = entry;
+      if (state.revisionAfterNextWrite) {
+        state.revision = state.revisionAfterNextWrite;
+        state.revisionAfterNextWrite = null;
+      }
       return {
         key: args.key,
         layer: args.layer,
@@ -393,5 +405,62 @@ describe("S1.2 ConfigStore runtime", () => {
       key: "appearance.mode",
       expectedRevision: "revision-other",
     });
+  });
+
+  test("a second outside rewrite during the retried save keeps the edits and says why they were not written", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    // omp rewrote the file without changing the theme, and rewrites it again between the conflict's
+    // read and the retry: the retry conflicts too.
+    state.revision = "revision-rewritten";
+    state.revisionAfterNextList = "revision-rewritten-again";
+    await expect(runtime.save()).rejects.toMatchObject({ appError: { code: "conflict" } });
+    const snapshot = runtime.getSnapshot();
+    expect(snapshot.phase).toBe("editing");
+    expect(snapshot.conflict).toBeNull();
+    expect(snapshot.error?.code).toBe("conflict");
+    expect(snapshot.error?.message).toContain("changed elsewhere");
+    expect(snapshot.unsavedKeys).toEqual(["appearance.mode"]);
+    expect(snapshot.staged?.edits).toEqual({ "appearance.mode": { secret: false, value: "dark" } });
+    // Once omp stops rewriting, the next save writes the kept edit.
+    await runtime.save();
+    expect(runtime.getSnapshot().phase).toBe("ready");
+    expect(state.entries.find((entry) => entry.key === "appearance.mode")).toMatchObject({
+      value: "dark",
+    });
+  });
+
+  test("a restart the first write needed is still reported when a carried retry writes the rest", async () => {
+    const state = fakeState();
+    // The restart key is written first; the theme follows and meets an outside rewrite that changes no edit.
+    const restartFirst: SettingsSectionDescriptor = {
+      ...descriptor,
+      controls: [...descriptor.controls].reverse(),
+    };
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor: restartFirst,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("provider.apiKey", { secret: true, action: "set", value: "new-key" });
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    state.revisionAfterNextWrite = "revision-rewritten";
+    await runtime.save();
+    expect(state.writes.map((write) => write.key)).toEqual([
+      "provider.apiKey",
+      "appearance.mode",
+      "appearance.mode",
+    ]);
+    expect(runtime.getSnapshot().phase).toBe("ready");
+    expect(runtime.getSnapshot().applyStatus).toBe("restart-required");
   });
 });
