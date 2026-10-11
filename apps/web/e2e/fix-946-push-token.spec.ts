@@ -30,7 +30,7 @@ for (const parameter of ["token", "apiKey"] as const) {
         const settings = page.getByTestId("settings-screen");
         await expect(settings).toBeVisible();
         await settings.getByRole("button", { name: "Tools", exact: true }).click();
-        await settings.getByRole("option", { name: "Tools / Developer" }).click();
+        await settings.getByRole("option", { name: "Developer" }).click();
         const panel = settings.getByRole("region", { name: "Tools settings", exact: true });
         await expect(panel).toBeVisible({ timeout: 20_000 });
 
