@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -204,11 +205,59 @@ interface CachedSummary {
   readonly summary: SessionSummary;
 }
 
+/**
+ * A place in a listing's order: the modified time, the base name and a tag (a short hash of the full path). The
+ * base name orders files modified at the same time, and the tag orders files that also share a base name.
+ */
+interface ListingPlace {
+  readonly mtimeMs: number;
+  readonly name: string;
+  readonly tag: string;
+}
+
 /** A file a listing may show: found by its name and its size and time, never by reading it. */
-interface SessionCandidate {
+interface SessionCandidate extends ListingPlace {
   readonly file: string;
   readonly size: number;
-  readonly mtimeMs: number;
+}
+
+/** A short hash of a file's full path, the last part of its place in a listing. */
+function placeTag(file: string): string {
+  return createHash("sha256").update(file).digest("hex").slice(0, 16);
+}
+
+/** The listing's order: newest first by the whole milliseconds an ISO timestamp holds, then by base name, then tag. */
+function newestFirst(left: ListingPlace, right: ListingPlace): number {
+  const leftTime = Math.trunc(left.mtimeMs);
+  const rightTime = Math.trunc(right.mtimeMs);
+  if (leftTime !== rightTime) return rightTime - leftTime;
+  if (left.name !== right.name) return left.name < right.name ? -1 : 1;
+  if (left.tag === right.tag) return 0;
+  return left.tag < right.tag ? -1 : 1;
+}
+
+/**
+ * A listing cursor is the place of the last file of a page, in the listing's order: `<modified time>.<tag>.<base name>`,
+ * the name in base64url. It never carries the path, so it stays short whatever the folder, and a name is at most 255
+ * bytes, so the cursor is at most about 375 characters. A place rather than a count: a file deleted or added before it
+ * does not move the files after it. Clients pass it back unread.
+ */
+function encodeListingCursor(place: ListingPlace): string {
+  const name = Buffer.from(place.name, "utf8").toString("base64url");
+  return `${Math.trunc(place.mtimeMs)}.${place.tag}.${name}`;
+}
+
+function decodeListingCursor(cursor: string): ListingPlace {
+  const invalid = () => appFailure("invalid_args", "Invalid session-list cursor", false);
+  const parts = cursor.split(".");
+  if (parts.length !== 3) throw invalid();
+  const [time, tag, encodedName] = parts as [string, string, string];
+  const mtimeMs = Number(time);
+  if (!/^-?\d{1,16}$/.test(time) || !Number.isSafeInteger(mtimeMs)) throw invalid();
+  if (!/^[0-9a-f]{16}$/.test(tag)) throw invalid();
+  const name = Buffer.from(encodedName, "base64url").toString("utf8");
+  if (name.length === 0) throw invalid();
+  return { mtimeMs, name, tag };
 }
 
 /** Files whose summaries are remembered; the oldest are forgotten first. */
@@ -304,29 +353,35 @@ export class SessionFileStore {
   }
 
   /**
-   * Port-friendly listing. The order depends only on each file's modified time, so files are found
-   * and ordered by their size and time alone; only the files of the requested page are summarized
-   * (in one streaming pass, remembered until the file changes). The cursor counts files, including
-   * any without a valid header, which a page silently skips. A listing doesn't walk nested subagent
-   * transcripts (`readSession` and `listSubagents` do) and carries no entries.
+   * Port-friendly listing. The order depends only on each file's modified time, so files are found and ordered by
+   * their size and time alone; only the files of the requested page are summarized (in one streaming pass,
+   * remembered until the file changes). A page is the files after the cursor's place in that order, so a file deleted
+   * or added before the place does not move the rest of the list. A page counts files without a valid header too,
+   * and silently skips them. A file modified after its page was read is listed where its new time puts it. A listing
+   * doesn't walk nested subagent transcripts (`readSession` and `listSubagents` do) and carries no entries.
    */
   async listSessions(args: ListSessionsArgs = {}): Promise<SessionListResult> {
     const limit = parseLimit(args.limit);
-    const offset = parseCursor(args.cursor);
+    const after = args.cursor ? decodeListingCursor(args.cursor) : undefined;
     const parseWarnings: ParseWarning[] = [];
     const candidates = await this.#candidates(args.folder, parseWarnings);
-    const page =
-      limit === undefined ? candidates.slice(offset) : candidates.slice(offset, offset + limit);
+    const found =
+      after === undefined
+        ? 0
+        : candidates.findIndex((candidate) => newestFirst(candidate, after) > 0);
+    const start = found < 0 ? candidates.length : found;
+    const end = limit === undefined ? candidates.length : start + limit;
+    const page = candidates.slice(start, end);
     const outcomes = await inBatches(page, (candidate) => this.#listingEntry(candidate));
     const sessions: SessionFile[] = [];
     for (const outcome of outcomes) {
       parseWarnings.push(...outcome.parseWarnings);
       if (outcome.file) sessions.push(outcome.file);
     }
-    const nextOffset = offset + page.length;
+    const last = page.at(-1);
     return {
       sessions,
-      nextCursor: nextOffset < candidates.length ? String(nextOffset) : null,
+      nextCursor: end < candidates.length && last !== undefined ? encodeListingCursor(last) : null,
       parseWarnings,
     };
   }
@@ -475,7 +530,13 @@ export class SessionFileStore {
     const found = await inBatches(names, async (file): Promise<SessionCandidate | undefined> => {
       try {
         const stat = await fs.stat(file);
-        return { file, size: stat.size, mtimeMs: stat.mtimeMs };
+        return {
+          file,
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          name: path.basename(file),
+          tag: placeTag(file),
+        };
       } catch (error) {
         // A file that vanished between listing and stat is simply not listed.
         if (!isMissing(error)) warnings.push(warningForReadFailure(file, error));
@@ -485,13 +546,8 @@ export class SessionFileStore {
     const candidates = found.filter(
       (candidate): candidate is SessionCandidate => candidate !== undefined,
     );
-    // Newest first by the same whole milliseconds an ISO timestamp holds, then by path.
-    candidates.sort((left, right) => {
-      const leftTime = Math.trunc(left.mtimeMs);
-      const rightTime = Math.trunc(right.mtimeMs);
-      if (leftTime !== rightTime) return rightTime - leftTime;
-      return left.file.localeCompare(right.file);
-    });
+    // Newest first, then by base name and tag: the order every listing cursor is a place in.
+    candidates.sort(newestFirst);
     return candidates;
   }
 

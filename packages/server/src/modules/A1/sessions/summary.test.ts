@@ -183,7 +183,7 @@ describe("streaming session summary", () => {
 
     const first = await store.listSessions({ limit: 2 });
     expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 4", "prompt 3"]);
-    expect(first.nextCursor).toBe("2");
+    expect(first.nextCursor).not.toBeNull();
     expect(first.parseWarnings).toEqual([]);
     const second = await store.listSessions({
       limit: 2,
@@ -197,6 +197,251 @@ describe("streaming session summary", () => {
     // The page holds prompt 0 and the headerless file: that one is skipped, and the cursor ends.
     expect(last.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 0"]);
     expect(last.nextCursor).toBeNull();
+  });
+
+  test("a session deleted between two pages does not move the rest of the list: each other session is listed once", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    const bucket = path.join(sessionsRoot, "-w");
+    await mkdir(bucket, { recursive: true });
+    for (let index = 0; index < 5; index += 1) {
+      const file = path.join(bucket, `s${index}.jsonl`);
+      await writeFile(
+        file,
+        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+      );
+      await utimes(
+        file,
+        new Date(Date.UTC(2026, 9, 1 + index)),
+        new Date(Date.UTC(2026, 9, 1 + index)),
+      );
+    }
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    const first = await store.listSessions({ limit: 2 });
+    expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 4", "prompt 3"]);
+    // The person deletes a chat that is already shown: every older chat would move up one place.
+    await rm(path.join(bucket, "s4.jsonl"));
+    const second = await store.listSessions({ limit: 2, cursor: first.nextCursor ?? undefined });
+    expect(second.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 2", "prompt 1"]);
+    const rest = await store.listSessions({ limit: 10, cursor: second.nextCursor ?? undefined });
+    expect(rest.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 0"]);
+    expect(rest.nextCursor).toBeNull();
+  });
+
+  test("a session added between two pages does not repeat a session on the next page", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    const bucket = path.join(sessionsRoot, "-w");
+    await mkdir(bucket, { recursive: true });
+    for (let index = 0; index < 5; index += 1) {
+      const file = path.join(bucket, `s${index}.jsonl`);
+      await writeFile(
+        file,
+        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+      );
+      await utimes(
+        file,
+        new Date(Date.UTC(2026, 9, 1 + index)),
+        new Date(Date.UTC(2026, 9, 1 + index)),
+      );
+    }
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    const first = await store.listSessions({ limit: 2 });
+    expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 4", "prompt 3"]);
+    // A new chat, newer than all the others, appears above the place the first page ended at.
+    const added = path.join(bucket, "s5.jsonl");
+    await writeFile(added, `${[header("s5", "/w"), message("user", "prompt 5")].join("\n")}\n`);
+    await utimes(added, new Date(Date.UTC(2026, 9, 10)), new Date(Date.UTC(2026, 9, 10)));
+    const second = await store.listSessions({ limit: 2, cursor: first.nextCursor ?? undefined });
+    expect(second.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 2", "prompt 1"]);
+  });
+
+  test("a cursor this listing did not issue is refused", async () => {
+    const root = await tempRoot();
+    const store = new SessionFileStore({
+      sessionsRoot: path.join(root, "sessions"),
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+    await expect(store.listSessions({ cursor: "2" })).rejects.toMatchObject({
+      appError: { code: "invalid_args" },
+    });
+    await expect(store.listSessions({ cursor: "not-a-cursor!" })).rejects.toMatchObject({
+      appError: { code: "invalid_args" },
+    });
+  });
+
+  test("a session under a long folder path still pages, and its cursor stays under the 512-character limit", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    // A folder name of 255 characters (the most a file system allows) and a long file name make the path over 400.
+    const bucket = path.join(sessionsRoot, `-${"a".repeat(254)}`);
+    await mkdir(bucket, { recursive: true });
+    for (let index = 0; index < 3; index += 1) {
+      const file = path.join(bucket, `s${index}-${"x".repeat(60)}.jsonl`);
+      await writeFile(
+        file,
+        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+      );
+      await utimes(
+        file,
+        new Date(Date.UTC(2026, 9, 1 + index)),
+        new Date(Date.UTC(2026, 9, 1 + index)),
+      );
+    }
+    expect(path.join(bucket, `s0-${"x".repeat(60)}.jsonl`).length).toBeGreaterThan(400);
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    const first = await store.listSessions({ limit: 1 });
+    expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 2"]);
+    expect(first.nextCursor?.length ?? 0).toBeLessThan(512);
+    const second = await store.listSessions({ limit: 1, cursor: first.nextCursor ?? undefined });
+    expect(second.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 1"]);
+    expect(second.nextCursor?.length ?? 0).toBeLessThan(512);
+    const last = await store.listSessions({ limit: 1, cursor: second.nextCursor ?? undefined });
+    expect(last.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 0"]);
+    expect(last.nextCursor).toBeNull();
+  });
+
+  test("the last session of a page can be deleted before the next page, and the next page still starts after its place", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    const bucket = path.join(sessionsRoot, "-w");
+    await mkdir(bucket, { recursive: true });
+    for (let index = 0; index < 5; index += 1) {
+      const file = path.join(bucket, `s${index}.jsonl`);
+      await writeFile(
+        file,
+        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+      );
+      await utimes(
+        file,
+        new Date(Date.UTC(2026, 9, 1 + index)),
+        new Date(Date.UTC(2026, 9, 1 + index)),
+      );
+    }
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    const first = await store.listSessions({ limit: 2 });
+    expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 4", "prompt 3"]);
+    // The cursor names the last session of the page; that session is deleted.
+    await rm(path.join(bucket, "s3.jsonl"));
+    const second = await store.listSessions({ limit: 2, cursor: first.nextCursor ?? undefined });
+    expect(second.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 2", "prompt 1"]);
+    const rest = await store.listSessions({ limit: 10, cursor: second.nextCursor ?? undefined });
+    expect(rest.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 0"]);
+    expect(rest.nextCursor).toBeNull();
+  });
+
+  test("sessions with the same modified time are each listed once, in the same order every time", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    const bucket = path.join(sessionsRoot, "-w");
+    await mkdir(bucket, { recursive: true });
+    const when = new Date(Date.UTC(2026, 9, 5));
+    for (let index = 0; index < 4; index += 1) {
+      const file = path.join(bucket, `t${index}.jsonl`);
+      await writeFile(
+        file,
+        `${[header(`t${index}`, "/w"), message("user", `tie ${index}`)].join("\n")}\n`,
+      );
+      await utimes(file, when, when);
+    }
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 5; page += 1) {
+      const result = await store.listSessions({ limit: 1, cursor });
+      seen.push(...result.sessions.map((s) => s.firstPrompt ?? ""));
+      cursor = result.nextCursor ?? undefined;
+      if (cursor === undefined) break;
+    }
+    expect(seen.sort()).toEqual(["tie 0", "tie 1", "tie 2", "tie 3"]);
+  });
+
+  test("two sessions with the same file name and modified time, in two folders, are each listed once", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    const when = new Date(Date.UTC(2026, 9, 5));
+    for (const [bucketName, prompt] of [
+      ["-w1", "from the first folder"],
+      ["-w2", "from the second folder"],
+    ] as const) {
+      const bucket = path.join(sessionsRoot, bucketName);
+      await mkdir(bucket, { recursive: true });
+      const file = path.join(bucket, "same.jsonl");
+      await writeFile(file, `${[header("same", "/w"), message("user", prompt)].join("\n")}\n`);
+      await utimes(file, when, when);
+    }
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    const first = await store.listSessions({ limit: 1 });
+    const second = await store.listSessions({ limit: 1, cursor: first.nextCursor ?? undefined });
+    expect(second.nextCursor).toBeNull();
+    expect([...first.sessions, ...second.sessions].map((s) => s.firstPrompt).sort()).toEqual([
+      "from the first folder",
+      "from the second folder",
+    ]);
+  });
+
+  test("a file named with characters JSON escapes still pages, and its cursor stays under the 512-character limit", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    const bucket = path.join(sessionsRoot, "-w");
+    await mkdir(bucket, { recursive: true });
+    // Each quotation mark is escaped as two characters in JSON. The name is 247 bytes: a file system allows 255.
+    const quoted = (index: number) => `${index}${'"'.repeat(240)}.jsonl`;
+    for (let index = 0; index < 2; index += 1) {
+      const file = path.join(bucket, quoted(index));
+      await writeFile(
+        file,
+        `${[header(`q${index}`, "/w"), message("user", `quoted ${index}`)].join("\n")}\n`,
+      );
+      await utimes(
+        file,
+        new Date(Date.UTC(2026, 9, 1 + index)),
+        new Date(Date.UTC(2026, 9, 1 + index)),
+      );
+    }
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    const first = await store.listSessions({ limit: 1 });
+    expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["quoted 1"]);
+    expect(first.nextCursor?.length ?? 0).toBeLessThan(512);
+    const second = await store.listSessions({ limit: 1, cursor: first.nextCursor ?? undefined });
+    expect(second.sessions.map((s) => s.firstPrompt)).toEqual(["quoted 0"]);
+    expect(second.nextCursor).toBeNull();
   });
 
   test("notices a file that changed since it was remembered", async () => {
