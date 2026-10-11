@@ -35,6 +35,8 @@ export interface SelectedThreadHistoryState {
   readonly capabilities: CapabilityMap | undefined;
   readonly isLoading: boolean;
   readonly error: AppError | null;
+  /** The open chat was started as new (`openNew`): it has no messages yet, so its text is the folder's new-chat draft. */
+  readonly openedNew: boolean;
 }
 
 export interface SelectedThreadHistoryOptions {
@@ -122,6 +124,7 @@ export class SelectedThreadHistoryController {
     capabilities: undefined,
     isLoading: false,
     error: null,
+    openedNew: false,
   });
   private subscription: EventSubscription | undefined;
   private offEvents: (() => void) | undefined;
@@ -280,6 +283,7 @@ export class SelectedThreadHistoryController {
       capabilities: undefined,
       isLoading: false,
       error: null,
+      openedNew: false,
     });
     // Tell the server this view is gone. Without it every chat the tab ever opened kept its omp
     // process (about 380 MB while idle) until the app quit. Not awaited: switching chats must not
@@ -335,6 +339,7 @@ export class SelectedThreadHistoryController {
   }
 
   private async openNow(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
+    const openedNew = "start" in args && args.start === "new";
     await this.closeNow();
     this.commit({ isLoading: true, error: null });
     try {
@@ -353,6 +358,7 @@ export class SelectedThreadHistoryController {
         capabilities: result.capabilities,
         isLoading: true,
         error: null,
+        openedNew,
       });
       // From here the composer takes text, so a reload or a restart must already find this chat: its id is saved now,
       // not after the history has loaded. Otherwise text typed in a new chat is lost when the app restarts in that window.
@@ -369,6 +375,7 @@ export class SelectedThreadHistoryController {
         capabilities: result.capabilities,
         isLoading: false,
         error: null,
+        openedNew,
       });
       return store;
     } catch (error) {

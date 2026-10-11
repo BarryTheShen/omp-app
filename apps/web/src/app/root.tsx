@@ -184,6 +184,7 @@ const EMPTY_HISTORY: SelectedThreadHistoryState = {
   capabilities: undefined,
   isLoading: false,
   error: null,
+  openedNew: false,
 };
 const EMPTY_CAPABILITIES: CapabilityMap = Object.freeze({});
 function useNotificationProjector(
@@ -898,6 +899,7 @@ function ActiveThreadReady({
     draftStore,
     folder,
     threadId,
+    startsUnsent: history.openedNew,
     messages: store,
     loaded: !history.isLoading,
     buffer: draftBuffer,

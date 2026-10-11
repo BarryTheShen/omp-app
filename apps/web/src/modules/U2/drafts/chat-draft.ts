@@ -35,6 +35,8 @@ export interface ChatDraftOptions {
   /** The folder the chat belongs to; null when no folder is open, so no new-chat draft can exist. */
   readonly folder: FolderPath | null;
   readonly threadId: ThreadId;
+  /** True for a chat opened as new: it has no messages yet, so its text is the folder's new-chat draft from the first keystroke. */
+  readonly startsUnsent?: boolean;
   readonly lifecycle?: DraftLifecycleTarget;
   readonly timers?: DraftTimer;
   /** Keeps unsaved text in this tab, so it survives the app's server stopping. */
@@ -54,7 +56,13 @@ export class ChatDraft {
 
   public constructor(options: ChatDraftOptions) {
     this.options = options;
-    this.current = this.create({ kind: "thread", threadId: options.threadId });
+    // A chat opened as new has no messages yet: its text belongs to the folder's new-chat draft from the first keystroke.
+    if (options.startsUnsent === true && options.folder !== null) {
+      this.phase = "unsent";
+      this.current = this.create({ kind: "folder", folder: options.folder });
+    } else {
+      this.current = this.create({ kind: "thread", threadId: options.threadId });
+    }
   }
 
   /** The controller the composer uses now. It changes when the chat's draft moves. */

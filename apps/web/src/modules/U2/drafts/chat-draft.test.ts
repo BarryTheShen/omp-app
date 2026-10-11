@@ -116,6 +116,23 @@ describe("ChatDraft: a chat with no prompt yet", () => {
     expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-e"));
     expect(store.text(threadScope("chat-e"))).toBe("own draft");
   });
+
+  test("a chat opened as new keeps the text typed before its history loads in the folder's new-chat draft", async () => {
+    const store = new ScopedDraftStore();
+    const chat = new ChatDraft({
+      store,
+      folder,
+      threadId: ThreadId.parse("chat-n"),
+      startsUnsent: true,
+      timers: noTimers,
+    });
+    await chat.controller.load();
+    expect(chat.controller.getSnapshot().scope).toEqual(newChatDraft);
+    chat.controller.setDraft("typed in the first second", []);
+    await chat.controller.flush();
+    expect(store.text(newChatDraft)).toBe("typed in the first second");
+    expect(store.text(threadScope("chat-n"))).toBeUndefined();
+  });
 });
 
 describe("ChatDraft: a chat that has messages", () => {

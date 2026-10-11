@@ -176,6 +176,18 @@ describe("SelectedThreadHistoryController open and paging", () => {
     ]);
   });
 
+  test("a chat opened as new is marked openedNew, and a chat opened as latest is not", async () => {
+    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+    await controller.openNew();
+    expect(controller.getSnapshot().openedNew).toBe(true);
+    await controller.openLatest();
+    expect(controller.getSnapshot().openedNew).toBe(false);
+  });
+
   test("switching threads unsubscribes the old event stream before opening the new one", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc((args) => ({
