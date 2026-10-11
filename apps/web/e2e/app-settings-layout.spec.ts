@@ -152,6 +152,9 @@ realTest(
 
 const SETTINGS_TABS_LABEL = "Settings categories";
 
+/** The Context tab's chips, in omp's order (`P7_CONTEXT_SETTINGS_SECTIONS`). */
+const CONTEXT_SECTION_NAMES = ["General", "Compaction", "Rules (TTSR)", "Experimental"];
+
 /** Every tab of the settings screen at one width and theme: the dialog must fit, and each tab is captured. */
 async function captureEveryTab(page: Page, width: number, theme: "light" | "dark"): Promise<void> {
   await mkdir(screenshots, { recursive: true });
@@ -167,8 +170,17 @@ async function captureEveryTab(page: Page, width: number, theme: "light" | "dark
     const tab = tabs.getByRole("button", { name, exact: true });
     await tab.click();
     await expect(tab).toHaveAttribute("aria-pressed", "true");
-    // Appearance has its own panel; the other tabs list their sections.
-    if (name !== "Appearance") {
+    // Appearance has its own panel. Context is laid out like it: a search box, one chip per section,
+    // and one section at a time. The other tabs list their sections.
+    if (name === "Context") {
+      const chips = dialog.getByRole("tablist", { name: "Context sections", exact: true });
+      await expect(chips).toBeVisible({ timeout: 20_000 });
+      await expect(chips.getByRole("tab")).toHaveText(CONTEXT_SECTION_NAMES);
+      await expect(
+        dialog.getByRole("searchbox", { name: "Search settings", exact: true }),
+      ).toBeVisible();
+      await expect(dialog.getByRole("tabpanel")).toHaveCount(1);
+    } else if (name !== "Appearance") {
       await expect(page.getByRole("listbox", { name: `${name} settings sections` })).toBeVisible({
         timeout: 20_000,
       });
