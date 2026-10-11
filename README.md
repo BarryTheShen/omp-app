@@ -19,6 +19,8 @@ sudo apt remove omp-app                                             # uninstall
 
 If omp is missing, cannot start, or does not answer the app's checks, the page shows "omp isn't available" with the reason and what to do, instead of an app that cannot start chats, and the terminal prints the same warning. The checks are asked twice, the second time with a longer wait, because a busy computer can take more than five seconds to start omp.
 
+When omp starts but has no model set up, the page says "No model is set up yet" and what to set up instead of saying that omp is missing.
+
 ### When something goes wrong: the debug log
 
 The app writes a log of what it does to `~/.local/state/omp-app/omp-app.log` (or under `$XDG_STATE_HOME`); the previous part is in `omp-app.log.1`, and together they never pass 15 MB. It records: a header (app, system, Bun and omp versions, folders); the omp and capability checks with their timings; every omp process (start, pid, how long it ran, and its last stderr lines if it dies on its own); every browser connection (opened, closed, turned away); every failed call (which one, and why); uncaught errors and crashes with their stack; errors the page itself reports; and every 30 seconds the server's memory, the number and memory of omp processes, and how long the server was blocked at worst, so a freeze leaves numbers behind.

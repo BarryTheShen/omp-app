@@ -1,5 +1,5 @@
 import type { RemoteThreadListAdapter } from "@assistant-ui/react";
-import { AppFailure, type ThreadId } from "@omp-app/contracts";
+import { type AppError, AppFailure, type ThreadId } from "@omp-app/contracts";
 import { Loader2Icon, MoreHorizontalIcon, PinIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
@@ -9,6 +9,12 @@ import { useCapabilityStatus } from "@/registry-core";
 import type { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
 
+/** Where a New chat click stands: opening (omp is starting the chat), idle (nothing to say), or failed, with the reason. */
+export type NewChatStatus =
+  | { readonly state: "idle" }
+  | { readonly state: "opening" }
+  | { readonly state: "failed"; readonly error: AppError };
+
 export interface SessionCatalogSidebarProps {
   readonly catalog: SessionCatalogModel;
   readonly remote: Pick<
@@ -17,6 +23,7 @@ export interface SessionCatalogSidebarProps {
   >;
   readonly currentThreadId?: ThreadId;
   readonly onOpenThread?: (threadId: ThreadId) => Promise<void> | void;
+  readonly onNewChatStatus?: (status: NewChatStatus) => void;
   readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
   readonly confirmDelete?: (session: SessionMetadata) => Promise<boolean> | boolean;
@@ -61,6 +68,12 @@ async function unlessSuperseded<Opened>(pick: Promise<Opened>): Promise<Opened |
     if (error instanceof AppFailure && error.appError.code === "cancelled") return undefined;
     throw error;
   }
+}
+
+/** The reason a New chat that could not start gives the page. An error that is not an AppFailure is unexpected. */
+function newChatFailure(error: unknown): AppError {
+  if (error instanceof AppFailure) return error.appError;
+  return { code: "internal", message: "Starting a new chat failed. Try again.", retryable: true };
 }
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
@@ -136,6 +149,7 @@ export function SessionCatalogSidebar({
   currentThreadId,
   onOpenThread,
   onNewChat,
+  onNewChatStatus,
   onPinChange,
   confirmDelete,
 }: SessionCatalogSidebarProps) {
@@ -228,8 +242,14 @@ export function SessionCatalogSidebar({
   };
 
   const createNewChat = async (): Promise<void> => {
-    const initialized = await unlessSuperseded(remote.initialize("new"));
-    if (initialized) await onNewChat?.(initialized.remoteId as ThreadId);
+    onNewChatStatus?.({ state: "opening" });
+    try {
+      const initialized = await unlessSuperseded(remote.initialize("new"));
+      if (initialized) await onNewChat?.(initialized.remoteId as ThreadId);
+      onNewChatStatus?.({ state: "idle" });
+    } catch (error) {
+      onNewChatStatus?.({ state: "failed", error: newChatFailure(error) });
+    }
   };
 
   /** Keeps each chat's row element, so the keyboard can go back to the row after a rename. */

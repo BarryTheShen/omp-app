@@ -14,7 +14,12 @@ import {
   probeRanOutOfTime,
   probeTimedOutEntirely,
 } from "../src/capabilities";
-import { OMP_PROBLEM, type OmpProbe, probeOmpPatiently } from "../src/capabilities/omp-version";
+import {
+  OMP_PROBLEM,
+  type OmpProbe,
+  probeOmpPatiently,
+  unhealthyAfterFailedChecks,
+} from "../src/capabilities/omp-version";
 import {
   buildDebugReport,
   createNullLogger,
@@ -179,10 +184,11 @@ export async function createCompositionServer(
         });
       }
     } catch (error) {
-      health = { status: "unhealthy", detail: OMP_PROBLEM.checksFailed };
+      health = await unhealthyAfterFailedChecks(ompBinary, env, launchFolder);
       logger.error("capabilities.probe_failed", {
         message: error instanceof Error ? error.message : String(error),
         ms: Math.round(performance.now() - capabilityStarted),
+        no_model: health.code === "no_model",
       });
     }
   }

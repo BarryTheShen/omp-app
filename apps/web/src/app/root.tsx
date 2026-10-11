@@ -82,7 +82,7 @@ import {
   type SelectedThreadHistoryState,
 } from "@/modules/R1/history";
 import { createNativeRemoteThreadListAdapter } from "@/modules/R1/remote";
-import { SessionCatalogSidebar } from "@/modules/R1/ui";
+import { type NewChatStatus, SessionCatalogSidebar } from "@/modules/R1/ui";
 import { MessageParts } from "@/modules/U1/parts";
 import {
   type ReadingPlace,
@@ -128,7 +128,7 @@ import { type CommandPaletteHandler, CommandPaletteHost } from "@/palette";
 import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { DESCRIPTORS, RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
-import { AppShell } from "@/shell";
+import { AppShell, ComposerNote } from "@/shell";
 import {
   type PreferenceStore,
   ShortcutRegistryProvider,
@@ -144,6 +144,7 @@ import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
 import { browserClipboard, useCopyFromChat } from "./copy/use-copy-from-chat";
+import { type EmptyStateCopy, emptyStateCopy } from "./empty-state";
 import { FolderSwitcher } from "./folder-switcher";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
@@ -248,15 +249,11 @@ function SettingsButton({
   );
 }
 
-function EmptyTranscript({ state }: { readonly state: SelectedThreadHistoryState }) {
+function EmptyTranscript({ copy }: { readonly copy: EmptyStateCopy }) {
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-      <p className="text-lg font-medium tracking-tight">
-        {state.isLoading ? "Opening session…" : "Ready when you are"}
-      </p>
-      <p className="text-muted-foreground text-sm">
-        {state.error?.message ?? "Choose a workspace folder and start a new session."}
-      </p>
+      <p className="text-lg font-medium tracking-tight">{copy.title}</p>
+      <p className="text-muted-foreground text-sm">{copy.detail}</p>
     </div>
   );
 }
@@ -1206,7 +1203,9 @@ function ActiveThreadReady({
                   />
                 </div>
               ) : (
-                <EmptyTranscript state={history} />
+                <EmptyTranscript
+                  copy={emptyStateCopy({ opening: history.isLoading, error: history.error })}
+                />
               )
             }
           />
@@ -1234,6 +1233,8 @@ function ConnectedApp({
   const folder = FolderPath.safeParse(folderText).success ? FolderPath.parse(folderText) : null;
 
   const [folderError, setFolderError] = useState<string | null>(null);
+  // The sidebar starts a New chat before the history controller opens it: its state shows here meanwhile.
+  const [newChat, setNewChat] = useState<NewChatStatus>({ state: "idle" });
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
@@ -1498,6 +1499,7 @@ function ConnectedApp({
             onNewChat={openThread}
             onOpenThread={openThread}
             remote={remote}
+            onNewChatStatus={setNewChat}
           />
         ) : null,
     },
@@ -1555,9 +1557,18 @@ function ConnectedApp({
       />
     );
   }
+  const emptyCopy = emptyStateCopy({
+    opening: history.isLoading || newChat.state === "opening",
+    error: history.error ?? (newChat.state === "failed" ? newChat.error : null),
+  });
   return (
     <div className="h-dvh" data-app-root="true">
       <AppShell
+        composer={
+          emptyCopy.composer === null ? undefined : (
+            <ComposerNote>{emptyCopy.composer}</ComposerNote>
+          )
+        }
         threadHeader={
           <LayoutArea area="header" capabilities={capabilities} surfaces={emptyHeaderSurfaces} />
         }
@@ -1566,7 +1577,7 @@ function ConnectedApp({
         transcript={
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex min-h-0 flex-1 flex-col">
-              <EmptyTranscript state={history} />
+              <EmptyTranscript copy={emptyCopy} />
             </div>
             <div className="border-border bg-background border-t px-6 py-2 empty:hidden">
               <LayoutArea
@@ -1636,7 +1647,8 @@ function ConnectedRoot() {
   }
   if (!client || !serverInfo) return null;
   // Without omp no chat can open or start: say so, instead of showing an app that fails silently.
-  if (serverInfo.omp === null) return <OmpUnavailableScreen reason={health?.detail} />;
+  if (serverInfo.omp === null)
+    return <OmpUnavailableScreen noModel={health?.code === "no_model"} reason={health?.detail} />;
   return (
     <ToolRendererResolverContext.Provider value={resolveToolRenderer}>
       <RegistryProvider capabilities={capabilities} registry={registry} renderers={RENDERERS}>

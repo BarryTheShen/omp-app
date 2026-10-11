@@ -1,2 +1,2 @@
-export type { SessionCatalogSidebarProps } from "./ui";
+export type { NewChatStatus, SessionCatalogSidebarProps } from "./ui";
 export { SessionCatalogSidebar } from "./ui";

@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { OMP_PROBLEM, probeOmp, probeOmpPatiently } from "./omp-version";
+import {
+  OMP_PROBLEM,
+  probeOmp,
+  probeOmpPatiently,
+  unhealthyAfterFailedChecks,
+} from "./omp-version";
 
 const dataRoot = resolve(import.meta.dir, "../../../../.data");
 const temporaryRoots: string[] = [];
@@ -101,5 +106,32 @@ describe("probeOmpPatiently", () => {
     });
     expect(result.health.detail).toBe(OMP_PROBLEM.notFound);
     expect(retries).toEqual([]);
+  });
+});
+
+describe("unhealthyAfterFailedChecks", () => {
+  test("says no model is set up when omp lists no usable model", async () => {
+    const { binary, cwd } = await fakeOmp(`echo '{"models":[]}'`);
+    expect(await unhealthyAfterFailedChecks(binary, ENV, cwd)).toEqual({
+      status: "unhealthy",
+      detail: OMP_PROBLEM.noModel,
+      code: "no_model",
+    });
+  });
+
+  test("keeps the checks message when omp lists a model", async () => {
+    const { binary, cwd } = await fakeOmp(`echo '{"models":[{"id":"fake-model"}]}'`);
+    expect(await unhealthyAfterFailedChecks(binary, ENV, cwd)).toEqual({
+      status: "unhealthy",
+      detail: OMP_PROBLEM.checksFailed,
+    });
+  });
+
+  test("keeps the checks message when omp cannot list its models", async () => {
+    const { binary, cwd } = await fakeOmp("exit 1");
+    expect(await unhealthyAfterFailedChecks(binary, ENV, cwd)).toEqual({
+      status: "unhealthy",
+      detail: OMP_PROBLEM.checksFailed,
+    });
   });
 });

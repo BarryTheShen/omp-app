@@ -80,12 +80,17 @@ function DefaultTranscript() {
   );
 }
 
-function DefaultComposer() {
+/** The composer's place while no chat is open: its text says what to do first. */
+export function ComposerNote({ children }: { readonly children: ReactNode }) {
   return (
     <div className="border-border bg-card text-muted-foreground rounded-xl border px-4 py-3 text-sm">
-      Open a session to start composing.
+      {children}
     </div>
   );
+}
+
+function DefaultComposer() {
+  return <ComposerNote>Open a session to start composing.</ComposerNote>;
 }
 
 function DefaultRightSidebar() {

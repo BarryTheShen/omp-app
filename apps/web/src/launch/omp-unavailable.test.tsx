@@ -33,3 +33,21 @@ describe("OmpUnavailableScreen", () => {
     );
   });
 });
+
+describe("OmpUnavailableScreen when no model is set up", () => {
+  test("says no model is set up and how to set one up, not that omp is missing", () => {
+    render(
+      <OmpUnavailableScreen
+        noModel
+        reason="omp has no model to chat with, so no chat can start."
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "No model is set up yet" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "omp isn't available" })).toBeNull();
+    expect(screen.getByText("omp has no model to chat with, so no chat can start.")).toBeTruthy();
+    const guidance = document.body.textContent ?? "";
+    expect(guidance).toContain("ANTHROPIC_API_KEY");
+    expect(guidance).toContain("/login");
+    expect(guidance).not.toContain("needs omp installed");
+  });
+});

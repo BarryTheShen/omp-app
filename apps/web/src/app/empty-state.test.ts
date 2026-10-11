@@ -1,0 +1,35 @@
+import type { AppError } from "@omp-app/contracts";
+import { describe, expect, test } from "vitest";
+import { emptyStateCopy } from "./empty-state";
+
+const failure: AppError = {
+  code: "omp_exited",
+  message: "omp stopped before it could open a chat.",
+  retryable: true,
+};
+
+describe("emptyStateCopy", () => {
+  test("while a New chat opens, says omp is starting and does not ask for a folder or a session", () => {
+    expect(emptyStateCopy({ opening: true, error: null })).toEqual({
+      title: "Opening session…",
+      detail: "omp is starting. This can take a few seconds.",
+      composer: "Starting a new chat…",
+    });
+  });
+
+  test("when a chat failed to open, says why in the error's own words", () => {
+    expect(emptyStateCopy({ opening: false, error: failure })).toEqual({
+      title: "Ready when you are",
+      detail: "omp stopped before it could open a chat.",
+      composer: null,
+    });
+  });
+
+  test("with nothing happening, asks for a folder and a session, and leaves the composer's own text", () => {
+    expect(emptyStateCopy({ opening: false, error: null })).toEqual({
+      title: "Ready when you are",
+      detail: "Choose a workspace folder and start a new session.",
+      composer: null,
+    });
+  });
+});

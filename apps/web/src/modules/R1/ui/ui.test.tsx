@@ -763,3 +763,48 @@ describe("SessionCatalogSidebar", () => {
     expect(screen.getByText(/^Branch made /).getAttribute("title")).toMatch(/^Branch, made /);
   });
 });
+
+describe("SessionCatalogSidebar New chat status", () => {
+  test("reports opening while the new chat starts, and idle once it is open", async () => {
+    const statuses: unknown[] = [];
+    const newChatStarted = Promise.withResolvers<{ remoteId: string }>();
+    renderSidebar({
+      remote: {
+        ...fakeRemote([]),
+        initialize: async (id: string) =>
+          id === "new" ? newChatStarted.promise : { remoteId: id },
+      },
+      onNewChat: async () => {},
+      onNewChatStatus: (status) => statuses.push(status),
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }]));
+    newChatStarted.resolve({ remoteId: "thread-new" });
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]));
+  });
+
+  test("reports a New chat that fails with its reason, instead of leaving the page unchanged", async () => {
+    const statuses: unknown[] = [];
+    const failure = new AppFailure({
+      code: "omp_exited",
+      message: "omp stopped before it could open a chat.",
+      retryable: true,
+    });
+    renderSidebar({
+      remote: {
+        ...fakeRemote([]),
+        initialize: async (id: string) => {
+          if (id === "new") throw failure;
+          return { remoteId: id };
+        },
+      },
+      onNewChatStatus: (status) => statuses.push(status),
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await waitFor(() =>
+      expect(statuses.at(-1)).toEqual({ state: "failed", error: failure.appError }),
+    );
+  });
+});

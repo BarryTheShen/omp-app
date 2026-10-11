@@ -1,9 +1,18 @@
+import { z } from "zod";
 import { PATIENT_PROBE_TIMEOUT_MS } from ".";
+
+/** A health the app reports: what the server's checks found, and why omp cannot be used. */
+export interface OmpHealth {
+  readonly status: "ok" | "unhealthy";
+  readonly detail?: string;
+  /** Set when the page can say what to do: omp runs but has no model to chat with. */
+  readonly code?: "no_model";
+}
 
 /** What the version check found: the version, and whether omp can be used at all. */
 export interface OmpProbe {
   readonly version: string | null;
-  readonly health: { readonly status: "ok" | "unhealthy"; readonly detail?: string };
+  readonly health: OmpHealth;
 }
 
 /**
@@ -16,22 +25,32 @@ export const OMP_PROBLEM = {
   wouldNotStart: "omp could not start.",
   checksFailed: "omp started but did not answer the app's checks.",
   checksTimedOut: "omp started but did not answer the app's checks in time.",
+  noModel: "omp has no model to chat with, so no chat can start.",
 } as const;
 
 export const OMP_VERSION_TIMEOUT_MS = 5_000;
 
-/** Runs `omp --version`: is omp there, does it start, and which version is it. */
-export async function probeOmp(
+/** `omp models --json` reads the model catalog, which takes longer than `--version`. */
+const OMP_MODELS_TIMEOUT_MS = 10_000;
+
+/** One run of omp: it could not be started, it ran out of time (and was killed), or it exited. */
+type OmpRun =
+  | { readonly kind: "not-started" }
+  | { readonly kind: "timed-out" }
+  | { readonly kind: "exited"; readonly exitCode: number; readonly stdout: string };
+
+async function runOmp(
   binary: string,
+  args: readonly string[],
   env: Record<string, string>,
   cwd: string,
-  timeoutMs: number = OMP_VERSION_TIMEOUT_MS,
-): Promise<OmpProbe> {
+  timeoutMs: number,
+): Promise<OmpRun> {
   let child: Bun.Subprocess<"pipe", "pipe", "pipe">;
   try {
-    child = Bun.spawn([binary, "--version"], { cwd, env, stdout: "pipe", stderr: "pipe" });
+    child = Bun.spawn([binary, ...args], { cwd, env, stdout: "pipe", stderr: "pipe" });
   } catch {
-    return { version: null, health: { status: "unhealthy", detail: OMP_PROBLEM.notFound } };
+    return { kind: "not-started" };
   }
   const finished = Promise.all([
     child.exited,
@@ -52,18 +71,74 @@ export async function probeOmp(
   try {
     // Not waiting for the output after the kill: a child of omp could still hold its pipes open.
     const outcome = await Promise.race([finished, ranOutOfTime]);
-    if (outcome === "timed-out") {
-      return { version: null, health: { status: "unhealthy", detail: OMP_PROBLEM.timedOut } };
-    }
+    if (outcome === "timed-out") return { kind: "timed-out" };
     const [exitCode, stdout] = outcome;
-    const version = stdout.match(/\d+\.\d+\.\d+/)?.[0] ?? null;
-    if (exitCode === 0 && version !== null) {
-      return { version, health: { status: "ok" } };
-    }
-    return { version, health: { status: "unhealthy", detail: OMP_PROBLEM.wouldNotStart } };
+    return { kind: "exited", exitCode, stdout };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Runs `omp --version`: is omp there, does it start, and which version is it. */
+export async function probeOmp(
+  binary: string,
+  env: Record<string, string>,
+  cwd: string,
+  timeoutMs: number = OMP_VERSION_TIMEOUT_MS,
+): Promise<OmpProbe> {
+  const run = await runOmp(binary, ["--version"], env, cwd, timeoutMs);
+  if (run.kind === "not-started") {
+    return { version: null, health: { status: "unhealthy", detail: OMP_PROBLEM.notFound } };
+  }
+  if (run.kind === "timed-out") {
+    return { version: null, health: { status: "unhealthy", detail: OMP_PROBLEM.timedOut } };
+  }
+  const version = run.stdout.match(/\d+\.\d+\.\d+/)?.[0] ?? null;
+  if (run.exitCode === 0 && version !== null) {
+    return { version, health: { status: "ok" } };
+  }
+  return { version, health: { status: "unhealthy", detail: OMP_PROBLEM.wouldNotStart } };
+}
+
+const ModelList = z.object({ models: z.array(z.unknown()) });
+
+/**
+ * How many models omp can use now: `omp models --json` lists only those with credentials. Null when omp
+ * cannot say: it did not run, ran out of time, or printed something that is not that list.
+ */
+async function countUsableModels(
+  binary: string,
+  env: Record<string, string>,
+  cwd: string,
+  timeoutMs: number,
+): Promise<number | null> {
+  const run = await runOmp(binary, ["models", "--json"], env, cwd, timeoutMs);
+  if (run.kind !== "exited" || run.exitCode !== 0) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(run.stdout);
+  } catch {
+    return null;
+  }
+  const list = ModelList.safeParse(json);
+  return list.success ? list.data.models.length : null;
+}
+
+/**
+ * The health to report after omp failed the checks that need it to start a chat. omp exits when no model is
+ * set up, so when `omp models --json` lists none, the page says what to set up. Any other failure keeps the
+ * checks message.
+ */
+export async function unhealthyAfterFailedChecks(
+  binary: string,
+  env: Record<string, string>,
+  cwd: string,
+  timeoutMs: number = OMP_MODELS_TIMEOUT_MS,
+): Promise<OmpHealth> {
+  if ((await countUsableModels(binary, env, cwd, timeoutMs)) === 0) {
+    return { status: "unhealthy", detail: OMP_PROBLEM.noModel, code: "no_model" };
+  }
+  return { status: "unhealthy", detail: OMP_PROBLEM.checksFailed };
 }
 
 export interface PatientOmpProbeOptions {
