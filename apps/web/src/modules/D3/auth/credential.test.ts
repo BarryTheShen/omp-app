@@ -4,6 +4,7 @@ import {
   credentialFailureFromError,
   credentialFailureFromMessage,
   credentialFailureFromStatusError,
+  latestErroredAnswer,
 } from "./credential";
 
 const RAW = "401 Invalid API key\nInvalid API key (type=INVALID_API_KEY)";
@@ -85,5 +86,20 @@ describe("credentialFailureFromStatusError", () => {
     expect(credentialFailureFromStatusError(RAW)).toBeNull();
     expect(credentialFailureFromStatusError({ text: RAW, httpStatus: 404 })).toBeNull();
     expect(credentialFailureFromStatusError(undefined)).toBeNull();
+  });
+});
+
+describe("latestErroredAnswer", () => {
+  test("the most recent answer omp ended with an error, whatever came after it", () => {
+    const failed = refusedAnswer({ errorStatus: 400, errorMessage: "400 bad request" });
+    const later = { role: "assistant", stopReason: "stop" };
+    expect(latestErroredAnswer([{ role: "user" }, failed, later, { role: "user" }])).toBe(failed);
+  });
+
+  test("none when no answer ended with an error", () => {
+    expect(latestErroredAnswer([])).toBeUndefined();
+    expect(
+      latestErroredAnswer([{ role: "user" }, { role: "assistant", stopReason: "stop" }]),
+    ).toBeUndefined();
   });
 });

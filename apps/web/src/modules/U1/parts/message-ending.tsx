@@ -1,5 +1,7 @@
+import type { AppError } from "@omp-app/contracts";
 import { InlineError } from "@/components/blocks";
 import {
+  answerErrorStatus,
   type CredentialFailure,
   credentialFailureFromStatusError,
 } from "@/modules/D3/auth/credential";
@@ -44,6 +46,20 @@ export function endingOf(message: {
     default:
       return undefined;
   }
+}
+
+/**
+ * Whether the most recent answer omp ended with an error already says this failed prompt: the prompt
+ * error and that answer are the same provider failure when both carry the same HTTP status. The
+ * status is omp's typed field; the browser never compares omp's words (AP4).
+ */
+export function failureShownUnderAnswer(error: AppError | null, answer: unknown): boolean {
+  const httpStatus = error?.omp?.httpStatus;
+  return (
+    error?.code === "omp_error" &&
+    httpStatus !== undefined &&
+    answerErrorStatus(answer) === httpStatus
+  );
 }
 
 /** One line under an answer saying why it stopped, in plain words. */

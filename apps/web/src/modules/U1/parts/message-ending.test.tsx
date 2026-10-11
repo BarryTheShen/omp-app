@@ -1,6 +1,7 @@
+import type { AppError } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
-import { endingOf, MessageEndingNote } from "./message-ending";
+import { endingOf, failureShownUnderAnswer, MessageEndingNote } from "./message-ending";
 
 afterEach(() => cleanup());
 
@@ -121,5 +122,43 @@ describe("MessageEndingNote", () => {
     expect(screen.getByText("The model could not sign in")).toBeTruthy();
     expect(screen.getByText(/openai did not accept the sign-in/)).toBeTruthy();
     expect(screen.getByText("Show details").closest("details")?.open).toBe(false);
+  });
+});
+
+describe("failureShownUnderAnswer", () => {
+  const promptError = (httpStatus: number | undefined): AppError =>
+    ({
+      code: "omp_error",
+      message: "400 fake provider failure",
+      retryable: false,
+      omp: httpStatus === undefined ? {} : { httpStatus },
+    }) as AppError;
+  const erroredAnswer = (errorStatus: number, extra: Record<string, unknown> = {}) => ({
+    role: "assistant",
+    stopReason: "error",
+    errorStatus,
+    ...extra,
+  });
+
+  test("a provider failure that the answer which stopped already says is not said again", () => {
+    expect(failureShownUnderAnswer(promptError(400), erroredAnswer(400))).toBe(true);
+  });
+
+  test("another status, another kind of error, a plain answer or no answer keeps the banner's words", () => {
+    expect(failureShownUnderAnswer(promptError(400), erroredAnswer(500))).toBe(false);
+    expect(
+      failureShownUnderAnswer({ ...promptError(400), code: "unavailable" }, erroredAnswer(400)),
+    ).toBe(false);
+    expect(
+      failureShownUnderAnswer(promptError(400), { role: "assistant", stopReason: "stop" }),
+    ).toBe(false);
+    expect(failureShownUnderAnswer(promptError(400), undefined)).toBe(false);
+    expect(failureShownUnderAnswer(promptError(undefined), erroredAnswer(400))).toBe(false);
+    expect(failureShownUnderAnswer(null, erroredAnswer(400))).toBe(false);
+  });
+
+  test("an answer omp retried into a later answer shows no failure, so the banner keeps its words", () => {
+    const retried = erroredAnswer(400, { retryRecovery: { status: "recovered" } });
+    expect(failureShownUnderAnswer(promptError(400), retried)).toBe(false);
   });
 });

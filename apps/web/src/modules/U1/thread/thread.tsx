@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import {
   credentialFailureFromError,
   credentialFailureFromMessage,
+  latestErroredAnswer,
 } from "@/modules/D3/auth/credential";
 import {
   type CredentialActions,
@@ -31,6 +32,7 @@ import { CredentialFailureNotice } from "@/modules/D3/auth/credential-notice";
 import { useDescriptor, useRenderer } from "@/registry-core";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
 import { FullOutputProvider } from "../../U3/tool-card/full-output";
+import { failureShownUnderAnswer } from "../parts/message-ending";
 import {
   captureVisibleMessageAnchor,
   type MessageScrollAnchor,
@@ -93,10 +95,13 @@ interface RuntimeStateSurfaceProps {
 
 function RuntimeError({
   error,
+  showDetail,
   onRetry,
   onRestartOmp,
 }: {
   error: AppError;
+  /** Whether the banner repeats omp's words; not when the answer that stopped already says them. */
+  showDetail: boolean;
   onRetry?: () => Promise<void> | void;
   onRestartOmp?: () => Promise<void> | void;
 }) {
@@ -148,7 +153,7 @@ function RuntimeError({
         role="alert"
       >
         <p className="text-sm font-medium">The conversation could not continue.</p>
-        <p className="mt-1 text-sm">{error.message}</p>
+        {showDetail && <p className="mt-1 text-sm">{error.message}</p>}
         {action !== undefined && retryError?.retryable !== false && (
           <button
             className="border-danger/40 bg-danger-surface-foreground/10 mt-3 rounded-md border px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
@@ -185,7 +190,18 @@ function RuntimeStateSurface({ snapshot, onRetry, onRestartOmp }: RuntimeStateSu
   const shownUnderAnswer =
     credentialFailureFromError(error) !== null && lastAnswerRefusedKey(snapshot);
   if (error !== null && !shownUnderAnswer) {
-    return <RuntimeError error={error} onRetry={onRetry} onRestartOmp={onRestartOmp} />;
+    // A provider failure that the most recent failed answer already says is not said again here;
+    // the banner keeps its heading.
+    const answers = snapshot.messageOrder.map((key) => snapshot.messages[key]?.message);
+    const showDetail = !failureShownUnderAnswer(error, latestErroredAnswer(answers));
+    return (
+      <RuntimeError
+        error={error}
+        showDetail={showDetail}
+        onRetry={onRetry}
+        onRestartOmp={onRestartOmp}
+      />
+    );
   }
 
   if (snapshot.process.status === "starting" || snapshot.process.status === "restarting") {

@@ -56,14 +56,34 @@ export function credentialFailureFromError(error: AppError | null): CredentialFa
   };
 }
 
-/** An answer omp ended with an error, as the assistant message is in omp's session file. */
-export function credentialFailureFromMessage(message: unknown): CredentialFailure | null {
+/** omp's typed fields on a message that ended with an error, retried or not; null for any other message. */
+function erroredAnswer(message: unknown): z.infer<typeof ErroredAnswer> | null {
   const parsed = ErroredAnswer.safeParse(message);
   if (!parsed.success) return null;
   const answer = parsed.data;
-  if (answer.role !== "assistant" || answer.stopReason !== "error") return null;
+  return answer.role === "assistant" && answer.stopReason === "error" ? answer : null;
+}
+
+/** An answer omp ended with an error that omp did not retry into a later answer. */
+function failedAnswer(message: unknown): z.infer<typeof ErroredAnswer> | null {
+  const answer = erroredAnswer(message);
   // omp retried this attempt and a later one answered: there is no failure to show.
-  if (answer.retryRecovery?.status === "recovered") return null;
+  if (answer === null || answer.retryRecovery?.status === "recovered") return null;
+  return answer;
+}
+
+/** The most recent answer, in transcript order, that omp ended with an error; undefined when none did. */
+export function latestErroredAnswer(messages: readonly unknown[]): unknown {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (erroredAnswer(messages[index]) !== null) return messages[index];
+  }
+  return undefined;
+}
+
+/** An answer omp ended with an error, as the assistant message is in omp's session file. */
+export function credentialFailureFromMessage(message: unknown): CredentialFailure | null {
+  const answer = failedAnswer(message);
+  if (answer === null) return null;
   const httpStatus = refusedStatus(answer.errorStatus);
   if (httpStatus === undefined) return null;
   return {
@@ -72,6 +92,11 @@ export function credentialFailureFromMessage(message: unknown): CredentialFailur
     model: words(answer.model),
     text: words(answer.errorMessage) ?? "",
   };
+}
+
+/** The HTTP status omp recorded on an answer that ended with an error; undefined when it has none. */
+export function answerErrorStatus(message: unknown): number | undefined {
+  return failedAnswer(message)?.errorStatus;
 }
 
 /** The failure as a message status carries it: plain JSON, so it survives the transcript. */
