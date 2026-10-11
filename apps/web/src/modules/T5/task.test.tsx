@@ -273,4 +273,24 @@ describe("T5.2 task card worker transcripts", () => {
     expect(row?.textContent).toContain("Running");
     expect(row?.textContent).not.toContain("Pending");
   });
+
+  test("a worker that stopped without a yield reads Stopped on the card, not Complete", () => {
+    // Issue 781 review: the job heading said Complete over a worker whose row said Stopped.
+    const agent = agentRef({ parentToolCallId: "task-call", status: "stopped" });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call"
+        ? [{ agent, source: workerSource(agent, "stopped worker text") }]
+        : [];
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={recorded("task: one agent started in the background")} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    expect(screen.getByText("Stopped · 1 agent")).toBeTruthy();
+    expect(container.querySelector("[data-slot='u3-tool-card-status']")?.textContent).toBe(
+      "Stopped",
+    );
+  });
 });

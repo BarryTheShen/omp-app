@@ -22,6 +22,7 @@ const STATUS_PRESENTATION: Readonly<Record<AgentStatus, StatusPresentation>> = {
   completed: { status: "completed", label: "Finished", tone: "success" },
   failed: { status: "failed", label: "Failed", tone: "danger" },
   aborted: { status: "aborted", label: "Cancelled", tone: "muted" },
+  stopped: { status: "stopped", label: "Stopped", tone: "neutral" },
 };
 
 export function statusPresentation(status: AgentStatus): StatusPresentation {
@@ -150,6 +151,8 @@ function rowSummary(agent: RosterAgent, now: number): string {
       return `Failed at ${formatClock(at)}`;
     case "aborted":
       return `Cancelled at ${formatClock(at)}`;
+    case "stopped":
+      return `Stopped at ${formatClock(at)}`;
   }
 }
 

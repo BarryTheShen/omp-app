@@ -268,7 +268,7 @@ function resultStatus(result: TaskResult): string {
 /**
  * The background job's state. The task call's result says what it was when the call returned; the workers
  * the roster knows are newer, so once it knows any, their statuses decide: running while one is pending or
- * running, else failed or aborted when one is. A roster whose workers have all completed settles the job
+ * running, else failed, aborted or stopped when one is. A roster whose workers have all completed settles the job
  * only when it knows every worker the call lists: a roster that missed one (a late subscription, a dropped
  * event) cannot say the job is done, so the call's own state stands.
  */
@@ -282,6 +282,7 @@ function jobState(
   if (statuses.some((status) => status === "pending" || status === "running")) return "running";
   if (statuses.some((status) => status === "failed")) return "failed";
   if (statuses.some((status) => status === "aborted")) return "aborted";
+  if (statuses.some((status) => status === "stopped")) return "stopped";
   return subagents.length < (details?.progress?.length ?? 0) ? snapshot : "completed";
 }
 
@@ -290,8 +291,11 @@ function jobOutcome(
   details: TaskDetails | undefined,
   subagents: readonly TaskSubagent[],
 ): ToolCardOutcome | undefined {
-  if (jobState(details, subagents) !== "failed") return undefined;
-  return { label: statusLabel("failed"), phase: "error" };
+  const state = jobState(details, subagents);
+  if (state === "failed") return { label: statusLabel("failed"), phase: "error" };
+  // A worker that stopped without a yield is neither finished nor failed: the heading says so, in neutral colours.
+  if (state === "stopped") return { label: statusLabel("stopped"), phase: "unrecorded" };
+  return undefined;
 }
 
 function taskSummary(

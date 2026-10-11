@@ -25,7 +25,9 @@ function rosterFailure(code: "invalid_args" | "cancelled", message: string): App
 }
 
 function terminalStatus(status: RosterAgent["status"]): boolean {
-  return status === "completed" || status === "failed" || status === "aborted";
+  return (
+    status === "completed" || status === "failed" || status === "aborted" || status === "stopped"
+  );
 }
 
 function statusFromLifecycle(status: SubagentLifecyclePayload["status"]): RosterAgent["status"] {

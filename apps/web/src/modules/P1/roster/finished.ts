@@ -32,7 +32,7 @@ export interface FinishedWorkerSourceOptions {
 function finishedWorker(threadId: ThreadId, transcript: SubagentTranscript): FinishedWorker[] {
   const { status, endedAt } = transcript;
   if (endedAt === null) return [];
-  if (status !== "completed" && status !== "failed" && status !== "aborted") return [];
+  if (status === "unknown") return [];
   const endedMs = Date.parse(endedAt);
   if (!Number.isFinite(endedMs)) return [];
   return [

@@ -9,7 +9,7 @@ import {
 import { EmptyState } from "@/components/blocks";
 import type { SubagentClient } from "@/modules/P1/client";
 import { type AgentHubController, AgentHubPanel, useAgentHub } from "@/modules/P1/panels";
-import type { AgentRosterStore, RosterAgent } from "@/modules/P1/roster";
+import type { AgentRosterStore, FinishedWorkerSource, RosterAgent } from "@/modules/P1/roster";
 import { createFocusedAgentRuntime, FocusedAgentTranscript } from "@/modules/P1/transcript";
 
 /** The live parts of the Agents tab for one chat: the hub, its roster, and omp's subagent client. */
@@ -17,6 +17,7 @@ export interface LiveAgents {
   readonly controller: AgentHubController;
   readonly roster: AgentRosterStore;
   readonly client: SubagentClient;
+  readonly finished: FinishedWorkerSource;
 }
 
 /** What the tab shows: the Agent Hub, or one worker's transcript opened from it. */
@@ -39,6 +40,7 @@ export function AgentsPanel({ live, view, onBack, onRetry }: AgentsPanelProps): 
       <WorkerTranscript
         agent={view.agent}
         client={live.client}
+        finished={live.finished}
         onBack={onBack}
         roster={live.roster}
       />
@@ -77,19 +79,21 @@ function WorkerTranscript({
   agent,
   client,
   roster,
+  finished,
   onBack,
 }: {
   readonly agent: RosterAgent;
   readonly client: SubagentClient;
   readonly roster: AgentRosterStore;
+  readonly finished: FinishedWorkerSource;
   readonly onBack: () => void;
 }) {
   const subscribe = useCallback((listener: () => void) => roster.subscribe(listener), [roster]);
   const snapshot = useSyncExternalStore(subscribe, () => roster.getSnapshot());
   const current = snapshot.agents[agent.key] ?? agent;
   const runtime = useMemo(
-    () => createFocusedAgentRuntime({ agent: current, client }),
-    [client, current],
+    () => createFocusedAgentRuntime({ agent: current, client, finished }),
+    [client, current, finished],
   );
   const root = useRef<HTMLDivElement | null>(null);
   useEffect(() => {

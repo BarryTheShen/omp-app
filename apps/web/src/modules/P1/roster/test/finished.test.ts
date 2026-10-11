@@ -94,6 +94,7 @@ describe("finished workers read from the chat's transcripts", () => {
         worker("Done"),
         worker("Broken", { status: "failed" }),
         worker("Stopped", { status: "aborted", aborted: true }),
+        worker("Quiet", { status: "stopped" }),
         worker("Running", { status: "unknown", endedAt: null, agent: null }),
         worker("NoEnd", { status: "completed", endedAt: null }),
         worker("Unnamed", { agent: null }),
@@ -111,6 +112,7 @@ describe("finished workers read from the chat's transcripts", () => {
       ["Done", "completed", "task", "unknown"],
       ["Broken", "failed", "task", "unknown"],
       ["Stopped", "aborted", "task", "unknown"],
+      ["Quiet", "stopped", "task", "unknown"],
       ["Unnamed", "completed", "", "unknown"],
     ]);
   });

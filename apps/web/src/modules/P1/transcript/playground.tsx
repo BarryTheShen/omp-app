@@ -43,6 +43,7 @@ const STATUS_LABEL = {
   completed: "Finished",
   failed: "Failed",
   aborted: "Cancelled",
+  stopped: "Stopped",
 } as const;
 
 function messageOf(error: unknown): string {

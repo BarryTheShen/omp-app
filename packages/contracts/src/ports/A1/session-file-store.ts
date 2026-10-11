@@ -27,8 +27,11 @@ export type SessionLiveness = z.infer<typeof SessionLiveness>;
 export const SessionTurn = z.enum(["running", "idle"]);
 export type SessionTurn = z.infer<typeof SessionTurn>;
 
-/** How a worker ended, read from its own transcript: `unknown` when the file records no end. */
-export const SubagentFinalStatus = z.enum(["completed", "failed", "aborted", "unknown"]);
+/**
+ * How a worker ended, read from its own transcript. `stopped`: it ended without a yield and omp disposed its
+ * session. `unknown`: the file records no end, so the worker may still run.
+ */
+export const SubagentFinalStatus = z.enum(["completed", "failed", "aborted", "stopped", "unknown"]);
 export type SubagentFinalStatus = z.infer<typeof SubagentFinalStatus>;
 
 /** A discovered child transcript; entries stay in the session-file port, not the browser. */

@@ -78,6 +78,7 @@ describe("statusPresentation", () => {
     ["completed", "Finished"],
     ["failed", "Failed"],
     ["aborted", "Cancelled"],
+    ["stopped", "Stopped"],
   ] as const)("omp status %s reads as %s", (status, label) => {
     expect(statusPresentation(status).label).toBe(label);
   });

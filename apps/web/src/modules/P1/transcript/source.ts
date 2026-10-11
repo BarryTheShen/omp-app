@@ -62,7 +62,12 @@ function readerFor(
 }
 
 function isFinished(agent: AgentRef): boolean {
-  return agent.status === "completed" || agent.status === "failed" || agent.status === "aborted";
+  return (
+    agent.status === "completed" ||
+    agent.status === "failed" ||
+    agent.status === "aborted" ||
+    agent.status === "stopped"
+  );
 }
 
 /**

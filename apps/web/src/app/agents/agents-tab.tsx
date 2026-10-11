@@ -91,7 +91,12 @@ function AgentsTab({
       }),
     });
     setView({ kind: "hub" });
-    setLive({ controller, roster: agents.roster, client: agents.client });
+    setLive({
+      controller,
+      roster: agents.roster,
+      client: agents.client,
+      finished: agents.finished,
+    });
     agents.start().then(
       () => {
         if (active) controller.setLoad({ state: "ready" });

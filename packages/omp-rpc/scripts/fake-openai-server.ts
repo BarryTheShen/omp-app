@@ -174,6 +174,18 @@ function reply(request: Request): Reply {
   if (prompt.includes("auth_probe")) return { unauthorized: "Invalid API key" };
   if (prompt.includes("fail_probe_child"))
     return { failure: "fake provider failure for the failing subagent" };
+  if (prompt.includes("spawn_quiet_subagent"))
+    return {
+      tool: "task",
+      args: {
+        name: "QuietProbe",
+        agent: "task",
+        task: "quiet_probe_child: answer in plain text and never call yield.",
+        solutionSpace: "one tiny task: answer in plain text",
+      },
+      thinking: "I should start one child task that answers without yielding.",
+    };
+  if (prompt.includes("quiet_probe_child")) return { text: "Quiet probe answered in plain text." };
   if (prompt.includes("spawn_long_subagent"))
     return {
       tool: "task",

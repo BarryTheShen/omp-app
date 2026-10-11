@@ -7,6 +7,7 @@ import {
 import {
   AgentRosterStore,
   createChatFinishedWorkers,
+  type FinishedWorkerSource,
   type RosterAgent,
   type SessionTranscriptFiles,
 } from "@/modules/P1/roster";
@@ -22,6 +23,8 @@ export interface ThreadAgents {
   readonly threadId: ThreadId;
   readonly client: SubagentClient;
   readonly roster: AgentRosterStore;
+  /** The chat's workers that finished, read from their transcripts: a transcript view reads them after a reload. */
+  readonly finished: FinishedWorkerSource;
   /** Subscribes to progress and loads the roster on the first call; every later call waits for that same start. */
   start(): Promise<void>;
   /**
@@ -63,6 +66,7 @@ export function createThreadAgents({
     threadId,
     client,
     roster,
+    finished,
     start() {
       if (starting === undefined) {
         starting = roster.start().catch((error: unknown) => {
@@ -87,7 +91,7 @@ export function createThreadAgents({
           if (cached !== undefined && cached.agent === agent) return cached;
           const next: TaskSubagent = {
             agent,
-            source: createNestedTranscriptSource({ agent, client }),
+            source: createNestedTranscriptSource({ agent, client, finished }),
           };
           sources.set(agent.key, next);
           return next;

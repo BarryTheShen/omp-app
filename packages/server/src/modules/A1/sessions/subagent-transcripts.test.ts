@@ -52,6 +52,17 @@ function yieldResult(status: string, isError: boolean): Record<string, unknown> 
   };
 }
 
+function sessionExit(): Record<string, unknown> {
+  return {
+    type: "custom",
+    id: "exit",
+    parentId: null,
+    timestamp: AT,
+    customType: "session_exit",
+    data: { reason: "dispose", kind: "normal", recordedAt: AT },
+  };
+}
+
 async function makeFixture(): Promise<Fixture> {
   await mkdir(WORKTREE_DATA, { recursive: true });
   const root = await mkdtemp(path.join(WORKTREE_DATA, "subagent-transcripts-"));
@@ -155,6 +166,66 @@ describe("a worker's final status, end time and agent come from its own records"
       ]);
       const worker = await workerNamed(fixture, "Running");
       expect(worker).toMatchObject({ status: "unknown", endedAt: null, agent: "task" });
+    }));
+
+  test("a worker that stopped without a yield, and whose session omp disposed last, is stopped", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Quiet.jsonl"), [
+        init("task"),
+        assistant("stop"),
+        sessionExit(),
+      ]);
+      const worker = await workerNamed(fixture, "Quiet");
+      expect(worker).toMatchObject({ status: "stopped", aborted: false, agent: "task" });
+      expect(Date.parse(worker.endedAt ?? "")).toBeGreaterThan(0);
+    }));
+
+  test("a worker that got a new prompt after its session was disposed may still run, so it is unknown", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Resumed.jsonl"), [
+        init("task"),
+        assistant("stop"),
+        sessionExit(),
+        {
+          type: "message",
+          id: "later",
+          parentId: null,
+          timestamp: AT,
+          message: { role: "user", content: [{ type: "text", text: "again" }] },
+        },
+      ]);
+      const worker = await workerNamed(fixture, "Resumed");
+      expect(worker).toMatchObject({ status: "unknown", endedAt: null });
+    }));
+
+  test("a worker resumed after its session was disposed, whose new turn ended with a plain stop, is stopped", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Resumed-stopped.jsonl"), [
+        init("task"),
+        assistant("stop"),
+        sessionExit(),
+        {
+          type: "message",
+          id: "later",
+          parentId: null,
+          timestamp: AT,
+          message: { role: "user", content: [{ type: "text", text: "again" }] },
+        },
+        assistant("stop"),
+      ]);
+      const worker = await workerNamed(fixture, "Resumed-stopped");
+      expect(worker).toMatchObject({ status: "stopped" });
+    }));
+
+  test("a worker whose last turn ended with a plain stop, with its session still open, is stopped", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Idle.jsonl"), [
+        init("task"),
+        assistant("stop"),
+      ]);
+      const worker = await workerNamed(fixture, "Idle");
+      expect(worker).toMatchObject({ status: "stopped", agent: "task" });
+      expect(Date.parse(worker.endedAt ?? "")).toBeGreaterThan(0);
     }));
 
   test("a yield that failed does not complete the worker", () =>

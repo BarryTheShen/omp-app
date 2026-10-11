@@ -113,7 +113,8 @@ async function liveAgents(onOpenTranscript: (agent: RosterAgent) => void): Promi
       },
     }),
   });
-  return { controller, roster, client: fakeClient() };
+  const finished = { list: async () => [], read: async () => Promise.reject(new Error("unused")) };
+  return { controller, roster, client: fakeClient(), finished };
 }
 
 describe("Agents tab availability", () => {

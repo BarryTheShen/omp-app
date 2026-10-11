@@ -17,6 +17,7 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
   completed: "Finished",
   failed: "Failed",
   aborted: "Cancelled",
+  stopped: "Stopped",
 };
 
 export interface FocusedAgentTranscriptProps {

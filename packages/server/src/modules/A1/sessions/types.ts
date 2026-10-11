@@ -73,7 +73,7 @@ export type SessionStatus =
   | "pending"
   | "unknown";
 
-export type SubagentFinalStatus = "completed" | "failed" | "aborted" | "unknown";
+export type SubagentFinalStatus = "completed" | "failed" | "aborted" | "stopped" | "unknown";
 
 export interface SubagentTranscript {
   readonly key: string;

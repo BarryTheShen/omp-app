@@ -42,11 +42,21 @@ function isSuccessfulYield(entry: unknown): boolean {
   return isJsonObject(message.details) && message.details.status === "success";
 }
 
+/** The last record that is a message: omp's bookkeeping after it (its exit record, a note) does not count. */
+function lastMessageOf(entries: readonly unknown[]): Record<string, unknown> | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const message = messageOf(entries[index]);
+    if (message !== undefined) return message;
+  }
+  return undefined;
+}
+
 /**
- * How a worker ended, from its own records. A successful `yield` completed it. Otherwise the last
- * assistant turn decides: omp records `error` and `aborted` stop reasons there, and a tombstone marks
- * a worker omp cancelled. A worker that records none of these is `unknown`, including one that exits
- * without `yield`: omp reports that verdict in its run result, and this reader only reads the file.
+ * How a worker ended, from its own records. A successful `yield` completed it. Otherwise the last assistant turn decides:
+ * omp records `error` and `aborted` stop reasons there, and a tombstone marks a worker omp cancelled. A worker whose last
+ * message is a plain stop has finished its turn and waits for more, so it is not running: it is stopped, whether or not
+ * omp has disposed its session (issue 781: a plain page reload with omp still running). Any other worker is `unknown`:
+ * it records no end, so it may still run, and omp's run result, which says why it ended, is only in memory.
  */
 function finalStatusOf(entries: readonly unknown[], aborted: boolean): SubagentFinalStatus {
   if (entries.some(isSuccessfulYield)) return "completed";
@@ -57,6 +67,8 @@ function finalStatusOf(entries: readonly unknown[], aborted: boolean): SubagentF
   }
   if (lastAssistant?.stopReason === "error") return "failed";
   if (aborted || lastAssistant?.stopReason === "aborted") return "aborted";
+  const last = lastMessageOf(entries);
+  if (last?.role === "assistant" && last.stopReason === "stop") return "stopped";
   return "unknown";
 }
 

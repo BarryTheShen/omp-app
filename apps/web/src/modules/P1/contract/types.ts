@@ -7,7 +7,14 @@ const OpenRecord = z.record(z.string(), z.unknown());
 export const AgentSourceSchema = z.enum(["bundled", "user", "project", "unknown"]);
 export type AgentSource = z.infer<typeof AgentSourceSchema>;
 
-export const AgentStatusSchema = z.enum(["pending", "running", "completed", "failed", "aborted"]);
+export const AgentStatusSchema = z.enum([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "aborted",
+  "stopped",
+]);
 export type AgentStatus = z.infer<typeof AgentStatusSchema>;
 
 export const LifecycleStatusSchema = z.enum(["started", "completed", "failed", "aborted"]);

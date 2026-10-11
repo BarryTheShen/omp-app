@@ -18,6 +18,7 @@ const ICON_BY_STATUS: Readonly<Record<AgentStatus, IconName>> = {
   completed: "success",
   failed: "error",
   aborted: "warning",
+  stopped: "stop",
 };
 
 export function StatusChip({ presentation }: { readonly presentation: StatusPresentation }) {
