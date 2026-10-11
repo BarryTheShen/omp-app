@@ -4,7 +4,12 @@ import type { AppError, CapabilityMap, OmpWire, ThreadId, UiRequestId } from "@o
 import { AppFailure } from "@omp-app/contracts";
 import type { ReactNode } from "react";
 import type { OverlayHostApi, OverlayOpenResult } from "@/overlay";
-import { DIALOG_CAPABILITY, type DialogRequest, DialogRequestSchema } from "../contract/dialog";
+import {
+  DIALOG_CAPABILITY,
+  type DialogRequest,
+  DialogRequestSchema,
+  dialogName,
+} from "../contract/dialog";
 import type { DialogHost, DialogHostOpenOptions } from "../contract/dialog-host";
 import {
   type DialogResponse,
@@ -260,7 +265,7 @@ export class DialogHostController implements DialogHost {
     try {
       entry.overlay = this.overlay.open({
         kind: "modal",
-        label: entry.request.kind,
+        label: dialogName(entry.request),
         content: () => this.render(entry.request, context),
         restoreFocus: entry.restoreFocus === undefined ? undefined : false,
         // omp is waiting on these answers, so a stray press must not answer them; Escape still does.

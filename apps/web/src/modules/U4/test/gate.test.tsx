@@ -213,7 +213,7 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
       },
       { threadId, signal: controller.signal, restoreFocus: restore },
     );
-    await screen.findByRole("dialog", { name: "confirm" });
+    await screen.findByRole("dialog", { name: "Continue?" });
     controller.abort();
     await expect(pending).resolves.toMatchObject({
       outcome: "cancelled",

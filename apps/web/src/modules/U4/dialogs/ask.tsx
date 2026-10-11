@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { AskDialogRequest } from "../contract";
+import { ASK_DIALOG_HEADING, type AskDialogRequest } from "../contract";
 import type { DialogRenderContext } from "../host";
 import { CancelButton, DialogFrame, ErrorText, Input, SubmitButton } from "./common";
 
@@ -95,7 +95,7 @@ export function AskDialog({
 
   return (
     <DialogFrame
-      title="Answer questions"
+      title={ASK_DIALOG_HEADING}
       description={
         review ? "Review your answers before submitting." : (question.header ?? question.question)
       }

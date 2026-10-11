@@ -133,6 +133,17 @@ export const DialogRequestSchema = z.discriminatedUnion("kind", [
 ]);
 export type DialogRequest = z.infer<typeof DialogRequestSchema>;
 
+/** The heading of an ask dialog. An ask has no title of its own, so its dialog is named by this heading. */
+export const ASK_DIALOG_HEADING = "Answer questions";
+
+/**
+ * The name an open dialog announces: its visible heading. A select, confirm, input or editor is named by its title, the
+ * heading it shows. An ask is named by its fixed heading, because its question changes from one to the next.
+ */
+export function dialogName(request: DialogRequest): string {
+  return request.kind === "ask" ? ASK_DIALOG_HEADING : request.title;
+}
+
 /**
  * Converts one omp `extension_ui_request` whose `method` is a modal kind into a `DialogRequest`,
  * branding `id` and keeping every field name exact (`modules/U4/README.md` Plan item 1). Throws

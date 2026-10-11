@@ -134,7 +134,7 @@ describe("DialogHostController", () => {
     const first = open(controller, request("confirm", "first"));
     const second = open(controller, request("confirm", "second"));
 
-    expect(await screen.findByRole("dialog", { name: "confirm" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "first" })).toBeTruthy();
     expect(screen.getByTestId("body-first")).toBeTruthy();
     expect(screen.queryByTestId("body-second")).toBeNull();
 
@@ -154,6 +154,29 @@ describe("DialogHostController", () => {
       outcome: "answered",
       response: { kind: "confirm", confirmed: true },
     });
+  });
+
+  test("a dialog is named by its visible heading: the question of a select, the fixed heading of an ask", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    const select = open(controller, {
+      kind: "select",
+      id: "which-database" as UiRequestId,
+      title: "Which database?",
+      options: ["SQLite", "Postgres"],
+    });
+    const question = await screen.findByRole("dialog", { name: "Which database?" });
+    fireEvent.keyDown(question, { key: "Escape" });
+    await expect(select).resolves.toMatchObject({ outcome: "cancelled" });
+
+    const ask = open(controller, {
+      kind: "ask",
+      id: "ask-database" as UiRequestId,
+      questions: [{ id: "q1", question: "Which database?", options: [{ label: "SQLite" }] }],
+    });
+    const asked = await screen.findByRole("dialog", { name: "Answer questions" });
+    fireEvent.keyDown(asked, { key: "Escape" });
+    await expect(ask).resolves.toMatchObject({ outcome: "cancelled" });
   });
 
   test("aborting while open sends one cancellation and restores the injected focus target", async () => {
@@ -381,10 +404,10 @@ describe("DialogHostController outside press", () => {
     const state = renderHarness();
     const controller = await controllerFrom(state);
     const pending = open(controller, request("select", "omp-question"));
-    const question = await screen.findByRole("dialog", { name: "select" });
+    const question = await screen.findByRole("dialog", { name: "omp-question" });
     fireEvent.pointerDown(dimmedArea());
     fireEvent.pointerUp(dimmedArea());
-    expect(screen.getByRole("dialog", { name: "select" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "omp-question" })).toBeTruthy();
     expect(state.answers).toEqual([]);
     fireEvent.keyDown(question, { key: "Escape" });
     await expect(pending).resolves.toEqual({
@@ -404,7 +427,7 @@ describe("DialogHostController outside press", () => {
       request("confirm", "app-outside") as Extract<DialogRequest, { kind: "confirm" }>,
       { threadId: threadA, origin: "app" },
     );
-    await screen.findByRole("dialog", { name: "confirm" });
+    await screen.findByRole("dialog", { name: "app-outside" });
     fireEvent.pointerDown(dimmedArea());
     fireEvent.pointerUp(dimmedArea());
     await expect(cancelled).resolves.toBe(false);
