@@ -10,6 +10,7 @@ import { createContext, type ReactNode, useContext, useEffect, useState } from "
 import { LogHint } from "./log-hint";
 import {
   type LaunchLocationLike,
+  launchTokenInFragment,
   readLaunchToken,
   type TokenHistoryLike,
   type TokenStorageLike,
@@ -43,6 +44,8 @@ export interface AppConnectionProviderProps {
   readonly storage?: TokenStorageLike;
   readonly history?: TokenHistoryLike;
   readonly createClient?: (options: CreateAppClientOptions) => AppClient;
+  /** Loads the page again. A launch link typed into the open tab reloads it with that link; the default reloads the window. */
+  readonly reload?: () => void;
 }
 
 /** How long reconnects may fail before the banner says the server is not answering, and what to do. */
@@ -77,12 +80,18 @@ function connectionError(error: unknown): string {
   return "The app server rejected the launch token.";
 }
 
+/** Reloads the page, which reads the launch token again from its address. */
+function reloadWindow(): void {
+  window.location.reload();
+}
+
 export function AppConnectionProvider({
   children,
   location,
   storage,
   history,
   createClient = createAppClient,
+  reload = reloadWindow,
 }: AppConnectionProviderProps) {
   const [launch, setLaunch] = useState<ReturnType<typeof readLaunchToken> | null>(null);
   const [snapshot, setSnapshot] = useState<AppConnectionSnapshot>(EMPTY_CONNECTION);
@@ -90,6 +99,18 @@ export function AppConnectionProvider({
   useEffect(() => {
     setLaunch(readLaunchToken({ location, storage, history }));
   }, [history, location, storage]);
+
+  // A launch link typed into this open tab changes only the fragment: the page does not load again, and the token
+  // read above stays the old one. A different token is a new link from a restarted app: load the page with it.
+  useEffect(() => {
+    if (launch === null) return;
+    const onHashChange = (): void => {
+      const typed = launchTokenInFragment((location ?? window.location).hash);
+      if (typed !== null && typed !== launch.token) reload();
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [launch, location, reload]);
 
   useEffect(() => {
     if (launch === null) return;

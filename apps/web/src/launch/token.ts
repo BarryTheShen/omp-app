@@ -38,6 +38,12 @@ function fragmentParameters(hash: string): URLSearchParams {
   return new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash);
 }
 
+/** The launch token in a URL fragment (`#token=…`), or null when the fragment carries none. */
+export function launchTokenInFragment(hash: string): string | null {
+  const token = fragmentParameters(hash).get("token");
+  return token && token.length > 0 ? token : null;
+}
+
 function stripTokenFromAddressBar(
   location: LaunchLocationLike,
   history: TokenHistoryLike | undefined,

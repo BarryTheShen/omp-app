@@ -330,3 +330,79 @@ describe("app connection launch gate", () => {
     expect(screen.getByTestId("connection-unreachable").textContent).toBe("false");
   });
 });
+
+describe("a launch link typed into the open tab", () => {
+  test("a different token reloads the page, which opens the app with that token", async () => {
+    const reload = vi.fn();
+    const location = { ...pageLocation };
+    render(
+      <AppConnectionProvider
+        createClient={() => makeClient("open")}
+        history={{ replaceState: () => undefined }}
+        location={location}
+        reload={reload}
+        storage={{ getItem: () => null, setItem: () => undefined }}
+      >
+        <Harness />
+      </AppConnectionProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("connection-state").textContent).toBe("connected"),
+    );
+    location.hash = "#token=typed-token";
+    act(() => {
+      window.dispatchEvent(new Event("hashchange"));
+    });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  test("the same token, or a fragment without one, leaves the page as it is", async () => {
+    const reload = vi.fn();
+    const location = { ...pageLocation };
+    render(
+      <AppConnectionProvider
+        createClient={() => makeClient("open")}
+        history={{ replaceState: () => undefined }}
+        location={location}
+        reload={reload}
+        storage={{ getItem: () => null, setItem: () => undefined }}
+      >
+        <Harness />
+      </AppConnectionProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("connection-state").textContent).toBe("connected"),
+    );
+    for (const hash of ["#token=fragment-token", "#tab=history"]) {
+      location.hash = hash;
+      act(() => {
+        window.dispatchEvent(new Event("hashchange"));
+      });
+    }
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  test("a page with no token takes a typed link that has one", async () => {
+    const reload = vi.fn();
+    const location = { ...pageLocation, hash: "" };
+    render(
+      <AppConnectionProvider
+        createClient={() => makeClient("open")}
+        history={{ replaceState: () => undefined }}
+        location={location}
+        reload={reload}
+        storage={{ getItem: () => null, setItem: () => undefined }}
+      >
+        <Harness />
+      </AppConnectionProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("connection-state").textContent).toBe("missing-token"),
+    );
+    location.hash = "#token=typed-token";
+    act(() => {
+      window.dispatchEvent(new Event("hashchange"));
+    });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});

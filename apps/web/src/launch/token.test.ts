@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   APP_TOKEN_STORAGE_KEY,
   type LaunchLocationLike,
+  launchTokenInFragment,
   readLaunchToken,
   type TokenStorageLike,
   websocketUrl,
@@ -78,5 +79,17 @@ describe("launch token hand-off", () => {
     expect(websocketUrl({ protocol: "https:", host: "example.test" })).toBe(
       "wss://example.test/ws",
     );
+  });
+});
+
+describe("launchTokenInFragment", () => {
+  test("reads the token from a fragment, among its other parameters", () => {
+    expect(launchTokenInFragment("#token=abc&tab=history")).toBe("abc");
+  });
+
+  test("is null when the fragment has no token, or an empty one", () => {
+    expect(launchTokenInFragment("#tab=history")).toBeNull();
+    expect(launchTokenInFragment("#token=")).toBeNull();
+    expect(launchTokenInFragment("")).toBeNull();
   });
 });
