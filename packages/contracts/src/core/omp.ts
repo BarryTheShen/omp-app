@@ -14,21 +14,21 @@ export type * as OmpWire from "../omp-wire/rpc-wire.generated";
 export const OMP_FLOOR_VERSION = "18.6.1";
 
 /** The omp tag the files in `../omp-wire/` were copied from. */
-export const OMP_WIRE_TAG = "v18.6.1";
+export const OMP_WIRE_TAG = "v18.9.1";
 
 /** The commit `OMP_WIRE_TAG` points at. */
-export const OMP_WIRE_COMMIT = "2a2c6dcbbb558c0f8145f67f28b3370984f2bf60";
+export const OMP_WIRE_COMMIT = "a4d6f0adc63dda4ccdf4d25c26422219820f865b";
 
 /**
  * omp RPC protocol versions the app speaks. omp writes its `ready` frame in protocol 1 and
- * advertises `supportedProtocolVersions: [1, 2]` (docs/rpc.md:43-50 at v18.6.1); the app then
+ * advertises `supportedProtocolVersions: [1, 2]` (docs/rpc.md:43-50 at v18.9.1); the app then
  * sends `negotiate_protocol` for `OMP_PREFERRED_PROTOCOL_VERSION` (lossless `rpc_chunk` framing).
  */
 export const OMP_PROTOCOL_VERSIONS = [1, 2] as const;
 export type OmpProtocolVersion = (typeof OMP_PROTOCOL_VERSIONS)[number];
 export const OMP_PREFERRED_PROTOCOL_VERSION: OmpProtocolVersion = 2;
 
-/** The two RPC process modes (docs/rpc.md:1029-1037): `rpc-ui` also forwards tool UI dialogs. */
+/** The two RPC process modes (docs/rpc.md:1204-1212 at v18.9.1): `rpc-ui` also forwards tool UI dialogs. */
 export const OMP_RPC_MODES = ["rpc", "rpc-ui"] as const;
 export type OmpRpcMode = (typeof OMP_RPC_MODES)[number];
 
@@ -55,10 +55,12 @@ export const OMP_COMMANDS = {
   promote_queued_message: { completion: null, timeoutMs: null },
   abort: { completion: null, timeoutMs: null },
   abort_and_prompt: { completion: "prompt_result", timeoutMs: null },
+  abort_and_restore_queue: { completion: null, timeoutMs: null },
   new_session: { completion: null, timeoutMs: null },
   open_session: { completion: null, timeoutMs: null },
   get_state: { completion: null, timeoutMs: null },
   set_fast_mode: { completion: null, timeoutMs: null },
+  set_slow_mode: { completion: null, timeoutMs: null },
   goal: { completion: null, timeoutMs: null },
   set_ask_dialog: { completion: null, timeoutMs: null },
   get_available_commands: { completion: null, timeoutMs: null },
@@ -105,8 +107,13 @@ export const OMP_COMMANDS = {
   get_messages_page: { completion: null, timeoutMs: null },
   get_login_providers: { completion: null, timeoutMs: null },
   login: { completion: null, timeoutMs: 600000 },
+  get_logout_accounts: { completion: null, timeoutMs: null },
+  logout: { completion: null, timeoutMs: null },
   predict_word: { completion: null, timeoutMs: 155000 },
   predict_word_feedback: { completion: null, timeoutMs: null },
+  btw: { completion: null, timeoutMs: null },
+  btw_cancel: { completion: null, timeoutMs: null },
+  get_btw_history: { completion: null, timeoutMs: null },
 } as const satisfies { readonly [K in OmpCommandName]: OmpCommandSpec };
 
 export const OMP_COMMAND_NAMES = Object.keys(OMP_COMMANDS) as [OmpCommandName, ...OmpCommandName[]];

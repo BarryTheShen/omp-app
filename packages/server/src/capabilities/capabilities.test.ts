@@ -65,6 +65,7 @@ for await (const chunk of Bun.stdin.stream()) {
   for (const line of lines) {
     if (!line.trim()) continue;
     const command = JSON.parse(line);
+    if (Bun.env.FAKE_COMMAND_LOG) require("node:fs").appendFileSync(Bun.env.FAKE_COMMAND_LOG, command.type + "\\n");
     if (command.type === slowCommand) setTimeout(() => respond(command), slowMs);
     else respond(command);
   }
@@ -102,6 +103,7 @@ async function runProbe(
       HOME: realHome,
       PI_CODING_AGENT_DIR: realAgent,
       FAKE_RECORD_FILE: recordFile,
+      FAKE_COMMAND_LOG: join(root, "commands.log"),
     },
     ghBinary: join(root, "missing-gh"),
   });
@@ -115,7 +117,7 @@ afterEach(async () => {
 });
 
 describe("probeCapabilities", () => {
-  test("probes every command, cites unknown commands, and reports host fallbacks", async () => {
+  test("probes every command the app sends, cites unknown commands, and reports host fallbacks", async () => {
     const { result } = await runProbe({ FAKE_UNKNOWN_COMMAND: "get_tree" });
     const tree = result.capabilities["omp.cmd.get_tree"];
     expect(tree).toMatchObject({ state: "unavailable", via: "rpc" });
@@ -147,13 +149,38 @@ describe("probeCapabilities", () => {
     });
     expect(result.evidence.find((entry) => entry.command === "get_tree")).toMatchObject({
       status: "unavailable",
-      source: expect.stringContaining("docs/rpc.md:141-149"),
+      source: expect.stringContaining("docs/rpc.md:143-152"),
     });
     expect(result.evidence).toHaveLength(OMP_COMMAND_NAMES.length);
     expect(result.protocolVersion).toBe(2);
     // A probe that answered everything did not run out of time.
     expect(probeRanOutOfTime(result)).toBe(false);
     expect(probeTimedOutEntirely(result)).toBe(false);
+  });
+
+  test("does not send the commands the app does not send yet; they report as not probed", async () => {
+    const { result, root } = await runProbe();
+    const sent = (await readFile(join(root, "commands.log"), "utf8"))
+      .split("\n")
+      .filter((line) => line !== "");
+    const unprobed = [
+      "abort_and_restore_queue",
+      "set_slow_mode",
+      "get_logout_accounts",
+      "logout",
+      "btw",
+      "btw_cancel",
+      "get_btw_history",
+    ] as const;
+    expect(sent).toContain("get_state");
+    for (const command of unprobed) {
+      expect(sent).not.toContain(command);
+      expect(result.evidence.find((entry) => entry.command === command)).toMatchObject({
+        status: "unavailable",
+        reason: expect.stringContaining("not probed"),
+      });
+    }
+    expect(result.capabilities["omp.cmd.logout"]).toMatchObject({ state: "unavailable" });
   });
 
   test("keeps protocol v2 unavailable for a v1-only ready frame", async () => {
