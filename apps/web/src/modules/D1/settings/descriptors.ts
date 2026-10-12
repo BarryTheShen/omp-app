@@ -32,8 +32,9 @@ function enumControl(
   options: readonly string[],
   description: string,
   apply: SettingControl["apply"] = "restart",
+  labels: Readonly<Record<string, string>> = {},
 ): SettingControl {
-  const choices = settingOptions(options, { xhigh: "Extra high" });
+  const choices = settingOptions(options, { xhigh: "Extra high", ...labels });
   return {
     key,
     label,
@@ -326,6 +327,18 @@ export const modelRetryFallbackSection = section("D1.modelRetryFallback", "Retry
     "retry.modelFallback",
     "Retry Model Fallback",
     "Allow configured fallback models during recovery.",
+  ),
+  enumControl(
+    "retry.fallbackOn",
+    "Fallback Trigger",
+    ["any", "usage-limit", "except-usage-limit"],
+    "Which failed requests may switch to a configured fallback model. Needs omp 18.9 or newer; an older omp ignores it.",
+    "live",
+    {
+      any: "Any error",
+      "usage-limit": "Usage limit only",
+      "except-usage-limit": "Errors other than usage limits",
+    },
   ),
   booleanControl(
     "retry.usageAwareFallback",
