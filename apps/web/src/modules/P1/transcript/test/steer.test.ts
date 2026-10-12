@@ -93,6 +93,24 @@ describe("the steer editor", () => {
     expect(sent.failure).toBeUndefined();
   });
 
+  test("a message omp does not take from a running worker says why in plain words, and keeps the text", () => {
+    const sending = pressSteerKey(typed("keep me"), "enter", { at: 0, canSteer: true }).draft;
+    const failed = steerSendFailed(
+      sending,
+      steerFailureMessage(
+        new AppFailure({
+          code: "conflict",
+          message: "omp did not take the message",
+          retryable: true,
+        }),
+      ),
+    );
+    expect(failed.text).toBe("keep me");
+    expect(failed.failure).toBe(
+      "omp did not take the message: the worker is busy, for example while it waits on a background command. Your text is still here; send it again once the command finishes.",
+    );
+  });
+
   test("text typed while a send is in flight survives the send's success", () => {
     const sending = pressSteerKey(typed("first"), "enter", { at: 0, canSteer: true }).draft;
     const typedMeanwhile = editSteerDraft(sending, "first and more");

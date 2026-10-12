@@ -248,8 +248,11 @@ test.describe("P1.5 Agent Hub playground", () => {
     await expect(page.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
     await open("cancel-failed");
     await expect(
-      page.getByText("omp is no longer running this worker; it finished when its last turn ended."),
+      page.getByText(
+        "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.",
+      ),
     ).toBeVisible();
+    await expect(page.getByRole("option", { name: /Running.*Scan the repository/ })).toHaveCount(1);
     await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
     await page.screenshot({

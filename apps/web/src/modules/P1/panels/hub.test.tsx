@@ -249,27 +249,28 @@ describe("AgentHub live roster", () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
-  test("a cancel that finds the worker already finished says so, and offers no retry", async () => {
-    const run = vi.fn(async () => {
-      throw new AppFailure({
-        code: "not_found",
-        message: "Subagent is no longer running",
-        retryable: false,
-      });
-    });
+  test("a cancel omp refuses says in plain words that omp could not stop the worker, keeps the row Running, and offers Cancel again", async () => {
+    const run = vi.fn<() => Promise<unknown>>().mockRejectedValue(
+      new AppFailure({
+        code: "conflict",
+        message: "omp did not stop the worker",
+        retryable: true,
+      }),
+    );
     const { controller } = await liveController(run);
     render(<LiveHub controller={controller} />);
     fireEvent.click(screen.getByRole("option", { name: /Scan the repo/ }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel Scan the repo" }));
     expect(
       await screen.findByText(
-        "omp is no longer running this worker; it finished when its last turn ended.",
+        "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.",
       ),
     ).toBeTruthy();
+    expect(screen.getByRole("option", { name: /Scan the repo/ }).textContent).toContain("Running");
+    expect(screen.queryByText(/no longer running/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    expect(screen.queryByText("Subagent is no longer running")).toBeNull();
-    expect(screen.getByRole("option", { name: /Scan the repo/ }).textContent).toContain("Finished");
-    expect(screen.queryByRole("button", { name: "Cancel Scan the repo" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel Scan the repo" })).toBeTruthy();
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   test("the transcript button explains why it cannot open, and opens through the callback when it can", async () => {

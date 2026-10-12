@@ -275,6 +275,11 @@ describe("buildHubModel inspector", () => {
       message: "omp is no longer running this worker; it finished when its last turn ended.",
       retryable: false,
     });
+    expect(phase({ [key]: { state: "refused" } })).toEqual({
+      state: "refused",
+      message:
+        "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.",
+    });
   });
 
   test("a transcript button shows its reason until the transcript view is connected", async () => {
@@ -371,7 +376,7 @@ describe("buildHubModel inspector", () => {
 describe("cancelFailureMessage", () => {
   test.each([
     ["not_found", "omp is no longer running this worker; it finished when its last turn ended."],
-    ["conflict", "omp is no longer running this worker; it finished when its last turn ended."],
+    ["conflict", "The worker could not be cancelled. Try again."],
     ["unavailable", "Cancelling workers isn't available in this version of omp."],
     ["omp_error", "The worker could not be cancelled. Try again."],
     ["internal", "The worker could not be cancelled. Try again."],

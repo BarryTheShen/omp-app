@@ -186,6 +186,7 @@ export type CancelControl =
   | { readonly state: "sent" }
   | { readonly state: "failed"; readonly message: string; readonly retryable: boolean }
   | { readonly state: "ended"; readonly message: string }
+  | { readonly state: "refused"; readonly message: string }
   | { readonly state: "unavailable"; readonly reason: string };
 
 export interface HubInspector {
@@ -224,7 +225,9 @@ export type HubLoad =
 export type CancelPhase =
   | { readonly state: "sending" }
   | { readonly state: "sent" }
-  | { readonly state: "failed"; readonly error: AppError };
+  | { readonly state: "failed"; readonly error: AppError }
+  /** omp answered that it could not stop the worker, and its re-read lists the worker as still running. */
+  | { readonly state: "refused" };
 
 export interface HubModelInput {
   readonly roster: AgentRosterStoreSnapshot;
@@ -274,9 +277,13 @@ function toRow(agent: RosterAgent, selectedKey: string | null, now: number): Wor
   };
 }
 
+/** What a person reads when omp refused a cancel and its re-read still lists the worker as running. */
+export const CANCEL_REFUSED_MESSAGE =
+  "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.";
+
 /** Plain words for a failed cancel: omp's own wording never reaches the page. */
 export function cancelFailureMessage(error: AppError): string {
-  if (error.code === "not_found" || error.code === "conflict") {
+  if (error.code === "not_found") {
     return "omp is no longer running this worker; it finished when its last turn ended.";
   }
   if (error.code === "unavailable") {
@@ -314,6 +321,7 @@ function cancelControl(
       retryable: phase.error.retryable,
     };
   }
+  if (phase.state === "refused") return { state: "refused", message: CANCEL_REFUSED_MESSAGE };
   return { state: phase.state };
 }
 

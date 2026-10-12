@@ -1,5 +1,5 @@
 import type { RpcSessionEvent } from "@omp-app/contracts";
-import { type CapabilityMap, SubagentId, ThreadId } from "@omp-app/contracts";
+import { AppFailure, type CapabilityMap, SubagentId, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
 import { OmpRuntimeStore, type OmpRuntimeTransport } from "@/modules/R0/store";
@@ -22,6 +22,7 @@ function fakeClient(
   options: {
     readonly capabilities?: CapabilityMap;
     readonly cancelled?: boolean;
+    readonly steerRefusal?: string;
     readonly levels?: string[];
     readonly appliedLevel?: "off" | "progress" | "events";
     readonly sent?: Array<{ type: string; args: unknown }>;
@@ -62,6 +63,14 @@ function fakeClient(
       case "cancel_subagent":
         return { cancelled: options.cancelled ?? true };
       case "steer_subagent":
+        if (options.steerRefusal !== undefined) {
+          throw new AppFailure({
+            code: "omp_error",
+            message: options.steerRefusal,
+            retryable: false,
+            omp: { command: "steer_subagent", error: options.steerRefusal },
+          });
+        }
         return undefined;
       default:
         throw new Error(`unexpected command ${args.command.type}`);
@@ -117,10 +126,19 @@ describe("P1 subagent client commands", () => {
     await client.dispose();
   });
 
-  test("turns cancelled false into not_found rather than success", async () => {
+  test("turns cancelled false into a retryable conflict, so the caller re-reads the worker before the row changes", async () => {
     const { client } = fakeClient({ cancelled: false });
     await expect(client.cancel(subagentId)).rejects.toMatchObject({
-      appError: { code: "not_found" },
+      appError: { code: "conflict", retryable: true },
+    });
+    await client.dispose();
+  });
+
+  test("a steer omp refuses for a worker it does not run reads as a retryable conflict", async () => {
+    const refusal = `Subagent not running: ${subagentId}`;
+    const { client } = fakeClient({ steerRefusal: refusal });
+    await expect(client.steer(subagentId, "hello")).rejects.toMatchObject({
+      appError: { code: "conflict", retryable: true },
     });
     await client.dispose();
   });

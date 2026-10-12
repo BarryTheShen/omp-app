@@ -1,4 +1,4 @@
-import { type AppError, AppFailure, type SubagentId } from "@omp-app/contracts";
+import { type AppError, AppFailure } from "@omp-app/contracts";
 import type { AgentRef } from "@/modules/P1/contract";
 import type { AgentRosterStoreSnapshot } from "@/modules/P1/roster";
 import {
@@ -12,14 +12,14 @@ import {
 } from "./model";
 
 /**
- * The roster the panel reads, the clock its times are read by, and the one write the panel makes: recording that omp
- * no longer runs a worker the roster still lists as running.
+ * The roster the panel reads, the clock its times are read by, and the re-read the panel makes when omp refuses a
+ * cancel, so a row changes only on what omp reports after the refusal.
  */
 export interface RosterSource {
   readonly getSnapshot: () => AgentRosterStoreSnapshot;
   readonly subscribe: (listener: (snapshot: AgentRosterStoreSnapshot) => void) => () => void;
   readonly now: () => number;
-  readonly markNotRunning: (id: SubagentId) => boolean;
+  readonly refresh: () => Promise<void>;
 }
 
 export type CancelAction =
@@ -71,6 +71,12 @@ const FALLBACK_CANCEL_FAILURE: AppError = {
   code: "internal",
   message: "The worker could not be cancelled. Try again.",
   retryable: true,
+};
+
+const NOT_RUNNING_FAILURE: AppError = {
+  code: "not_found",
+  message: "Subagent is no longer running",
+  retryable: false,
 };
 
 function cancelFailure(error: unknown): AppError {
@@ -173,6 +179,26 @@ export function createAgentHubController(options: AgentHubControllerOptions): Ag
     notify();
   }
 
+  /**
+   * omp refused a cancel. The roster is read again before the row changes: a worker that omp has ended reads Finished
+   * with omp's answer, and one that is still listed as running stays Running, with the words that say omp could not
+   * stop it now.
+   */
+  async function settleRefusedCancel(key: string): Promise<void> {
+    try {
+      await options.roster.refresh();
+    } catch {
+      setCancel(key, { state: "refused" });
+      return;
+    }
+    const agent = options.roster.getSnapshot().agents[key];
+    if (agent === undefined || agent.terminalAt !== null) {
+      setCancel(key, { state: "failed", error: NOT_RUNNING_FAILURE });
+      return;
+    }
+    setCancel(key, { state: "refused" });
+  }
+
   function setLoad(next: HubLoad): void {
     load = next;
     notify();
@@ -206,9 +232,11 @@ export function createAgentHubController(options: AgentHubControllerOptions): Ag
       setCancel(key, { state: "sent" });
     } catch (error) {
       const failure = cancelFailure(error);
-      // omp answers "not found" once it no longer runs the worker. The roster records that end now, so its
-      // row agrees with the answer the person just got.
-      if (failure.code === "not_found") options.roster.markNotRunning(agent.id);
+      // omp refused the cancel, or says it no longer runs the worker: the roster is read again before the row changes.
+      if (failure.code === "conflict" || failure.code === "not_found") {
+        await settleRefusedCancel(key);
+        return;
+      }
       setCancel(key, { state: "failed", error: failure });
     }
   }

@@ -12,13 +12,13 @@ import {
 
 /**
  * Issue #923. The fake model starts a long worker whose command runs 60 s. A message to it while that command runs
- * gets its answer ("pong") at once; omp reports the worker ended only when the command ends, about a minute later.
- * In that window the Agent Hub used to show the worker as Running with a frozen timer, and Cancel answered that the
- * worker had already finished.
+ * gets its answer ("pong") at once, and the command moves to the background. omp still lists the worker as running
+ * until the command ends, about a minute later, but it refuses Cancel meanwhile (issue #1156): the Agent Hub keeps the
+ * worker Running and says why, rather than reading the refusal as Finished.
  */
 const TRANSCRIPT = /^Transcript of /;
-const ALREADY_FINISHED =
-  "omp is no longer running this worker; it finished when its last turn ended.";
+const REFUSED_CANCEL =
+  "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.";
 
 /** Lets finite transitions settle before a screenshot. Bounded: a transition a headless page never finishes must not hang the case. */
 async function settle(page: Page): Promise<void> {
@@ -77,22 +77,20 @@ async function steerLongWorker(page: Page): Promise<{ hub: Locator; answeredAt: 
   return { hub, answeredAt };
 }
 
-/** Cancel on the still-running row: omp answers that the worker has already finished, so the row reads Finished. */
-async function cancelAndExpectFinished(hub: Locator): Promise<void> {
+/** Cancel on the still-running row while omp waits on the background command: omp refuses, and the row stays Running. */
+async function cancelAndExpectRefused(hub: Locator): Promise<void> {
   await hub.getByRole("option", { name: /Running.*LongProbe/ }).click();
   await hub.getByRole("button", { name: /Cancel LongProbe/ }).click();
-  await expect(hub.getByRole("option", { name: /Finished.*LongProbe/ })).toHaveCount(1, {
-    timeout: 15_000,
-  });
-  await expect(hub.getByRole("option", { name: /Running.*LongProbe/ })).toHaveCount(0);
-  await expect(hub.getByRole("button", { name: /^Cancel / })).toHaveCount(0);
-  await expect(hub.getByText(ALREADY_FINISHED)).toBeVisible();
+  await expect(hub.getByText(REFUSED_CANCEL)).toBeVisible({ timeout: 15_000 });
+  await expect(hub.getByRole("option", { name: /Running.*LongProbe/ })).toHaveCount(1);
+  await expect(hub.getByRole("option", { name: /Finished.*LongProbe/ })).toHaveCount(0);
+  await expect(hub.getByRole("button", { name: /Cancel LongProbe/ })).toBeVisible();
 }
 
 realTest.setTimeout(420_000);
 
 realTest(
-  "real omp: a worker that answered a message reads as Running with a moving time, Cancel reads it as Finished, and the row holds when omp reports the end",
+  "real omp: a worker that answered a message reads as Running with a moving time, Cancel says omp could not stop it, and the row reads Finished when omp reports the end",
   async ({ realApp }) => {
     const page = await realApp.open({
       beforeLoad: (target) =>
@@ -108,9 +106,9 @@ realTest(
       .poll(async () => workingSeconds(await row.innerText()), { timeout: 15_000 })
       .toBeGreaterThan(firstSeconds);
 
-    await cancelAndExpectFinished(hub);
+    await cancelAndExpectRefused(hub);
 
-    // omp reports the end once the command finishes, about a minute after the answer; the row keeps its state.
+    // omp reports the end once the command finishes, about a minute after the answer; the row then reads Finished.
     await page.waitForTimeout(Math.max(0, answeredAt + 75_000 - Date.now()));
     await expect(hub.getByRole("option", { name: /Finished.*LongProbe/ })).toHaveCount(1);
     await expect(hub.getByRole("option", { name: /Running.*LongProbe/ })).toHaveCount(0);
@@ -130,7 +128,7 @@ realTest(
 );
 
 realTest(
-  "real omp: a worker cancelled after a message reads as Finished in the dark theme",
+  "real omp: a Cancel that omp refuses reads in plain words in the dark theme, and the row stays Running",
   async ({ realApp }) => {
     // The stored theme is applied before the first paint, so the page renders dark from its first frame.
     const page = await realApp.open({
@@ -138,7 +136,7 @@ realTest(
         target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
     });
     const { hub } = await steerLongWorker(page);
-    await cancelAndExpectFinished(hub);
+    await cancelAndExpectRefused(hub);
 
     expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(
       true,

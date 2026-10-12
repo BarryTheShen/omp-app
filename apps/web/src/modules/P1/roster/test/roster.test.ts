@@ -96,6 +96,10 @@ function requireValue<T>(value: T | undefined): T {
   return value;
 }
 
+function completedAgent(id: string, index: number): AgentRef {
+  return { ...agent(id, index), status: "completed" };
+}
+
 describe("P1 AgentRosterStore", () => {
   test("merges snapshots/lifecycle in sequence order and late snapshots cannot resurrect tombstones", () => {
     let now = 1_000;
@@ -238,7 +242,7 @@ describe("P1 AgentRosterStore", () => {
     ]);
   });
 
-  test("a worker the roster held as running reads as ended from the moment omp says it is not running", () => {
+  test("a worker a re-read lists as ended reads as ended from the moment the roster read it, and its time stays there", () => {
     let now = 1_000;
     const store = new AgentRosterStore({
       threadId,
@@ -248,14 +252,12 @@ describe("P1 AgentRosterStore", () => {
     store.mergeSnapshot([agent("a", 0)]);
     const key = requireValue(store.getSnapshot().active[0]);
     now += 5;
-    expect(store.markNotRunning(SubagentId.parse("a"))).toBe(true);
+    store.mergeSnapshot([completedAgent("a", 0)]);
     expect(store.getSnapshot().agents[key]).toMatchObject({
       status: "completed",
       terminalAt: 1_005,
     });
     expect(store.getSnapshot().recent).toEqual([key]);
-    // omp's durationMs (105) plus the 5 ms the worker ran on the roster's clock, then frozen at the end.
-    expect(store.getSnapshot().agents[key]?.metrics.durationMs).toBe(110);
 
     now += 60_000;
     const end = lifecycle("a", "completed", 0, 1);
@@ -264,10 +266,9 @@ describe("P1 AgentRosterStore", () => {
       status: "completed",
       terminalAt: 1_005,
     });
-    expect(store.getSnapshot().agents[key]?.metrics.durationMs).toBe(110);
   });
 
-  test("a snapshot that still lists a worker as running cannot revive it, and an unknown worker is not marked", () => {
+  test("a snapshot that still lists an ended worker as running cannot revive it", () => {
     let now = 1_000;
     const store = new AgentRosterStore({
       threadId,
@@ -276,14 +277,13 @@ describe("P1 AgentRosterStore", () => {
     });
     store.mergeSnapshot([agent("a", 0)]);
     const key = requireValue(store.getSnapshot().active[0]);
-    store.markNotRunning(SubagentId.parse("a"));
+    store.mergeSnapshot([completedAgent("a", 0)]);
     now += 1;
     store.mergeSnapshot([agent("a", 0)]);
     expect(store.getSnapshot().agents[key]?.status).toBe("completed");
-    expect(store.markNotRunning(SubagentId.parse("missing"))).toBe(false);
   });
 
-  test("a failed end after the roster was told omp no longer runs the worker ends it as Failed, and keeps its first end time", () => {
+  test("a failed end after the roster read the worker as ended ends it as Failed, and keeps its first end time", () => {
     let now = 1_000;
     const store = new AgentRosterStore({
       threadId,
@@ -293,14 +293,14 @@ describe("P1 AgentRosterStore", () => {
     store.mergeSnapshot([agent("a", 0)]);
     const key = requireValue(store.getSnapshot().active[0]);
     now += 5;
-    store.markNotRunning(SubagentId.parse("a"));
+    store.mergeSnapshot([completedAgent("a", 0)]);
     now += 60_000;
     const failed = lifecycle("a", "failed", 0, 1);
     store.ingestNotification(failed.event, failed.seq);
     expect(store.getSnapshot().agents[key]).toMatchObject({ status: "failed", terminalAt: 1_005 });
   });
 
-  test("a new run started after the roster was told omp no longer runs the worker is a new row, and the ended row stays ended", () => {
+  test("a new run started after the roster read the worker as ended is a new row, and the ended row stays ended", () => {
     let now = 1_000;
     const store = new AgentRosterStore({
       threadId,
@@ -310,7 +310,7 @@ describe("P1 AgentRosterStore", () => {
     store.mergeSnapshot([agent("a", 0)]);
     const oldKey = requireValue(store.getSnapshot().active[0]);
     now += 5;
-    store.markNotRunning(SubagentId.parse("a"));
+    store.mergeSnapshot([completedAgent("a", 0)]);
     now += 60_000;
     const started = lifecycle("a", "started", 0, 1);
     store.ingestNotification(started.event, started.seq);

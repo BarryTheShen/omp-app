@@ -115,7 +115,7 @@ export function steerSendFailed(draft: SteerDraft, failure: string): SteerDraft 
 export function steerFailureMessage(failure: AppFailure): string {
   switch (failure.appError.code) {
     case "conflict":
-      return "This worker has finished, so the message was not sent. Your text is still here.";
+      return "omp did not take the message: the worker is busy, for example while it waits on a background command. Your text is still here; send it again once the command finishes.";
     case "unavailable":
       return "Sending messages to a worker isn't available in this version of omp.";
     case "invalid_args":

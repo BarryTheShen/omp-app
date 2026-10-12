@@ -221,36 +221,6 @@ export class AgentRosterStore {
     if (changed) this.commit(this.snapshot.lastSeq);
   }
 
-  /**
-   * omp answers a cancel with "not running" once it no longer runs the worker, so the roster records the worker
-   * as ended now and its row agrees with that answer. omp's own end, when its lifecycle frame arrives, sets the
-   * status; the time stays the one the roster first recorded. Returns false when the roster does not hold the
-   * worker as running.
-   */
-  public markNotRunning(id: SubagentId): boolean {
-    if (this.disposed) return false;
-    const key = this.latestById.get(id);
-    const current = key === undefined ? undefined : this.snapshot.agents[key];
-    if (current === undefined || current.status !== "running" || current.terminalAt !== null) {
-      return false;
-    }
-    const now = this.clock.now();
-    this.replaceAgent(
-      current.key,
-      createAgent(
-        { ...current, status: "completed", lastUpdate: now },
-        current.key,
-        current.incarnation,
-        now,
-        current.lifecycleSeq,
-        current.progressSeq,
-        metricsAtEnd(current.metrics, now),
-      ),
-    );
-    this.commit(this.snapshot.lastSeq);
-    return true;
-  }
-
   /** Lists the chat's finished workers once the live roster is in, so a reload still shows them. */
   private async adoptFinishedWorkers(): Promise<void> {
     if (this.finished === undefined) return;
@@ -320,7 +290,9 @@ export class AgentRosterStore {
           terminalAt,
           current.lifecycleSeq,
           current.progressSeq,
-          metricsFromAgent(agent, this.clock.now()),
+          terminalAt === null
+            ? metricsFromAgent(agent, this.clock.now())
+            : metricsAtEnd(current.metrics, this.clock.now()),
         ),
       );
     }

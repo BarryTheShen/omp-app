@@ -77,17 +77,44 @@ describe("AgentHub controller cancel", () => {
     expect(controller.getState().cancels[key]).toEqual({ state: "sent" });
   });
 
-  test("a cancel that omp answers as not running records the worker as ended, keeps the answer, and offers no retry", async () => {
+  test("a cancel omp refuses while the roster still lists the worker as running keeps the row running and offers Cancel again", async () => {
     const clock = fixtureClock();
-    const store = await fixtureRoster({ clock, workers: [fixtureWorker("quiet", 1)] });
-    const key = keyOf(store.getSnapshot().order, "quiet");
+    const store = await fixtureRoster({ clock, workers: [fixtureWorker("busy", 1)] });
+    const key = keyOf(store.getSnapshot().order, "busy");
     const run = vi.fn<() => Promise<unknown>>().mockRejectedValue(
       new AppFailure({
-        code: "not_found",
-        message: "Subagent is no longer running",
-        retryable: false,
+        code: "conflict",
+        message: "omp did not stop the worker",
+        retryable: true,
       }),
     );
+    const controller = createAgentHubController({ roster: store, actions: actions(run) });
+
+    clock.set(FIXTURE_NOW + 500);
+    await controller.cancel(key);
+    expect(store.getSnapshot().agents[key]).toMatchObject({ status: "running", terminalAt: null });
+    expect(controller.getState().cancels[key]).toEqual({ state: "refused" });
+    await controller.cancel(key);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  test("a cancel omp refuses, after which the re-read shows the worker ended, reads Finished with omp's answer and offers no retry", async () => {
+    const clock = fixtureClock();
+    const workers = [fixtureWorker("quiet", 1)];
+    const store = await fixtureRoster({ clock, workers });
+    const key = keyOf(store.getSnapshot().order, "quiet");
+    const run = vi.fn<() => Promise<unknown>>().mockImplementation(async () => {
+      // omp ends the worker between its refusal and the re-read that follows it.
+      workers[0] = fixtureWorker("quiet", 1, {
+        status: "completed",
+        lastUpdate: FIXTURE_NOW + 2_000,
+      });
+      throw new AppFailure({
+        code: "conflict",
+        message: "omp did not stop the worker",
+        retryable: true,
+      });
+    });
     const controller = createAgentHubController({ roster: store, actions: actions(run) });
 
     clock.set(FIXTURE_NOW + 500);
@@ -106,20 +133,23 @@ describe("AgentHub controller cancel", () => {
 
   test("the time a worker reads when omp ends it stays where the clock had moved it", async () => {
     const clock = fixtureClock();
-    const store = await fixtureRoster({
-      clock,
-      workers: [
-        fixtureWorker("timed", 1, { progress: { currentTool: "bash", durationMs: 5_000 } }),
-      ],
-    });
+    const workers = [
+      fixtureWorker("timed", 1, { progress: { currentTool: "bash", durationMs: 5_000 } }),
+    ];
+    const store = await fixtureRoster({ clock, workers });
     const key = keyOf(store.getSnapshot().order, "timed");
     const controller = createAgentHubController({
       roster: store,
       actions: actions(async () => {
+        workers[0] = fixtureWorker("timed", 1, {
+          status: "completed",
+          lastUpdate: FIXTURE_NOW + 2_000,
+          progress: { currentTool: "bash", durationMs: 5_000 },
+        });
         throw new AppFailure({
-          code: "not_found",
-          message: "Subagent is no longer running",
-          retryable: false,
+          code: "conflict",
+          message: "omp did not stop the worker",
+          retryable: true,
         });
       }),
     });

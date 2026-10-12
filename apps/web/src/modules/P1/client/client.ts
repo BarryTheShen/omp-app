@@ -76,6 +76,12 @@ function asP1Failure(error: unknown, fallback: AppFailure): AppFailure {
   return error instanceof AppFailure ? error : fallback;
 }
 
+/** omp refuses a steer to a worker it does not run right now: its own words name the worker as not running. */
+function isNotRunningRefusal(error: AppFailure): boolean {
+  const omp = error.appError.omp;
+  return omp?.command === "steer_subagent" && omp.error.startsWith("Subagent not running");
+}
+
 function requiredCapability(capabilities: CapabilityMap, key: keyof typeof P1CapabilityKeys): void {
   const capability = P1CapabilityKeys[key];
   if (capabilities[capability]?.state === "available") return;
@@ -208,9 +214,9 @@ class SubagentClientImpl implements SubagentClient {
         options,
       );
       const parsed = CancelAgentResultSchema.parse(result);
-      if (!parsed.cancelled) {
-        throw failure("not_found", "Subagent is no longer running", false);
-      }
+      // omp answers false for a worker it cannot reach right now, for example while it waits on a background command.
+      // The worker may still run, so the caller reads it again before the row changes.
+      if (!parsed.cancelled) throw failure("conflict", "omp did not stop the worker", true);
       return { cancelled: true };
     } catch (error) {
       throw asP1Failure(error, failure("omp_error", "Subagent cancel request failed", true));
@@ -231,7 +237,11 @@ class SubagentClientImpl implements SubagentClient {
         options,
       );
     } catch (error) {
-      throw asP1Failure(error, failure("omp_error", "Subagent steer request failed", true));
+      const cause = asP1Failure(error, failure("omp_error", "Subagent steer request failed", true));
+      // omp refuses a message to a worker it does not run right now, for example while it waits on a background command.
+      if (isNotRunningRefusal(cause))
+        throw failure("conflict", "omp did not take the message", true);
+      throw cause;
     }
   }
 

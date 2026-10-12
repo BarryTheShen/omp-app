@@ -34,7 +34,7 @@ function CancelButton({
   readonly onCancel: (key: string) => void;
 }) {
   const cancel = inspector.cancel;
-  if (cancel.state === "ready") {
+  if (cancel.state === "ready" || cancel.state === "refused") {
     return (
       <Button
         aria-label={`Cancel ${inspector.title}`}
@@ -86,6 +86,12 @@ function CancelNotice({
       );
     case "ended":
       return <p className="text-muted-foreground text-sm">{cancel.message}</p>;
+    case "refused":
+      return (
+        <p className="text-muted-foreground text-sm" role="status">
+          {cancel.message}
+        </p>
+      );
     case "unavailable":
       return (
         <p className="text-muted-foreground text-xs">Cancel is not available: {cancel.reason}</p>
