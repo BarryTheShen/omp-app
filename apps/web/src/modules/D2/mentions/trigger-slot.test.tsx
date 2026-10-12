@@ -3,10 +3,13 @@ import {
   type ThreadMessage,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
+import type { AppClient } from "@omp-app/client";
+import { FolderPath } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ComposerSurface } from "../../U2/composer/composer";
 import type { MentionProvider, TriggerSearchResult } from "../contract";
+import { createGithubMentionProvider } from "./mentions";
 import { MentionTriggerSlot } from "./trigger-slot";
 
 function RuntimeHarness({ children }: { readonly children: React.ReactNode }) {
@@ -26,6 +29,14 @@ function pause(): Promise<void> {
   // Longer than the 60 ms debounce, so a search that was started has answered by then.
   setTimeout(resolve, 200);
   return promise;
+}
+
+/** The real GitHub provider on a host that finds nothing, so its five action rows are its only candidates. */
+function realGithubProvider(): MentionProvider {
+  const client = {
+    port: () => ({ search: async () => ({ candidates: [], truncated: false }) }),
+  } as unknown as AppClient;
+  return createGithubMentionProvider({ client, folder: FolderPath.parse("/workspace") });
 }
 
 describe("D2.4 MentionTriggerSlot", () => {
@@ -202,6 +213,47 @@ describe("D2.4 MentionTriggerSlot", () => {
     (input as HTMLTextAreaElement).setSelectionRange(6, 6);
     await waitFor(() => expect(searched).toHaveBeenCalledWith("1"));
     expect(screen.getByRole("listbox", { name: "GitHub suggestions" })).toBeTruthy();
+  });
+
+  test("a bare # opens its list, and the list closes once a space makes the # a heading", async () => {
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot providers={[realGithubProvider()]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "#" } });
+    input.setSelectionRange(1, 1);
+    expect(await screen.findByRole("listbox", { name: "GitHub suggestions" })).toBeTruthy();
+    fireEvent.change(input, { target: { value: "# " } });
+    input.setSelectionRange(2, 2);
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+  });
+
+  test("a heading typed as '# Plan' opens no list, and Enter sends it instead of erasing it", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot providers={[realGithubProvider()]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "# Plan" } });
+    input.setSelectionRange(6, 6);
+    await pause();
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(submitPrompt).toHaveBeenCalledWith({
+        mode: "prompt",
+        text: "# Plan",
+        delivery: "new",
+      }),
+    );
   });
 
   test("the file list is named File suggestions, not the raw @ syntax", async () => {

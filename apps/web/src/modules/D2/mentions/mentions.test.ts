@@ -107,6 +107,26 @@ describe("D2.4 mention detection and expansion", () => {
       attachmentRefs: [{ id: "file:src/app.ts", name: "src/app.ts", mediaType: "text/plain" }],
     });
   });
+  test("a # followed by a space is a heading, so no trigger opens for it (issue 1333)", () => {
+    expect(detectMentionTrigger("# Plan")).toBeNull();
+    // The caret right after the # is still inside the heading.
+    expect(detectMentionTrigger("# Plan", 1)).toBeNull();
+    expect(detectMentionTrigger("#\nPlan", 1)).toBeNull();
+    expect(detectMentionTrigger("Notes\n# Plan\nsteps")).toBeNull();
+    // The heading is the nearest #, so an earlier reference does not stretch over it.
+    expect(detectMentionTrigger("fixes #12\n# Plan")).toBeNull();
+    // A reference after a heading still opens, and a bare # still opens the action list.
+    expect(detectMentionTrigger("# Plan #12")).toEqual({
+      trigger: "#",
+      query: "12",
+      range: { start: 7, end: 10 },
+    });
+    expect(detectMentionTrigger("#")).toEqual({
+      trigger: "#",
+      query: "",
+      range: { start: 0, end: 1 },
+    });
+  });
   test("resolves local # actions without sending a prompt", () => {
     expect(executePromptAction("copy-current-line", "first\nsecond line", 10)).toEqual({
       text: "first\nsecond line",
