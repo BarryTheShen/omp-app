@@ -61,7 +61,6 @@ import type {
   SessionInfoRuntimeSource,
 } from "@/modules/D5/contract";
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
-import { SessionInfoModel } from "@/modules/D5/session/info";
 import { FAST_REFUSAL_NOTICE_SOURCE } from "@/modules/D7/modes";
 import { NotificationFeedback, NotificationNotices } from "@/modules/N1/feedback";
 import { NotificationProjector, sessionRetiredNotices } from "@/modules/N1/notifications";
@@ -142,7 +141,6 @@ import {
 import { PanelShell } from "@/modules/U5/panel/shell";
 import { TodoChecklist } from "@/modules/U5/todo/checklist/checklist";
 import { projectTodoSnapshot } from "@/modules/U5/todo/model";
-import { TodoStoreAdapter } from "@/modules/U5/todo/store/store";
 import { OverlayHost, useStableOverlayHost } from "@/overlay";
 import { type CommandPaletteHandler, CommandPaletteHost } from "@/palette";
 import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
@@ -176,6 +174,7 @@ import {
 } from "./external-editor-dialog";
 import { FolderSwitcher } from "./folder-switcher";
 import { HistorySearchDialog, useHistorySearchShortcut } from "./history-search-dialog";
+import { useChatSessionInfo, useChatTodoStore } from "./owned-stores";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
 import { useQueueDequeueShortcut } from "./queue-dequeue-shortcut";
@@ -687,11 +686,7 @@ function ActiveThreadReady({
     }),
     [catalog, threadId],
   );
-  const sessionInfo = useMemo(
-    () => new SessionInfoModel({ runtime: runtimeSource, metadata: metadataSource }),
-    [metadataSource, runtimeSource],
-  );
-  useDisposeWhenReplaced(sessionInfo);
+  const sessionInfo = useChatSessionInfo(runtimeSource, metadataSource);
   const sessionCapabilities = useMemo<SessionCapabilitiesSource>(
     () => ({ getSnapshot: () => capabilities }),
     [capabilities],
@@ -974,7 +969,7 @@ function ActiveThreadReady({
     };
   }, [queueController]);
   const queueAdapter = useMemo(() => createQueueAdapter(queueController), [queueController]);
-  const todoStore = useMemo(() => new TodoStoreAdapter({ store }), [store]);
+  const todoStore = useChatTodoStore(store);
   const todoSnapshot = useSyncExternalStore(
     (listener) => todoStore.subscribe(listener),
     () => todoStore.getSnapshot(),
@@ -992,7 +987,6 @@ function ActiveThreadReady({
       ),
     [],
   );
-  useDisposeWhenReplaced(todoStore);
   const draftStore = useMemo(() => createDraftStoreAdapter(client), [client]);
   // Unsent text is also kept in this tab, so it survives the app's server stopping before the autosave saves it.
   const draftBuffer = useMemo(
