@@ -752,12 +752,13 @@ function ActiveThreadReady({
               close("programmatic");
             }}
             confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
+            currentTurnRunning={() => store.getSnapshot().prompt.streaming === true}
             remote={remote}
           />
         </div>
       ),
     });
-  }, [catalog, openThread, overlay, remote, threadId]);
+  }, [catalog, openThread, overlay, remote, store, threadId]);
   // The Agent Hub, opened by a double-tap of ← in the empty composer (omp's gesture). The Agents tab comes to the
   // front and its sidebar opens if it is closed; only a session with an agent to show opens it.
   const [agentsReveal, setAgentsReveal] = useState(0);
@@ -1918,6 +1919,9 @@ function ConnectedApp({
             onNewChat={openThread}
             onOpenThread={openThread}
             confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
+            currentTurnRunning={() =>
+              controller?.getSnapshot().store?.getSnapshot().prompt.streaming === true
+            }
             remote={remote}
             onNewChatStatus={reportNewChat}
             onOpenFailed={reportOpenFailure}

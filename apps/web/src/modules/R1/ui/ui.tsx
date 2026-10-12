@@ -31,7 +31,15 @@ export interface SessionCatalogSidebarProps {
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
   /** Asks before a chat is deleted; the chat is deleted only when this resolves true. `title` is the chat's name. */
   readonly confirmDelete?: (session: SessionMetadata, title: string) => Promise<boolean> | boolean;
+  /**
+   * Whether the open chat's turn runs now, read when a delete starts. An open chat whose turn runs is not left: the
+   * delete says why it cannot be deleted, in that chat.
+   */
+  readonly currentTurnRunning?: () => boolean;
 }
+
+/** The refusal of a delete while the chat's turn runs: the same sentence the server gives for such a delete. */
+const TURN_RUNNING_REFUSAL = "Wait for this chat's turn to finish, then delete it.";
 
 function highlight(text: string, query: string): React.ReactNode {
   const needle = query.trim();
@@ -157,6 +165,7 @@ export function SessionCatalogSidebar({
   onOpenFailed,
   onPinChange,
   confirmDelete,
+  currentTurnRunning,
 }: SessionCatalogSidebarProps) {
   const snapshot = catalog.getSnapshot();
   const [query, setQuery] = useState(snapshot.filter.query);
@@ -717,6 +726,16 @@ export function SessionCatalogSidebar({
                             const neighbour =
                               index < 0 ? undefined : (sessions[index + 1] ?? sessions[index - 1]);
                             try {
+                              // An open chat whose turn runs is not left: the sentence says why it cannot be deleted, in
+                              // the chat the person is in. Leaving first would put the person in a new, empty chat.
+                              if (
+                                session.id === currentThreadId &&
+                                currentTurnRunning?.() === true
+                              ) {
+                                catalog.setActionError(TURN_RUNNING_REFUSAL);
+                                catalog.requestFocus({ kind: "row", id: session.id });
+                                return;
+                              }
                               // The view leaves an open chat first. The server then sees nobody watching it, stops its
                               // omp and deletes the file. A refusal is kept on the catalog, so it still shows if this
                               // sidebar is rebuilt in the meantime.

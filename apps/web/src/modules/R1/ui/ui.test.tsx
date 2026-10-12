@@ -492,6 +492,32 @@ describe("SessionCatalogSidebar", () => {
     expect(calls).toEqual(["initialize:new", "delete:new"]);
   });
 
+  test("deleting the open chat while its turn runs keeps the chat open, and says why it is not deleted", async () => {
+    const calls: string[] = [];
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={() => true}
+          currentThreadId={ThreadIdSchema.parse("new")}
+          currentTurnRunning={() => true}
+          remote={fakeRemote(calls)}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Wait for this chat's turn to finish, then delete it.");
+    // The chat stays on screen: no new chat is started, and the server is not asked to delete it yet.
+    expect(calls).toEqual([]);
+  });
+
   test("a refusal still shows after the sidebar that started the delete is rebuilt, because the catalog holds it", async () => {
     const calls: string[] = [];
     const gate = Promise.withResolvers<void>();

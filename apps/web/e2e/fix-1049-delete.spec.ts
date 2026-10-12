@@ -211,7 +211,7 @@ realTest(
       timeout: 60_000,
     });
 
-    // Delete it while the turn runs: the view leaves it, the server refuses, and the sentence shows.
+    // Delete it while the turn runs: the chat is not left, and the sentence shows in the list, in the chat the person is in.
     await page.getByRole("button", { name: "More actions for Seeded chat 2" }).click();
     await deleteItem(page, "Seeded chat 2").click();
     await confirmDialog(page).getByRole("button", { name: "Delete", exact: true }).click();
