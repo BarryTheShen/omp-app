@@ -124,10 +124,7 @@ test("captures dark mode and disabled delete/archive capability reasons", async 
     "Deleting a chat isn't available in the app yet.",
   );
   await expect(archiveButton).toBeDisabled();
-  await expect(archiveButton).toHaveAttribute(
-    "title",
-    "Needs a newer omp: this feature waits for a new omp RPC.",
-  );
+  await expect(archiveButton).toHaveAttribute("title", "Needs a newer version of omp.");
   await expectStylesLoaded(page);
   await page.screenshot({
     path: join(SCREENSHOT_ROOT, "r1-6-session-sidebar-dark.png"),

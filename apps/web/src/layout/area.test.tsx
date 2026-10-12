@@ -86,6 +86,16 @@ describe("LayoutArea", () => {
     ]);
   });
 
+  test("a surface whose capability is on its fallback path is shown, as the registry shows it", () => {
+    const layout = layoutWith({ statusBar: ["context"] });
+    const capabilities: CapabilityMap = {
+      "omp.cmd.get_session_stats": { state: "fallback", via: "rpc", detail: "Totals only" },
+    };
+    expect(areaSurfaces("statusBar", surfaces, capabilities, layout).map(([id]) => id)).toEqual([
+      "context",
+    ]);
+  });
+
   test("turns several panels into tabs", () => {
     render(
       <LayoutArea

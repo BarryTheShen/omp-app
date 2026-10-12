@@ -16,6 +16,10 @@ describe("capabilityStatus", () => {
     expect(capabilityStatus(capabilities, "host.drafts")?.detail).toBe("read-only");
   });
 
+  test("the standing upstream reason says what to do, in plain words", () => {
+    expect(UPSTREAM_UNAVAILABLE.detail).toBe("Needs a newer version of omp.");
+  });
+
   test("any other unreported key stays unknown", () => {
     expect(capabilityStatus({}, "host.drafts")).toBeUndefined();
     expect(capabilityStatus({}, "omp.cmd.get_state")).toBeUndefined();

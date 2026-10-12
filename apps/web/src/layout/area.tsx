@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { cn } from "@/lib/utils";
+import { isUsable } from "@/registry-core/hooks";
 import { type AppLayout, LAYOUT, type LayoutAreaName, type SurfaceId } from "./layout";
 
 /** One placeable piece of UI. The layout decides where it goes; the surface only renders it. */
@@ -62,7 +63,8 @@ const ROW_AREAS: Readonly<Partial<Record<LayoutAreaName, true>>> = {
 
 function available(surface: Surface, capabilities: CapabilityMap | undefined): boolean {
   if (!surface.requires || surface.requires.length === 0) return true;
-  return surface.requires.every((key) => capabilities?.[key]?.state === "available");
+  if (capabilities === undefined) return false;
+  return surface.requires.every((key) => isUsable(capabilities, key));
 }
 
 /** The surfaces an area shows, in layout order: known ids that are open and whose capabilities are available. */

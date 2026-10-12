@@ -140,15 +140,16 @@ export function StructuredEditor({
   const committedJson = JSON.stringify(committed ?? null);
   const synced = useRef({ committedJson, resetToken });
   useEffect(() => {
-    if (
-      synced.current.committedJson === committedJson &&
-      synced.current.resetToken === resetToken
-    ) {
+    const previous = synced.current;
+    if (previous.committedJson === committedJson && previous.resetToken === resetToken) {
       return;
     }
     synced.current = { committedJson, resetToken };
-    setRows(withIds(structuredDrafts(control, committed)));
-  }, [committed, committedJson, control, resetToken]);
+    // Cancel drops the staged edit, so the rows go back to the stored value. A stored value that changed
+    // elsewhere keeps this section's staged edit: after "Keep mine" the rows show what Save would write.
+    const shown = previous.resetToken === resetToken ? value : committed;
+    setRows(withIds(structuredDrafts(control, shown)));
+  }, [committed, committedJson, control, resetToken, value]);
 
   const update = (next: readonly DraftRow[]) => {
     setRows(next);
@@ -171,14 +172,39 @@ export function StructuredEditor({
   };
   const columns = columnsOf(control);
   const ordered = control.kind === "rows" && control.ordered;
+  // Keyboard focus after an edit: the new row's first field after Add, the Add button after Remove.
+  const listRef = useRef<HTMLFieldSetElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const focusAfterEdit = useRef<number | "add" | undefined>(undefined);
+  useEffect(() => {
+    const target = focusAfterEdit.current;
+    if (target === undefined) return;
+    focusAfterEdit.current = undefined;
+    const element =
+      target === "add"
+        ? addRef.current
+        : listRef.current?.querySelector<HTMLElement>(
+            `[data-row-id="${target}"] input, [data-row-id="${target}"] select`,
+          );
+    element?.focus();
+  });
 
   return (
-    <div className="min-w-0 space-y-2" data-slot="s1-structured-control">
+    <fieldset
+      aria-label={control.label}
+      className="min-w-0 space-y-2"
+      data-slot="s1-structured-control"
+      ref={listRef}
+    >
       {rows.map((row, index) => {
         const position = index + 1;
         const name = control.kind === "map" ? (row.values.key ?? "").trim() : "";
         return (
-          <div className="flex min-w-0 flex-wrap items-center gap-2" key={row.id}>
+          <div
+            className="flex min-w-0 flex-wrap items-center gap-2"
+            data-row-id={row.id}
+            key={row.id}
+          >
             {columns.map(([field, definition]) => (
               <FieldInput
                 disabled={disabled}
@@ -227,7 +253,10 @@ export function StructuredEditor({
               size="sm"
               type="button"
               variant="ghost"
-              onClick={() => update(rows.filter((candidate) => candidate.id !== row.id))}
+              onClick={() => {
+                focusAfterEdit.current = "add";
+                update(rows.filter((candidate) => candidate.id !== row.id));
+              }}
             >
               Remove
             </Button>
@@ -237,12 +266,15 @@ export function StructuredEditor({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           disabled={disabled}
+          ref={addRef}
           size="sm"
           type="button"
           variant="outline"
-          onClick={() =>
-            update([...rows, { id: nextRowId++, values: emptyStructuredDraft(control) }])
-          }
+          onClick={() => {
+            const id = nextRowId++;
+            focusAfterEdit.current = id;
+            update([...rows, { id, values: emptyStructuredDraft(control) }]);
+          }}
         >
           {control.addLabel}
         </Button>
@@ -250,7 +282,7 @@ export function StructuredEditor({
           <span className="text-muted-foreground text-xs">{control.emptyLabel}</span>
         ) : null}
       </div>
-    </div>
+    </fieldset>
   );
 }
 

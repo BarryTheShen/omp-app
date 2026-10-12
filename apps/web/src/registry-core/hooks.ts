@@ -43,7 +43,7 @@ export function useRenderer<D extends Descriptor = Descriptor>(
  * Whether a capability can be used now: `available`, or `fallback` (it works with the limits its
  * `detail` states, which the UI shows; C0 capabilities.ts). Unknown and `unavailable` are false.
  */
-function isUsable(capabilities: CapabilityMap, key: CapabilityKey): boolean {
+export function isUsable(capabilities: CapabilityMap, key: CapabilityKey): boolean {
   const state = capabilities[key]?.state;
   return state === "available" || state === "fallback";
 }
@@ -62,7 +62,7 @@ export function useCapabilities(): CapabilityMap {
 export const UPSTREAM_UNAVAILABLE: CapabilityStatus = Object.freeze({
   state: "unavailable",
   via: "upstream",
-  detail: "Needs a newer omp: this feature waits for a new omp RPC.",
+  detail: "Needs a newer version of omp.",
 });
 
 /**
