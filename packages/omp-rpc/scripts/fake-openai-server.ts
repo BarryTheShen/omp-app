@@ -143,6 +143,24 @@ function contentDeltas(content: string, inPieces: boolean): string[] {
 
 /** `count_reply` turns are counted across the whole fake server, so an answer given again is visibly new. */
 let countedReplies = 0;
+
+/** How many background jobs a prompt starts: `run_background_pair` two, `run_background_job` one, else none. */
+function backgroundJobCountOf(prompt: string): number {
+  if (prompt.includes("run_background_pair")) return 2;
+  if (prompt.includes("run_background_job")) return 1;
+  return 0;
+}
+
+/** One bash call per job with `async`, so each starts a background job that outlives the turn. */
+function backgroundStarts(count: number): Reply {
+  const tools: ToolCall[] = Array.from({ length: count }, (_, index) => ({
+    tool: "bash",
+    args: { command: `sleep 120; echo job-${index}`, async: true },
+    id: `call_background_${index}`,
+  }));
+  return { tools };
+}
+
 function reply(request: Request): Reply {
   const messages = request.messages ?? [];
   const steerChild = steerChildReply(messages);
@@ -155,6 +173,13 @@ function reply(request: Request): Reply {
     if (done < LOOP_STEPS)
       return { tool: "bash", args: { command: `echo loop-${done}` }, id: `call_loop_${done}` };
     return { text: "loop finished" };
+  }
+  // Background jobs: each bash call returns at once (`async`), so the turn ends while each job keeps running.
+  const backgroundCount = backgroundJobCountOf(text(messages[lastUser]?.content));
+  if (backgroundCount > 0) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done === 0) return backgroundStarts(backgroundCount);
+    return { text: "background jobs started" };
   }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";

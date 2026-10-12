@@ -1027,6 +1027,15 @@ function ActiveThreadReady({
     capabilities,
     appCommands: appSlashCommands,
   });
+  // The chat's command gateway for a background job's Stop control: omp's own words come back for the card that asked.
+  const runBackgroundJobCommand = useMemo(
+    () =>
+      slashProvider === null
+        ? undefined
+        : async (command: string) =>
+            (await slashProvider.execute(command)).outputs.map((output) => output.text),
+    [slashProvider],
+  );
   // What a send does in the chat it is for: a slash command, or omp's prompt. It is read at the send, so a send that
   // waited for a chat to open runs in the chat on screen, never in the one before it.
   const deliver = useCallback(
@@ -1306,7 +1315,7 @@ function ActiveThreadReady({
         store={store}
         threadId={threadId}
       />
-      <ToolRunScope store={store}>
+      <ToolRunScope runBackgroundJobCommand={runBackgroundJobCommand} store={store}>
         <TaskSubagentsScope agents={agents}>
           <TurnCancelScope cancel={cancel}>
             <AppShell

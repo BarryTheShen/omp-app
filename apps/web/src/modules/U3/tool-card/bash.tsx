@@ -5,6 +5,13 @@ import { useTranscriptDisplayPolicy } from "@/modules/U1/policy/policy";
 import { TurnCancelContext } from "@/modules/U1/thread";
 import { Button } from "../../../components/ui/button";
 import { Icons } from "../../../tokens";
+import {
+  BackgroundJobCommandContext,
+  type StopOutcome,
+  stopCommandFor,
+  stopFailedOutcome,
+  stopOutcomeOf,
+} from "./background-job";
 import { copyStatusText, ToolCard, type ToolCardOutcome } from "./card";
 import type {
   ToolCardState,
@@ -28,6 +35,13 @@ const MAX_OUTPUT_CHARS = 8_000;
 
 /** A command omp moved to the background. Its chip reads "In background" with the muted look of the unrecorded phase: nothing failed, and nothing more is known. */
 const BACKGROUND_OUTCOME: ToolCardOutcome = { label: "In background", phase: "unrecorded" };
+
+/** The card's chip for a background command: "Stopped" or "Finished" once omp answered a Stop, else "In background". */
+function backgroundChip(stop: StopOutcome | undefined): ToolCardOutcome {
+  if (stop?.status === "stopped") return { label: "Stopped", phase: "unrecorded" };
+  if (stop?.status === "finished") return { label: "Finished", phase: "unrecorded" };
+  return BACKGROUND_OUTCOME;
+}
 
 type BashResult = OmpWire.BashResult & {
   readonly stderr?: string;
@@ -54,6 +68,7 @@ export interface BashCardProps {
 /** Renders one normalized bash tool call; stop cancels the parent turn: the one supplied, else the chat's. */
 export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
   const chatCancel = useContext(TurnCancelContext);
+  const [stopOutcome, setStopOutcome] = useState<StopOutcome | undefined>(undefined);
   const normalized = normalizeToolRendererProps(rendererProps);
   const result = decodeBashResult(
     rendererProps.result ?? normalized.result ?? normalized.partialResult,
@@ -62,7 +77,7 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
   const command = commandFromArgs(rendererProps.args);
   const cwd = cwdFromArgs(rendererProps.args) ?? result?.workingDir;
   const summary = singleLine(command);
-  const outcome = result?.background === undefined ? undefined : BACKGROUND_OUTCOME;
+  const outcome = result?.background === undefined ? undefined : backgroundChip(stopOutcome);
 
   return (
     <div data-slot="u3-bash-card" data-testid="u3-bash-card" title={command}>
@@ -79,6 +94,8 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
           state={state}
           onCancel={onCancel ?? chatCancel}
           onCopy={onCopy}
+          stopOutcome={stopOutcome}
+          onStopOutcome={setStopOutcome}
         />
       </ToolCard>
     </div>
@@ -394,12 +411,16 @@ function BashOutput({
   state,
   onCancel,
   onCopy,
+  stopOutcome,
+  onStopOutcome,
 }: {
   readonly result: BashResult | undefined;
   readonly state: ToolCardState;
   readonly cut?: OutputCut;
   readonly onCancel?: () => void | Promise<void>;
   readonly onCopy?: CopyHandler;
+  readonly stopOutcome: StopOutcome | undefined;
+  readonly onStopOutcome: (outcome: StopOutcome) => void;
 }) {
   const policy = useTranscriptDisplayPolicy();
   const [expanded, setExpanded] = useState(false);
@@ -428,7 +449,10 @@ function BashOutput({
       </>
     );
   }
-  if (result.background !== undefined) return <BackgroundNote job={result.background} />;
+  if (result.background !== undefined)
+    return (
+      <BackgroundNote job={result.background} onOutcome={onStopOutcome} outcome={stopOutcome} />
+    );
   if ((state.phase === "error" || state.phase === "cancelled") && repeatsBanner(result))
     return null;
   const preview = previewOutput(result.output);
@@ -535,16 +559,58 @@ function BashOutput({
   );
 }
 
-/** omp moved the command to the background: the card names the job and shows none of omp's words for the model. */
-function BackgroundNote({ job }: { readonly job: BackgroundJob }) {
-  const text =
-    job.state === "running"
-      ? `Running in the background as job ${job.jobId}. Its output is added to the conversation when it finishes.`
-      : `Background job ${job.jobId}.`;
+/** omp moved the command to the background: the card names the job and shows none of omp's words for the model. While the job runs, the card can stop that job, and only that job. */
+function BackgroundNote({
+  job,
+  outcome,
+  onOutcome,
+}: {
+  readonly job: BackgroundJob;
+  readonly outcome: StopOutcome | undefined;
+  readonly onOutcome: (outcome: StopOutcome) => void;
+}) {
+  const runCommand = useContext(BackgroundJobCommandContext);
+  const [pending, setPending] = useState(false);
+  const command = runCommand === undefined ? undefined : stopCommandFor(job.jobId);
+  const ended = outcome?.status === "stopped" || outcome?.status === "finished";
+  const running = job.state === "running" && !ended;
+  async function stop(): Promise<void> {
+    if (runCommand === undefined || command === undefined) return;
+    setPending(true);
+    try {
+      onOutcome(stopOutcomeOf(await runCommand(command), job.jobId));
+    } catch (error) {
+      onOutcome(
+        stopFailedOutcome(job.jobId, error instanceof Error ? error.message : String(error)),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
   return (
-    <p className="text-muted-foreground px-3 py-2 text-xs" data-slot="u3-bash-background">
-      {text}
-    </p>
+    <div
+      className="text-muted-foreground flex flex-wrap items-center gap-2 px-3 py-2 text-xs"
+      data-slot="u3-bash-background"
+    >
+      <p>
+        {running
+          ? `Running in the background as job ${job.jobId}. Its output is added to the conversation when it finishes.`
+          : `Background job ${job.jobId}.`}
+      </p>
+      {running && command !== undefined && (
+        <Button
+          aria-label={`Stop background job ${job.jobId}`}
+          disabled={pending}
+          onClick={() => void stop()}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Stop
+        </Button>
+      )}
+      {outcome !== undefined && <p role="status">{outcome.sentence}</p>}
+    </div>
   );
 }
 

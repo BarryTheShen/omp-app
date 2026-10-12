@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ReadOnlyNestedTranscript, TurnCancelContext } from "@/modules/U1/thread";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
+import { BackgroundJobCommandContext } from "./background-job";
 import { BashCard, decodeBashResult, failureMessage } from "./bash";
 import type { ToolRendererProps } from "./contract";
 import { FullOutputProvider } from "./full-output";
@@ -620,5 +621,66 @@ describe("a command omp moved to the background", () => {
     expect(screen.getByText("In background")).toBeTruthy();
     expect(screen.queryByText(/Do NOT poll/)).toBeNull();
     expect(screen.queryByText(/Backgrounded early/)).toBeNull();
+  });
+
+  test("stops that job from the card, and shows omp's outcome in plain English", async () => {
+    const run = vi.fn(async (_command: string) => ["Cancelled background job bg_1."]);
+    render(
+      <BackgroundJobCommandContext.Provider value={run}>
+        <BashCard rendererProps={props(backgrounded)} />
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
+    await waitFor(() =>
+      expect(screen.getByText("Stopped background job bg_1.", { exact: true })).toBeTruthy(),
+    );
+    expect(run).toHaveBeenCalledWith("/jobs kill bg_1");
+    expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
+    expect(screen.getByText("Background job bg_1.", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Stopped", { exact: true })).toBeTruthy();
+  });
+
+  test("offers no Stop without the chat's command gateway", () => {
+    render(<BashCard rendererProps={props(backgrounded)} />);
+    expandToolCards();
+    expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
+  });
+
+  test("says a job omp no longer lists as running has already finished", async () => {
+    const run = vi.fn(async (_command: string) => ['No running background job with id "bg_1".']);
+    render(
+      <BackgroundJobCommandContext.Provider value={run}>
+        <BashCard rendererProps={props(backgrounded)} />
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Already finished: omp has no running job with id bg_1.", { exact: true }),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
+    expect(screen.getByText("Finished", { exact: true })).toBeTruthy();
+  });
+
+  test("keeps the Stop control and shows the reason when the command does not reach omp", async () => {
+    const run = vi.fn(async (_command: string): Promise<string[]> => {
+      throw new Error("gateway offline");
+    });
+    render(
+      <BackgroundJobCommandContext.Provider value={run}>
+        <BashCard rendererProps={props(backgrounded)} />
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Could not stop background job bg_1: gateway offline", { exact: true }),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
   });
 });
