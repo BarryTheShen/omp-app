@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -70,39 +70,88 @@ function Harness({ snapshot }: { readonly snapshot: ConfigSnapshot }) {
   );
 }
 
+/** The Cancel that closes the open field: the one outside the section's "Settings actions" group. */
+function fieldCancel(): HTMLElement {
+  const group = screen.getByRole("group", { name: "Settings actions" });
+  const button = screen
+    .getAllByRole("button", { name: "Cancel" })
+    .find((element) => !group.contains(element));
+  if (!button) throw new Error("the field has no Cancel button");
+  return button;
+}
+
+/** The section's own Cancel, which discards every change in the section. */
+function sectionCancel(): HTMLElement {
+  return within(screen.getByRole("group", { name: "Settings actions" })).getByRole("button", {
+    name: "Cancel",
+  });
+}
+
 describe("a hidden saved URL in the settings row", () => {
-  test("offers Replace and Clear, and Clear stages the removal of the saved value", () => {
+  test("offers Replace and Unset, and Unset stages the removal of the saved value", () => {
     render(<Harness snapshot={savedHidden} />);
     expect(screen.getByTestId("dev.autoqaPush.endpoint-hidden").textContent).toBe(
       "Saved for all projects; the value is hidden.",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    expect(screen.getByText("Will be cleared when you save.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Unset" }));
+    expect(screen.getByText("Will be unset when you save.")).toBeTruthy();
   });
 
-  test("Replace opens a hidden field; a value that is not a URL is refused and the field stays open", () => {
+  test("Replace opens a labelled hidden field, and the field takes the focus", () => {
     render(<Harness snapshot={savedHidden} />);
     fireEvent.click(screen.getByRole("button", { name: "Replace…" }));
-    const field = screen.getByLabelText("New Auto QA Push Endpoint") as HTMLInputElement;
+    const field = screen.getByLabelText("New address") as HTMLInputElement;
     expect(field.type).toBe("password");
-    fireEvent.change(field, { target: { value: "not a url" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.getByText("Enter a valid URL.")).toBeTruthy();
-    expect(screen.getByLabelText("New Auto QA Push Endpoint")).toBeTruthy();
+    expect(document.activeElement).toBe(field);
   });
 
-  test("Replace stages a valid address as a secret set, and closes the field", () => {
+  test("Use this address refuses a value that is not a URL, and the field stays open", () => {
     render(<Harness snapshot={savedHidden} />);
     fireEvent.click(screen.getByRole("button", { name: "Replace…" }));
-    fireEvent.change(screen.getByLabelText("New Auto QA Push Endpoint"), {
+    fireEvent.change(screen.getByLabelText("New address"), { target: { value: "not a url" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use this address" }));
+    expect(screen.getByText("Enter a valid URL.")).toBeTruthy();
+    expect(screen.getByLabelText("New address")).toBeTruthy();
+  });
+
+  test("Use this address stages a valid address, closes the field and returns focus to Replace…", () => {
+    render(<Harness snapshot={savedHidden} />);
+    fireEvent.click(screen.getByRole("button", { name: "Replace…" }));
+    fireEvent.change(screen.getByLabelText("New address"), {
       target: { value: "https://qa.example.test/v2" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.queryByLabelText("New Auto QA Push Endpoint")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Use this address" }));
+    expect(screen.queryByLabelText("New address")).toBeNull();
     expect(screen.getByText("A new address is ready to save.")).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Replace…" }));
   });
 
-  test("a hidden value set in the environment reads as a sentence, with neither Replace nor Clear", () => {
+  test("Cancel closes the field, forgets the typed address and returns focus to Replace…", () => {
+    render(<Harness snapshot={savedHidden} />);
+    fireEvent.click(screen.getByRole("button", { name: "Replace…" }));
+    fireEvent.change(screen.getByLabelText("New address"), {
+      target: { value: "https://qa.example.test/v2" },
+    });
+    fireEvent.click(fieldCancel());
+    expect(screen.queryByLabelText("New address")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Replace…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replace…" }));
+    expect((screen.getByLabelText("New address") as HTMLInputElement).value).toBe("");
+  });
+
+  test("the section's Cancel closes an open field and forgets the typed address", () => {
+    render(<Harness snapshot={savedHidden} />);
+    fireEvent.click(screen.getByRole("button", { name: "Replace…" }));
+    fireEvent.change(screen.getByLabelText("New address"), {
+      target: { value: "https://qa.example.test/v2" },
+    });
+    fireEvent.click(sectionCancel());
+    expect(screen.queryByLabelText("New address")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Replace…" }));
+    expect((screen.getByLabelText("New address") as HTMLInputElement).value).toBe("");
+  });
+
+  test("a hidden value set in the environment reads as a sentence, with neither Replace nor Unset", () => {
     render(
       <Harness
         snapshot={{
@@ -123,7 +172,7 @@ describe("a hidden saved URL in the settings row", () => {
       "Set in the environment; the value is hidden.",
     );
     expect(screen.queryByRole("button", { name: "Replace…" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Unset" })).toBeNull();
   });
 });
 

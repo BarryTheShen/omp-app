@@ -5,8 +5,8 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
 
 /**
  * Issue #1021. A saved endpoint whose query carries a token is hidden, and its row used to show only a sentence.
- * The row now offers Replace and Clear, as the secrets do: Replace takes a new address and never shows the typed
- * text again, Clear removes the saved address. The token never reaches the page or the debug log.
+ * The row now offers Replace and Unset, as the secrets do: Replace takes a new address and never shows the typed
+ * text again, Unset removes the saved address. The token never reaches the page or the debug log.
  */
 
 // Assembled at runtime so no source line looks like a real credential (the PR gate rejects those).
@@ -41,7 +41,7 @@ function configOn(agentDir: string): Promise<string> {
 }
 
 realTest(
-  "a saved endpoint with a token offers Replace and Clear; Replace keeps a token address hidden; Clear removes it",
+  "a saved endpoint with a token offers Replace and Unset; Replace keeps a token address hidden; Unset removes it",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
     await saveEndpoint(realApp.agentDir, `https://qa.example.test/v1?token=${TOKEN}`);
@@ -53,21 +53,24 @@ realTest(
     await expect(sentence).toHaveText(SENTENCE);
     const replace = panel.getByRole("button", { name: "Replace…", exact: true });
     await expect(replace).toBeVisible();
-    await expect(panel.getByRole("button", { name: "Clear", exact: true })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Unset", exact: true })).toBeVisible();
     await sentence.evaluate((element) => element.scrollIntoView({ block: "center" }));
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-1021-hidden-light.png") });
 
     await replace.click();
-    const field = panel.getByLabel("New Auto QA Push Endpoint");
+    const field = panel.getByLabel("New address");
     await expect(field).toHaveAttribute("type", "password");
+    await expect(field).toBeFocused();
+    await expect(panel.getByText("New address", { exact: true })).toHaveCSS("font-weight", "500");
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-1021-replace-light.png") });
 
     // A new address that still carries a token is saved, and stays hidden.
     await field.fill(`https://qa.example.test/v2?token=${NEW_TOKEN}`);
-    await panel.getByRole("button", { name: "Save", exact: true }).click();
+    await panel.getByRole("button", { name: "Use this address", exact: true }).click();
     await expect(panel.getByText("A new address is ready to save.")).toBeVisible();
+    await expect(replace).toBeFocused();
     await panel.getByRole("button", { name: "Save changes", exact: true }).click();
     await expect
       .poll(() => configOn(realApp.agentDir), { timeout: 20_000 })
@@ -76,9 +79,9 @@ realTest(
     expect(await page.content()).not.toContain(NEW_TOKEN);
     expect(realApp.log()).not.toContain(NEW_TOKEN);
 
-    // Clear removes the saved address, and the field returns to a plain value.
-    await panel.getByRole("button", { name: "Clear", exact: true }).click();
-    await expect(panel.getByText("Will be cleared when you save.")).toBeVisible();
+    // Unset removes the saved address, and the field returns to a plain value.
+    await panel.getByRole("button", { name: "Unset", exact: true }).click();
+    await expect(panel.getByText("Will be unset when you save.")).toBeVisible();
     await panel.getByRole("button", { name: "Save changes", exact: true }).click();
     await expect
       .poll(() => configOn(realApp.agentDir), { timeout: 20_000 })
@@ -109,6 +112,10 @@ realTest("a saved endpoint with a token reads in dark", async ({ realApp }, test
   await sentence.evaluate((element) => element.scrollIntoView({ block: "center" }));
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: join(screenshots, "fix-1021-hidden-dark.png") });
+  await panel.getByRole("button", { name: "Replace…", exact: true }).click();
+  await expect(panel.getByLabel("New address")).toBeFocused();
+  await waitForFiniteAnimations(page);
+  await page.screenshot({ path: join(screenshots, "fix-1021-replace-dark.png") });
   expect(realApp.problems).toEqual([]);
 });
 
@@ -128,5 +135,13 @@ realTest("a saved endpoint with a token fits a 390 px phone", async ({ realApp }
   );
   expect(fits).toBe(true);
   await page.screenshot({ path: join(screenshots, "fix-1021-hidden-narrow.png") });
+  await panel.getByRole("button", { name: "Replace…", exact: true }).click();
+  await expect(panel.getByLabel("New address")).toBeFocused();
+  await waitForFiniteAnimations(page);
+  const fitsWithField = await page.evaluate(
+    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+  );
+  expect(fitsWithField).toBe(true);
+  await page.screenshot({ path: join(screenshots, "fix-1021-replace-narrow.png") });
   expect(realApp.problems).toEqual([]);
 });

@@ -1,5 +1,5 @@
 import type { ConfigEntry } from "@omp-app/contracts";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { InlineError, Section, SettingRow, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -275,6 +275,7 @@ function SettingControlRow({
         />
       ) : hiddenValue !== undefined ? (
         <HiddenValue
+          key={resetToken}
           control={control}
           sentence={hiddenValue}
           canChange={entry?.source !== "env"}
@@ -303,7 +304,7 @@ function SettingControlRow({
 
 /**
  * A saved value the server hid, such as a URL whose query carries a credential. Replace takes a new address as a
- * secret edit, so the typed text is not shown back, and Clear removes the saved one. A value set in the environment
+ * secret edit, so the typed text is not shown back, and Unset removes the saved one. A value set in the environment
  * cannot be changed here, so it only reads as a sentence.
  */
 function HiddenValue({
@@ -323,16 +324,31 @@ function HiddenValue({
   readonly disabled: boolean;
   readonly onStage: (value: SettingValue) => void;
 }) {
+  const fieldId = useId();
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const replaceRef = useRef<HTMLButtonElement>(null);
+  // Set when the field closes (Cancel, or an address staged), so Replace… takes the focus back. Discarding the
+  // section's changes remounts this field (SettingControlRow keys it by the reset token), so no focus moves.
+  const restoreFocus = useRef(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (editing) {
+      fieldRef.current?.focus();
+    } else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      replaceRef.current?.focus();
+    }
+  }, [editing]);
   const pending =
     staged?.secret !== true
       ? undefined
       : staged.action === "unset"
-        ? "Will be cleared when you save."
+        ? "Will be unset when you save."
         : "A new address is ready to save.";
   const closeEditor = () => {
+    restoreFocus.current = true;
     setEditing(false);
     setDraft("");
     setError(undefined);
@@ -355,10 +371,14 @@ function HiddenValue({
       {pending ? <p className="text-foreground text-sm">{pending}</p> : null}
       {canChange && editing ? (
         <form className="flex flex-col gap-2" onSubmit={submit}>
+          <label className="text-sm font-medium" htmlFor={fieldId}>
+            New address
+          </label>
           <Input
+            id={fieldId}
+            ref={fieldRef}
             type="password"
             autoComplete="off"
-            aria-label={`New ${control.label}`}
             value={draft}
             disabled={disabled}
             onChange={(event) => {
@@ -369,7 +389,7 @@ function HiddenValue({
           {error ? <InlineError message={error} variant="message" /> : null}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" size="sm" disabled={disabled}>
-              Save
+              Use this address
             </Button>
             <Button
               type="button"
@@ -385,6 +405,7 @@ function HiddenValue({
       ) : canChange ? (
         <div className="flex flex-wrap gap-2">
           <Button
+            ref={replaceRef}
             type="button"
             variant="outline"
             size="sm"
@@ -400,7 +421,7 @@ function HiddenValue({
             onClick={() => onStage({ secret: true, action: "unset" })}
             disabled={disabled}
           >
-            Clear
+            Unset
           </Button>
         </div>
       ) : null}
