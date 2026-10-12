@@ -791,7 +791,9 @@ export class RpcSessionPortRuntime {
       } else entry.viewers.set(call.connectionId, count - 1);
       entry.preferences.delete(call.connectionId);
       this.#context.processRegistry.release(entry.bootstrap.threadId);
-      await this.#arbitrate(entry, call.signal);
+      // Only a chat another tab still watches recomputes its subscription, as releaseConnection does: the last view
+      // leaving sends omp nothing, so a chat whose omp is starting or has exited does not refuse its close.
+      if (entry.viewers.size > 0) await this.#arbitrate(entry, call.signal);
     }
     return null;
   }

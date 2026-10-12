@@ -69,6 +69,8 @@ class FakeProcess implements OmpProcess {
   stderr = "";
   /** When set, the fake exits on its next request instead of answering it: an omp that dies after it started. */
   exitOnWrite = false;
+  /** Set before the process starts: its ready frame waits for `sendReady()`, so the chat is still starting. */
+  holdReady = false;
   #status: OmpProcessEvent["status"] = "starting";
   #eventListeners = new Set<(event: OmpProcessEvent) => void>();
   #chunkListeners = new Set<(chunk: Uint8Array) => void>();
@@ -104,13 +106,7 @@ class FakeProcess implements OmpProcess {
       return Promise.reject(this.startFailure);
     }
     this.emitEvent({ status: "running", processId: this.processId });
-    this.emit({
-      type: "ready",
-      protocolVersion: 1,
-      supportedProtocolVersions: [1, 2],
-      maxFrameBytes: 1048576,
-      maxReassembledFrameBytes: 67108864,
-    });
+    if (!this.holdReady) this.sendReady();
     return Promise.resolve();
   }
 
@@ -206,6 +202,17 @@ class FakeProcess implements OmpProcess {
     const error = new AppFailure({ code: "omp_exited", message: "omp exited", retryable: true });
     this.emitEvent({ status: "exited", processId: this.processId, error: error.appError });
     for (const listener of [...this.#closeListeners]) listener(error);
+  }
+
+  /** Sends omp's ready frame: a process that held it back (`holdReady`) finishes its start from here. */
+  sendReady(): void {
+    this.emit({
+      type: "ready",
+      protocolVersion: 1,
+      supportedProtocolVersions: [1, 2],
+      maxFrameBytes: 1048576,
+      maxReassembledFrameBytes: 67108864,
+    });
   }
 
   private emitEvent(event: OmpProcessEvent): void {
@@ -308,6 +315,35 @@ function withIdleClose(created: FakeProcess[], idleCloseMs: number) {
   if (registration === undefined) throw new Error("missing registration");
   const handlers = registration.handlers as HandlerSet;
   return { processRegistry, registration, open: getHandler(handlers, "open"), handlers };
+}
+
+/** A process registry whose fake processes are kept in `created`; `configure` sets each one before it starts. */
+function registryKeeping(
+  created: FakeProcess[],
+  configure: (process: FakeProcess) => void = () => undefined,
+): OmpProcessRegistry {
+  return new OmpProcessRegistry({
+    createProcess: (options: OmpProcessOptions) => {
+      const process = new FakeProcess(options, {
+        threadId: authorityThread,
+        sessionFile: authorityFile,
+      });
+      configure(process);
+      created.push(process);
+      return process;
+    },
+  });
+}
+
+/** Counts the viewer holds a process registry lets go of: each close releases one. */
+function countReleases(processRegistry: OmpProcessRegistry): { count: number } {
+  const releases = { count: 0 };
+  const release = processRegistry.release.bind(processRegistry);
+  processRegistry.release = (threadId) => {
+    releases.count += 1;
+    release(threadId);
+  };
+  return releases;
 }
 
 describe("A0.7 RpcSessionPort handlers", () => {
@@ -679,6 +715,75 @@ describe("A0.7 RpcSessionPort handlers", () => {
     );
     expect(commands?.map((frame) => frame.level)).toEqual(["progress", "events", "progress"]);
   });
+  test("closing a chat whose omp is still starting resolves, and releases its viewer once", async () => {
+    const created: FakeProcess[] = [];
+    const processRegistry = registryKeeping(created, (process) => {
+      process.holdReady = true;
+    });
+    const releases = countReleases(processRegistry);
+    const handlers = handlersFor({ ...context(created), processRegistry }, 0);
+    const opening = getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    for (let turn = 0; turn < 100 && created[0]?.status !== "running"; turn += 1) {
+      await Bun.sleep(0);
+    }
+
+    await expect(
+      getHandler(handlers, "close")({ threadId: authorityThread }, call("one")),
+    ).resolves.toBeNull();
+    expect(releases.count).toBe(1);
+
+    created[0]?.sendReady();
+    await opening;
+  });
+
+  test("closing a chat whose omp crashed resolves, and releases its viewer once", async () => {
+    const created: FakeProcess[] = [];
+    const processRegistry = registryKeeping(created);
+    const releases = countReleases(processRegistry);
+    const handlers = handlersFor({ ...context(created), processRegistry }, 0);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    created[0]?.crash();
+
+    await expect(
+      getHandler(handlers, "close")({ threadId: authorityThread }, call("one")),
+    ).resolves.toBeNull();
+    expect(releases.count).toBe(1);
+  });
+
+  test("closing a tuned chat whose omp crashed resolves, and releases its viewer once", async () => {
+    const created: FakeProcess[] = [];
+    const processRegistry = registryKeeping(created);
+    const releases = countReleases(processRegistry);
+    const handlers = handlersFor({ ...context(created), processRegistry }, 0);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    await getHandler(handlers, "setSubagentSubscription")(
+      { threadId: authorityThread, level: "progress" },
+      call("one"),
+    );
+    created[0]?.crash();
+
+    await expect(
+      getHandler(handlers, "close")({ threadId: authorityThread }, call("one")),
+    ).resolves.toBeNull();
+    expect(releases.count).toBe(1);
+  });
+
+  test("closing the last view of a ready chat sends omp no subscription or filter change", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("one"));
+    const sentBefore = created[0]?.writes.length ?? 0;
+
+    await getHandler(handlers, "close")({ threadId: authorityThread }, call("one"));
+
+    const changes = (created[0]?.writes ?? [])
+      .slice(sentBefore)
+      .filter(
+        (frame) => frame.type === "set_subagent_subscription" || frame.type === "set_event_filter",
+      );
+    expect(changes).toEqual([]);
+  });
+
   test("merges host registrations by connection and restores them after restart", async () => {
     const created: FakeProcess[] = [];
     const { processRegistry, registration, open, handlers } = withIdleClose(created, 1_000);
