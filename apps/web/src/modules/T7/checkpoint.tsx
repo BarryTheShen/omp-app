@@ -35,10 +35,11 @@ export function CheckpointCard({ rendererProps }: { readonly rendererProps: Tool
         rawResult={rawText(output)}
         state={state}
         summary={summary}
-      />
-      {!decoded.ok && state.phase === "success" && (
-        <p className="text-muted-foreground ms-2 py-1 text-xs">Checkpoint details unavailable.</p>
-      )}
+      >
+        {!decoded.ok && state.phase === "success" && (
+          <p className="text-muted-foreground ms-2 py-1 text-xs">Checkpoint details unavailable.</p>
+        )}
+      </ToolCard>
     </div>
   );
 }
@@ -71,15 +72,16 @@ export function RewindCard({ rendererProps }: { readonly rendererProps: ToolRend
         rawResult={rawText(output)}
         state={state}
         summary={summary}
-      />
-      {!decoded.ok && state.phase === "success" && (
-        <p className="text-muted-foreground ms-2 py-1 text-xs">Rewind details unavailable.</p>
-      )}
-      {showReport && (
-        <div className="ms-2 min-w-0 py-1 text-sm" data-testid="t7-rewind-report">
-          <MarkdownContent text={body} variant="compact" />
-        </div>
-      )}
+      >
+        {!decoded.ok && state.phase === "success" && (
+          <p className="text-muted-foreground ms-2 py-1 text-xs">Rewind details unavailable.</p>
+        )}
+        {showReport && (
+          <div className="ms-2 min-w-0 py-1 text-sm" data-testid="t7-rewind-report">
+            <MarkdownContent text={body} variant="compact" />
+          </div>
+        )}
+      </ToolCard>
     </div>
   );
 }
@@ -90,15 +92,14 @@ export const CheckpointToolRenderer: ToolRenderer = (props) => (
 export const RewindToolRenderer: ToolRenderer = (props) => <RewindCard rendererProps={props} />;
 
 /**
- * The card opens by default only on error. omp reports checkpoint/rewind failures as the result
- * text (packages/coding-agent/src/tools/checkpoint.ts:79-81,115-126); without a typed error, that
- * text is the banner's reason, and a raw result holding only that text would repeat it.
+ * omp reports checkpoint/rewind failures as the result text
+ * (packages/coding-agent/src/tools/checkpoint.ts:79-81,115-126). Without a typed error, that text is
+ * the banner's reason, and a raw result holding only that text would repeat it.
  */
 function withFailureReason(
   normalized: ToolCardState,
   output: unknown,
 ): { readonly state: ToolCardState; readonly resultRepeatsBanner: boolean } {
-  const opened = { ...normalized, defaultOpen: normalized.phase === "error" };
   const parsed = ResultTextSchema.safeParse(output);
   const text = parsed.success
     ? parsed.data.content
@@ -112,10 +113,10 @@ function withFailureReason(
     normalized.error?.code !== undefined ||
     firstLine.length === 0
   ) {
-    return { state: opened, resultRepeatsBanner: false };
+    return { state: normalized, resultRepeatsBanner: false };
   }
   return {
-    state: { ...opened, error: { message: firstLine, retryable: false } },
+    state: { ...normalized, error: { message: firstLine, retryable: false } },
     resultRepeatsBanner: parsed.success && text === firstLine && parsed.data.details === undefined,
   };
 }

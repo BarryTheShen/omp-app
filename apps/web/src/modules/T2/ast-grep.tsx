@@ -76,77 +76,78 @@ export function AstGrepCard({ rendererProps }: { readonly rendererProps: ToolRen
         state={state}
         summary={summary}
         summaryClassName="text-muted-foreground font-mono"
-      />
-      {hasSection && (
-        <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
-          {shownGroups.length > 0 && (
-            <ul className="flex flex-col gap-2" data-testid="t2-ast-grep-matches">
-              {shownGroups.map((group) => (
-                <li className="min-w-0" key={group.path}>
-                  <span
-                    className="text-foreground block truncate font-mono text-xs"
-                    title={group.path}
-                  >
-                    {group.path}
-                  </span>
-                  {group.matches.length === 0 && group.count !== undefined && (
-                    <span className="text-muted-foreground text-xs">
-                      {plural(group.count, "match", "matches")}
+      >
+        {hasSection && (
+          <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
+            {shownGroups.length > 0 && (
+              <ul className="flex flex-col gap-2" data-testid="t2-ast-grep-matches">
+                {shownGroups.map((group) => (
+                  <li className="min-w-0" key={group.path}>
+                    <span
+                      className="text-foreground block truncate font-mono text-xs"
+                      title={group.path}
+                    >
+                      {group.path}
                     </span>
-                  )}
-                  {group.matches.map((match) => (
-                    <div className="flex min-w-0 items-baseline gap-2 text-xs" key={match.key}>
-                      <span className="text-foreground shrink-0">line {match.line}</span>
-                      {match.snippet.length > 0 && (
-                        <code
-                          className="text-muted-foreground min-w-0 truncate font-mono"
-                          title={match.snippet}
-                        >
-                          {match.snippet}
-                        </code>
-                      )}
-                    </div>
-                  ))}
-                </li>
-              ))}
-              {shownMatches > 0 && totalMatches > shownMatches && (
-                <li className="text-muted-foreground text-xs">
-                  Showing {shownMatches} of {totalMatches}
-                </li>
-              )}
-            </ul>
-          )}
-          {showNoMatches && <p className="text-muted-foreground text-xs">No matches.</p>}
-          {showUnavailable && (
-            <p className="text-muted-foreground text-xs">Search details unavailable.</p>
-          )}
-          {limitReached && (
-            <p className="text-muted-foreground mt-3 text-xs" data-testid="t2-ast-grep-limit">
-              Stopped at the match limit; narrow the path to see the rest.
-            </p>
-          )}
-          {stats !== undefined && (
-            <p className="text-muted-foreground mt-3 text-xs" data-testid="t2-ast-grep-stats">
-              {stats}
-            </p>
-          )}
-          {shownParseErrors.map((parseError) => (
-            <p
-              className="text-muted-foreground mt-1 truncate text-xs"
-              data-testid="t2-ast-grep-parse-error"
-              key={parseError}
-              title={parseError}
-            >
-              {parseError}
-            </p>
-          ))}
-          {parseErrorTotal > shownParseErrors.length && (
-            <p className="text-muted-foreground mt-1 text-xs">
-              +{parseErrorTotal - shownParseErrors.length} more
-            </p>
-          )}
-        </div>
-      )}
+                    {group.matches.length === 0 && group.count !== undefined && (
+                      <span className="text-muted-foreground text-xs">
+                        {plural(group.count, "match", "matches")}
+                      </span>
+                    )}
+                    {group.matches.map((match) => (
+                      <div className="flex min-w-0 items-baseline gap-2 text-xs" key={match.key}>
+                        <span className="text-foreground shrink-0">line {match.line}</span>
+                        {match.snippet.length > 0 && (
+                          <code
+                            className="text-muted-foreground min-w-0 truncate font-mono"
+                            title={match.snippet}
+                          >
+                            {match.snippet}
+                          </code>
+                        )}
+                      </div>
+                    ))}
+                  </li>
+                ))}
+                {shownMatches > 0 && totalMatches > shownMatches && (
+                  <li className="text-muted-foreground text-xs">
+                    Showing {shownMatches} of {totalMatches}
+                  </li>
+                )}
+              </ul>
+            )}
+            {showNoMatches && <p className="text-muted-foreground text-xs">No matches.</p>}
+            {showUnavailable && (
+              <p className="text-muted-foreground text-xs">Search details unavailable.</p>
+            )}
+            {limitReached && (
+              <p className="text-muted-foreground mt-3 text-xs" data-testid="t2-ast-grep-limit">
+                Stopped at the match limit; narrow the path to see the rest.
+              </p>
+            )}
+            {stats !== undefined && (
+              <p className="text-muted-foreground mt-3 text-xs" data-testid="t2-ast-grep-stats">
+                {stats}
+              </p>
+            )}
+            {shownParseErrors.map((parseError) => (
+              <p
+                className="text-muted-foreground mt-1 truncate text-xs"
+                data-testid="t2-ast-grep-parse-error"
+                key={parseError}
+                title={parseError}
+              >
+                {parseError}
+              </p>
+            ))}
+            {parseErrorTotal > shownParseErrors.length && (
+              <p className="text-muted-foreground mt-1 text-xs">
+                +{parseErrorTotal - shownParseErrors.length} more
+              </p>
+            )}
+          </div>
+        )}
+      </ToolCard>
     </div>
   );
 }

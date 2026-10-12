@@ -84,7 +84,6 @@ export function normalizeToolCall(input: NormalizeToolCallInput): ToolCardState 
     ...(input.nested === undefined
       ? {}
       : { nested: input.nested, messages: input.nested.messages }),
-    defaultOpen: phase !== "success",
   };
 }
 const INVALID_TOOL_CALL_ID = "invalid-tool-call" as ToolCallId;
@@ -113,7 +112,6 @@ function malformedToolState(
     ...(input.nested === undefined
       ? {}
       : { nested: input.nested, messages: input.nested.messages }),
-    defaultOpen: true,
   };
 }
 

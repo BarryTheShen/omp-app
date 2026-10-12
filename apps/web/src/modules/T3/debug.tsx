@@ -83,16 +83,17 @@ export function DebugCard({ rendererProps }: { readonly rendererProps: ToolRende
         rawResult={rawText(result)}
         state={state}
         summary={debugSummary({ ...args.value, action })}
-      />
-      {hasSection && (
-        <div className="border-border/70 bg-card ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4 pe-4 text-sm">
-          {sections !== undefined && <DebugSections sections={sections} />}
-          {showText && <TextOutput text={text} />}
-          {showUnavailable && (
-            <p className="text-muted-foreground text-xs">Debug details unavailable.</p>
-          )}
-        </div>
-      )}
+      >
+        {hasSection && (
+          <div className="border-border/70 bg-card ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4 pe-4 text-sm">
+            {sections !== undefined && <DebugSections sections={sections} />}
+            {showText && <TextOutput text={text} />}
+            {showUnavailable && (
+              <p className="text-muted-foreground text-xs">Debug details unavailable.</p>
+            )}
+          </div>
+        )}
+      </ToolCard>
     </div>
   );
 }

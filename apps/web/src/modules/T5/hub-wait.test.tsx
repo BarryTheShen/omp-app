@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import { HubCard } from "./hub";
 import { decodeWaitDetails } from "./models";
 import { alteredResult, recorded, sampleNamed } from "./recorded-props";
@@ -12,6 +13,7 @@ describe("T5.3 wait card on recorded results", () => {
     const { container } = render(
       <WaitCard rendererProps={recorded("wait: a message from another agent")} />,
     );
+    expandToolCards();
     expect(screen.getByText("Message from BuilderOne")).toBeTruthy();
     expect(container.querySelector("[data-slot='t5-message']")?.textContent).toContain(
       "From BuilderOne to Main",
@@ -23,6 +25,7 @@ describe("T5.3 wait card on recorded results", () => {
 
   test("running jobs and a finished command show their status, progress and result", () => {
     render(<WaitCard rendererProps={recorded("wait: two running tasks and a finished command")} />);
+    expandToolCards();
     expect(screen.getByText("2 running · 1 completed")).toBeTruthy();
     expect(screen.getAllByText("Running")).toHaveLength(2);
     expect(screen.getByText("35% done")).toBeTruthy();
@@ -40,6 +43,7 @@ describe("T5.3 wait card on recorded results", () => {
     const { container } = render(
       <WaitCard rendererProps={recorded("wait: a task that failed, with its error")} />,
     );
+    expandToolCards();
     expect(screen.getByText("1 failed")).toBeTruthy();
     expect(container.querySelector("[data-slot='t5-jobs']")?.textContent).toContain(
       "Interrupted OpenAI Codex response",
@@ -52,6 +56,7 @@ describe("T5.3 wait card on recorded results", () => {
     );
     cleanup();
     render(<WaitCard rendererProps={longer} />);
+    expandToolCards();
     const shown = recordedError.length * 3;
     expect(
       screen.getByText(`Showing 500 of ${shown.toLocaleString("en-US")} characters`),
@@ -60,12 +65,14 @@ describe("T5.3 wait card on recorded results", () => {
 
   test("an interruption says so and shows the text omp returned", () => {
     render(<WaitCard rendererProps={recorded("wait: interrupted by a message")} />);
+    expandToolCards();
     expect(screen.getByText("Interrupted by a message")).toBeTruthy();
     expect(screen.getByText("Wait interrupted by message.")).toBeTruthy();
   });
 
   test("an aborted call shows omp's own words as its reason, not an empty card", () => {
     render(<WaitCard rendererProps={recorded("wait: the call was aborted")} />);
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Operation aborted");
   });
 
@@ -76,6 +83,7 @@ describe("T5.3 wait card on recorded results", () => {
       "paused",
     );
     render(<WaitCard rendererProps={props} />);
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Malformed wait");
   });
 });
@@ -83,6 +91,7 @@ describe("T5.3 wait card on recorded results", () => {
 describe("T5.3 hub card on recorded results", () => {
   test("a message sent to one peer names the recipient and the delivery", () => {
     render(<HubCard rendererProps={recorded("hub: a message delivered to one peer")} />);
+    expandToolCards();
     expect(screen.getByText("Sent to WriterOne · Delivered")).toBeTruthy();
     expect(screen.getByText("Recipients")).toBeTruthy();
   });
@@ -94,6 +103,7 @@ describe("T5.3 hub card on recorded results", () => {
 
   test("a cancelled job lists as cancelled", () => {
     render(<HubCard rendererProps={recorded("hub: a background job cancelled")} />);
+    expandToolCards();
     expect(screen.getByText("1 cancelled")).toBeTruthy();
     expect(screen.getByText("AuditOne")).toBeTruthy();
     expect(screen.getByText("Cancelled")).toBeTruthy();
@@ -101,6 +111,7 @@ describe("T5.3 hub card on recorded results", () => {
 
   test("the roster shows each agent and the totals omp reports for all agents", () => {
     render(<HubCard rendererProps={recorded("hub: the agents in the roster")} />);
+    expandToolCards();
     expect(screen.getByText("1 running · 5 parked")).toBeTruthy();
     expect(screen.getByText("Agents · 1 running · 5 parked")).toBeTruthy();
     expect(screen.getByText("Started by Main")).toBeTruthy();
@@ -108,6 +119,7 @@ describe("T5.3 hub card on recorded results", () => {
 
   test("a service that failed to start shows its state and exit code", () => {
     render(<HubCard rendererProps={recorded("hub: a service that failed to start")} />);
+    expandToolCards();
     expect(screen.getByText("preview-server · Failed")).toBeTruthy();
     expect(screen.getByText("Exit code 1")).toBeTruthy();
   });
@@ -116,6 +128,7 @@ describe("T5.3 hub card on recorded results", () => {
     const { container } = render(
       <HubCard rendererProps={recorded("hub: the log of a service that is ready")} />,
     );
+    expandToolCards();
     expect(screen.getByText("Log · Ready")).toBeTruthy();
     const log = container.querySelector("[data-slot='t5-hub-log']")?.textContent ?? "";
     expect(log).toContain("Metro waiting on");
@@ -125,6 +138,7 @@ describe("T5.3 hub card on recorded results", () => {
 
   test("a failed call shows omp's own words as its reason", () => {
     render(<HubCard rendererProps={recorded("hub: the call failed")} />);
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Daemon broker client closed");
   });
 
@@ -135,6 +149,7 @@ describe("T5.3 hub card on recorded results", () => {
       "lost",
     );
     render(<HubCard rendererProps={props} />);
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Malformed hub");
   });
 });

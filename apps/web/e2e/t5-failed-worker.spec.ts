@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -45,6 +46,7 @@ realTest(
       "Failed · 1 agent",
     );
     await expect(card.locator('[data-slot="u3-tool-card-status"]')).toHaveText("Failed");
+    await openToolCard(card);
     await expect(card.locator('[data-slot="t5-task-job"]')).toContainText("Failed");
     await expect(card.locator('[data-slot="t5-task-job"]')).not.toContainText("Running");
     await expect(card.locator('[data-slot="t5-task-transcripts"]')).toContainText("Failed");

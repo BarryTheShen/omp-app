@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -78,6 +79,7 @@ async function expectCards(page: Page): Promise<void> {
       exact: true,
     }),
   ).toBeVisible();
+  await openAllToolCards(page);
   await expect(page.getByTestId("t7-rewind-report")).toContainText("drops the locale");
   await expect(page.getByTestId("tool-card-checkpoint-running")).toHaveAttribute(
     "data-phase",

@@ -75,18 +75,21 @@ export function WriteCard({ rendererProps, artifactSlot, onCopy, onOpenArtifact 
         rawResult={rawResult}
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={middleEllipsis(displayTarget)}
-      />
-      <WriteBody
-        artifactSlot={artifactSlot}
-        details={detailsValue}
-        displayTarget={displayTarget}
-        onCopy={onCopy}
-        onOpenArtifact={onOpenArtifact}
-        outputMeta={outputMeta}
-        returnedText={returnedText}
-        source={source}
-        waiting={(state.phase === "running" || state.phase === "partial") && state.queued !== true}
-      />
+      >
+        <WriteBody
+          artifactSlot={artifactSlot}
+          details={detailsValue}
+          displayTarget={displayTarget}
+          onCopy={onCopy}
+          onOpenArtifact={onOpenArtifact}
+          outputMeta={outputMeta}
+          returnedText={returnedText}
+          source={source}
+          waiting={
+            (state.phase === "running" || state.phase === "partial") && state.queued !== true
+          }
+        />
+      </ToolCard>
     </div>
   );
 }
@@ -463,7 +466,6 @@ function writeState(
     phase: "error",
     isError: true,
     error,
-    defaultOpen: true,
     outputMeta,
   };
 }

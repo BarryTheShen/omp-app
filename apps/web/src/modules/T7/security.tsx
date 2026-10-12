@@ -53,9 +53,8 @@ const SEVERITIES = [
 
 export function SecurityScanCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const normalized = normalizeToolRendererProps(rendererProps);
-  // The header already names the action and target, so the raw arguments stay closed while the
-  // scan runs; the card opens by default only on error, where the error banner is the content.
-  const state = { ...normalized, defaultOpen: normalized.phase === "error" };
+  // The header already names the action and target; the card's raw details stay behind its disclosure.
+  const state = normalized;
   const output = state.result ?? state.partialResult;
   // omp results carry structured data under `details`; bare detail objects pass through.
   const decoded = decodeSecurityScan(
@@ -71,13 +70,14 @@ export function SecurityScanCard({ rendererProps }: { readonly rendererProps: To
         rawResult={rawText(output)}
         state={state}
         summary={oneLine(scanSummary(args, details), 96)}
-      />
-      {!decoded.ok && state.phase === "success" && (
-        <p className="text-muted-foreground ms-2 py-1 text-xs">Scan details unavailable.</p>
-      )}
-      {details !== undefined && (
-        <ScanDetails details={details} toolFailed={state.phase === "error"} />
-      )}
+      >
+        {!decoded.ok && state.phase === "success" && (
+          <p className="text-muted-foreground ms-2 py-1 text-xs">Scan details unavailable.</p>
+        )}
+        {details !== undefined && (
+          <ScanDetails details={details} toolFailed={state.phase === "error"} />
+        )}
+      </ToolCard>
     </div>
   );
 }

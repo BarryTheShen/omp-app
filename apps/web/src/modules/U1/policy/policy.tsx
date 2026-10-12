@@ -35,7 +35,7 @@ export interface TranscriptDisplayPolicy {
   readonly toggleThinking: () => void;
   /** Shows or hides tool activity (omp's app.tools.toggleVisibility). Held for this chat's view only. */
   readonly toggleTools: () => void;
-  /** Expands or collapses every tool output (omp's app.tools.expand). Held for this chat's view only. */
+  /** Opens or collapses every tool call, and its output, at once (omp's app.tools.expand). Held for this chat's view only. */
   readonly toggleExpandTools: () => void;
 }
 

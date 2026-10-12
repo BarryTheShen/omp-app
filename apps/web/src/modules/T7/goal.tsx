@@ -44,20 +44,23 @@ export function GoalCard({ rendererProps }: { readonly rendererProps: ToolRender
 
   return (
     <div data-testid={`t7-goal-card-${state.toolCallId}`}>
-      <ToolCard rawResult={rawText(output)} state={state} summary={summary} />
-      {!decoded.ok && settled && (
-        <p className="text-muted-foreground ms-2 py-1 text-xs">Goal details unavailable.</p>
-      )}
-      {details?.goal === null && settled && (
-        <p className="text-muted-foreground ms-2 py-1 text-xs">No active goal.</p>
-      )}
-      {facts.length > 0 && (
-        <p className="text-muted-foreground ms-2 py-1 text-xs">{facts.join(" · ")}</p>
-      )}
-      {/* omp's completionBudgetReport is written for the model and repeats the budget line; it stays in the raw details. */}
-      {typeof goalError === "string" && goalError.trim() && state.phase !== "error" && (
-        <p className="text-destructive ms-2 py-1 text-xs font-medium">{oneLine(goalError, 160)}</p>
-      )}
+      <ToolCard rawResult={rawText(output)} state={state} summary={summary}>
+        {!decoded.ok && settled && (
+          <p className="text-muted-foreground ms-2 py-1 text-xs">Goal details unavailable.</p>
+        )}
+        {details?.goal === null && settled && (
+          <p className="text-muted-foreground ms-2 py-1 text-xs">No active goal.</p>
+        )}
+        {facts.length > 0 && (
+          <p className="text-muted-foreground ms-2 py-1 text-xs">{facts.join(" · ")}</p>
+        )}
+        {/* omp's completionBudgetReport is written for the model and repeats the budget line; it stays in the raw details. */}
+        {typeof goalError === "string" && goalError.trim() && state.phase !== "error" && (
+          <p className="text-destructive ms-2 py-1 text-xs font-medium">
+            {oneLine(goalError, 160)}
+          </p>
+        )}
+      </ToolCard>
     </div>
   );
 }

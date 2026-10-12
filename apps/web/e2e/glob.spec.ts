@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -66,6 +67,7 @@ test("renders linked glob files, missing paths and truncation in light/dark/narr
   const assertNoConsoleErrors = failOnConsoleErrors(page);
   await page.goto("/t2-glob-playground.html");
   await expectStyles(page);
+  await openAllToolCards(page);
   await expect(page.getByRole("link", { name: "src/app.ts" })).toBeVisible();
   await expect(page.getByTestId("t2-glob-limit")).toContainText("57 found");
   await expect(page.getByText("Showing 20 of 57 (+37 more)")).toBeVisible();

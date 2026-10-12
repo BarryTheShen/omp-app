@@ -1,5 +1,6 @@
 import type { ToolCallId } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   MemoryThinkingVisibilityStore,
@@ -24,7 +25,6 @@ function state(phase: ToolCardPhase, id = `tool-${phase}`): ToolCardState {
     executionStarted: phase !== "running",
     result: phase === "success" ? "done" : undefined,
     isError: phase === "error",
-    defaultOpen: phase !== "success",
   };
 }
 
@@ -60,17 +60,38 @@ describe("ToolCard state grammar", () => {
   });
 
   test("remembers a manual disclosure choice per toolCallId", () => {
-    const first = render(<ToolCard state={state("running", "remembered")} />);
-    const trigger = screen.getByRole("button", { name: "Run bash: Running" });
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(trigger);
+    const first = render(<ToolCard state={state("success", "remembered")} />);
+    const trigger = screen.getByRole("button", { name: "Run bash: Complete" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
     first.unmount();
 
     render(<ToolCard state={state("success", "remembered")} />);
     expect(
       screen.getByRole("button", { name: "Run bash: Complete" }).getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
+  test("a call still running starts as one line, and finishing it neither opens nor folds the card", () => {
+    const live = render(<ToolCard state={state("running", "live-then-done")} />);
+    const trigger = screen.getByRole("button", { name: "Run bash: Running" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    live.unmount();
+
+    render(<ToolCard state={state("success", "live-then-done")} />);
+    expect(
+      screen.getByRole("button", { name: "Run bash: Complete" }).getAttribute("aria-expanded"),
     ).toBe("false");
+  });
+
+  test("a card the reader opened while it ran stays open when the call finishes", () => {
+    const { rerender } = render(<ToolCard state={state("running", "opened-while-running")} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run bash: Running" }));
+    rerender(<ToolCard state={state("success", "opened-while-running")} />);
+    expect(
+      screen.getByRole("button", { name: "Run bash: Complete" }).getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   test("shows explicit truncation and expands the bounded preview", () => {
@@ -155,7 +176,7 @@ describe("ToolCard state grammar", () => {
     expect(trigger.textContent).not.toContain("command");
   });
 
-  test("opens first error and cancellation cards with safe accessible messages", () => {
+  test("a failed card reads Error on its line and opens to its safe accessible message", () => {
     render(
       <ToolCard
         state={{
@@ -164,10 +185,12 @@ describe("ToolCard state grammar", () => {
         }}
       />,
     );
+    const trigger = screen.getByRole("button", { name: "Run bash: Error" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(trigger);
     expect(screen.getByRole("alert").textContent).toContain("The tool failed safely");
-    expect(
-      screen.getByRole("button", { name: "Run bash: Error" }).getAttribute("aria-expanded"),
-    ).toBe("true");
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });
 });
 
@@ -221,6 +244,33 @@ describe("ToolCard body", () => {
     fireEvent.click(trigger);
     expect(screen.queryByText("Body text")).toBeNull();
   });
+
+  test("a card nested in another card's body starts as one line, and Expand all opens it too", () => {
+    render(
+      <TranscriptDisplayPolicyProvider
+        storage={new MemoryThinkingVisibilityStore()}
+        threadId="nested-card"
+      >
+        <PolicyControls />
+        <ToolCard state={state("success", "outer-card")}>
+          <ToolCard state={{ ...state("success", "grep-card"), label: "Run grep" }} />
+          <ToolCard state={{ ...state("success", "find-card"), label: "Run find" }} />
+        </ToolCard>
+      </TranscriptDisplayPolicyProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
+    const grep = screen.getByRole("button", { name: "Run grep: Complete" });
+    const find = screen.getByRole("button", { name: "Run find: Complete" });
+    expect(grep.getAttribute("aria-expanded")).toBe("false");
+    expect(find.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(grep);
+    expect(grep.getAttribute("aria-expanded")).toBe("true");
+    expect(find.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle tool output" }));
+    expect(find.getAttribute("aria-expanded")).toBe("true");
+    expect(grep.getAttribute("aria-expanded")).toBe("true");
+  });
 });
 
 describe("ToolCard output the app holds in part", () => {
@@ -230,7 +280,6 @@ describe("ToolCard output the app holds in part", () => {
     const text = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n");
     const cutState = {
       ...state("success"),
-      defaultOpen: true,
       result: { output: text, outputCut: { shownBytes: 65_536, totalBytes: 209_715 } },
     };
     const fullState = { ...cutState, result: { output: text } };
@@ -241,6 +290,7 @@ describe("ToolCard output the app holds in part", () => {
         </ToolCard>
       </FullOutputProvider>,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
     const load = screen.getByRole("button", { name: "Load full output" });
     load.focus();
     fireEvent.click(load);
@@ -276,7 +326,7 @@ function PolicyControls() {
 }
 
 describe("ToolCard under the transcript policy", () => {
-  test("the policy expands a card's output and hides the card, and each toggle reverses", () => {
+  test("Expand all opens every card and its output, Collapse all closes them, and the policy hides the card", () => {
     const result = Array.from({ length: 20 }, (_, index) => `line-${index}`).join("\n");
     const card = {
       ...state("success", "policy"),
@@ -294,17 +344,61 @@ describe("ToolCard under the transcript policy", () => {
         <ToolCard state={card} />
       </TranscriptDisplayPolicyProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
-    expect(screen.getByRole("button", { name: "Show more" })).toBeTruthy();
+    const trigger = screen.getByRole("button", { name: "Run bash: Complete" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle tool output" }));
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "Toggle tool output" }));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
     expect(screen.getByRole("button", { name: "Show more" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle tool activity" }));
     expect(screen.queryByTestId("tool-card-policy")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Toggle tool activity" }));
     expect(screen.getByTestId("tool-card-policy")).toBeTruthy();
+  });
+
+  test("Expand all forgets every card's own choice, including one that is not on screen", () => {
+    function Harness() {
+      const [showSecond, setShowSecond] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setShowSecond((shown) => !shown)}>
+            Toggle second card
+          </button>
+          <PolicyControls />
+          <ToolCard state={state("success", "first-card")} />
+          {showSecond && (
+            <ToolCard state={{ ...state("success", "second-card"), label: "Run grep" }} />
+          )}
+        </>
+      );
+    }
+    render(
+      <TranscriptDisplayPolicyProvider
+        storage={new MemoryThinkingVisibilityStore()}
+        threadId="clear-all"
+      >
+        <Harness />
+      </TranscriptDisplayPolicyProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run grep: Complete" }));
+    expect(
+      screen.getByRole("button", { name: "Run grep: Complete" }).getAttribute("aria-expanded"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Toggle second card" }));
+    expect(screen.queryByRole("button", { name: "Run grep: Complete" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle tool output" }));
+    fireEvent.click(screen.getByRole("button", { name: "Toggle tool output" }));
+    fireEvent.click(screen.getByRole("button", { name: "Toggle second card" }));
+    expect(
+      screen.getByRole("button", { name: "Run grep: Complete" }).getAttribute("aria-expanded"),
+    ).toBe("false");
   });
 });

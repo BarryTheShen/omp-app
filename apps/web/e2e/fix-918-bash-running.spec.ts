@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -40,6 +41,8 @@ realTest(
     const bash = page.getByTestId(BASH);
     await expect(bash).toHaveAttribute("data-phase", "running", { timeout: 60_000 });
     await expect(bash).toContainText("Running");
+    // The output area sits on the card's body, so the card opens to show it.
+    await openToolCard(bash);
     await expect(bash.locator(EMPTY)).toContainText("No output yet.");
     await expect(bash).not.toContainText("Waiting");
 

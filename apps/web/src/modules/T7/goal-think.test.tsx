@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { GoalCard } from "./goal";
 import { ThinkCard } from "./think";
@@ -33,6 +34,12 @@ function header(): HTMLElement {
   return trigger;
 }
 
+/** The card's text minus its raw-details disclosure (the raw arguments and result). */
+function shownText(element: HTMLElement): string {
+  const raw = element.querySelector<HTMLElement>("[data-slot='u3-tool-card-raw']");
+  return (element.textContent ?? "").replace(raw?.textContent ?? "", "");
+}
+
 /** omp v18.6.1 goal result envelope: `{ content, details }` with the goal nested in `details`. */
 function goalResult(details: Record<string, unknown>): unknown {
   return { content: [{ type: "text", text: "Goal: …" }], details };
@@ -63,6 +70,7 @@ describe("GoalCard", () => {
         )}
       />,
     );
+    expandToolCards();
     const card = screen.getByTestId("t7-goal-card-goal-1");
     expect(header().textContent).toContain("Ship the release notes");
     expect(card.textContent).toContain(
@@ -89,12 +97,12 @@ describe("GoalCard", () => {
         )}
       />,
     );
+    expandToolCards();
     const card = screen.getByTestId("t7-goal-card-goal-report");
     expect(header().textContent).toContain("Tidy the docs");
     expect(card.textContent).toContain("Complete · 1 token used");
-    expect(card.textContent).not.toContain("tokens left");
-    expect(card.textContent).not.toContain("Goal achieved");
-    fireEvent.click(header());
+    expect(shownText(card)).not.toContain("tokens left");
+    expect(shownText(card)).not.toContain("Goal achieved");
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(card.querySelector("[data-slot='u3-tool-card-result']")?.textContent ?? "").toContain(
       "Goal achieved",
@@ -116,6 +124,7 @@ describe("GoalCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(header().textContent).toContain("Check goal");
     expect(screen.getByText("No active goal.")).toBeTruthy();
   });
@@ -127,6 +136,7 @@ describe("GoalCard", () => {
         rendererProps={props("goal", { op: "create", objective }, undefined, { type: "running" })}
       />,
     );
+    expandToolCards();
     expect(header().textContent).toContain("…");
     expect(header().textContent).not.toContain(objective.trim());
     expect(screen.queryByText("Goal details unavailable.")).toBeNull();
@@ -139,14 +149,17 @@ describe("GoalCard", () => {
           "goal",
           { op: "get" },
           goalResult({ op: "get", goal: { status: "finished", tokensUsed: "many" } }),
+          undefined,
+          "goal-malformed",
         )}
       />,
     );
-    const card = screen.getByTestId("t7-goal-card-goal-1");
-    expect(screen.getByText("Goal details unavailable.")).toBeTruthy();
+    const card = screen.getByTestId("t7-goal-card-goal-malformed");
     expect(header().textContent).toContain("Check goal");
     expect(header().getAttribute("aria-expanded")).toBe("false");
-    expect(card.textContent).not.toContain("many");
+    expandToolCards();
+    expect(screen.getByText("Goal details unavailable.")).toBeTruthy();
+    expect(shownText(card)).not.toContain("many");
   });
 
   test("the goal's own error shows once, and never next to the tool error", () => {
@@ -158,6 +171,7 @@ describe("GoalCard", () => {
     const { unmount } = render(
       <GoalCard rendererProps={props("goal", { op: "resume" }, goalResult(details))} />,
     );
+    expandToolCards();
     expect(screen.getByText("The token budget is used up.")).toBeTruthy();
     expect(screen.getByTestId("t7-goal-card-goal-1").textContent).toContain("Budget limited");
     unmount();
@@ -173,6 +187,7 @@ describe("GoalCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.queryByText("The token budget is used up.")).toBeNull();
     expect(screen.queryByText("Goal details unavailable.")).toBeNull();
   });
@@ -227,6 +242,7 @@ describe("ThinkCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(header().getAttribute("aria-expanded")).toBe("true");
     expect(header().textContent).toContain("Private note not recorded");
     expect(document.body.textContent).not.toContain(THOUGHT);

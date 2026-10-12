@@ -4,7 +4,7 @@ import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { realTest, sendPrompt, startChat } from "./real-omp";
+import { openAllToolCards, openToolCard, realTest, sendPrompt, startChat } from "./real-omp";
 
 const WEB_ROOT = process.cwd();
 const DIST_ROOT = join(WEB_ROOT, "dist");
@@ -97,6 +97,7 @@ test.describe("nested transcript playground", () => {
     const nestedLevels = nestedCase.locator('[data-read-only="true"]');
     await expect(nestedLevels).toHaveCount(4);
     await expect(nestedLevels.nth(2).getByTestId("u3-bash-card")).toBeVisible();
+    await openToolCard(nestedLevels.nth(2).getByTestId("u3-bash-card"));
     await expect(nestedLevels.nth(2).getByTestId("u3-bash-stdout")).toContainText(
       "Nested bash output.",
     );
@@ -130,7 +131,8 @@ test.describe("nested transcript playground", () => {
     const pairedResult = page.getByTestId("paired-tool-result-case");
     await expect(pairedResult.getByTestId("u3-bash-card")).toHaveCount(1);
     await expect(pairedResult.getByRole("button", { name: "bash: Complete" })).toBeVisible();
-    await expect(pairedResult.getByText("Paired bash output.")).toBeVisible();
+    await openAllToolCards(page);
+    await expect(pairedResult.getByText("Paired bash output.").first()).toBeVisible();
     await expect(pairedResult.getByText("Waiting for bash output…")).toHaveCount(0);
 
     await expectTokenBackground(page);
@@ -164,7 +166,12 @@ realTest("real omp renders the task card and its result", async ({ realApp }, te
 
   const taskTool = page.getByRole("button", { name: "task: Complete" });
   await expect(taskTool).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText(/Spawned agent.*NestedProbe/)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/subagent yielded successfully/)).toBeVisible({ timeout: 60_000 });
+  await openAllToolCards(page);
+  await expect(page.getByText(/Spawned agent.*NestedProbe/).first()).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText(/subagent yielded successfully/).first()).toBeVisible({
+    timeout: 60_000,
+  });
   expect(realApp.problems).toEqual([]);
 });

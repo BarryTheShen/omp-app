@@ -124,7 +124,6 @@ export function malformedState(state: ToolCardState, message: string): ToolCardS
     phase: "error",
     isError: true,
     error: { code: "invalid_args", message, retryable: false },
-    defaultOpen: true,
   };
 }
 

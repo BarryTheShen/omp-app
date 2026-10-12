@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../../U3/tool-card/contract";
 import { LearnRenderer } from "../learn";
 import { ManageSkillRenderer } from "../manage-skill";
@@ -33,6 +34,7 @@ describe("T6 learn, manage_skill and memory_edit renderers", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Learned · project")).toBeTruthy();
     expect(screen.getByText("Keep releases browser read-only.")).toBeTruthy();
     expect(screen.getByText(/Skill create: release/)).toBeTruthy();
@@ -51,6 +53,7 @@ describe("T6 learn, manage_skill and memory_edit renderers", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("update: release")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Release" })).toBeTruthy();
     expect(screen.getByText("Status: updated")).toBeTruthy();
@@ -69,6 +72,7 @@ describe("T6 learn, manage_skill and memory_edit renderers", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getAllByText("Forgot memory: memory-1").length).toBeGreaterThan(0);
     expect(screen.getByText("Confirmation: forgotten")).toBeTruthy();
   });

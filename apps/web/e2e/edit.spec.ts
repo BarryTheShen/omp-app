@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -56,6 +57,7 @@ test("renders edit and apply_patch diffs in light, dark and narrow layouts", asy
   await expect(page.getByTestId("t1-edit-card")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "edit: Complete" })).toBeVisible();
   await expect(page.getByRole("button", { name: "apply_patch: Complete" })).toBeVisible();
+  await openAllToolCards(page);
   await expect(page.getByText("Review generated export")).toBeVisible();
   await expect(page.getByText("Streaming preview")).toBeVisible();
   await expect(page.getByTestId("t1-edit-diff-code")).toHaveCount(3);

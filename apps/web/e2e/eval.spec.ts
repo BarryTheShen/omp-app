@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -51,6 +52,8 @@ test("renders eval cells streamed output async jobs and images with light dark e
   await page.goto(PLAYGROUND);
   await expect(page.getByTestId("t3-eval-playground")).toBeVisible();
   await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(1);
+  // A finished eval card starts as one line: open the cards so their cells and output are on the page.
+  await openAllToolCards(page);
   await expect(page.getByTestId("t3-eval-cell-0").first()).toBeVisible();
   await expect(page.getByTestId("t3-eval-async-job").first()).toContainText("job-running");
   const style = await page
@@ -74,6 +77,7 @@ test("renders eval cells streamed output async jobs and images with light dark e
   await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
   await expect(darkPage.locator("html")).toHaveClass(/dark/);
   await expect(darkPage.getByTestId("t3-eval-playground")).toBeVisible();
+  await openAllToolCards(darkPage);
   await expect(darkPage.getByTestId("t3-eval-async-job").first()).toContainText("job-running");
   await darkPage.screenshot({ path: "../../.data/screenshots/t3.2-eval-dark.png", fullPage: true });
   await darkPage.close();

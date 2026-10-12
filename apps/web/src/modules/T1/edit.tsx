@@ -67,7 +67,6 @@ export function EditCard({ rendererProps, onCopy }: EditCardProps) {
             message: detailsFailureMessage(details),
             retryable: false,
           },
-          defaultOpen: true,
         }
       : {}),
     result: undefined,
@@ -89,7 +88,6 @@ export function EditCard({ rendererProps, onCopy }: EditCardProps) {
               message: decodedDetails.error.appError.message,
               retryable: false,
             },
-            defaultOpen: true,
           }}
           summary="Edit result unavailable"
         />
@@ -104,16 +102,17 @@ export function EditCard({ rendererProps, onCopy }: EditCardProps) {
         rawResult=""
         state={cardState}
         summary={summary}
-      />
-      <EditBody
-        args={args}
-        details={details}
-        fallbackText={fallbackText}
-        onCopy={onCopy}
-        phase={cardState.phase}
-        queued={cardState.queued === true}
-        target={target}
-      />
+      >
+        <EditBody
+          args={args}
+          details={details}
+          fallbackText={fallbackText}
+          onCopy={onCopy}
+          phase={cardState.phase}
+          queued={cardState.queued === true}
+          target={target}
+        />
+      </ToolCard>
     </div>
   );
 }

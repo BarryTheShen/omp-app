@@ -32,85 +32,87 @@ export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRender
 
   return (
     <div data-testid={`t2-glob-card-${state.toolCallId}`}>
-      <ToolCard className={hideRawDetails} rawResult={rawResult} state={state} summary={summary} />
-      <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
-        {args.ok && (
-          <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
-            {patternFromArgs(rendererProps.args) && (
-              <span data-testid="t2-glob-pattern">
-                Pattern: {patternFromArgs(rendererProps.args)}
-              </span>
-            )}
-            <span>Scope: {args.value.path ?? "workspace"}</span>
-            {parsedDetails?.resultLimitReached && args.value.limit !== undefined && (
-              <span>Limit: {args.value.limit}</span>
-            )}
-            {args.value.hidden === true && <span>Hidden files included</span>}
-            {args.value.gitignore === false && <span>.gitignore disabled</span>}
-          </div>
-        )}
-        {shownFiles.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2" data-testid="t2-glob-files">
-            {shownFiles.map((target) => {
-              return (
-                <a
-                  className="border-border bg-muted/40 hover:bg-muted focus-visible:ring-ring max-w-full truncate rounded-md border px-2 py-1 text-xs underline-offset-2 hover:underline focus-visible:ring-2"
-                  data-read-path={target}
-                  href={`#read:${encodeURIComponent(target)}`}
-                  key={target}
-                  title={`Read ${target}`}
-                >
-                  {target}
-                </a>
-              );
-            })}
-            {totalFiles > shownFiles.length && (
-              <span className="text-muted-foreground self-center text-xs">
-                Showing {shownFiles.length} of {totalFiles} (+{totalFiles - shownFiles.length} more)
-              </span>
-            )}
-          </div>
-        ) : (
-          !state.isError &&
-          parsedDetails && <p className="text-muted-foreground mt-3 text-xs">No matches.</p>
-        )}
-        {parsedDetails?.missingPaths && parsedDetails.missingPaths.length > 0 && (
-          <p className="text-warning mt-3 text-xs" data-testid="t2-glob-missing">
-            Missing paths: {parsedDetails.missingPaths.join(", ")}
-          </p>
-        )}
-        {parsedDetails?.resultLimitReached && (
-          <p className="text-warning mt-3 text-xs" data-testid="t2-glob-limit">
-            Results truncated at the requested limit ({totalFiles} found).
-          </p>
-        )}
-        {parsedDetails?.truncated && !parsedDetails.resultLimitReached && (
-          <p className="text-warning mt-3 text-xs" data-testid="t2-glob-truncated">
-            Scan output was truncated; expand raw details for the recorded result.
-          </p>
-        )}
-        {parsedDetails?.error && (
-          <p className="text-destructive mt-3 text-xs" role="alert">
-            {parsedDetails.error}
-          </p>
-        )}
-        {!details.ok &&
-          result !== undefined &&
-          state.phase !== "running" &&
-          state.phase !== "partial" && (
-            <p className="text-destructive mt-3 text-xs" role="alert">
-              Glob details were malformed; the raw result remains available in Raw details.
+      <ToolCard className={hideRawDetails} rawResult={rawResult} state={state} summary={summary}>
+        <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
+          {args.ok && (
+            <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              {patternFromArgs(rendererProps.args) && (
+                <span data-testid="t2-glob-pattern">
+                  Pattern: {patternFromArgs(rendererProps.args)}
+                </span>
+              )}
+              <span>Scope: {args.value.path ?? "workspace"}</span>
+              {parsedDetails?.resultLimitReached && args.value.limit !== undefined && (
+                <span>Limit: {args.value.limit}</span>
+              )}
+              {args.value.hidden === true && <span>Hidden files included</span>}
+              {args.value.gitignore === false && <span>.gitignore disabled</span>}
+            </div>
+          )}
+          {shownFiles.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2" data-testid="t2-glob-files">
+              {shownFiles.map((target) => {
+                return (
+                  <a
+                    className="border-border bg-muted/40 hover:bg-muted focus-visible:ring-ring max-w-full truncate rounded-md border px-2 py-1 text-xs underline-offset-2 hover:underline focus-visible:ring-2"
+                    data-read-path={target}
+                    href={`#read:${encodeURIComponent(target)}`}
+                    key={target}
+                    title={`Read ${target}`}
+                  >
+                    {target}
+                  </a>
+                );
+              })}
+              {totalFiles > shownFiles.length && (
+                <span className="text-muted-foreground self-center text-xs">
+                  Showing {shownFiles.length} of {totalFiles} (+{totalFiles - shownFiles.length}{" "}
+                  more)
+                </span>
+              )}
+            </div>
+          ) : (
+            !state.isError &&
+            parsedDetails && <p className="text-muted-foreground mt-3 text-xs">No matches.</p>
+          )}
+          {parsedDetails?.missingPaths && parsedDetails.missingPaths.length > 0 && (
+            <p className="text-warning mt-3 text-xs" data-testid="t2-glob-missing">
+              Missing paths: {parsedDetails.missingPaths.join(", ")}
             </p>
           )}
-        {rawResult && (
-          <details className="mt-3 text-xs" data-testid="t2-glob-raw-details">
-            <summary className="cursor-pointer text-muted-foreground">Raw details</summary>
-            <pre className="text-foreground mt-2 max-h-64 overflow-auto whitespace-pre-wrap">
-              {rawResult}
-            </pre>
-          </details>
-        )}
-      </div>
+          {parsedDetails?.resultLimitReached && (
+            <p className="text-warning mt-3 text-xs" data-testid="t2-glob-limit">
+              Results truncated at the requested limit ({totalFiles} found).
+            </p>
+          )}
+          {parsedDetails?.truncated && !parsedDetails.resultLimitReached && (
+            <p className="text-warning mt-3 text-xs" data-testid="t2-glob-truncated">
+              Scan output was truncated; expand raw details for the recorded result.
+            </p>
+          )}
+          {parsedDetails?.error && (
+            <p className="text-destructive mt-3 text-xs" role="alert">
+              {parsedDetails.error}
+            </p>
+          )}
+          {!details.ok &&
+            result !== undefined &&
+            state.phase !== "running" &&
+            state.phase !== "partial" && (
+              <p className="text-destructive mt-3 text-xs" role="alert">
+                Glob details were malformed; the raw result remains available in Raw details.
+              </p>
+            )}
+          {rawResult && (
+            <details className="mt-3 text-xs" data-testid="t2-glob-raw-details">
+              <summary className="cursor-pointer text-muted-foreground">Raw details</summary>
+              <pre className="text-foreground mt-2 max-h-64 overflow-auto whitespace-pre-wrap">
+                {rawResult}
+              </pre>
+            </details>
+          )}
+        </div>
+      </ToolCard>
     </div>
   );
 }

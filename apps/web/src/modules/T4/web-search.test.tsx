@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { WebSearchCard } from "./web-search";
 
@@ -50,6 +51,7 @@ const successResult = {
 describe("WebSearchCard", () => {
   test("renders query, compact Markdown, source tree, citations and usage metadata", () => {
     render(<WebSearchCard rendererProps={props(successResult)} />);
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "web_search: Complete" })).toBeTruthy();
     expect(screen.getAllByText("omp app").length).toBeGreaterThan(0);
@@ -79,6 +81,7 @@ describe("WebSearchCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByText("No sources were returned for this search.")).toBeTruthy();
     expect(screen.getAllByText("0 results").length).toBeGreaterThan(0);
@@ -95,6 +98,7 @@ describe("WebSearchCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "web_search: Error" })).toBeTruthy();
     expect(screen.getAllByText("Provider rejected the request").length).toBeGreaterThan(0);
@@ -106,13 +110,15 @@ describe("WebSearchCard", () => {
         rendererProps={props("answer fragment", { query: "streaming" }, { type: "running" })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "web_search: Running" })).toBeTruthy();
     expect(screen.getByText("answer fragment")).toBeTruthy();
   });
 
-  test("maps malformed settled results to an open error while retaining raw output", () => {
+  test("maps malformed settled results to an error state while retaining raw output", () => {
     render(<WebSearchCard rendererProps={props("not-an-object")} />);
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "web_search: Error" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Malformed web-search result");
@@ -122,6 +128,7 @@ describe("WebSearchCard", () => {
   test("copies the answer through the explicit callback", async () => {
     const onCopy = vi.fn().mockResolvedValue(undefined);
     render(<WebSearchCard onCopy={onCopy} rendererProps={props(successResult)} />);
+    expandToolCards();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy answer" }));
     await waitFor(() =>

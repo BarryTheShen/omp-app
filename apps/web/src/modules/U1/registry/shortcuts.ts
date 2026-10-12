@@ -26,7 +26,7 @@ export const U1ShortcutDescriptors = [
   {
     id: "U1.appToolsExpand",
     owner: "U1",
-    title: "Toggle tool output",
+    title: "Expand or collapse all tool calls",
     kind: "shortcut",
     chord: "Mod+O",
     scope: "transcript",

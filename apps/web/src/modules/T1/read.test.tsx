@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { ReadCard } from "./read";
 import { READ_IMAGE_MAX_BYTES } from "./read-image";
@@ -36,6 +37,7 @@ describe("ReadCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("button", { name: "read: Complete" }).textContent).toContain(
       "src/index.ts",
     );
@@ -64,6 +66,7 @@ describe("ReadCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(document.querySelector("[data-code-view]")?.textContent).toContain(
       'import { A } from "./a";',
     );
@@ -82,6 +85,7 @@ describe("ReadCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("model_cache (36 rows)")).toBeTruthy();
     expect(screen.queryByText("No displayable content")).toBeNull();
   });
@@ -96,12 +100,15 @@ describe("ReadCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Directory listing")).toBeTruthy();
-    expect(screen.getByText(/index\.ts/).textContent).toContain("util.ts");
+    expect(screen.getByTestId("t1-read-text").textContent).toContain("index.ts");
+    expect(screen.getByTestId("t1-read-text").textContent).toContain("util.ts");
   });
 
   test("with neither lines nor text it says so plainly", () => {
     render(<ReadCard rendererProps={props({ resolvedPath: "/workspace/empty.txt" })} />);
+    expandToolCards();
     expect(screen.getByText("No displayable content")).toBeTruthy();
   });
 
@@ -122,6 +129,7 @@ describe("ReadCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByText("2 reads grouped")).toBeTruthy();
     expect(screen.getByText("Output shortened; omitted 4 lines")).toBeTruthy();
@@ -145,6 +153,7 @@ describe("ReadCard", () => {
 
   test("keeps URL metadata visible when the seam is unavailable", () => {
     render(<ReadCard rendererProps={props({ kind: "url", url: "skill://review" })} />);
+    expandToolCards();
     expect(screen.getByText("URL renderer unavailable")).toBeTruthy();
   });
 
@@ -166,6 +175,7 @@ describe("ReadCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("img", { name: "/workspace/pixel.png" }).getAttribute("src")).toBe(
       "data:image/png;base64,iVBORw0KGgo=",
     );
@@ -191,6 +201,7 @@ describe("ReadCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(
       screen.getByText("The image is not in omp's result, so it cannot be shown."),
     ).toBeTruthy();
@@ -209,6 +220,7 @@ describe("ReadCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(
       screen.getByText(
         "This image is 4.0 MB. This card shows images up to 4 MB, so it is not drawn here.",
@@ -228,6 +240,7 @@ describe("ReadCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("This type of image cannot be shown here.")).toBeTruthy();
     expect(svg.container.querySelector("img")).toBeNull();
   });
@@ -246,6 +259,7 @@ describe("ReadCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(
       screen.getByText(
         "This image is not in the saved chat: it is over the 4 MB this card shows, or its saved copy is missing.",
@@ -266,19 +280,22 @@ describe("ReadCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t1-read-binary").textContent).toContain("7 bytes");
   });
 
   test("keeps a running read in the U3 lifecycle shell and shows the raw partial text", () => {
     const running = rendererProps("still reading");
     render(<ReadCard rendererProps={{ ...running, status: { type: "running" } as const }} />);
+    expandToolCards();
     expect(screen.getByRole("button", { name: "read: Running" })).toBeTruthy();
     expect(screen.getAllByText("still reading").length).toBeGreaterThan(0);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  test("turns malformed details into an open typed error state", () => {
+  test("turns malformed details into a typed error state that shows once the card opens", () => {
     render(<ReadCard rendererProps={props("not-an-object")} />);
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Malformed read details");
     expect(screen.getByRole("button", { name: "read: Error" }).getAttribute("aria-expanded")).toBe(
       "true",

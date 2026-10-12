@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -64,6 +65,7 @@ test("renders streaming, executable, SVG-safe and error write states in light/da
     /^(rgb|oklch)/,
   );
   await expect(page.getByTestId("t1-write-card")).toHaveCount(4);
+  await openAllToolCards(page);
   await expect(page.getByText("Source preview shortened; 10 lines omitted")).toBeVisible();
   await expect(page.getByText("Executable", { exact: true })).toBeVisible();
   await expect(page.getByRole("img", { name: "assets/mark.svg SVG preview" })).toBeVisible();
@@ -81,6 +83,8 @@ test("renders streaming, executable, SVG-safe and error write states in light/da
     "background-color",
     /^(rgb|oklch)/,
   );
+  await expect(darkPage.getByTestId("t1-write-card")).toHaveCount(4);
+  await openAllToolCards(darkPage);
   await expect.poll(() => distinctTokenColors(darkPage, "[data-code-view]")).toBeGreaterThan(2);
   await waitForFiniteAnimations(darkPage);
   await darkPage.screenshot({

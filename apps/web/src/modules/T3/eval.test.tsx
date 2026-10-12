@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { EvalCard } from "./eval";
 
@@ -51,6 +52,7 @@ describe("EvalCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByTestId("t3-eval-header").textContent).toContain("py");
     expect(screen.getByTestId("t3-eval-cell-0").textContent).toContain("hello");
@@ -62,7 +64,7 @@ describe("EvalCard", () => {
     );
   });
 
-  test("retains partial streamed output and maps failed cells to an open error card", () => {
+  test("retains partial streamed output and maps failed cells to an error card whose body shows once it opens", () => {
     render(
       <EvalCard
         rendererProps={props({
@@ -79,6 +81,7 @@ describe("EvalCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByTestId("tool-card-eval-call").getAttribute("data-phase")).toBe("error");
     expect(screen.getByRole("alert").textContent).toContain("Error: boom");
@@ -105,6 +108,7 @@ describe("EvalCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("img", { name: "Evaluation result" })).toBeTruthy();
     expect(screen.getByText("Image output is unavailable from the typed result.")).toBeTruthy();
@@ -118,6 +122,7 @@ describe("EvalCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByTestId("tool-card-eval-call").getAttribute("data-phase")).toBe("error");
     expect(screen.getByRole("alert").textContent).toContain("malformed");
@@ -150,6 +155,7 @@ describe("EvalCard", () => {
         })}
       />,
     );
+    expandToolCards();
     const cell = screen.getByTestId("t3-eval-cell-0");
     expect(cell.querySelector("[data-cell-code]")?.textContent).toBe("x = 1\nif x:\n\tprint(x)");
     expect(cell.querySelector("[data-cell-output]")?.textContent).toBe(
@@ -172,6 +178,7 @@ describe("EvalCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("tool-card-eval-call").getAttribute("data-phase")).toBe("success");
     expect(screen.queryByText(/malformed/i)).toBeNull();
   });
@@ -193,6 +200,7 @@ describe("EvalCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain(
       "Tool was not executed because the run was aborted: Request was aborted.",
     );

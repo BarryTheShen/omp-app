@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { CheckpointCard, RewindCard } from "./checkpoint";
 
@@ -41,6 +42,7 @@ describe("CheckpointCard", () => {
         )}
       />,
     );
+    expandToolCards();
     // The card's label says "checkpoint"; the header adds only the goal.
     expect(screen.getByText("find why the cache misses")).toBeTruthy();
     expect(screen.queryByText(/restored/)).toBeNull();
@@ -65,6 +67,7 @@ describe("CheckpointCard", () => {
         rendererProps={props("checkpoint", { goal: "x" }, { content: [], details: { goal: 4 } })}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Checkpoint details unavailable.")).toBeTruthy();
   });
 });
@@ -87,6 +90,7 @@ describe("RewindCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Cache misses come from the key builder.")).toBeTruthy();
     expect(screen.getByTestId("t7-rewind-report").textContent).toContain("drops the locale");
     expect(screen.getByText("buildKey")).toBeTruthy();
@@ -105,6 +109,7 @@ describe("RewindCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Nothing to change.")).toBeTruthy();
     expect(screen.queryByTestId("t7-rewind-report")).toBeNull();
   });
@@ -120,6 +125,7 @@ describe("RewindCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("tool-card-rewind-1").getAttribute("data-phase")).toBe("error");
     expect(screen.getByRole("alert").textContent).toContain("No active checkpoint.");
     expect(screen.queryByText("Rewind details unavailable.")).toBeNull();

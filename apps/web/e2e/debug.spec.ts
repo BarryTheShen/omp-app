@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -69,6 +70,7 @@ async function waitForFiniteAnimations(page: Page): Promise<void> {
 
 async function expectCards(page: Page): Promise<void> {
   await expect(page.getByText("Stack trace", { exact: true })).toBeVisible();
+  await openAllToolCards(page);
   await expect(page.getByText("Stopped at src/main.ts:42 · breakpoint").first()).toBeVisible();
   await expect(page.getByText("Showing 6 of 8")).toBeVisible();
   await expect(page.getByText("counter = 3")).toBeVisible();

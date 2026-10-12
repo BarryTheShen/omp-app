@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -56,7 +57,8 @@ test("renders read text, URL fallback and image states in light/dark/narrow layo
     /^(rgb|oklch)/,
   );
   await expect(page.getByTestId("t1-read-card")).toHaveCount(3);
-  await expect(page.getByText("export const answer = 42;")).toBeVisible();
+  await openAllToolCards(page);
+  await expect(page.getByText("export const answer = 42;").first()).toBeVisible();
   await expect.poll(() => distinctTokenColors(page, "[data-code-view]")).toBeGreaterThan(2);
   const lightCopy = page
     .locator("[data-code-view]")
@@ -72,6 +74,8 @@ test("renders read text, URL fallback and image states in light/dark/narrow layo
   await darkPage.goto("/t1-read-playground.html");
   await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
   await expect(darkPage.getByTestId("t1-read-playground")).toBeVisible();
+  await expect(darkPage.getByTestId("t1-read-card")).toHaveCount(3);
+  await openAllToolCards(darkPage);
   await expect.poll(() => distinctTokenColors(darkPage, "[data-code-view]")).toBeGreaterThan(2);
   const darkCopy = darkPage
     .locator("[data-code-view]")

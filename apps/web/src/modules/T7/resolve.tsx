@@ -33,34 +33,35 @@ export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRen
         rawResult={rawText(state.result ?? state.partialResult)}
         state={state}
         summary={`${action} · ${source}`}
-      />
-      <section
-        aria-label={`${status} staged action`}
-        className={`ms-2 border-s-2 border-border/70 bg-card py-2 pe-4 ps-4 text-foreground ${statusTone(status)}`}
-        data-status={status}
-        data-testid={`t7-resolve-status-${state.toolCallId}`}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className={`text-sm font-medium ${statusTextTone(status)}`}>
-            {statusLabel(status)}
-          </span>
-          <span className="text-muted-foreground pe-1 text-xs">Source: {source}</span>
-        </div>
-        <p className="text-foreground mt-1 text-xs">{reason}</p>
-        {state.phase === "error" && (
-          <p className="text-destructive mt-2 text-xs font-medium" role="alert">
-            The staged action failed; it was not accepted.
-          </p>
-        )}
-        {!decoded.ok &&
-          output !== undefined &&
-          state.phase !== "running" &&
-          state.phase !== "partial" && (
+        <section
+          aria-label={`${status} staged action`}
+          className={`ms-2 border-s-2 border-border/70 bg-card py-2 pe-4 ps-4 text-foreground ${statusTone(status)}`}
+          data-status={status}
+          data-testid={`t7-resolve-status-${state.toolCallId}`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className={`text-sm font-medium ${statusTextTone(status)}`}>
+              {statusLabel(status)}
+            </span>
+            <span className="text-muted-foreground pe-1 text-xs">Source: {source}</span>
+          </div>
+          <p className="text-foreground mt-1 text-xs">{reason}</p>
+          {state.phase === "error" && (
             <p className="text-destructive mt-2 text-xs font-medium" role="alert">
-              Resolve details were malformed; the raw result remains available above.
+              The staged action failed; it was not accepted.
             </p>
           )}
-      </section>
+          {!decoded.ok &&
+            output !== undefined &&
+            state.phase !== "running" &&
+            state.phase !== "partial" && (
+              <p className="text-destructive mt-2 text-xs font-medium" role="alert">
+                Resolve details were malformed; the raw result remains available above.
+              </p>
+            )}
+        </section>
+      </ToolCard>
     </div>
   );
 }

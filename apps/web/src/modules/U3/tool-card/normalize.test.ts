@@ -149,7 +149,6 @@ describe("U3 tool-call normalizer", () => {
       phase: "error",
       isError: true,
       error: { code: "invalid_args" },
-      defaultOpen: true,
     });
   });
 

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -292,6 +293,7 @@ realTest(
     // The card starts the chat's roster on its own: its worker's transcript is read by the card, not by the tab.
     const card = page.getByTestId("t5-task-card");
     await expect(card).toBeVisible({ timeout: 120_000 });
+    await openToolCard(card);
     const transcript = card.locator('[data-slot="t5-task-transcript"]');
     await expect(transcript).toContainText("Read only", { timeout: 120_000 });
     await expect(transcript).toContainText("nested_probe_child", { timeout: 120_000 });
@@ -346,6 +348,7 @@ realTest(
     // only known from its transcript, and the card must show that end.
     const card = page.getByTestId("t5-task-card");
     await expect(card).toBeVisible({ timeout: 120_000 });
+    await openToolCard(card);
     await expect(card.locator('[data-slot="t5-task-transcript"]')).toContainText("Read only", {
       timeout: 60_000,
     });

@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../../U3/tool-card/contract";
 import { RecallRenderer } from "../recall";
 import { ReflectRenderer } from "../reflect";
@@ -31,6 +32,7 @@ describe("T6 recall and reflect renderers", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("prior decision")).toBeTruthy();
     expect(screen.getByText("First memory")).toBeTruthy();
     expect(screen.getByText("Second memory")).toBeTruthy();
@@ -47,6 +49,7 @@ describe("T6 recall and reflect renderers", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("No memories found.")).toBeTruthy();
   });
 
@@ -63,6 +66,7 @@ describe("T6 recall and reflect renderers", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("heading", { name: "Answer" })).toBeTruthy();
     expect(screen.getByText("One memory")).toBeTruthy();
 
@@ -78,6 +82,7 @@ describe("T6 recall and reflect renderers", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("No relevant information found.")).toBeTruthy();
   });
 });

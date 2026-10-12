@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest, screenshots, startChat } from "./real-omp";
+import { expect, openAllToolCards, realTest, screenshots, startChat } from "./real-omp";
 
 /**
  * Sends events on a chat's event stream the way the server does. The page's socket is routed: the
@@ -222,6 +222,8 @@ async function openLongChat(page: Page): Promise<void> {
     .getByRole("option", { name: /Run the long job/ })
     .click();
   await expect(page.getByText("All 60 steps are done.")).toBeAttached({ timeout: 60_000 });
+  // A card starts as one line: open the steps, so the transcript is as long as the reader scrolls through it.
+  await openAllToolCards(page);
 }
 
 /** Scrolls the transcript up, away from its newest message, so "Jump to latest" is shown. */

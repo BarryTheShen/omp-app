@@ -1,6 +1,7 @@
 import { AppFailure } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { WriteCard } from "./write";
 
@@ -47,6 +48,7 @@ describe("WriteCard", () => {
         rendererProps={props({ path: "src/long.ts", content }, undefined, { type: "running" })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByTestId("t1-write-card")).toBeTruthy();
     expect(
@@ -94,6 +96,7 @@ describe("WriteCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByText("Executable")).toBeTruthy();
     expect(screen.getByText("Shebang")).toBeTruthy();
@@ -119,6 +122,7 @@ describe("WriteCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Cancelled background job Overlap.")).toBeTruthy();
     expect(screen.getByText("Background job")).toBeTruthy();
     expect(screen.queryByText("Waiting for source content…")).toBeNull();
@@ -133,6 +137,7 @@ describe("WriteCard", () => {
         rendererProps={rawProps({ path: "src/new.ts" }, undefined, { type: "running" })}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Waiting for source content…")).toBeTruthy();
   });
 
@@ -148,6 +153,7 @@ describe("WriteCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain(
       "recall request failed: The socket connection was closed unexpectedly.",
     );
@@ -165,6 +171,7 @@ describe("WriteCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     const image = screen.getByRole("img", { name: "assets/icon.svg SVG preview" });
     expect(image.getAttribute("src")).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
@@ -190,6 +197,7 @@ describe("WriteCard", () => {
         ])}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByText("export const value = 1;")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Malformed write details");
@@ -201,6 +209,7 @@ describe("WriteCard", () => {
         rendererProps={props({ path: "empty.txt", content: "" }, { resolvedPath: "empty.txt" })}
       />,
     );
+    expandToolCards();
 
     expect(
       screen.getByTestId("t1-write-card").querySelector("[data-slot='t1-write-line-count']")
@@ -219,6 +228,7 @@ describe("WriteCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByTestId("tool-state-chip-cancelled")).toBeTruthy();
     expect(screen.getByText("export const partial = true;")).toBeTruthy();
@@ -236,6 +246,7 @@ describe("WriteCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     fireEvent.click(screen.getByRole("button", { name: "Open full artifact" }));
     expect(await screen.findByText("Artifact could not be opened.")).toBeTruthy();
@@ -253,6 +264,7 @@ describe("WriteCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("alert").textContent).toContain("Write denied");
     fireEvent.click(screen.getByRole("button", { name: "Copy raw source" }));

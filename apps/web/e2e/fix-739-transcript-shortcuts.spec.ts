@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest, screenshots } from "./real-omp";
+import { expect, openToolCard, realTest, screenshots } from "./real-omp";
 
 const AT = Date.UTC(2026, 8, 1, 12, 0, 0);
 const USAGE = {
@@ -123,6 +123,9 @@ realTest(
     await page.keyboard.press("Alt+t");
     await expect(thinking).toBeVisible();
 
+    // A finished card starts as one line; open it to reach its output.
+    await openToolCard(card);
+
     // Mod+O (Ctrl+O on Linux) expands the bash output in full, and collapses it again.
     await expect(showAll).toBeVisible();
     await page.keyboard.press("Control+o");
@@ -131,7 +134,11 @@ realTest(
     await page.screenshot({ path: join(screenshots, "fix-739-dark-output-expanded.png") });
     await setTheme(page, false);
     await page.keyboard.press("Control+o");
-    await expect(showAll).toBeVisible();
+    // Mod+O folds every call again, so the card's output folds with its line.
+    await expect(card.locator('[data-slot="u3-tool-card-trigger"]').first()).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
 
     // Mod+Shift+O hides the tool activity and shows it again; the assistant's own text stays.
     await page.keyboard.press("Control+Shift+O");

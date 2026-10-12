@@ -60,16 +60,17 @@ export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRender
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={taskSummary(details, state.isError, subagents)}
         outcome={outcome}
-      />
-      <RawDetails state={state} />
-      <TaskBody
-        depth={normalized.nested?.depth ?? 0}
-        details={details}
-        isError={state.isError}
-        parentTaskId={normalized.toolCallId}
-        subagents={subagents}
-        text={text}
-      />
+      >
+        <RawDetails state={state} />
+        <TaskBody
+          depth={normalized.nested?.depth ?? 0}
+          details={details}
+          isError={state.isError}
+          parentTaskId={normalized.toolCallId}
+          subagents={subagents}
+          text={text}
+        />
+      </ToolCard>
     </div>
   );
 }

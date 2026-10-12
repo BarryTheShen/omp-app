@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import path, { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -62,6 +63,7 @@ test.describe("T5 hub, wait and task cards on recorded results", () => {
     await expect(page.getByTestId("t5-playground")).toBeVisible();
     await assertStyled(page);
     await expect(page.getByTestId("t5-wait-card")).toContainText("2 running · 1 completed");
+    await openAllToolCards(page);
     await expect(page.getByText("Agents · 1 running · 5 parked", { exact: true })).toBeVisible();
     await expect(page.getByText("ReviewerTwo", { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(screenshots, "t5.3-light-hub.png"), fullPage: true });

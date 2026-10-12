@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, realTest, screenshots, sendPrompt, startChat } from "./real-omp";
+import { expect, openToolCard, realTest, screenshots, sendPrompt, startChat } from "./real-omp";
 
 /**
  * Issue #849. A bash call's card offers Stop turn while its command runs, and the button stops the turn the way the
@@ -30,6 +30,9 @@ async function expectStyledShell(page: Page): Promise<void> {
 async function sendSlowBash(page: Page, composer: Locator) {
   await sendPrompt(composer, "slow_tool");
   const card = page.getByTestId("u3-bash-card");
+  await expect(card).toBeVisible({ timeout: 120_000 });
+  // The call starts as one line, and Stop turn sits on its body: the card opens to show it.
+  await openToolCard(card);
   const stop = card.getByRole("button", { name: "Stop turn" });
   await expect(stop).toBeVisible({ timeout: 120_000 });
   return { card, stop };
@@ -41,11 +44,16 @@ async function sendSlowBash(page: Page, composer: Locator) {
  */
 async function startLongWorker(page: Page, composer: Locator) {
   await sendPrompt(composer, "spawn_long_subagent");
+  // The worker's card sits in the chat's task card, which starts as one line: the task card opens to reach it.
+  const task = page.getByTestId("t5-task-card");
+  await expect(task).toBeVisible({ timeout: 120_000 });
+  await openToolCard(task);
   const worker = page
     .locator('[data-slot="t5-task-transcripts"]')
     .getByTestId("u3-bash-card")
     .filter({ hasText: "long-probe-done" });
   await expect(worker).toBeVisible({ timeout: 120_000 });
+  await openToolCard(worker);
   await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0, {
     timeout: 120_000,
   });
@@ -60,6 +68,8 @@ async function startLongWorker(page: Page, composer: Locator) {
 async function expectOwnStopBesideWorker(page: Page, composer: Locator, worker: Locator) {
   await sendPrompt(composer, "slow_tool");
   const own = page.getByTestId("u3-bash-card").filter({ hasText: "slow-tool-done" });
+  await expect(own).toBeVisible({ timeout: 120_000 });
+  await openToolCard(own);
   await expect(own.getByRole("button", { name: "Stop turn" })).toBeVisible({ timeout: 120_000 });
   await expect(worker.getByRole("button", { name: "Stop turn" })).toHaveCount(0);
 }

@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { GithubCard } from "./github";
 
@@ -41,6 +42,7 @@ describe("GithubCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByTestId("t4-github-header").textContent).toContain("owner/repo");
     expect(screen.getByTestId("t4-github-pr").textContent).toContain("Improve card");
@@ -71,6 +73,7 @@ describe("GithubCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByTestId("t4-github-search-results").textContent).toContain("Issue result");
     expect(screen.getByTestId("t4-github-checkout-push").textContent).toContain("feature-worktree");
@@ -96,6 +99,7 @@ describe("GithubCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("alert").textContent).toContain("Push failed: remote rejected");
     expect(screen.getByTestId("t4-github-raw-details").querySelector("summary")?.textContent).toBe(
@@ -121,6 +125,7 @@ describe("GithubCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t4-github-files").textContent).toContain("+1 more");
   });
 });

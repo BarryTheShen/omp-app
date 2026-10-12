@@ -1,12 +1,13 @@
 import type { ToolCallId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { T7ToolFallback } from "./fallback";
 
-function props(result: unknown): ToolRendererProps {
+function props(result: unknown, toolCallId = "t7-host-1"): ToolRendererProps {
   return {
-    toolCallId: "t7-host-1" as ToolCallId,
+    toolCallId: toolCallId as ToolCallId,
     toolName: "host_tool",
     args: { operation: "read", path: "/private/example", requestId: "redacted" },
     argsText: '{"operation":"read"}',
@@ -30,6 +31,7 @@ describe("T7 fallback", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Host tools are unavailable.");
     expect(screen.getByTestId("t7-fallback-arguments").textContent).toContain("operation");
     expect(screen.getByText("Result: object")).toBeTruthy();
@@ -43,6 +45,7 @@ describe("T7 fallback", () => {
         {...props({ status: "cancelled", error: { code: "permission", message: "secret" } })}
       />,
     );
+    expandToolCards();
     expect(screen.getAllByText("Host tool: cancelled").length).toBeGreaterThan(0);
     expect(screen.getByTestId("tool-state-chip-cancelled").textContent).toContain("Cancelled");
     expect(screen.getByTestId("t7-fallback-details")).toBeTruthy();
@@ -74,14 +77,18 @@ describe("T7 fallback", () => {
     expect(screen.getByRole("button", { name: "MCP tool: Complete" })).toBeTruthy();
   });
 
-  test("a finished call says its status once, in its chip, and shows its text at once", () => {
-    const finished = props({
-      content: [{ type: "text", text: "MCP result" }],
-      details: { value: "ok" },
-    });
+  test("a finished call says its status once in its chip, and its text shows on click", () => {
+    const finished = props(
+      { content: [{ type: "text", text: "MCP result" }], details: { value: "ok" } },
+      "t7-finished",
+    );
     render(<T7ToolFallback {...finished} toolName="mcp__notion_search" />);
     expect(screen.getByTestId("tool-state-chip-success").textContent).toContain("Complete");
     expect(screen.queryByText("Finished")).toBeNull();
+    const trigger = screen.getByRole("button", { name: "MCP tool: Complete" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("MCP result")).toBeNull();
+    fireEvent.click(trigger);
     expect(screen.getByText("MCP result")).toBeTruthy();
   });
 
@@ -94,6 +101,7 @@ describe("T7 fallback", () => {
       isError: true,
     };
     render(<T7ToolFallback {...failed} toolName="mcp__notion_search" />);
+    expandToolCards();
     expect(screen.queryByText("Recorded tool result")).toBeNull();
     expect(screen.queryByText("Finished")).toBeNull();
     expect(
@@ -114,14 +122,21 @@ describe("T7 fallback for a finished call with no result", () => {
 });
 
 describe("T7 fallback, an unclaimed tool", () => {
-  test("shows its arguments as rows and its text result at once, with no JSON type words", () => {
+  test("starts as one line; on click, its arguments and text show with no JSON type words", () => {
     render(
       <T7ToolFallback
-        {...props({ content: [{ type: "text", text: "custom result text" }], details: {} })}
+        {...props(
+          { content: [{ type: "text", text: "custom result text" }], details: {} },
+          "t7-unclaimed",
+        )}
         args={{ query: "fixture" }}
         toolName="some_unlisted_tool"
       />,
     );
+    const trigger = screen.getByRole("button", { name: "some_unlisted_tool: Complete" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("t7-fallback-arguments")).toBeNull();
+    fireEvent.click(trigger);
     expect(screen.getByTestId("t7-fallback-arguments").textContent).toContain("Arguments");
     expect(screen.getByText("query")).toBeTruthy();
     expect(screen.getByText("fixture")).toBeTruthy();
@@ -133,7 +148,7 @@ describe("T7 fallback, an unclaimed tool", () => {
 });
 
 describe("T7 fallback body", () => {
-  test("opens at first sight with its details, and its header folds them away", () => {
+  test("starts as one line, opens to its details on click, and its header folds them away", () => {
     render(
       <T7ToolFallback
         {...props({ content: [{ type: "text", text: "MCP result" }], details: { value: "ok" } })}
@@ -142,6 +157,10 @@ describe("T7 fallback body", () => {
       />,
     );
     const trigger = screen.getByRole("button", { name: "MCP tool: Complete" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("t7-fallback-details")).toBeNull();
+
+    fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByTestId("t7-fallback-details")).toBeTruthy();
 

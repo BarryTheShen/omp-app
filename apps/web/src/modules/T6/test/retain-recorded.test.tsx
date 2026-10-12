@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../../U3/tool-card/contract";
 import { T6_REAL_RESULTS } from "../fixtures/real-results";
 import { RetainRenderer } from "../retain";
@@ -24,6 +25,7 @@ function renderRecorded(name: string) {
       } as unknown as ToolRendererProps)}
     />,
   );
+  expandToolCards();
   return sample;
 }
 

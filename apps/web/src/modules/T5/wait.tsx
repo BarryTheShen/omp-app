@@ -29,9 +29,10 @@ export function WaitCard({ rendererProps }: { readonly rendererProps: ToolRender
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={waitSummary(details, state.isError)}
-      />
-      <RawDetails state={state} />
-      <WaitBody details={details} isError={state.isError} text={text} />
+      >
+        <RawDetails state={state} />
+        <WaitBody details={details} isError={state.isError} text={text} />
+      </ToolCard>
     </div>
   );
 }

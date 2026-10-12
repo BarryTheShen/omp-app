@@ -1,5 +1,12 @@
 import { join } from "node:path";
-import { expect, realTest, screenshots, sendPrompt } from "./real-omp";
+import {
+  expect,
+  openAllToolCards,
+  openToolCard,
+  realTest,
+  screenshots,
+  sendPrompt,
+} from "./real-omp";
 
 realTest.use({ seedLongTurn: 60 });
 
@@ -51,6 +58,8 @@ realTest(
     const jump = page.getByRole("button", { name: "Jump to latest message" });
 
     await expect(page.getByText("All 60 steps are done.")).toBeAttached({ timeout: 60_000 });
+    // A card starts as one line. Open the steps, so the turn is as tall as the reader scrolls through it.
+    await openAllToolCards(page);
     await expect.poll(remainingScroll).toBeLessThan(80);
 
     // Sending from far up shows the newest message.
@@ -68,6 +77,13 @@ realTest(
     await expect(page.getByText("Please run slow_tool now.", { exact: true })).toBeVisible();
     await settled();
     await expect.poll(remainingScroll).toBeLessThan(80);
+    // The command's card starts as one line. It is opened now, while the reader is at the newest message, so its
+    // output shows when the command ends, with the reader still away.
+    const slowCard = page
+      .getByTestId("u3-bash-card")
+      .filter({ hasText: "sleep 7; echo slow-tool-done" });
+    await expect(slowCard).toBeVisible({ timeout: 90_000 });
+    await openToolCard(slowCard);
     await viewport.hover();
     await page.mouse.wheel(0, -1_500);
     await expect(jump).toBeVisible();

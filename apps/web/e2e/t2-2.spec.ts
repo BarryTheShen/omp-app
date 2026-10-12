@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -47,6 +48,7 @@ test.beforeAll(() => {
 
 test("renders grouped grep matches and style-linked results in light mode", async ({ page }) => {
   await page.goto("/t2-grep-playground.html");
+  await openAllToolCards(page);
   await expect(page.getByRole("heading", { name: "Grep results" })).toBeVisible();
   await expect(page.getByLabel("Grep matches by file")).toContainText("src/main.tsx");
   await expect(page.locator("[data-t2-grep-lines]")).toContainText("TODO: wire");
@@ -66,6 +68,7 @@ test("starts dark and keeps grouped matches readable", async ({ page }) => {
   await page.goto("/t2-grep-playground.html");
   await page.locator("html").evaluate((element) => element.classList.add("dark"));
   await expect(page.locator("html")).toHaveClass(/dark/);
+  await openAllToolCards(page);
   await expect(page.getByLabel("Grep matches by file")).toContainText("src/utils.ts");
   const screenshot = await page.screenshot({
     path: "../../.data/screenshots/t2-2-dark.png",
@@ -77,6 +80,7 @@ test("starts dark and keeps grouped matches readable", async ({ page }) => {
 test("keeps file groups and line matches visible at narrow width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/t2-grep-playground.html");
+  await openAllToolCards(page);
   await expect(page.getByLabel("Grep matches by file")).toContainText("src/main.tsx");
   await expect(page.getByRole("link", { name: "src/utils.ts" })).toBeVisible();
   const screenshot = await page.screenshot({

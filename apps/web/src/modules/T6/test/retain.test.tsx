@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../../U3/tool-card/contract";
 import { RetainRenderer } from "../retain";
 
@@ -31,6 +32,7 @@ describe("T6 retain renderer", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Stored 2 memories")).toBeTruthy();
     expect(screen.getByText("one")).toBeTruthy();
     expect(screen.getByText("two")).toBeTruthy();
@@ -46,6 +48,7 @@ describe("T6 retain renderer", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Queued 1 memory")).toBeTruthy();
     expect(
       screen.getByText("The memory operation is queued; storage is not confirmed yet."),
@@ -62,6 +65,7 @@ describe("T6 retain renderer", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Stored 1 of 2 memories")).toBeTruthy();
     expect(screen.getByText("backend rejected item 2")).toBeTruthy();
   });
@@ -80,6 +84,7 @@ describe("T6 retain renderer", () => {
       isError: true,
     };
     render(<RetainRenderer {...failed} />);
+    expandToolCards();
     expect(screen.getByText("Retain failed")).toBeTruthy();
     expect(screen.getByText("Tool xd__retain not found. Did you mean retain?")).toBeTruthy();
     expect(screen.queryByText("No memories stored")).toBeNull();

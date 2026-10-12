@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -58,6 +59,7 @@ async function expectStyles(page: Page): Promise<void> {
 }
 
 async function expectCards(page: Page): Promise<void> {
+  await openAllToolCards(page);
   await expect(page.getByTestId("t7-security-card-security-findings")).toContainText("1 critical");
   await expect(page.getByTestId("t7-security-card-security-findings")).toContainText("5 medium");
   await expect(page.getByTestId("t7-security-card-security-clean")).toContainText(
@@ -69,8 +71,8 @@ async function expectCards(page: Page): Promise<void> {
   await expect(page.getByTestId("t7-security-card-security-running")).toContainText(
     "Plan a scan of src/, packages/server/",
   );
-  await expect(page.locator("body")).not.toContainText('"details"');
-  await expect(page.locator("body")).not.toContainText('"action"');
+  await expect(page.locator("body")).not.toContainText('"details"', { useInnerText: true });
+  await expect(page.locator("body")).not.toContainText('"action"', { useInnerText: true });
 }
 
 test.beforeAll(buildPlaygroundPage);

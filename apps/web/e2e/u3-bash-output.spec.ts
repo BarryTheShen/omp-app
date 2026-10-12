@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   expect,
+  openAllToolCards,
   realTest,
   type SeedToolResult,
   screenshots,
@@ -84,6 +85,7 @@ realTest(
     await expect(page.getByText("end of sample 4")).toBeVisible({ timeout: 60_000 });
     const rows = page.locator('[data-slot="u1-message-row"][data-role="assistant"]');
     await expect(rows).toHaveCount(SAMPLES.length);
+    await openAllToolCards(page);
     await mkdir(screenshots, { recursive: true });
 
     // 40 lines: the first 12 and a note, then every line on request.

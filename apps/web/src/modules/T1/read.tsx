@@ -77,7 +77,6 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
             message: details.error.appError.message,
             retryable: false,
           },
-          defaultOpen: true,
           result: undefined,
           partialResult: undefined,
         }}
@@ -106,7 +105,6 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
     ...normalized,
     result: undefined,
     partialResult: undefined,
-    defaultOpen: normalized.defaultOpen,
   };
   return (
     <div data-slot="t1-read-card" data-testid="t1-read-card">
@@ -115,16 +113,17 @@ export function ReadCard({ rendererProps, urlRenderer, groupedReads }: ReadCardP
         rawResult={rawResult}
         state={state}
         summary={middleEllipsis(target)}
-      />
-      <ReadBody
-        args={args.ok ? args.value : undefined}
-        details={details.value}
-        fallbackText={split.text}
-        images={images}
-        groupedReads={groupedReads}
-        target={target}
-        urlAvailable={details.value.kind !== "url" || urlRenderer !== undefined}
-      />
+      >
+        <ReadBody
+          args={args.ok ? args.value : undefined}
+          details={details.value}
+          fallbackText={split.text}
+          images={images}
+          groupedReads={groupedReads}
+          target={target}
+          urlAvailable={details.value.kind !== "url" || urlRenderer !== undefined}
+        />
+      </ToolCard>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -70,16 +71,21 @@ async function waitForFiniteAnimations(page: Page): Promise<void> {
 }
 
 async function expectCards(page: Page): Promise<void> {
+  await openAllToolCards(page);
   await expect(page.getByText("console.log($$$ARGS) in src · 3 matches")).toBeVisible();
   await expect(page.getByText("line 31")).toBeVisible();
   await expect(page.getByText("No matches.")).toBeVisible();
   await expect(page.getByText("Hover · src/app.ts:12")).toBeVisible();
-  await expect(page.getByText("Returns how many retries are left for this request.")).toBeVisible();
-  await expect(page.getByText("Cannot find name 'retry'. (2304)")).toBeVisible();
-  await expect(page.getByText("References to retryBudget")).toBeVisible();
-  await expect(page.getByText("Showing 20 of 27")).toBeVisible();
+  await expect(
+    page.getByText("Returns how many retries are left for this request.").first(),
+  ).toBeVisible();
+  await expect(page.getByText("Cannot find name 'retry'. (2304)").first()).toBeVisible();
+  await expect(page.getByText("References to retryBudget").first()).toBeVisible();
+  await expect(page.getByText("Showing 20 of 27").first()).toBeVisible();
   await expect(page.getByTestId("tool-card-lsp-running")).toHaveAttribute("data-phase", "running");
-  await expect(page.getByText(/"details"/)).toHaveCount(0);
+  // Raw details keeps its JSON in a closed <details>; it may exist in the DOM but must stay hidden.
+  const details = await page.getByText(/"details"/).all();
+  await Promise.all(details.map((raw) => expect(raw).toBeHidden()));
 }
 
 test.beforeAll(buildPlaygroundPage);

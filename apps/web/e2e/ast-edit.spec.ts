@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -67,6 +68,7 @@ test("renders AST edit structural diffs, parse errors and safety limits in light
   await page.goto("/t1-ast-edit-playground.html");
   await expectStyles(page);
   await expect(page.getByTestId("t1-ast-edit-card-ast-edit-success")).toBeVisible();
+  await openAllToolCards(page);
   await expect(page.getByText("console.log(value)").first()).toBeVisible();
   await expect(page.getByText("logger.info(value)").first()).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("Parse errors");

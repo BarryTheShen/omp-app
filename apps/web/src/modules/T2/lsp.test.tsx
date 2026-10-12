@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { LspCard } from "./lsp";
 
@@ -39,6 +40,7 @@ describe("LspCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Hover · src/app.ts:12")).toBeTruthy();
     expect(screen.getByText("const retryBudget: number")).toBeTruthy();
     expect(screen.getByText("Retries left.")).toBeTruthy();
@@ -62,6 +64,7 @@ describe("LspCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Diagnostics · src/app.ts")).toBeTruthy();
     expect(screen.getByText("Error")).toBeTruthy();
     expect(screen.getByText("src/app.ts:4")).toBeTruthy();
@@ -81,6 +84,7 @@ describe("LspCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("No issues.")).toBeTruthy();
   });
 
@@ -98,6 +102,7 @@ describe("LspCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("References to retryBudget")).toBeTruthy();
     expect(screen.getByText("src/file-1.ts:3")).toBeTruthy();
     expect(screen.getByText("src/file-20.ts:22")).toBeTruthy();
@@ -113,6 +118,7 @@ describe("LspCard", () => {
         rendererProps={props({ action: "symbols", file: "src/app.ts" }, answer("symbols", text))}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("src/app.ts:3")).toBeTruthy();
     expect(screen.getByText("RetryPolicy")).toBeTruthy();
     expect(screen.getByText("retryBudget(): number")).toBeTruthy();
@@ -131,6 +137,7 @@ describe("LspCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Rename foo → bar")).toBeTruthy();
     expect(screen.getByTestId("t2-lsp-rename-status").textContent).toBe(
       "Applied to the files below.",
@@ -146,6 +153,7 @@ describe("LspCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t2-lsp-rename-status").textContent).toBe(
       "Preview only, not applied.",
     );
@@ -156,6 +164,7 @@ describe("LspCard", () => {
     render(
       <LspCard rendererProps={props({ action: "capabilities" }, answer("capabilities", text))} />,
     );
+    expandToolCards();
     expect(screen.getByText("Capabilities")).toBeTruthy();
     expect(screen.getByTestId("t2-lsp-text").textContent).toContain("capability 40");
     expect(screen.getByTestId("t2-lsp-text").textContent).not.toContain("capability 41");
@@ -172,6 +181,7 @@ describe("LspCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("tool-card-lsp-1").getAttribute("data-phase")).toBe("error");
     expect(screen.getByRole("alert").textContent).toContain("LSP error: server crashed");
     expect(screen.queryByTestId("t2-lsp-text")).toBeNull();
@@ -181,6 +191,7 @@ describe("LspCard", () => {
     render(
       <LspCard rendererProps={props({ action: "hover", file: "src/app.ts" }, { content: "x" })} />,
     );
+    expandToolCards();
     expect(screen.getByText("Language server details unavailable.")).toBeTruthy();
   });
 
@@ -192,6 +203,7 @@ describe("LspCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Hover · src/app.ts:12")).toBeTruthy();
     expect(screen.getByTestId("tool-card-lsp-1").getAttribute("data-phase")).toBe("running");
     expect(screen.queryByText("Language server details unavailable.")).toBeNull();

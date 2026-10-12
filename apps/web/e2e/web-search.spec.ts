@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -58,6 +59,7 @@ test("renders search answers, sources and provider errors in light/dark/narrow l
     /^(rgb|oklch)/,
   );
   await expect(page.getByTestId("t4-web-search-card")).toHaveCount(3);
+  await openAllToolCards(page);
   await expect(page.getByRole("heading", { name: "Omp app" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Omp app documentation" }).first()).toHaveAttribute(
     "target",

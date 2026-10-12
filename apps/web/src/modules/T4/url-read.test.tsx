@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { T4_REAL_RESULTS } from "./fixtures/real-results";
 import { T4ReadUrlRenderer } from "./url-read";
@@ -66,6 +67,7 @@ describe("T4ReadUrlRenderer", () => {
         text: "",
       }),
     );
+    expandToolCards();
     expect(screen.getByTestId("t4-url-read")).toBeTruthy();
     expect(screen.getByText("example.test/docs → example.test/docs/final")).toBeTruthy();
     expect(screen.getByText("Retrieved page")).toBeTruthy();
@@ -101,6 +103,7 @@ describe("T4ReadUrlRenderer", () => {
         text: "",
       }),
     );
+    expandToolCards();
     expect(screen.getByText("Resource metadata")).toBeTruthy();
     expect(screen.getByText("Skill content")).toBeTruthy();
     expect(screen.queryByRole("link", { name: /skill/i })).toBeNull();
@@ -121,6 +124,7 @@ describe("T4ReadUrlRenderer", () => {
         ),
       }),
     );
+    expandToolCards();
     const text = screen.getByTestId("t4-url-text").textContent ?? "";
     expect(text).toContain("URL: https://lazy.folke.io/usage");
     expect(text).toContain("page line 14");
@@ -145,6 +149,7 @@ describe("T4ReadUrlRenderer", () => {
         text: "",
       }),
     );
+    expandToolCards();
     expect(screen.getByText("No page content was returned.")).toBeTruthy();
   });
 });

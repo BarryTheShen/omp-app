@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -50,6 +51,8 @@ realTest(
     // The resume turn's settle is the last event that could cancel the call: give it 3 s to finish before the check.
     await page.waitForTimeout(3_000);
     await expect(trigger).toHaveAttribute("aria-label", "task: Complete");
+    // A finished card reads as one line: the cancelled note sits in its body, so the card opens for the check.
+    await openToolCard(card);
     await expect(card).not.toContainText("Tool call cancelled.");
 
     if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();

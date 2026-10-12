@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -45,6 +46,8 @@ async function backgroundedCard(page: Page, composer: Locator): Promise<Locator>
     timeout: 120_000,
   });
   await expect(card).toBeVisible({ timeout: 120_000 });
+  // The card's note sits in its body, and the card starts as one line: open it to read the note.
+  await openToolCard(card);
   await sendPrompt(composer, "steer while the command runs");
   await expect(card.getByText(NOTE)).toBeVisible({ timeout: 120_000 });
   // The turn ends after its write. Until then the chat follows its new output, and a capture would catch the card moving.

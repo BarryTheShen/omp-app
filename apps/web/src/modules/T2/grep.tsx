@@ -182,48 +182,49 @@ export function GrepCard(props: ToolRendererProps): ReactNode {
         rawResult={rawResult}
         state={state}
         summary={summary}
-      />
-      {(args || details) && (
-        <div
-          className="text-muted-foreground flex flex-wrap items-center gap-(--space-xs) text-xs"
-          data-t2-grep-meta
-        >
-          {/* The header already names the pattern and scope; the chips add only the options. */}
-          {flags(args).map((flag) => (
-            <span className="rounded-full bg-muted px-(--space-xs) py-(--space-3xs)" key={flag}>
-              {flag}
-            </span>
-          ))}
-          {truncationText && <span>{truncationText}</span>}
-          {details?.missingPaths?.map((path) => (
-            <span key={path}>Skipped: {path}</span>
-          ))}
-        </div>
-      )}
-      {files.length > 0 && (
-        <ul aria-label="Grep matches by file" className="m-0 grid min-w-0 gap-(--space-xs) p-0">
-          {files.map((file) => (
-            <MatchFile
-              file={file}
-              pattern={args?.pattern ?? ""}
-              key={`${file.path ?? "file"}-${file.count ?? ""}-${file.matches?.length ?? 0}`}
-            />
-          ))}
-        </ul>
-      )}
-      {details?.displayContent && (
-        <pre
-          className="text-foreground m-0 max-h-80 overflow-auto text-xs whitespace-pre-wrap"
-          data-t2-grep-lines
-        >
-          {details.displayContent}
-        </pre>
-      )}
-      {details && files.length === 0 && details.matchCount === 0 && (
-        <p className="text-muted-foreground text-sm" data-t2-grep-empty>
-          No matches found.
-        </p>
-      )}
+      >
+        {(args || details) && (
+          <div
+            className="text-muted-foreground flex flex-wrap items-center gap-(--space-xs) text-xs"
+            data-t2-grep-meta
+          >
+            {/* The header already names the pattern and scope; the chips add only the options. */}
+            {flags(args).map((flag) => (
+              <span className="rounded-full bg-muted px-(--space-xs) py-(--space-3xs)" key={flag}>
+                {flag}
+              </span>
+            ))}
+            {truncationText && <span>{truncationText}</span>}
+            {details?.missingPaths?.map((path) => (
+              <span key={path}>Skipped: {path}</span>
+            ))}
+          </div>
+        )}
+        {files.length > 0 && (
+          <ul aria-label="Grep matches by file" className="m-0 grid min-w-0 gap-(--space-xs) p-0">
+            {files.map((file) => (
+              <MatchFile
+                file={file}
+                pattern={args?.pattern ?? ""}
+                key={`${file.path ?? "file"}-${file.count ?? ""}-${file.matches?.length ?? 0}`}
+              />
+            ))}
+          </ul>
+        )}
+        {details?.displayContent && (
+          <pre
+            className="text-foreground m-0 max-h-80 overflow-auto text-xs whitespace-pre-wrap"
+            data-t2-grep-lines
+          >
+            {details.displayContent}
+          </pre>
+        )}
+        {details && files.length === 0 && details.matchCount === 0 && (
+          <p className="text-muted-foreground text-sm" data-t2-grep-empty>
+            No matches found.
+          </p>
+        )}
+      </ToolCard>
     </div>
   );
 }

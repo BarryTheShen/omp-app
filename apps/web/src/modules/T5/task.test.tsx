@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AgentRef, NestedTranscriptSource } from "@/modules/P1/contract";
 import { ReadOnlyThread } from "@/modules/P1/transcript";
 import { agentRef, transcriptPage, userMessage } from "@/modules/P1/transcript/test/fixtures";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import { alteredResult, recorded } from "./recorded-props";
 import { TaskCard, type TaskSubagentLookup, TaskSubagentsContext } from "./task";
 
@@ -35,6 +36,7 @@ function workerSource(agent: AgentRef, message: string): NestedTranscriptSource 
 describe("T5 task card on recorded results", () => {
   test("one agent started in the background shows its job, its status and its counts", () => {
     render(<TaskCard rendererProps={recorded("task: one agent started in the background")} />);
+    expandToolCards();
     expect(screen.getByTestId("t5-task-card")).toBeTruthy();
     expect(screen.getByText("Running · 1 agent")).toBeTruthy();
     expect(screen.getByText("Background job BuilderTwo")).toBeTruthy();
@@ -45,6 +47,7 @@ describe("T5 task card on recorded results", () => {
 
   test("two reviewers started in the background show each agent", () => {
     render(<TaskCard rendererProps={recorded("task: two reviewers started in the background")} />);
+    expandToolCards();
     expect(screen.getByText("Running · 2 agents")).toBeTruthy();
     expect(screen.getByText("ReviewerOne")).toBeTruthy();
     expect(screen.getByText("ReviewerTwo")).toBeTruthy();
@@ -56,12 +59,14 @@ describe("T5 task card on recorded results", () => {
 
   test("a preflight refusal says no agent started and shows the text omp returned", () => {
     render(<TaskCard rendererProps={recorded("task: a preflight failure, no agent started")} />);
+    expandToolCards();
     expect(screen.getByText("No agents reported")).toBeTruthy();
     expect(screen.getByTestId("t5-task-text").textContent).toContain("failed preflight");
   });
 
   test("a refused call shows omp's own words as its reason", () => {
     render(<TaskCard rendererProps={recorded("task: the call was refused")} />);
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain(
       "Put each model selector on its tasks[] item, not on the batch container.",
     );
@@ -74,6 +79,7 @@ describe("T5 task card on recorded results", () => {
       "paused",
     );
     render(<TaskCard rendererProps={props} />);
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Malformed task");
   });
 });
@@ -118,6 +124,7 @@ describe("T5.2 task card worker transcripts", () => {
         </InThread>
       </TaskSubagentsContext.Provider>,
     );
+    expandToolCards();
     expect(await screen.findByText("worker task text for the probe")).toBeTruthy();
     const transcript = container.querySelector("[data-slot='t5-task-transcript']");
     expect(transcript?.textContent).toContain("Nested probe");
@@ -141,6 +148,7 @@ describe("T5.2 task card worker transcripts", () => {
         </InThread>
       </TaskSubagentsContext.Provider>,
     );
+    expandToolCards();
     expect(screen.getByText("Failed · 1 agent")).toBeTruthy();
     expect(screen.queryByText("Running · 1 agent")).toBeNull();
     const job = container.querySelector("[data-slot='t5-task-job']");
@@ -195,6 +203,7 @@ describe("T5.2 task card worker transcripts", () => {
         </InThread>
       </TaskSubagentsContext.Provider>,
     );
+    expandToolCards();
     expect(screen.getByText("Completed · 1 agent")).toBeTruthy();
     expect(container.querySelector("[data-slot='t5-task-job']")?.textContent).toContain(
       "Completed",
@@ -234,6 +243,7 @@ describe("T5.2 task card worker transcripts", () => {
     const { container } = render(
       <TaskCard rendererProps={recorded("task: one agent started in the background")} />,
     );
+    expandToolCards();
     expect(container.querySelector("[data-slot='t5-task-transcripts']")).toBeNull();
   });
 
@@ -248,6 +258,7 @@ describe("T5.2 task card worker transcripts", () => {
         <TaskCard rendererProps={recorded("task: one agent started in the background")} />
       </TaskSubagentsContext.Provider>,
     );
+    expandToolCards();
     expect(container.querySelector("[data-slot='t5-task-transcripts']")).toBeNull();
   });
 
@@ -269,6 +280,7 @@ describe("T5.2 task card worker transcripts", () => {
         </InThread>
       </TaskSubagentsContext.Provider>,
     );
+    expandToolCards();
     const row = container.querySelector("[data-slot='t5-task-progress'] li");
     expect(row?.textContent).toContain("Running");
     expect(row?.textContent).not.toContain("Pending");

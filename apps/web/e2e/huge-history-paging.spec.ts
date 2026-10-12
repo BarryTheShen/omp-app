@@ -2,7 +2,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Page } from "@playwright/test";
 import { sessionBucketName } from "../../../packages/server/src/modules/A1/sessions/paths";
-import { expect, realTest, screenshots, sendPrompt, waitForFiniteAnimations } from "./real-omp";
+import {
+  expect,
+  openToolCard,
+  realTest,
+  screenshots,
+  sendPrompt,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 const MESSAGE_CHARACTERS = 1_500_000;
 
@@ -197,6 +204,10 @@ realTest(
     await list.getByRole("option").first().click();
 
     const thread = page.locator('[data-slot="u1-thread-viewport"]');
+    // The shortened bash card starts as one line: open it to reach its note and "Load full output".
+    const shortened = thread.getByTestId("u3-bash-card").first();
+    await expect(shortened).toBeVisible({ timeout: 60_000 });
+    await openToolCard(shortened);
     const load = thread.getByRole("button", { name: "Load full output" });
     // The bash card the app holds in part says so once, and "Load full output" is the next step.
     const partialNote =

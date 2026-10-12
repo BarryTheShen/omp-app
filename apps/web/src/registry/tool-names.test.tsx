@@ -1,5 +1,6 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../modules/U3/tool-card/contract";
 import { createToolRegistry } from "../modules/U3/tool-card/registry";
 import { TOOL_RENDERERS } from "./index";
@@ -38,6 +39,7 @@ describe("tool names resolve to their cards", () => {
       status: { type: "complete" },
     } as unknown as ToolRendererProps;
     const { container } = render(<Renderer {...props} />);
+    expandToolCards();
     expect(container.querySelector('[data-testid="t7-fallback-unclaimed-1"]')).toBeTruthy();
     expect(container.textContent).toContain("custom result text");
   });

@@ -54,8 +54,8 @@ interface TranscriptShortcutsProps {
 }
 
 /**
- * The transcript's shortcuts, wired to the display policy above it: Alt+T shows or hides thinking, Mod+O expands or
- * collapses tool output, Mod+Shift+O shows or hides tool activity, and Alt+L jumps to the latest message.
+ * The transcript's shortcuts, wired to the display policy above it: Alt+T shows or hides thinking, Mod+O opens or
+ * collapses every tool call, Mod+Shift+O shows or hides tool activity, and Alt+L jumps to the latest message.
  */
 export function TranscriptShortcuts({ followLatest, children }: TranscriptShortcutsProps) {
   const { toggleThinking, toggleTools, toggleExpandTools } = useTranscriptDisplayPolicy();

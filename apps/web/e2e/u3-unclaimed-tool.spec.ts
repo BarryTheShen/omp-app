@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   expect,
+  openToolCard,
   realTest,
   type SeedToolResult,
   screenshots,
@@ -36,6 +37,7 @@ realTest(
     const row = page.locator('[data-slot="u1-message-row"][data-role="assistant"]').nth(0);
     const card = row.locator('[data-tool-name="some_unlisted_tool"]');
     await expect(card).toBeVisible();
+    await openToolCard(card);
 
     // The status is said once: the chip says Complete, and no line repeats it.
     await expect(card.locator('[data-slot="u3-tool-card-status"]')).toHaveText("Complete");

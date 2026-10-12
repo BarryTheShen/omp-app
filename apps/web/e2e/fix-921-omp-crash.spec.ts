@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -50,9 +51,14 @@ realTest(
 
     const banner = errorBanner(app);
     await expect(banner).toContainText("omp exited (signal SIGKILL)", { timeout: 30_000 });
-    // The card of the command that was running says one thing, not that it is cancelled and waiting.
+    // The card of the command that was running says one thing, not that it is cancelled and waiting. A card starts as
+    // one line, so the card opens to show its output area.
+    const runningCard = transcript(app)
+      .getByTestId("u3-bash-card")
+      .filter({ hasText: "sleep 7; echo slow-tool-done" });
+    await openToolCard(runningCard);
     await expect(transcript(app).getByText("Waiting for bash output…")).toHaveCount(0);
-    await expect(transcript(app).getByText("No output was recorded.")).toBeVisible();
+    await expect(runningCard.getByText("No output was recorded.")).toBeVisible();
     // The chat is saved, so it stays in the list.
     await expect(app.getByText("No sessions in this folder")).toHaveCount(0);
     await app.screenshot({ path: join(screenshots, "fix-921-omp-stopped.png") });

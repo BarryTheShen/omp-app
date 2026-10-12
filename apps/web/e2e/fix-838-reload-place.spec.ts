@@ -34,7 +34,8 @@ realTest(
       await promise;
     });
     const before = await viewport.evaluate((el) => el.scrollTop);
-    expect(await distanceFromBottom()).toBeGreaterThan(500);
+    // Each step starts as one line, so the folded turn is short: the reader must still be off the newest message.
+    expect(await distanceFromBottom()).toBeGreaterThan(40);
     await mkdir(screenshots, { recursive: true });
     await page.screenshot({ path: join(screenshots, "fix-838-before-reload.png") });
 
@@ -44,7 +45,7 @@ realTest(
     await expect
       .poll(async () => Math.abs((await viewport.evaluate((el) => el.scrollTop)) - before))
       .toBeLessThanOrEqual(8);
-    expect(await distanceFromBottom()).toBeGreaterThan(500);
+    expect(await distanceFromBottom()).toBeGreaterThan(40);
     await page.screenshot({ path: join(screenshots, "fix-838-after-reload.png") });
   },
 );

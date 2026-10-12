@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../../U3/tool-card/contract";
 import { RecallRenderer } from "../recall";
 
@@ -29,6 +30,7 @@ describe("T6 recall renderer", () => {
         } as unknown as ToolRendererProps)}
       />,
     );
+    expandToolCards();
     const items = screen.getAllByRole("listitem").map((item) => item.textContent);
     expect(items).toContain("Context settings use the shared settings kit.");
     expect(items.some((text) => text?.startsWith("- "))).toBe(false);

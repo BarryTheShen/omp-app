@@ -26,7 +26,6 @@ function cardState(phase: ToolCardPhase, id: string): ToolCardState {
           }
         : undefined,
     timedOut: phase === "error",
-    defaultOpen: phase !== "success",
     outputMeta:
       phase === "partial"
         ? {

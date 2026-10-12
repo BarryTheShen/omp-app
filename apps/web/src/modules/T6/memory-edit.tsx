@@ -37,12 +37,13 @@ export function MemoryEditRenderer(props: ToolRendererProps) {
   const confirmation = model.status.length > 0 ? model.status : resultText(props.result);
   return (
     <div data-t6-memory-card data-t6-tool="memory_edit">
-      <ToolCard rawResult={JSON.stringify(model.raw)} state={state} summary={summary} />
-      <div className="text-muted-foreground ms-2 py-1 text-xs">
-        <p className="text-foreground">{summary}</p>
-        {confirmation.length > 0 && <p className="mt-1">Confirmation: {confirmation}</p>}
-        {model.malformed && <p className="mt-1">Some memory edit details were malformed.</p>}
-      </div>
+      <ToolCard rawResult={JSON.stringify(model.raw)} state={state} summary={summary}>
+        <div className="text-muted-foreground ms-2 py-1 text-xs">
+          <p className="text-foreground">{summary}</p>
+          {confirmation.length > 0 && <p className="mt-1">Confirmation: {confirmation}</p>}
+          {model.malformed && <p className="mt-1">Some memory edit details were malformed.</p>}
+        </div>
+      </ToolCard>
     </div>
   );
 }

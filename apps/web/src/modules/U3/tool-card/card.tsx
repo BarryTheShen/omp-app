@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 import { useTranscriptDisplayPolicy } from "@/modules/U1/policy/policy";
 import { Button } from "../../../components/ui/button";
 import {
@@ -85,38 +85,29 @@ export function ToolCard({
     ? { ...shown, label: "Timed out", tone: "warning" as const }
     : shown;
   const remembered = rememberedDisclosure.get(state.toolCallId);
-  const [open, setOpen] = useState(remembered ?? state.defaultOpen);
-  const [expandedOutput, setExpandedOutput] = useState(false);
   const policy = useTranscriptDisplayPolicy();
-  // A change of the transcript's expand-all flag expands or collapses this card's own choice too.
-  const [seenExpandTools, setSeenExpandTools] = useState(policy.expandTools);
-  if (seenExpandTools !== policy.expandTools) {
-    setSeenExpandTools(policy.expandTools);
-    setExpandedOutput(false);
-  }
+  // Every call starts as one line, running or finished: no call opens or folds by itself. A click or Enter on the
+  // line is remembered for its call, and the chat's expand-all flag opens or closes every card.
+  const [open, setOpen] = useState(remembered ?? policy.expandTools);
+  const [expandedOutput, setExpandedOutput] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "copiedShown" | "failed">(
     "idle",
   );
-  const [activeToolCallId, setActiveToolCallId] = useState(state.toolCallId);
-  const userOverride = useRef(remembered !== undefined);
-  const previousPhase = useRef(state.phase);
-
-  useEffect(() => {
-    if (activeToolCallId === state.toolCallId) return;
-    setActiveToolCallId(state.toolCallId);
-    setOpen(rememberedDisclosure.get(state.toolCallId) ?? state.defaultOpen);
+  const [shownCallId, setShownCallId] = useState(state.toolCallId);
+  const [shownFlag, setShownFlag] = useState(policy.expandTools);
+  // A card reused for another call starts that call from its own remembered choice, not the last call's.
+  if (shownCallId !== state.toolCallId) {
+    setShownCallId(state.toolCallId);
+    setOpen(remembered ?? policy.expandTools);
     setExpandedOutput(false);
     setCopyStatus("idle");
-    userOverride.current = rememberedDisclosure.has(state.toolCallId);
-    previousPhase.current = state.phase;
-  }, [activeToolCallId, state.defaultOpen, state.phase, state.toolCallId]);
-
-  useEffect(() => {
-    if (previousPhase.current !== state.phase && !userOverride.current) {
-      setOpen(state.defaultOpen);
-    }
-    previousPhase.current = state.phase;
-  }, [state.defaultOpen, state.phase]);
+  }
+  // A flip of the chat's flag opens or closes every card, so it clears every remembered choice, not only this card's.
+  if (shownFlag !== policy.expandTools) {
+    setShownFlag(policy.expandTools);
+    rememberedDisclosure.clear();
+    setOpen(policy.expandTools);
+  }
 
   const argsRaw = state.argsText;
   const resultRaw = rawResult ?? formatRaw(state.result ?? state.partialResult);
@@ -132,7 +123,6 @@ export function ToolCard({
   const summaryTone = isUnrecorded ? undefined : summaryClassName;
 
   const rememberOpen = (nextOpen: boolean) => {
-    userOverride.current = true;
     setOpen(nextOpen);
     rememberedDisclosure.delete(state.toolCallId);
     rememberedDisclosure.set(state.toolCallId, nextOpen);

@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { T5_VIBE_REAL_RESULTS } from "./fixtures/vibe-real-results";
 import { VibeSpawnRenderer } from "./vibe-spawn";
@@ -29,6 +30,7 @@ describe("VibeSpawnRenderer", () => {
     const skipped = T5_VIBE_REAL_RESULTS[0];
     if (skipped === undefined) throw new Error("no recorded vibe_spawn result");
     render(<VibeSpawnRenderer {...callProps(skipped)} />);
+    expandToolCards();
     expect(screen.getByText("Vibe worker not started")).toBeTruthy();
     const reason = "Skipped due to queued user message";
     const alerts = screen
@@ -62,6 +64,7 @@ describe("VibeSpawnRenderer", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Vibe worker fast-1")).toBeTruthy();
     expect(screen.getByText("CLI: fast")).toBeTruthy();
     expect(screen.getByText("Turn job: job-1")).toBeTruthy();

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ReadOnlyNestedTranscript, TurnCancelContext } from "@/modules/U1/thread";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import { BashCard, decodeBashResult, failureMessage } from "./bash";
 import type { ToolRendererProps } from "./contract";
 import { FullOutputProvider } from "./full-output";
@@ -57,6 +58,7 @@ describe("BashCard", () => {
 
   test("maps ANSI color escapes to semantic token classes without raw escapes", () => {
     render(<BashCard rendererProps={props(result({ output: "\u001b[31mred\u001b[0m plain" }))} />);
+    expandToolCards();
 
     const stdout = screen.getByTestId("u3-bash-stdout");
     expect(stdout.querySelector(".text-danger")?.textContent).toBe("red");
@@ -69,6 +71,7 @@ describe("BashCard", () => {
     unmount();
 
     render(<BashCard rendererProps={props(result({ output: "bad", exitCode: 2 }))} />);
+    expandToolCards();
     expect(screen.getByTestId("tool-card-bash-call").getAttribute("data-phase")).toBe("error");
     expect(screen.getByRole("alert").textContent).toContain("exited with code 2");
   });
@@ -80,6 +83,7 @@ describe("BashCard", () => {
         rendererProps={props(result({ output, truncated: true, totalLines: 20, outputLines: 20 }))}
       />,
     );
+    expandToolCards();
 
     const outputBlock = screen.getByTestId("u3-bash-stdout");
     expect(outputBlock.textContent).toContain("line-0");
@@ -91,6 +95,7 @@ describe("BashCard", () => {
   test("stop delegates to the parent turn cancellation callback", () => {
     const onCancel = vi.fn();
     render(<BashCard onCancel={onCancel} rendererProps={props(result(), { type: "running" })} />);
+    expandToolCards();
 
     fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
     expect(onCancel).toHaveBeenCalledOnce();
@@ -103,6 +108,7 @@ describe("BashCard", () => {
         <BashCard rendererProps={props(result(), { type: "running" })} />
       </TurnCancelContext.Provider>,
     );
+    expandToolCards();
 
     fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
     expect(chatCancel).toHaveBeenCalledOnce();
@@ -111,6 +117,7 @@ describe("BashCard", () => {
   test("a running bash card with no output yet still offers Stop turn, which the app's running card has until its output arrives", () => {
     const onCancel = vi.fn();
     render(<BashCard onCancel={onCancel} rendererProps={props(undefined, { type: "running" })} />);
+    expandToolCards();
 
     expect(screen.getByText("No output yet.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Stop turn" }));
@@ -126,6 +133,7 @@ describe("BashCard", () => {
         </ReadOnlyNestedTranscript>
       </TurnCancelContext.Provider>,
     );
+    expandToolCards();
     expect(screen.getByText("No output yet.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Stop turn" })).toBeNull();
   });
@@ -137,6 +145,7 @@ describe("BashCard", () => {
       details: { timeoutSeconds: 300, wallTimeMs: 37.9 },
     };
     render(<BashCard rendererProps={props(toolResult)} />);
+    expandToolCards();
 
     const stdout = screen.getByTestId("u3-bash-stdout").textContent ?? "";
     expect(stdout).toContain("fixture-tool");
@@ -155,6 +164,7 @@ describe("BashCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("line 1");
     expect(screen.queryByText("Waiting for bash output…")).toBeNull();
@@ -162,6 +172,7 @@ describe("BashCard", () => {
 
   test("says no output has come yet while the command runs, and never that it is waiting", () => {
     const { unmount } = render(<BashCard rendererProps={props(undefined, { type: "running" })} />);
+    expandToolCards();
     expect(screen.getByText("No output yet.")).toBeTruthy();
     expect(screen.queryByText(/Waiting/)).toBeNull();
     unmount();
@@ -174,6 +185,7 @@ describe("BashCard", () => {
         }}
       />,
     );
+    expandToolCards();
     // A command that was stopped before it printed anything has one state, not two.
     expect(screen.queryByText("No output yet.")).toBeNull();
     expect(screen.getByText("No output was recorded.")).toBeTruthy();
@@ -182,11 +194,16 @@ describe("BashCard", () => {
     );
   });
 
-  test("opens at first sight, and its header folds the command and output away", () => {
+  test("a finished command starts as one line and opens to the command and output on click", () => {
     // A distinct call id: the card remembers a person's fold per call, and other tests share "bash-call".
     const folding = { ...props(result({ output: "hello" })), toolCallId: "fold-call" };
     render(<BashCard rendererProps={folding as unknown as ToolRendererProps} />);
     const trigger = screen.getByRole("button", { name: "bash: Complete" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("u3-bash-stdout")).toBeNull();
+    expect(screen.queryByText("$ printf 'hello'")).toBeNull();
+
+    fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("hello");
     expect(screen.getByText("$ printf 'hello'")).toBeTruthy();
@@ -200,9 +217,21 @@ describe("BashCard", () => {
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("hello");
   });
 
-  test("a failed command's card opens with its output in view", () => {
-    render(<BashCard rendererProps={props(result({ output: "bad", exitCode: 2 }))} />);
+  test("a failed command reads Error on its line and opens to its output on click", () => {
+    // A distinct call id: the card remembers a person's open state per call, and other tests share "bash-call".
+    render(
+      <BashCard
+        rendererProps={{
+          ...props(result({ output: "bad", exitCode: 2 })),
+          toolCallId: "failed-call",
+        }}
+      />,
+    );
     const trigger = screen.getByRole("button", { name: "bash: Error" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("u3-bash-stdout")).toBeNull();
+
+    fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("bad");
   });
@@ -239,6 +268,7 @@ describe("failureMessage", () => {
 describe("BashCard output in full", () => {
   test("shows the first 12 of 40 lines, and a control that shows all 40", () => {
     render(<BashCard rendererProps={props(toolResult(numbered(40)))} />);
+    expandToolCards();
     const stdout = screen.getByTestId("u3-bash-stdout");
     expect(stdout.textContent).toContain("line 12");
     expect(stdout.textContent).not.toContain("line 13");
@@ -255,12 +285,14 @@ describe("BashCard output in full", () => {
 
   test("a 400-line result reaches its last line", () => {
     render(<BashCard rendererProps={props(toolResult(numbered(400)))} />);
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Show all 400 lines" }));
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("line 400");
   });
 
   test("a result of 12 lines or fewer has no note and no control", () => {
     render(<BashCard rendererProps={props(toolResult(numbered(12)))} />);
+    expandToolCards();
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("line 12");
     expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
     expect(screen.queryByText(/Showing the first/)).toBeNull();
@@ -269,6 +301,7 @@ describe("BashCard output in full", () => {
   test("a line too long to show is cut by characters and says so", () => {
     const long = "x".repeat(9_000);
     render(<BashCard rendererProps={props(toolResult(long))} />);
+    expandToolCards();
     expect(screen.getByText("Showing the first 8,000 of 9,000 characters.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show all 9,000 characters" }));
     expect(screen.getByTestId("u3-bash-stdout").textContent).toContain(long);
@@ -286,6 +319,7 @@ describe("BashCard output in full", () => {
       },
     };
     render(<BashCard rendererProps={props(toolResult(numbered(20), { meta }))} />);
+    expandToolCards();
     expect(screen.getByText("omp shortened this output: showing 20 of 4,000 lines.")).toBeTruthy();
     expect(screen.getByText("Showing the first 12 of 20 lines.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Show all 20 lines" })).toBeTruthy();
@@ -301,12 +335,14 @@ describe("BashCard output in full", () => {
       outputBytes: 180,
     });
     render(<BashCard rendererProps={props(rpc)} />);
+    expandToolCards();
     expect(screen.getByText("omp shortened this output: showing 20 of 4,000 lines.")).toBeTruthy();
   });
 
   test("colored output keeps its colors in the lines it shows and in the rest", () => {
     const colored = Array.from({ length: 20 }, (_, index) => `\u001b[32mok ${index + 1}\u001b[0m`);
     render(<BashCard rendererProps={props(toolResult(colored.join("\n")))} />);
+    expandToolCards();
     const stdout = screen.getByTestId("u3-bash-stdout");
     expect(stdout.querySelectorAll(".text-success")).toHaveLength(12);
     fireEvent.click(screen.getByRole("button", { name: "Show all 20 lines" }));
@@ -316,6 +352,7 @@ describe("BashCard output in full", () => {
 
   test("empty output says so and offers no control", () => {
     render(<BashCard rendererProps={props(toolResult(""))} />);
+    expandToolCards();
     expect(screen.getByText("No output")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Show/ })).toBeNull();
   });
@@ -325,6 +362,7 @@ describe("BashCard copy", () => {
   test("copies the whole output, not the lines the card shows, and says so", async () => {
     const onCopy = vi.fn(async () => {});
     render(<BashCard onCopy={onCopy} rendererProps={props(toolResult(numbered(40)))} />);
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
     await waitFor(() => expect(onCopy).toHaveBeenCalledWith(numbered(40), "result"));
     expect(await screen.findByText("Copied raw output", { exact: true })).toBeTruthy();
@@ -333,6 +371,7 @@ describe("BashCard copy", () => {
   test("copies the command and says so", async () => {
     const onCopy = vi.fn(async () => {});
     render(<BashCard onCopy={onCopy} rendererProps={props(toolResult("ok"))} />);
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Copy bash command" }));
     await waitFor(() => expect(onCopy).toHaveBeenCalledWith("printf 'hello'", "code"));
     expect(await screen.findByText("Copied command", { exact: true })).toBeTruthy();
@@ -343,6 +382,7 @@ describe("BashCard copy", () => {
       throw new Error("denied");
     });
     render(<BashCard onCopy={onCopy} rendererProps={props(toolResult("ok"))} />);
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
     expect(await screen.findByText("Copy unavailable", { exact: true })).toBeTruthy();
   });
@@ -351,6 +391,7 @@ describe("BashCard copy", () => {
     const onCopy = vi.fn(async () => {});
     const cut = { ...toolResult(numbered(40)), outputCut: { shownBytes: 4, totalBytes: 40 } };
     render(<BashCard onCopy={onCopy} rendererProps={props(cut)} />);
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
     expect(
       await screen.findByText(
@@ -373,6 +414,7 @@ describe("BashCard copy", () => {
     };
     const onCopy = vi.fn(async () => {});
     render(<BashCard onCopy={onCopy} rendererProps={props(toolResult(numbered(20), { meta }))} />);
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
     expect(
       await screen.findByText("Copied the shown part of the output.", { exact: true }),
@@ -387,6 +429,7 @@ describe("BashCard copy", () => {
         rendererProps={props(result({ output: "ok", stderr: "boom\n" }))}
       />,
     );
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Copy raw stderr" }));
     await waitFor(() => expect(onCopy).toHaveBeenCalledWith("boom", "result"));
     expect(await screen.findByText("Copied raw stderr", { exact: true })).toBeTruthy();
@@ -396,6 +439,7 @@ describe("BashCard copy", () => {
     const writeText = vi.fn(async (_text: string) => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     const first = render(<BashCard rendererProps={props(toolResult("ok"))} />);
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("ok"));
     expect(await screen.findByText("Copied raw output", { exact: true })).toBeTruthy();
@@ -403,6 +447,7 @@ describe("BashCard copy", () => {
 
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     render(<BashCard rendererProps={props(toolResult("ok"))} />);
+    expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
     expect(await screen.findByText("Copy unavailable", { exact: true })).toBeTruthy();
     Reflect.deleteProperty(navigator, "clipboard");
@@ -415,6 +460,7 @@ describe("BashCard copy confirmation", () => {
     try {
       const onCopy = vi.fn(async () => {});
       const card = render(<BashCard onCopy={onCopy} rendererProps={props(toolResult("ok"))} />);
+      expandToolCards();
       fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
       await act(async () => {});
       expect(screen.getByText("Copied raw output", { exact: true })).toBeTruthy();
@@ -451,6 +497,7 @@ describe("BashCard output the app holds in part", () => {
         <BashCard rendererProps={props(partial)} />
       </FullOutputProvider>,
     );
+    expandToolCards();
     const note = screen.getByText(
       "Showing the first 12 lines of the 40 loaded; the app has loaded 64 KB of 205 KB.",
       { exact: true },
@@ -471,9 +518,11 @@ describe("BashCard output the app holds in part", () => {
       outputCut: { shownBytes: 65_536, totalBytes: 209_715 },
     };
     const { rerender } = render(<BashCard rendererProps={props(partial)} />);
+    expandToolCards();
     expect(screen.queryByRole("button", { name: /Show all/ })).toBeNull();
 
     rerender(<BashCard rendererProps={props(toolResult(numbered(40)))} />);
+    expandToolCards();
     expect(screen.getByText("Showing the first 12 of 40 lines.", { exact: true })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Show all 40 lines" })).toBeTruthy();
     expect(screen.queryByText(/loaded; the app has loaded/)).toBeNull();
@@ -485,6 +534,7 @@ describe("BashCard output the app holds in part", () => {
       outputCut: { shownBytes: 65_536, totalBytes: 209_715 },
     };
     render(<BashCard rendererProps={props(partial)} />);
+    expandToolCards();
     expect(
       screen.getByText("Showing the 8 loaded lines; the app has loaded 64 KB of 205 KB.", {
         exact: true,
@@ -505,6 +555,7 @@ describe("BashCard output the app holds in part", () => {
         <BashCard rendererProps={props(partial)} />
       </FullOutputProvider>,
     );
+    expandToolCards();
     const load = screen.getByRole("button", { name: "Load full output" });
     load.focus();
     fireEvent.click(load);
@@ -517,6 +568,7 @@ describe("BashCard output the app holds in part", () => {
         <BashCard rendererProps={props(toolResult(numbered(40)))} />
       </FullOutputProvider>,
     );
+    expandToolCards();
     await act(async () => held.resolve());
 
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show all 40 lines" }));
@@ -534,6 +586,7 @@ describe("a command the person stopped", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "bash: Cancelled" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -557,6 +610,7 @@ describe("a command omp moved to the background", () => {
 
   test("says it runs in the background with its job number, and shows none of omp's words for the model", () => {
     render(<BashCard rendererProps={props(backgrounded)} />);
+    expandToolCards();
     expect(
       screen.getByText(
         "Running in the background as job bg_1. Its output is added to the conversation when it finishes.",

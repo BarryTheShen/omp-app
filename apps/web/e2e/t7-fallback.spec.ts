@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -87,6 +88,7 @@ test.describe("T7 fallback", () => {
     await page.goto(playground);
     await expectStylesLoaded(page);
     await expect(page.locator("html")).toHaveClass(/dark/);
+    await openAllToolCards(page);
     await expect(page.getByRole("alert")).toContainText("Host tools are unavailable");
     await expect(page.getByTestId("t7-fallback-arguments")).toContainText("operation");
     await page.screenshot({ path: "../../.data/screenshots/t7-fallback-dark.png", fullPage: true });
@@ -109,6 +111,7 @@ test.describe("T7 fallback", () => {
     await darkInit(page);
     await page.goto(playground);
     await expectStylesLoaded(page);
+    await openAllToolCards(page);
     await expect(page.getByTestId("t7-fallback-details")).toBeVisible();
     await page.screenshot({
       path: "../../.data/screenshots/t7-fallback-narrow.png",

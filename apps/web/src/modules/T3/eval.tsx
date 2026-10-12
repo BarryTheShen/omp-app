@@ -46,30 +46,31 @@ export function EvalCard({ rendererProps }: EvalCardProps) {
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={state}
         summary={summaryFor(language, details, state.phase)}
-      />
-      <div
-        className="border-border/70 bg-card mt-1 flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:p-4"
-        data-slot="t3-eval-details"
       >
-        <EvalHeader details={details} language={language} />
-        <EvalCells
-          cells={details?.cells}
-          fallbackCode={argsCode(rendererProps.args)}
-          language={language}
-        />
-        <EvalStatus details={details} />
-        <EvalAsyncJob details={details} />
-        <EvalStructuredOutputs details={details} />
-        <EvalErrorDetails details={details} />
-        <details className="text-muted-foreground text-xs" data-testid="t3-eval-raw-details">
-          <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            Raw details
-          </summary>
-          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">
-            {boundedText(model.raw)}
-          </pre>
-        </details>
-      </div>
+        <div
+          className="border-border/70 bg-card mt-1 flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:p-4"
+          data-slot="t3-eval-details"
+        >
+          <EvalHeader details={details} language={language} />
+          <EvalCells
+            cells={details?.cells}
+            fallbackCode={argsCode(rendererProps.args)}
+            language={language}
+          />
+          <EvalStatus details={details} />
+          <EvalAsyncJob details={details} />
+          <EvalStructuredOutputs details={details} />
+          <EvalErrorDetails details={details} />
+          <details className="text-muted-foreground text-xs" data-testid="t3-eval-raw-details">
+            <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Raw details
+            </summary>
+            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">
+              {boundedText(model.raw)}
+            </pre>
+          </details>
+        </div>
+      </ToolCard>
     </div>
   );
 }
@@ -95,7 +96,6 @@ function evalState(
     ...(failure === undefined ? {} : { error: failure }),
     ...(phase === "cancelled" ? { cancelled: true } : {}),
     outputMeta,
-    defaultOpen: phase !== "success",
   };
 }
 

@@ -118,6 +118,25 @@ export async function sendPrompt(composer: Locator, text: string): Promise<void>
 }
 
 /**
+ * Opens a collapsed tool card the way a person clicks its line. Every call starts as one line, running or finished, so
+ * its body (a command's output, a task's transcript, a hub roster) is on the page only once the card opens. A card that
+ * is open already is left open.
+ */
+export async function openToolCard(card: Locator): Promise<void> {
+  const line = card.locator('[data-slot="u3-tool-card-trigger"]').first();
+  if ((await line.getAttribute("aria-expanded")) !== "true") await line.click();
+}
+
+/** Opens every collapsed tool card on the page, one line at a time, as a person would. Bounded: a card that stays closed stops the loop. */
+export async function openAllToolCards(page: Page): Promise<void> {
+  const collapsed = page.locator('[data-slot="u3-tool-card-trigger"][aria-expanded="false"]');
+  for (let opened = 0; opened < 60; opened += 1) {
+    if ((await collapsed.count()) === 0) return;
+    await collapsed.first().click();
+  }
+}
+
+/**
  * Starting the app's server and a real omp takes seconds on a quiet machine and well over 30 s when many agents run
  * tests at once (load above 40 on 20 cores). The wait ends the moment the line arrives, so a longer limit costs
  * nothing when the start is quick, and only a start that never happens waits the full time. It stays below the

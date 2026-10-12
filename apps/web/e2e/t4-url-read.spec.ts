@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -48,6 +49,7 @@ test("renders URL metadata, untrusted Markdown, sources and truncation in light 
   const playground = page.getByTestId("t4-url-playground");
   await expect(playground).toBeVisible();
   await expect(playground).toHaveCSS("background-color", /^(rgb|oklch)/);
+  await openAllToolCards(page);
   await expect(page.getByRole("heading", { name: "Retrieved documentation" })).toBeVisible();
   await expect(page.getByText("example.test/docs → example.test/docs/final")).toBeVisible();
   await expect(page.getByText("Notes:")).toBeVisible();
@@ -75,6 +77,7 @@ test("reflows the URL card in a narrow viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/t4-url-read-playground.html");
   await expect(page.getByTestId("t4-url-playground")).toBeVisible();
+  await openAllToolCards(page);
   await expect(page.locator("[data-url-sources]")).toBeVisible();
   await page.screenshot({
     path: "../../.data/screenshots/t4.2-url-read-narrow.png",

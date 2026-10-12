@@ -4,6 +4,7 @@ import { deflateSync } from "node:zlib";
 import type { Page } from "@playwright/test";
 import {
   expect,
+  openAllToolCards,
   realTest,
   screenshots,
   sendPrompt,
@@ -92,6 +93,10 @@ for (const variant of ["light", "dark", "narrow"] as const) {
       await sendPrompt(composer, "read_image");
 
       const picture = pictureOf(page);
+      await expect(page.locator('[data-slot="u3-tool-card-trigger"]').first()).toBeVisible({
+        timeout: 120_000,
+      });
+      await openAllToolCards(page);
       await expect(picture).toBeVisible({ timeout: 120_000 });
       await expect
         .poll(() =>
@@ -100,7 +105,9 @@ for (const variant of ["light", "dark", "narrow"] as const) {
           ),
         )
         .toBe(true);
-      await expect(page.getByText("Read image file [image/", { exact: false })).toBeVisible();
+      await expect(
+        page.getByText("Read image file [image/", { exact: false }).first(),
+      ).toBeVisible();
 
       // Shown in a box no taller than 16 rem (256 px); a picture taller than that is scaled to fit it.
       const shown = await picture.boundingBox();
@@ -130,6 +137,10 @@ for (const variant of ["light", "dark", "narrow"] as const) {
       // After a reload the history holds the picture: omp's saved copy comes back as base64, not as a reference.
       await page.reload();
       await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
+      await expect(page.locator('[data-slot="u3-tool-card-trigger"]').first()).toBeVisible({
+        timeout: 60_000,
+      });
+      await openAllToolCards(page);
       await expect(picture).toBeVisible({ timeout: 60_000 });
       await expect(page.getByRole("img", { name: "pixel.png" })).toHaveCount(1);
       await expect(

@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { GlobCard } from "./glob";
 
@@ -31,6 +32,7 @@ describe("GlobCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Scope: src")).toBeTruthy();
     expect(screen.getByRole("link", { name: "src/a.ts" }).getAttribute("href")).toBe(
       "#read:src%2Fa.ts",
@@ -49,6 +51,7 @@ describe("GlobCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t2-glob-missing").textContent).toContain("missing/dir");
     expect(screen.getByTestId("t2-glob-limit").textContent).toContain("20");
   });
@@ -62,15 +65,18 @@ describe("GlobCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("link", { name: "src/a.ts" })).toBeTruthy();
     cleanup();
     render(<GlobCard rendererProps={props({ content: [{ type: "text", text: "src/a.ts" }] })} />);
+    expandToolCards();
     expect(screen.queryByText("No matches.")).toBeNull();
     expect(screen.getByRole("alert").textContent).toContain("Glob details were malformed");
   });
 
   test("keeps running scope visible while hiding raw argument/result blocks", () => {
     render(<GlobCard rendererProps={props(undefined, { type: "running" })} />);
+    expandToolCards();
     expect(screen.getByTestId("t2-glob-pattern")).toBeTruthy();
     expect(screen.getByTestId("tool-card-glob-1").className).toContain(
       "data-slot='u3-tool-card-args",

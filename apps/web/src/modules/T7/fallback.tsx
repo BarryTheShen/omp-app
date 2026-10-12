@@ -215,7 +215,6 @@ export const T7ToolFallback: ToolRenderer = (props) => {
           cancelled: true,
           isError: false,
           error: { message: "Host request cancelled.", retryable: false },
-          defaultOpen: true,
         }
       : unavailable !== undefined
         ? {
@@ -223,9 +222,8 @@ export const T7ToolFallback: ToolRenderer = (props) => {
             phase: "error" as const,
             isError: true,
             error: { message: unavailable, retryable: false },
-            defaultOpen: true,
           }
-        : { ...normalized, label: safeLabel(normalized), defaultOpen: true };
+        : { ...normalized, label: safeLabel(normalized) };
   const shellState = { ...state, argsText: "", result: undefined, partialResult: undefined };
   const summary =
     unavailable !== undefined ? "Unavailable" : (correlation ?? SETTLED_SUMMARY[state.phase] ?? "");

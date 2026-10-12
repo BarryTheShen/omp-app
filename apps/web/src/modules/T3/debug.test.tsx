@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { DebugCard } from "./debug";
 
@@ -70,6 +71,7 @@ describe("DebugCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Stack trace")).toBeTruthy();
     expect(screen.getByTestId("t3-debug-snapshot").textContent).toBe(
       "Stopped at src/main.ts:42 · breakpoint",
@@ -103,6 +105,7 @@ describe("DebugCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t3-debug-threads").textContent).toContain("worker");
   });
 
@@ -122,6 +125,7 @@ describe("DebugCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Breakpoint at src/main.ts:42")).toBeTruthy();
     expect(screen.getByTestId("t3-debug-breakpoints").textContent).toContain("verified");
     cleanup();
@@ -140,6 +144,7 @@ describe("DebugCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Evaluate counter + 1")).toBeTruthy();
     expect(screen.getByText("4")).toBeTruthy();
     expect(screen.getByText("number")).toBeTruthy();
@@ -157,6 +162,7 @@ describe("DebugCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t3-debug-text").textContent).toContain("Locals: ref=7");
   });
 
@@ -178,6 +184,7 @@ describe("DebugCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Launch app")).toBeTruthy();
     expect(screen.getByTestId("tool-card-debug-1").getAttribute("data-phase")).toBe("error");
     expect(screen.queryByText("Debug details unavailable.")).toBeNull();
@@ -194,14 +201,18 @@ describe("DebugCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("Debug details unavailable.")).toBeTruthy();
-    expect(screen.queryByText(/"stackFrames"/)).toBeNull();
+    expect(
+      screen.queryByText(/"stackFrames"/, { ignore: "[data-slot='u3-tool-card-raw'] *" }),
+    ).toBeNull();
   });
 
   test("running state shows the action from the arguments only", () => {
     render(
       <DebugCard rendererProps={props({ action: "step_over" }, undefined, { type: "running" })} />,
     );
+    expandToolCards();
     expect(screen.getByText("Step over")).toBeTruthy();
     expect(screen.getByTestId("tool-card-debug-1").getAttribute("data-phase")).toBe("running");
     expect(screen.queryByText("Debug details unavailable.")).toBeNull();

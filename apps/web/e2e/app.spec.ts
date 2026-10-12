@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -38,6 +39,7 @@ realTest(
     await expect(messageInput).toBeFocused();
     await expect(toolCard.first()).toBeVisible();
     // The bash card shows the command's output (omp's bash tool result), not a waiting state.
+    await openToolCard(toolCard.first());
     await expect(page.getByTestId("u3-bash-stdout")).toContainText("fixture-tool");
     await expect(page.getByText("Waiting for bash output…")).toHaveCount(0);
     await expect(assistantMessages.last()).toBeVisible();

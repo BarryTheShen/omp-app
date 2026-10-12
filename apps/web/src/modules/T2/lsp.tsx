@@ -91,7 +91,6 @@ export function LspCard({ rendererProps }: { readonly rendererProps: ToolRendere
           message: textLines[0]?.trim() ?? "The language server request failed.",
           retryable: false,
         },
-        defaultOpen: true,
       }
     : normalized;
   const summary = lspSummary({ ...request, action });
@@ -106,16 +105,17 @@ export function LspCard({ rendererProps }: { readonly rendererProps: ToolRendere
         rawResult={rawResult}
         state={state}
         summary={summary}
-      />
-      {(showBody || showUnavailable || failureDetail.length > 0) && (
-        <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
-          {showBody && <LspBody action={action} text={text ?? ""} />}
-          {failureDetail.length > 0 && <TextOutput text={failureDetail} />}
-          {showUnavailable && (
-            <p className="text-muted-foreground text-xs">Language server details unavailable.</p>
-          )}
-        </div>
-      )}
+      >
+        {(showBody || showUnavailable || failureDetail.length > 0) && (
+          <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
+            {showBody && <LspBody action={action} text={text ?? ""} />}
+            {failureDetail.length > 0 && <TextOutput text={failureDetail} />}
+            {showUnavailable && (
+              <p className="text-muted-foreground text-xs">Language server details unavailable.</p>
+            )}
+          </div>
+        )}
+      </ToolCard>
     </div>
   );
 }

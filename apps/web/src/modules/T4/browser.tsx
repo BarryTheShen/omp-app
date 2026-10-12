@@ -29,7 +29,6 @@ export function BrowserToolCard(rendererProps: ToolRendererProps) {
           phase: "error" as const,
           isError: true,
           error: { message: details.error, retryable: false },
-          defaultOpen: true,
         }),
     result: undefined,
     partialResult: undefined,
@@ -52,72 +51,75 @@ export function BrowserToolCard(rendererProps: ToolRendererProps) {
         rawResult={rawResult}
         state={state}
         summary={browserSummary(action, name, url)}
-      />
-      <section className="ms-2 flex min-w-0 flex-col gap-3 py-2 ps-4" data-browser-content>
-        {url && url.length > 64 && safeRetrievalUrl(url) && (
-          <a
-            className="text-primary truncate text-xs underline underline-offset-2"
-            href={safeRetrievalUrl(url)}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Full URL
-          </a>
-        )}
-        {args?.code || args?.fn ? <JavascriptCell code={args.code ?? args.fn ?? ""} /> : null}
-        {returnedText !== "" && <TextOutput testId="t4-browser-returned" text={returnedText} />}
-        {observations.length > 0 && (
-          <div
-            className="bg-muted/30 max-h-56 overflow-auto rounded-lg p-3 text-xs"
-            data-browser-observations
-            data-testid="t4-browser-observations"
-          >
-            <p className="text-muted-foreground mb-2">
-              {observations.length === 1 ? "1 observation" : `${observations.length} observations`}
-            </p>
-            {observations.slice(0, 12).map((observation) => (
-              <ObservationRow key={observationKey(observation)} value={observation} />
-            ))}
-            {observations.length > 12 && (
-              <p className="text-muted-foreground mt-2">Showing 12 of {observations.length}</p>
-            )}
-          </div>
-        )}
-        {screenshots.length > 0 && (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-browser-screenshots>
-            <p className="text-muted-foreground col-span-full text-xs">
-              {screenshots.length === 1 ? "1 screenshot" : `${screenshots.length} screenshots`}
-            </p>
-            {screenshots.slice(0, 4).map((source, index) => (
-              <Dialog key={source}>
-                <DialogTrigger
-                  render={
-                    <button
-                      aria-label={`Open browser screenshot ${index + 1}`}
-                      type="button"
-                      className="border-border max-w-60 cursor-zoom-in rounded-lg border p-1 focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <section className="ms-2 flex min-w-0 flex-col gap-3 py-2 ps-4" data-browser-content>
+          {url && url.length > 64 && safeRetrievalUrl(url) && (
+            <a
+              className="text-primary truncate text-xs underline underline-offset-2"
+              href={safeRetrievalUrl(url)}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Full URL
+            </a>
+          )}
+          {args?.code || args?.fn ? <JavascriptCell code={args.code ?? args.fn ?? ""} /> : null}
+          {returnedText !== "" && <TextOutput testId="t4-browser-returned" text={returnedText} />}
+          {observations.length > 0 && (
+            <div
+              className="bg-muted/30 max-h-56 overflow-auto rounded-lg p-3 text-xs"
+              data-browser-observations
+              data-testid="t4-browser-observations"
+            >
+              <p className="text-muted-foreground mb-2">
+                {observations.length === 1
+                  ? "1 observation"
+                  : `${observations.length} observations`}
+              </p>
+              {observations.slice(0, 12).map((observation) => (
+                <ObservationRow key={observationKey(observation)} value={observation} />
+              ))}
+              {observations.length > 12 && (
+                <p className="text-muted-foreground mt-2">Showing 12 of {observations.length}</p>
+              )}
+            </div>
+          )}
+          {screenshots.length > 0 && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-browser-screenshots>
+              <p className="text-muted-foreground col-span-full text-xs">
+                {screenshots.length === 1 ? "1 screenshot" : `${screenshots.length} screenshots`}
+              </p>
+              {screenshots.slice(0, 4).map((source, index) => (
+                <Dialog key={source}>
+                  <DialogTrigger
+                    render={
+                      <button
+                        aria-label={`Open browser screenshot ${index + 1}`}
+                        type="button"
+                        className="border-border max-w-60 cursor-zoom-in rounded-lg border p-1 focus-visible:ring-3 focus-visible:ring-ring/50"
+                      />
+                    }
+                  >
+                    <img
+                      alt={`Browser screenshot ${index + 1}`}
+                      className="max-h-72 w-full object-contain"
+                      src={source}
                     />
-                  }
-                >
-                  <img
-                    alt={`Browser screenshot ${index + 1}`}
-                    className="max-h-72 w-full object-contain"
-                    src={source}
-                  />
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-5xl">
-                  <DialogTitle>Browser screenshot {index + 1}</DialogTitle>
-                  <img
-                    alt={`Browser screenshot ${index + 1}`}
-                    className="max-h-[80dvh] w-full object-contain"
-                    src={source}
-                  />
-                </DialogContent>
-              </Dialog>
-            ))}
-          </div>
-        )}
-      </section>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-5xl">
+                    <DialogTitle>Browser screenshot {index + 1}</DialogTitle>
+                    <img
+                      alt={`Browser screenshot ${index + 1}`}
+                      className="max-h-[80dvh] w-full object-contain"
+                      src={source}
+                    />
+                  </DialogContent>
+                </Dialog>
+              ))}
+            </div>
+          )}
+        </section>
+      </ToolCard>
     </div>
   );
 }

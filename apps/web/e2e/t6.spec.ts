@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -45,12 +46,16 @@ test("renders all T6 memory cards in light, dark and narrow states", async ({ pa
   await page.goto("/t6-memory-playground.html");
   await expect(page.locator('[data-t6-memory-card="true"]')).toHaveCount(6);
   await expect(page.getByText("prior release decision")).toBeVisible();
+  await openAllToolCards(page);
   await expect(page.getByRole("heading", { name: "Synthesis" })).toBeVisible();
   await expect(
-    page.locator('[data-t6-tool="reflect"]').getByText("Collaboration remains capability-gated."),
+    page
+      .locator('[data-t6-tool="reflect"]')
+      .getByText("Collaboration remains capability-gated.")
+      .first(),
   ).toBeVisible();
   await expect(page.getByText("Stored 2 of 3 memories")).toBeVisible();
-  await expect(page.getByText("backend rejected item 3")).toBeVisible();
+  await expect(page.getByText("backend rejected item 3").first()).toBeVisible();
   await expect(page.locator('[data-t6-tool="learn"]').getByText("Learned · project")).toBeVisible();
   await expect(
     page.locator('[data-t6-tool="manage_skill"]').getByText("update: release").first(),
@@ -79,6 +84,7 @@ test("renders all T6 memory cards in light, dark and narrow states", async ({ pa
   await darkPage.goto("/t6-memory-playground.html");
   await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
   await expect(darkPage.locator("html")).toHaveClass(/dark/);
+  await openAllToolCards(darkPage);
   await expect(darkPage.getByRole("heading", { name: "Synthesis" })).toBeVisible();
   await expect(darkPage.locator('[data-t6-tool="reflect"]')).toBeVisible();
   await darkPage.screenshot({

@@ -33,81 +33,84 @@ export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRen
         rawResult={rawResult}
         state={stateForCard}
         summary={summary}
-      />
-      {args.ok && (
-        <div className="border-border/70 bg-muted/20 mt-1 rounded-lg border p-3 text-sm">
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span data-testid="t1-ast-edit-pattern">Pattern: {formatPattern(args.value.ops)}</span>
-            <span>Scope: {args.value.paths.join(", ") || "workspace"}</span>
-          </div>
-          {replacements.length > 0 && (
-            <div className="mt-3 flex flex-col gap-3" data-testid="t1-ast-edit-replacements">
-              {replacements.map((replacement, index) => (
-                <div
-                  className="border-border/70 min-w-0 rounded-md border p-2"
-                  data-testid={`t1-ast-edit-replacement-${index}`}
-                  key={`${replacement.path}:${replacement.before}:${replacement.after}`}
-                >
-                  <p className="truncate text-xs font-medium" title={replacement.path}>
-                    {replacement.path}
-                  </p>
-                  <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2">
-                    <pre className="bg-destructive/10 text-destructive min-w-0 overflow-x-auto rounded p-2 text-xs whitespace-pre-wrap">
-                      {replacement.before || "(no before text)"}
-                    </pre>
-                    <pre className="bg-success/10 text-success min-w-0 overflow-x-auto rounded p-2 text-xs whitespace-pre-wrap">
-                      {replacement.after || "(no replacement text)"}
-                    </pre>
+      >
+        {args.ok && (
+          <div className="border-border/70 bg-muted/20 mt-1 rounded-lg border p-3 text-sm">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span data-testid="t1-ast-edit-pattern">
+                Pattern: {formatPattern(args.value.ops)}
+              </span>
+              <span>Scope: {args.value.paths.join(", ") || "workspace"}</span>
+            </div>
+            {replacements.length > 0 && (
+              <div className="mt-3 flex flex-col gap-3" data-testid="t1-ast-edit-replacements">
+                {replacements.map((replacement, index) => (
+                  <div
+                    className="border-border/70 min-w-0 rounded-md border p-2"
+                    data-testid={`t1-ast-edit-replacement-${index}`}
+                    key={`${replacement.path}:${replacement.before}:${replacement.after}`}
+                  >
+                    <p className="truncate text-xs font-medium" title={replacement.path}>
+                      {replacement.path}
+                    </p>
+                    <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2">
+                      <pre className="bg-destructive/10 text-destructive min-w-0 overflow-x-auto rounded p-2 text-xs whitespace-pre-wrap">
+                        {replacement.before || "(no before text)"}
+                      </pre>
+                      <pre className="bg-success/10 text-success min-w-0 overflow-x-auto rounded p-2 text-xs whitespace-pre-wrap">
+                        {replacement.after || "(no replacement text)"}
+                      </pre>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {parsedDetails?.parseErrors && parsedDetails.parseErrors.length > 0 && (
-            <div
-              className="border-danger/40 bg-danger-surface/30 text-danger mt-3 rounded-md border p-2 text-xs"
-              role="alert"
-            >
-              <p className="font-medium">Parse errors ({parsedDetails.parseErrors.length})</p>
-              <ul className="mt-1 list-disc ps-4">
-                {parsedDetails.parseErrors.slice(0, 8).map((error) => {
-                  const parsed = parseError(error);
-                  return (
-                    <li key={JSON.stringify(error)}>
-                      {parsed.path ? (
-                        <a
-                          className="text-primary underline underline-offset-2"
-                          data-read-path={parsed.path}
-                          href={`#read:${encodeURIComponent(parsed.path)}`}
-                          title={`Read ${parsed.path}`}
-                        >
-                          {parsed.path}
-                        </a>
-                      ) : (
-                        <span>AST edit</span>
-                      )}
-                      {parsed.location && `:${parsed.location}`}: {parsed.message}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-          {parsedDetails?.limitReached && (
-            <p className="text-muted-foreground mt-3 text-xs" data-testid="t1-ast-edit-limit">
-              Match list truncated by a safety limit; some files may not be shown.
-            </p>
-          )}
-          {!details.ok &&
-            output !== undefined &&
-            state.phase !== "running" &&
-            state.phase !== "partial" && (
-              <p className="text-danger mt-3 text-xs" role="alert">
-                Structured AST edit details were malformed; the raw result is preserved above.
+                ))}
+              </div>
+            )}
+            {parsedDetails?.parseErrors && parsedDetails.parseErrors.length > 0 && (
+              <div
+                className="border-danger/40 bg-danger-surface/30 text-danger mt-3 rounded-md border p-2 text-xs"
+                role="alert"
+              >
+                <p className="font-medium">Parse errors ({parsedDetails.parseErrors.length})</p>
+                <ul className="mt-1 list-disc ps-4">
+                  {parsedDetails.parseErrors.slice(0, 8).map((error) => {
+                    const parsed = parseError(error);
+                    return (
+                      <li key={JSON.stringify(error)}>
+                        {parsed.path ? (
+                          <a
+                            className="text-primary underline underline-offset-2"
+                            data-read-path={parsed.path}
+                            href={`#read:${encodeURIComponent(parsed.path)}`}
+                            title={`Read ${parsed.path}`}
+                          >
+                            {parsed.path}
+                          </a>
+                        ) : (
+                          <span>AST edit</span>
+                        )}
+                        {parsed.location && `:${parsed.location}`}: {parsed.message}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+            {parsedDetails?.limitReached && (
+              <p className="text-muted-foreground mt-3 text-xs" data-testid="t1-ast-edit-limit">
+                Match list truncated by a safety limit; some files may not be shown.
               </p>
             )}
-        </div>
-      )}
+            {!details.ok &&
+              output !== undefined &&
+              state.phase !== "running" &&
+              state.phase !== "partial" && (
+                <p className="text-danger mt-3 text-xs" role="alert">
+                  Structured AST edit details were malformed; the raw result is preserved above.
+                </p>
+              )}
+          </div>
+        )}
+      </ToolCard>
     </div>
   );
 }

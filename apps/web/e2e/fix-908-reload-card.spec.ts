@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -44,6 +45,7 @@ realTest(
     await expect(before.locator(TRIGGER).first()).toHaveAttribute("aria-label", "task: Complete", {
       timeout: 60_000,
     });
+    await openToolCard(before);
     await expect(before.locator(JOB)).toContainText("Completed");
 
     await page.reload();
@@ -57,6 +59,7 @@ realTest(
     await expect(after.locator(TRIGGER).first()).toHaveAttribute("aria-label", "task: Complete", {
       timeout: 30_000,
     });
+    await openToolCard(after);
     await expect(after.locator(JOB)).toContainText("Completed");
     await expect(after.locator(JOB)).not.toContainText("Running");
     await expect(after.locator(PROGRESS)).toContainText("Completed");

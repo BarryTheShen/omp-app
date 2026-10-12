@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page, WebSocketRoute } from "@playwright/test";
-import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
+import { expect, openToolCard, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
 
 /**
  * #954. "Load full output" keeps focus while the output loads: the button says it is busy with aria-disabled, not
@@ -151,6 +151,7 @@ realTest(
     await expect(page.getByText("All 5000 rows are printed.")).toBeVisible({ timeout: 60_000 });
     await mkdir(screenshots, { recursive: true });
     const card = page.getByTestId("u3-bash-card").first();
+    await openToolCard(card);
     const load = card.getByRole("button", { name: "Load full output" });
     await expect(load).toBeVisible();
 

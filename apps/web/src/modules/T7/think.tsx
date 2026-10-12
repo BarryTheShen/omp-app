@@ -4,9 +4,7 @@ import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { decodeThink } from "./models";
 
 /**
- * The thought is private: the card drops the arguments and shows only an acknowledgment.
- * It opens by default only on error, where the error banner is the content; otherwise the
- * open body would be empty while the call runs.
+ * The thought is private: the card drops the arguments and shows only an acknowledgment, behind its disclosure.
  */
 export function ThinkCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const normalized = normalizeToolRendererProps(rendererProps);
@@ -14,7 +12,6 @@ export function ThinkCard({ rendererProps }: { readonly rendererProps: ToolRende
     ...normalized,
     args: undefined,
     argsText: "",
-    defaultOpen: normalized.phase === "error",
   };
   const output = state.result ?? state.partialResult;
   // omp results carry structured data under `details`; bare detail objects pass through.
@@ -31,8 +28,9 @@ export function ThinkCard({ rendererProps }: { readonly rendererProps: ToolRende
         rawResult={rawText(output)}
         state={state}
         summary={summary}
-      />
-      <p className="text-muted-foreground ms-2 py-1 text-xs">The content stays private.</p>
+      >
+        <p className="text-muted-foreground ms-2 py-1 text-xs">The content stays private.</p>
+      </ToolCard>
     </div>
   );
 }

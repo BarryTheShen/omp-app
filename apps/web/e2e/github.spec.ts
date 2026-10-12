@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -49,6 +50,7 @@ test("renders GitHub operations and captures light dark narrow screenshots", asy
   await page.goto(PLAYGROUND);
   await expect(page.getByTestId("t4-github-playground")).toBeVisible();
   await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(1);
+  await openAllToolCards(page);
   await expect(page.getByTestId("t4-github-header").first()).toContainText("owner/repo");
   await expect(page.getByTestId("t4-github-pr")).toContainText("Improve GitHub card");
   await expect(

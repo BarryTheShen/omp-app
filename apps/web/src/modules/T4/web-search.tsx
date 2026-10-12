@@ -56,7 +56,6 @@ export function WebSearchCard({ rendererProps, onCopy }: WebSearchCardProps) {
             message: details.error ?? "Provider error",
             retryable: false,
           },
-          defaultOpen: true,
         }
       : {}),
     result: undefined,
@@ -91,7 +90,6 @@ export function WebSearchCard({ rendererProps, onCopy }: WebSearchCardProps) {
               message: "Malformed web-search result; showing the recorded result.",
               retryable: false,
             },
-            defaultOpen: true,
           }}
           summary="Web-search result unavailable"
         />
@@ -106,16 +104,17 @@ export function WebSearchCard({ rendererProps, onCopy }: WebSearchCardProps) {
         rawResult=""
         state={state}
         summary={summary}
-      />
-      {!(details?.error !== undefined && state.phase === "error") && (
-        <SearchBody
-          details={details}
-          fallbackText={details === undefined ? fallbackText : undefined}
-          onCopy={onCopy}
-          phase={state.phase}
-          query={details?.query ?? query}
-        />
-      )}
+      >
+        {!(details?.error !== undefined && state.phase === "error") && (
+          <SearchBody
+            details={details}
+            fallbackText={details === undefined ? fallbackText : undefined}
+            onCopy={onCopy}
+            phase={state.phase}
+            query={details?.query ?? query}
+          />
+        )}
+      </ToolCard>
     </div>
   );
 }

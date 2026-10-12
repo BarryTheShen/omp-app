@@ -87,64 +87,65 @@ export function RetainRenderer(props: ToolRendererProps) {
         state={cardState}
         summary={summary}
         summaryClassName={partial ? "text-warning font-medium" : undefined}
-      />
-      {!failedCall && (
-        <ul className="text-muted-foreground ms-2 space-y-1 py-1 ps-5 text-xs">
-          {model.items.length === 0 ? (
-            <li>No memory items returned.</li>
-          ) : (
-            model.items.map((item, index) => {
-              const failure =
-                itemFailures.get(index) ??
-                (index >= fallbackStart ? unindexedFailures[index - fallbackStart] : undefined);
-              return (
-                <li
-                  className={cn("flex items-start gap-1", failure !== undefined && "text-danger")}
-                  key={`${item.scope ?? "unknown"}:${item.content}`}
-                >
-                  {unrecorded ? (
-                    <CircleIcon
-                      aria-hidden="true"
-                      className="text-muted-foreground mt-0.5 size-3.5 shrink-0"
-                    />
-                  ) : failure === undefined ? (
-                    <CheckCircle2Icon
-                      aria-hidden="true"
-                      className="text-success mt-0.5 size-3.5 shrink-0"
-                    />
-                  ) : (
-                    <AlertCircleIcon
-                      aria-hidden="true"
-                      className="text-danger mt-0.5 size-3.5 shrink-0"
-                    />
-                  )}
-                  <span className="min-w-0">
-                    <span className={failure === undefined ? "text-foreground" : undefined}>
-                      {item.content}
+      >
+        {!failedCall && (
+          <ul className="text-muted-foreground ms-2 space-y-1 py-1 ps-5 text-xs">
+            {model.items.length === 0 ? (
+              <li>No memory items returned.</li>
+            ) : (
+              model.items.map((item, index) => {
+                const failure =
+                  itemFailures.get(index) ??
+                  (index >= fallbackStart ? unindexedFailures[index - fallbackStart] : undefined);
+                return (
+                  <li
+                    className={cn("flex items-start gap-1", failure !== undefined && "text-danger")}
+                    key={`${item.scope ?? "unknown"}:${item.content}`}
+                  >
+                    {unrecorded ? (
+                      <CircleIcon
+                        aria-hidden="true"
+                        className="text-muted-foreground mt-0.5 size-3.5 shrink-0"
+                      />
+                    ) : failure === undefined ? (
+                      <CheckCircle2Icon
+                        aria-hidden="true"
+                        className="text-success mt-0.5 size-3.5 shrink-0"
+                      />
+                    ) : (
+                      <AlertCircleIcon
+                        aria-hidden="true"
+                        className="text-danger mt-0.5 size-3.5 shrink-0"
+                      />
+                    )}
+                    <span className="min-w-0">
+                      <span className={failure === undefined ? "text-foreground" : undefined}>
+                        {item.content}
+                      </span>
+                      {item.scope !== undefined && <span className="ms-1">({item.scope})</span>}
+                      {item.context !== undefined && <p className="truncate">{item.context}</p>}
+                      {failure !== undefined && <p className="mt-0.5">{failureLabel(failure)}</p>}
                     </span>
-                    {item.scope !== undefined && <span className="ms-1">({item.scope})</span>}
-                    {item.context !== undefined && <p className="truncate">{item.context}</p>}
-                    {failure !== undefined && <p className="mt-0.5">{failureLabel(failure)}</p>}
-                  </span>
-                </li>
-              );
-            })
-          )}
-        </ul>
-      )}
-      {unindexedFailures.length > model.items.length && (
-        <p className="text-danger ms-2 text-xs">
-          {unindexedFailures.length - model.items.length} additional memory failures returned.
-        </p>
-      )}
-      {model.status === "queued" && (
-        <p className="text-muted-foreground ms-2 text-xs">
-          The memory operation is queued; storage is not confirmed yet.
-        </p>
-      )}
-      {model.malformed && !failedCall && (
-        <p className="text-muted-foreground ms-2 text-xs">Some memory details were malformed.</p>
-      )}
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        )}
+        {unindexedFailures.length > model.items.length && (
+          <p className="text-danger ms-2 text-xs">
+            {unindexedFailures.length - model.items.length} additional memory failures returned.
+          </p>
+        )}
+        {model.status === "queued" && (
+          <p className="text-muted-foreground ms-2 text-xs">
+            The memory operation is queued; storage is not confirmed yet.
+          </p>
+        )}
+        {model.malformed && !failedCall && (
+          <p className="text-muted-foreground ms-2 text-xs">Some memory details were malformed.</p>
+        )}
+      </ToolCard>
     </div>
   );
 }

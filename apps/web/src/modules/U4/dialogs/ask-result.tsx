@@ -100,17 +100,18 @@ export const AskToolRenderer: ToolRenderer = (props) => {
         rawResult={split.text}
         state={state}
         summary={summary}
-      />
-      {rows.length > 0 && (
-        <dl className="ms-2 flex flex-col gap-3 py-2 text-sm" data-testid="u4-ask-tool-answers">
-          {rows.map((row) => (
-            <div key={row.question} className="flex flex-col gap-1">
-              <dt className="font-medium">{row.question}</dt>
-              <dd className="text-muted-foreground">{row.answers.join(", ") || "No answer"}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      >
+        {rows.length > 0 && (
+          <dl className="ms-2 flex flex-col gap-3 py-2 text-sm" data-testid="u4-ask-tool-answers">
+            {rows.map((row) => (
+              <div key={row.question} className="flex flex-col gap-1">
+                <dt className="font-medium">{row.question}</dt>
+                <dd className="text-muted-foreground">{row.answers.join(", ") || "No answer"}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </ToolCard>
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
+import { expect, openToolCard, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
 
 /**
  * Issue #881. A bash result of about 205 KB (5,000 rows) is shortened by the thread's history window
@@ -89,6 +89,7 @@ realTest(
     await expect(page.getByText("All 5000 rows are printed.")).toBeVisible({ timeout: 60_000 });
     await mkdir(screenshots, { recursive: true });
     const card = page.getByTestId("u3-bash-card").first();
+    await openToolCard(card);
     const note = card.locator('[data-slot="u3-tool-card-cut"]');
 
     // Partial: one note says what the app holds; the full output is the next step.

@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { GrepCard } from "./grep";
 
@@ -33,6 +34,7 @@ describe("T2 GrepCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("TODO in src · 3 matches")).toBeTruthy();
     expect(screen.getByLabelText("Grep matches by file")).toBeTruthy();
     expect(screen.getByText("(3 matches)")).toBeTruthy();
@@ -43,6 +45,7 @@ describe("T2 GrepCard", () => {
 
   test("shows no matches explicitly and malformed details remain visible", () => {
     render(<GrepCard {...props({ content: [], details: { matchCount: 0 } })} />);
+    expandToolCards();
     expect(screen.getByText("No matches found.")).toBeTruthy();
     cleanup();
     render(<GrepCard {...props({ content: "raw", details: "malformed" })} />);

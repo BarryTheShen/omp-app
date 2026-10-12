@@ -43,24 +43,30 @@ export function GithubCard({ rendererProps }: GithubCardProps) {
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={state}
         summary={summaryFor(operation, repository, details)}
-      />
-      <details className="text-muted-foreground text-xs" data-testid="t4-github-raw-details">
-        <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          Raw details
-        </summary>
-        <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">{model.rawPreview}</pre>
-      </details>
-      <div
-        className="border-border/70 bg-card mt-1 flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:p-4"
-        data-slot="t4-github-details"
       >
-        <GithubHeader args={args} details={details} operation={operation} repository={repository} />
-        <PullRequestView details={details} />
-        <SearchRows details={details} />
-        <CheckoutPushView details={details} operation={operation} />
-        <ActionsWatchView details={details} />
-        <SourceLinks details={details} />
-      </div>
+        <details className="text-muted-foreground text-xs" data-testid="t4-github-raw-details">
+          <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Raw details
+          </summary>
+          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">{model.rawPreview}</pre>
+        </details>
+        <div
+          className="border-border/70 bg-card mt-1 flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:p-4"
+          data-slot="t4-github-details"
+        >
+          <GithubHeader
+            args={args}
+            details={details}
+            operation={operation}
+            repository={repository}
+          />
+          <PullRequestView details={details} />
+          <SearchRows details={details} />
+          <CheckoutPushView details={details} operation={operation} />
+          <ActionsWatchView details={details} />
+          <SourceLinks details={details} />
+        </div>
+      </ToolCard>
     </div>
   );
 }
@@ -114,7 +120,6 @@ function githubState(
     isError: phase === "error",
     ...(error === undefined ? {} : { error }),
     ...(phase === "cancelled" ? { cancelled: true } : {}),
-    defaultOpen: phase !== "success",
   };
 }
 

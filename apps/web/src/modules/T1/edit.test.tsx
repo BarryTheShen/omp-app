@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { EditCard } from "./edit";
 
@@ -34,6 +35,7 @@ describe("EditCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "edit: Complete" })).toBeTruthy();
     expect(screen.getByText("src/math.ts")).toBeTruthy();
@@ -72,6 +74,7 @@ describe("EditCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "apply_patch: Complete" })).toBeTruthy();
     expect(screen.getAllByTestId("t1-edit-file")).toHaveLength(2);
@@ -93,6 +96,7 @@ describe("EditCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "edit: Running" })).toBeTruthy();
     expect(screen.getByText("Streaming preview")).toBeTruthy();
@@ -111,6 +115,7 @@ describe("EditCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByText("src/pending.ts")).toBeTruthy();
     expect(screen.getByText("Create")).toBeTruthy();
@@ -132,6 +137,7 @@ describe("EditCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByText("No changes were made.")).toBeTruthy();
     expect(screen.getByText("No matching lines")).toBeTruthy();
@@ -150,6 +156,7 @@ describe("EditCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText(/Source snapshots were shortened/)).toBeTruthy();
   });
 
@@ -162,6 +169,7 @@ describe("EditCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "edit: Error" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Hashline no longer matches");
@@ -178,13 +186,15 @@ describe("EditCard", () => {
         )}
       />,
     );
+    expandToolCards();
 
     expect(screen.getByRole("button", { name: "edit: Cancelled" })).toBeTruthy();
     expect(screen.getByText("Streaming preview")).toBeTruthy();
   });
 
-  test("maps malformed settled details to an open typed error and retains raw output", () => {
+  test("maps malformed settled details to a typed error that shows once the card opens and retains raw output", () => {
     render(<EditCard rendererProps={props("edit", "not-an-object")} />);
+    expandToolCards();
 
     expect(screen.getByRole("alert").textContent).toContain("Malformed edit details");
     expect(screen.getByText("not-an-object")).toBeTruthy();
@@ -202,6 +212,7 @@ describe("EditCard", () => {
         })}
       />,
     );
+    expandToolCards();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy diff" }));
     await waitFor(() => expect(onCopy).toHaveBeenCalledWith("@@ -1 +1 @@\n-old\n+new", "code"));

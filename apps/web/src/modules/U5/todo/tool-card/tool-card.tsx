@@ -56,15 +56,16 @@ export function TodoToolRenderer(props: ToolRendererProps) {
   const model = toolModel(state, props);
   return (
     <div data-testid={`todo-tool-card-${state.toolCallId}`} data-tool-name="todo">
-      <ToolCard state={state} summary={summaryFor(model, state)} />
-      {model !== null && (
-        <div
-          className="border-border/70 ms-2 mt-1 border-s-2 ps-4"
-          data-testid="todo-tool-checklist"
-        >
-          <TodoChecklist model={model} />
-        </div>
-      )}
+      <ToolCard state={state} summary={summaryFor(model, state)}>
+        {model !== null && (
+          <div
+            className="border-border/70 ms-2 mt-1 border-s-2 ps-4"
+            data-testid="todo-tool-checklist"
+          >
+            <TodoChecklist model={model} />
+          </div>
+        )}
+      </ToolCard>
     </div>
   );
 }

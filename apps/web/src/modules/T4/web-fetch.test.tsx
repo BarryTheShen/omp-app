@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import type { RealToolResult } from "../U3/tool-card/real-result";
 import { T4_WEB_FETCH_REAL_RESULTS } from "./fixtures/web-fetch-real-results";
@@ -26,6 +27,7 @@ describe("WebFetchRenderer", () => {
     const page = T4_WEB_FETCH_REAL_RESULTS.find((sample) => !sample.isError);
     if (page === undefined) throw new Error("no recorded web_fetch page");
     render(<WebFetchRenderer {...recordedProps(page)} />);
+    expandToolCards();
     expect(screen.getByTestId("t4-web-fetch")).toBeTruthy();
     expect(screen.getByText("example.test/page-1")).toBeTruthy();
     expect(screen.getByTestId("t4-url-text").textContent).toContain("Scrubbed page heading");
@@ -35,6 +37,7 @@ describe("WebFetchRenderer", () => {
     const failure = T4_WEB_FETCH_REAL_RESULTS.find((sample) => sample.isError);
     if (failure === undefined) throw new Error("no recorded web_fetch failure");
     render(<WebFetchRenderer {...recordedProps(failure)} />);
+    expandToolCards();
     expect(screen.getAllByText("Fetch timed out while retrieving content")).toHaveLength(1);
     expect(screen.queryByTestId("t4-url-text")).toBeNull();
     expect(screen.getByText("1 line")).toBeTruthy();

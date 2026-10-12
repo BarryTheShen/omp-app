@@ -52,78 +52,79 @@ export function FindCard({ rendererProps }: { readonly rendererProps: ToolRender
         rawResult={rawResult}
         state={state}
         summary={summary}
-      />
-      {hasSection && (
-        <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
-          {shownHits.length > 0 && (
-            <ul className="flex flex-col gap-2" data-testid="t2-find-hits">
-              {shownHits.map((row) => (
-                <li className="min-w-0" key={row.key}>
-                  <span
-                    className="text-foreground block truncate font-mono text-xs"
-                    title={row.path}
-                  >
-                    {row.path}
-                  </span>
-                  {row.ranges.map((range) => (
-                    <div className="min-w-0 text-xs" key={range.key}>
-                      {(range.label !== undefined || range.probability !== undefined) && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          {range.label !== undefined && (
-                            <span className="text-foreground">{range.label}</span>
-                          )}
-                          {range.probability !== undefined && (
-                            <span className="text-muted-foreground" title="Match probability">
-                              {range.probability}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {range.snippet !== undefined && (
-                        <code
-                          className="text-muted-foreground block truncate font-mono"
-                          title={range.snippet}
-                        >
-                          {range.snippet}
-                        </code>
-                      )}
-                    </div>
-                  ))}
-                </li>
-              ))}
-              {hits.length > shownHits.length && (
-                <li className="text-muted-foreground text-xs">
-                  Showing {shownHits.length} of {hits.length}
-                </li>
-              )}
-            </ul>
-          )}
-          {showNoMatches && <p className="text-muted-foreground text-xs">No matches.</p>}
-          {showUnavailable && (
-            <p className="text-muted-foreground text-xs">Search details unavailable.</p>
-          )}
-          {stats !== undefined && (
-            <p className="text-muted-foreground mt-3 text-xs" data-testid="t2-find-stats">
-              {stats}
-            </p>
-          )}
-          {shownFailures.map((failure) => (
-            <p
-              className="text-muted-foreground mt-1 truncate text-xs"
-              data-testid="t2-find-failure"
-              key={failure}
-              title={failure}
-            >
-              {failure}
-            </p>
-          ))}
-          {failures.length > shownFailures.length && (
-            <p className="text-muted-foreground mt-1 text-xs">
-              +{failures.length - shownFailures.length} more
-            </p>
-          )}
-        </div>
-      )}
+      >
+        {hasSection && (
+          <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
+            {shownHits.length > 0 && (
+              <ul className="flex flex-col gap-2" data-testid="t2-find-hits">
+                {shownHits.map((row) => (
+                  <li className="min-w-0" key={row.key}>
+                    <span
+                      className="text-foreground block truncate font-mono text-xs"
+                      title={row.path}
+                    >
+                      {row.path}
+                    </span>
+                    {row.ranges.map((range) => (
+                      <div className="min-w-0 text-xs" key={range.key}>
+                        {(range.label !== undefined || range.probability !== undefined) && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {range.label !== undefined && (
+                              <span className="text-foreground">{range.label}</span>
+                            )}
+                            {range.probability !== undefined && (
+                              <span className="text-muted-foreground" title="Match probability">
+                                {range.probability}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {range.snippet !== undefined && (
+                          <code
+                            className="text-muted-foreground block truncate font-mono"
+                            title={range.snippet}
+                          >
+                            {range.snippet}
+                          </code>
+                        )}
+                      </div>
+                    ))}
+                  </li>
+                ))}
+                {hits.length > shownHits.length && (
+                  <li className="text-muted-foreground text-xs">
+                    Showing {shownHits.length} of {hits.length}
+                  </li>
+                )}
+              </ul>
+            )}
+            {showNoMatches && <p className="text-muted-foreground text-xs">No matches.</p>}
+            {showUnavailable && (
+              <p className="text-muted-foreground text-xs">Search details unavailable.</p>
+            )}
+            {stats !== undefined && (
+              <p className="text-muted-foreground mt-3 text-xs" data-testid="t2-find-stats">
+                {stats}
+              </p>
+            )}
+            {shownFailures.map((failure) => (
+              <p
+                className="text-muted-foreground mt-1 truncate text-xs"
+                data-testid="t2-find-failure"
+                key={failure}
+                title={failure}
+              >
+                {failure}
+              </p>
+            ))}
+            {failures.length > shownFailures.length && (
+              <p className="text-muted-foreground mt-1 text-xs">
+                +{failures.length - shownFailures.length} more
+              </p>
+            )}
+          </div>
+        )}
+      </ToolCard>
     </div>
   );
 }

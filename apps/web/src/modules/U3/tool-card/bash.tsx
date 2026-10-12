@@ -130,11 +130,11 @@ function repeatsBanner(result: BashResult): boolean {
 }
 
 /**
- * The command and output are this card's facts, so it opens at first sight in every phase; a person
- * can fold it from its header.
+ * The command and output are this card's facts. They sit inside its disclosure, so every call starts as one line,
+ * running or finished, and a click or Enter on the line shows them.
  */
 function bashState(state: ToolCardState, result: BashResult | undefined): ToolCardState {
-  if (result === undefined) return { ...state, defaultOpen: true };
+  if (result === undefined) return state;
   const phase = result.cancelled
     ? "cancelled"
     : result.timedOut || (result.exitCode !== undefined && result.exitCode !== 0)
@@ -160,7 +160,6 @@ function bashState(state: ToolCardState, result: BashResult | undefined): ToolCa
     cancelled: phase === "cancelled",
     timedOut: result.timedOut === true,
     error,
-    defaultOpen: true,
   };
 }
 

@@ -1,9 +1,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { AstGrepCard } from "./ast-grep";
 
 afterEach(cleanup);
+
+/** Everything in a card's Raw details disclosure: where a finished call's raw JSON is kept. */
+const RAW_DETAILS_CONTENT = "[data-slot='u3-tool-card-raw'] *";
 
 function props(
   result: unknown,
@@ -57,6 +61,7 @@ describe("AstGrepCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("console.log($$$) in src · 3 matches")).toBeTruthy();
     expect(screen.getByText("src/app.ts")).toBeTruthy();
     expect(screen.getByText("src/lib/log.ts")).toBeTruthy();
@@ -84,6 +89,7 @@ describe("AstGrepCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("line 20")).toBeTruthy();
     expect(screen.queryByText("line 21")).toBeNull();
     expect(screen.getByText("Showing 20 of 50")).toBeTruthy();
@@ -99,6 +105,7 @@ describe("AstGrepCard", () => {
         )}
       />,
     );
+    expandToolCards();
     const lines = screen.getAllByTestId("t2-ast-grep-parse-error").map((line) => line.textContent);
     expect(lines).toEqual(parseErrors);
     expect(screen.getByText("+4 more")).toBeTruthy();
@@ -111,6 +118,7 @@ describe("AstGrepCard", () => {
         rendererProps={props(envelope({ matchCount: 0, fileCount: 0, filesSearched: 9 }))}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("No matches.")).toBeTruthy();
     expect(screen.getByText("console.log($$$) in src")).toBeTruthy();
     expect(screen.getByTestId("t2-ast-grep-stats").textContent).toBe("9 files searched");
@@ -118,21 +126,24 @@ describe("AstGrepCard", () => {
 
   test("shows one muted line for malformed details and keeps raw JSON out of the view", () => {
     render(<AstGrepCard rendererProps={props(envelope({ files: [{ path: "src/a.ts" }] }))} />);
+    expandToolCards();
     expect(screen.getByText("Search details unavailable.")).toBeTruthy();
     expect(screen.queryByText("No matches.")).toBeNull();
-    expect(screen.queryByText(/"path"/)).toBeNull();
+    expect(screen.queryByText(/"path"/, { ignore: RAW_DETAILS_CONTENT })).toBeNull();
   });
 
   test("a result with content but no details is unavailable, not empty", () => {
     render(
       <AstGrepCard rendererProps={props({ content: [{ type: "text", text: "3 matches" }] })} />,
     );
+    expandToolCards();
     expect(screen.getByText("Search details unavailable.")).toBeTruthy();
     expect(screen.queryByText("No matches.")).toBeNull();
   });
 
   test("running state shows the pattern and scope from the arguments only", () => {
     render(<AstGrepCard rendererProps={props(undefined, { type: "running" })} />);
+    expandToolCards();
     expect(screen.getByText("console.log($$$) in src")).toBeTruthy();
     expect(screen.getByTestId("tool-card-ast-1").getAttribute("data-phase")).toBe("running");
     expect(screen.queryByText("No matches.")).toBeNull();

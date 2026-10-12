@@ -1,5 +1,6 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { AstEditCard } from "./ast-edit";
 
@@ -39,6 +40,7 @@ describe("AstEditCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t1-ast-edit-pattern").textContent).toContain("console.log($A)");
     expect(screen.getByRole("button", { name: "ast_edit: Complete" }).textContent).toContain(
       "2 replacements",
@@ -58,16 +60,18 @@ describe("AstEditCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("link", { name: "src/bad.ts" }).getAttribute("href")).toBe(
       "#read:src%2Fbad.ts",
     );
     expect(screen.getByRole("alert").textContent).toContain("Parse errors");
     expect(screen.getByTestId("t1-ast-edit-limit").textContent).toContain("safety limit");
-    expect(screen.getByText(/parse failed/)).toBeTruthy();
+    expect(within(screen.getByRole("alert")).getByText(/parse failed/)).toBeTruthy();
   });
 
   test("keeps running structural context visible before a result exists", () => {
     render(<AstEditCard rendererProps={props(undefined, { type: "running" })} />);
+    expandToolCards();
     expect(screen.getByTestId("t1-ast-edit-pattern")).toBeTruthy();
     expect(screen.getByRole("button", { name: "ast_edit: Running" })).toBeTruthy();
   });

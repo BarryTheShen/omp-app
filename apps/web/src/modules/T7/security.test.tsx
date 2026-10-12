@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { SecurityScanCard } from "./security";
 
@@ -48,6 +49,12 @@ function card(): HTMLElement {
   return screen.getByTestId("t7-security-card-security-1");
 }
 
+/** The card's text minus its raw-details disclosure (the raw arguments and result). */
+function shownText(element: HTMLElement): string {
+  const raw = element.querySelector<HTMLElement>("[data-slot='u3-tool-card-raw']");
+  return (element.textContent ?? "").replace(raw?.textContent ?? "", "");
+}
+
 describe("SecurityScanCard", () => {
   test("scan progress shows the phase and the finding count", () => {
     render(
@@ -61,11 +68,12 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(header().textContent).toContain("Check scan progress");
     expect(screen.getByTestId("t7-security-operation").textContent).toBe(
       "Reviewing code · 3 findings",
     );
-    expect(card().textContent).not.toContain("op-1");
+    expect(shownText(card())).not.toContain("op-1");
   });
 
   test("a clean finished scan reads as zero findings", () => {
@@ -80,6 +88,7 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t7-security-operation").textContent).toBe("Completed · 0 findings");
   });
 
@@ -102,6 +111,7 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(header().textContent).toContain("Check cloud scan");
     expect(card().textContent).toContain("Scanning commits · 1 commit scanned · 2 pending");
     const chips = Array.from(screen.getByTestId("t7-security-severities").children);
@@ -132,6 +142,7 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByText("No findings so far.")).toBeTruthy();
     expect(screen.queryByTestId("t7-security-severities")).toBeNull();
   });
@@ -152,10 +163,11 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(header().textContent).toContain("List cloud scans");
     expect(card().querySelectorAll("li")).toHaveLength(20);
     expect(screen.getByText("Showing 20 of 25")).toBeTruthy();
-    expect(card().textContent).not.toContain("repo-24");
+    expect(shownText(card())).not.toContain("repo-24");
   });
 
   test("validation shows the finding and a toned outcome chip", () => {
@@ -175,6 +187,7 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(header().textContent).toContain("Validate finding F-12");
     const chip = screen.getByText("Confirmed");
     expect(chip.className).toContain("bg-danger-surface");
@@ -190,6 +203,7 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getAllByText("Validation failed")).toHaveLength(1);
     cleanup();
 
@@ -202,6 +216,7 @@ describe("SecurityScanCard", () => {
       }),
     });
     render(<SecurityScanCard rendererProps={props({ action: "status" }, failed)} />);
+    expandToolCards();
     expect(screen.getAllByText("Reviewer model timed out.")).toHaveLength(1);
     cleanup();
 
@@ -215,6 +230,7 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(
       screen.getByTestId("t7-security-card-security-failed").querySelector(".text-destructive"),
     ).toBeNull();
@@ -227,11 +243,13 @@ describe("SecurityScanCard", () => {
           { action: "preflight", target_kind: "scoped_path", include_paths: ["src/", "lib/"] },
           undefined,
           { type: "running" },
+          "security-plan",
         )}
       />,
     );
     expect(header().textContent).toContain("Plan a scan of src/, lib/");
     expect(header().getAttribute("aria-expanded")).toBe("false");
+    expandToolCards();
     expect(screen.queryByText("Scan details unavailable.")).toBeNull();
   });
 
@@ -244,6 +262,7 @@ describe("SecurityScanCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(header().textContent).toContain("Import cloud findings");
     expect(card().textContent).toContain(
       "Imported 1 finding. Review imported findings with /security.",
@@ -256,12 +275,16 @@ describe("SecurityScanCard", () => {
         rendererProps={props(
           { action: "status" },
           scanResult({ action: "status", operation: "preflight-secret" }),
+          undefined,
+          "security-malformed",
         )}
       />,
     );
-    expect(screen.getByText("Scan details unavailable.")).toBeTruthy();
+    const malformed = screen.getByTestId("t7-security-card-security-malformed");
     expect(header().getAttribute("aria-expanded")).toBe("false");
-    expect(card().textContent).not.toContain("preflight-secret");
+    expandToolCards();
+    expect(screen.getByText("Scan details unavailable.")).toBeTruthy();
+    expect(shownText(malformed)).not.toContain("preflight-secret");
   });
 
   test("with nothing known the header falls back to Security scan", () => {

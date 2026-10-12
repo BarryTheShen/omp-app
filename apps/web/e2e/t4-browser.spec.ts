@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -41,12 +42,12 @@ test("renders browser action, observations, screenshot and raw toggle in light C
   await expect(playground).toBeVisible();
   await expect(playground).toHaveCSS("background-color", /^(rgb|oklch)/);
   await expect(page.getByText("Run · docs · https://example.test/docs")).toBeVisible();
+  await openAllToolCards(page);
   await expect(page.locator("[data-browser-screenshots]")).toBeVisible();
   await expect(page.getByRole("img", { name: "Browser screenshot 1" })).toBeVisible();
   await page.getByRole("button", { name: "Open browser screenshot 1" }).click();
   await expect(page.getByRole("heading", { name: "Browser screenshot 1" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "browser: Complete" }).click();
   await page.getByText("Raw details").click();
   await expect(page.getByText("Result")).toBeVisible();
   await page.screenshot({ path: "../../.data/screenshots/t4.3-browser-light.png", fullPage: true });

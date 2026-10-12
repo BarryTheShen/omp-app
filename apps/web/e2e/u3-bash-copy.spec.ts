@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, realTest, type SeedToolResult, screenshots } from "./real-omp";
+import { expect, openAllToolCards, realTest, type SeedToolResult, screenshots } from "./real-omp";
 
 /**
  * Issue #845. A bash card's output could not be copied: its only copy control copied the command,
@@ -39,6 +39,7 @@ realTest(
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByRole("listbox", { name: "Session list" }).getByRole("option").first().click();
     await expect(page.getByText("end of sample 0")).toBeVisible({ timeout: 60_000 });
+    await openAllToolCards(page);
     await mkdir(screenshots, { recursive: true });
     const row = page.locator('[data-slot="u1-message-row"][data-role="assistant"]').nth(0);
 

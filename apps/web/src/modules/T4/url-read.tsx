@@ -49,67 +49,70 @@ export function T4ReadUrlRenderer({
         rawResult={rawResult}
         state={state}
         summary={title}
-      />
-      <section
-        className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4"
-        data-slot="t4-url-read-body"
       >
-        <header className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-          <span className="font-medium" data-url-title>
-            {title}
-          </span>
-          <SafeLink href={finalUrl} label={urlLabel(finalUrl)} />
-          {redirect && (
-            <span className="text-muted-foreground text-xs" data-url-redirect>
-              {redirect}
+        <section
+          className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4"
+          data-slot="t4-url-read-body"
+        >
+          <header className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+            <span className="font-medium" data-url-title>
+              {title}
             </span>
-          )}
-        </header>
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground" data-url-metadata>
-          {details.contentType && (
-            <span className="rounded border border-border px-2 py-0.5">{details.contentType}</span>
-          )}
-          {details.method && (
-            <span className="rounded border border-border px-2 py-0.5">{details.method}</span>
-          )}
-          {lineCount !== undefined && (
-            <span className="rounded border border-border px-2 py-0.5">
-              {lineCount} {lineCount === 1 ? "line" : "lines"}
-            </span>
-          )}
-          {characterCount !== undefined && (
-            <span className="rounded border border-border px-2 py-0.5">
-              {characterCount} {characterCount === 1 ? "char" : "chars"}
-            </span>
-          )}
-        </div>
-        {catalog.length > 0 && <CatalogMetadata items={catalog} />}
-        {screenshots.length > 0 && <ScreenshotStrip screenshots={screenshots} />}
-        {content !== undefined ? (
-          <MarkdownPreview text={content} />
-        ) : errorIsText ? null : returned !== undefined ? (
-          <TextOutput text={returned} testId="t4-url-text" />
-        ) : (
-          <p className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground">
-            No page content was returned.
-          </p>
-        )}
-        {details.notes && details.notes.length > 0 && (
-          <p className="text-muted-foreground text-xs" data-url-notes>
-            <span className="font-medium">Notes:</span> {details.notes.slice(0, 8).join(" · ")}
-          </p>
-        )}
-        {sources.length > 0 && <SourceList sources={sources} />}
-        {details.truncation && (
-          <div
-            className="flex items-center gap-2 text-xs text-muted-foreground"
-            data-url-truncation
-          >
-            <InfoIcon aria-hidden="true" className="size-3.5" />
-            <span>{truncationText(details.truncation)}</span>
+            <SafeLink href={finalUrl} label={urlLabel(finalUrl)} />
+            {redirect && (
+              <span className="text-muted-foreground text-xs" data-url-redirect>
+                {redirect}
+              </span>
+            )}
+          </header>
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground" data-url-metadata>
+            {details.contentType && (
+              <span className="rounded border border-border px-2 py-0.5">
+                {details.contentType}
+              </span>
+            )}
+            {details.method && (
+              <span className="rounded border border-border px-2 py-0.5">{details.method}</span>
+            )}
+            {lineCount !== undefined && (
+              <span className="rounded border border-border px-2 py-0.5">
+                {lineCount} {lineCount === 1 ? "line" : "lines"}
+              </span>
+            )}
+            {characterCount !== undefined && (
+              <span className="rounded border border-border px-2 py-0.5">
+                {characterCount} {characterCount === 1 ? "char" : "chars"}
+              </span>
+            )}
           </div>
-        )}
-      </section>
+          {catalog.length > 0 && <CatalogMetadata items={catalog} />}
+          {screenshots.length > 0 && <ScreenshotStrip screenshots={screenshots} />}
+          {content !== undefined ? (
+            <MarkdownPreview text={content} />
+          ) : errorIsText ? null : returned !== undefined ? (
+            <TextOutput text={returned} testId="t4-url-text" />
+          ) : (
+            <p className="border-border bg-muted/40 rounded-lg border p-3 text-sm text-muted-foreground">
+              No page content was returned.
+            </p>
+          )}
+          {details.notes && details.notes.length > 0 && (
+            <p className="text-muted-foreground text-xs" data-url-notes>
+              <span className="font-medium">Notes:</span> {details.notes.slice(0, 8).join(" · ")}
+            </p>
+          )}
+          {sources.length > 0 && <SourceList sources={sources} />}
+          {details.truncation && (
+            <div
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+              data-url-truncation
+            >
+              <InfoIcon aria-hidden="true" className="size-3.5" />
+              <span>{truncationText(details.truncation)}</span>
+            </div>
+          )}
+        </section>
+      </ToolCard>
     </div>
   );
 }

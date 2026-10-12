@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { ResolveCard } from "./resolve";
 
@@ -32,6 +33,7 @@ describe("ResolveCard", () => {
         )}
       />,
     );
+    expandToolCards();
     const card = screen.getByTestId("t7-resolve-status-resolve-1");
     expect(card.getAttribute("data-status")).toBe("pending");
     expect(card.textContent).toContain("Pending decision");
@@ -50,6 +52,7 @@ describe("ResolveCard", () => {
         />
       </>,
     );
+    expandToolCards();
     expect(screen.getByTestId("t7-resolve-status-resolve-1").getAttribute("data-status")).toBe(
       "approved",
     );
@@ -70,6 +73,7 @@ describe("ResolveCard", () => {
         )}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t7-resolve-status-resolve-1").getAttribute("data-status")).toBe(
       "rejected",
     );
@@ -82,6 +86,7 @@ describe("ResolveCard", () => {
 describe("ResolveCard with no result recorded", () => {
   test("says no result was recorded and never reports an approval nobody gave", () => {
     render(<ResolveCard rendererProps={props("resolve", undefined)} />);
+    expandToolCards();
     expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
     expect(screen.queryByText("Approved")).toBeNull();
   });

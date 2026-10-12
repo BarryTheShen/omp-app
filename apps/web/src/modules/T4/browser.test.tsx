@@ -1,5 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { BrowserToolCard } from "./browser";
 
@@ -32,6 +33,7 @@ describe("BrowserToolCard", () => {
         })}
       />,
     );
+    expandToolCards();
     expect(screen.getByTestId("t4-browser-card")).toBeTruthy();
     expect(screen.getByText("Run · docs · https://example.test/docs")).toBeTruthy();
     expect(screen.getByText("return document.title")).toBeTruthy();
@@ -43,7 +45,6 @@ describe("BrowserToolCard", () => {
     );
     screen.getByRole("button", { name: "Close" }).click();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    screen.getByRole("button", { name: "browser: Complete" }).click();
     await waitFor(() => expect(screen.getByText("Result")).toBeTruthy());
   });
 
@@ -53,6 +54,7 @@ describe("BrowserToolCard", () => {
         {...props({ kind: "browser", action: "open", error: "Browser permission denied" })}
       />,
     );
+    expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Browser permission denied");
   });
 });

@@ -95,9 +95,6 @@ export interface ToolCardState {
    * stays in flight, so each card keeps its in-flight look; the generic card says Waiting.
    */
   readonly queued?: boolean;
-  /** A passive default; a later user override is kept separately by the card shell. */
-  readonly defaultOpen: boolean;
-  readonly userOpen?: boolean;
 }
 
 export type ToolRendererProps<TArgs = unknown, TResult = unknown> = ToolCallMessagePartProps<

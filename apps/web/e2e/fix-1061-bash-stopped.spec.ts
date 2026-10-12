@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -19,6 +20,7 @@ function bashCard(page: Page) {
 async function expectStoppedCard(page: Page): Promise<void> {
   await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
   await expect(bashCard(page).getByRole("button", { name: "bash: Cancelled" })).toBeVisible();
+  await openToolCard(bashCard(page));
   await expect(page.getByRole("button", { name: "bash: Error" })).toHaveCount(0);
   await expect(bashCard(page).getByRole("alert")).toHaveCount(0);
   await expect(page.getByText("Command aborted")).toHaveCount(0);

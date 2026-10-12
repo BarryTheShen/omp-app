@@ -4,6 +4,7 @@ import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   expect,
+  openToolCard,
   realTest,
   screenshots,
   sendPrompt,
@@ -99,6 +100,7 @@ realTest(
 
     const card = check.getByTestId("t5-task-card");
     await expect(card).toBeVisible({ timeout: 60_000 });
+    await openToolCard(card);
     const transcript = card.locator("[data-slot='t5-task-transcript']");
     await expect(transcript).toBeVisible({ timeout: 60_000 });
     // The worker is the subagent omp started for the task: its own task text is in its transcript.

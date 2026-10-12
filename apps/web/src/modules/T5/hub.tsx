@@ -40,9 +40,10 @@ export function HubCard({ rendererProps }: { readonly rendererProps: ToolRendere
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, result: undefined, partialResult: undefined }}
         summary={hubSummary(details, state.isError)}
-      />
-      <RawDetails state={state} />
-      <HubBody details={details} isError={state.isError} text={text} />
+      >
+        <RawDetails state={state} />
+        <HubBody details={details} isError={state.isError} text={text} />
+      </ToolCard>
     </div>
   );
 }
