@@ -50,6 +50,7 @@ function selectedSession() {
     getSnapshot: () => ({
       id: threadId,
       title: session.title,
+      displayTitle: session.title,
       cwd: session.cwd,
       sessionFile: session.sessionFile,
     }),
@@ -95,6 +96,7 @@ describe("SessionCommandController", () => {
       {
         id: threadId,
         title: session.title,
+        displayTitle: session.title,
         cwd: session.cwd,
         sessionFile: session.sessionFile,
       },
@@ -144,6 +146,7 @@ describe("SessionCommandController", () => {
       {
         id: threadId,
         title: session.title,
+        displayTitle: session.title,
         cwd: session.cwd,
         sessionFile: session.sessionFile,
       },
@@ -244,6 +247,7 @@ describe("SessionCommandController", () => {
         getSnapshot: () => ({
           id: "other-thread" as ThreadId,
           title: "Other",
+          displayTitle: "Other",
           cwd: session.cwd,
           sessionFile: session.sessionFile,
         }),

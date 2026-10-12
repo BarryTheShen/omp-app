@@ -27,6 +27,7 @@ function session(id: string, updatedAt: string, cwd = folder): SessionFile {
     sessionFile: SessionFilePath.parse(`${cwd}/.omp/${id}.jsonl`),
     version: 3,
     title: id,
+    displayTitle: id,
     firstPrompt: null,
     cwd,
     createdAt: "2026-10-05T00:00:00.000Z",

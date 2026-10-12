@@ -31,7 +31,7 @@ describe("SessionActionsController", () => {
     const dialogs = { confirm } as unknown as DialogHost;
     const controller = new SessionActionsController({ remote: adapter, dialogs, threadId });
     await expect(
-      controller.delete({ id: "session-1" as ThreadId, title: "Chat" }),
+      controller.delete({ id: "session-1" as ThreadId, displayTitle: "Chat" }),
     ).resolves.toEqual({
       status: "cancelled",
     });
@@ -45,7 +45,7 @@ describe("SessionActionsController", () => {
     const dialogs = { confirm } as unknown as DialogHost;
     const controller = new SessionActionsController({ remote: adapter, dialogs, threadId });
     await expect(
-      controller.delete({ id: "session-1" as ThreadId, title: "Chat" }),
+      controller.delete({ id: "session-1" as ThreadId, displayTitle: "Chat" }),
     ).resolves.toMatchObject({
       status: "completed",
     });
@@ -55,7 +55,7 @@ describe("SessionActionsController", () => {
       new AppFailure({ code: "permission", message: "omp rejected delete", retryable: false }),
     );
     await expect(
-      controller.delete({ id: "session-2" as ThreadId, title: "Other" }),
+      controller.delete({ id: "session-2" as ThreadId, displayTitle: "Other" }),
     ).resolves.toMatchObject({
       status: "error",
       error: { appError: { code: "permission" } },
@@ -120,7 +120,7 @@ describe("SessionActionsController delete failures", () => {
     const dialogs = { confirm } as unknown as DialogHost;
     const controller = new SessionActionsController({ remote: adapter, dialogs, threadId });
     await expect(
-      controller.delete({ id: "session-1" as ThreadId, title: "Chat" }),
+      controller.delete({ id: "session-1" as ThreadId, displayTitle: "Chat" }),
     ).resolves.toMatchObject({ status: "unavailable" });
     expect(adapter.delete).not.toHaveBeenCalled();
   });

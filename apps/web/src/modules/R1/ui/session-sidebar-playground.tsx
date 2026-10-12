@@ -62,6 +62,7 @@ function session(
     sessionFile: `${cwd}/.omp/${id}.jsonl` as SessionFilePath,
     version: 3,
     title,
+    displayTitle: title,
     firstPrompt: null,
     cwd,
     createdAt: `2026-10-0${Math.min(index + 1, 9)}T09:00:00.000Z` as Timestamp,

@@ -22,6 +22,7 @@ const baseSession = {
   sessionFile: SessionFilePath.parse(sessionFile),
   version: 3,
   title: "A session",
+  displayTitle: "A session",
   firstPrompt: null,
   cwd: folder,
   createdAt: "2026-10-05T00:00:00.000Z",

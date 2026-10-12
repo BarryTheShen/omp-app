@@ -62,6 +62,7 @@ const session = {
   sessionFile,
   version: 3,
   title: "A session",
+  displayTitle: "A session",
   firstPrompt: "Summarize the repository",
   cwd: folder,
   createdAt: "2026-10-04T00:00:00.000Z",

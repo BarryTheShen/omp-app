@@ -20,7 +20,7 @@ export function useSessionTitle(catalog: TitleSource | null, threadId: ThreadId 
     const fromList = (): boolean => {
       const session = catalog.getSnapshot().sessions.find((item) => item.id === threadId);
       if (session === undefined) return false;
-      setTitle(session.title ?? "Conversation");
+      setTitle(session.displayTitle ?? "Conversation");
       return true;
     };
     if (!fromList()) {
@@ -28,7 +28,7 @@ export function useSessionTitle(catalog: TitleSource | null, threadId: ThreadId 
       void catalog
         .fetch(threadId)
         .then((metadata) => {
-          if (active && !fromList()) setTitle(metadata.title ?? "Conversation");
+          if (active && !fromList()) setTitle(metadata.displayTitle ?? "Conversation");
         })
         .catch(() => undefined);
     }

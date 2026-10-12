@@ -24,6 +24,7 @@ const baseSession: SessionInfoState = {
 const metadata: SessionInfoMetadata = {
   id: threadId,
   title: "Catalog title",
+  displayTitle: "Catalog title",
   cwd: "/workspace/project" as SessionInfoMetadata["cwd"] & string,
   sessionFile: "/workspace/project/.omp/d5.jsonl" as SessionInfoMetadata["sessionFile"] & string,
 };

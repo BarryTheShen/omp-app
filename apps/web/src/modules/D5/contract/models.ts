@@ -36,6 +36,8 @@ export type SessionDeleteRequest = z.infer<typeof SessionDeleteRequest>;
 export const SessionInfoMetadata = z.strictObject({
   id: ThreadIdSchema,
   title: z.string().nullable(),
+  /** The title's own words, without omp's card icon and code; null for an untitled chat. */
+  displayTitle: z.string().nullable(),
   cwd: FolderPath.nullable(),
   sessionFile: SessionFilePathSchema.nullable(),
 });

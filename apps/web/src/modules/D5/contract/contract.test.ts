@@ -19,6 +19,7 @@ describe("D5 typed contracts", () => {
     const metadata = SessionInfoMetadata.parse({
       id: threadId,
       title: "Chat",
+      displayTitle: "Chat",
       cwd,
       sessionFile,
     });

@@ -59,9 +59,9 @@ function highlight(text: string, query: string): React.ReactNode {
   );
 }
 
-/** omp's title, else the first thing the user asked (omp titles a session after its first turn). */
+/** The title's own words, without omp's card icon and code; else the first thing the user asked (omp titles a session after its first turn). */
 function sessionTitle(session: SessionMetadata): string {
-  return session.title ?? session.firstPrompt ?? "New session";
+  return session.displayTitle ?? session.firstPrompt ?? "New session";
 }
 
 function folderLabel(folder: string): string {
@@ -330,7 +330,7 @@ export function SessionCatalogSidebar({
   const beginRename = (session: SessionMetadata): void => {
     catalog.setActionError(undefined);
     setEditingId(session.id);
-    // The box opens with the title the row shows (omp's, else the first prompt), and it is selected.
+    // The box opens with the title's own words, so omp's card icon is not shown in it. A save stores what is typed.
     setEditingTitle(sessionTitle(session));
     setRenameError(undefined);
   };

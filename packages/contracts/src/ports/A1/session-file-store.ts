@@ -58,6 +58,8 @@ export const SessionFile = z.strictObject({
   sessionFile: SessionFilePath,
   version: z.int().min(1).max(3).nullable(),
   title: z.string().nullable(),
+  /** The title's own words, without omp's card icon and code; null for an untitled chat. The stored title is unchanged. */
+  displayTitle: z.string().nullable(),
   /** The first user message, trimmed to one line of at most 120 characters, for untitled sessions. */
   firstPrompt: z.string().nullable(),
   cwd: FolderPath,

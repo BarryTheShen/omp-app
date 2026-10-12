@@ -12,6 +12,7 @@ import type {
   SessionFile as InternalSessionFile,
   SubagentTranscript as InternalSubagentTranscript,
 } from "../sessions";
+import { sessionDisplayTitle } from "../sessions/title-card";
 import type { A1PortContext } from "./context";
 import { type A1EventBinding, assertNotAborted, createA1PortRegistration } from "./helper";
 
@@ -41,11 +42,13 @@ function parentSessionPath(value: string | undefined): ContractSessionFile["pare
 }
 
 function mapSession(file: InternalSessionFile): ContractSessionFile {
+  const title = file.title ?? null;
   return {
     id: file.id as ContractSessionFile["id"],
     sessionFile: file.sessionFile as ContractSessionFile["sessionFile"],
     version: file.version,
-    title: file.title ?? null,
+    title,
+    displayTitle: title === null ? null : sessionDisplayTitle(title),
     firstPrompt: file.firstPrompt,
     cwd: file.cwd as ContractSessionFile["cwd"],
     createdAt: file.createdAt,

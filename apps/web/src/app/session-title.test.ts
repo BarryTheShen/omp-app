@@ -14,14 +14,16 @@ function fakeCatalog(initial: readonly { id: string; title: string | null }[]) {
   const fetched: string[] = [];
   const fetchTitles: Record<string, string | null> = {};
   const source = {
-    getSnapshot: () => ({ sessions }),
+    getSnapshot: () => ({
+      sessions: sessions.map((session) => ({ ...session, displayTitle: session.title })),
+    }),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     fetch: vi.fn(async (id: string) => {
       fetched.push(id);
-      return { id, title: fetchTitles[id] ?? null };
+      return { id, title: fetchTitles[id] ?? null, displayTitle: fetchTitles[id] ?? null };
     }),
   } as unknown as Source;
   return {

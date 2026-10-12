@@ -86,7 +86,7 @@ export class SessionActionsController {
   }
 
   public async delete(
-    session: Pick<SessionMetadata, "id" | "title">,
+    session: Pick<SessionMetadata, "id" | "displayTitle">,
     confirmationId: string = `app-delete-${session.id}`,
   ): Promise<SessionActionOutcome<void>> {
     if (this.options.dialogs === undefined) {
@@ -104,7 +104,7 @@ export class SessionActionsController {
           kind: "confirm",
           id: UiRequestIdSchema.parse(appConfirmationId),
           title: "Delete session",
-          message: `Delete ${session.title ?? session.id}? omp will remove only this native session.`,
+          message: `Delete ${session.displayTitle ?? session.id}? omp will remove only this native session.`,
         },
         { threadId: this.options.threadId, origin: "app" },
       );

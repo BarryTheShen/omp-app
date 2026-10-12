@@ -26,6 +26,7 @@ function session(
     sessionFile: SessionFilePath.parse(`${folder}/.omp/${id}.jsonl`),
     version: 3,
     title,
+    displayTitle: title,
     firstPrompt,
     cwd: folder,
     createdAt: "2026-10-05T00:00:00.000Z",
@@ -188,6 +189,25 @@ describe("SessionCatalogSidebar", () => {
     expect(screen.getByRole("listbox", { name: "Session list" })).toBe(list);
     expect(list.scrollTop).toBe(80);
     expect(selected.parentElement?.getAttribute("data-selected")).toBe("true");
+  });
+
+  test("the list shows a card title's own words, not the icon or the code omp stored", async () => {
+    const files = [
+      {
+        ...session("card", "2026-10-03T00:00:00.000Z", "🧪 FLAKY: Fix flaky park tests"),
+        displayTitle: "Fix flaky park tests",
+      },
+    ];
+    const catalog = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: files, nextCursor: null }),
+        readSession: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
+      },
+    });
+    renderSidebar({ catalog });
+    await waitFor(() => expect(screen.getByText("Fix flaky park tests")).toBeTruthy());
+    expect(screen.queryByText(/FLAKY/)).toBeNull();
   });
 
   test("keeps the previous list and reports a failed background refresh in one line", async () => {
@@ -968,6 +988,32 @@ describe("SessionCatalogSidebar", () => {
     expect(opened).toEqual([]);
   });
 
+  test("the rename box opens with the title's own words, not omp's card; saving them unchanged renames nothing", async () => {
+    const files = [
+      {
+        ...session("card", "2026-10-03T00:00:00.000Z", "🧪 FLAKY: Fix flaky park tests"),
+        displayTitle: "Fix flaky park tests",
+      },
+    ];
+    const catalog = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: files, nextCursor: null }),
+        readSession: async () => files[0] ?? session("missing", "2026-10-01T00:00:00.000Z"),
+      },
+    });
+    const { calls } = renderSidebar({ catalog, renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Fix flaky park tests")).toBeTruthy());
+    startRename("Fix flaky park tests");
+    const box = screen.getByRole("textbox", { name: "Rename Fix flaky park tests" });
+    expect(box instanceof HTMLInputElement ? box.value : undefined).toBe("Fix flaky park tests");
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Rename Fix flaky park tests" })).toBeNull(),
+    );
+    expect(calls).toEqual([]);
+  });
+
   test("Enter on a row's More actions button is left to the button, and opens no chat", async () => {
     const opened: string[] = [];
     renderSidebar({
@@ -1047,7 +1093,7 @@ describe("SessionCatalogSidebar", () => {
         const index = files.findIndex((file) => file.id === threadId);
         const file = files[index];
         if (file === undefined) throw new Error(`No chat ${threadId}`);
-        files[index] = { ...file, title: name };
+        files[index] = { ...file, title: name, displayTitle: name };
         return null;
       },
     });
