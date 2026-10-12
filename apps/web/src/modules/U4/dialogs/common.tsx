@@ -9,9 +9,12 @@ export function DialogFrame({
   children,
   actions,
   labelledBy,
+  notice,
 }: {
   readonly title: string;
   readonly description?: string;
+  /** A line under the header that stays in view while the body scrolls, such as a time left. */
+  readonly notice?: ReactNode;
   readonly children: ReactNode;
   readonly actions: ReactNode;
   readonly labelledBy?: string;
@@ -28,6 +31,7 @@ export function DialogFrame({
         {description ? (
           <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{description}</p>
         ) : null}
+        {notice ? <div className="text-sm text-muted-foreground">{notice}</div> : null}
       </header>
       <div className="min-h-0 overflow-y-auto text-sm">{children}</div>
       <footer className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">

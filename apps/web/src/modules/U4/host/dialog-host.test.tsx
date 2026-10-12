@@ -36,6 +36,7 @@ interface HarnessState {
   overlay: OverlayHostApi | undefined;
   answers: OmpWire.ExtensionUiResponse[];
   answer: ((response: DialogResponse) => Promise<void>) | undefined;
+  deadlines: Record<string, number | undefined>;
 }
 
 function Harness({
@@ -56,6 +57,7 @@ function Harness({
       },
       render: (dialogRequest, context) => {
         state.answer = context.answer;
+        state.deadlines[dialogRequest.id] = context.deadlineAt;
         return (
           <div data-testid={`body-${dialogRequest.id}`}>
             <p>
@@ -100,6 +102,7 @@ function renderHarness(capabilities = ompUiCapabilities) {
     overlay: undefined,
     answers: [],
     answer: undefined,
+    deadlines: {},
   };
   render(
     <OverlayHost>
@@ -154,6 +157,24 @@ describe("DialogHostController", () => {
       outcome: "answered",
       response: { kind: "confirm", confirmed: true },
     });
+  });
+
+  test("a timed request gives its dialog the time the host will settle it, and a queued one keeps the time it was received", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    const first = open(controller, request("confirm", "untimed"));
+    await screen.findByRole("dialog", { name: "untimed" });
+    expect(state.deadlines.untimed).toBeUndefined();
+
+    const beforeQueued = Date.now();
+    const queued = open(controller, request("confirm", "timed-later", 15_000));
+    await state.answer?.({ kind: "confirm", confirmed: false });
+    await first;
+    await screen.findByRole("dialog", { name: "timed-later" });
+    expect(state.deadlines["timed-later"]).toBeGreaterThanOrEqual(beforeQueued + 15_000);
+    expect(state.deadlines["timed-later"]).toBeLessThanOrEqual(Date.now() + 15_000);
+    await state.answer?.({ kind: "confirm", confirmed: true });
+    await queued;
   });
 
   test("a dialog is named by its visible heading: the question of a select, the fixed heading of an ask", async () => {

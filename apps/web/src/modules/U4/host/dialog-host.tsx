@@ -27,6 +27,11 @@ export interface DialogRenderContext {
   readonly signal: AbortSignal;
   readonly answer: (response: DialogResponse) => Promise<void>;
   readonly cancel: () => Promise<void>;
+  /**
+   * When (epoch ms) the host settles this request on its own timer, because no answer came. Undefined when the request
+   * has no timeout. A request queued behind another dialog keeps the time it was received, as its timer does.
+   */
+  readonly deadlineAt?: number;
 }
 
 export type DialogRenderer = (request: DialogRequest, context: DialogRenderContext) => ReactNode;
@@ -54,6 +59,7 @@ interface DialogEntry {
   readonly restoreFocus?: () => void;
   state: "queued" | "active" | "settling" | "settled";
   overlay: OverlayOpenResult | null;
+  deadlineAt: number | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
   abortListener: (() => void) | null;
   internalClose: boolean;
@@ -156,6 +162,7 @@ export class DialogHostController implements DialogHost {
         abortListener: null,
         internalClose: false,
         restoreCalled: false,
+        deadlineAt: undefined,
       };
       this.entries.set(parsed.data.id, entry);
       const key = String(entryOptions.threadId);
@@ -232,6 +239,7 @@ export class DialogHostController implements DialogHost {
   private installTimeout(entry: DialogEntry): void {
     const timeoutMs = entry.request.kind === "editor" ? undefined : entry.request.timeoutMs;
     if (timeoutMs === undefined) return;
+    entry.deadlineAt = Date.now() + timeoutMs;
     entry.timer = setTimeout(() => {
       if (entry.state === "queued" || entry.state === "active") {
         void this.settleTimeout(entry);
@@ -261,6 +269,7 @@ export class DialogHostController implements DialogHost {
       signal: entry.abortController.signal,
       answer: (response) => this.answer(entry, response),
       cancel: () => this.settleCancelled(entry, false, true),
+      deadlineAt: entry.deadlineAt,
     };
     try {
       entry.overlay = this.overlay.open({

@@ -1,6 +1,6 @@
 import { CheckIcon } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ASK_DIALOG_HEADING, type AskDialogRequest } from "../contract";
@@ -52,6 +52,28 @@ function OptionMark({ multi, selected }: { readonly multi: boolean; readonly sel
       {selected && multi ? <CheckIcon className="size-3" /> : null}
       {selected && !multi ? <span className="size-1.5 rounded-full bg-current" /> : null}
     </span>
+  );
+}
+
+/**
+ * The time left before the host settles this question on its timer, and what omp answers then. omp's own rule
+ * (`timedOutAskDialogResult` in omp) is the recommended option, or the first option when none is recommended.
+ */
+function AskCountdown({ deadlineAt }: { readonly deadlineAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.ceil((deadlineAt - now) / 1000));
+  return (
+    <>
+      <p role="timer">{`Time left: ${seconds} ${seconds === 1 ? "second" : "seconds"}.`}</p>
+      <p>
+        When time runs out, omp uses its recommended answer for each question, or the first option
+        when none is recommended.
+      </p>
+    </>
   );
 }
 
@@ -154,6 +176,11 @@ export function AskDialog({
     <DialogFrame
       title={ASK_DIALOG_HEADING}
       description={review ? "Review your answers before submitting." : question.header}
+      notice={
+        context.deadlineAt === undefined ? undefined : (
+          <AskCountdown deadlineAt={context.deadlineAt} />
+        )
+      }
       actions={
         <>
           <CancelButton onCancel={context.cancel} />

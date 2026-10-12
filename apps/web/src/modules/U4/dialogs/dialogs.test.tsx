@@ -1,6 +1,6 @@
 import type { ThreadId, UiRequestId } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AskDialogRequest, DialogRequest, DialogResponse } from "../contract";
 import { toWireExtensionUiResponse } from "../contract/responses";
 import type { DialogRenderContext } from "../host";
@@ -11,12 +11,13 @@ afterEach(cleanup);
 
 const threadId = "dialog-test-thread" as ThreadId;
 
-function renderRequest(request: DialogRequest) {
+function renderRequest(request: DialogRequest, deadlineAt?: number) {
   const answers: DialogResponse[] = [];
   let cancellations = 0;
   const context: DialogRenderContext = {
     request,
     threadId,
+    deadlineAt,
     signal: new AbortController().signal,
     answer: async (response) => {
       answers.push(response);
@@ -320,6 +321,31 @@ describe("rich Ask dialog and result card", () => {
     expect(
       within(screen.getByRole("radio", { name: /Fast/ })).queryByText("Recommended"),
     ).toBeNull();
+  });
+
+  test("the ask dialog counts down the time left and says what omp answers when it runs out", () => {
+    vi.useFakeTimers();
+    try {
+      renderRequest(askRequest, Date.now() + 15_000);
+      expect(screen.getByRole("timer").textContent).toBe("Time left: 15 seconds.");
+      expect(screen.getByText(/When time runs out, omp uses its recommended answer/)).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+      expect(screen.getByRole("timer").textContent).toBe("Time left: 14 seconds.");
+      act(() => {
+        vi.advanceTimersByTime(13_000);
+      });
+      expect(screen.getByRole("timer").textContent).toBe("Time left: 1 second.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("an ask with no timeout shows no countdown and no line about a timeout", () => {
+    renderRequest(askRequest);
+    expect(screen.queryByRole("timer")).toBeNull();
+    expect(screen.queryByText(/When time runs out/)).toBeNull();
   });
 
   test("a checkbox question can be answered with none ticked: Review says None and Submit sends an empty set", () => {
