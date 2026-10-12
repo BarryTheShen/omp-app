@@ -168,6 +168,8 @@ export function SessionCatalogSidebar({
   currentTurnRunning,
 }: SessionCatalogSidebarProps) {
   const snapshot = catalog.getSnapshot();
+  // The picked chat's row is the selected one from the pick on, before its open finishes (see openSession).
+  const shownThreadId = snapshot.selectedThreadId ?? currentThreadId;
   const [query, setQuery] = useState(snapshot.filter.query);
   const [, setCatalogRevision] = useState(0);
   const [focusedId, setFocusedId] = useState<ThreadId | undefined>();
@@ -241,7 +243,7 @@ export function SessionCatalogSidebar({
   // The focused row is a chat, not a position: when the list reorders under it, the row and Enter still mean that
   // chat. A chat that has left the list, or none yet, puts the tab stop on the first row.
   // The tab stop starts on the open chat, so Tab back into the list lands on it (issue 973). A chat the person focused wins.
-  const focusedRow = sessions.findIndex((session) => session.id === (focusedId ?? currentThreadId));
+  const focusedRow = sessions.findIndex((session) => session.id === (focusedId ?? shownThreadId));
   const activeIndex = focusedRow >= 0 ? focusedRow : 0;
 
   // After a rename (or Escape) the chat's own row takes focus and becomes the focused row. The focus is kept by
@@ -290,23 +292,31 @@ export function SessionCatalogSidebar({
   const openSession = async (session: SessionMetadata): Promise<void> => {
     catalog.setActionError(undefined);
     const threadId = session.id as ThreadId;
-    let openId: ThreadId;
+    // The picked row is selected at once; the pick stands until its chat has opened, or was refused.
+    catalog.select(threadId);
+    const pick = catalog.getSnapshot().selectionRevision;
     try {
-      const initialized = await unlessSuperseded(remote.initialize(session.id));
-      if (!initialized) return;
-      openId = initialized.remoteId as ThreadId;
-    } catch (error) {
-      if (!(error instanceof AppFailure) || error.appError.code !== "model_unavailable")
-        throw error;
-      // A model remembered for this chat opens it again: the history retries the open with that model.
-      if (pickedModelFor(threadId) === undefined) {
-        // omp refused the chat before it opened: the picker, over the open chat or on the empty screen, says so once.
-        onOpenFailed?.(threadId, error.appError);
-        return;
+      let openId: ThreadId;
+      try {
+        const initialized = await unlessSuperseded(remote.initialize(session.id));
+        if (!initialized) return;
+        openId = initialized.remoteId as ThreadId;
+      } catch (error) {
+        if (!(error instanceof AppFailure) || error.appError.code !== "model_unavailable")
+          throw error;
+        // A model remembered for this chat opens it again: the history retries the open with that model.
+        if (pickedModelFor(threadId) === undefined) {
+          // omp refused the chat before it opened: the picker, over the open chat or on the empty screen, says so once.
+          onOpenFailed?.(threadId, error.appError);
+          return;
+        }
+        openId = threadId;
       }
-      openId = threadId;
+      await openThreadReported(openId);
+    } finally {
+      // A later pick has the selection now, or this pick is over: the open chat's row shows again.
+      if (catalog.getSnapshot().selectionRevision === pick) catalog.select(null);
     }
-    await openThreadReported(openId);
   };
 
   const createNewChat = async (): Promise<void> => {
@@ -511,7 +521,7 @@ export function SessionCatalogSidebar({
             >
               {groupedSessions.map((session) => {
                 const index = sessions.findIndex((item) => item.id === session.id);
-                const selected = currentThreadId === session.id;
+                const selected = shownThreadId === session.id;
                 const isEditing = editingId === session.id;
                 const title = sessionTitle(session);
                 const activity = activityPreview(session.updatedAt);

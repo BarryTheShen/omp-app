@@ -107,6 +107,73 @@ function startRename(title: string): void {
 }
 
 describe("SessionCatalogSidebar", () => {
+  test("a picked chat is selected at once, before its open finishes", async () => {
+    const calls: string[] = [];
+    const opened: string[] = [];
+    let finishOpen: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      finishOpen = resolve;
+    });
+    const remote = {
+      ...fakeRemote(calls),
+      initialize: async (id: string) => {
+        calls.push(`initialize:${id}`);
+        await held;
+        return { remoteId: id };
+      },
+    };
+    renderSidebar({
+      remote,
+      currentThreadId: ThreadIdSchema.parse("old"),
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Newest chat/ }));
+    // omp is still starting the chat: its row already shows as the selected one, the open chat's row does not.
+    expect(screen.getByRole("option", { name: /Newest chat/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("option", { name: /Old chat/ }).getAttribute("aria-selected")).toBe(
+      "false",
+    );
+    await act(async () => {
+      finishOpen();
+    });
+    await waitFor(() => expect(opened).toEqual(["new"]));
+  });
+
+  test("a pick the chat refuses hands the selection back to the chat that is open", async () => {
+    const refused: string[] = [];
+    const remote = {
+      ...fakeRemote([]),
+      initialize: async () => {
+        throw new AppFailure({
+          code: "model_unavailable",
+          message: "The chat's model is no longer available.",
+          retryable: false,
+        });
+      },
+    };
+    renderSidebar({
+      remote,
+      currentThreadId: ThreadIdSchema.parse("old"),
+      onOpenFailed: (threadId) => {
+        refused.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Newest chat/ }));
+    await waitFor(() => expect(refused).toEqual(["new"]));
+    expect(screen.getByRole("option", { name: /Old chat/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("option", { name: /Newest chat/ }).getAttribute("aria-selected")).toBe(
+      "false",
+    );
+  });
+
   test("groups folder rows and keeps catalog's pinned/recent order", async () => {
     const { calls } = renderSidebar();
     await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
