@@ -340,6 +340,36 @@ describe("a mode omp does not report", () => {
     controller.dispose();
   });
 
+  test("a Fast change omp refuses tells the surface once, so omp's notice about it can be let go", async () => {
+    let refusals = 0;
+    const controller = new ModeController({
+      threadId,
+      capabilities: capabilities(),
+      fastRpc: {
+        getState: async () => ({
+          fastModeEnabled: false,
+          fastModeActive: false,
+          sessionId: "session",
+        }),
+        setFastMode: async () => {
+          throw new AppFailure({
+            code: "omp_error",
+            message: "Fast mode is unavailable for the current model.",
+            retryable: false,
+          });
+        },
+      },
+      onFastRefused: () => {
+        refusals += 1;
+      },
+    });
+    await controller.refresh();
+
+    await controller.request({ mode: "fast", scope: "session", requested: true });
+    expect(refusals).toBe(1);
+    controller.dispose();
+  });
+
   test("a failed Fast change before omp has reported anything reports nothing", async () => {
     const controller = new ModeController({
       threadId,

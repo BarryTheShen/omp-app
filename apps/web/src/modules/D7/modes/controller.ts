@@ -54,7 +54,12 @@ export interface ModeControllerOptions {
   readonly fastRpc?: FastModeRpc;
   readonly session?: ModeSessionSource;
   readonly signal?: PortCallOptions["signal"];
+  /** Told when omp refuses a Fast mode change, so the surface can let go of omp's own notice about it. */
+  readonly onFastRefused?: () => void;
 }
+
+/** The source omp gives the info notice it sends with a refused service-tier change (`setFastMode`). */
+export const FAST_REFUSAL_NOTICE_SOURCE = "priority";
 
 export type ModeControllerListener = (snapshot: ModeSnapshot) => void;
 
@@ -234,6 +239,7 @@ export class ModeController implements ModeControllerPort {
   private readonly fastRpc: FastModeRpc | undefined;
   private readonly session: ModeSessionSource | undefined;
   private readonly signal: PortCallOptions["signal"] | undefined;
+  private readonly onFastRefused: (() => void) | undefined;
   private readonly listeners = new Set<ModeControllerListener>();
   private readonly unsubscribeSession: (() => void) | undefined;
   private snapshot: ModeSnapshot;
@@ -251,6 +257,7 @@ export class ModeController implements ModeControllerPort {
     this.fastRpc = options.fastRpc;
     this.session = options.session;
     this.signal = options.signal;
+    this.onFastRefused = options.onFastRefused;
     this.fast = initialFastState(this.capabilities, this.fastRpc);
     this.modeStates = Object.fromEntries(
       D73_MODES.filter((mode): mode is Exclude<D73Mode, "fast"> => mode !== "fast").map((mode) => [
@@ -463,6 +470,9 @@ export class ModeController implements ModeControllerPort {
       const error = errorFrom(cause, "The app could not reach omp. Try again.", capability);
       this.restoreFast();
       this.commit();
+      if (cause instanceof AppFailure && cause.appError.code === "omp_error") {
+        this.onFastRefused?.();
+      }
       return modeCommandResult(
         { mode: "fast", requested },
         command,

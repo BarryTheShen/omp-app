@@ -59,6 +59,7 @@ import type {
 } from "@/modules/D5/contract";
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { SessionInfoModel } from "@/modules/D5/session/info";
+import { FAST_REFUSAL_NOTICE_SOURCE } from "@/modules/D7/modes";
 import { NotificationFeedback, NotificationNotices } from "@/modules/N1/feedback";
 import { NotificationProjector, sessionRetiredNotices } from "@/modules/N1/notifications";
 import {
@@ -997,6 +998,10 @@ function ActiveThreadReady({
   const notificationProjector = useNotificationProjector(store, setEditorText, () =>
     instanceIdOf.current(),
   );
+  // A Fast mode change omp refuses leaves omp's own notice; the Execution modes dialog already says it, so it goes.
+  const retireFastRefusalNotice = useCallback(() => {
+    notificationProjector?.getBus().retireQuietFrom(threadId, FAST_REFUSAL_NOTICE_SOURCE);
+  }, [notificationProjector, threadId]);
   const shortcutRegistry = useShortcutRegistry();
   // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
   const appSlashCommands = useMemo(
@@ -1175,7 +1180,12 @@ function ActiveThreadReady({
       submitPrompt: runtimeController.submitPrompt,
       switchThread: openThread,
     }),
-    executionModes: useExecutionModesSurface({ client, threadId, capabilities }),
+    executionModes: useExecutionModesSurface({
+      client,
+      threadId,
+      capabilities,
+      onFastRefused: retireFastRefusalNotice,
+    }),
     mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
     queue: {
       title: "Queued messages",

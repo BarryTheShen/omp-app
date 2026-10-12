@@ -78,6 +78,34 @@ describe("NotificationBus", () => {
     expect(bus.dismiss(otherThread, "other")).toBe(false);
   });
 
+  test("retireQuietFrom lets go of the quiet info notices one source sent for a thread, and keeps the rest", () => {
+    const bus = new NotificationBus();
+    const otherThread = ThreadIdSchema.parse("thread-other-retire");
+    bus.publish(
+      notice({ dedupeKey: "fast", placement: "quiet", source: "priority", message: "tier" }),
+    );
+    bus.publish(
+      notice({
+        dedupeKey: "rejected",
+        severity: "warning",
+        source: "priority",
+        message: "rejected",
+      }),
+    );
+    bus.publish(
+      notice({ dedupeKey: "session", placement: "quiet", source: "session", message: "kept" }),
+    );
+    bus.publish(
+      notice({ threadId: otherThread, dedupeKey: "fast", placement: "quiet", source: "priority" }),
+    );
+
+    expect(bus.retireQuietFrom(threadId, "priority")).toBe(1);
+    expect(bus.get(threadId, "fast")).toBeUndefined();
+    expect(bus.get(threadId, "rejected")).toBeDefined();
+    expect(bus.get(threadId, "session")).toBeDefined();
+    expect(bus.get(otherThread, "fast")).toBeDefined();
+  });
+
   test("rejects malformed notifications through the typed AppFailure boundary", () => {
     const bus = new NotificationBus();
     expect(() => bus.publish({ ...notice(), focus: "move" } as never)).toThrow(AppFailure);

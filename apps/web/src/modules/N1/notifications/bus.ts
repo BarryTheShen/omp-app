@@ -148,6 +148,27 @@ export class NotificationBus {
     return this.dismiss(threadId, dedupeKey);
   }
 
+  /**
+   * Lets go of the quiet notices one omp source sent for a thread, once the request that caused them has its refusal
+   * shown elsewhere. Each one is retired, so a replayed stream does not bring it back. Returns how many left.
+   */
+  public retireQuietFrom(threadId: ThreadId, source: string): number {
+    const dedupeKeys = [...this.notices.values()]
+      .filter(
+        (notice) =>
+          notice.threadId === threadId &&
+          notice.placement === "quiet" &&
+          notice.severity === "info" &&
+          notice.source === source,
+      )
+      .map((notice) => notice.dedupeKey);
+    let retired = 0;
+    for (const dedupeKey of dedupeKeys) {
+      if (this.retire(threadId, dedupeKey)) retired += 1;
+    }
+    return retired;
+  }
+
   public clearForThread(threadId: ThreadId): number {
     const prefix = `${JSON.stringify(String(threadId))}:`;
     let removed = 0;

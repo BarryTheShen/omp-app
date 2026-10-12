@@ -20,6 +20,8 @@ export interface ExecutionModesOptions {
   readonly client: AppClient;
   readonly threadId: ThreadId;
   readonly capabilities: CapabilityMap;
+  /** Told when omp refuses a Fast mode change; the app lets go of omp's notice about it. */
+  readonly onFastRefused?: () => void;
 }
 
 interface ExecutionModesDialogOptions {
@@ -85,6 +87,7 @@ export function useExecutionModesSurface({
   client,
   threadId,
   capabilities,
+  onFastRefused,
 }: ExecutionModesOptions): Surface {
   const overlay = useStableOverlayHost();
   const shortcuts = useShortcutRegistry();
@@ -93,6 +96,11 @@ export function useExecutionModesSurface({
   useLayoutEffect(() => {
     capabilitiesRef.current = capabilities;
   });
+  // The refusal callback is read through a ref, so a new callback does not make the chat's controller again.
+  const onFastRefusedRef = useRef(onFastRefused);
+  useLayoutEffect(() => {
+    onFastRefusedRef.current = onFastRefused;
+  });
   const controller = useMemo(
     () =>
       createModeController({
@@ -100,6 +108,7 @@ export function useExecutionModesSurface({
         capabilities: capabilitiesRef.current,
         gateway: createModeCommandGateway(client),
         fastRpc: createFastModeRpc(client, threadId),
+        onFastRefused: () => onFastRefusedRef.current?.(),
       }),
     [client, threadId],
   );

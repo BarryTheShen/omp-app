@@ -8,7 +8,7 @@ export type {
   ModeSessionProjection,
   ModeSessionSource,
 } from "./controller";
-export { createModeController, ModeController } from "./controller";
+export { createModeController, FAST_REFUSAL_NOTICE_SOURCE, ModeController } from "./controller";
 export { D7_EXECUTION_MODES_COMMAND } from "./descriptors";
 export { modeOutcomeRetryable, modeOutcomeText, type TypedModeOutcome } from "./outcomes";
 export { createFastModeRpc, createModeCommandGateway } from "./runtime";
