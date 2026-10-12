@@ -26,7 +26,7 @@
     },
     "linux": {
       "deb": {
-        "recommends": ["xdg-utils"],
+        "recommends": ["xdg-utils", "gstreamer1.0-tools"],
         "depends": ["libc6 (>= 2.39)"],
         "desktopTemplate": "linux/omp-app-desktop.desktop.hbs"
       }

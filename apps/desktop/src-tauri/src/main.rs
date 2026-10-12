@@ -6,6 +6,7 @@
 
 mod address;
 mod downloads;
+mod gstreamer;
 mod omp;
 mod procs;
 mod server;
@@ -32,6 +33,7 @@ fn main() {
             }
         })
         .setup(|app| {
+            app.manage(gstreamer::RegistryScan::start());
             signals::watch(app.handle().clone());
             server::start(app.handle().clone());
             Ok(())

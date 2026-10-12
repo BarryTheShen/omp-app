@@ -29,6 +29,7 @@ use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 
 use crate::address::{self, LaunchAddress};
 use crate::downloads;
+use crate::gstreamer::RegistryScan;
 use crate::omp;
 use crate::procs::{self, Proc};
 use crate::WINDOW_LABEL;
@@ -52,6 +53,8 @@ const START_TIMEOUT: Duration = Duration::from_secs(30);
 const STOP_GRACE: Duration = Duration::from_secs(10);
 /// How long the processes that are left get after SIGTERM before SIGKILL.
 const KILL_WAIT: Duration = Duration::from_secs(2);
+/// How long the app page waits for the launch scan of GStreamer's plugin cache (see `gstreamer.rs`).
+const REGISTRY_SCAN_WAIT: Duration = Duration::from_secs(60);
 
 /// What the threads share. Only ever locked for a moment; never held while stopping a server.
 #[derive(Default)]
@@ -387,6 +390,9 @@ fn open_server_page(app: &AppHandle, url: Url) {
     if with_state(app, |state| state.quitting) {
         return;
     }
+    // The app page is where the command palette opens. Without GStreamer's plugin cache, the first palette
+    // open would stall while the scan runs, so the page waits here for the launch scan to finish.
+    app.state::<RegistryScan>().wait(REGISTRY_SCAN_WAIT);
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || match handle.get_webview_window(WINDOW_LABEL) {
         Some(window) => {
