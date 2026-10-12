@@ -166,6 +166,7 @@ import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
 import { browserClipboard, useCopyFromChat } from "./copy/use-copy-from-chat";
+import { reportDraftFailure, useComposerDraftOwner } from "./draft-owner";
 import { type EmptyStateCopy, emptyStateCopy } from "./empty-state";
 import { useExecutionModesSurface } from "./execution-modes";
 import {
@@ -431,16 +432,6 @@ function RouterBridge({
   return null;
 }
 
-/** Hands a failed draft operation to the debug log, with its cause. */
-function reportDraftFailure(what: string): (error: unknown) => void {
-  return (error) =>
-    reportClientError({
-      kind: "error",
-      message: `${what}: ${error instanceof Error ? error.message : "unknown error"}`,
-      ...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
-    });
-}
-
 function DraftComposer({
   chat,
   controller,
@@ -493,16 +484,7 @@ function DraftComposer({
   const hasAttachmentOutput =
     attachmentState.pending.length > 0 || attachmentState.complete.length > 0;
   const text = useAuiState((state) => state.composer.text);
-  useEffect(() => {
-    // A failed load or save is kept in the debug log: once the composer has gone, nothing else shows it. The text
-    // that could not be saved stays in this tab's buffer, so it is restored when the chat opens again.
-    controller.load().catch(reportDraftFailure("Loading the draft failed"));
-    return () => {
-      controller
-        .dispose()
-        .catch(reportDraftFailure("Saving the draft when its chat closed failed"));
-    };
-  }, [controller]);
+  useComposerDraftOwner(controller);
   const isRecalledPrompt = useIsRecalledPrompt();
   useComposerDraft({
     chat,
@@ -709,7 +691,7 @@ function ActiveThreadReady({
     () => new SessionInfoModel({ runtime: runtimeSource, metadata: metadataSource }),
     [metadataSource, runtimeSource],
   );
-  useEffect(() => () => sessionInfo.dispose(), [sessionInfo]);
+  useDisposeWhenReplaced(sessionInfo);
   const sessionCapabilities = useMemo<SessionCapabilitiesSource>(
     () => ({ getSnapshot: () => capabilities }),
     [capabilities],
@@ -1010,7 +992,7 @@ function ActiveThreadReady({
       ),
     [],
   );
-  useEffect(() => () => todoStore.dispose(), [todoStore]);
+  useDisposeWhenReplaced(todoStore);
   const draftStore = useMemo(() => createDraftStoreAdapter(client), [client]);
   // Unsent text is also kept in this tab, so it survives the app's server stopping before the autosave saves it.
   const draftBuffer = useMemo(

@@ -150,6 +150,8 @@ export class SelectedThreadHistoryController {
   private pendingOpen:
     | { readonly threadId: ThreadId; readonly open: Promise<OmpRuntimeStore> }
     | undefined;
+  /** Closes asked for so far. An open that began before a close must not save its chat as the open one (see `openNow`). */
+  private closes = 0;
 
   public constructor(options: SelectedThreadHistoryOptions) {
     this.options = options;
@@ -308,6 +310,8 @@ export class SelectedThreadHistoryController {
   }
 
   public close(): Promise<void> {
+    // Counted when asked, not when it runs: an open still pending now must not save its chat as the one open.
+    this.closes += 1;
     return this.serialize(() => this.closeNow());
   }
 
@@ -409,6 +413,7 @@ export class SelectedThreadHistoryController {
 
   private async openNow(args: OpenThreadArgs, settle: () => void): Promise<OmpRuntimeStore> {
     const openedNew = "start" in args && args.start === "new";
+    const closesAtStart = this.closes;
     await this.closeNow();
     this.commit({ isLoading: true, error: null });
     try {
@@ -433,7 +438,9 @@ export class SelectedThreadHistoryController {
       settle();
       // From here the composer takes text, so a reload or a restart must already find this chat: its id is saved now,
       // not after the history has loaded. Otherwise text typed in a new chat is lost when the app restarts in that window.
-      this.options.onThreadIdChange?.(threadId);
+      // Not when a close was asked for while this open was pending: the chat is closed, and saving its id would
+      // reopen it after a folder switch (`selectFolder` clears the saved id and closes the chat).
+      if (this.closes === closesAtStart) this.options.onThreadIdChange?.(threadId);
       // The chat's stream starts at its first event the server still holds (afterSeq 0): the events omp sent before this
       // browser subscribed, such as a startup notice or the process becoming ready, reach the store in order. The history
       // load below reads what omp wrote to the session file.

@@ -967,6 +967,32 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
   });
 });
 
+describe("SelectedThreadHistoryController closed while it is opening", () => {
+  test("a chat closed while its open is pending is not saved as the open chat", async () => {
+    const gate: { finish?: () => void } = {};
+    const rpc = createRpc(() => {
+      const { promise, resolve } = Promise.withResolvers<unknown>();
+      gate.finish = () => resolve({ threadId: threadOne, sessionFile: null, capabilities: {} });
+      return promise;
+    });
+    const saved: Array<ThreadId | undefined> = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+      onThreadIdChange: (threadId) => saved.push(threadId),
+    });
+
+    const opening = controller.openExisting(threadOne);
+    await vi.waitFor(() => expect(gate.finish).toBeDefined());
+    const closing = controller.close();
+    gate.finish?.();
+    await Promise.all([opening, closing]);
+
+    expect(saved).not.toContain(threadOne);
+    expect(controller.getSnapshot().threadId).toBeUndefined();
+  });
+});
+
 describe("SelectedThreadHistoryController whenSettled", () => {
   test("waits for a chat that is still opening, and resolves once it is open", async () => {
     const opened = Promise.withResolvers<{
