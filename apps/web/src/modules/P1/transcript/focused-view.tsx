@@ -1,6 +1,7 @@
 import { ThreadPrimitive } from "@assistant-ui/react";
 import { type KeyboardEvent, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { AgentStatus, FocusedAgentRuntime } from "@/modules/P1/contract";
 import { ScrollFollowControls, useThreadScrollController } from "@/modules/U1/scroll";
 import type { ToolRendererMap } from "@/modules/U1/tool-slots";
@@ -101,9 +102,14 @@ export function FocusedAgentTranscript({
         <ReadOnlyThread messages={threadMessages}>
           <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
             <ThreadPrimitive.Viewport
-              autoScroll
+              autoScroll={!scroll.followPaused}
               aria-label="Worker messages"
-              className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
+              className={cn(
+                "relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain",
+                // While the reader is away, the app keeps their row in place itself (thread-scroll-controller.ts). The browser's
+                // own scroll anchoring would move it again, so it is off then (issue 1165), as in the chat thread.
+                scroll.followPaused && "[overflow-anchor:none]",
+              )}
               data-slot="u1-thread-viewport"
               role="region"
               tabIndex={0}

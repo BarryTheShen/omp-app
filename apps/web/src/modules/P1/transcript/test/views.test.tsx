@@ -263,4 +263,36 @@ describe("the focused worker transcript", () => {
     expect(document.querySelector('[data-slot="u1-scroll-follow-controls"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "Jump to latest message" })).toBeNull();
   });
+
+  test("a reader who scrolls away from the newest message: the browser's scroll anchoring is off, and the follow resumes after a wheel back to the bottom", () => {
+    const { client } = stubClient();
+    render(
+      <FocusedAgentTranscript runtime={createFocusedAgentRuntime({ agent: agentRef(), client })} />,
+    );
+    const viewport = screen.getByRole("region", { name: "Worker messages" });
+    // 1,000 px of content in a 200 px view: the bottom is at 800, where the reader starts.
+    let top = 800;
+    Object.defineProperty(viewport, "scrollHeight", { configurable: true, value: 1_000 });
+    Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = value;
+      },
+    });
+    fireEvent.scroll(viewport);
+    expect(viewport.classList.contains("[overflow-anchor:none]")).toBe(false);
+
+    // The reader scrolls up, away from the newest message: the app keeps their row in place itself.
+    top = 300;
+    fireEvent.scroll(viewport);
+    expect(viewport.classList.contains("[overflow-anchor:none]")).toBe(true);
+
+    // A wheel down, then back to the bottom: the follow resumes and the browser's anchoring is on again.
+    fireEvent.wheel(viewport, { deltaY: 100 });
+    top = 800;
+    fireEvent.scroll(viewport);
+    expect(viewport.classList.contains("[overflow-anchor:none]")).toBe(false);
+  });
 });

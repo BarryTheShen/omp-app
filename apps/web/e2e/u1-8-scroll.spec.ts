@@ -67,7 +67,8 @@ async function expectStyles(page: Page): Promise<void> {
   expect(colors[0]).toBe(colors[1]);
 }
 
-async function firstVisibleMessage(
+/** The message in the middle of the view: the row the reader is reading, which the thread holds in place (issue 1165). */
+async function readerMessage(
   viewport: Locator,
 ): Promise<{ readonly id: string; readonly top: number }> {
   const anchor = await viewport.evaluate((element) => {
@@ -75,7 +76,7 @@ async function firstVisibleMessage(
     if (viewportBounds.width === 0) return null;
     const target = document.elementFromPoint(
       viewportBounds.left + viewportBounds.width / 2,
-      viewportBounds.top + viewportBounds.height * 0.05,
+      viewportBounds.top + viewportBounds.height * 0.5,
     );
     const row = target?.closest("[data-message-id]");
     if (!(row instanceof HTMLElement) || !element.contains(row)) return null;
@@ -179,7 +180,7 @@ test("keeps streaming and long transcripts anchored without stealing focus", asy
     "false",
   );
   await expect(page.getByText("Assistant is working…")).toBeVisible();
-  const streamAnchor = await firstVisibleMessage(viewport);
+  const streamAnchor = await readerMessage(viewport);
   await expect(page.getByText(/The latest message is below/)).toBeVisible();
   await expect(
     page.getByRole("status").filter({ hasText: "The latest message is below." }),
@@ -194,11 +195,11 @@ test("keeps streaming and long transcripts anchored without stealing focus", asy
   await expectAnchorRetained(viewport, streamAnchor);
   await expect.poll(() => remainingScroll(viewport)).toBeGreaterThan(80);
 
-  const prependAnchor = await firstVisibleMessage(viewport);
+  const prependAnchor = await readerMessage(viewport);
   await page.getByRole("button", { name: "Load older messages" }).click();
   await expectAnchorRetained(viewport, prependAnchor);
 
-  const reconnectAnchor = await firstVisibleMessage(viewport);
+  const reconnectAnchor = await readerMessage(viewport);
   await page.getByRole("button", { name: "Reconnect" }).click();
   await expectAnchorRetained(viewport, reconnectAnchor);
   await page.screenshot({ path: "../../.data/screenshots/u1-8-scroll-light.png", fullPage: false });
@@ -266,7 +267,7 @@ test("keeps streaming and long transcripts anchored without stealing focus", asy
     "data-is-at-bottom",
     "false",
   );
-  const darkAnchor = await firstVisibleMessage(darkViewport);
+  const darkAnchor = await readerMessage(darkViewport);
   await addToStream(darkPage, 2);
   await expectAnchorRetained(darkViewport, darkAnchor);
   await darkPage.getByRole("button", { name: "Finish stream" }).click();

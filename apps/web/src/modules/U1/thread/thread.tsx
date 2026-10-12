@@ -35,6 +35,8 @@ import { FullOutputProvider } from "../../U3/tool-card/full-output";
 import { failureShownUnderAnswer } from "../parts/message-ending";
 import {
   captureVisibleMessageAnchor,
+  claimOwnAnchoring,
+  holdReaderPlace,
   type MessageScrollAnchor,
   retainVisibleMessageAnchor,
 } from "../scroll/anchor";
@@ -315,11 +317,11 @@ function MessageRow({ message, slots }: { message: MessageState; slots?: ThreadR
 
 /** A click on "Show earlier messages": the row the reader was on, kept until the older rows land. */
 interface PendingEarlierLoad {
-  readonly button: HTMLElement;
   readonly hadFocus: boolean;
   readonly viewport: HTMLElement;
   readonly anchor: MessageScrollAnchor | null;
   readonly firstMessage: string | undefined;
+  readonly releaseAnchoring: () => void;
 }
 
 function EarlierMessagesControl({
@@ -364,6 +366,9 @@ function EarlierMessagesControl({
   );
 }
 
+/** How long the reader's place is held after older rows land, while rows above take their real heights (issue 1165). */
+const EARLIER_SETTLE_MS = 2_000;
+
 /**
  * Renders inside the caller's assistant-ui runtime provider and supplies stable message rows. The
  * composer is intentionally not included: U2 owns that surface and consumes this thread runtime.
@@ -395,44 +400,66 @@ export function ThreadShell({
     hasOlder: snapshot.transcript.hasOlder,
     loadOlder: onLoadOlder,
   });
+  const following = autoScroll && !place.resuming;
   const pendingEarlier = useRef<PendingEarlierLoad | null>(null);
+  const [earlierInFlight, setEarlierInFlight] = useState(false);
   const firstMessage = snapshot.messageOrder[0];
-  // Older rows land above the first one: re-anchor the reader's row once they are in the DOM.
+  const hasOlder = snapshot.transcript.hasOlder;
+  // Older rows land above the first one: the reader's row goes back to where it was once they are in the DOM,
+  // and is held there while the transcript settles (issue 1165).
   useLayoutEffect(() => {
+    // Rows landed or the thread changed: the control leaves in this render if nothing older is left.
+    setEarlierInFlight(false);
     const pending = pendingEarlier.current;
     if (pending === null || pending.firstMessage === firstMessage) return;
     pendingEarlier.current = null;
-    retainVisibleMessageAnchor(pending.viewport, pending.anchor);
-    // The control held focus and is gone because nothing older is left: keep a keyboard reader in the transcript.
-    if (pending.hadFocus && !pending.button.isConnected)
-      pending.viewport.focus({ preventScroll: true });
-    // The layout can still settle after this commit (the control leaves; the viewport follows its own
-    // turn anchor). Retain once more on the next frame, from where the first pass left the reader.
-    if (pending.anchor === null) return;
-    const { anchor, viewport } = pending;
-    const frame = requestAnimationFrame(() =>
-      retainVisibleMessageAnchor(viewport, { ...anchor, scrollTop: viewport.scrollTop }),
-    );
-    return () => cancelAnimationFrame(frame);
-  }, [firstMessage]);
+    const viewport = viewportRef.current ?? pending.viewport;
+    retainVisibleMessageAnchor(viewport, pending.anchor);
+    // The control held focus and is leaving because nothing older is left: keep a keyboard reader in the transcript.
+    if (pending.hadFocus && !hasOlder) viewport.focus({ preventScroll: true });
+    if (pending.anchor === null) {
+      pending.releaseAnchoring();
+      return;
+    }
+    // The hold starts before the load's claim is released, so the browser's anchoring never runs in between.
+    const endHold = holdReaderPlace(viewport, EARLIER_SETTLE_MS);
+    pending.releaseAnchoring();
+    return endHold;
+  }, [firstMessage, hasOlder]);
   const loadEarlier = async (button: HTMLElement): Promise<void> => {
     if (onLoadOlder === undefined) return;
     const before = store.getSnapshot().messageOrder[0];
     const viewport = button.closest<HTMLElement>('[data-slot="u1-thread-viewport"]');
-    if (viewport !== null) {
-      pendingEarlier.current = {
-        button,
-        hadFocus: document.activeElement === button,
-        viewport,
-        anchor: captureVisibleMessageAnchor(viewport),
-        firstMessage: before,
-      };
-    }
+    // The browser's scroll anchoring stays off from the click until the older rows are placed, or the load gives up.
+    const releaseAnchoring = viewport === null ? () => undefined : claimOwnAnchoring(viewport);
+    const pending: PendingEarlierLoad | null =
+      viewport === null
+        ? null
+        : {
+            hadFocus: document.activeElement === button,
+            viewport,
+            anchor: captureVisibleMessageAnchor(viewport),
+            firstMessage: before,
+            releaseAnchoring,
+          };
+    pendingEarlier.current = pending;
+    setEarlierInFlight(true);
     try {
       await onLoadOlder();
-    } finally {
-      // No older row arrived, so nothing will re-anchor: the capture is dropped.
-      if (store.getSnapshot().messageOrder[0] === before) pendingEarlier.current = null;
+    } catch (cause) {
+      // The page failed, so no row is coming: the capture and the app's anchoring are dropped.
+      if (pendingEarlier.current === pending) pendingEarlier.current = null;
+      releaseAnchoring();
+      setEarlierInFlight(false);
+      throw cause;
+    }
+    // The older rows can land after the load resolves, so the capture waits for them. If none land, it is dropped.
+    if (store.getSnapshot().messageOrder[0] === before) {
+      window.setTimeout(() => {
+        if (pendingEarlier.current === pending) pendingEarlier.current = null;
+        releaseAnchoring();
+        setEarlierInFlight(false);
+      }, EARLIER_SETTLE_MS);
     }
   };
   return (
@@ -447,17 +474,20 @@ export function ThreadShell({
             data-slot="u1-thread-viewport"
             className={cn(
               "relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain",
+              // While the reader is away, or a reload's place settles, the app keeps the reader's row in place itself
+              // (thread-scroll-controller.ts). The browser's scroll anchoring would move that row again when the rows
+              // above are drawn, so it is off then (issue 1165). While the thread follows the newest message, it stays on.
+              !following && "[overflow-anchor:none]",
               // While a reload's place settles, every row is drawn, so each height is its real one: a row that is
               // skipped keeps an estimate, and drawing it later moves the place the reader was given. Once settled,
               // drawn rows keep their remembered size (`content-visibility: auto`), so nothing shifts.
-              place.resuming &&
-                "[overflow-anchor:none] [&_[data-message-id]]:[content-visibility:visible]!",
+              place.resuming && "[&_[data-message-id]]:[content-visibility:visible]!",
             )}
             role="region"
             aria-label="Messages"
             aria-live="off"
             tabIndex={0}
-            autoScroll={autoScroll && !place.resuming}
+            autoScroll={following}
             // R0 turns `isRunning` off and on at every turn boundary, so a "run start" also fires in the
             // middle of an answer and would pull a reader who scrolled away down to the bottom. Sending
             // scrolls explicitly instead: the app root calls jumpToLatest when a message is sent, and
@@ -473,7 +503,7 @@ export function ThreadShell({
                 onRestartOmp={onRestartOmp}
               />
               <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
-                {onLoadOlder !== undefined && snapshot.transcript.hasOlder && (
+                {onLoadOlder !== undefined && (snapshot.transcript.hasOlder || earlierInFlight) && (
                   <EarlierMessagesControl onLoad={loadEarlier} />
                 )}
                 <ThreadPrimitive.Messages>
