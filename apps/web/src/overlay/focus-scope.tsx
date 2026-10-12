@@ -48,6 +48,8 @@ export interface FocusScopeProps extends Omit<ComponentPropsWithoutRef<"div">, "
   initialFocus?: FocusTarget | false;
   /** Lazy or explicit target for close; omitted means the opener captured on mount. */
   restoreFocus?: FocusTarget | false;
+  /** The scope is leaving: focus goes back to the opener at once, not when the scope unmounts (issue 1231). */
+  leaving?: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export function FocusScope({
   trapped = false,
   initialFocus,
   restoreFocus,
+  leaving,
   className,
   ...props
 }: FocusScopeProps) {
@@ -72,10 +75,24 @@ export function FocusScope({
   // never re-runs the mount effect (which would re-capture the opener and re-steal focus).
   const initialFocusRef = useRef(initialFocus);
   const restoreFocusRef = useRef(restoreFocus);
+  const restoredRef = useRef(false);
   useLayoutEffect(() => {
     initialFocusRef.current = initialFocus;
     restoreFocusRef.current = restoreFocus;
   });
+  // The popup is inert from the commit that starts its exit, so focus leaves it there. The opener takes focus back once that
+  // commit settles (the background's inert state clears with it), before the next key is read; the unmount does not repeat it.
+  useLayoutEffect(() => {
+    if (leaving !== true) return;
+    queueMicrotask(() => {
+      restoredRef.current = true;
+      const restore = restoreFocusRef.current;
+      if (restore === false) return;
+      const target = resolveFocusTarget(restore);
+      if (target === undefined) return;
+      focusElement(target ?? openerRef.current);
+    });
+  }, [leaving]);
 
   const focusFirst = useCallback(() => {
     const root = rootRef.current;
@@ -113,6 +130,7 @@ export function FocusScope({
       // unmounted has really closed, and its opener can take focus again.
       queueMicrotask(() => {
         if (mountedRef.current) return;
+        if (restoredRef.current) return;
         const restore = restoreFocusRef.current;
         if (restore === false) return;
         const target = resolveFocusTarget(restore);

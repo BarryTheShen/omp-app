@@ -90,6 +90,8 @@ interface OverlayRecord extends OverlaySnapshot {
   /** True while the discard question shows for this modal. */
   readonly askingToDiscard: boolean;
   readonly resolveClosed: (reason: OverlayCloseReason) => void;
+  /** True while a modal plays its exit: it stays mounted until the exit ends, and nothing acts on it. */
+  readonly leaving?: boolean;
 }
 
 const OverlayHostContext = createContext<OverlayHostApi | null>(null);
@@ -101,7 +103,7 @@ function createOverlayId(): string {
 }
 
 function visibleOverlays(records: readonly OverlayRecord[]): OverlayRecord[] {
-  return records.filter((record) => record.status === "open");
+  return records.filter((record) => record.status === "open" && record.leaving !== true);
 }
 
 function getOverlayContent(record: OverlayRecord, controls: OverlayControls): ReactNode {
@@ -162,6 +164,7 @@ function OverlayView({
   onUpdate,
   onRequestClose,
   onKeepEditing,
+  onExited,
   onInside,
 }: {
   record: OverlayRecord;
@@ -170,6 +173,7 @@ function OverlayView({
   onUpdate: (id: string, patch: Partial<Omit<OverlayOpenOptions, "kind">>) => void;
   onRequestClose: (id: string, reason: OverlayCloseReason) => void;
   onKeepEditing: (id: string) => void;
+  onExited: (id: string) => void;
   /** Reports a press that belongs to this overlay, so the host does not read it as an outside press. */
   onInside: (event: Event) => void;
 }) {
@@ -185,7 +189,10 @@ function OverlayView({
     }),
     [onClose, onRequestClose, onUpdate, record.id],
   );
-  const content = getOverlayContent(record, controls);
+  // A closing modal shows the content it last showed: its exit does not render the content again.
+  const shownContent = useRef<ReactNode>(null);
+  if (record.leaving !== true) shownContent.current = getOverlayContent(record, controls);
+  const content = shownContent.current;
   const grammar = OVERLAY_GRAMMAR[record.kind];
   const focus = record.focus === "move";
   const sharedClassName = cn(
@@ -223,10 +230,19 @@ function OverlayView({
     // The host decides every outside press, one on the dimmed backdrop included. The base dialog never
     // dismisses by itself: it would close without asking about unsaved changes.
     return (
-      <Dialog open modal={false} disablePointerDismissal onOpenChange={closeFromDialog}>
+      <Dialog
+        open={record.leaving !== true}
+        modal={false}
+        disablePointerDismissal
+        onOpenChange={closeFromDialog}
+        onOpenChangeComplete={(open) => {
+          if (!open && record.leaving === true) onExited(record.id);
+        }}
+      >
         <DialogPortal>
           <DialogOverlay
             {...dataProps}
+            aria-hidden={record.leaving === true || undefined}
             className="bg-foreground/15 motion-reduce:transition-none"
             style={layerStyle(record.kind, index)}
           />
@@ -238,18 +254,21 @@ function OverlayView({
             aria-label={record.label}
             initialFocus={false}
             finalFocus={false}
+            inert={record.leaving === true || undefined}
+            aria-hidden={record.leaving === true || undefined}
             onPointerDown={(event) => onInside(event.nativeEvent)}
             onPointerUp={(event) => onInside(event.nativeEvent)}
             className={cn(
-              "fixed top-1/2 left-1/2 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-popover p-4 text-sm text-popover-foreground shadow-overlay ring-1 ring-foreground/10 outline-none motion-reduce:transition-none",
+              "fixed top-1/2 left-1/2 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-popover p-4 text-sm text-popover-foreground shadow-overlay ring-1 ring-foreground/10 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 duration-(--duration-base) transition-none motion-reduce:animate-none",
               sharedClassName,
             )}
             style={layerStyle(record.kind, index + 1)}
           >
             <FocusScope
-              trapped={!record.askingToDiscard}
+              trapped={!record.askingToDiscard && record.leaving !== true}
               initialFocus={focus ? undefined : false}
               restoreFocus={record.restoreFocus}
+              leaving={record.leaving === true}
             >
               {content}
             </FocusScope>
@@ -384,20 +403,29 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
     (id: string, reason: OverlayCloseReason = "programmatic") => {
       const current = recordsRef.current;
       const target = current.find((record) => record.id === id);
-      if (!target) return;
-      const remaining = current.filter((record) => record.id !== id);
+      if (!target || target.leaving === true) return;
       const shouldPromote = target.kind === "modal" && target.status === "open";
       const nextModal = shouldPromote
-        ? remaining.find((record) => record.kind === "modal" && record.status === "queued")
+        ? current.find((record) => record.kind === "modal" && record.status === "queued")
         : undefined;
+      // A modal stays mounted while its exit plays (see OverlayView); any other surface is removed now.
       commit(
-        nextModal
-          ? remaining.map((record) =>
-              record.id === nextModal.id ? { ...record, status: "open" as const } : record,
-            )
-          : remaining,
+        current.flatMap((record) => {
+          if (record.id === id)
+            return target.kind === "modal" ? [{ ...record, leaving: true }] : [];
+          if (nextModal && record.id === nextModal.id)
+            return [{ ...record, status: "open" as const }];
+          return [record];
+        }),
       );
       queueMicrotask(() => target.resolveClosed(reason));
+    },
+    [commit],
+  );
+
+  const exited = useCallback(
+    (id: string) => {
+      commit(recordsRef.current.filter((record) => record.id !== id || record.leaving !== true));
     },
     [commit],
   );
@@ -462,7 +490,7 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
       };
       const current = recordsRef.current;
       const hasOpenModal = current.some(
-        (record) => record.kind === "modal" && record.status === "open",
+        (record) => record.kind === "modal" && record.status === "open" && record.leaving !== true,
       );
       const record: OverlayRecord = {
         id,
@@ -488,21 +516,21 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
   );
 
   const hasOpenModal = records.some(
-    (record) => record.kind === "modal" && record.status === "open",
+    (record) => record.kind === "modal" && record.status === "open" && record.leaving !== true,
   );
-  const visible = visibleOverlays(records);
+  const shown = records.filter((record) => record.status === "open");
   const api = useMemo<OverlayHostApi>(
     () => ({
-      overlays: records.map(
-        ({ id, kind, status, closeOnEscape, closeOnOutsidePointer, focus }) => ({
+      overlays: records
+        .filter((record) => record.leaving !== true)
+        .map(({ id, kind, status, closeOnEscape, closeOnOutsidePointer, focus }) => ({
           id,
           kind,
           status,
           closeOnEscape,
           closeOnOutsidePointer,
           focus,
-        }),
-      ),
+        })),
       open,
       close,
       closeTopmost,
@@ -616,7 +644,7 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
       {portal
         ? createPortal(
             <div data-overlay-stack="true">
-              {visible.map((record, index) => (
+              {shown.map((record, index) => (
                 <OverlayView
                   key={record.id}
                   record={record}
@@ -625,6 +653,7 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
                   onUpdate={update}
                   onRequestClose={requestClose}
                   onKeepEditing={keepEditing}
+                  onExited={exited}
                   onInside={markInside}
                 />
               ))}
