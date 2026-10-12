@@ -31,12 +31,14 @@ export function EditorDialog({
         )
       }
     >
+      {/* The text box takes the dialog's width, never its content's: a long link wraps inside the */}
+      {/* dialog, so Done stays on it. Its height still follows the minimum and the resize handle. */}
       <Textarea
         autoFocus
         readOnly={readOnly}
         value={value}
         aria-label={request.title}
-        className="min-h-40 resize-y"
+        className="min-h-40 resize-y [contain:inline-size]"
         onChange={(event) => setValue(event.currentTarget.value)}
         onKeyDown={(event) => {
           if (readOnly) return;

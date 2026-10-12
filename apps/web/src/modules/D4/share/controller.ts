@@ -117,13 +117,15 @@ export function createShareController(deps: ShareControllerDeps): ShareControlle
       await deps.clipboard.writeText(result.url);
       return { outcome: "copied", result };
     } catch {
-      // A refused clipboard is a recovery, not a success: the link is shown so it can be copied by hand.
+      // A refused clipboard is a recovery, not a success: the link is shown so it can be copied by hand. The text is
+      // read-only: the dialog offers only Done, and nothing it shows is saved.
       await deps.dialogs.open(
         {
           kind: "editor",
           id: requestId("manual"),
           title: "Copy this link by hand",
           prefill: result.url,
+          readOnly: true,
         },
         chat,
       );

@@ -270,6 +270,7 @@ describe("the share controller", () => {
       kind: "editor",
       title: "Copy this link by hand",
       prefill: LINK.url,
+      readOnly: true,
     });
   });
 
