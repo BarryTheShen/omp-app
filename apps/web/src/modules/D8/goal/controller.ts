@@ -567,7 +567,9 @@ export class GoalController {
     if (this.disposed) return;
     this.pending = null;
     this.publish();
-    if (this.needsRefresh) void this.refresh();
+    // A refresh still owed while omp does not advertise the goal command waits for the next runtime commit
+    // (`onRuntimeSnapshot`). Running it here would call itself again at once, with no end.
+    if (this.needsRefresh && this.goalCapabilityAvailable()) void this.refresh();
   }
 
   private publish(): void {

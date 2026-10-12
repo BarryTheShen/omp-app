@@ -356,6 +356,30 @@ describe("GoalController", () => {
     controller.dispose();
   });
 
+  test("a refresh that waits for omp's goal command does not run itself again, in a loop", async () => {
+    const goal = makeGoal();
+    const fakeAutonomy = makeAutonomy(goal);
+    let capabilityReads = 0;
+    const controller = new GoalController({
+      threadId,
+      autonomy: fakeAutonomy.autonomy,
+      runtime: makeRuntime(goal, false),
+      dialogs: makeDialogs().dialogs,
+      capabilities: () => {
+        capabilityReads += 1;
+        return {};
+      },
+      continuationModes: continuationModesSource(undefined),
+    });
+    controller.start();
+    await flushPromises();
+    // omp has not advertised the goal command: the read waits for the next runtime commit. Each run reads the
+    // capabilities a few times; a loop would read them thousands of times before the stack overflows.
+    expect(capabilityReads).toBeLessThan(10);
+    expect(fakeAutonomy.calls).toEqual([]);
+    controller.dispose();
+  });
+
   test("shows omp's own reason when it refuses a goal change", async () => {
     const goal = makeGoal();
     const { controller, fakeAutonomy } = makeController({ goal, settled: true });
