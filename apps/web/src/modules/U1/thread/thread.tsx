@@ -33,6 +33,7 @@ import { useDescriptor, useRenderer } from "@/registry-core";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
 import { FullOutputProvider } from "../../U3/tool-card/full-output";
 import { failureShownUnderAnswer } from "../parts/message-ending";
+import { splitProviderError } from "../parts/provider-error";
 import { storeKeyOf } from "../parts/store-key";
 import {
   captureVisibleMessageAnchor,
@@ -157,7 +158,7 @@ function RuntimeError({
         role="alert"
       >
         <p className="text-sm font-medium">The conversation could not continue.</p>
-        {showDetail && <p className="mt-1 text-sm">{error.message}</p>}
+        {showDetail && <p className="mt-1 text-sm">{splitProviderError(error.message).reason}</p>}
         {action !== undefined && retryError?.retryable !== false && (
           <button
             className="border-danger/40 bg-danger-surface-foreground/10 mt-3 rounded-md border px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"

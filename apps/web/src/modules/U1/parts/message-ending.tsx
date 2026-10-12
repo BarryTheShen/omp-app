@@ -6,10 +6,11 @@ import {
   credentialFailureFromStatusError,
 } from "@/modules/D3/auth/credential";
 import { CredentialFailureNotice } from "@/modules/D3/auth/credential-notice";
+import { splitProviderError } from "./provider-error";
 
 /** How an answer that did not finish normally ended. */
 export type MessageEnding =
-  | { readonly kind: "error"; readonly text: string | undefined }
+  | { readonly kind: "error"; readonly text: string | undefined; readonly details?: string }
   | { readonly kind: "credential"; readonly failure: CredentialFailure }
   | { readonly kind: "interrupted" }
   | { readonly kind: "length" };
@@ -31,13 +32,12 @@ export function endingOf(message: {
       // A refused key or login is said in plain words, with its way out; any other error keeps omp's words.
       const failure = credentialFailureFromStatusError(message.status.error);
       if (failure !== null) return { kind: "credential", failure };
-      return {
-        kind: "error",
-        text:
-          typeof message.status.error === "string" && message.status.error.length > 0
-            ? message.status.error
-            : undefined,
-      };
+      if (typeof message.status.error !== "string" || message.status.error.length === 0) {
+        return { kind: "error", text: undefined };
+      }
+      // omp's words, once; its saved-request diagnostics sit behind "Show details".
+      const { reason, details } = splitProviderError(message.status.error);
+      return { kind: "error", text: reason === "" ? undefined : reason, details };
     }
     case "cancelled":
       return { kind: "interrupted" };
@@ -83,6 +83,7 @@ export function MessageEndingNote({ ending }: { readonly ending: MessageEnding }
                   ? `${ending.text.slice(0, MAX_ERROR_CHARACTERS)}…`
                   : ending.text
             }
+            details={ending.details}
             variant="message"
           />
         </div>
