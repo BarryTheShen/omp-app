@@ -348,7 +348,8 @@ class AppClientImpl implements AppClient {
       );
       return record.publicSubscription as AppClientSubscription<PortEventValue<P, E>>;
     } catch (error) {
-      this.subscriptions.delete(stream);
+      // Only this subscribe's own record leaves the map; a later subscribe may have made another for the stream.
+      if (this.subscriptions.get(stream) === record) this.subscriptions.delete(stream);
       record.active = false;
       throw error;
     }

@@ -7,6 +7,7 @@ import {
   definePort,
   EventFrame,
   parseClientFrame,
+  type RequestId,
   type ServerFrame,
   serializeFrame,
   ThreadId,
@@ -78,6 +79,14 @@ class FakeServer {
   readonly resyncConflicts = new Set<number>();
   /** Connection indexes whose subscribe requests are refused with `not_found`. */
   readonly refusedSubscriptions = new Set<number>();
+  /** Subscribe requests held unanswered, oldest first, until `answerHeldSubscribe` answers the first of them. */
+  readonly heldSubscribes: Array<{
+    socket: FakeSocket;
+    id: z.infer<typeof RequestId>;
+    stream: string;
+  }> = [];
+  /** Holds the next subscribe request instead of answering it. */
+  holdNextSubscribe = false;
   instanceId = "instance-1";
   private pendingCalls = new Map<string, FakeSocket>();
   private readonly factory: WebSocketFactory = (url) => {
@@ -112,6 +121,22 @@ class FakeServer {
     connection.socket.deliver(frame);
   }
 
+  /** Answers the oldest held subscribe request: refused with `not_found`, or accepted. */
+  answerHeldSubscribe(refuse: boolean): void {
+    const held = this.heldSubscribes.shift();
+    if (!held) throw new Error("no subscribe request is held");
+    if (refuse) {
+      held.socket.deliver({
+        type: "result",
+        id: held.id,
+        ok: false,
+        error: { code: "not_found", message: "thread closed", retryable: false },
+      });
+      return;
+    }
+    held.socket.deliver({ type: "result", id: held.id, ok: true, value: { stream: held.stream } });
+  }
+
   private receive(socket: FakeSocket, text: string): void {
     const parsed = parseClientFrame(text);
     if (!parsed.ok) throw new Error("fake server received invalid client frame");
@@ -140,6 +165,11 @@ class FakeServer {
     }
     if (frame.type === "subscribe") {
       this.subscribeAfterSeq.push(frame.afterSeq);
+      if (this.holdNextSubscribe) {
+        this.holdNextSubscribe = false;
+        this.heldSubscribes.push({ socket, id: frame.id, stream: frame.stream });
+        return;
+      }
       if (this.refusedSubscriptions.has(this.connections.indexOf(connection))) {
         socket.deliver({
           type: "result",
@@ -425,6 +455,32 @@ describe("createAppClient", () => {
       onEvent: (_payload, seq) => seqs.push(seq),
     });
     expect(server.subscribeAfterSeq).toHaveLength(3);
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => seqs.length === 1);
+    expect(later.lastSeq).toBe(1);
+    client.dispose();
+  });
+
+  test("a failed first subscribe leaves in place the record a later subscribe made for the chat, so that record still gets its events", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    // The first subscribe's request is held, so its record is still pending while the rest of the sequence runs.
+    server.holdNextSubscribe = true;
+    const first = client
+      .subscribe(EventPort, "updated", { scope: "thread-1" })
+      .catch((error: unknown) => error);
+    await eventually(() => server.heldSubscribes.length === 1);
+    // A second subscribe joins the pending record; unsubscribing that handle takes the record out of the map.
+    const joined = await client.subscribe(EventPort, "updated", { scope: "thread-1" });
+    await joined.unsubscribe();
+    const seqs: number[] = [];
+    const later = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (_payload, seq) => seqs.push(seq),
+    });
+    // The first request is refused now. Its failure must not remove the record the later subscribe made.
+    server.answerHeldSubscribe(true);
+    expect(await first).toMatchObject({ appError: { code: "not_found" } });
     server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
     await eventually(() => seqs.length === 1);
     expect(later.lastSeq).toBe(1);
