@@ -16,6 +16,7 @@ function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
     "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
     "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
     "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+    "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
     ...overrides,
   };
 }
@@ -42,7 +43,8 @@ describe("plain reasons for Fast mode", () => {
       capabilities: capabilities({
         "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "unavailable", via: "rpc" }),
       }),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
       },
@@ -61,7 +63,8 @@ describe("plain reasons for Fast mode", () => {
           detail: "Unknown command: set_fast_mode (omp-v18.6.1:docs/rpc.md:141-149)",
         }),
       }),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
       },
@@ -78,7 +81,8 @@ describe("plain reasons for Fast mode", () => {
       capabilities: capabilities({
         "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "unavailable", via: "rpc" }),
       }),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
       },
@@ -92,7 +96,8 @@ describe("plain reasons for Fast mode", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({ sessionId: "session" }),
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
       },
@@ -106,7 +111,8 @@ describe("plain reasons for Fast mode", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => {
           throw new Error("the connection dropped");
         },
@@ -126,7 +132,8 @@ describe("plain reasons for Fast mode", () => {
       capabilities: capabilities({
         "omp.cmd.get_state": CapabilityStatus.parse({ state: "unavailable", via: "rpc" }),
       }),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
       },
@@ -148,7 +155,8 @@ describe("plain reasons for Fast mode", () => {
           detail: "Unknown command: get_state (omp-v18.6.1:docs/rpc.md:141-149)",
         }),
       }),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => fastState,
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
       },
@@ -250,62 +258,14 @@ describe("plain reasons for the other modes", () => {
     controller.dispose();
   });
 
-  test("a change omp applied is not shown as omp's words, and a limited link reads it as set, not as known", async () => {
-    const controller = new ModeController({
-      threadId,
-      capabilities: capabilities({
-        "host.command-gateway": CapabilityStatus.parse({ state: "fallback", via: "host" }),
-      }),
-      gateway: {
-        change: async ({ request }) =>
-          request.mode === "browser"
-            ? { outcome: "applied", mode: "browser", visibility: request.visibility }
-            : { outcome: "applied", mode: request.mode, on: request.requested },
-      },
-    });
-    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
-    expect(result).toMatchObject({ ok: true, state: "fallback" });
-    expect(result.reason).toBeUndefined();
-    expect(controller.getSnapshot().modes.slow?.state).toBe("fallback");
-    controller.dispose();
-  });
-
-  test("an unrecognised reply is shown as omp wrote it", async () => {
-    const words = "Slow mode is on for this chat.";
-    const controller = new ModeController({
-      threadId,
-      capabilities: capabilities(),
-      gateway: {
-        change: async () => ({ outcome: "unknown", mode: "slow", outputs: [words] }),
-      },
-    });
-    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
-    expect(result.reason).toBe(words);
-    expect(controller.getSnapshot().modes.slow?.reason).toBe(words);
-    controller.dispose();
-  });
-
-  test("a recognised reply is not shown as omp's words: the row reads the app's own sentence", async () => {
-    const controller = new ModeController({
-      threadId,
-      capabilities: capabilities(),
-      gateway: {
-        change: async () => ({ outcome: "applied", mode: "slow", on: true }),
-      },
-    });
-    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
-    expect(result).toMatchObject({ ok: true, state: "known" });
-    expect(result.reason).toBeUndefined();
-    expect(controller.getSnapshot().modes.slow?.reason).toBeUndefined();
-    controller.dispose();
-  });
-
   test("says the change was cancelled when omp does not finish it", async () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: {
-        change: async () => {
+      rpc: {
+        getState: async () => fastState,
+        setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
+        setSlowMode: async () => {
           throw new AppFailure({
             code: "cancelled",
             message: "The command was cancelled.",
@@ -319,18 +279,20 @@ describe("plain reasons for the other modes", () => {
     controller.dispose();
   });
 
-  test("says the app could not reach omp when the command fails", async () => {
+  test("says omp did not make the change when the Slow mode command fails", async () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: {
-        change: async () => {
+      rpc: {
+        getState: async () => fastState,
+        setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
+        setSlowMode: async () => {
           throw new Error("the connection dropped");
         },
       },
     });
     const result = await controller.request({ mode: "slow", scope: "session", requested: true });
-    expect(result.error?.message).toBe("The app could not reach omp. Try again.");
+    expect(result.error?.message).toBe("omp did not make the change. Try again.");
     controller.dispose();
   });
 

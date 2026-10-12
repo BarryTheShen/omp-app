@@ -1,5 +1,6 @@
 import type { ModeChangeResult } from "@omp-app/contracts";
 import { MODE_LABELS } from "./commands";
+import { SLOW_UNSUPPORTED_TEXT } from "./slow";
 
 /** The outcomes omp answered with a typed reply. An unknown reply is not among them: it is shown as omp wrote it. */
 export type TypedModeOutcome = Exclude<ModeChangeResult, { readonly outcome: "unknown" }>;
@@ -17,7 +18,7 @@ export function modeOutcomeText(outcome: TypedModeOutcome): string {
   }
   switch (outcome.reason) {
     case "model-has-no-slow-mode":
-      return "Slow mode is not available for this model.";
+      return SLOW_UNSUPPORTED_TEXT;
     case "not-in-session":
       return "Computer use is not available in this chat.";
     case "not-offered":

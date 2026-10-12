@@ -22,13 +22,6 @@ function capabilities(overrides: CapabilityMap = {}): CapabilityMap {
   };
 }
 
-/** The typed outcome omp gives a change it made: exactly the value the request asked for. */
-function appliedFor(request: ModeChangeRequest): ModeChangeResult {
-  return request.mode === "browser"
-    ? { outcome: "applied", mode: "browser", visibility: request.visibility }
-    : { outcome: "applied", mode: request.mode, on: request.requested };
-}
-
 /** A gateway that answers each change with `answer(request)`, and records each request it is sent. */
 function gatewayAnswering(
   answer: (request: ModeChangeRequest) => ModeChangeResult,
@@ -167,7 +160,7 @@ describe("D7 mode controls", () => {
       "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
       "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
       "Fast mode is not available until the app is connected to omp.",
-      "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
+      "Slow mode is not available until the app is connected to omp.",
     ]);
     controller.dispose();
   });
@@ -182,7 +175,8 @@ describe("D7 mode controls", () => {
       const controller = new ModeController({
         threadId,
         capabilities: capabilities(),
-        fastRpc: {
+        rpc: {
+          setSlowMode: async ({ enabled }) => ({ enabled }),
           getState: async () => ({
             fastModeEnabled: enabled,
             fastModeActive: active,
@@ -238,7 +232,8 @@ describe("D7 mode controls", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: () => new Promise<never>(() => undefined),
         setFastMode: async ({ enabled }) => ({ enabled, active: enabled }),
       },
@@ -289,11 +284,7 @@ describe("a mode omp does not report", () => {
       />,
     );
 
-    for (const name of [
-      "Computer use controls",
-      "Extended context controls",
-      "Slow mode controls",
-    ]) {
+    for (const name of ["Computer use controls", "Extended context controls"]) {
       const controls = within(screen.getByRole("group", { name }));
       expect(controls.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe(
         "false",
@@ -307,45 +298,7 @@ describe("a mode omp does not report", () => {
         "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
         { exact: true },
       ),
-    ).toHaveLength(3);
-    controller.dispose();
-  });
-
-  test("reads as set once the person chooses it in this chat, while the host link is limited", async () => {
-    const controller = new ModeController({
-      threadId,
-      capabilities: capabilities({
-        "host.command-gateway": CapabilityStatus.parse({
-          state: "fallback",
-          via: "host",
-          detail: "Commands run without a status reply.",
-        }),
-      }),
-      gateway: gatewayAnswering(appliedFor),
-    });
-    await controller.request({ mode: "slow", scope: "session", requested: true });
-    render(
-      <ModeControls
-        actions={{ onRequest: vi.fn(), onBrowserVisibility: vi.fn(), onRefresh: vi.fn() }}
-        model={{
-          snapshot: controller.getSnapshot(),
-          browserVisibility: null,
-          busyMode: null,
-          error: null,
-        }}
-      />,
-    );
-
-    const slow = within(screen.getByRole("group", { name: "Slow mode controls" }));
-    expect(slow.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe("true");
-    expect(slow.getByRole("button", { name: "Turn off" }).getAttribute("aria-pressed")).toBe(
-      "false",
-    );
-    expect(
-      screen.getByText("Set for this chat. omp does not report whether it is on.", {
-        exact: true,
-      }),
-    ).toBeTruthy();
+    ).toHaveLength(2);
     controller.dispose();
   });
 
@@ -353,7 +306,8 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: false,
           fastModeActive: false,
@@ -391,7 +345,8 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: () => Promise.withResolvers<never>().promise,
         setFastMode: async () => {
           throw new Error("omp did not answer the Fast mode change.");

@@ -5,7 +5,7 @@ import type { ExecutionMode } from "../contract";
 export type { BrowserVisibility } from "@omp-app/contracts";
 
 /** Modes with a boolean command state in omp's released slash-command grammar. */
-export type ToggleMode = "computer" | "extended-context" | "slow";
+export type ToggleMode = "computer" | "extended-context";
 
 export type ModeAction =
   | { readonly mode: "browser"; readonly visibility: BrowserVisibility }

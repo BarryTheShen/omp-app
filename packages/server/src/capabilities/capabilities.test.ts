@@ -55,6 +55,10 @@ function respond(command) {
     console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: false, error: "message is required" }));
     return;
   }
+  if (command.type === "set_slow_mode" && typeof command.enabled !== "boolean") {
+    console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: false, error: "set_slow_mode requires boolean enabled" }));
+    return;
+  }
   console.log(JSON.stringify({ id: command.id, type: "response", command: command.type, success: true, data: {} }));
 }
 let pending = "";
@@ -66,6 +70,7 @@ for await (const chunk of Bun.stdin.stream()) {
     if (!line.trim()) continue;
     const command = JSON.parse(line);
     if (Bun.env.FAKE_COMMAND_LOG) require("node:fs").appendFileSync(Bun.env.FAKE_COMMAND_LOG, command.type + "\\n");
+    if (Bun.env.FAKE_PAYLOAD_LOG) require("node:fs").appendFileSync(Bun.env.FAKE_PAYLOAD_LOG, JSON.stringify(command) + "\\n");
     if (command.type === slowCommand) setTimeout(() => respond(command), slowMs);
     else respond(command);
   }
@@ -104,6 +109,7 @@ async function runProbe(
       PI_CODING_AGENT_DIR: realAgent,
       FAKE_RECORD_FILE: recordFile,
       FAKE_COMMAND_LOG: join(root, "commands.log"),
+      FAKE_PAYLOAD_LOG: join(root, "payloads.log"),
     },
     ghBinary: join(root, "missing-gh"),
   });
@@ -164,7 +170,6 @@ describe("probeCapabilities", () => {
       .split("\n")
       .filter((line) => line !== "");
     const unprobed = [
-      "set_slow_mode",
       "get_logout_accounts",
       "logout",
       "btw",
@@ -180,6 +185,27 @@ describe("probeCapabilities", () => {
       });
     }
     expect(result.capabilities["omp.cmd.logout"]).toMatchObject({ state: "unavailable" });
+  });
+
+  test("probes set_slow_mode with a value omp refuses: it counts as available, and no probe turns Slow mode on", async () => {
+    const { result, root } = await runProbe();
+    const sent = (await readFile(join(root, "commands.log"), "utf8")).split("\n");
+    expect(sent).toContain("set_slow_mode");
+    const payloads: unknown[] = (await readFile(join(root, "payloads.log"), "utf8"))
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line));
+    expect(payloads).toContainEqual(expect.objectContaining({ type: "set_slow_mode" }));
+    expect(payloads).not.toContainEqual(
+      expect.objectContaining({ type: "set_slow_mode", enabled: true }),
+    );
+    expect(result.evidence.find((entry) => entry.command === "set_slow_mode")).toMatchObject({
+      status: "available",
+    });
+    expect(result.capabilities["omp.cmd.set_slow_mode"]).toEqual({
+      state: "available",
+      via: "rpc",
+    });
   });
 
   test("probes abort_and_restore_queue with a bare frame, since the app sends it to cancel a run", async () => {

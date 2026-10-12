@@ -5,15 +5,17 @@ import {
   RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
-import type { FastModeRpc, ModeCommandGateway } from "../contract";
+import type { ModeCommandGateway, ModeRpc } from "../contract";
 
-/** A0.8 typed RPC adapter for the two released fast-mode commands. */
-export function createFastModeRpc(client: AppClient, threadId: ThreadId): FastModeRpc {
+/** A0.8 typed RPC adapter for the released fast- and slow-mode commands. */
+export function createModeRpc(client: AppClient, threadId: ThreadId): ModeRpc {
   const rpc = client.port(RpcSessionPort) as RpcSessionClient;
   return {
     getState: (options) => rpc.send({ threadId, command: { type: "get_state" } }, options),
     setFastMode: (args, options) =>
       rpc.send({ threadId, command: { type: "set_fast_mode", ...args } }, options),
+    setSlowMode: (args, options) =>
+      rpc.send({ threadId, command: { type: "set_slow_mode", ...args } }, options),
   };
 }
 

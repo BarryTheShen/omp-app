@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { ModeSnapshot, ModeState } from "../contract";
 import { type BrowserVisibility, type D73Mode, MODE_LABELS } from "./commands";
 import type { ModeControllerPort } from "./controller";
+import { usageLimitText } from "./slow";
 
 type ModeErrorKind = "change" | "refresh";
 
@@ -44,8 +45,8 @@ function statusText(mode: D73Mode, state: ModeStateLike | undefined): string {
     case "known":
       return knownText(mode, state);
     case "requested":
-      // Fast mode has no reply to show: until omp answers, the app is checking with omp.
-      if (mode === "fast") return "Checking with omp…";
+      // Fast and Slow mode have no reply to show: until omp answers, the app is checking with omp.
+      if (mode === "fast" || mode === "slow") return "Checking with omp…";
       return state.reason ? `Sent to omp. ${state.reason}` : "Sent to omp.";
     case "fallback":
       return unknownText(mode, state);
@@ -59,7 +60,9 @@ function statusText(mode: D73Mode, state: ModeStateLike | undefined): string {
  * chose in this chat reads as set, and until they choose one, the choice is theirs.
  */
 function unknownText(mode: D73Mode, state: ModeStateLike): string {
-  if (mode === "fast") return "omp has not reported Fast mode yet. Refresh status to check it.";
+  if (mode === "fast" || mode === "slow") {
+    return `omp has not reported ${MODE_LABELS[mode]} yet. Refresh status to check it.`;
+  }
   const chosen = state.requested !== undefined;
   if (mode === "browser") {
     return chosen
@@ -73,9 +76,14 @@ function unknownText(mode: D73Mode, state: ModeStateLike): string {
 
 /** On or off as omp reported it; for Fast mode, also whether the current model uses the tier. */
 function knownText(mode: D73Mode, state: ModeStateLike): string {
-  if (!state.enabled) return "Off";
-  if (mode === "fast" && state.active === false) return "On, but the current model does not use it";
-  return "On";
+  const onOrOff = !state.enabled
+    ? "Off"
+    : mode === "fast" && state.active === false
+      ? "On, but the current model does not use it"
+      : "On";
+  // omp's usage-limit stage for the account is shown whether slow mode is on or off.
+  if (!("usageLimit" in state) || state.usageLimit === undefined) return onOrOff;
+  return `${onOrOff}. ${usageLimitText(state.usageLimit)}`;
 }
 
 /**

@@ -14,13 +14,17 @@ export interface ModeCommandGateway {
   readonly change: (args: ModeChangeArgs, options?: PortCallOptions) => Promise<ModeChangeResult>;
 }
 
-/** A0.8 direct RPC seam used by fast mode; params/results stay owned by @omp-app/contracts. */
-export interface FastModeRpc {
+/** A0.8 direct RPC seam for the modes omp reports and changes over RPC; params and results stay owned by @omp-app/contracts. */
+export interface ModeRpc {
   readonly getState: (options?: PortCallOptions) => Promise<OmpCommandMap["get_state"]["result"]>;
   readonly setFastMode: (
     args: OmpCommandMap["set_fast_mode"]["params"],
     options?: PortCallOptions,
   ) => Promise<OmpCommandMap["set_fast_mode"]["result"]>;
+  readonly setSlowMode: (
+    args: OmpCommandMap["set_slow_mode"]["params"],
+    options?: PortCallOptions,
+  ) => Promise<OmpCommandMap["set_slow_mode"]["result"]>;
 }
 
 export interface ExecutionModePort {
@@ -41,6 +45,6 @@ export interface ModeContractContext {
   readonly threadId: ThreadId;
   readonly capabilities: CapabilityMap;
   readonly gateway?: ModeCommandGateway;
-  readonly fastRpc?: FastModeRpc;
+  readonly rpc?: ModeRpc;
   readonly signal?: AbortSignalLike;
 }

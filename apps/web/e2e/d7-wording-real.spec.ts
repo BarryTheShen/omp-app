@@ -85,7 +85,7 @@ realTest(
 );
 
 realTest(
-  "#1055 real omp: Slow mode is refused on the fake model, and the choice is not shown as made",
+  "#1200 real omp: Slow mode is not available on the fake model, its buttons stay off, and the row says why",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);
     await mkdir(screenshots, { recursive: true });
@@ -98,24 +98,11 @@ realTest(
     await composer.click();
     const dialog = await openControls(page);
     const slow = dialog.getByRole("group", { name: "Slow mode controls" });
-    await slow.getByRole("button", { name: "Turn on" }).click();
-    await expect(dialog.getByText("Slow mode could not be changed.", { exact: true })).toBeVisible({
-      timeout: 60_000,
-    });
     await expect(
       dialog.getByText("Slow mode is not available for this model.", { exact: true }),
-    ).toBeVisible();
-    await expect(slow.getByRole("button", { name: "Turn on" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    await expect(slow.getByRole("button", { name: "Turn off" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    await expect(
-      dialog.getByText("The current model has no slow mode", { exact: false }),
-    ).toHaveCount(0);
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(slow.getByRole("button", { name: "Turn on" })).toBeDisabled();
+    await expect(slow.getByRole("button", { name: "Turn off" })).toBeDisabled();
     await expectPlainControls(page, dialog, "slow");
     expect(realApp.problems).toEqual([]);
   },

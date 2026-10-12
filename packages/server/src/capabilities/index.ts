@@ -42,12 +42,11 @@ export const RPC_INVALID_ARGUMENT_SOURCE =
 
 /**
  * Commands the app does not send yet, so the probe does not send them either. A bare frame is a valid
- * call for `btw_cancel` (it cancels the running side question). The other five either need arguments
+ * call for `btw_cancel` (it cancels the running side question). The other four either need arguments
  * the probe does not have or only read, and the app has no use for them yet. Each reports unavailable
  * with `NOT_PROBED_REASON`.
  */
 const UNPROBED_COMMANDS: ReadonlySet<OmpCommandName> = new Set<OmpCommandName>([
-  "set_slow_mode",
   "get_logout_accounts",
   "logout",
   "btw",

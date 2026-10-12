@@ -48,7 +48,8 @@ function gatewayAnswering(
 /** A gateway that answers every change with a reply the app does not recognise, with no words. */
 const silent: ModeCommandGateway = gatewayAnswering(() => unknownReply([]));
 
-const fastRpc = {
+const rpc = {
+  setSlowMode: async ({ enabled }: { readonly enabled: boolean }) => ({ enabled }),
   getState: async () => ({ sessionId: "session", fastModeEnabled: false, fastModeActive: false }),
   setFastMode: async ({ enabled }: { readonly enabled: boolean }) => ({
     enabled,
@@ -165,13 +166,13 @@ describe("plain words in the status lines", () => {
   });
 
   test("a reply the app does not recognise reads Sent to omp, then omp's words exactly as omp wrote them", async () => {
-    const reply = "Slow mode is on for this chat.";
+    const reply = "Computer use is on for this chat.";
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
       gateway: gatewayAnswering(() => unknownReply([reply])),
     });
-    await controller.request({ mode: "slow", scope: "session", requested: true });
+    await controller.request({ mode: "computer", scope: "session", requested: true });
     renderControls(controller);
     expect(screen.getByText(`Sent to omp. ${reply}`, { exact: true })).toBeTruthy();
     controller.dispose();
@@ -209,7 +210,7 @@ describe("plain words in the status lines", () => {
         }),
       }),
       gateway: silent,
-      fastRpc,
+      rpc,
     });
     const { container } = render(<ConnectedModeControls controller={controller} />);
     expect(await screen.findByText("The settings could not be loaded")).toBeTruthy();
@@ -226,7 +227,6 @@ describe("plain words in the failure messages", () => {
   test.each([
     { mode: "Computer use", group: "Computer use controls" },
     { mode: "Extended context", group: "Extended context controls" },
-    { mode: "Slow mode", group: "Slow mode controls" },
   ])(
     "names $mode in a failed change, and says the app could not reach omp",
     async ({ mode, group }) => {
@@ -271,8 +271,8 @@ describe("plain words in the failure messages", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
-        ...fastRpc,
+      rpc: {
+        ...rpc,
         setFastMode: async () => {
           throw new Error("the connection dropped");
         },
@@ -296,8 +296,8 @@ describe("plain words in the failure messages", () => {
       threadId,
       capabilities: capabilities(),
       gateway: silent,
-      fastRpc: {
-        ...fastRpc,
+      rpc: {
+        ...rpc,
         getState: async () => {
           throw new Error("the connection dropped");
         },
@@ -377,16 +377,10 @@ describe("plain words around omp's typed outcomes", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      gateway: gatewayAnswering((request) => {
-        if (request.mode === "slow") {
-          return { outcome: "unsupported", mode: "slow", reason: "model-has-no-slow-mode" };
-        }
-        return appliedFor(request);
-      }),
+      gateway: gatewayAnswering(appliedFor),
     });
     await controller.request({ mode: "computer", scope: "session", requested: true });
     await controller.request({ mode: "extended-context", scope: "session", requested: true });
-    await controller.request({ mode: "slow", scope: "session", requested: true });
     await controller.requestBrowserVisibility("visible");
     const { container } = renderControls(controller);
     const statuses = screen.getAllByRole("status").map((element) => element.textContent ?? "");

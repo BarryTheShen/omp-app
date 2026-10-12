@@ -131,7 +131,7 @@ test("modes omp does not report start with neither button set, in every layout",
   await page.goto(PLAYGROUND);
   await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
   await assertStyled(page);
-  for (const name of ["Computer use controls", "Extended context controls", "Slow mode controls"]) {
+  for (const name of ["Computer use controls", "Extended context controls"]) {
     const group = page.getByRole("group", { name });
     await expect(group.getByRole("button", { name: "Turn on" })).toHaveAttribute(
       "aria-pressed",
@@ -147,7 +147,14 @@ test("modes omp does not report start with neither button set, in every layout",
       "omp does not report whether this is on. Choose Turn on or Turn off for this chat.",
       { exact: true },
     ),
-  ).toHaveCount(3);
+  ).toHaveCount(2);
+  // The fake model has no slow mode and omp says so: the row gives that reason, and both buttons stay off.
+  const slow = page.getByRole("group", { name: "Slow mode controls" });
+  await expect(
+    page.getByText("Slow mode is not available for this model.", { exact: true }),
+  ).toBeVisible();
+  await expect(slow.getByRole("button", { name: "Turn on" })).toBeDisabled();
+  await expect(slow.getByRole("button", { name: "Turn off" })).toBeDisabled();
   await page.screenshot({
     path: join(SCREENSHOT_ROOT, "d7.3-modes-unknown-light.png"),
     animations: "disabled",
@@ -375,4 +382,77 @@ test("a failed Turn off keeps the On that omp accepted, in every layout", async 
     fullPage: true,
   });
   expect([...problems, ...darkProblems]).toEqual([]);
+});
+
+test("Slow mode says the wrap-up stage in plain words, in light, dark and narrow layouts", async ({
+  page,
+}) => {
+  const problems = collectProblems(page);
+  await page.goto(`${PLAYGROUND}?slow=wrap-up`);
+  await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
+  await assertStyled(page);
+  const slow = page.getByRole("group", { name: "Slow mode controls" });
+  await expect(
+    page.getByText(
+      /^On\. Your usage limit is reached\. Requests get a short wrap-up allowance, then .+/,
+    ),
+  ).toBeVisible();
+  await expect(slow.getByRole("button", { name: "Turn on" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.mouse.move(0, 0);
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "fix-1200-slow-wrap-up-light.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+
+  const dark = await page.context().newPage();
+  const darkProblems = collectProblems(dark);
+  await dark.goto(`${PLAYGROUND}?slow=wrap-up&theme=dark`);
+  await expect(dark.locator("html")).toHaveClass(/dark/);
+  await expect(dark.getByTestId("d7-3-modes-playground")).toBeVisible();
+  await assertStyled(dark);
+  await dark.screenshot({
+    path: join(SCREENSHOT_ROOT, "fix-1200-slow-wrap-up-dark.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByText(
+      /^On\. Your usage limit is reached\. Requests get a short wrap-up allowance, then .+/,
+    ),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "fix-1200-slow-wrap-up-narrow.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  expect([...problems, ...darkProblems]).toEqual([]);
+});
+
+test("Slow mode says the low-priority stage and its allowance left in plain words", async ({
+  page,
+}) => {
+  const problems = collectProblems(page);
+  await page.goto(`${PLAYGROUND}?slow=low-priority`);
+  await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
+  await expect(
+    page.getByText(
+      /^On\. Requests run at low priority until your limit resets .+\. 62% of the low-priority allowance is left\.$/,
+    ),
+  ).toBeVisible();
+  await page.mouse.move(0, 0);
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "fix-1200-slow-low-priority-light.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  expect(problems).toEqual([]);
 });

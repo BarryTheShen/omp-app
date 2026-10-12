@@ -8,20 +8,23 @@ import {
   type PortCallOptions,
   type ThreadId,
 } from "@omp-app/contracts";
-import type { ExecutionModePort, FastModeRpc, ModeCommandGateway } from "../contract";
+import type { ExecutionModePort, ModeCommandGateway, ModeRpc } from "../contract";
 import {
   type ExecutionMode,
   FastModeState,
   type FastModeState as FastModeStateValue,
+  type GetStateResult,
   type ModeCommandResult,
   ModeRequest,
   type ModeRequest as ModeRequestValue,
+  type ModeScope,
   ModeSnapshot,
   ModeState,
   type ModeStateKind,
   modeState,
   resolveModePrecedence,
   toolAvailability,
+  type UsageLimitStage,
   unavailableMode,
 } from "../contract";
 import {
@@ -33,6 +36,7 @@ import {
   modeChangeRequest,
 } from "./commands";
 import { modeOutcomeRetryable, modeOutcomeText } from "./outcomes";
+import { SLOW_UNSUPPORTED_TEXT } from "./slow";
 
 /** The subset of R0's projection needed by mode controls. */
 export interface ModeSessionProjection {
@@ -51,7 +55,7 @@ export interface ModeControllerOptions {
   readonly threadId: ThreadId;
   readonly capabilities: CapabilityMap;
   readonly gateway?: ModeCommandGateway;
-  readonly fastRpc?: FastModeRpc;
+  readonly rpc?: ModeRpc;
   readonly session?: ModeSessionSource;
   readonly signal?: PortCallOptions["signal"];
   /** Told when omp refuses a Fast mode change, so the surface can let go of omp's own notice about it. */
@@ -78,7 +82,8 @@ export interface ModeControllerPort extends ExecutionModePort {
 }
 
 const COMMAND_MODES = D73_MODES.filter(
-  (mode): mode is Exclude<D73Mode, "default" | "fast"> => mode !== "default" && mode !== "fast",
+  (mode): mode is Exclude<D73Mode, "default" | "fast" | "slow"> =>
+    mode !== "default" && mode !== "fast" && mode !== "slow",
 );
 
 const TOOL_CAPABILITIES: Readonly<
@@ -87,6 +92,9 @@ const TOOL_CAPABILITIES: Readonly<
   browser: "host.command-gateway",
   computer: "host.command-gateway",
 };
+
+/** The capability that turns Slow mode on or off; its state is read under the same name. */
+const SLOW_CAPABILITY: CapabilityKey = "omp.cmd.set_slow_mode";
 
 function isCapabilityUsable(capabilities: CapabilityMap, capability: CapabilityKey): boolean {
   const state = capabilities[capability]?.state;
@@ -111,6 +119,24 @@ function changeFailure(cause: unknown, capability: CapabilityKey): AppError {
   return error.code === "cancelled"
     ? { code: "cancelled", message: "The change was cancelled.", retryable: false, capability }
     : error;
+}
+
+/** A failed Slow mode change is said in the app's words: omp's own error text is not shown. */
+function slowChangeFailure(cause: unknown): AppError {
+  if (cause instanceof AppFailure && cause.appError.code === "cancelled") {
+    return {
+      code: "cancelled",
+      message: "The change was cancelled.",
+      retryable: false,
+      capability: SLOW_CAPABILITY,
+    };
+  }
+  return {
+    code: "internal",
+    message: "omp did not make the change. Try again.",
+    retryable: true,
+    capability: SLOW_CAPABILITY,
+  };
 }
 
 function unavailableError(capability: CapabilityKey | undefined, message: string): AppError {
@@ -161,13 +187,13 @@ function modeCommandResult(
 
 function initialFastState(
   capabilities: CapabilityMap,
-  fastRpc: FastModeRpc | undefined,
+  rpc: ModeRpc | undefined,
 ): FastModeStateValue {
   const capability: CapabilityKey = "omp.cmd.set_fast_mode";
-  if (!isCapabilityUsable(capabilities, capability) || fastRpc === undefined) {
+  if (!isCapabilityUsable(capabilities, capability) || rpc === undefined) {
     const error = unavailableError(
       capability,
-      fastRpc === undefined
+      rpc === undefined
         ? "Fast mode is not available until the app is connected to omp."
         : "Fast mode is not available in this chat.",
     );
@@ -193,7 +219,7 @@ function initialFastState(
 }
 
 function initialModeState(
-  mode: Exclude<D73Mode, "fast">,
+  mode: Exclude<D73Mode, "fast" | "slow">,
   capabilities: CapabilityMap,
   gateway: ModeCommandGateway | undefined,
 ): ModeState {
@@ -222,6 +248,46 @@ function initialModeState(
   });
 }
 
+/** Slow mode before omp has answered: the line says it is being checked, and neither choice is set. */
+function initialSlowState(capabilities: CapabilityMap, rpc: ModeRpc | undefined): ModeState {
+  if (rpc === undefined) {
+    const error = unavailableError(
+      SLOW_CAPABILITY,
+      "Slow mode is not available until the app is connected to omp.",
+    );
+    return stateWithError("slow", "session", "omp-rpc", error);
+  }
+  if (!isCapabilityUsable(capabilities, SLOW_CAPABILITY)) {
+    const error = unavailableError(SLOW_CAPABILITY, "Slow mode is not available in this chat.");
+    return stateWithError("slow", "session", "omp-rpc", error);
+  }
+  return ModeState.parse({
+    mode: "slow",
+    state: "requested",
+    scope: "session",
+    source: "omp-rpc",
+    capability: SLOW_CAPABILITY,
+  });
+}
+
+/** Slow mode omp reported on or off: both buttons show that choice, with its scope and any usage-limit stage. */
+function slowKnownState(
+  enabled: boolean,
+  scope: ModeScope,
+  usageLimit: UsageLimitStage | undefined,
+): ModeState {
+  return ModeState.parse({
+    mode: "slow",
+    state: "known",
+    scope,
+    source: "omp-rpc",
+    capability: SLOW_CAPABILITY,
+    requested: enabled,
+    enabled,
+    ...(usageLimit ? { usageLimit } : {}),
+  });
+}
+
 function commandOptions(
   signal: PortCallOptions["signal"] | undefined,
 ): ModeRequestOptions | undefined {
@@ -229,14 +295,14 @@ function commandOptions(
 }
 
 /**
- * Browser-side mode controller. It owns no omp state: released RPC fields come from the injected
- * fast-mode port, and slash commands go through A1's typed gateway without reading their output.
+ * Browser-side mode controller. It owns no omp state: Fast and Slow mode come from the injected mode RPC port,
+ * and the other slash commands go through A1's typed gateway, which returns typed outcomes.
  */
 export class ModeController implements ModeControllerPort {
   private capabilities: CapabilityMap;
   private readonly threadId: ThreadId;
   private readonly gateway: ModeCommandGateway | undefined;
-  private readonly fastRpc: FastModeRpc | undefined;
+  private readonly rpc: ModeRpc | undefined;
   private readonly session: ModeSessionSource | undefined;
   private readonly signal: PortCallOptions["signal"] | undefined;
   private readonly onFastRefused: (() => void) | undefined;
@@ -246,6 +312,10 @@ export class ModeController implements ModeControllerPort {
   private fast: FastModeStateValue;
   /** The last Fast mode value omp reported; a failed change falls back to it. */
   private reportedFast: { readonly enabled: boolean; readonly active: boolean } | null = null;
+  /** Whether omp last said Slow mode is offered on this model; null until it has said. */
+  private slowSupported: boolean | null = null;
+  /** omp's last get_state answer, so a change in the host's capabilities re-reads it without a refresh. */
+  private reportedSlow: GetStateResult | null = null;
   private browserVisibility: BrowserVisibility | null = null;
   private revision = 0;
   private modeStates: Partial<Record<ExecutionMode, ModeState>>;
@@ -254,17 +324,17 @@ export class ModeController implements ModeControllerPort {
     this.capabilities = options.capabilities;
     this.threadId = options.threadId;
     this.gateway = options.gateway;
-    this.fastRpc = options.fastRpc;
+    this.rpc = options.rpc;
     this.session = options.session;
     this.signal = options.signal;
     this.onFastRefused = options.onFastRefused;
-    this.fast = initialFastState(this.capabilities, this.fastRpc);
+    this.fast = initialFastState(this.capabilities, this.rpc);
     this.modeStates = Object.fromEntries(
-      D73_MODES.filter((mode): mode is Exclude<D73Mode, "fast"> => mode !== "fast").map((mode) => [
-        mode,
-        initialModeState(mode, this.capabilities, this.gateway),
-      ]),
+      D73_MODES.filter(
+        (mode): mode is Exclude<D73Mode, "fast" | "slow"> => mode !== "fast" && mode !== "slow",
+      ).map((mode) => [mode, initialModeState(mode, this.capabilities, this.gateway)]),
     ) as Partial<Record<ExecutionMode, ModeState>>;
+    this.modeStates.slow = initialSlowState(this.capabilities, this.rpc);
     this.snapshot = this.buildSnapshot();
     this.unsubscribeSession = this.session?.subscribe((projection) => {
       this.applySessionProjection(projection);
@@ -290,7 +360,7 @@ export class ModeController implements ModeControllerPort {
     this.capabilities = capabilities;
     const fastCapability: CapabilityKey = "omp.cmd.set_fast_mode";
     if (!isCapabilityUsable(capabilities, fastCapability) || this.fast.state === "unavailable") {
-      this.fast = initialFastState(capabilities, this.fastRpc);
+      this.fast = initialFastState(capabilities, this.rpc);
     }
     for (const mode of COMMAND_MODES) {
       const current = this.modeStates[mode];
@@ -303,11 +373,19 @@ export class ModeController implements ModeControllerPort {
         this.modeStates[mode] = initialModeState(mode, capabilities, this.gateway);
       }
     }
+    if (this.reportedSlow !== null) {
+      this.reportSlow(this.reportedSlow);
+    } else if (
+      !isCapabilityUsable(capabilities, SLOW_CAPABILITY) ||
+      this.modeStates.slow?.state === "unavailable"
+    ) {
+      this.modeStates.slow = initialSlowState(capabilities, this.rpc);
+    }
     this.commit();
   }
 
   public async refresh(options?: ModeRequestOptions): Promise<ModeSnapshot> {
-    if (this.fastRpc === undefined) {
+    if (this.rpc === undefined) {
       this.commit();
       return this.snapshot;
     }
@@ -315,11 +393,12 @@ export class ModeController implements ModeControllerPort {
     if (!isCapabilityUsable(this.capabilities, capability)) {
       const error = unavailableError(capability, "omp cannot report these settings in this chat.");
       this.fast = this.fastFromValues(false, false, "unavailable", error.message, error);
+      this.failSlowRead("omp cannot report these settings in this chat.");
       this.commit();
       throw new AppFailure(error);
     }
     try {
-      const state = await this.fastRpc.getState(commandOptions(options?.signal ?? this.signal));
+      const state = await this.rpc.getState(commandOptions(options?.signal ?? this.signal));
       const enabled = state.fastModeEnabled;
       const active = state.fastModeActive;
       if (enabled === undefined || active === undefined) {
@@ -332,11 +411,13 @@ export class ModeController implements ModeControllerPort {
       } else {
         this.reportFast(enabled, active);
       }
+      this.reportSlow(state);
       this.commit();
       return this.snapshot;
     } catch (cause) {
       const error = errorFrom(cause, "The app could not reach omp. Try again.", capability);
       this.fast = this.fastFromValues(false, false, "unavailable", error.message, error);
+      this.failSlowRead("The app could not reach omp. Try again.");
       this.commit();
       throw new AppFailure(error, { cause });
     }
@@ -377,6 +458,7 @@ export class ModeController implements ModeControllerPort {
       );
     }
     if (parsed.mode === "fast") return this.requestFast(parsed.requested, options);
+    if (parsed.mode === "slow") return this.requestSlow(parsed.requested, options);
     if (parsed.mode === "default") {
       const error = unavailableError(
         undefined,
@@ -396,7 +478,7 @@ export class ModeController implements ModeControllerPort {
     }
     return this.requestCommand(
       {
-        mode: parsed.mode as Exclude<D73Mode, "default" | "fast" | "browser">,
+        mode: parsed.mode as Exclude<D73Mode, "default" | "fast" | "browser" | "slow">,
         requested: parsed.requested,
       },
       options,
@@ -421,10 +503,10 @@ export class ModeController implements ModeControllerPort {
   ): Promise<ModeCommandResult> {
     const command = "set_fast_mode";
     const capability: CapabilityKey = "omp.cmd.set_fast_mode";
-    if (this.fastRpc === undefined || !isCapabilityUsable(this.capabilities, capability)) {
+    if (this.rpc === undefined || !isCapabilityUsable(this.capabilities, capability)) {
       const error = unavailableError(
         capability,
-        this.fastRpc === undefined
+        this.rpc === undefined
           ? "Fast mode is not available until the app is connected to omp."
           : "Fast mode is not available in this chat.",
       );
@@ -451,7 +533,7 @@ export class ModeController implements ModeControllerPort {
     );
     this.commit();
     try {
-      const result = await this.fastRpc.setFastMode(
+      const result = await this.rpc.setFastMode(
         { enabled: requested },
         commandOptions(options?.signal ?? this.signal),
       );
@@ -481,6 +563,81 @@ export class ModeController implements ModeControllerPort {
         error,
         error.message,
         capability,
+      );
+    }
+  }
+
+  private async requestSlow(
+    requested: boolean,
+    options?: ModeRequestOptions,
+  ): Promise<ModeCommandResult> {
+    const command = "set_slow_mode";
+    if (this.rpc === undefined || !isCapabilityUsable(this.capabilities, SLOW_CAPABILITY)) {
+      const error = unavailableError(
+        SLOW_CAPABILITY,
+        this.rpc === undefined
+          ? "Slow mode is not available until the app is connected to omp."
+          : "Slow mode is not available in this chat.",
+      );
+      this.modeStates.slow = stateWithError("slow", "session", "omp-rpc", error);
+      this.commit();
+      return modeCommandResult(
+        { mode: "slow", requested },
+        command,
+        false,
+        "unavailable",
+        error,
+        error.message,
+        SLOW_CAPABILITY,
+      );
+    }
+    // The choice is shown as made until omp answers; the value omp last left stays underneath.
+    const previous = this.modeStates.slow ?? initialSlowState(this.capabilities, this.rpc);
+    this.modeStates.slow = ModeState.parse({
+      mode: "slow",
+      state: "requested",
+      scope: previous.scope,
+      source: "omp-rpc",
+      capability: SLOW_CAPABILITY,
+      requested,
+      ...(previous.usageLimit ? { usageLimit: previous.usageLimit } : {}),
+    });
+    this.commit();
+    try {
+      const result = await this.rpc.setSlowMode(
+        { enabled: requested },
+        commandOptions(options?.signal ?? this.signal),
+      );
+      this.modeStates.slow = slowKnownState(result.enabled, previous.scope, previous.usageLimit);
+      this.commit();
+      // omp announces no event for a change, so the usage-limit stage is read again from get_state.
+      await this.refresh(options).catch(() => undefined);
+      return modeCommandResult(
+        { mode: "slow", requested },
+        command,
+        true,
+        this.modeStates.slow?.state ?? "known",
+        undefined,
+        undefined,
+        SLOW_CAPABILITY,
+      );
+    } catch (cause) {
+      this.modeStates.slow = previous;
+      this.commit();
+      // omp's own reply is not shown: its typed state says whether the model has slow mode at all.
+      await this.refresh(options).catch(() => undefined);
+      const error =
+        this.slowSupported === false
+          ? unavailableError(SLOW_CAPABILITY, SLOW_UNSUPPORTED_TEXT)
+          : slowChangeFailure(cause);
+      return modeCommandResult(
+        { mode: "slow", requested },
+        command,
+        false,
+        "unavailable",
+        error,
+        error.message,
+        SLOW_CAPABILITY,
       );
     }
   }
@@ -653,6 +810,52 @@ export class ModeController implements ModeControllerPort {
   private reportFast(enabled: boolean, active: boolean): void {
     this.reportedFast = { enabled, active };
     this.fast = this.fastFromValues(enabled, active, "known");
+  }
+
+  /** Slow mode as omp's get_state reports it: not offered on this model, or on or off with its scope and stage. */
+  private reportSlow(state: GetStateResult): void {
+    this.reportedSlow = state;
+    const supported = state.slowModeSupported;
+    if (supported === undefined) {
+      this.slowSupported = null;
+      this.modeStates.slow = ModeState.parse({
+        mode: "slow",
+        state: "fallback",
+        scope: "session",
+        source: "omp-rpc",
+        capability: SLOW_CAPABILITY,
+        reason: "omp has not reported Slow mode yet.",
+      });
+      return;
+    }
+    this.slowSupported = supported;
+    if (!supported) {
+      this.modeStates.slow = ModeState.parse({
+        mode: "slow",
+        state: "unavailable",
+        scope: "session",
+        source: "omp-rpc",
+        reason: SLOW_UNSUPPORTED_TEXT,
+      });
+      return;
+    }
+    if (!isCapabilityUsable(this.capabilities, SLOW_CAPABILITY)) {
+      this.modeStates.slow = initialSlowState(this.capabilities, this.rpc);
+      return;
+    }
+    this.modeStates.slow = slowKnownState(
+      state.slowModeEnabled ?? false,
+      state.slowModeScope === "global" ? "settings" : "session",
+      state.usageLimit,
+    );
+  }
+
+  /** A failed read leaves Slow mode unavailable, in the app's words, with no claim about omp's value. */
+  private failSlowRead(message: string): void {
+    this.slowSupported = null;
+    this.reportedSlow = null;
+    const error = unavailableError("omp.cmd.get_state", message);
+    this.modeStates.slow = stateWithError("slow", "session", "omp-rpc", error);
   }
 
   /**

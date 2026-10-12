@@ -31,9 +31,7 @@ function appliedFor(request: ModeChangeRequest): ModeChangeResult {
 
 /** The typed outcome omp gives a change it did not make because the mode is not offered here. */
 function unsupportedFor(request: ModeChangeRequest): ModeChangeResult {
-  return request.mode === "slow"
-    ? { outcome: "unsupported", mode: "slow", reason: "model-has-no-slow-mode" }
-    : { outcome: "unsupported", mode: request.mode, reason: "not-offered" };
+  return { outcome: "unsupported", mode: request.mode, reason: "not-offered" };
 }
 
 /** The typed outcome omp gives a change it tried and did not make. */
@@ -56,10 +54,6 @@ describe("D7 mode change requests", () => {
     expect(modeChangeRequest({ mode: "extended-context", requested: false })).toEqual({
       mode: "extended-context",
       requested: false,
-    });
-    expect(modeChangeRequest({ mode: "slow", requested: true })).toEqual({
-      mode: "slow",
-      requested: true,
     });
   });
 
@@ -84,7 +78,8 @@ describe("ModeController", () => {
           return appliedFor(request);
         },
       },
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: false,
           fastModeActive: false,
@@ -114,7 +109,8 @@ describe("ModeController", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: true,
           fastModeActive: false,
@@ -170,18 +166,6 @@ describe("ModeController", () => {
     controller.dispose();
   });
 
-  test("a cancelled change is a typed cancelled result, and the mode keeps the value it had", async () => {
-    const controller = new ModeController({
-      threadId,
-      capabilities: capabilities(),
-      gateway: answering("cancelled"),
-    });
-    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
-    expect(result).toMatchObject({ ok: false, error: { code: "cancelled" } });
-    expect(controller.getSnapshot().modes.slow).toMatchObject({ state: "fallback" });
-    controller.dispose();
-  });
-
   test("an unknown reply is shown as omp wrote it, and the change is not claimed as applied", async () => {
     const controller = new ModeController({
       threadId,
@@ -204,64 +188,6 @@ describe("ModeController", () => {
     expect(computer).toMatchObject({ state: "requested", requested: true });
     expect(computer?.enabled).toBeUndefined();
     expect(computer?.active).toBeUndefined();
-    controller.dispose();
-  });
-
-  test("an applied change is recorded as omp's known value, with the choice it reports", async () => {
-    const controller = new ModeController({
-      threadId,
-      capabilities: capabilities(),
-      gateway: answering("applied"),
-    });
-    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
-    expect(result).toMatchObject({ ok: true, state: "known" });
-    expect(controller.getSnapshot().modes.slow).toMatchObject({
-      state: "known",
-      enabled: true,
-      requested: true,
-    });
-    controller.dispose();
-  });
-
-  test("an unsupported change is not applied: the mode goes back to the value omp last left it at, and the reason is said", async () => {
-    const controller = new ModeController({
-      threadId,
-      capabilities: capabilities(),
-      gateway: answering("applied", "unsupported"),
-    });
-    await controller.request({ mode: "slow", scope: "session", requested: true });
-
-    const result = await controller.request({ mode: "slow", scope: "session", requested: false });
-    expect(result).toMatchObject({
-      ok: false,
-      state: "unavailable",
-      error: {
-        code: "unavailable",
-        message: "Slow mode is not available for this model.",
-        retryable: false,
-      },
-    });
-    expect(controller.getSnapshot().modes.slow).toMatchObject({
-      state: "known",
-      enabled: true,
-      requested: true,
-    });
-    controller.dispose();
-  });
-
-  test("an unsupported change before omp reported anything leaves neither choice set", async () => {
-    const controller = new ModeController({
-      threadId,
-      capabilities: capabilities(),
-      gateway: answering("unsupported"),
-    });
-    const result = await controller.request({ mode: "slow", scope: "session", requested: true });
-    expect(result).toMatchObject({
-      ok: false,
-      error: { message: "Slow mode is not available for this model." },
-    });
-    expect(controller.getSnapshot().modes.slow?.requested).toBeUndefined();
-    expect(controller.getSnapshot().modes.slow?.state).toBe("fallback");
     controller.dispose();
   });
 
@@ -317,7 +243,8 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: false,
           fastModeActive: false,
@@ -345,7 +272,7 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
         getState: async () => ({
           fastModeEnabled: false,
           fastModeActive: false,
@@ -357,6 +284,9 @@ describe("a mode omp does not report", () => {
             message: "Fast mode is unavailable for the current model.",
             retryable: false,
           });
+        },
+        setSlowMode: async () => {
+          throw new Error("This test does not change Slow mode.");
         },
       },
       onFastRefused: () => {
@@ -374,7 +304,8 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: () => Promise.withResolvers<never>().promise,
         setFastMode: async () => {
           throw new Error("omp did not answer the Fast mode change.");
@@ -394,7 +325,8 @@ describe("a mode omp does not report", () => {
     const controller = new ModeController({
       threadId,
       capabilities: capabilities(),
-      fastRpc: {
+      rpc: {
+        setSlowMode: async ({ enabled }) => ({ enabled }),
         getState: async () => ({
           fastModeEnabled: false,
           fastModeActive: false,
@@ -475,13 +407,6 @@ const MODE_CHANGES: readonly ModeChange[] = [
     change: (controller, on) =>
       controller.request({ mode: "extended-context", scope: "session", requested: on }),
     chosen: (controller) => controller.getSnapshot().modes["extended-context"]?.requested,
-    applied: "known",
-  },
-  {
-    mode: "slow",
-    change: (controller, on) =>
-      controller.request({ mode: "slow", scope: "session", requested: on }),
-    chosen: (controller) => controller.getSnapshot().modes.slow?.requested,
     applied: "known",
   },
   {

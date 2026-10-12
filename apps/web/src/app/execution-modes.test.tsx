@@ -32,6 +32,7 @@ const AVAILABLE: CapabilityMap = {
   "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
   "omp.cmd.get_state": CapabilityStatus.parse({ state: "available", via: "rpc" }),
   "omp.cmd.set_fast_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
+  "omp.cmd.set_slow_mode": CapabilityStatus.parse({ state: "available", via: "rpc" }),
 };
 
 /** A client whose command gateway completes every command and whose session answers get_state. */
@@ -49,8 +50,31 @@ function fakeClient(): { readonly client: AppClient; readonly commands: string[]
         : { outcome: "applied", mode: request.mode, on: request.requested };
     },
   };
+  // Slow mode is kept per chat: a change made in one chat does not show in another.
+  const slowOn = new Map<string, boolean>();
   const rpc = {
-    send: async () => ({ sessionId: "session", fastModeEnabled: false, fastModeActive: false }),
+    send: async ({
+      threadId,
+      command,
+    }: {
+      readonly threadId: string;
+      readonly command: { readonly type: string; readonly enabled?: boolean };
+    }) => {
+      if (command.type === "set_slow_mode") {
+        const enabled = command.enabled === true;
+        slowOn.set(threadId, enabled);
+        commands.push(`set_slow_mode ${enabled ? "on" : "off"}`);
+        return { enabled };
+      }
+      return {
+        sessionId: threadId,
+        fastModeEnabled: false,
+        fastModeActive: false,
+        slowModeSupported: true,
+        slowModeEnabled: slowOn.get(threadId) ?? false,
+        slowModeScope: "session",
+      };
+    },
   };
   const client = {
     port: (port: unknown) => (port === OmpCommandGateway ? gateway : rpc),
@@ -153,7 +177,7 @@ describe("the execution-modes control in the composer toolbar", () => {
         "true",
       ),
     );
-    expect(commands).toEqual(["/slow on"]);
+    expect(commands).toEqual(["set_slow_mode on"]);
     await closeWithDone(dialog);
 
     const reopened = await openFromToolbar();
@@ -184,9 +208,9 @@ describe("the execution-modes control in the composer toolbar", () => {
     const { rerenderWith } = setup({
       capabilities: {
         ...AVAILABLE,
-        "host.command-gateway": CapabilityStatus.parse({
+        "omp.cmd.set_slow_mode": CapabilityStatus.parse({
           state: "unavailable",
-          via: "host",
+          via: "rpc",
           detail: "The command service is offline.",
         }),
       },

@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import type { Surface } from "@/layout";
 import {
   ConnectedModeControls,
-  createFastModeRpc,
   createModeCommandGateway,
   createModeController,
+  createModeRpc,
   D7_EXECUTION_MODES_COMMAND,
   type ModeController,
 } from "@/modules/D7/modes";
@@ -107,7 +107,7 @@ export function useExecutionModesSurface({
         threadId,
         capabilities: capabilitiesRef.current,
         gateway: createModeCommandGateway(client),
-        fastRpc: createFastModeRpc(client, threadId),
+        rpc: createModeRpc(client, threadId),
         onFastRefused: () => onFastRefusedRef.current?.(),
       }),
     [client, threadId],

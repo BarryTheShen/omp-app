@@ -30,6 +30,21 @@ export type ModeScope = z.infer<typeof ModeScope>;
 export const ModeSource = z.enum(["omp-rpc", "omp-command", "config", "client", "upstream"]);
 export type ModeSource = z.infer<typeof ModeSource>;
 
+/** omp's usage-limit stage for the active model's account, as get_state reports it. Reset times are epoch seconds. */
+export const UsageLimitStage = z.discriminatedUnion("stage", [
+  z.strictObject({
+    stage: z.literal("low_priority"),
+    resetsAtSec: z.number().nonnegative(),
+    allowanceLeftPercent: z.number().min(0).max(100).optional(),
+  }),
+  z.strictObject({
+    stage: z.literal("wrap_up"),
+    extraUsage: z.boolean(),
+    resetsAtSec: z.number().nonnegative().optional(),
+  }),
+]);
+export type UsageLimitStage = z.infer<typeof UsageLimitStage>;
+
 export const ModeState = z
   .strictObject({
     mode: ExecutionMode,
@@ -42,6 +57,7 @@ export const ModeState = z
     capability: CapabilityKey.optional(),
     reason: z.string().min(1).optional(),
     error: AppError.optional(),
+    usageLimit: UsageLimitStage.optional(),
   })
   .superRefine((value, context) => {
     if (value.state === "unavailable" && value.reason === undefined && value.error === undefined) {
@@ -131,7 +147,7 @@ export const MODE_CAPABILITY_REQUIREMENTS: Readonly<
   prewalk: ["host.command-gateway"],
   shake: ["host.command-gateway"],
   skillful: ["host.command-gateway"],
-  slow: ["host.command-gateway"],
+  slow: ["omp.cmd.set_slow_mode", "omp.cmd.get_state"],
   vision: ["host.command-gateway"],
 };
 
@@ -156,13 +172,14 @@ export const D7_CAPABILITIES = [
   "omp.cmd.get_state",
   "omp.cmd.prompt",
   "omp.cmd.set_fast_mode",
+  "omp.cmd.set_slow_mode",
   D7_AP6_CAPABILITY,
 ] as const satisfies readonly CapabilityKey[];
 export type D7Capability = (typeof D7_CAPABILITIES)[number];
 export const D7CapabilityStatus = z.partialRecord(z.enum(D7_CAPABILITIES), CapabilityStatus);
 export type D7CapabilityStatus = z.infer<typeof D7CapabilityStatus>;
 
-export type D7StateRpcCommand = "get_state" | "set_fast_mode";
+export type D7StateRpcCommand = "get_state" | "set_fast_mode" | "set_slow_mode";
 export type D7StateRpcResults = Pick<OmpCommandMap, D7StateRpcCommand>;
 export type GetStateResult = OmpCommandMap["get_state"]["result"];
 export type SetFastModeResult = OmpCommandMap["set_fast_mode"]["result"];
