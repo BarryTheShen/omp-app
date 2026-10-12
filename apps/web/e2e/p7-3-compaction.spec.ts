@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 
@@ -10,16 +10,23 @@ const SCREENSHOT_ROOT = join(APP_ROOT, "../../.data/screenshots");
 const playground = "/p7-3-compaction-playground.html";
 
 function buildPlayground(): void {
+  // The build writes the script and the stylesheet that the markdown module imports: two outputs, which `--outfile`
+  // refuses. The script is copied out; the page links the app's own stylesheet only.
+  const folder = join(DIST_ROOT, "p7-3-compaction-playground-build");
   execFileSync(
     "bun",
     [
       "build",
       "src/modules/P7/compaction/playground-entry.tsx",
-      "--outfile",
-      "dist/p7-3-compaction-playground.js",
+      "--outdir",
+      folder,
       "--target=browser",
     ],
     { cwd: APP_ROOT, stdio: "inherit" },
+  );
+  copyFileSync(
+    join(folder, "playground-entry.js"),
+    join(DIST_ROOT, "p7-3-compaction-playground.js"),
   );
   const css = readdirSync(join(DIST_ROOT, "assets")).find(
     (file) => file.startsWith("index-") && file.endsWith(".css"),
