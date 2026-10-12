@@ -80,17 +80,17 @@ describe("sidebar controls", () => {
     const panels = screen.getByRole("complementary", { name: "Panels" });
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
-    expect(sessions.hasAttribute("hidden")).toBe(true);
+    expect(sessions.hasAttribute("inert")).toBe(true);
     expect(screen.getByRole("button", { name: "Show sessions sidebar" })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
-    expect(panels.hasAttribute("hidden")).toBe(true);
+    expect(panels.hasAttribute("inert")).toBe(true);
     expect(screen.getByRole("button", { name: "Show panels sidebar" })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
     fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
-    expect(sessions.hasAttribute("hidden")).toBe(false);
-    expect(panels.hasAttribute("hidden")).toBe(false);
+    expect(sessions.hasAttribute("inert")).toBe(false);
+    expect(panels.hasAttribute("inert")).toBe(false);
   });
 
   test("an open side panel has one control that closes it, and a closed one has one control that opens it", () => {
@@ -128,7 +128,7 @@ describe("sidebar controls", () => {
       key: "b",
       ctrlKey: true,
     });
-    expect(sessions.hasAttribute("hidden")).toBe(false);
+    expect(sessions.hasAttribute("inert")).toBe(false);
   });
 });
 
@@ -194,20 +194,20 @@ describe("narrow layout", () => {
     render(<AppShell />);
     expect(document.querySelector('[data-shell-layout="narrow"]')).toBeTruthy();
     expect(screen.queryByRole("separator", { name: "Resize sessions sidebar" })).toBeNull();
-    expect(document.getElementById("shell-sessions-sidebar")?.hasAttribute("hidden")).toBe(true);
-    expect(document.getElementById("shell-panels-sidebar")?.hasAttribute("hidden")).toBe(true);
+    expect(document.getElementById("shell-sessions-sidebar")?.hasAttribute("inert")).toBe(true);
+    expect(document.getElementById("shell-panels-sidebar")?.hasAttribute("inert")).toBe(true);
     expect(document.querySelector('[data-shell-drawer-backdrop="true"]')).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Show sessions sidebar" }));
     const backdrop = document.querySelector('[data-shell-drawer-backdrop="true"]');
     expect(backdrop).toBeTruthy();
-    expect(document.getElementById("shell-sessions-sidebar")?.hasAttribute("hidden")).toBe(false);
+    expect(document.getElementById("shell-sessions-sidebar")?.hasAttribute("inert")).toBe(false);
     fireEvent.click(backdrop as HTMLElement);
-    expect(document.getElementById("shell-sessions-sidebar")?.hasAttribute("hidden")).toBe(true);
+    expect(document.getElementById("shell-sessions-sidebar")?.hasAttribute("inert")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Show panels sidebar" }));
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(document.getElementById("shell-panels-sidebar")?.hasAttribute("hidden")).toBe(true);
+    expect(document.getElementById("shell-panels-sidebar")?.hasAttribute("inert")).toBe(true);
   });
 
   test("widening again brings back both sidebars the wide layout had open", () => {
@@ -234,18 +234,18 @@ describe("narrow layout", () => {
         for (const listener of listeners) listener();
       });
     };
-    const hidden = (id: string) => document.getElementById(id)?.hasAttribute("hidden");
+    const closed = (id: string) => document.getElementById(id)?.hasAttribute("inert");
 
     render(<AppShell />);
-    expect(hidden("shell-sessions-sidebar")).toBe(false);
-    expect(hidden("shell-panels-sidebar")).toBe(false);
+    expect(closed("shell-sessions-sidebar")).toBe(false);
+    expect(closed("shell-panels-sidebar")).toBe(false);
 
     setNarrow(true);
-    expect(hidden("shell-sessions-sidebar")).toBe(true);
-    expect(hidden("shell-panels-sidebar")).toBe(true);
+    expect(closed("shell-sessions-sidebar")).toBe(true);
+    expect(closed("shell-panels-sidebar")).toBe(true);
 
     setNarrow(false);
-    expect(hidden("shell-sessions-sidebar")).toBe(false);
-    expect(hidden("shell-panels-sidebar")).toBe(false);
+    expect(closed("shell-sessions-sidebar")).toBe(false);
+    expect(closed("shell-panels-sidebar")).toBe(false);
   });
 });

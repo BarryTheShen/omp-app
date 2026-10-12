@@ -273,7 +273,7 @@ export function AppShell({
   };
 
   const sidebarTrack = (width: number, open: boolean) =>
-    open ? `minmax(0, min(${width}rem, ${MAX_SIDEBAR_VIEWPORT}))` : "0";
+    open ? `minmax(0, min(${width}rem, ${MAX_SIDEBAR_VIEWPORT}))` : "minmax(0, 0px)";
   const columns = isNarrow
     ? "minmax(0, 1fr)"
     : `${sidebarTrack(preferences.leftSidebarWidth, leftOpen)} minmax(0, 1fr) ${sidebarTrack(preferences.rightSidebarWidth, rightOpen)}`;
@@ -286,7 +286,7 @@ export function AppShell({
 
   return (
     <div
-      className="relative grid h-dvh min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-background text-foreground"
+      className="relative grid h-dvh min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-background text-foreground transition-[grid-template-columns] duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none"
       data-shell-layout={isNarrow ? "narrow" : "wide"}
       style={{ gridTemplateColumns: columns }}
     >
@@ -306,13 +306,13 @@ export function AppShell({
         aria-hidden={!leftShown}
         aria-label="Sessions"
         className={cn(
-          "relative row-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar transition-[width,opacity] duration-200 motion-reduce:transition-none",
+          "relative row-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar transition-[width,opacity,visibility] duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none",
           isNarrow && "absolute inset-y-0 start-0 h-full shadow-overlay",
-          !leftShown && "pointer-events-none opacity-0",
+          !leftShown && "pointer-events-none invisible opacity-0",
         )}
         data-open={leftShown}
         data-shell-sidebar="left"
-        hidden={!leftShown}
+        inert={!leftShown}
         id="shell-sessions-sidebar"
         style={{
           width: sidebarWidth("left", leftShown),
@@ -379,13 +379,13 @@ export function AppShell({
         aria-hidden={!rightShown}
         aria-label="Panels"
         className={cn(
-          "relative row-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden border-s border-sidebar-border bg-sidebar transition-[width,opacity] duration-200 motion-reduce:transition-none",
+          "relative row-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden border-s border-sidebar-border bg-sidebar transition-[width,opacity,visibility] duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none",
           isNarrow && "absolute inset-y-0 end-0 h-full shadow-overlay",
-          !rightShown && "pointer-events-none opacity-0",
+          !rightShown && "pointer-events-none invisible opacity-0",
         )}
         data-open={rightShown}
         data-shell-sidebar="right"
-        hidden={!rightShown}
+        inert={!rightShown}
         id="shell-panels-sidebar"
         style={{
           gridColumn: isNarrow ? undefined : "3",
