@@ -80,6 +80,14 @@ export interface A0PortContext {
     signal: AbortSignalLike,
   ) => Promise<ThreadBootstrap | undefined>;
   /**
+   * The chat omp's `--continue` opens in a folder, found before omp starts: omp says which chat it opened only once it
+   * runs. Undefined when the folder has no chat to continue.
+   */
+  readonly latestThread: (
+    folderPath: FolderPath,
+    signal: AbortSignalLike,
+  ) => Promise<{ readonly threadId: ThreadId; readonly sessionFile: SessionFilePath } | undefined>;
+  /**
    * Whether another omp is writing a chat (omp's lease on the chat's file). A rename of a chat nobody
    * has open goes ahead only on "none": omp writes a chat to a copy when another process holds its file.
    */
@@ -240,6 +248,19 @@ function readSettled(value: unknown): boolean {
     typeof value.queuedMessageCount === "number" &&
     value.queuedMessageCount > 0;
   return !streaming && !compacting && !asyncWork && !queued;
+}
+
+/**
+ * The refusal of a chat that another tab or window holds open. A person is told so in plain words, not in the
+ * registry's own text.
+ */
+function chatOpenElsewhere(cause?: unknown): AppFailure {
+  const appError = {
+    code: "conflict" as const,
+    message: "This chat is open in another tab or window.",
+    retryable: false,
+  };
+  return cause === undefined ? new AppFailure(appError) : new AppFailure(appError, { cause });
 }
 
 /** A0's stateful bridge between the typed ports and one process/session per thread. */
@@ -900,6 +921,13 @@ export class RpcSessionPortRuntime {
       };
     }
     if (args.start === "new") return provisionalBootstrap(args.folderPath, []);
+    // omp's --continue opens the newest chat in the folder, but it says which one only once it runs, and by then it
+    // has begun to write it. So the chat is found first: a chat this server holds is refused here, and no omp starts.
+    const latest = await this.#context.latestThread(args.folderPath, call.signal);
+    if (latest !== undefined) {
+      await this.#context.processRegistry.whenGone(latest.threadId, "opened");
+      if (this.#context.processRegistry.has(latest.threadId)) throw chatOpenElsewhere();
+    }
     return provisionalBootstrap(args.folderPath, ["--continue"]);
   }
 
@@ -933,16 +961,8 @@ export class RpcSessionPortRuntime {
     try {
       this.#context.processRegistry.rekey(from, to);
     } catch (error) {
-      if (error instanceof AppFailure && error.appError.code === "conflict") {
-        throw new AppFailure(
-          {
-            code: "conflict",
-            message: "This chat is open in another tab or window.",
-            retryable: false,
-          },
-          { cause: error },
-        );
-      }
+      if (error instanceof AppFailure && error.appError.code === "conflict")
+        throw chatOpenElsewhere(error);
       throw error;
     }
   }

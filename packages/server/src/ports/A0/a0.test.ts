@@ -241,6 +241,7 @@ function context(
       args: ["--resume", authorityFile],
     }),
     externalOmp: async () => "none",
+    latestThread: async () => undefined,
     sessionFileExists: async () => true,
     serverInfo: {
       instanceId: "instance-a0-7",
@@ -561,6 +562,37 @@ describe("A0.7 RpcSessionPort handlers", () => {
       appError: { code: "conflict", message: "This chat is open in another tab or window." },
     });
     expect(runtimeContext.processRegistry.get(authorityThread)).toBe(created[0]);
+  });
+
+  test("a refused open of the newest chat starts no second omp, so nothing is written to the chat", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext: A0PortContext = {
+      ...context(created),
+      latestThread: async () => ({ threadId: authorityThread, sessionFile: authorityFile }),
+    };
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+
+    await expect(
+      getHandler(handlers, "open")({ folderPath: folder, start: "latest" }, call("two")),
+    ).rejects.toMatchObject({
+      appError: { code: "conflict", message: "This chat is open in another tab or window." },
+    });
+    expect(created).toHaveLength(1);
+    expect(runtimeContext.processRegistry.get(authorityThread)).toBe(created[0]);
+  });
+
+  test("a latest open whose newest chat nobody holds still starts omp with --continue", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext: A0PortContext = {
+      ...context(created),
+      latestThread: async () => ({ threadId: authorityThread, sessionFile: authorityFile }),
+    };
+    const handlers = handlersFor(runtimeContext, 0);
+
+    await getHandler(handlers, "open")({ folderPath: folder, start: "latest" }, call("one"));
+    expect(created).toHaveLength(1);
+    expect(created[0]?.args).toEqual(["--continue"]);
   });
 
   test("rejects a mismatched omp identity and releases the provisional process", async () => {

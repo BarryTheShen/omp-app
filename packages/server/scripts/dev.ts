@@ -5,7 +5,7 @@ import {
   CapabilityMap,
   FolderPath,
   SessionFilePath,
-  type ThreadId,
+  ThreadId,
 } from "@omp-app/contracts";
 import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
@@ -52,6 +52,7 @@ import { type A1PortContext, createA1PortRegistrations } from "../src/modules/A1
 import { createRuleStore } from "../src/modules/A1/rules";
 import { createSessionImportStore } from "../src/modules/A1/session-import";
 import { createServerSessionFileStore } from "../src/modules/A1/sessions";
+import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
@@ -233,12 +234,22 @@ export async function createCompositionServer(
       sessionFile: SessionFilePath.parse(file.sessionFile),
     };
   };
+  const latestThread: A0PortContext["latestThread"] = async (folderPath, _signal) => {
+    const listed = await sessionFileStore.listSessions({ folder: folderPath });
+    const newest = newestContinuableChat(listed.sessions);
+    if (newest === undefined) return undefined;
+    return {
+      threadId: ThreadId.parse(newest.id),
+      sessionFile: SessionFilePath.parse(newest.sessionFile),
+    };
+  };
   let launchToken = "";
   const fileWatch = options.fileWatch ?? new FileWatchRegistry();
   const a0Context: A0PortContext = {
     processRegistry,
     replay,
     resolveThread,
+    latestThread,
     externalOmp: (threadId, sessionFile, hostPid) =>
       findExternalOmp({
         sessionId: threadId,
