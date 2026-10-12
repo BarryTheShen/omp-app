@@ -73,12 +73,13 @@ describe("P7 usage popover", () => {
     expect(screen.getByText("17%")).toBeTruthy();
     expect(screen.getByText("$1.25")).toBeTruthy();
     expect(screen.queryByText(/usage-test/)).toBeNull();
-    expect(await screen.findByText(/5 Hour: 41% used, resets/)).toBeTruthy();
-    expect(
-      screen.getByText(
-        /7 Day: 72% used, omp did not say when it resets \(the fullest of 2 accounts\)/,
-      ),
-    ).toBeTruthy();
+    const fiveHour = await screen.findByRole("progressbar", { name: "anthropic, 5 hour limit" });
+    expect(fiveHour.getAttribute("aria-valuenow")).toBe("41");
+    expect(fiveHour.getAttribute("aria-valuetext")).toMatch(/^41% used, resets (in .+|now)$/);
+    const sevenDay = screen.getByRole("progressbar", { name: "anthropic, 7 day limit" });
+    expect(sevenDay.getAttribute("aria-valuenow")).toBe("72");
+    expect(sevenDay.getAttribute("aria-valuetext")).toBe("72% used, reset time unknown");
+    expect(screen.getByText(/\(the fullest of 2 accounts\)/)).toBeTruthy();
   });
 
   test("says why omp's limits cannot be read, in omp's own plain reason", async () => {

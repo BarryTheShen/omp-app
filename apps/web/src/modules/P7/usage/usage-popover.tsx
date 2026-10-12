@@ -3,6 +3,7 @@ import type { UsageLimitsResult } from "@omp-app/contracts";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import type { UsageLimitsSource, UsagePort, UsageTotals } from "../contract";
+import { LimitBar } from "./limit-bar";
 
 function useUsageSnapshot(port: UsagePort) {
   const subscribe = useCallback(
@@ -31,18 +32,6 @@ function money(value: number): string {
 function cacheHitRate(totals: UsageTotals): number | null {
   const denominator = totals.cacheRead + totals.cacheWrite + totals.input;
   return denominator === 0 ? null : totals.cacheRead / denominator;
-}
-
-const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-const weekday = new Intl.DateTimeFormat(undefined, { weekday: "long" });
-
-/** When a window resets, in plain words: "at 4:30 PM" on the same day, "on Tuesday at 4:30 PM" otherwise. */
-function resetWords(resetsAt: string | null, now: Date): string {
-  if (resetsAt === null) return "omp did not say when it resets";
-  const at = new Date(resetsAt);
-  if (Number.isNaN(at.getTime())) return "omp did not say when it resets";
-  if (at.toDateString() === now.toDateString()) return `resets at ${clock.format(at)}`;
-  return `resets on ${weekday.format(at)} at ${clock.format(at)}`;
 }
 
 function UsageTotalsTable({
@@ -147,12 +136,10 @@ function ProviderLimitsSection({ limits }: { readonly limits: UsageLimitsSource 
           {result.providers.map((provider) => (
             <li key={provider.providerId}>
               <p className="font-medium">{provider.providerId}</p>
-              <ul className="mt-1 flex flex-col gap-1 text-muted-foreground">
+              <ul className="mt-2 flex flex-col gap-3">
                 {provider.windows.map((window) => (
                   <li key={window.label}>
-                    {window.label}: {Math.round(window.usedPercent)}% used,{" "}
-                    {resetWords(window.resetsAt, now)}
-                    {window.accounts > 1 ? ` (the fullest of ${window.accounts} accounts)` : ""}
+                    <LimitBar now={now} providerId={provider.providerId} window={window} />
                   </li>
                 ))}
               </ul>

@@ -77,7 +77,11 @@ test("shows context pressure, usage details and compaction controls", async ({ p
   await expect(page.getByTestId("p7-status-line")).toContainText("82k of 128k tokens");
   await expect(page.getByRole("button", { name: "Compact now" })).toBeVisible();
   await page.getByRole("button", { name: /Usage/ }).click();
-  await expect(page.getByText(/5 Hour: 41% used/)).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "anthropic, 5 hour limit" })).toHaveAttribute(
+    "aria-valuenow",
+    "41",
+  );
+  await expect(page.getByText("41% used")).toBeVisible();
   await assertStyled(page);
   await page.screenshot({
     path: "../../.data/screenshots/p7-2-context-usage-light.png",
@@ -90,7 +94,11 @@ test("shows context pressure, usage details and compaction controls", async ({ p
   await expect(dark.locator("html")).toHaveClass("dark");
   await expect(dark.getByText("82,000 / 128,000 tokens")).toBeVisible();
   await dark.getByRole("button", { name: /Usage/ }).click();
-  await expect(dark.getByText(/5 Hour: 41% used/)).toBeVisible();
+  await expect(dark.getByRole("progressbar", { name: "anthropic, 5 hour limit" })).toHaveAttribute(
+    "aria-valuenow",
+    "41",
+  );
+  await expect(dark.getByText("41% used")).toBeVisible();
   await assertStyled(dark);
   await dark.screenshot({
     path: "../../.data/screenshots/p7-2-context-usage-dark.png",
