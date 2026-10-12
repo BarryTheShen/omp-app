@@ -349,8 +349,8 @@ const URL_CREDENTIAL_DELIMITER = /[?#@]/;
  * `;token=`, `token@host`). Parent entries (`dev`, `dev.autoqaPush`) carry the setting in their values, so they are
  * hidden with it, and so are the parts of a setting that is a map. A token in the path of a plain URL, one with no
  * query, fragment or userinfo, stays visible: a plain URL must stay visible, so the rule cannot tell them apart. The
- * token belongs in PI_AUTO_QA_PUSH_TOKEN. Only reads use this rule: the write check does not, so a plain value can
- * still replace a hidden one.
+ * token belongs in PI_AUTO_QA_PUSH_TOKEN. The write check also takes a secret set or unset of a hidden URL, so its
+ * Replace and Clear work; a plain value still replaces one.
  */
 function hidesUrlSetting(key: string, value: JsonValue): boolean {
   if (value === null) return false;
@@ -499,9 +499,13 @@ export class ConfigStoreService {
 
     const document = currentTarget.selected.document;
     const key = args.key;
-    // The same rule as reads: a setting the UI was shown as secret can only be set or unset.
-    const secret = this.isSecretEntry(key, this.resolveSetting(key, current)?.value);
-    if (secret !== args.value.secret) {
+    // The same rule as reads: a setting the UI was shown as secret can only be set or unset. A URL that reads hides
+    // (a credential in its query, fragment or userinfo) also takes a secret set or unset, so its Replace and Clear
+    // work; a plain value still replaces it.
+    const resolved = this.resolveSetting(key, current)?.value;
+    const secret = this.isSecretEntry(key, resolved);
+    const hiddenUrl = !secret && resolved !== undefined && hidesUrlSetting(key, resolved);
+    if (secret !== args.value.secret && !(hiddenUrl && args.value.secret)) {
       throw failure(
         "invalid_args",
         secret
@@ -532,7 +536,8 @@ export class ConfigStoreService {
 
     const after = await this.readScope(folder);
     await this.refreshWatchState(currentWriteSnapshot.path);
-    const entry = this.entryForKey(key, after, secret);
+    // A hidden value that is removed reads back as an unset secret, as a removed secret does.
+    const entry = this.entryForKey(key, after, secret || hiddenUrl);
     return {
       key,
       layer: args.layer,

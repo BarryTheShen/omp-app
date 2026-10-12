@@ -396,6 +396,81 @@ describe("omp environment values in the ConfigStore", () => {
     store.dispose();
   });
 
+  test("a secret set or unset replaces or clears a saved URL hidden by its query, and nothing else", async () => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    const hiddenUrl = `dev:\n  autoqaPush:\n    endpoint: https://qa.example.test/v1?token=${TOKEN}\n`;
+    await writeText(join(agent, "config.yml"), hiddenUrl);
+    const store = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+    expect(await store.read({ key: "dev.autoqaPush.endpoint", folder: null })).toMatchObject({
+      secret: true,
+      isSet: true,
+      source: "global",
+    });
+
+    // Replace: the new address is written as the secret set sent, and the result never echoes it.
+    const replaced = await store.write({
+      key: "dev.autoqaPush.endpoint",
+      layer: "global",
+      folder: null,
+      expectedRevision: (await store.list({ folder: null })).revision,
+      value: { secret: true, action: "set", value: "https://qa.example.test/v2" },
+    });
+    expect(JSON.stringify(replaced)).not.toContain(TOKEN);
+    expect(await readFile(join(agent, "config.yml"), "utf8")).toContain("qa.example.test/v2");
+    expect(await store.read({ key: "dev.autoqaPush.endpoint", folder: null })).toMatchObject({
+      secret: false,
+      value: "https://qa.example.test/v2",
+    });
+
+    // Clear: a hidden saved URL is removed from the file, and the write reports it as an unset secret.
+    await writeText(join(agent, "config.yml"), hiddenUrl);
+    const cleared = await store.write({
+      key: "dev.autoqaPush.endpoint",
+      layer: "global",
+      folder: null,
+      expectedRevision: (await store.list({ folder: null })).revision,
+      value: { secret: true, action: "unset" },
+    });
+    expect(cleared.entry).toMatchObject({
+      key: "dev.autoqaPush.endpoint",
+      secret: true,
+      isSet: false,
+    });
+    expect(await readFile(join(agent, "config.yml"), "utf8")).not.toContain("qa.example.test");
+    store.dispose();
+  });
+
+  test("a plain URL with no credential takes neither a secret set nor a secret unset", async () => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    await writeText(
+      join(agent, "config.yml"),
+      "dev:\n  autoqaPush:\n    endpoint: https://qa.example.test/v1\n",
+    );
+    const store = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+    const revision = (await store.list({ folder: null })).revision;
+    await expect(
+      store.write({
+        key: "dev.autoqaPush.endpoint",
+        layer: "global",
+        folder: null,
+        expectedRevision: revision,
+        value: { secret: true, action: "set", value: "https://qa.example.test/v2" },
+      }),
+    ).rejects.toThrow("not credential-shaped");
+    await expect(
+      store.write({
+        key: "dev.autoqaPush.endpoint",
+        layer: "global",
+        folder: null,
+        expectedRevision: revision,
+        value: { secret: true, action: "unset" },
+      }),
+    ).rejects.toThrow("not credential-shaped");
+    store.dispose();
+  });
+
   test("beats project, global and default values, and reports the environment as the source", async () => {
     const root = await temporaryRoot();
     const agent = join(root, "agent");

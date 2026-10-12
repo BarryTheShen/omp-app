@@ -267,18 +267,34 @@ export function stage(
   };
 }
 
+/**
+ * A value the server hides (a credential in its URL) reads as secret on a plain control, so its Replace and Clear
+ * send a secret edit. A new address is checked as the plain control checks text, and a clear always passes.
+ */
 export function validate(
   control: SettingControl,
   value: SettingValue,
   snapshot: ConfigSnapshot,
 ): ValidationResult {
-  if (control.secret !== value.secret) {
-    return {
-      valid: false,
-      code: "secret-kind",
-      message: "The control value kind does not match the setting.",
-    };
+  if (control.secret === value.secret) return checkValue(control, value, snapshot);
+  const hidden = snapshot.entries.some((entry) => entry.key === control.key && entry.secret);
+  if (value.secret && !control.secret && hidden) {
+    return value.action === "unset"
+      ? { valid: true }
+      : checkValue(control, { secret: false, value: value.value }, snapshot);
   }
+  return {
+    valid: false,
+    code: "secret-kind",
+    message: "The control value kind does not match the setting.",
+  };
+}
+
+function checkValue(
+  control: SettingControl,
+  value: SettingValue,
+  snapshot: ConfigSnapshot,
+): ValidationResult {
   try {
     const result = control.validate(value, snapshot);
     return result.valid ? result : { ...result, message: result.message || "Invalid value" };

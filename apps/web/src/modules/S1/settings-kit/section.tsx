@@ -1,5 +1,5 @@
 import type { ConfigEntry } from "@omp-app/contracts";
-import { type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { InlineError, Section, SettingRow, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   secretSummary,
   settingSourceLabel,
   stage,
+  validate,
 } from "./grammar";
 import { isStructuredControl, ReadOnlyValue, StructuredEditor } from "./structured";
 
@@ -95,6 +96,7 @@ export function SettingsSection({
             key={control.key}
             control={control}
             entry={effectiveEntry(snapshot, control.key)}
+            snapshot={snapshot}
             value={staged.edits[control.key]}
             validation={shown(control.key)}
             unsaved={unsavedKeys.includes(control.key)}
@@ -177,6 +179,7 @@ export function UnsavedSettingsNotice({
 type SettingControlRowProps = {
   readonly control: SettingControl;
   readonly entry?: ConfigEntry;
+  readonly snapshot: ConfigSnapshot;
   readonly value?: SettingValue;
   readonly validation?: ValidationResult;
   readonly disabled: boolean;
@@ -190,6 +193,7 @@ type SettingControlRowProps = {
 function SettingControlRow({
   control,
   entry,
+  snapshot,
   value,
   validation,
   disabled,
@@ -270,9 +274,15 @@ function SettingControlRow({
           onValue={(next) => onStage({ secret: false, value: next })}
         />
       ) : hiddenValue !== undefined ? (
-        <p className="text-muted-foreground text-sm" data-testid={`${control.key}-hidden`}>
-          {hiddenValue}
-        </p>
+        <HiddenValue
+          control={control}
+          sentence={hiddenValue}
+          canChange={entry?.source !== "env"}
+          staged={value}
+          snapshot={snapshot}
+          disabled={disabled}
+          onStage={onStage}
+        />
       ) : (
         <ControlInput
           control={control}
@@ -288,6 +298,113 @@ function SettingControlRow({
         <InlineError message={validation.message} variant="message" />
       ) : null}
     </SettingRow>
+  );
+}
+
+/**
+ * A saved value the server hid, such as a URL whose query carries a credential. Replace takes a new address as a
+ * secret edit, so the typed text is not shown back, and Clear removes the saved one. A value set in the environment
+ * cannot be changed here, so it only reads as a sentence.
+ */
+function HiddenValue({
+  control,
+  sentence,
+  canChange,
+  staged,
+  snapshot,
+  disabled,
+  onStage,
+}: {
+  readonly control: SettingControl;
+  readonly sentence: string;
+  readonly canChange: boolean;
+  readonly staged: SettingValue | undefined;
+  readonly snapshot: ConfigSnapshot;
+  readonly disabled: boolean;
+  readonly onStage: (value: SettingValue) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | undefined>(undefined);
+  const pending =
+    staged?.secret !== true
+      ? undefined
+      : staged.action === "unset"
+        ? "Will be cleared when you save."
+        : "A new address is ready to save.";
+  const closeEditor = () => {
+    setEditing(false);
+    setDraft("");
+    setError(undefined);
+  };
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const checked = validate(control, { secret: false, value: draft }, snapshot);
+    if (!checked.valid) {
+      setError(checked.message);
+      return;
+    }
+    closeEditor();
+    onStage({ secret: true, action: "set", value: draft });
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-muted-foreground text-sm" data-testid={`${control.key}-hidden`}>
+        {sentence}
+      </p>
+      {pending ? <p className="text-foreground text-sm">{pending}</p> : null}
+      {canChange && editing ? (
+        <form className="flex flex-col gap-2" onSubmit={submit}>
+          <Input
+            type="password"
+            autoComplete="off"
+            aria-label={`New ${control.label}`}
+            value={draft}
+            disabled={disabled}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setError(undefined);
+            }}
+          />
+          {error ? <InlineError message={error} variant="message" /> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" disabled={disabled}>
+              Save
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={closeEditor}
+              disabled={disabled}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : canChange ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setEditing(true)}
+            disabled={disabled}
+          >
+            Replace…
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onStage({ secret: true, action: "unset" })}
+            disabled={disabled}
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
