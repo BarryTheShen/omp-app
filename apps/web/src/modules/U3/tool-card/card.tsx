@@ -200,13 +200,20 @@ export function ToolCard({
         >
           {status.label}
         </span>
-        {open ? (
-          <Icons.chevronUp aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <Icons.chevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        )}
+        <Icons.chevronDown
+          aria-hidden="true"
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none",
+            open && "rotate-180",
+          )}
+        />
       </CollapsibleTrigger>
-      <CollapsibleContent id={contentId} data-slot="u3-tool-card-content" ref={contentRef}>
+      <CollapsibleContent
+        className="-mx-1 h-(--collapsible-panel-height) overflow-hidden px-1 transition-[height] duration-(--duration-base) ease-(--ease-standard) data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none"
+        id={contentId}
+        data-slot="u3-tool-card-content"
+        ref={contentRef}
+      >
         <div className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4">
           {state.error !== undefined && (
             <div
