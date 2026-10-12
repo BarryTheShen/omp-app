@@ -114,4 +114,23 @@ describe("TodoChecklist", () => {
     expect(screen.getAllByRole("heading", { name: "Todo checklist" })).toHaveLength(1);
     expect(screen.getByTestId("todo-progress").textContent).toBe("2 of 5 done");
   });
+
+  test("inside the todo panel one region is named Todo checklist: the panel's own", () => {
+    render(
+      <PanelShell
+        body={<TodoChecklist model={model()} />}
+        state={{
+          open: true,
+          lifecycle: "populated",
+          position: "right",
+          title: "Todo checklist",
+          error: null,
+          readOnly: true,
+          pendingUpdates: 0,
+        }}
+        onOpenChange={() => undefined}
+      />,
+    );
+    expect(screen.getAllByRole("region", { name: "Todo checklist" })).toHaveLength(1);
+  });
 });

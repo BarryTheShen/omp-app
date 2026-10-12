@@ -65,7 +65,6 @@ function phaseContentId(phase: TodoPhaseModel): string {
 export function TodoChecklist({ model, className }: TodoChecklistProps) {
   return (
     <section
-      aria-label="Todo checklist"
       className={cn("min-w-0", className)}
       data-testid="todo-checklist"
       data-todo-progress={`${model.progress.done} of ${model.progress.total} done`}
