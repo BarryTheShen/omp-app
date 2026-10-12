@@ -373,6 +373,92 @@ describe("U2.2 ComposerSurface", () => {
     expect(screen.queryByText(BLOCKED_REASON)).toBeNull();
   });
 
+  describe("a message that holds an image still loading", () => {
+    const LOADING = "The image is still loading, so the message is not sent yet.";
+
+    test("the normal send does nothing: Enter and Send keep the text and say why", () => {
+      const submitPrompt = vi.fn(async () => undefined);
+      render(
+        <RuntimeProvider running={false}>
+          <ComposerSurface
+            attachmentHoldReason={LOADING}
+            cancel={() => undefined}
+            submitPrompt={submitPrompt}
+          />
+        </RuntimeProvider>,
+      );
+      const input = screen.getByRole("textbox", { name: "Message input" });
+      fireEvent.change(input, { target: { value: "with a picture" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+      expect(submitPrompt).not.toHaveBeenCalled();
+      expect(input).toHaveProperty("value", "with a picture");
+      expect(screen.getByRole("button", { name: "Send message" }).hasAttribute("disabled")).toBe(
+        true,
+      );
+      expect(screen.getByText(LOADING)).toBeTruthy();
+    });
+
+    test("the queue send does nothing: Ctrl+Enter while a turn runs keeps the text and queues nothing", () => {
+      const submitPrompt = vi.fn(async () => undefined);
+      render(
+        <RuntimeProvider running>
+          <ComposerSurface
+            attachmentHoldReason={LOADING}
+            cancel={() => undefined}
+            submitPrompt={submitPrompt}
+          />
+        </RuntimeProvider>,
+      );
+      const input = screen.getByRole("textbox", { name: "Message input" });
+      fireEvent.change(input, { target: { value: "with a picture" } });
+      fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+
+      expect(submitPrompt).not.toHaveBeenCalled();
+      expect(input).toHaveProperty("value", "with a picture");
+      expect(screen.getByText(LOADING)).toBeTruthy();
+      // Enter does not steer while the message is held, so the steer hint is not offered either.
+      expect(screen.queryByText("Enter steers · Ctrl+Enter queues")).toBeNull();
+      // A picture that is loading does not hold back Stop: the turn can still be stopped.
+      expect(screen.getByRole("button", { name: "Stop generating" }).hasAttribute("disabled")).toBe(
+        false,
+      );
+    });
+
+    test("the held message is sent once its image is attached", async () => {
+      const submitPrompt = vi.fn(async () => undefined);
+      const { rerender } = render(
+        <RuntimeProvider running={false}>
+          <ComposerSurface
+            attachmentHoldReason={LOADING}
+            cancel={() => undefined}
+            submitPrompt={submitPrompt}
+          />
+        </RuntimeProvider>,
+      );
+      const input = screen.getByRole("textbox", { name: "Message input" });
+      fireEvent.change(input, { target: { value: "with a picture" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(submitPrompt).not.toHaveBeenCalled();
+
+      rerender(
+        <RuntimeProvider running={false}>
+          <ComposerSurface cancel={() => undefined} submitPrompt={submitPrompt} />
+        </RuntimeProvider>,
+      );
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() =>
+        expect(submitPrompt).toHaveBeenCalledWith({
+          mode: "prompt",
+          text: "with a picture",
+          delivery: "new",
+        }),
+      );
+      expect(screen.queryByText(LOADING)).toBeNull();
+    });
+  });
+
   test("while sending is blocked, Stop is disabled, Escape does not cancel, and no steer hint shows", () => {
     const cancel = vi.fn(async () => undefined);
     render(

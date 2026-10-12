@@ -290,6 +290,19 @@ export class AttachmentManager implements AttachmentAdapter {
   }
 }
 
+/**
+ * Why a message that holds an image is not sent yet: the image is still loading, or it could not be attached and the
+ * person removes it. Undefined once every image is attached, so the message goes out with all of them.
+ */
+export function attachmentHoldReason(state: AttachmentState): string | undefined {
+  if (state.pending.some((attachment) => attachment.status.type === "incomplete")) {
+    return "An image could not be attached. Remove it to send the message.";
+  }
+  if (state.pending.length > 0)
+    return "The image is still loading, so the message is not sent yet.";
+  return undefined;
+}
+
 export function classifyLargePaste(
   text: string,
   threshold = DEFAULT_LARGE_PASTE_LINE_THRESHOLD,

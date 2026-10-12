@@ -74,6 +74,18 @@ export const AttachmentChips: FC<AttachmentChipsProps> = ({ manager }) => {
               className="border-border bg-card shadow-xs flex min-w-0 items-center gap-(--space-xs) rounded-(--radius) border px-(--space-sm) py-(--space-2xs) opacity-70"
             >
               <span className="min-w-0 max-w-48 truncate text-xs">{attachment.name}</span>
+              {attachment.status.type === "incomplete" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Remove ${attachment.name}`}
+                  className="text-muted-foreground hover:text-foreground shrink-0 rounded-full"
+                  onClick={() => void manager.remove(attachment)}
+                >
+                  <XIcon aria-hidden="true" className="size-3" />
+                </Button>
+              )}
             </div>
           ))}
           {managerState.complete.map((attachment) => (

@@ -8,5 +8,10 @@ export type {
   LargePasteResult,
   StoredAttachment,
 } from "./attachments";
-export { AttachmentManager, applyLargePaste, classifyLargePaste } from "./attachments";
+export {
+  AttachmentManager,
+  applyLargePaste,
+  attachmentHoldReason,
+  classifyLargePaste,
+} from "./attachments";
 export { AttachmentChips } from "./chips";

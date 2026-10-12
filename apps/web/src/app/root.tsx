@@ -104,7 +104,7 @@ import {
 import { TranscriptShortcuts } from "@/modules/U1/shortcuts";
 import { ThreadShell, TurnCancelScope } from "@/modules/U1/thread";
 import { type ToolRendererResolver, ToolRendererResolverContext } from "@/modules/U1/tool-slots";
-import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
+import { AttachmentChips, AttachmentManager, attachmentHoldReason } from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import { ComposerSurface } from "@/modules/U2/composer";
 import type {
@@ -515,6 +515,7 @@ function DraftComposer({
       disabled={snapshot.status === "error"}
       replaced={editing}
       policy={policy}
+      attachmentHoldReason={attachmentHoldReason(attachmentState)}
       sendBlockedReason={sendBlockedReason}
       submitPrompt={submit}
       toolbar={toolbar}

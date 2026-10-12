@@ -50,6 +50,11 @@ export interface ComposerSurfaceProps {
    * the reason is shown, and the text stays in the composer.
    */
   readonly sendBlockedReason?: string;
+  /**
+   * Why a message that holds an image is not sent yet: the image is still loading, or it could not be attached. While
+   * set, Enter, Ctrl+Enter and Send do nothing and the text stays in the composer. Stop keeps working.
+   */
+  readonly attachmentHoldReason?: string;
   readonly showAttachmentNames?: boolean;
   readonly toolbar?: ReactNode;
   /** The app's capabilities: `submitModeInput` reads Python availability from them. Empty means none. */
@@ -158,6 +163,7 @@ export function ComposerSurface({
   inputLabel = "Message input",
   replaced = false,
   sendBlockedReason,
+  attachmentHoldReason,
   showAttachmentNames = true,
   toolbar,
   onDoubleLeftArrow,
@@ -177,15 +183,12 @@ export function ComposerSurface({
   const arrowGesture = useRef<ArrowGesture>(NO_ARROW_GESTURE);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const blockedId = useId();
+  // What holds a send back: the connection, or an image the message holds. Only the connection also holds Stop back.
+  const notSentReason = sendBlockedReason ?? attachmentHoldReason;
   useRemeasureOnWidthChange(inputRef);
   const submit = useCallback(
     async (keyChord: ComposerKeyChord, delivery?: PromptDelivery) => {
-      if (
-        disabled ||
-        sendBlockedReason !== undefined ||
-        isSubmitting ||
-        !hasContent(text, attachments)
-      )
+      if (disabled || notSentReason !== undefined || isSubmitting || !hasContent(text, attachments))
         return;
 
       // A `!` or `$` line is a command: it goes through U2's mode seam, never to the model as a prompt.
@@ -244,7 +247,7 @@ export function ComposerSurface({
       isStreaming,
       isSubmitting,
       policy,
-      sendBlockedReason,
+      notSentReason,
       submitPrompt,
       text,
     ],
@@ -348,7 +351,7 @@ export function ComposerSurface({
             ref={inputRef}
             aria-label={inputLabel}
             data-focus-scope="composer-input"
-            aria-describedby={sendBlockedReason === undefined ? undefined : blockedId}
+            aria-describedby={notSentReason === undefined ? undefined : blockedId}
             data-focus-ring="parent"
             autoFocus={autoFocus}
             cancelOnEscape={false}
@@ -384,7 +387,7 @@ export function ComposerSurface({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || notSentReason !== undefined}
                   onClick={() => void submit("enter", "followUp")}
                 >
                   Queue it for after
@@ -393,7 +396,7 @@ export function ComposerSurface({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || notSentReason !== undefined}
                   onClick={() => void submit("enter", "steer")}
                 >
                   Interrupt and send
@@ -402,13 +405,13 @@ export function ComposerSurface({
             )}
           </>
         )}
-        {sendBlockedReason !== undefined && (
+        {notSentReason !== undefined && (
           <p
             className="text-warning px-(--space-md) text-xs"
             data-composer-blocked="true"
             id={blockedId}
           >
-            {sendBlockedReason}
+            {notSentReason}
           </p>
         )}
         <div
@@ -430,7 +433,7 @@ export function ComposerSurface({
             }
           />
           {toolbar}
-          {isStreaming && sendBlockedReason === undefined && modeForText(text) === "prompt" && (
+          {isStreaming && notSentReason === undefined && modeForText(text) === "prompt" && (
             <p
               className="text-muted-foreground hidden min-w-0 flex-1 whitespace-nowrap text-xs @[38rem]:block"
               data-composer-steer-hint="true"
@@ -463,7 +466,7 @@ export function ComposerSurface({
                   disabled ||
                   isSubmitting ||
                   !hasContent(text, attachments) ||
-                  sendBlockedReason !== undefined
+                  notSentReason !== undefined
                 }
                 onClick={() => void submit("enter")}
                 className="size-7 rounded-full"
