@@ -35,7 +35,7 @@ async function measure(page: Page): Promise<Fit> {
         );
       }
     }
-    const list = dialog.querySelector('[role="listbox"]');
+    const list = dialog.querySelector('[data-testid="model-list"]');
     return {
       outside: outside.slice(0, 6),
       scrollsSideways: dialog.scrollWidth > dialog.clientWidth + 1,
@@ -51,16 +51,14 @@ realTest(
     const page = await realApp.open();
     await startChat(page);
     await mkdir(screenshots, { recursive: true });
-    const samples: { name: string; dialogHeight: number; listHeight: number }[] = [];
+    const samples: { name: string; width: number; dialogHeight: number; listHeight: number }[] = [];
     for (const window of WINDOWS) {
       await page.setViewportSize({ width: window.width, height: window.height });
       await page.getByRole("button", { name: /Change model or thinking/ }).click();
       const dialog = page.getByRole("dialog", { name: "Model and thinking" });
       await expect(dialog).toBeVisible();
       // The long-named model is in the list, so a too-wide row would show up in the measurement.
-      await expect(
-        dialog.getByRole("option", { name: /deliberately long display name/ }),
-      ).toBeVisible({
+      await expect(dialog.locator('[data-focus-key*="deliberately-long-identifier"]')).toBeVisible({
         timeout: 20_000,
       });
       await waitForFiniteAnimations(page);
@@ -81,6 +79,7 @@ realTest(
       expect(fit.listHeight).toBeGreaterThan(fit.dialog.height * 0.3);
       samples.push({
         name: window.name,
+        width: window.width,
         dialogHeight: fit.dialog.height,
         listHeight: fit.listHeight,
       });
@@ -90,8 +89,12 @@ realTest(
       await dialog.getByRole("button", { name: "Done" }).click();
       await expect(dialog).toHaveCount(0);
     }
-    // A taller dialog shows more of the list: sorted by dialog height, the list never shrinks.
-    const byHeight = [...samples].sort((a, b) => a.dialogHeight - b.dialogHeight);
+    // A taller dialog shows more of the list: sorted by dialog height, the list never shrinks. Narrow windows
+    // stack the provider chips above the list, so they take a row of their own; the check compares only the
+    // side-by-side layouts (the 640 px breakpoint).
+    const byHeight = samples
+      .filter((sample) => sample.width >= 640)
+      .sort((a, b) => a.dialogHeight - b.dialogHeight);
     for (let index = 1; index < byHeight.length; index += 1) {
       const smaller = byHeight[index - 1];
       const taller = byHeight[index];
@@ -110,7 +113,9 @@ realTest(
     await startChat(dark);
     await dark.getByRole("button", { name: /Change model or thinking/ }).click();
     const darkDialog = dark.getByRole("dialog", { name: "Model and thinking" });
-    await expect(darkDialog.getByRole("option").first()).toBeVisible({ timeout: 20_000 });
+    await expect(darkDialog.getByRole("button", { name: /context/ }).first()).toBeVisible({
+      timeout: 20_000,
+    });
     await waitForFiniteAnimations(dark);
     const darkFit = await measure(dark);
     expect(darkFit.outside, "dark: elements outside the dialog").toEqual([]);

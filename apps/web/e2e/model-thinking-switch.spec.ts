@@ -46,7 +46,7 @@ realTest(
     await expect(pill).toContainText("low", { timeout: 20_000 });
 
     // Model: the pick reaches omp and the header names it at once.
-    await dialog.getByRole("option", { name: /fake\/claude-fable-5 ·/ }).click();
+    await dialog.getByRole("button", { name: /fake\/claude-fable-5 ·/ }).click();
     await expect(dialog.getByText("Active: fake/claude-fable-5")).toBeVisible({ timeout: 20_000 });
     await expect(pill).toHaveAttribute(
       "aria-label",

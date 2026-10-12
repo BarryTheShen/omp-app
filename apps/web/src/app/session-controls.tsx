@@ -1,14 +1,16 @@
 import type { AppClient } from "@omp-app/client";
-import type { CapabilityMap, RpcSessionClient, ThreadId } from "@omp-app/contracts";
+import type { CapabilityMap, FolderPath, RpcSessionClient, ThreadId } from "@omp-app/contracts";
 import { RpcSessionPort } from "@omp-app/contracts";
 import { useMemo, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { ThinkingLevel } from "@/modules/D1/contract";
+import { ModelHubController, ModelHubPanel, openHubRoles } from "@/modules/D1/hub";
 import {
+  createConfigRecentModelsPort,
   createR0LiveModelState,
   createRpcModelCatalogSource,
   ModelCatalogModel,
-  ModelPicker,
+  RecentModels,
 } from "@/modules/D1/model";
 import {
   createRpcThinkingSource,
@@ -36,6 +38,8 @@ interface SessionControlProps {
   readonly store: OmpRuntimeStore;
   readonly threadId: ThreadId;
   readonly capabilities: CapabilityMap;
+  /** The workspace folder the chat runs in: its project's roles are the ones the dialog shows. */
+  readonly folder: FolderPath | null;
 }
 
 function useSessionInfo(store: OmpRuntimeStore): SessionInfoState {
@@ -67,14 +71,16 @@ export interface SessionModelDialogOptions {
   readonly store: OmpRuntimeStore;
   readonly threadId: ThreadId;
   readonly capabilities: CapabilityMap;
+  readonly folder: FolderPath | null;
   /** Where focus goes back when the dialog closes; omitted, the focused opener is used. */
   readonly restoreFocus?: HTMLElement;
 }
 
 /**
- * Opens D1's model and thinking dialog for the session. The header's model button, the palette's model
- * command and a refused-key notice all open it, so the list is built the same way for each. Its model list
- * and thinking state are made when the dialog opens and disposed when it closes.
+ * Opens the model and thinking dialog for the session: the model hub (Recent, the providers, the Roles
+ * view) and the thinking level. The header's model button, the palette's model command and a refused-key
+ * notice all open it, so the lists are built the same way for each. Its models, recents, roles and
+ * thinking state are made when the dialog opens and disposed when it closes.
  */
 export function openSessionModelDialog({
   overlay,
@@ -82,6 +88,7 @@ export function openSessionModelDialog({
   store,
   threadId,
   capabilities,
+  folder,
   restoreFocus,
 }: SessionModelDialogOptions): void {
   const catalog = new ModelCatalogModel({
@@ -92,6 +99,7 @@ export function openSessionModelDialog({
       subscribe: (listener) => store.subscribe(() => listener()),
     }),
   });
+  const recents = new RecentModels(createConfigRecentModelsPort(client));
   const thinking = new ThinkingLevelsController({
     source: createRpcThinkingSource(client, threadId),
     capabilities,
@@ -117,6 +125,17 @@ export function openSessionModelDialog({
         });
       });
   };
+  const hub = new ModelHubController({
+    catalog,
+    recents,
+    capabilities: () => capabilities,
+    onSessionChanged: refreshSession,
+    // The thinking controller loads the levels of the session's current model first, so the new model's levels are accepted.
+    setSessionThinking: async (level) => {
+      await thinking.refresh();
+      await thinking.apply({ level, scope: "session" });
+    },
+  });
   const opened = overlay.open({
     kind: "modal",
     label: "Model and thinking",
@@ -128,7 +147,7 @@ export function openSessionModelDialog({
       "h-[min(calc(100dvh-1rem),52rem)] w-[min(calc(100vw-1rem),48rem)] max-h-none max-w-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]",
     content: ({ close }) => (
       <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
-        <ModelPicker catalog={catalog} fill onApplied={refreshSession} scope="session" />
+        <ModelHubPanel controller={hub} />
         <ThinkingSelector controller={thinking} onApplied={refreshSession} />
         <Button className="self-end" onClick={() => close()} type="button" variant="outline">
           Done
@@ -137,21 +156,28 @@ export function openSessionModelDialog({
     ),
   });
   void opened.closed.then(() => {
-    catalog.dispose();
+    hub.dispose();
     thinking.dispose();
   });
   void catalog.refresh().catch(() => undefined);
+  void recents.read();
+  void openHubRoles(client, folder).then(
+    (roles) => hub.attachRoles(roles),
+    (error: unknown) =>
+      hub.failRoles(error instanceof Error ? error.message : "The roles could not be read."),
+  );
 }
 
 /**
- * The header's model button: names the session's model and thinking level and opens D1's model
- * picker and thinking selector for this session. The palette's model command opens the same dialog.
+ * The header's model button: names the session's model and thinking level and opens the model dialog for
+ * this session. The palette's model command opens the same dialog.
  */
 export function SessionModelControl({
   client,
   store,
   threadId,
   capabilities,
+  folder,
 }: SessionControlProps) {
   const overlay = useOverlayHost();
   const session = useSessionInfo(store);
@@ -164,7 +190,15 @@ export function SessionModelControl({
       ? thinkingLevelLabel(parsedLevel.data).toLowerCase()
       : null;
   const openDialog = (restoreFocus?: HTMLElement) =>
-    openSessionModelDialog({ overlay, client, store, threadId, capabilities, restoreFocus });
+    openSessionModelDialog({
+      overlay,
+      client,
+      store,
+      threadId,
+      capabilities,
+      folder,
+      restoreFocus,
+    });
   const open = () => openDialog();
   useModelPaletteCommand(openDialog);
   return (
@@ -187,7 +221,7 @@ export function SessionStatusBar({
   client,
   store,
   threadId,
-}: Omit<SessionControlProps, "capabilities">) {
+}: Omit<SessionControlProps, "capabilities" | "folder">) {
   const ports = useMemo(() => {
     const contextSource: SessionContextSource = {
       getSnapshot: () => projection(store, threadId),

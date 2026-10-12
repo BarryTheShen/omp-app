@@ -1,33 +1,15 @@
-import type { ConfigSource } from "@omp-app/contracts";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   SettingsSection,
   type SettingsSectionDescriptor,
   type StagedSettings,
-  settingSourceLabel,
 } from "@/modules/S1/settings-kit";
 import { type SettingsRuntime, useSettingsRuntime } from "../../S1/runtime";
-import type { ModelRef } from "../contract";
-export type ModelPresetController = {
-  readonly presets: readonly string[];
-  readonly save: (name: string) => Promise<void>;
-  readonly switch: (name: string) => Promise<void>;
-  readonly remove: (name: string) => Promise<void>;
-};
 
 export type ModelSettingsSectionProps = {
   readonly descriptor: SettingsSectionDescriptor;
   readonly runtime: SettingsRuntime;
-};
-
-export type ModelSettingsSurfaceProps = {
-  readonly sections: readonly ModelSettingsSectionProps[];
-  readonly sessionModel: ModelRef | null;
-  readonly defaultModel: ModelRef | null;
-  readonly defaultSource: ConfigSource;
-  readonly presets?: ModelPresetController;
 };
 
 function phaseLabel(
@@ -163,168 +145,4 @@ function applyStatusLabel(
     default:
       return "Applied";
   }
-}
-
-function modelLabel(model: ModelRef | null): string {
-  return model ? `${model.provider}/${model.modelId}` : "Not available";
-}
-
-export function ModelScopeSummary({
-  sessionModel,
-  defaultModel,
-  defaultSource,
-}: Pick<ModelSettingsSurfaceProps, "sessionModel" | "defaultModel" | "defaultSource">) {
-  return (
-    <section
-      aria-labelledby="model-scope-summary-title"
-      className="rounded-xl border border-border/70 bg-card p-5 text-card-foreground shadow-sm"
-    >
-      <h2 id="model-scope-summary-title" className="text-base font-semibold">
-        Model scope
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        The active session model and saved default are independent choices.
-      </p>
-      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-        <div className="rounded-lg border border-border/60 px-3 py-2">
-          <dt className="text-xs text-muted-foreground">This session</dt>
-          <dd data-testid="session-model" className="mt-1 font-medium">
-            {modelLabel(sessionModel)}
-          </dd>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Changes future prompts without writing the saved default.
-          </p>
-        </div>
-        <div className="rounded-lg border border-border/60 px-3 py-2">
-          <dt className="text-xs text-muted-foreground">Saved default</dt>
-          <dd data-testid="default-model" className="mt-1 font-medium">
-            {modelLabel(defaultModel)}
-          </dd>
-          <p data-testid="default-model-source" className="mt-1 text-xs text-muted-foreground">
-            Source: {settingSourceLabel(defaultSource)}
-          </p>
-        </div>
-      </dl>
-    </section>
-  );
-}
-
-export function ModelPresetControls({ presets }: { readonly presets: ModelPresetController }) {
-  const [name, setName] = useState("balanced");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const run = async (operation: () => Promise<void>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await operation();
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "The preset operation failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <section
-      aria-labelledby="model-presets-title"
-      className="rounded-xl border border-border/70 bg-card p-5 text-card-foreground shadow-sm"
-    >
-      <h2 id="model-presets-title" className="text-base font-semibold">
-        Saved presets
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Save a set of models for each role and switch between them.
-      </p>
-      <div className="mt-3 flex flex-wrap items-end gap-2">
-        <label htmlFor="model-preset-name" className="flex min-w-48 flex-1 flex-col gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Preset name</span>
-          <Input
-            id="model-preset-name"
-            value={name}
-            onChange={(event) => setName(event.currentTarget.value)}
-          />
-        </label>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => void run(() => presets.save(name))}
-        >
-          Save preset
-        </Button>
-      </div>
-      <section aria-label="Saved preset list" className="mt-3 flex flex-col gap-2">
-        {presets.presets.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No saved presets.</p>
-        ) : null}
-        {presets.presets.map((preset) => (
-          <div
-            key={preset}
-            className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-sm"
-          >
-            <span>{preset}</span>
-            <span className="flex gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => void run(() => presets.switch(preset))}
-              >
-                Switch
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => void run(() => presets.remove(preset))}
-              >
-                Delete
-              </Button>
-            </span>
-          </div>
-        ))}
-      </section>
-      {error ? (
-        <p role="alert" className="mt-2 text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-export function ModelSettingsSurface({
-  sections,
-  sessionModel,
-  defaultModel,
-  defaultSource,
-  presets,
-}: ModelSettingsSurfaceProps) {
-  const sectionList = useMemo(() => sections, [sections]);
-  return (
-    <main className="min-h-screen bg-background p-4 text-foreground sm:p-8">
-      <div className="mx-auto flex max-w-5xl flex-col gap-5">
-        <header>
-          <h1 className="text-xl font-semibold tracking-tight">Model settings</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Persisted model policy and the current session routing are shown separately.
-          </p>
-        </header>
-        <ModelScopeSummary
-          sessionModel={sessionModel}
-          defaultModel={defaultModel}
-          defaultSource={defaultSource}
-        />
-        {presets ? <ModelPresetControls presets={presets} /> : null}
-        <div className="grid gap-5 lg:grid-cols-2">
-          {sectionList.map(({ descriptor, runtime }) => (
-            <ModelSettingsSection key={descriptor.id} descriptor={descriptor} runtime={runtime} />
-          ))}
-        </div>
-      </div>
-    </main>
-  );
 }

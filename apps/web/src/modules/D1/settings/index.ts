@@ -7,14 +7,5 @@ export {
   modelThinkingSection,
   modelVisionSection,
 } from "./descriptors";
-export type {
-  ModelPresetController,
-  ModelSettingsSectionProps,
-  ModelSettingsSurfaceProps,
-} from "./model-settings";
-export {
-  ModelPresetControls,
-  ModelScopeSummary,
-  ModelSettingsSection,
-  ModelSettingsSurface,
-} from "./model-settings";
+export type { ModelSettingsSectionProps } from "./model-settings";
+export { ModelSettingsSection } from "./model-settings";

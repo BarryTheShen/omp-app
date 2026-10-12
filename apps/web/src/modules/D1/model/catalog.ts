@@ -23,20 +23,10 @@ import {
   type ModelCatalogSnapshot,
   type ModelDescriptor,
   type ModelRef,
-  type ModelSettingsPort,
   modelScopeAvailability,
 } from "../contract";
 
 const INITIAL_REVISION = "catalog-initial";
-const MAX_RECENT_MODELS = 12;
-
-export type ModelView = "all" | "recent" | "roles";
-
-export interface ProviderModelGroup {
-  readonly provider: string;
-  readonly locked: boolean;
-  readonly models: readonly ModelDescriptor[];
-}
 
 export interface ModelCatalogMappingOptions {
   readonly lockedProviders?: ReadonlySet<string>;
@@ -97,8 +87,6 @@ export interface ModelCatalogModelOptions {
   readonly capabilities?: CapabilityMap;
   readonly liveState?: LiveModelState;
   readonly mapping?: ModelCatalogMappingOptions;
-  /** Kept as an explicit seam for the default scope; direct model selection remains session-only. */
-  readonly settings?: ModelSettingsPort;
 }
 
 function failure(error: unknown, fallback: string): AppFailure {
@@ -168,24 +156,6 @@ export function toModelDescriptor(
   };
 }
 
-export function groupModels(models: readonly ModelDescriptor[]): readonly ProviderModelGroup[] {
-  const grouped = new Map<string, ModelDescriptor[]>();
-  for (const model of models) {
-    const provider = grouped.get(model.provider) ?? [];
-    provider.push(model);
-    grouped.set(model.provider, provider);
-  }
-  return [...grouped.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([provider, providerModels]) => ({
-      provider,
-      locked: providerModels.every((model) => model.availability === "locked"),
-      models: [...providerModels].sort((left, right) =>
-        `${left.name} ${left.id}`.localeCompare(`${right.name} ${right.id}`),
-      ),
-    }));
-}
-
 export function filterModels(
   models: readonly ModelDescriptor[],
   query: string,
@@ -198,17 +168,6 @@ export function filterModels(
       .toLocaleLowerCase()
       .includes(needle),
   );
-}
-
-export function recentModels(
-  models: readonly ModelDescriptor[],
-  recent: readonly string[],
-): readonly ModelDescriptor[] {
-  const byKey = new Map(models.map((model) => [descriptorKey(model), model]));
-  return recent.flatMap((key) => {
-    const model = byKey.get(key);
-    return model ? [model] : [];
-  });
 }
 
 export function roleSelectorKey(selector: string | ModelRef): string {
@@ -228,16 +187,14 @@ function currentFrom(raw: OmpWire.ModelInfo | null | undefined): ModelRef | null
 }
 
 /**
- * Stateful catalog model shared by the temporary picker and the full hub. It owns only browser
- * presentation state; RPC, R0 and A1 remain injected authorities.
+ * Stateful catalog of the models omp can use, for the model dialog. It owns only browser presentation
+ * state; RPC, R0 and A1 remain injected authorities.
  */
 export class ModelCatalogModel implements ModelCatalogPort {
   private readonly source: ModelCatalogSource;
   private readonly capabilities: ModelCapabilities;
   private readonly mapping: ModelCatalogMappingOptions;
-  private readonly settings?: ModelSettingsPort;
   private readonly listeners = new Set<(snapshot: ModelCatalogSnapshot) => void>();
-  private readonly recent: string[] = [];
   private snapshot: ModelCatalogSnapshot;
   private operation = 0;
   private liveUnsubscribe: (() => void) | undefined;
@@ -246,7 +203,6 @@ export class ModelCatalogModel implements ModelCatalogPort {
     this.source = options.source;
     this.capabilities = initialCapabilities(options.capabilities);
     this.mapping = options.mapping ?? {};
-    this.settings = options.settings;
     this.snapshot = Object.freeze({
       loadState: "idle",
       models: [],
@@ -268,14 +224,6 @@ export class ModelCatalogModel implements ModelCatalogPort {
   public subscribe(listener: (snapshot: ModelCatalogSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
-  }
-
-  public getRecentKeys(): readonly string[] {
-    return [...this.recent];
-  }
-
-  public getSettingsPort(): ModelSettingsPort | undefined {
-    return this.settings;
   }
 
   public async refresh(options?: Pick<PortCallOptions, "signal">): Promise<ModelCatalogResult> {
@@ -331,7 +279,6 @@ export class ModelCatalogModel implements ModelCatalogPort {
     try {
       const selected = await this.source.setModel(request.model, options);
       const current = currentFrom(selected);
-      this.recordRecent(current);
       this.commit({ current, error: null });
       return {
         model: current ?? request.model,
@@ -357,7 +304,6 @@ export class ModelCatalogModel implements ModelCatalogPort {
     try {
       const result = await this.source.cycleModel(options);
       const current = currentFrom(result?.model);
-      if (current) this.recordRecent(current);
       this.commit({ current, error: null });
       return current;
     } catch (error) {
@@ -371,13 +317,6 @@ export class ModelCatalogModel implements ModelCatalogPort {
     this.liveUnsubscribe?.();
     this.liveUnsubscribe = undefined;
     this.listeners.clear();
-  }
-
-  private recordRecent(model: ModelRef | null): void {
-    if (!model) return;
-    const key = modelKey(model);
-    const next = [key, ...this.recent.filter((item) => item !== key)].slice(0, MAX_RECENT_MODELS);
-    this.recent.splice(0, this.recent.length, ...next);
   }
 
   private commit(patch: Partial<ModelCatalogSnapshot>): void {

@@ -11,10 +11,8 @@ import {
   createR0LiveModelState,
   createRpcModelCatalogSource,
   filterModels,
-  groupModels,
   ModelCatalogModel,
   modelKey,
-  recentModels,
   toModelDescriptor,
 } from ".";
 
@@ -62,18 +60,13 @@ afterEach(() => {
 });
 
 describe("D1 model catalog projection", () => {
-  test("groups providers, filters metadata and preserves recent order", () => {
+  test("filters models by their details and marks locked providers", () => {
     const models = [
       toModelDescriptor(rawModel("beta", "slow", { name: "Slow" })),
       toModelDescriptor(rawModel("alpha", "fast", { name: "Fast" })),
       toModelDescriptor(rawModel("alpha", "vision", { name: "Vision" })),
     ];
-    expect(groupModels(models).map((group) => group.provider)).toEqual(["alpha", "beta"]);
-    expect(groupModels(models)[0]?.models.map((model) => model.name)).toEqual(["Fast", "Vision"]);
     expect(filterModels(models, "vision").map((model) => model.id)).toEqual(["vision"]);
-    expect(
-      recentModels(models, ["beta/slow", "missing", "alpha/fast"]).map((model) => model.id),
-    ).toEqual(["slow", "fast"]);
     expect(
       toModelDescriptor(rawModel("locked", "one"), { lockedProviders: new Set(["locked"]) }),
     ).toMatchObject({

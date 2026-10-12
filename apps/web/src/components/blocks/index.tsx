@@ -198,10 +198,17 @@ export interface ListRowProps {
   readonly selected?: boolean;
   readonly disabled?: boolean;
   readonly tabIndex?: number;
+  /** The row's control is an option of a listbox (the default). Set false in a list of plain buttons. */
+  readonly asOption?: boolean;
+  /** Set on the row's control as `data-focus-key`, so a view can find it and move focus there. */
+  readonly focusKey?: string;
   readonly onSelect?: () => void;
   readonly onFocus?: FocusEventHandler<HTMLButtonElement>;
   readonly onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
 }
+
+const listRowControlClass =
+  "flex min-w-0 flex-1 items-start gap-1 rounded-lg px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed";
 
 /** One row of a list of things to pick from (sessions): selectable when `onSelect` is given. */
 export function ListRow({
@@ -214,6 +221,8 @@ export function ListRow({
   selected = false,
   disabled = false,
   tabIndex,
+  asOption = true,
+  focusKey,
   onSelect,
   onFocus,
   onKeyDown,
@@ -241,21 +250,40 @@ export function ListRow({
       data-selected={selected ? "true" : "false"}
     >
       {onSelect ? (
-        <button
-          aria-disabled={disabled || undefined}
-          aria-selected={selected}
-          className="flex min-w-0 flex-1 items-start gap-1 rounded-lg px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
-          disabled={disabled}
-          onClick={onSelect}
-          onFocus={onFocus}
-          onKeyDown={onKeyDown}
-          role="option"
-          tabIndex={tabIndex}
-          type="button"
-        >
-          {leading ? <span className="flex shrink-0 items-center">{leading}</span> : null}
-          {titleAndDetail}
-        </button>
+        asOption ? (
+          <button
+            aria-disabled={disabled || undefined}
+            aria-selected={selected}
+            className={listRowControlClass}
+            data-focus-key={focusKey}
+            disabled={disabled}
+            onClick={onSelect}
+            onFocus={onFocus}
+            onKeyDown={onKeyDown}
+            role="option"
+            tabIndex={tabIndex}
+            type="button"
+          >
+            {leading ? <span className="flex shrink-0 items-center">{leading}</span> : null}
+            {titleAndDetail}
+          </button>
+        ) : (
+          <button
+            aria-current={selected ? "true" : undefined}
+            aria-disabled={disabled || undefined}
+            className={listRowControlClass}
+            data-focus-key={focusKey}
+            disabled={disabled}
+            onClick={onSelect}
+            onFocus={onFocus}
+            onKeyDown={onKeyDown}
+            tabIndex={tabIndex}
+            type="button"
+          >
+            {leading ? <span className="flex shrink-0 items-center">{leading}</span> : null}
+            {titleAndDetail}
+          </button>
+        )
       ) : (
         <div className="flex min-w-0 flex-1 items-start gap-1 px-2 py-1.5">
           {leading ? <span className="flex shrink-0 items-center">{leading}</span> : null}

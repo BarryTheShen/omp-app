@@ -68,7 +68,7 @@ async function useVisionModel(page: Page): Promise<void> {
   await page.locator('header button[aria-label^="Model:"]').click();
   const dialog = page.getByRole("dialog", { name: "Model and thinking" });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("option", { name: /fake\/fake-vision ·/ }).click();
+  await dialog.getByRole("button", { name: /fake\/fake-vision ·/ }).click();
   await expect(dialog.getByText("Active: fake/fake-vision")).toBeVisible({ timeout: 20_000 });
   await dialog.getByRole("button", { name: "Done" }).click();
   await expect(dialog).toHaveCount(0);

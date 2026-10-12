@@ -3,8 +3,6 @@ export type {
   ModelCatalogMappingOptions,
   ModelCatalogModelOptions,
   ModelCatalogSource,
-  ModelView,
-  ProviderModelGroup,
   R0ModelStateSnapshot,
   R0ModelStateStore,
 } from "./catalog";
@@ -13,18 +11,16 @@ export {
   createRpcModelCatalogSource,
   descriptorKey,
   filterModels,
-  groupModels,
   ModelCatalogModel,
   modelKey,
   modelRefFromDescriptor,
-  recentModels,
   roleSelectorKey,
   toModelDescriptor,
 } from "./catalog";
 export type { ModelCommandSource } from "./commands";
 export { createModelCommandSource, modelCommand } from "./commands";
-export type { ModelPickerProps } from "./picker";
-export { ModelPicker } from "./picker";
+export type { RecentModelsPort, RecentModelsRead, RecentModelsSnapshot } from "./recents";
+export { createConfigRecentModelsPort, RecentModels } from "./recents";
 export type {
   RoleStoreListener,
   RoleStoreSnapshot,
@@ -33,5 +29,6 @@ export type {
 export {
   createConfigModelSettingsPort,
   ModelRoleStore,
+  PRESET_NAME_RULE,
   roleStorageLayer,
 } from "./roles";

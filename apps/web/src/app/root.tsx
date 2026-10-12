@@ -1024,11 +1024,12 @@ function ActiveThreadReady({
   // provider's sign-in. Built once per open chat; a view only calls these.
   const credentialActions = useMemo<CredentialActions>(
     () => ({
-      chooseModel: () => openSessionModelDialog({ overlay, client, store, threadId, capabilities }),
+      chooseModel: () =>
+        openSessionModelDialog({ overlay, client, store, threadId, capabilities, folder }),
       signIn: () => openProviderSignIn({ overlay, client, threadId, capabilities }),
       readSignIns: () => readProviderSignIns({ client, threadId }),
     }),
-    [overlay, client, store, threadId, capabilities],
+    [overlay, client, store, threadId, capabilities, folder],
   );
   // What each surface id renders for an open conversation. Where it goes: `@/layout` (LAYOUT).
   const threadSurfaces: SurfaceMap = {
@@ -1071,6 +1072,7 @@ function ActiveThreadReady({
           client={client}
           store={store}
           threadId={threadId}
+          folder={folder}
         />
       ),
     },

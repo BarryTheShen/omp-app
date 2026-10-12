@@ -59,12 +59,12 @@ realTest(
 
     await page.getByRole("button", { name: "Choose another model" }).click();
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("textbox", { name: "Search this session" })).toBeVisible();
+    await expect(dialog.getByRole("textbox", { name: "Search models" })).toBeVisible();
     // The provider with a key in omp's settings is listed before the one with no sign-in the app can tell.
-    const groups = dialog.getByRole("group");
-    await expect(groups.first()).toHaveAccessibleName("anthropic");
-    await expect(groups.first().getByText("Uses an API key").first()).toBeVisible();
-    await expect(dialog.getByRole("group", { name: "fake" })).toBeVisible();
+    const providers = dialog.getByRole("region", { name: /^(?!Recent).*models$/ });
+    await expect(providers.first()).toHaveAccessibleName("anthropic models");
+    await expect(providers.first().getByText("Uses an API key").first()).toBeVisible();
+    await expect(dialog.getByRole("region", { name: "fake models", exact: true })).toBeVisible();
     await mkdir(screenshots, { recursive: true });
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-958-models-light.png"), fullPage: true });

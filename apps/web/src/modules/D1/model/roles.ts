@@ -82,6 +82,32 @@ function cloneSettings(settings: ModelSettings): ModelSettings {
       : {}),
   };
 }
+/** omp's preset name rule (model-presets.ts:24-25 at v18.6.1): a letter, then letters, digits, `-` or `_`. */
+const PRESET_NAME_PATTERN = /^[a-zA-Z][\w-]*$/;
+
+export const PRESET_NAME_RULE =
+  "A preset name starts with a letter, then uses only letters, digits, - or _.";
+
+export function isValidPresetName(name: string): boolean {
+  return PRESET_NAME_PATTERN.test(name);
+}
+
+/** Whether two settings hold the same values, whatever order their keys were written in. */
+function sameSettings(left: ModelSettings, right: ModelSettings): boolean {
+  return JSON.stringify(sortedKeys(left)) === JSON.stringify(sortedKeys(right));
+}
+
+function sortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedKeys);
+  if (value === null || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(record)
+      .sort()
+      .map((key) => [key, sortedKeys(record[key])]),
+  );
+}
+
 function selectorText(selector: ModelRoleSelector): string {
   return typeof selector === "string" ? selector : `${selector.provider}/${selector.modelId}`;
 }
@@ -387,6 +413,9 @@ export class ModelRoleStore {
         retryable: false,
       });
     }
+    if (!isValidPresetName(presetName)) {
+      throw new AppFailure({ code: "invalid_args", message: PRESET_NAME_RULE, retryable: false });
+    }
     return this.mutate((settings) => ({
       ...settings,
       modelPresets: {
@@ -425,8 +454,8 @@ export class ModelRoleStore {
     }
     return this.mutate((settings) => {
       const next = { ...settings, modelRoles: { ...preset.modelRoles } };
+      // As omp's writePresetRoles does (model-presets.ts:261-289): a preset without a level keeps the saved one.
       if (preset.defaultThinkingLevel) next.defaultThinkingLevel = preset.defaultThinkingLevel;
-      else delete next.defaultThinkingLevel;
       return next;
     });
   }
@@ -439,10 +468,29 @@ export class ModelRoleStore {
   private async mutate(
     update: (settings: ModelSettings) => ModelSettings,
   ): Promise<RoleStoreSnapshot> {
-    const nextSettings = update(cloneSettings(this.snapshot.settings));
     this.commit({ status: "saving", error: null });
+    return this.attempt(
+      update,
+      cloneSettings(this.snapshot.settings),
+      this.snapshot.revision,
+      true,
+    );
+  }
+
+  /**
+   * Writes `update` applied to `base`. A conflict is answered once, and only when the model settings saved
+   * now are the ones `base` holds: the file then moved in another part (the app keeps its recent models in
+   * the same ConfigStore, and each write moves the revision that covers every layer), so the same change is
+   * applied to what is saved now. Settings changed elsewhere are shown as a conflict, and nothing is overwritten.
+   */
+  private async attempt(
+    update: (settings: ModelSettings) => ModelSettings,
+    base: ModelSettings,
+    expectedRevision: Revision,
+    mayRetry: boolean,
+  ): Promise<RoleStoreSnapshot> {
     try {
-      const next = await this.port.write(nextSettings, this.snapshot.revision);
+      const next = await this.port.write(update(cloneSettings(base)), expectedRevision);
       this.commit({
         settings: cloneSettings(next.settings),
         layer: next.layer,
@@ -453,18 +501,21 @@ export class ModelRoleStore {
       return this.snapshot;
     } catch (error) {
       const appFailure = failure(error, "Saving model roles failed.");
-      if (appFailure.appError.code === "conflict") {
-        const current = await this.port.read();
-        this.commit({
-          settings: cloneSettings(current.settings),
-          layer: current.layer,
-          revision: current.revision,
-          status: "conflict",
-          error: appFailure.appError,
-        });
-      } else {
+      if (appFailure.appError.code !== "conflict") {
         this.commit({ status: "error", error: appFailure.appError });
+        throw appFailure;
       }
+      const current = await this.port.read();
+      if (mayRetry && current.error === null && sameSettings(current.settings, base)) {
+        return this.attempt(update, current.settings, current.revision, false);
+      }
+      this.commit({
+        settings: cloneSettings(current.settings),
+        layer: current.layer,
+        revision: current.revision,
+        status: "conflict",
+        error: appFailure.appError,
+      });
       throw appFailure;
     }
   }

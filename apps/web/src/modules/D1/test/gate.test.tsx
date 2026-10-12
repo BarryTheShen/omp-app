@@ -22,26 +22,35 @@ import {
   D1_PROJECT_FOLDER_FIXTURE,
   D1_R0_SNAPSHOT_FIXTURE,
   D1_SAVED_DEFAULT_FIXTURE,
-  D1_SAVED_DEFAULT_SOURCE_FIXTURE,
   D1_SESSION_MODEL_FIXTURE,
   D1_SET_MODEL_RPC_FIXTURE,
   D1_SETTINGS_CONFIG_FIXTURE,
   D1_THINKING_LEVELS_RPC_FIXTURE,
 } from "../fixtures";
+import { ModelHubController, ModelHubPanel } from "../hub";
 import {
   createConfigModelSettingsPort,
   createR0LiveModelState,
   createRpcModelCatalogSource,
   ModelCatalogModel,
   ModelRoleStore,
+  RecentModels,
+  type RecentModelsPort,
 } from "../model";
-import { ModelPicker } from "../model/picker";
 import { modelThinkingSection } from "../settings/descriptors";
-import { ModelScopeSummary, ModelSettingsSection } from "../settings/model-settings";
+import { ModelSettingsSection } from "../settings/model-settings";
 import { createRpcThinkingSource, ThinkingLevelsController } from "../thinking";
 
 const threadId = "d1-gate-thread" as ThreadId;
 const projectRevisionTwo = "d1-project-config-2" as Revision;
+
+/** A recent-models list kept in memory: these tests do not check the recents themselves. */
+function memoryRecentPort(): RecentModelsPort {
+  return {
+    read: async () => ({ keys: [], revision: "d1-recent-1" as Revision }),
+    write: async () => "d1-recent-2" as Revision,
+  };
+}
 
 type RpcRequest = {
   readonly threadId: ThreadId;
@@ -330,7 +339,7 @@ describe("D1 scope, catalog and thinking acceptance", () => {
 });
 
 describe("D1 CC4 and CC10 settings surfaces", () => {
-  test("shows catalog loading and failure states with accessible status semantics", async () => {
+  test("shows catalog loading and failure states, and picks a model from the list", async () => {
     let resolveCatalog: ((models: readonly OmpWire.ModelInfo[]) => void) | undefined;
     const pendingModels = new Promise<readonly OmpWire.ModelInfo[]>((resolve) => {
       resolveCatalog = resolve;
@@ -346,25 +355,25 @@ describe("D1 CC4 and CC10 settings surfaces", () => {
       },
       capabilities: capabilities(),
     });
+    const hub = new ModelHubController({
+      catalog,
+      recents: new RecentModels(memoryRecentPort()),
+      capabilities,
+    });
     const pendingRefresh = catalog.refresh();
-    render(<ModelPicker catalog={catalog} scope="session" />);
+    render(<ModelHubPanel controller={hub} />);
     expect(screen.getByRole("status").textContent).toContain("Loading models");
     expect(
-      (screen.getByRole("textbox", { name: "Search this session" }) as HTMLInputElement).disabled,
+      (screen.getByRole("textbox", { name: "Search models" }) as HTMLInputElement).disabled,
     ).toBe(true);
 
     await act(async () => {
       resolveCatalog?.(D1_MODEL_CATALOG_RPC_FIXTURE.models);
       await pendingRefresh;
     });
-    expect(screen.getByRole("option", { name: /Reasoner Large/ })).toBeTruthy();
-    const search = screen.getByRole("textbox", { name: "Search this session" });
-    search.focus();
-    fireEvent.keyDown(search, { key: "ArrowDown" });
-    fireEvent.keyDown(search, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: /fixture-provider\/fast-chat ·/ }));
     await waitFor(() => expect(appliedModels).toEqual(["fixture-provider/fast-chat"]));
-    expect(document.activeElement).toBe(search);
-    catalog.dispose();
+    hub.dispose();
     cleanup();
 
     const failedCalls: RpcRequest[] = [];
@@ -375,17 +384,22 @@ describe("D1 CC4 and CC10 settings surfaces", () => {
       ),
       capabilities: capabilities(),
     });
+    const failedHub = new ModelHubController({
+      catalog: failedCatalog,
+      recents: new RecentModels(memoryRecentPort()),
+      capabilities,
+    });
     await expect(failedCatalog.refresh()).rejects.toMatchObject({
       appError: { code: "unavailable", retryable: true },
     });
-    render(<ModelPicker catalog={failedCatalog} scope="session" />);
+    render(<ModelHubPanel controller={failedHub} />);
     expect(screen.getByRole("alert").textContent).toContain(
       "Model discovery is temporarily unavailable.",
     );
-    failedCatalog.dispose();
+    failedHub.dispose();
   });
 
-  test("shows A1 project provenance and keeps the saved default distinct from R0 session state", async () => {
+  test("shows A1 project provenance for the default thinking level", async () => {
     const config: ConfigStoreClient = {
       list: async () => D1_SETTINGS_CONFIG_FIXTURE,
       read: async ({ key }) => {
@@ -403,23 +417,11 @@ describe("D1 CC4 and CC10 settings surfaces", () => {
       { descriptor: modelThinkingSection, folder: D1_PROJECT_FOLDER_FIXTURE, layer: "project" },
     );
     await runtime.read();
-    render(
-      <>
-        <ModelSettingsSection descriptor={modelThinkingSection} runtime={runtime} />
-        <ModelScopeSummary
-          sessionModel={D1_SESSION_MODEL_FIXTURE}
-          defaultModel={D1_SAVED_DEFAULT_FIXTURE}
-          defaultSource={D1_SAVED_DEFAULT_SOURCE_FIXTURE}
-        />
-      </>,
-    );
+    render(<ModelSettingsSection descriptor={modelThinkingSection} runtime={runtime} />);
 
     expect(screen.getByTestId("defaultThinkingLevel-provenance").textContent).toBe(
       "Source: Saved for this project · overrides settings for all projects, omp's default",
     );
-    expect(screen.getByTestId("session-model").textContent).toBe("fixture-provider/reasoner-large");
-    expect(screen.getByTestId("default-model").textContent).toBe("fixture-provider/fast-chat");
-    expect(screen.getByText("Source: Saved for this project")).toBeTruthy();
     runtime.dispose();
   });
 });
