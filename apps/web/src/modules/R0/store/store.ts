@@ -886,6 +886,8 @@ export class OmpRuntimeStore {
   private latestSeenSeq = 0;
   /** The seq of the last applied event that set the prompt lifecycle: a run starting, admitted or ending. */
   private promptEventSeq = 0;
+  /** Sequences the passthrough delivered across a gap, so a replay of one is not delivered again. */
+  private readonly forwardedAcrossGap = new Set<number>();
 
   public constructor(options: OmpRuntimeStoreOptions);
   public constructor(threadId: ThreadId, options?: Omit<OmpRuntimeStoreOptions, "threadId">);
@@ -912,7 +914,8 @@ export class OmpRuntimeStore {
 
   /**
    * Forward selected raw notification frames to feature modules without making them second
-   * reducers of runtime state. The sequence gate in `ingest` provides ordering and de-duplication.
+   * reducers of runtime state. The sequence gate in `ingest` provides ordering and de-duplication;
+   * across a gap, `forwardAcrossGap` de-duplicates.
    */
   public subscribeNotifications(
     types: readonly string[],
@@ -1016,6 +1019,9 @@ export class OmpRuntimeStore {
    * else is dropped and covered by the refetch. Dropping the request left omp blocked forever on an
    * answer nobody was shown (a fresh chat's first events predate the browser's subscription, which is
    * a gap by construction). Dropping a tool's start left its card reading Waiting until the call ended.
+   * A notification the passthrough does not reduce (a worker's start or end, a goal update) is still
+   * delivered, because no refetch restores it either: dropping a worker's end left the Agent Hub
+   * showing that worker as running.
    */
   private ingestAcrossGap(
     eventValue: Record<string, unknown>,
@@ -1031,18 +1037,35 @@ export class OmpRuntimeStore {
       rawFrame.type === "extension_ui_request" &&
       rawFrame.method === "cancel";
     // A question or host call from the history is not recorded (see `ingest`).
-    if (eventValue.kind === "notification" && !askingFromHistory) {
-      this.reduceNotification(next, rawFrame, seq);
-      if (isExtensionCancel) this.forwardNotification(rawFrame, seq, false);
-    }
+    const isNotification = eventValue.kind === "notification" && !askingFromHistory;
+    if (isNotification) this.reduceNotification(next, rawFrame, seq);
     const toolEvent = eventValue.kind === "omp" && isToolLifecycleEvent(eventValue.event);
     if (toolEvent) this.reduceOmp(next, eventValue.event, seq);
     const recorded =
       toolEvent || next.pending !== this.snapshot.pending || next.error !== this.snapshot.error;
-    if (this.snapshot.needsRefetch && !recorded) return;
-    next.needsRefetch = true;
-    this.commit(next);
+    if (!this.snapshot.needsRefetch || recorded) {
+      next.needsRefetch = true;
+      this.commit(next);
+    }
+    // After the commit, so a listener reads the state this event left. A question stays out of its
+    // router (it is recorded above); omp's cancel of one is routed, as before.
+    if (isNotification && isExtensionCancel) {
+      this.forwardAcrossGap(rawFrame, seq, false);
+    } else if (isNotification && !isAskingFrame(rawFrame)) {
+      this.forwardAcrossGap(rawFrame, seq, fromHistory);
+    }
     if (toolEvent) this.forwardOmpEvent(eventValue.event as OmpEvent, seq, fromHistory);
+  }
+
+  /**
+   * Delivers a passthrough notification that arrived across a gap. A replay can send the same sequence
+   * again, and each sequence is delivered once; the record is cleared as the cursor catches up
+   * (`resetSequence`).
+   */
+  private forwardAcrossGap(rawFrame: unknown, seq: number, replayed: boolean): void {
+    if (this.forwardedAcrossGap.has(seq)) return;
+    this.forwardedAcrossGap.add(seq);
+    this.forwardNotification(rawFrame, seq, replayed);
   }
 
   /**
@@ -1058,6 +1081,10 @@ export class OmpRuntimeStore {
     const next = mutableSnapshot(this.snapshot);
     next.lastSeq = lastSeq;
     next.needsRefetch = false;
+    // The cursor now covers these sequences, so the passthrough never meets them again.
+    for (const seq of this.forwardedAcrossGap) {
+      if (seq <= lastSeq) this.forwardedAcrossGap.delete(seq);
+    }
     this.commit(next);
   }
 

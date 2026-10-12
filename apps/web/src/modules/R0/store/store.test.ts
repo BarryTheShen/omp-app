@@ -874,6 +874,85 @@ describe("OmpRuntimeStore", () => {
     expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ask-2"]);
   });
 
+  test("a notification the passthrough does not reduce reaches its subscriber across a gap, once", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const heard: Array<{ type: string; seq: number; replayed: boolean }> = [];
+    store.subscribeNotifications(
+      ["subagent_lifecycle", "subagent_progress"],
+      (frame, seq, replayed) => {
+        heard.push({ type: frame.type, seq, replayed });
+      },
+    );
+    const started = { type: "subagent_lifecycle", payload: { id: "worker-1", status: "started" } };
+    const ended = { type: "subagent_lifecycle", payload: { id: "worker-1", status: "completed" } };
+    ingest(store, { kind: "notification", frame: started }, 1);
+    // Seq 2 never arrives, so the worker's end falls inside a gap: no refetch restores a worker's end.
+    ingest(store, { kind: "notification", frame: ended }, 3);
+    expect(store.getSnapshot()).toMatchObject({ lastSeq: 1, needsRefetch: true });
+    expect(heard).toEqual([
+      { type: "subagent_lifecycle", seq: 1, replayed: false },
+      { type: "subagent_lifecycle", seq: 3, replayed: false },
+    ]);
+    // A replay that sends the end again does not deliver it twice.
+    ingest(store, { kind: "notification", frame: ended }, 3);
+    expect(heard).toHaveLength(2);
+    // The refetch ends, the stream carries on, and later passthrough notifications are delivered as before.
+    store.resetSequence();
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: { type: "subagent_progress", payload: { id: "worker-2", progress: 1 } },
+      },
+      4,
+    );
+    expect(heard).toHaveLength(3);
+    expect(heard[2]).toEqual({ type: "subagent_progress", seq: 4, replayed: false });
+  });
+
+  test("across a gap, a question is kept from its router, and omp's cancel of it is routed", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const routed: string[] = [];
+    store.subscribeNotifications(["extension_ui_request"], (frame) => {
+      routed.push("id" in frame ? String(frame.id) : frame.type);
+    });
+    // A fresh chat's first event is a gap: the question and its cancel both arrive inside it.
+    ingest(store, { kind: "process", status: "ready" }, 6);
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "ask-1",
+          method: "confirm",
+          title: "Go on?",
+          message: "",
+        },
+      },
+      7,
+    );
+    expect(store.getSnapshot().pending.extensionUi["ask-1"]?.request).toMatchObject({
+      method: "confirm",
+    });
+    expect(routed).toEqual([]);
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "cancel-1",
+          method: "cancel",
+          targetId: "ask-1",
+        },
+      },
+      8,
+    );
+    expect(routed).toEqual(["cancel-1"]);
+    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+  });
+
   test("a question, host call or sign-in prompt from the history is not asked again, and a live one is", () => {
     const store = new OmpRuntimeStore({ threadId });
     const notified: string[] = [];
