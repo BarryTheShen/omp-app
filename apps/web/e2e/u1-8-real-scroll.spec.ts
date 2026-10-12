@@ -62,10 +62,10 @@ realTest(
     await openAllToolCards(page);
     await expect.poll(remainingScroll).toBeLessThan(80);
 
-    // Sending from far up shows the newest message.
-    await viewport.evaluate((element) => {
-      element.scrollTop = 0;
-    });
+    // Sending from far up shows the newest message. The reader gets there with the wheel: a script's scroll is put back
+    // while a pressed card's place is held, as the browser's own scrolls are (issue 1165).
+    await viewport.hover();
+    await page.mouse.wheel(0, -20_000);
     await expect.poll(remainingScroll).toBeGreaterThan(1_000);
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });

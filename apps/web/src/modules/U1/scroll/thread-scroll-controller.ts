@@ -221,6 +221,26 @@ export function useThreadScrollController(
     for (const name of READER_INPUT)
       viewport.addEventListener(name, stopFollowing, { passive: true });
 
+    // A toggle above the reader's row changes its card at once while the reader is away: an animated change there moves the
+    // reader's row frame by frame, and the scroll correction does not keep up (issue 1240). The card's panel reads the mark
+    // and does not transition until the mark is taken away.
+    let endInstant: (() => void) | null = null;
+    const markInstantToggle = (toggle: HTMLElement): void => {
+      endInstant?.();
+      const card = toggle.closest<HTMLElement>('[data-slot="u3-tool-card"]');
+      const row = toggle.closest("[data-message-id]");
+      const reader = readerPlaceOf(viewport)?.row;
+      if (card === null || row === null || reader === undefined || row === reader) return;
+      // The row comes before the reader's row: the change lies above the place the reader is on.
+      if ((reader.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_PRECEDING) === 0) return;
+      card.setAttribute("data-instant-toggle", "");
+      const timer = window.setTimeout(() => endInstant?.(), PRESS_SETTLE_MS);
+      endInstant = (): void => {
+        window.clearTimeout(timer);
+        card.removeAttribute("data-instant-toggle");
+        endInstant = null;
+      };
+    };
     // A press on a toggle (a card's header, a disclosure) holds the toggle where the reader pressed it while the rows around it
     // change: the reader must see what they pressed. The reader's row is the place again once the change settles (issue 1165).
     let pressHold: (() => void) | null = null;
@@ -232,17 +252,28 @@ export function useThreadScrollController(
       if (!followPausedRef.current) return;
       // A press while the last toggle is still held ends that hold first: the reader's row is then the place again.
       pressHold?.();
+      markInstantToggle(toggle);
       pressHold = holdPressedToggle(viewport, toggle, readerPlaceOf(viewport), PRESS_SETTLE_MS);
     };
     viewport.addEventListener("pointerdown", handlePress, { passive: true });
+    // Enter or Space on a focused toggle changes its card as a press does: at once while the reader is away (issue 1240).
+    const handleToggleKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const toggle = event.target;
+      if (!(toggle instanceof HTMLElement) || !toggle.hasAttribute("aria-expanded")) return;
+      if (viewport.contains(toggle) && followPausedRef.current) markInstantToggle(toggle);
+    };
+    viewport.addEventListener("keydown", handleToggleKey, { passive: true });
 
     return () => {
       viewport.removeEventListener("scroll", handleScroll);
       viewport.removeEventListener("pointerdown", handlePress);
+      viewport.removeEventListener("keydown", handleToggleKey);
       for (const name of READER_INPUT) viewport.removeEventListener(name, stopFollowing);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
       pressHold?.();
+      endInstant?.();
       if (followFrame !== null) window.cancelAnimationFrame(followFrame);
       viewportRef.current = null;
     };

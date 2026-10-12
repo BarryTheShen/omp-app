@@ -91,7 +91,9 @@ realTest(
       const style = getComputedStyle(element);
       return { property: style.transitionProperty, duration: style.transitionDuration };
     });
-    expect(declared.property, "the content animates its height").toContain("height");
+    expect(declared.property, "the content animates its height through its grid row").toContain(
+      "grid-template-rows",
+    );
     expect(declared.duration, "the height transition uses --duration-base").toBe("0.18s");
     expect(
       expand.frames,

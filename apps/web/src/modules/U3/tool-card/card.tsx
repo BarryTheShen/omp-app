@@ -155,7 +155,7 @@ export function ToolCard({
   const Icon = status.icon;
   return (
     <Collapsible
-      className={cn("w-full min-w-0", className)}
+      className={cn("group/tool-card w-full min-w-0", className)}
       data-phase={state.phase}
       data-queued={state.queued === true ? "true" : undefined}
       data-slot="u3-tool-card"
@@ -209,83 +209,90 @@ export function ToolCard({
         />
       </CollapsibleTrigger>
       <CollapsibleContent
-        className="-mx-1 h-(--collapsible-panel-height) overflow-hidden px-1 transition-[height] duration-(--duration-base) ease-(--ease-standard) data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none"
+        className="-mx-1 grid grid-rows-[1fr] px-1 transition-[grid-template-rows] duration-(--duration-base) ease-(--ease-standard) group-data-[instant-toggle]/tool-card:transition-none data-[ending-style]:grid-rows-[0fr] data-[starting-style]:grid-rows-[0fr] motion-reduce:transition-none"
         id={contentId}
         data-slot="u3-tool-card-content"
         ref={contentRef}
       >
-        <div className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4">
-          {state.error !== undefined && (
-            <div
-              aria-live="assertive"
-              className={cn(
-                "rounded-lg border p-3 text-sm",
-                state.timedOut ? TONE_CLASSES.warning : TONE_CLASSES.danger,
-              )}
-              data-slot="u3-tool-card-error"
-              role="alert"
-            >
-              <p className="font-medium">{state.error.message}</p>
-              {state.error.retryable && <p className="mt-1 text-xs">Retry is available.</p>}
-            </div>
-          )}
-          {children}
-          {state.phase === "partial" && resultRaw !== "" && (
-            <ToolRawBlock
-              copySlot={copySlot}
-              kind="result"
-              onCopy={copy}
-              raw={output.text}
-              title="Output so far"
-            />
-          )}
-          <details className="min-w-0 text-xs" data-slot="u3-tool-card-raw">
-            <summary className="cursor-pointer text-muted-foreground">Raw details</summary>
-            <div className="mt-2 flex min-w-0 flex-col gap-3">
-              <ToolRawBlock
-                copySlot={copySlot}
-                kind="args"
-                onCopy={copy}
-                raw={argsRaw}
-                title="Arguments"
-              />
-              {state.phase !== "partial" && resultRaw !== "" && (
-                <ToolRawBlock
-                  copySlot={copySlot}
-                  kind="result"
-                  onCopy={copy}
-                  raw={output.text}
-                  title="Result"
-                />
-              )}
-            </div>
-            {output.truncated && (
+        <div className="-mx-1 min-h-0 overflow-hidden px-1">
+          <div className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4">
+            {state.error !== undefined && (
               <div
-                className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-                data-slot="u3-tool-card-truncation"
-              >
-                <span>{truncationLabel(state.outputMeta)}</span>
-                {!outputExpanded && (
-                  <Button size="xs" type="button" variant="outline" onClick={() => void showMore()}>
-                    Show more
-                  </Button>
+                aria-live="assertive"
+                className={cn(
+                  "rounded-lg border p-3 text-sm",
+                  state.timedOut ? TONE_CLASSES.warning : TONE_CLASSES.danger,
                 )}
+                data-slot="u3-tool-card-error"
+                role="alert"
+              >
+                <p className="font-medium">{state.error.message}</p>
+                {state.error.retryable && <p className="mt-1 text-xs">Retry is available.</p>}
               </div>
             )}
-          </details>
-          {cut !== undefined && (
-            <OutputCutNote cut={cut} onLoaded={full.onLoaded} toolCallId={state.toolCallId} />
-          )}
-          {full.loaded && (
-            <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
-              Full output loaded
-            </span>
-          )}
-          {copyStatus !== "idle" && (
-            <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
-              {copyStatusText(copyStatus)}
-            </span>
-          )}
+            {children}
+            {state.phase === "partial" && resultRaw !== "" && (
+              <ToolRawBlock
+                copySlot={copySlot}
+                kind="result"
+                onCopy={copy}
+                raw={output.text}
+                title="Output so far"
+              />
+            )}
+            <details className="min-w-0 text-xs" data-slot="u3-tool-card-raw">
+              <summary className="cursor-pointer text-muted-foreground">Raw details</summary>
+              <div className="mt-2 flex min-w-0 flex-col gap-3">
+                <ToolRawBlock
+                  copySlot={copySlot}
+                  kind="args"
+                  onCopy={copy}
+                  raw={argsRaw}
+                  title="Arguments"
+                />
+                {state.phase !== "partial" && resultRaw !== "" && (
+                  <ToolRawBlock
+                    copySlot={copySlot}
+                    kind="result"
+                    onCopy={copy}
+                    raw={output.text}
+                    title="Result"
+                  />
+                )}
+              </div>
+              {output.truncated && (
+                <div
+                  className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                  data-slot="u3-tool-card-truncation"
+                >
+                  <span>{truncationLabel(state.outputMeta)}</span>
+                  {!outputExpanded && (
+                    <Button
+                      size="xs"
+                      type="button"
+                      variant="outline"
+                      onClick={() => void showMore()}
+                    >
+                      Show more
+                    </Button>
+                  )}
+                </div>
+              )}
+            </details>
+            {cut !== undefined && (
+              <OutputCutNote cut={cut} onLoaded={full.onLoaded} toolCallId={state.toolCallId} />
+            )}
+            {full.loaded && (
+              <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
+                Full output loaded
+              </span>
+            )}
+            {copyStatus !== "idle" && (
+              <span aria-live="polite" className="text-xs text-muted-foreground" role="status">
+                {copyStatusText(copyStatus)}
+              </span>
+            )}
+          </div>
         </div>
       </CollapsibleContent>
     </Collapsible>
