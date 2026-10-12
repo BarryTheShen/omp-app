@@ -73,6 +73,28 @@ describe("storedEntryId", () => {
   test("an entry id is not a row key, so it finds no row", () => {
     expect(storedEntryId(storeWithUserMessage("Explain"), userEntry)).toBeNull();
   });
+
+  test("finds a streamed row's entry by the streamed copy's key once history returns the entry", () => {
+    const store = new OmpRuntimeStore({ threadId: sourceThread });
+    const streamed = {
+      role: "user" as const,
+      content: [{ type: "text" as const, text: "Explain" }],
+      timestamp: 1,
+    };
+    store.ingest({ kind: "omp", event: { type: "message_end", message: streamed } }, 1);
+    const [streamedKey] = store.getSnapshot().messageOrder;
+    expect(streamedKey).toBeDefined();
+    store.pairEndedMessages([
+      {
+        type: "message",
+        id: userEntry,
+        parentId: null,
+        timestamp: new Date(1).toISOString(),
+        message: streamed,
+      },
+    ]);
+    expect(storedEntryId(store, String(streamedKey))).toBe(userEntry);
+  });
 });
 
 describe("isImageContent", () => {

@@ -8,6 +8,7 @@ import {
   MAX_OLDER_PAGES,
   nextResumeStep,
   type ReadingPlace,
+  rowStoreKey,
   saveReadingPlace,
   transcriptCaughtUp,
   whenViewportSettled,
@@ -226,7 +227,7 @@ export function useReadingPlace(options: ReadingPlaceOptions): ReadingPlaceState
         return;
       }
       const anchor = captureVisibleMessageAnchor(viewport);
-      const messageId = anchor?.row.dataset.messageId;
+      const messageId = anchor === null ? undefined : rowStoreKey(anchor.row);
       if (anchor === null || messageId === undefined || messageId === "") return;
       // A provisional streaming id does not exist after a reload: such a place is not worth keeping.
       if (messageId.startsWith("stream:")) return;

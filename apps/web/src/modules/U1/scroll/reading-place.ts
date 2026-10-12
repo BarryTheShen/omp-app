@@ -71,10 +71,19 @@ export function isViewportAtBottom(viewport: HTMLElement): boolean {
   );
 }
 
-/** The message row with this id inside the viewport, or null when it is not on screen yet. */
+/**
+ * A row's store key: the key the store knows the message by, which survives its streamed copy being replaced (issue 1047).
+ * Assistant-ui writes the row's own id to `data-message-id`, so the key is read from `data-store-key`. A row without one
+ * (the branch summary) is known by its id.
+ */
+export function rowStoreKey(row: HTMLElement): string | undefined {
+  return row.dataset.storeKey ?? row.dataset.messageId;
+}
+
+/** The message row with this store key inside the viewport, or null when it is not on screen yet. */
 export function findMessageRow(viewport: HTMLElement, messageId: string): HTMLElement | null {
   for (const row of Array.from(viewport.querySelectorAll<HTMLElement>("[data-message-id]"))) {
-    if (row.dataset.messageId === messageId) return row;
+    if (rowStoreKey(row) === messageId) return row;
   }
   return null;
 }

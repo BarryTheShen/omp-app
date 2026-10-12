@@ -18,15 +18,18 @@ export function isImageContent(value: unknown): value is OmpWire.ImageContent {
 }
 
 /**
- * The entry id of a transcript row this chat stores. The row id is the message key, which is not the
- * entry id: a stored row carries its entry id on its record. A row omp has not saved yet (a message
- * still streaming, or one that has ended without an entry) has none, so it gets no actions.
+ * The entry id of a transcript row this chat stores. The row's id is a message key: the key of the message, or the key of
+ * its streamed copy, which the row keeps after the entry replaces that copy (issue 1047). The record carries the entry id.
+ * A row omp has not saved yet (a message still streaming, or one that has ended without an entry) has none, so it gets no
+ * actions.
  */
 export function storedEntryId(store: OmpRuntimeStore, messageKey: string): EntryId | null {
   const snapshot = store.getSnapshot();
   const entryId = snapshot.messageOrder
     .map((key) => snapshot.messages[key])
-    .find((candidate) => candidate?.key === messageKey)?.entryId;
+    .find(
+      (candidate) => candidate?.key === messageKey || candidate?.rowKey === messageKey,
+    )?.entryId;
   if (entryId === undefined || snapshot.transcript.entries[entryId] === undefined) return null;
   return entryId;
 }

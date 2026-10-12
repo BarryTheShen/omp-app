@@ -33,6 +33,7 @@ import { useDescriptor, useRenderer } from "@/registry-core";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
 import { FullOutputProvider } from "../../U3/tool-card/full-output";
 import { failureShownUnderAnswer } from "../parts/message-ending";
+import { storeKeyOf } from "../parts/store-key";
 import {
   captureVisibleMessageAnchor,
   claimOwnAnchoring,
@@ -299,7 +300,7 @@ function MessageRow({ message, slots }: { message: MessageState; slots?: ThreadR
   const fallback = (
     <MessagePrimitive.Root
       className="mx-auto w-full max-w-(--layout-thread-width) px-6 py-3"
-      data-message-id={message.id}
+      data-store-key={storeKeyOf(message)}
       data-role={message.role}
       data-slot="u1-thread-message"
     >

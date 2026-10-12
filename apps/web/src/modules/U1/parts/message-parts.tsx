@@ -11,6 +11,7 @@ import { CustomNote, type CustomNoteSource } from "./custom-note";
 import { EarlierSteps, isTurnGroup, useTurnGroupBy } from "./earlier-steps";
 import { ExecutionRow } from "./execution-row";
 import { endingOf, MessageEndingNote } from "./message-ending";
+import { storeKeyOf } from "./store-key";
 export interface MessagePartsProps {
   readonly message: MessageState;
   readonly toolRenderers?: ToolRendererMap;
@@ -153,7 +154,7 @@ function customNoteOf(message: MessageState): CustomNoteSource | undefined {
 /** A user's own `!` or `$` run: R0 keeps omp's record in the metadata; U2 normalizes it. */
 function executionOf(message: MessageState) {
   const raw: unknown = message.metadata.custom.ompExecution;
-  return raw === undefined ? undefined : executionRecordOf(message.id, raw);
+  return raw === undefined ? undefined : executionRecordOf(storeKeyOf(message), raw);
 }
 
 /** Renders one assistant-ui message with U1's role grammar and U3's tool boundary. */
@@ -187,7 +188,7 @@ export function MessageParts({
   return (
     <MessagePrimitive.Root
       className={cn(rowClassName, isUser && "flex justify-end", isSystem && "py-2")}
-      data-message-id={message.id}
+      data-store-key={storeKeyOf(message)}
       data-role={role}
       data-slot="u1-message-row"
     >

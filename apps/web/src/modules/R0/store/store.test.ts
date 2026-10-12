@@ -126,6 +126,31 @@ describe("OmpRuntimeStore", () => {
       (before.messages as Record<string, unknown>).new = {};
     }).toThrow();
   });
+
+  test("a streamed message keeps its row key when history returns its entry, so the row is not replaced", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    omp(store, { type: "agent_start" }, 1);
+    omp(store, { type: "message_start", messageId: "m1", message: assistant("") }, 2);
+    omp(store, { type: "message_end", messageId: "m1", message: assistant("hello") }, 3);
+
+    store.pairEndedMessages([
+      {
+        type: "message",
+        id: "entry-first",
+        parentId: null,
+        timestamp: new Date(at).toISOString(),
+        message: assistant("hello"),
+      },
+    ]);
+
+    const snapshot = store.getSnapshot();
+    expect(snapshot.messageOrder).toEqual(["entry:thread-r0:entry-first"]);
+    expect(snapshot.messages["entry:thread-r0:entry-first"]).toMatchObject({
+      key: "entry:thread-r0:entry-first",
+      status: "persisted",
+      rowKey: "stream:thread-r0:0:m1",
+    });
+  });
   test("keeps thinking content in the provisional message while it streams", () => {
     const store = new OmpRuntimeStore({ threadId });
     const initial = assistant("");

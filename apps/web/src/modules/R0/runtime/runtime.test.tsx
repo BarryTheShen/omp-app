@@ -687,6 +687,23 @@ describe("R0.3 assistant-ui runtime", () => {
     ).not.toThrow();
   });
 
+  test("a row keeps the id of its streamed copy, and its metadata carries the store key (issue 1047)", () => {
+    const message = {
+      role: "user",
+      content: [{ type: "text", text: "hello" }],
+      timestamp: 1_759_600_000_000,
+    } as unknown as OmpMessage;
+    const record: RuntimeMessage = {
+      ...runtimeMessage(message, "entry:runtime-test-thread:entry-1"),
+      rowKey: "stream:runtime-test-thread:0:m1" as MessageKey,
+    };
+    const converted = convertMessage(record);
+    expect(converted.id).toBe("stream:runtime-test-thread:0:m1");
+    expect(converted.metadata?.custom).toMatchObject({
+      ompMessageKey: "entry:runtime-test-thread:entry-1",
+    });
+  });
+
   test("a custom message marked display:false is saved but never a row, and does not split a turn", () => {
     const store = new OmpRuntimeStore({ threadId });
     const call = assistantMessage([

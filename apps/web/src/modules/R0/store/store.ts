@@ -48,6 +48,11 @@ export interface RuntimeMessage {
   readonly entryId?: EntryId;
   readonly parentId?: EntryId | null;
   readonly interrupted?: boolean;
+  /**
+   * The key of the streamed copy this message's entry replaced. The row keeps that key, so its element is not replaced
+   * when history returns the entry (issue 1047). `key` stays the message's store key.
+   */
+  readonly rowKey?: MessageKey;
 }
 
 export interface TranscriptEntry {
@@ -1824,6 +1829,7 @@ export class OmpRuntimeStore {
         status: "persisted",
         entryId: pairedId,
         parentId: entry?.parentId,
+        rowKey: message.rowKey ?? key,
       };
       const order = next.messageOrder as MessageKey[];
       const originalIndex = order.indexOf(key);

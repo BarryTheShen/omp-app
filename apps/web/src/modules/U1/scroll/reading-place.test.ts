@@ -111,6 +111,21 @@ describe("findMessageRow", () => {
     expect(findMessageRow(viewport, "msg-8")).toBeNull();
     expect(findMessageRow(viewport, "missing")).toBeNull();
   });
+
+  test("finds a streamed row by its store key, not by the id assistant-ui writes on it (issue 1047)", () => {
+    const viewport = document.createElement("div");
+    const streamed = document.createElement("div");
+    streamed.dataset.messageId = "stream:t:0:m1";
+    streamed.dataset.storeKey = "entry:t:e1";
+    viewport.append(streamed);
+    const summary = document.createElement("div");
+    summary.dataset.messageId = "entry:t:b1";
+    viewport.append(summary);
+
+    expect(findMessageRow(viewport, "entry:t:e1")).toBe(streamed);
+    expect(findMessageRow(viewport, "stream:t:0:m1")).toBeNull();
+    expect(findMessageRow(viewport, "entry:t:b1")).toBe(summary);
+  });
 });
 
 describe("transcriptCaughtUp", () => {

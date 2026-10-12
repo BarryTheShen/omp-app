@@ -120,7 +120,9 @@ function imageSource(data: unknown, url: unknown, mimeType: unknown): string | u
 }
 
 function messageIdFor(record: RuntimeMessage | undefined, index: number): string {
-  const key = record?.key;
+  // The row's id is the key of its streamed copy when it has one: its entry replaces the copy in the store, and the row
+  // keeps its element then (issue 1047). Its store key is kept in the metadata (`ompMessageKey`).
+  const key = record?.rowKey ?? record?.key;
   return typeof key === "string" && key.length > 0 ? key : `omp-message-${index}`;
 }
 
@@ -432,12 +434,15 @@ function convertRecord(
   if (!isRecord(message) || typeof message.role !== "string") return fallbackMessage(id);
   const createdAt = isFiniteTimestamp(message.timestamp) ? new Date(message.timestamp) : undefined;
   const status = messageStatus(runtime, message);
+  // The store key: the persisted entry's key once history returns the message (`entry:<thread>:<entry>`), else its live
+  // key. The reading place and the entry ids use it; the row's id can stay the key of the streamed copy (issue 1047).
+  const storeKey = runtime?.key ?? id;
   const metadata = {
     custom: {
-      ompMessageKey: id,
+      ompMessageKey: storeKey,
       ompRole: message.role,
       ...(message.role === "assistant"
-        ? { ompEntryIds: [...(view?.joinedAssistantEntryIds ?? [id])] }
+        ? { ompEntryIds: [...(view?.joinedAssistantEntryIds ?? [storeKey])] }
         : {}),
     },
   };
