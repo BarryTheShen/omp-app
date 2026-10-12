@@ -131,6 +131,47 @@ describe("the nested worker transcript", () => {
     expect(feed.requests).toEqual([0, 0]);
   });
 
+  test("a failure a retry cannot fix offers no Try again", async () => {
+    const feed = new FakeFeed(agentRef());
+    render(
+      <InThread>
+        <NestedAgentTranscript source={nestedSource(feed)} />
+      </InThread>,
+    );
+    await awaitRead(feed);
+    feed.fail(new AppFailure({ code: "invalid_args", message: "omp detail", retryable: false }));
+    expect(await screen.findByText("This app cannot find this worker's transcript.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  test("a finished worker with no session file says omp did not save its transcript, and offers no Try again", async () => {
+    const feed = new FakeFeed(agentRef({ status: "aborted", sessionFile: undefined }));
+    render(
+      <InThread>
+        <NestedAgentTranscript source={nestedSource(feed)} />
+      </InThread>,
+    );
+    await awaitRead(feed);
+    feed.fail(new AppFailure({ code: "omp_error", message: "omp detail", retryable: true }));
+    expect(await screen.findByText("omp did not save this worker's transcript.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.queryByText("omp detail")).toBeNull();
+  });
+
+  test("a finished worker whose file is missing says omp did not save its transcript, and offers no Try again", async () => {
+    const feed = new FakeFeed(agentRef({ status: "completed" }));
+    render(
+      <InThread>
+        <NestedAgentTranscript source={nestedSource(feed)} />
+      </InThread>,
+    );
+    await awaitRead(feed);
+    feed.fail(new AppFailure({ code: "not_found", message: "omp detail", retryable: false }));
+    expect(await screen.findByText("omp did not save this worker's transcript.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.queryByText("omp detail")).toBeNull();
+  });
+
   test("a finished worker with no messages says nothing was recorded", async () => {
     const feed = new FakeFeed(agentRef({ status: "completed" }));
     render(

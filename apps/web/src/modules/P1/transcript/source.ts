@@ -51,8 +51,9 @@ function readerFor(
         ...(fromByte === undefined ? {} : { fromByte }),
       });
     } catch (error) {
-      // omp answers for a worker only while it still knows the worker. After a reload a finished
-      // worker is known only by its file, so that file is read instead.
+      // omp answers for a worker only while it still knows the worker. After a reload a finished worker is known only
+      // by its file, so that file is read instead. When there is no file to read, omp's error passes on unchanged: the
+      // view words the failure from the worker's facts (failures.ts), not from omp's error code.
       if (finished === undefined || agent.sessionFile === undefined || !isFinished(agent)) {
         throw error;
       }

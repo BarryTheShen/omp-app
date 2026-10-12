@@ -21,6 +21,8 @@ export interface TranscriptView {
   /** The live feed could not start, or was lost. The transcript still refreshes on a timer. */
   readonly liveFailure: AppFailure | undefined;
   readonly agentStatus: AgentStatus;
+  /** Whether omp or the chat's files name a session file for this worker. Without one, there is no transcript on disk. */
+  readonly sessionFileKnown: boolean;
   /** Asks for a read now; the view's "Try again" action. */
   readonly refresh: () => void;
 }
@@ -257,6 +259,7 @@ export class TranscriptTail {
       failure: this.failure,
       liveFailure: this.liveFailure,
       agentStatus: this.feed.agent.status,
+      sessionFileKnown: this.feed.agent.sessionFile !== undefined,
       refresh: this.refresh,
     });
   }

@@ -3,7 +3,7 @@ import { EmptyState, InlineError } from "@/components/blocks";
 import { type ToolRendererMap, ToolRunActiveContext } from "@/modules/U1/tool-slots";
 import { NestedTranscript } from "@/modules/U3/tool-card/nested";
 import type { TranscriptView } from "./controller";
-import { transcriptFailureMessage } from "./failures";
+import { transcriptFailureNotice } from "./failures";
 
 export interface AgentTranscriptBodyProps {
   readonly transcript: TranscriptView;
@@ -26,19 +26,22 @@ export function AgentTranscriptBody({
   taskName,
   toolRenderers,
 }: AgentTranscriptBodyProps) {
-  const { messages, loading, failure, liveFailure, agentStatus, refresh } = transcript;
+  const { messages, loading, failure, liveFailure, agentStatus, sessionFileKnown, refresh } =
+    transcript;
   const working = agentStatus === "running" || agentStatus === "pending";
+  const worker = { finished: !working, sessionFileKnown };
+  const notice = failure === undefined ? undefined : transcriptFailureNotice(failure, worker);
   return (
     <div
       className="flex min-w-0 flex-col gap-3 px-4 py-3"
       data-agent-status={agentStatus}
       data-slot="p1-agent-transcript"
     >
-      {failure !== undefined ? (
+      {notice !== undefined ? (
         <InlineError
-          heading="The transcript could not be read"
-          message={transcriptFailureMessage(failure)}
-          onRetry={refresh}
+          heading={notice.heading}
+          message={notice.message}
+          onRetry={notice.canRetry ? refresh : undefined}
           retryLabel="Try again"
           variant="compact"
         />
