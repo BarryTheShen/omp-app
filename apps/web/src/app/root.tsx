@@ -117,7 +117,7 @@ import {
   useChatDraft,
   useComposerDraft,
 } from "@/modules/U2/drafts";
-import { useIsRecalledPrompt } from "@/modules/U2/history";
+import { createStorePromptSource, useIsRecalledPrompt } from "@/modules/U2/history";
 import { ModeIndicator } from "@/modules/U2/modes";
 import { NestedTranscript } from "@/modules/U3/tool-card/nested";
 import { createToolRegistry } from "@/modules/U3/tool-card/registry";
@@ -154,6 +154,7 @@ import { setThemePreference, ThemeApplier, ThemeButton } from "@/theme";
 import { useAgentHubShortcut } from "./agents/agent-hub-shortcut";
 import { reportClientError, setClientErrorSink } from "./client-errors";
 import { useComposerClipboardShortcuts } from "./composer-clipboard";
+import { useComposerEditingShortcuts } from "./composer-editing";
 import { ComposerHistory } from "./composer-history";
 import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
@@ -161,7 +162,13 @@ import { SessionContextPanel } from "./context-panel";
 import { browserClipboard, useCopyFromChat } from "./copy/use-copy-from-chat";
 import { type EmptyStateCopy, emptyStateCopy } from "./empty-state";
 import { useExecutionModesSurface } from "./execution-modes";
+import {
+  ExternalEditorDialog,
+  type ExternalEditRequest,
+  useExternalEditorShortcut,
+} from "./external-editor-dialog";
 import { FolderSwitcher } from "./folder-switcher";
+import { HistorySearchDialog, useHistorySearchShortcut } from "./history-search-dialog";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
 import { useQueueDequeueShortcut } from "./queue-dequeue-shortcut";
@@ -968,6 +975,20 @@ function ActiveThreadReady({
     notify: setCommandStatus,
     fail: setCommandError,
   });
+  const promptSource = useMemo(() => createStorePromptSource(store), [store]);
+  const readPrompts = useCallback(() => promptSource.getUserPrompts(), [promptSource]);
+  const [historySearchOpen, setHistorySearchOpen] = useState(false);
+  const openHistorySearch = useCallback(() => setHistorySearchOpen(true), []);
+  useHistorySearchShortcut(openHistorySearch);
+  useComposerEditingShortcuts({ notify: setCommandStatus });
+  const [editRequest, setEditRequest] = useState<ExternalEditRequest | null>(null);
+  const editInDialog = useCallback(
+    (initialText: string) =>
+      new Promise<string>((resolve) => setEditRequest({ initialText, resolve })),
+    [],
+  );
+  const readDraftText = useCallback(() => draftController.getSnapshot().text, [draftController]);
+  useExternalEditorShortcut({ readDraft: readDraftText, edit: editInDialog, apply: setEditorText });
   // The server instance now, read through a ref that a layout effect refreshes, since the client can be replaced.
   const instanceIdOf = useRef<() => string | undefined>(() => undefined);
   useLayoutEffect(() => {
@@ -1243,6 +1264,22 @@ function ActiveThreadReady({
           toolbar={area("composerToolbar")}
         />
       </ComposerHistory>
+      <HistorySearchDialog
+        open={historySearchOpen}
+        onOpenChange={setHistorySearchOpen}
+        readPrompts={readPrompts}
+        onPick={(text) => {
+          setHistorySearchOpen(false);
+          setEditorText(text);
+        }}
+      />
+      <ExternalEditorDialog
+        request={editRequest}
+        onFinish={(text) => {
+          editRequest?.resolve(text);
+          setEditRequest(null);
+        }}
+      />
     </ComposerTriggers>
   );
   return (

@@ -347,6 +347,7 @@ export function ComposerSurface({
           <ComposerPrimitive.Input
             ref={inputRef}
             aria-label={inputLabel}
+            data-focus-scope="composer-input"
             aria-describedby={sendBlockedReason === undefined ? undefined : blockedId}
             data-focus-ring="parent"
             autoFocus={autoFocus}

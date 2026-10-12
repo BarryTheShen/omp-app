@@ -6,7 +6,10 @@ const EXTERNAL_EDITOR = "client.external-editor";
 const ATTACHMENTS = "client.composer-attachments";
 
 /** A shortcut that also fires while focus is in the composer: the app's opt-in (see shortcuts/registry.ts). */
-type EditableShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable: true };
+type EditableShortcutDescriptor = ShortcutDescriptor & {
+  readonly allowInEditable: true;
+  readonly focus?: "composer-input";
+};
 
 const COMPOSER_DESCRIPTORS = [
   {
@@ -130,9 +133,11 @@ const COMPOSER_DESCRIPTORS = [
     owner: "U2",
     title: "Open prompt history search",
     covers: ["F5.app-history-search"],
-    requires: [HISTORY],
+    requires: [],
     chord: "Mod+R",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -250,9 +255,11 @@ const COMPOSER_DESCRIPTORS = [
     owner: "U2",
     title: "Delete to line start",
     covers: ["F5.tui-editor-deletetolinestart"],
-    requires: [COMPOSER],
-    chord: "Mod+Home",
+    requires: [],
+    chord: "Mod+U",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -330,9 +337,11 @@ const COMPOSER_DESCRIPTORS = [
     owner: "U2",
     title: "Yank deleted text",
     covers: ["F5.tui-editor-yank"],
-    requires: [COMPOSER],
+    requires: [],
     chord: "Mod+Y",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",

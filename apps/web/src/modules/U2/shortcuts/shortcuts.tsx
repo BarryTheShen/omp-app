@@ -11,10 +11,15 @@ export const U2_EXTERNAL_EDITOR_SHORTCUT = {
   owner: "U2",
   title: "Open external editor",
   covers: [],
-  requires: ["host.external-editor"],
+  requires: [],
   chord: "Mod+G",
   scope: "composer-input",
-} as const satisfies ShortcutDescriptor;
+  allowInEditable: true,
+  focus: "composer-input",
+} as const satisfies ShortcutDescriptor & {
+  readonly allowInEditable: true;
+  readonly focus: "composer-input";
+};
 
 export interface ComposerShortcutActions {
   readonly externalEditor?: ShortcutAction;

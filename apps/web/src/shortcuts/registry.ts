@@ -119,6 +119,11 @@ function isEditableTarget(target: EventTarget | null): boolean {
   );
 }
 
+/** Whether the target sits inside the element that names this focus scope with `data-focus-scope`. */
+function inFocusScope(target: EventTarget | null, scope: string): boolean {
+  return target instanceof Element && target.closest(`[data-focus-scope="${scope}"]`) !== null;
+}
+
 function keyName(event: KeyboardEvent): string {
   if (event.key === " ") return "Space";
   if (event.key === "Escape") return "Esc";
@@ -134,8 +139,11 @@ function eventChord(event: KeyboardEvent): string {
   return [...modifiers, keyName(event)].join("+");
 }
 
-/** App-only opt-in for shortcuts like the command palette; the shared C0 descriptor stays frozen. */
-type RegisteredShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable?: true };
+/** App-only opt-ins: `allowInEditable` acts while a text box has focus; `focus` limits a chord to the element that carries that `data-focus-scope`. */
+type RegisteredShortcutDescriptor = ShortcutDescriptor & {
+  readonly allowInEditable?: true;
+  readonly focus?: string;
+};
 
 function shortcutDescriptors(
   descriptors: readonly Descriptor[],
@@ -334,6 +342,9 @@ export class ShortcutRegistry {
       isEditableTarget(event.target) &&
       this.descriptors.get(binding.id)?.allowInEditable !== true
     )
+      return { handled: false };
+    const focusScope = this.descriptors.get(binding.id)?.focus;
+    if (focusScope !== undefined && !inFocusScope(event.target, focusScope))
       return { handled: false };
     const action = this.actions.get(binding.id);
     if (action === undefined) return { handled: false, binding };
