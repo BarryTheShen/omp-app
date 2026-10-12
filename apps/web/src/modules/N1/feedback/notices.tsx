@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Icons } from "../../../tokens";
 import type { Notification } from "../contract";
@@ -13,8 +13,10 @@ import { useExpiry, useNotificationSnapshot } from "./hooks";
 export const MAX_VISIBLE_TOASTS = 3;
 /** The newest banners shown at once; the rest are counted and can be opened. */
 export const MAX_VISIBLE_BANNERS = 3;
-/** How long an info, success or warning toast stays unless someone hovers or focuses it. */
+/** How long a success notice's toast stays unless someone hovers or focuses it. */
 export const TOAST_LIFETIME_MS = 6000;
+/** The longest notice shown whole; a longer one is cut here, and "Show all" reads the rest. */
+export const NOTICE_CUT_CHARS = 240;
 
 /** U0's tone classes for each severity: the same ones the tool cards and worker chips use. */
 export const NOTICE_TONE: Readonly<Record<Notification["severity"], string>> = Object.freeze({
@@ -90,6 +92,29 @@ interface FocusHandoff {
   readonly fallback: HTMLElement | null;
 }
 
+/**
+ * A notice's words. A long one (an extension's list of tools can run to a screen of names) is cut at `NOTICE_CUT_CHARS`,
+ * and "Show all" reads the rest; "Show less" cuts it again.
+ */
+function NoticeText({ text }: { readonly text: string }) {
+  const [all, setAll] = useState(false);
+  if (text.length <= NOTICE_CUT_CHARS) return <>{text}</>;
+  return (
+    <>
+      {all ? text : `${text.slice(0, NOTICE_CUT_CHARS).trimEnd()}…`}{" "}
+      <Button
+        className="motion-reduce:transition-none"
+        onClick={() => setAll((open) => !open)}
+        size="xs"
+        type="button"
+        variant="ghost"
+      >
+        {all ? "Show less" : "Show all"}
+      </Button>
+    </>
+  );
+}
+
 interface NoticeItemProps {
   readonly notification: Notification;
   readonly expires: boolean;
@@ -102,8 +127,9 @@ function NoticeItem({ notification, expires, onDismiss }: NoticeItemProps) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const paused = hovered || focused;
-  // Errors stay until someone dismisses them, and so does everything in a stack that does not expire.
-  const sticky = !expires || notification.severity === "error";
+  // Warnings and errors stay until someone dismisses them, and so does everything in a stack that does not expire.
+  const sticky =
+    !expires || notification.severity === "warning" || notification.severity === "error";
   const dismissRef = useRef(onDismiss);
   useEffect(() => {
     dismissRef.current = onDismiss;
@@ -134,7 +160,9 @@ function NoticeItem({ notification, expires, onDismiss }: NoticeItemProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <p className="min-w-0 flex-1 break-words whitespace-pre-wrap">{notification.message}</p>
+      <p className="min-w-0 flex-1 break-words whitespace-pre-wrap">
+        <NoticeText text={notification.message} />
+      </p>
       <Button
         aria-label="Dismiss notification"
         className="motion-reduce:transition-none"
@@ -274,9 +302,14 @@ export function isStackNotice(notification: Notification): boolean {
   return notification.placement === "banner" && notification.dedupeKey !== PROJECTION_ERROR_KEY;
 }
 
+/** Whether a notice is informational: it is kept in the omp notices line rather than drawn as a card. */
+export function isQuietNotice(notification: Notification): boolean {
+  return notification.placement === "quiet";
+}
+
 /**
- * The toasts: transient notices that leave by themselves after a few seconds, unless someone is
- * reading them or they are errors.
+ * The toasts: notices that stay until someone dismisses them (warnings and errors), and the success notices that leave
+ * by themselves after a few seconds, unless someone is reading them.
  */
 export function NotificationToasts({ projector }: { readonly projector: NotificationProjector }) {
   const snapshot = useNotificationSnapshot(projector);
@@ -312,5 +345,73 @@ export function NotificationBanners({ projector }: { readonly projector: Notific
       )}
       projector={projector}
     />
+  );
+}
+
+/**
+ * The informational notices omp sends, collapsed into one quiet line: "3 notices from omp". Opening it lists them, each
+ * cut where it is long. The line is never read aloud, and a notice that was shown is not shown again when its chat is
+ * reopened or the page reloads (see `NotificationBus.publish`). Dismissing the line dismisses them all.
+ */
+export function NotificationQuiet({ projector }: { readonly projector: NotificationProjector }) {
+  const snapshot = useNotificationSnapshot(projector);
+  const listId = useId();
+  const [open, setOpen] = useState(false);
+  const quiet = snapshot.notifications.filter(isQuietNotice);
+  const count = quiet.length;
+  useEffect(() => {
+    if (count === 0) setOpen(false);
+  }, [count]);
+  return (
+    <section
+      aria-label="Notices from omp"
+      className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground"
+      data-testid="n1-quiet"
+      hidden={count === 0}
+    >
+      <div className="flex min-w-0 items-center gap-1">
+        <Button
+          aria-controls={listId}
+          aria-expanded={open}
+          className="motion-reduce:transition-none"
+          data-testid="n1-quiet-toggle"
+          onClick={() => setOpen((shown) => !shown)}
+          size="xs"
+          type="button"
+          variant="ghost"
+        >
+          {`${count} ${count === 1 ? "notice" : "notices"} from omp`}
+        </Button>
+        <Button
+          aria-label="Dismiss notices from omp"
+          className="motion-reduce:transition-none"
+          onClick={() => {
+            for (const notification of quiet) {
+              projector.getBus().dismiss(notification.threadId, notification.dedupeKey);
+            }
+          }}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <Icons.close aria-hidden="true" />
+        </Button>
+      </div>
+      <ul
+        className="flex max-h-[30dvh] min-w-0 flex-col gap-1 overflow-y-auto"
+        hidden={!open}
+        id={listId}
+      >
+        {quiet.map((notification) => (
+          <li
+            className="min-w-0 break-words whitespace-pre-wrap"
+            data-notice-key={keyOf(notification)}
+            key={keyOf(notification)}
+          >
+            <NoticeText text={notification.message} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

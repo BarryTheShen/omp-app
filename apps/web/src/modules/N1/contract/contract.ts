@@ -88,7 +88,8 @@ export const N1RuntimeEventSchema = z.discriminatedUnion("type", [
 ]);
 export type N1RuntimeEvent = z.infer<typeof N1RuntimeEventSchema>;
 
-export const NotificationPlacement = z.enum(["transcript", "toast", "banner", "inline"]);
+/** `quiet`: an informational notice, collapsed into the omp notices line and never read aloud. */
+export const NotificationPlacement = z.enum(["transcript", "toast", "banner", "inline", "quiet"]);
 export type NotificationPlacement = z.infer<typeof NotificationPlacement>;
 
 export const LiveRegionPolicy = z.enum(["off", "polite", "assertive"]);

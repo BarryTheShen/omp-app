@@ -2,8 +2,9 @@ import type { ThreadId } from "@omp-app/contracts";
 import { z } from "zod";
 
 /**
- * The stream notices a person let go of (dismissed, or timed out), so that a replay of their stream does not bring
- * them back (see `NotificationBus.retire`). A notice is named by its chat and its dedupe key.
+ * The stream notices already shown and let go (dismissed or timed out), and the quiet ones once shown, so that a replay
+ * of their stream does not bring them back (see `NotificationBus.retire` and `publish`). A notice is named by its chat
+ * and its dedupe key.
  */
 export interface RetiredNotices {
   has(threadId: ThreadId, dedupeKey: string): boolean;

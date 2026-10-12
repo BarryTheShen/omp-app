@@ -124,6 +124,10 @@ export class NotificationBus {
 
     const result: NotificationPublishResult = previous ? "replaced" : "published";
     this.notices.set(key, frozen);
+    // A quiet notice is remembered once it is shown: its stream replays it on every reopen and reload, and it is not
+    // shown again.
+    if (frozen.placement === "quiet" && isStreamNoticeKey(frozen.dedupeKey))
+      this.retired?.remember(frozen.threadId, frozen.dedupeKey);
     this.trimThread(frozen.threadId);
     this.commit();
     return result;

@@ -5,5 +5,5 @@ export {
   NotificationNotices,
   type WidgetScope,
 } from "./feedback";
-export { NotificationBanners, NotificationToasts } from "./notices";
+export { NotificationBanners, NotificationQuiet, NotificationToasts } from "./notices";
 export { ExtensionWidgets, ProjectionStatus, type WidgetPlacement } from "./status";

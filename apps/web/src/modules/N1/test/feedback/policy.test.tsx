@@ -18,7 +18,7 @@ function makeProjector(): NotificationProjector {
 function notify(
   projector: NotificationProjector,
   message: string,
-  notifyType: "info" | "warning" | "error" = "info",
+  notifyType: "info" | "warning" | "error" = "warning",
 ): void {
   projector.present({ kind: "notify", message, notifyType }, { threadId });
 }
@@ -167,6 +167,22 @@ describe("one live-region policy for notices", () => {
     expect(pass.polite).toEqual([]);
     expect(pass.assertive).toEqual([]);
   });
+
+  test("an informational notice waits in the omp notices line, and no live region reads it", () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback projector={projector} />);
+
+    act(() => {
+      notify(projector, "Build cache warmed", "info");
+    });
+
+    expect(read("polite")).toEqual([]);
+    expect(read("assertive")).toEqual([]);
+    expect(
+      within(screen.getByTestId("n1-feedback")).getByRole("button", { name: "1 notice from omp" }),
+    ).toBeTruthy();
+    projector.dispose();
+  });
 });
 
 describe("notice tones follow U0's severity tokens", () => {
@@ -190,10 +206,12 @@ describe("notice tones follow U0's severity tokens", () => {
     const strip = within(screen.getByTestId("n1-feedback"));
     const toneOf = (message: string) =>
       strip.getByText(message).closest("article")?.className ?? "";
-    expect(toneOf("Saved")).toContain("bg-info-surface");
+    // An informational notice is kept in the omp notices line, so it draws no card and takes no tone.
+    expect(strip.getByRole("button", { name: "1 notice from omp" })).toBeTruthy();
+    expect(strip.getAllByRole("article")).toHaveLength(2);
     expect(toneOf("Careful")).toContain("bg-warning-surface");
     expect(toneOf("Failed")).toContain("bg-danger-surface");
-    for (const message of ["Saved", "Careful", "Failed"]) {
+    for (const message of ["Careful", "Failed"]) {
       expect(toneOf(message)).not.toMatch(/destructive|warning\/50/);
     }
     projector.dispose();
@@ -278,7 +296,7 @@ describe("reduced motion", () => {
     act(() => {
       for (let index = 1; index <= 4; index += 1) {
         projector.present(
-          { kind: "notify", message: `Update ${index}`, notifyType: "info" },
+          { kind: "notify", message: `Update ${index}`, notifyType: "warning" },
           { threadId },
         );
       }

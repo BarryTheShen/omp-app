@@ -17,13 +17,32 @@ function makeProjector(): NotificationProjector {
   return new NotificationProjector({ source: new OmpRuntimeStore({ threadId }) });
 }
 
+/**
+ * An extension notice. A warning or an error stays until it is dismissed, so the stack tests use warnings; an informational
+ * notice is kept in the omp notices line instead (see the tests of that line).
+ */
 function notify(
   projector: NotificationProjector,
   message: string,
-  notifyType: "info" | "warning" | "error" = "info",
+  notifyType: "info" | "warning" | "error" = "warning",
 ): void {
   act(() => {
     projector.present({ kind: "notify", message, notifyType }, { threadId });
+  });
+}
+
+/** A success notice on the bus: the one kind of toast that leaves by itself, after the lifetime. */
+function toast(projector: NotificationProjector, message: string): void {
+  act(() => {
+    projector.getBus().publish({
+      threadId,
+      dedupeKey: `toast:${message}`,
+      severity: "success",
+      placement: "toast",
+      message,
+      live: "off",
+      focus: "preserve",
+    });
   });
 }
 
@@ -209,7 +228,7 @@ describe("NotificationFeedback", () => {
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
 
-    notify(projector, "Tests passed");
+    toast(projector, "Tests passed");
     act(() => {
       projector.getBus().publish({
         threadId,
@@ -241,6 +260,68 @@ describe("NotificationFeedback", () => {
     expect(screen.getByTestId("n1-feedback").hidden).toBe(false);
     projector.dispose();
   });
+
+  test("informational notices collapse into one line that lists them, and draw no card", () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback projector={projector} />);
+    notify(projector, "xd://: mounted one", "info");
+    notify(projector, "Build cache warmed", "info");
+
+    const toggle = strip().getByRole("button", { name: "2 notices from omp" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(strip().queryAllByRole("button", { name: "Dismiss notification" })).toHaveLength(0);
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(strip().getByText("Build cache warmed")).toBeTruthy();
+    projector.dispose();
+  });
+
+  test("a long informational notice is cut where it runs on, and Show all reads the rest", () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback projector={projector} />);
+    const long = `xd://: mounted ${Array.from({ length: 40 }, (_, index) => `mcp__tool_${index}`).join(", ")}`;
+    notify(projector, long, "info");
+    fireEvent.click(strip().getByRole("button", { name: "1 notice from omp" }));
+
+    expect(strip().queryByText(long)).toBeNull();
+    fireEvent.click(strip().getByRole("button", { name: "Show all" }));
+    expect(strip().getByText(long)).toBeTruthy();
+    expect(strip().getByRole("button", { name: "Show less" })).toBeTruthy();
+    projector.dispose();
+  });
+
+  test("dismissing the line dismisses every informational notice in it", () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback projector={projector} />);
+    notify(projector, "Build cache warmed", "info");
+    notify(projector, "Cache cleared", "info");
+
+    fireEvent.click(strip().getByRole("button", { name: "Dismiss notices from omp" }));
+
+    expect(screen.getByTestId("n1-quiet").hidden).toBe(true);
+    expect(projector.getBus().getSnapshot().notifications).toHaveLength(0);
+    projector.dispose();
+  });
+
+  test("a warning stays until it is dismissed, and only a success notice leaves by its lifetime", () => {
+    vi.useFakeTimers();
+    try {
+      const projector = makeProjector();
+      render(<NotificationFeedback projector={projector} />);
+      notify(projector, "Disk nearly full");
+      toast(projector, "Saved");
+
+      act(() => {
+        vi.advanceTimersByTime(TOAST_LIFETIME_MS + 1000);
+      });
+
+      expect(strip().queryByText("Saved")).toBeNull();
+      expect(strip().getByText("Disk nearly full")).toBeTruthy();
+      projector.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("a pointer dismissal does not hold the next notice", () => {
@@ -248,8 +329,8 @@ describe("a pointer dismissal does not hold the next notice", () => {
     vi.useFakeTimers();
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
-    notify(projector, "Update 1");
-    notify(projector, "Update 2");
+    toast(projector, "Update 1");
+    toast(projector, "Update 2");
 
     const second = dismissButtons()[1];
     second?.focus();
@@ -271,7 +352,7 @@ describe("notice stacks keep focus and pause on their own terms", () => {
     try {
       const projector = makeProjector();
       render(<NotificationFeedback projector={projector} />);
-      notify(projector, "Hovered and focused");
+      toast(projector, "Hovered and focused");
       const article = strip().getByText("Hovered and focused").closest("article");
       const dismiss = strip().getByRole("button", { name: "Dismiss notification" });
       if (!article) throw new Error("the notice is not drawn");

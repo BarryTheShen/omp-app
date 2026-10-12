@@ -126,4 +126,29 @@ describe("retired notices", () => {
     memory.remember(threadA, streamKey);
     expect(memory.has(threadA, streamKey)).toBe(true);
   });
+
+  test("a quiet notice is remembered once it is shown, so its stream does not bring it back on a reopen", () => {
+    const storage = tabStorage();
+    const shown = new NotificationBus({ retired: sessionRetiredNotices(storage, instance) });
+    const quiet = notice({ placement: "quiet", live: "off", message: "Build cache warmed" });
+    expect(shown.publish(quiet)).toBe("published");
+
+    const reopened = new NotificationBus({ retired: sessionRetiredNotices(storage, instance) });
+    expect(reopened.publish(quiet)).toBe("deduplicated");
+    expect(reopened.getSnapshot().notifications).toHaveLength(0);
+  });
+
+  test("a warning is not remembered when it is shown: it comes back on a reopen until it is let go", () => {
+    const storage = tabStorage();
+    const shown = new NotificationBus({ retired: sessionRetiredNotices(storage, instance) });
+    const warning = notice({
+      placement: "toast",
+      severity: "warning",
+      message: "Disk nearly full",
+    });
+    expect(shown.publish(warning)).toBe("published");
+
+    const reopened = new NotificationBus({ retired: sessionRetiredNotices(storage, instance) });
+    expect(reopened.publish(warning)).toBe("published");
+  });
 });

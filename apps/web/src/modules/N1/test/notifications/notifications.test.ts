@@ -114,6 +114,31 @@ describe("NotificationBus", () => {
 });
 
 describe("NotificationProjector", () => {
+  test("an informational omp notice is quiet, a warning stays a toast, and a replayed one is not read again", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const projector = new NotificationProjector({ source: store, events: store });
+    const omp = (message: string, level: "info" | "warning") =>
+      ({ kind: "omp", event: { type: "notice", level, message } }) as unknown as RpcSessionEvent;
+    store.ingest(omp("xd://: mounted one", "info"), 1);
+    store.ingest(omp("Disk is almost full", "warning"), 2);
+    store.ingest(omp("Replayed warning", "warning"), 3, true);
+    const shown = Object.fromEntries(
+      projector
+        .getBus()
+        .getSnapshot()
+        .notifications.map((item) => [
+          item.message,
+          { placement: item.placement, live: item.live },
+        ]),
+    );
+    expect(shown).toEqual({
+      "xd://: mounted one": { placement: "quiet", live: "off" },
+      "Disk is almost full": { placement: "toast", live: "polite" },
+      "Replayed warning": { placement: "toast", live: "off" },
+    });
+    projector.dispose();
+  });
+
   test("projects retries as transient banners and keeps only retry failures in the transcript", () => {
     const store = new OmpRuntimeStore({ threadId });
     const transcript: Notification[] = [];

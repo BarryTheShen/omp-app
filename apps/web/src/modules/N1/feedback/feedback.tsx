@@ -1,7 +1,14 @@
+import type { Notification } from "../contract";
 import type { NotificationProjector } from "../notifications";
 import { LiveAnnouncer } from "./announcer";
 import { useNotificationSnapshot, useProjectionSnapshot } from "./hooks";
-import { isStackNotice, NotificationBanners, NotificationToasts } from "./notices";
+import {
+  isQuietNotice,
+  isStackNotice,
+  NotificationBanners,
+  NotificationQuiet,
+  NotificationToasts,
+} from "./notices";
 import { ExtensionWidgets, ProjectionStatus, type WidgetPlacement } from "./status";
 
 /** Which extension widgets a strip draws: one placement, both, or none. */
@@ -37,7 +44,7 @@ export function NotificationFeedback({
     projection.error !== null ||
     projection.statuses.length > 0 ||
     projection.widgets.some((widget) => widgets === "all" || widgets === widget.placement) ||
-    (showsNotices && notifications.notifications.some(isStackNotice));
+    (showsNotices && hasPanelNotice(notifications.notifications));
 
   return (
     <>
@@ -58,6 +65,7 @@ export function NotificationFeedback({
           <ExtensionWidgets placement="belowEditor" projector={projector} />
         ) : null}
         {showsNotices ? <NotificationToasts projector={projector} /> : null}
+        {showsNotices ? <NotificationQuiet projector={projector} /> : null}
       </section>
     </>
   );
@@ -78,10 +86,18 @@ export function NotificationNotices({ projector }: { readonly projector: Notific
       aria-label="Notices"
       className="pointer-events-auto mb-2 flex min-w-0 flex-col gap-1 bg-background"
       data-testid="n1-notices"
-      hidden={!notifications.notifications.some(isStackNotice)}
+      hidden={!hasPanelNotice(notifications.notifications)}
     >
       <NotificationBanners projector={projector} />
       <NotificationToasts projector={projector} />
+      <NotificationQuiet projector={projector} />
     </section>
+  );
+}
+
+/** Whether the notices panel has anything to draw: a banner or toast, or the omp notices line. */
+function hasPanelNotice(notifications: readonly Notification[]): boolean {
+  return notifications.some(
+    (notification) => isStackNotice(notification) || isQuietNotice(notification),
   );
 }

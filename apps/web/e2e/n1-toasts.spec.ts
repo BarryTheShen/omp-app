@@ -71,7 +71,10 @@ class ChatStream {
   }
 
   /** Sends one extension `notify` notice per message, as a notification event. */
-  public notify(messages: readonly string[], notifyType: "info" | "error" = "info"): void {
+  public notify(
+    messages: readonly string[],
+    notifyType: "info" | "warning" | "error" = "warning",
+  ): void {
     for (const message of messages) {
       this.send({
         kind: "notification",
@@ -122,7 +125,7 @@ function chatEvent(message: string): { stream: string; seq: number } | undefined
 }
 
 realTest(
-  "a burst of notices shows three at a time, dismisses one, and lets the rest expire",
+  "a burst of warnings shows three at a time, and dismissing one brings the next up",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
     const chat = new ChatStream();
@@ -147,11 +150,6 @@ realTest(
     await expect(feedback.getByText("Update 7")).toHaveCount(0);
     await expect(page.getByTestId("n1-feedback-more")).toHaveText("+3 more");
     await expect(feedback.getByText("Update 4")).toBeVisible();
-
-    // A toast under the pointer waits; moving the pointer away lets the six-second lifetime run out.
-    await page.mouse.move(0, 0);
-    await expect(feedback.getByText("Update 6")).toHaveCount(0, { timeout: 20_000 });
-    await expect(page.getByTestId("n1-feedback-more")).toHaveCount(0);
   },
 );
 
@@ -258,10 +256,12 @@ realTest.describe("notices over a real transcript", () => {
       expect(await shellGeometry(page), "while three notices and +4 more show").toEqual(desktop);
       await page.screenshot({ path: join(screenshots, "fix-787-light.png") });
 
-      // A toast under the pointer waits; moving the pointer away lets the six-second lifetime run out.
-      await page.mouse.move(0, 0);
+      // Warnings stay until someone dismisses them: dismiss the seven, and the layout must not have moved.
+      for (let index = 0; index < 7; index += 1) {
+        await feedback.getByRole("button", { name: "Dismiss notification" }).first().click();
+      }
       await expect(feedback).toBeHidden({ timeout: 20_000 });
-      expect(await shellGeometry(page), "after the notices expire").toEqual(desktop);
+      expect(await shellGeometry(page), "after the notices are dismissed").toEqual(desktop);
 
       await page.setViewportSize({ width: 390, height: 844 });
       const narrow = await settledGeometry(page);
@@ -269,9 +269,13 @@ realTest.describe("notices over a real transcript", () => {
       await expect(feedback.getByText("Narrow 4")).toBeVisible();
       expect(await shellGeometry(page), "at 390 px while notices show").toEqual(narrow);
       await page.screenshot({ path: join(screenshots, "fix-787-narrow.png") });
-      await page.mouse.move(0, 0);
+      for (let index = 0; index < 4; index += 1) {
+        await feedback.getByRole("button", { name: "Dismiss notification" }).first().click();
+      }
       await expect(feedback).toBeHidden({ timeout: 20_000 });
-      expect(await shellGeometry(page), "at 390 px after the notices expire").toEqual(narrow);
+      expect(await shellGeometry(page), "at 390 px after the notices are dismissed").toEqual(
+        narrow,
+      );
     },
   );
 

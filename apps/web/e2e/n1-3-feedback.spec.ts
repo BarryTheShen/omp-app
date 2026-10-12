@@ -78,7 +78,7 @@ test("a widget sits above or below the composer, and notices keep focus in the c
   await page.evaluate(() => {
     window.n1FeedbackPlayground?.setWidget("above", "aboveEditor", ["Shown above the composer"]);
     window.n1FeedbackPlayground?.setWidget("below", "belowEditor", ["Shown below the composer"]);
-    window.n1FeedbackPlayground?.notify("Build finished", "info");
+    window.n1FeedbackPlayground?.notify("Build finished", "warning");
   });
 
   const feedback = page.getByTestId("n1-feedback");
@@ -340,7 +340,7 @@ class ChatStream {
           id: `n13-notice-${this.callCount()}-${message}`,
           method: "notify",
           message,
-          notifyType: "info",
+          notifyType: "warning",
         },
       });
     }

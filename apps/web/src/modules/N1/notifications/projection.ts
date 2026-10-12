@@ -88,6 +88,8 @@ export const MAX_WIDGET_LINES = 10;
 /** The dedupe key of the projection's own error. The feedback strip shows it once, as an inline alert. */
 export const PROJECTION_ERROR_KEY = "projection:error";
 const MAX_DISPLAY_TEXT = 360;
+/** The longest notify text kept whole. The feedback cuts a long one, and "Show all" reads the rest of it. */
+const MAX_NOTIFY_TEXT = 4_000;
 const EMPTY_PROJECTION_STATUSES: readonly StatusHandoffProjection[] = Object.freeze([]);
 const EMPTY_PROJECTION_WIDGETS: readonly WidgetHandoffProjection[] = Object.freeze([]);
 const KNOWN_N1_EVENT_TYPES: Readonly<Record<string, true>> = {
@@ -247,8 +249,28 @@ function severityForNotify(
 
 function liveForSeverity(severity: Notification["severity"]): Notification["live"] {
   if (severity === "error") return "assertive";
-  if (severity === "warning" || severity === "info") return "polite";
+  if (severity === "warning") return "polite";
   return "off";
+}
+
+/**
+ * Where a notify lands. Informational notices are quiet: they collapse into the omp notices line rather than each
+ * taking a card, and are not read aloud. Warnings and errors are toasts that stay until someone dismisses them.
+ */
+function placementForNotify(severity: Notification["severity"]): Notification["placement"] {
+  return severity === "info" ? "quiet" : "toast";
+}
+
+/** Where an omp notice lands: an informational one is quiet, an error is a banner, a warning is a toast. */
+function placementForNotice(severity: Notification["severity"]): Notification["placement"] {
+  if (severity === "info") return "quiet";
+  return severity === "error" ? "banner" : "toast";
+}
+
+/** Whether an omp notice is read aloud: an informational one is not (it is quiet), an error is read at once. */
+function liveForNotice(severity: Notification["severity"]): Notification["live"] {
+  if (severity === "info") return "off";
+  return severity === "error" ? "assertive" : "polite";
 }
 
 function retryDelay(delayMs: number): string {
@@ -432,8 +454,8 @@ function handoffNotification(
       return notification(context.threadId, {
         dedupeKey,
         severity,
-        placement: "toast",
-        message: cleanText(handoff.message),
+        placement: placementForNotify(severity),
+        message: cleanText(handoff.message, MAX_NOTIFY_TEXT),
         source: "extension",
         live: context.replayed === true ? "off" : liveForSeverity(severity),
       });
@@ -740,10 +762,10 @@ export class NotificationProjector {
     return notification(threadId, {
       dedupeKey,
       severity,
-      placement: severity === "error" ? "banner" : "toast",
-      message: cleanText(event.message),
+      placement: placementForNotice(severity),
+      message: cleanText(event.message, MAX_NOTIFY_TEXT),
       ...(source === undefined ? {} : { source }),
-      live: severity === "error" ? "assertive" : "polite",
+      live: liveForNotice(severity),
     });
   };
 
