@@ -10,6 +10,21 @@ import { spawnOmpProcess } from "./omp-process";
  */
 const DEFAULT_IDLE_CLOSE_MS = 2 * 60 * 1000;
 
+/** How long a wait for omp to stop lasts before it refuses. A stop takes at most about five seconds (SIGTERM, then SIGKILL). */
+const STOP_LIMIT_MS = 10 * 1000;
+
+/** What a wait for omp to stop is for; it names the refusal when omp does not stop in time. */
+export type StopPurpose = "deleted" | "opened" | "renamed";
+
+/** The refusal when omp did not stop in time: the chat stays as it is, since omp may still write its file. Retry later. */
+function stopRefused(purpose: StopPurpose): AppFailure {
+  return new AppFailure({
+    code: "conflict",
+    message: `omp did not stop, so this chat was not ${purpose}. Try again in a moment.`,
+    retryable: true,
+  });
+}
+
 function defaultTimer(): RpcSessionTimer {
   return {
     setTimeout: (handler, delayMs) => globalThis.setTimeout(handler, delayMs),
@@ -65,6 +80,8 @@ export class OmpProcessRegistry {
   readonly #timer: RpcSessionTimer;
   readonly #entries = new Map<ThreadId, Entry>();
   readonly #stopping = new Map<ThreadId, Promise<void>>();
+  /** The process of each thread whose stop failed, until a stop of it succeeds: a wait for the thread tries it again. */
+  readonly #stuck = new Map<ThreadId, OmpProcess>();
   #idleHooks: OmpProcessIdleHooks | undefined;
   readonly #busyListeners = new Set<(threadId: ThreadId, busy: boolean) => void>();
 
@@ -80,12 +97,15 @@ export class OmpProcessRegistry {
   }
 
   /**
-   * Resolves when the process this registry is stopping for a thread has exited (at once if it is
-   * stopping none). A thread opened again must wait: omp holds a lease on the session file until it
-   * exits, and a second omp on the same file would be refused.
+   * Resolves once omp for the thread has exited, so its session file is free. A thread opened again must wait: omp holds
+   * a lease on the session file until it exits, and a second omp on the same file would be refused. Resolves at once when
+   * no stop is under way. A stop under way is waited for, and a stop that failed is tried again. Either refuses (a
+   * retryable conflict naming `purpose`) when omp does not stop within STOP_LIMIT_MS, so no caller waits for ever.
    */
-  whenStopped(threadId: ThreadId): Promise<void> {
-    return this.#stopping.get(threadId) ?? Promise.resolve();
+  async whenGone(threadId: ThreadId, purpose: StopPurpose): Promise<void> {
+    const stopping = this.#stopping.get(threadId) ?? this.#retryStuck(threadId);
+    if (stopping === undefined) return;
+    await this.#finishedWithin(stopping, purpose);
   }
 
   /**
@@ -174,17 +194,32 @@ export class OmpProcessRegistry {
   /**
    * Stops a thread's process now if nobody watches it, it is not busy, and omp reports it settled: a host started only
    * for one job (a rename of a chat nobody has open) stops as soon as the job is done, not after the idle wait. A
-   * watched or busy process is left alone, and the idle timer still applies to it. Resolves once any stop of the
-   * thread's process has finished (omp holds the session file until it exits), so a caller that reads or removes the
-   * file next does not race that exit.
+   * watched or busy process is left alone, and the idle timer still applies to it. Resolves once omp for the thread has
+   * exited, so a caller that reads or removes the session file next does not race that exit; refuses as `whenGone`
+   * does when omp does not stop in time.
    */
-  async stopIfUnwatched(threadId: ThreadId): Promise<void> {
+  async stopIfUnwatched(threadId: ThreadId, purpose: StopPurpose): Promise<void> {
     const entry = this.#entries.get(threadId);
     if (entry !== undefined && entry.watchers === 0 && !entry.busy) {
       this.#cancelIdle(entry);
-      await this.#closeIfIdle(entry);
+      const closed = await this.#closeIfIdle(entry);
+      // A stop this call started is waited for alone: when it fails, this call refuses and does not try it again.
+      if (closed !== undefined) return this.#finishedWithin(closed.stopping, purpose);
     }
-    await this.whenStopped(threadId);
+    return this.whenGone(threadId, purpose);
+  }
+
+  /** Waits for a stop to finish, for at most STOP_LIMIT_MS. A stop that fails, or runs past the limit, refuses. */
+  async #finishedWithin(stopping: Promise<void>, purpose: StopPurpose): Promise<void> {
+    let timeout: unknown;
+    const limit = new Promise<never>((_resolve, reject) => {
+      timeout = this.#timer.setTimeout(() => reject(stopRefused(purpose)), STOP_LIMIT_MS);
+    });
+    try {
+      await Promise.race([stopping.catch(() => Promise.reject(stopRefused(purpose))), limit]);
+    } finally {
+      this.#timer.clearTimeout(timeout);
+    }
   }
 
   /**
@@ -234,6 +269,11 @@ export class OmpProcessRegistry {
 
   has(threadId: ThreadId): boolean {
     return this.#entries.has(threadId);
+  }
+
+  /** Whether a viewer holds the thread open. A process the registry keeps for omp's idle time alone is not watched. */
+  watched(threadId: ThreadId): boolean {
+    return (this.#entries.get(threadId)?.watchers ?? 0) > 0;
   }
 
   /** The processes held right now: what the debug log's periodic sample reports. */
@@ -317,8 +357,8 @@ export class OmpProcessRegistry {
     return this.#entries.get(entry.key) === entry && entry.watchers === 0 && !entry.busy;
   }
 
-  async #closeIfIdle(entry: Entry): Promise<void> {
-    if (!this.#stillUnwatched(entry)) return;
+  async #closeIfIdle(entry: Entry): Promise<{ readonly stopping: Promise<void> } | undefined> {
+    if (!this.#stillUnwatched(entry)) return undefined;
     if (this.#idleHooks !== undefined) {
       let settled: boolean;
       try {
@@ -327,24 +367,45 @@ export class OmpProcessRegistry {
         // omp that has exited holds nothing; omp that is only slow to answer is left running.
         settled = ["exited", "error", "stopped"].includes(entry.process.status);
       }
-      if (!this.#stillUnwatched(entry)) return;
+      if (!this.#stillUnwatched(entry)) return undefined;
       if (!settled) {
         this.#scheduleIdleIfNeeded(entry);
-        return;
+        return undefined;
       }
     }
     const threadId = entry.key;
     this.#entries.delete(threadId);
     entry.unsubscribe();
     this.#idleHooks?.stopping(threadId, entry.process);
-    const stopping: Promise<void> = entry.process
-      .stop()
-      .catch((error: unknown) => {
-        console.error("[omp-app] could not stop an idle omp process", error);
-      })
-      .finally(() => {
+    return { stopping: this.#startStop(threadId, entry.process) };
+  }
+
+  /**
+   * Starts a stop of a thread's process and records it while it is under way. A stop that fails leaves the process
+   * recorded as stuck, so the next wait for the thread tries its stop again (see `whenGone`).
+   */
+  #startStop(threadId: ThreadId, process: OmpProcess): Promise<void> {
+    const stopping: Promise<void> = process.stop().then(
+      () => {
         if (this.#stopping.get(threadId) === stopping) this.#stopping.delete(threadId);
-      });
+        if (this.#stuck.get(threadId) === process) this.#stuck.delete(threadId);
+      },
+      (error: unknown) => {
+        console.error("[omp-app] could not stop an omp process", error);
+        if (this.#stopping.get(threadId) === stopping) this.#stopping.delete(threadId);
+        this.#stuck.set(threadId, process);
+        throw error;
+      },
+    );
+    // A failed stop is not an unhandled rejection: whoever waits for it hears of the failure through `#finishedWithin`.
+    stopping.catch(() => undefined);
     this.#stopping.set(threadId, stopping);
+    return stopping;
+  }
+
+  /** Starts another stop of a process whose stop failed; undefined when the thread has none stuck. */
+  #retryStuck(threadId: ThreadId): Promise<void> | undefined {
+    const process = this.#stuck.get(threadId);
+    return process === undefined ? undefined : this.#startStop(threadId, process);
   }
 }

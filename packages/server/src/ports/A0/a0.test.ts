@@ -346,6 +346,28 @@ function countReleases(processRegistry: OmpProcessRegistry): { count: number } {
   return releases;
 }
 
+/** A timer whose timeouts run only when the test calls `fireAll()`; `pending()` counts the timeouts not yet run. */
+function firingTimer() {
+  const callbacks = new Map<number, () => void>();
+  let nextHandle = 0;
+  return {
+    setTimeout: (handler: () => void): number => {
+      nextHandle += 1;
+      callbacks.set(nextHandle, handler);
+      return nextHandle;
+    },
+    clearTimeout: (handle: unknown): void => {
+      if (typeof handle === "number") callbacks.delete(handle);
+    },
+    fireAll: (): void => {
+      const pending = [...callbacks.values()];
+      callbacks.clear();
+      for (const callback of pending) callback();
+    },
+    pending: (): number => callbacks.size,
+  };
+}
+
 describe("A0.7 RpcSessionPort handlers", () => {
   test("opens, sends at admission, and publishes prompt completion/settled events with replay", async () => {
     const created: FakeProcess[] = [];
@@ -1027,6 +1049,49 @@ describe("A0.7 RpcSessionPort handlers", () => {
     await reopened;
     expect(created).toHaveLength(2);
     expect(first.status).toBe("stopped");
+  });
+
+  test("opening a chat whose old omp does not stop in time is refused, and the open does not wait for ever", async () => {
+    const created: FakeProcess[] = [];
+    const timer = firingTimer();
+    const processRegistry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 20,
+      createProcess: (options: OmpProcessOptions) => {
+        const process = new FakeProcess(options, {
+          threadId: authorityThread,
+          sessionFile: authorityFile,
+        });
+        // The old omp never finishes stopping.
+        process.stopGate = new Promise<void>(() => undefined);
+        created.push(process);
+        return process;
+      },
+    });
+    const handlers = handlersFor({ ...context(created), processRegistry }, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    await getHandler(handlers, "close")({ threadId: authorityThread }, call("one"));
+    // The idle close asks omp whether it has settled, then starts the stop, which does not finish.
+    timer.fireAll();
+    for (let turn = 0; turn < 50; turn += 1) await Bun.sleep(0);
+
+    const reopened = Promise.resolve(
+      getHandler(handlers, "open")({ threadId: authorityThread }, call("two")),
+    );
+    const rejected = reopened.then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    // The open waits for the stop only up to its limit, and the limit is then refused.
+    for (let turn = 0; turn < 100 && timer.pending() === 0; turn += 1) await Bun.sleep(0);
+    timer.fireAll();
+    expect(await rejected).toMatchObject({
+      appError: {
+        code: "conflict",
+        message: "omp did not stop, so this chat was not opened. Try again in a moment.",
+      },
+    });
+    expect(created).toHaveLength(1);
   });
 
   test("routes UI/host answers and exposes a process crash as a replayed process event", async () => {

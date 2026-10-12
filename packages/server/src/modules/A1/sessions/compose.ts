@@ -7,15 +7,17 @@ import { SessionFileStore } from "./store";
  */
 export interface ServerChats {
   has(threadId: ThreadId): boolean;
+  watched(threadId: ThreadId): boolean;
   busyOf(threadId: ThreadId): boolean | undefined;
-  stopIfUnwatched(threadId: ThreadId): Promise<void>;
+  stopIfUnwatched(threadId: ThreadId, purpose: "deleted"): Promise<void>;
 }
 
 /**
  * The session-file store as the server composes it. `dev.ts` and the tests both build it here, so the refusals that
  * depend on the server's own chats are checked where they are wired. Without `serverOwnsSession`, a chat the server
  * holds open reads as not held, and omp writes it back after its file is deleted. Without `stopUnwatched`, a chat the
- * view let go of would keep its omp for the idle time, and its delete would be refused.
+ * view let go of would keep its omp for the idle time, and its delete would be refused. A stop that fails or does not
+ * finish in time refuses the delete, so no file is removed while omp may still write it.
  */
 export function createServerSessionFileStore(options: {
   readonly sessionsRoot: string;
@@ -26,7 +28,9 @@ export function createServerSessionFileStore(options: {
     sessionsRoot: options.sessionsRoot,
     home: options.home,
     serverOwnsSession: (sessionId) => options.chats.has(ThreadId.parse(sessionId)),
-    stopUnwatched: (sessionId) => options.chats.stopIfUnwatched(ThreadId.parse(sessionId)),
+    serverWatches: (sessionId) => options.chats.watched(ThreadId.parse(sessionId)),
+    stopUnwatched: (sessionId) =>
+      options.chats.stopIfUnwatched(ThreadId.parse(sessionId), "deleted"),
     turnOf: (sessionId) => {
       const busy = options.chats.busyOf(ThreadId.parse(sessionId));
       if (busy === undefined) return undefined;

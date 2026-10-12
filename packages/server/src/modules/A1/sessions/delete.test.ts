@@ -225,6 +225,56 @@ describe("SessionFileStore.deleteSession", () => {
     }
   });
 
+  test("refuses a chat omp still holds after its viewer let go as still finishing, and keeps it", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const store = storeFor(root, {
+        serverSessionIds: new Set(["finishing"]),
+        serverWatches: () => false,
+      });
+      const file = path.join(store.bucketPath(cwd), "finishing.jsonl");
+      await writeSession(file, "finishing", cwd);
+
+      const error = await refusal(store.deleteSession({ folder: cwd, sessionFile: file }));
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp is still finishing this chat. Try again in a moment.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses a chat a viewer holds open with the close sentence, and keeps it", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const store = storeFor(root, {
+        serverSessionIds: new Set(["watched"]),
+        serverWatches: () => true,
+      });
+      const file = path.join(store.bucketPath(cwd), "watched.jsonl");
+      await writeSession(file, "watched", cwd);
+
+      const error = await refusal(store.deleteSession({ folder: cwd, sessionFile: file }));
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "Close this chat before deleting it: omp has it open.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("refuses a chat whose lease another omp holds, and keeps it", async () => {
     const root = await makeTempRoot();
     try {

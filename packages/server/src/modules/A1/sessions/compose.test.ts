@@ -137,6 +137,34 @@ class SlowStopProcess extends StubProcess {
   }
 }
 
+/** A stub whose stop fails, as a signal that cannot reach omp does: omp is still running afterwards. */
+class FailingStopProcess extends StubProcess {
+  override stop(): Promise<void> {
+    return Promise.reject(new Error("omp could not be signalled"));
+  }
+}
+
+/** A timer whose timeouts fire only when the test calls `fireAll()`, so a test controls the wait's limit. */
+function firingTimer() {
+  const callbacks = new Map<number, () => void>();
+  let nextHandle = 0;
+  return {
+    setTimeout: (handler: () => void): number => {
+      nextHandle += 1;
+      callbacks.set(nextHandle, handler);
+      return nextHandle;
+    },
+    clearTimeout: (handle: unknown): void => {
+      if (typeof handle === "number") callbacks.delete(handle);
+    },
+    fireAll: (): void => {
+      const pending = [...callbacks.values()];
+      callbacks.clear();
+      for (const callback of pending) callback();
+    },
+  };
+}
+
 /** A registry whose processes are stubs, kept in the order they were created. */
 function recordingRegistry(): {
   readonly chats: OmpProcessRegistry;
@@ -421,6 +449,103 @@ describe("the session store the server composes", () => {
         },
       });
       expect(await exists(file)).toBe(true);
+      expect(chats.has(threadId)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat whose omp fails to stop is refused with a plain sentence, and its file and omp stay", async () => {
+    const root = await makeTempRoot();
+    try {
+      const processes: StubProcess[] = [];
+      const chats = new OmpProcessRegistry({
+        timer: quietTimer(),
+        createProcess: (options) => {
+          const process = new FailingStopProcess(options);
+          processes.push(process);
+          return process;
+        },
+      });
+      const { store, cwd, file, threadId, options } = await chatFor(root, chats, "stop-fails");
+      chats.acquire(options);
+      chats.release(threadId);
+
+      const error = await rejectionOf(store.deleteSession({ folder: cwd, sessionFile: file }));
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp did not stop, so this chat was not deleted. Try again in a moment.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+      expect(firstOf(processes).status).toBe("running");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat whose omp does not stop within about ten seconds is refused, and its file stays", async () => {
+    const root = await makeTempRoot();
+    try {
+      const timer = firingTimer();
+      const processes: SlowStopProcess[] = [];
+      const chats = new OmpProcessRegistry({
+        timer,
+        createProcess: (options) => {
+          const process = new SlowStopProcess(options);
+          processes.push(process);
+          return process;
+        },
+      });
+      const { store, cwd, file, threadId, options } = await chatFor(root, chats, "stop-hangs");
+      chats.acquire(options);
+      chats.release(threadId);
+
+      let answered = false;
+      const refused = rejectionOf(store.deleteSession({ folder: cwd, sessionFile: file })).then(
+        (failure) => {
+          answered = true;
+          return failure;
+        },
+      );
+      await firstOf(processes).stopping.promise; // omp has been asked to stop, and does not finish
+      await Bun.sleep(0);
+      expect(answered).toBe(false); // the delete waits for the stop, up to the limit
+
+      timer.fireAll(); // the limit passes
+      expect(await refused).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp did not stop, so this chat was not deleted. Try again in a moment.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat whose omp is still settling after its viewer let go is refused as still finishing, and its omp is kept", async () => {
+    const root = await makeTempRoot();
+    try {
+      const { chats, processes } = recordingRegistry();
+      chats.setIdleHooks({ isSettled: async () => false, stopping: () => undefined });
+      const { store, cwd, file, threadId, options } = await chatFor(root, chats, "still-settling");
+      chats.acquire(options);
+      chats.release(threadId);
+
+      const error = await rejectionOf(store.deleteSession({ folder: cwd, sessionFile: file }));
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp is still finishing this chat. Try again in a moment.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+      expect(firstOf(processes).status).toBe("running");
       expect(chats.has(threadId)).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });

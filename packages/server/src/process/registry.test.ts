@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AppFailure,
   FolderPath,
   type OmpProcessId,
   OmpProcessId as OmpProcessIdSchema,
@@ -461,13 +462,13 @@ describe("OmpProcessRegistry", () => {
       expect(registry.has(thread)).toBe(false);
     });
 
-    test("whenStopped resolves only after the process the registry stopped has exited", async () => {
+    test("whenGone resolves only after the process the registry stopped has exited", async () => {
       const timer = new ManualTimer();
       const created: StubProcess[] = [];
       const registry = registryWith(timer, created);
       registry.setIdleHooks({ isSettled: async () => true, stopping: () => undefined });
       const thread = ThreadId.parse("thread-exiting");
-      expect(await registry.whenStopped(thread)).toBeUndefined();
+      expect(await registry.whenGone(thread, "opened")).toBeUndefined();
 
       registry.acquire(options(thread, "/workspace/exiting"));
       const process = createdAt(created, 0);
@@ -478,7 +479,7 @@ describe("OmpProcessRegistry", () => {
       await Bun.sleep(0);
 
       let waited = false;
-      const waiting = registry.whenStopped(thread).then(() => {
+      const waiting = registry.whenGone(thread, "opened").then(() => {
         waited = true;
       });
       await Bun.sleep(0);
@@ -506,11 +507,11 @@ describe("OmpProcessRegistry", () => {
     registry.acquire(hostOptions);
     registry.release(hostOptions.threadId);
 
-    await registry.stopIfUnwatched(watchedOptions.threadId);
+    await registry.stopIfUnwatched(watchedOptions.threadId, "renamed");
     expect(createdAt(created, 0).stopCalls).toBe(0);
     expect(registry.has(watchedOptions.threadId)).toBe(true);
 
-    await registry.stopIfUnwatched(hostOptions.threadId);
+    await registry.stopIfUnwatched(hostOptions.threadId, "renamed");
     expect(createdAt(created, 1).stopCalls).toBe(1);
     expect(registry.has(hostOptions.threadId)).toBe(false);
     expect(timer.callbacks.size).toBe(0);
@@ -535,9 +536,9 @@ describe("OmpProcessRegistry", () => {
     registry.release(thread);
 
     // The first call starts the stop: the registry forgets the thread at once, and omp exits later.
-    const earlier = registry.stopIfUnwatched(thread);
+    const earlier = registry.stopIfUnwatched(thread, "renamed");
     let waited = false;
-    const waiting = registry.stopIfUnwatched(thread).then(() => {
+    const waiting = registry.stopIfUnwatched(thread, "renamed").then(() => {
       waited = true;
     });
     // Queued promise callbacks run before the exit; no clock is involved.
@@ -548,5 +549,170 @@ describe("OmpProcessRegistry", () => {
     await earlier;
     await waiting;
     expect(waited).toBe(true);
+  });
+
+  describe("stopIfUnwatched for a delete", () => {
+    /** A timer that also keeps the delay of each timeout it is given, so a test can check how long a wait may last. */
+    class DelayTimer extends ManualTimer {
+      readonly delays: number[] = [];
+
+      override setTimeout(handler: () => void, delayMs: number): number {
+        this.delays.push(delayMs);
+        return super.setTimeout(handler, delayMs);
+      }
+    }
+
+    function registryFor(timer: DelayTimer, created: StubProcess[]): OmpProcessRegistry {
+      return new OmpProcessRegistry({
+        timer,
+        idleCloseMs: 60_000,
+        createProcess: (processOptions) => {
+          const process = new StubProcess(processOptions);
+          created.push(process);
+          return process;
+        },
+      });
+    }
+
+    /** What the call refused with, or undefined when it resolved. */
+    function refusalOf(promise: Promise<void>): Promise<unknown> {
+      return promise.then(
+        () => undefined,
+        (failure: unknown) => failure,
+      );
+    }
+
+    test("refuses when the stop fails, and keeps refusing until a stop shows omp gone", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-stop-fails");
+      registry.acquire(options(thread, "/workspace/stop-fails"));
+      createdAt(created, 0).stop = () => Promise.reject(new Error("omp could not be signalled"));
+      registry.release(thread);
+
+      const failure = await refusalOf(registry.stopIfUnwatched(thread, "deleted"));
+
+      expect(failure).toBeInstanceOf(AppFailure);
+      expect(failure).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp did not stop, so this chat was not deleted. Try again in a moment.",
+        },
+      });
+      // The next attempt tries the stop again; it fails too, so it refuses as well.
+      expect(await refusalOf(registry.stopIfUnwatched(thread, "deleted"))).toMatchObject({
+        appError: { code: "conflict" },
+      });
+    });
+
+    test("refuses a stop that does not finish within about ten seconds", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-stop-hangs");
+      registry.acquire(options(thread, "/workspace/stop-hangs"));
+      createdAt(created, 0).stop = () => new Promise<void>(() => undefined);
+      registry.release(thread);
+
+      let outcome: unknown = "waiting";
+      const stopping = refusalOf(registry.stopIfUnwatched(thread, "deleted")).then((failure) => {
+        outcome = failure ?? "stopped";
+      });
+      await Bun.sleep(0);
+      expect(outcome).toBe("waiting");
+      // The wait is bounded by its own timeout: the last timeout set is the limit, about ten seconds.
+      expect(timer.delays.at(-1)).toBe(10_000);
+
+      timer.fireAll();
+      await stopping;
+      expect(outcome).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp did not stop, so this chat was not deleted. Try again in a moment.",
+        },
+      });
+      // The refusal holds until a stop shows omp gone: a second wait is refused too, once its limit passes.
+      const again = refusalOf(registry.stopIfUnwatched(thread, "deleted"));
+      timer.fireAll();
+      expect(await again).toMatchObject({ appError: { code: "conflict" } });
+    });
+
+    test("resolves once a stop that finishes in time has finished, and forgets the process", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-stop-in-time");
+      registry.acquire(options(thread, "/workspace/stop-in-time"));
+      registry.release(thread);
+
+      await registry.stopIfUnwatched(thread, "deleted");
+
+      expect(createdAt(created, 0).stopCalls).toBe(1);
+      expect(registry.has(thread)).toBe(false);
+      expect(timer.callbacks.size).toBe(0);
+    });
+
+    test("a stop that failed is tried again by the next attempt, and clears once a stop works", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-stop-retried");
+      registry.acquire(options(thread, "/workspace/stop-retried"));
+      let attempts = 0;
+      createdAt(created, 0).stop = () => {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.reject(new Error("omp could not be signalled"))
+          : Promise.resolve();
+      };
+      registry.release(thread);
+
+      expect(await refusalOf(registry.stopIfUnwatched(thread, "deleted"))).toMatchObject({
+        appError: { code: "conflict" },
+      });
+      expect(attempts).toBe(1);
+
+      // The next attempt tries the stop again, and this time omp is gone.
+      await registry.stopIfUnwatched(thread, "deleted");
+      expect(attempts).toBe(2);
+    });
+
+    test("opening a chat whose old omp does not stop in time is refused, and nothing waits for ever", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-open-hangs");
+      registry.acquire(options(thread, "/workspace/open-hangs"));
+      createdAt(created, 0).stop = () => new Promise<void>(() => undefined);
+      registry.release(thread);
+      void registry.stopIfUnwatched(thread, "deleted").catch(() => undefined);
+      await Bun.sleep(0);
+      // Opening waits for the stop, up to the same limit, and then refuses.
+      const opening = refusalOf(registry.whenGone(thread, "opened"));
+      expect(timer.delays.at(-1)).toBe(10_000);
+      timer.fireAll();
+      expect(await opening).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp did not stop, so this chat was not opened. Try again in a moment.",
+        },
+      });
+    });
+  });
+  test("watched reports whether a viewer holds the thread, not whether the registry holds its process", () => {
+    const registry = new OmpProcessRegistry({
+      timer: new ManualTimer(),
+      createProcess: (processOptions) => new StubProcess(processOptions),
+    });
+    const thread = ThreadId.parse("thread-watched-flag");
+    expect(registry.watched(thread)).toBe(false);
+
+    registry.acquire(options(thread, "/workspace/watched-flag"));
+    expect(registry.watched(thread)).toBe(true);
+
+    registry.release(thread);
+    expect(registry.has(thread)).toBe(true);
+    expect(registry.watched(thread)).toBe(false);
   });
 });

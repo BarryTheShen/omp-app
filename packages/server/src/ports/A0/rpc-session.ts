@@ -289,7 +289,7 @@ export class RpcSessionPortRuntime {
     }
     const bootstrap = await this.#resolveBootstrap(args, call);
     // A process the registry is stopping for this thread holds the session's lease until it exits.
-    await this.#context.processRegistry.whenStopped(bootstrap.threadId);
+    await this.#context.processRegistry.whenGone(bootstrap.threadId, "opened");
     const existing = this.#entries.get(bootstrap.threadId);
     if (existing !== undefined) {
       if (existing.bootstrap.folderPath !== bootstrap.folderPath) {
@@ -343,7 +343,11 @@ export class RpcSessionPortRuntime {
       await session.close();
       this.#dropEntry(entry);
       // The process that failed is stopped and forgotten now: the next open starts omp again, and does not reuse it.
-      await this.#context.processRegistry.stopIfUnwatched(entry.bootstrap.threadId);
+      // A stop that fails is logged where it happens. The open's own failure is what the caller hears, and the next open or
+      // delete waits for omp to be gone.
+      await this.#context.processRegistry
+        .stopIfUnwatched(entry.bootstrap.threadId, "opened")
+        .catch(() => undefined);
       if (error instanceof AppFailure && error.appError.code === "omp_exited") {
         // omp stopped before the chat was ready. Its last words say why. A saved model it could not restore is a
         // plain failure that offers another model; any other reason reaches the browser as a typed reason.
@@ -449,7 +453,7 @@ export class RpcSessionPortRuntime {
     const resolved = await this.#context.resolveThread(args.threadId, call.signal);
     if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
     // A process this server is still stopping holds the chat's file until it exits.
-    await this.#context.processRegistry.whenStopped(args.threadId);
+    await this.#context.processRegistry.whenGone(args.threadId, "renamed");
     const opened = await this.open({ threadId: args.threadId }, call);
     try {
       // Checked after this host is up and before it writes. omp takes a chat's lease only when it
@@ -489,7 +493,11 @@ export class RpcSessionPortRuntime {
       }
     } finally {
       await this.close({ threadId: args.threadId }, call);
-      await this.#context.processRegistry.stopIfUnwatched(args.threadId);
+      // A stop that fails is logged where it happens. The rename is not failed by its host's stop, and the next open or
+      // delete waits for omp to be gone.
+      await this.#context.processRegistry
+        .stopIfUnwatched(args.threadId, "renamed")
+        .catch(() => undefined);
     }
   }
 

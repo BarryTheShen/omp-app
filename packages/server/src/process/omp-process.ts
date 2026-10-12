@@ -50,6 +50,8 @@ export interface OmpProcessOptions {
   readonly backoff?: OmpProcessBackoffOptions;
   /** Injectable for deterministic tests; defaults to the global timer. */
   readonly timer?: RpcSessionTimer;
+  /** Injectable for deterministic tests; defaults to `Bun.spawn`. */
+  readonly spawn?: typeof Bun.spawn;
 }
 
 export interface OmpProcessEvent {
@@ -164,6 +166,7 @@ class SpawnedOmpProcess implements OmpProcess {
   readonly #terminationGraceMs: number;
   readonly #backoff: Required<OmpProcessBackoffOptions>;
   readonly #timer: RpcSessionTimer;
+  readonly #spawn: typeof Bun.spawn;
   readonly #listeners = new Set<OmpProcessListener>();
   readonly #chunkListeners = new Set<(chunk: Uint8Array) => void>();
   readonly #closeListeners = new Set<(cause?: unknown) => void>();
@@ -175,6 +178,7 @@ class SpawnedOmpProcess implements OmpProcess {
   #restartPromise: Promise<void> | undefined;
   #expectingExit = false;
   #terminal = false;
+  #stopFailed = false;
   #consecutiveFailures = 0;
   #stabilityTimer: unknown;
   #stderrDecoder = new TextDecoder();
@@ -197,6 +201,7 @@ class SpawnedOmpProcess implements OmpProcess {
     this.#terminationGraceMs = options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS;
     this.#backoff = requiredBackoff(options.backoff);
     this.#timer = options.timer ?? defaultTimer();
+    this.#spawn = options.spawn ?? Bun.spawn;
   }
 
   get status(): ProcessStatus {
@@ -235,10 +240,17 @@ class SpawnedOmpProcess implements OmpProcess {
   }
 
   async stop(): Promise<void> {
-    if (this.#terminal) return;
+    // A stop whose wait failed may have left the child running, so the next stop tries again.
+    if (this.#terminal && !this.#stopFailed) return;
     this.#terminal = true;
+    this.#stopFailed = false;
     this.#cancelStability();
-    await this.#terminate();
+    try {
+      await this.#terminate();
+    } catch (error) {
+      this.#stopFailed = true;
+      throw error;
+    }
     this.#setStatus("stopped");
     this.#notifyClose(undefined);
   }
@@ -295,7 +307,7 @@ class SpawnedOmpProcess implements OmpProcess {
     const homeArgs = await homeFolderArguments(this.folder, this.#homeDir);
     let child: OmpSubprocess;
     try {
-      child = Bun.spawn([this.#ompBin, ...OMP_MODE_ARGS, ...homeArgs, ...this.#args], {
+      child = this.#spawn([this.#ompBin, ...OMP_MODE_ARGS, ...homeArgs, ...this.#args], {
         cwd: this.folder,
         env,
         stdin: "pipe",
@@ -354,9 +366,13 @@ class SpawnedOmpProcess implements OmpProcess {
         resolve();
       }, this.#terminationGraceMs);
     });
-    await Promise.race([child.exited.then(() => undefined), escalate]);
-    await child.exited;
-    this.#timer.clearTimeout(killTimerHandle);
+    try {
+      await Promise.race([child.exited.then(() => undefined), escalate]);
+      await child.exited;
+    } finally {
+      this.#timer.clearTimeout(killTimerHandle);
+    }
+    // Left set when the wait fails: a child that exits later was still stopped on purpose.
     this.#expectingExit = false;
   }
 

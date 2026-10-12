@@ -138,6 +138,26 @@ function serverOwnsSession(
   return ids?.has(sessionId) ?? false;
 }
 
+/**
+ * The refusal of a delete for a chat omp still holds. A chat the server keeps only for omp's idle time, which no view
+ * holds, has an omp still on its way out: the person is asked to try again. A chat a view holds open, or a lease another
+ * process holds, is open: the person is asked to close it.
+ */
+function heldFailure(
+  options: SessionFileStoreOptions,
+  sessionId: string,
+  serverProcess: boolean,
+): AppFailure {
+  const stillFinishing = serverProcess && options.serverWatches?.(sessionId) === false;
+  return appFailure(
+    "conflict",
+    stillFinishing
+      ? "omp is still finishing this chat. Try again in a moment."
+      : "Close this chat before deleting it: omp has it open.",
+    true,
+  );
+}
+
 /** The chat's turn state when this server runs omp for it; absent otherwise (a chat open in another omp has none). */
 function turnFields(
   options: SessionFileStoreOptions,
@@ -486,11 +506,11 @@ export class SessionFileStore {
       throw appFailure("conflict", "Wait for this chat's turn to finish, then delete it.", true);
     }
     if (file.liveness.serverProcess || file.liveness.lease === "held") {
-      throw appFailure("conflict", "Close this chat before deleting it: omp has it open.", true);
+      throw heldFailure(this.#options, file.id, file.liveness.serverProcess);
     }
     // No await between this check and the removal below: a viewer that came in while the lease was probed is refused.
     if (serverOwnsSession(this.#options, file.id, sessionFile)) {
-      throw appFailure("conflict", "Close this chat before deleting it: omp has it open.", true);
+      throw heldFailure(this.#options, file.id, true);
     }
     try {
       await fs.rm(sessionFile);

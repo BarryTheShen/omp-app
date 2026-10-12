@@ -217,6 +217,30 @@ describe("OmpProcess spawn and stdio", () => {
   });
 });
 
+/**
+ * `Bun.spawn`, except that the first stop's wait for the child fails, as a wait the system cannot complete does. The
+ * child runs as usual, so a later stop can end it. Reads of `exited`: 1 is the spawn's own exit watch, 2 is the first
+ * stop's wait, and the rest pass through.
+ */
+function spawnWhoseFirstStopWaitFails(): typeof Bun.spawn {
+  const spawn = (command: string[], options: object) => {
+    const child = Bun.spawn(command, options as never);
+    let exitedReads = 0;
+    return new Proxy(child, {
+      get(target, property) {
+        if (property === "exited") {
+          exitedReads += 1;
+          if (exitedReads === 2)
+            return Promise.reject(new Error("the child could not be waited for"));
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  };
+  return spawn as unknown as typeof Bun.spawn;
+}
+
 describe("OmpProcess shutdown", () => {
   test("stop() sends SIGTERM and resolves without secrets leaking into any event", async () => {
     const folder = await temporaryFolder();
@@ -258,6 +282,35 @@ describe("OmpProcess shutdown", () => {
     const pump = setInterval(() => timer.fireAll(), 5);
     try {
       await stopPromise;
+    } finally {
+      clearInterval(pump);
+    }
+    expect(process.status).toBe("stopped");
+  });
+
+  test("a stop whose wait fails is reported, and the next stop tries again and stops the child", async () => {
+    const timer = new ManualTimer();
+    const folder = await temporaryFolder();
+    const process = track(
+      spawnOmpProcess({
+        threadId,
+        folder,
+        ompBin: FAKE_OMP,
+        terminationGraceMs: 25,
+        timer,
+        spawn: spawnWhoseFirstStopWaitFails(),
+      }),
+    );
+
+    await process.start();
+    await waitForFrame(process, (frame) => frame.type === "ready");
+
+    await expect(process.stop()).rejects.toThrow("could not be waited for");
+    expect(process.status).not.toBe("stopped");
+
+    const pump = setInterval(() => timer.fireAll(), 5);
+    try {
+      await process.stop();
     } finally {
       clearInterval(pump);
     }
