@@ -100,12 +100,21 @@ const STORED_KEYS: Readonly<Record<string, string>> = {
   space: "Space",
 };
 
-/** The stored modifier for a modifier name: Ctrl and Cmd are Mod, Option is Alt. */
+/**
+ * The stored modifier for a modifier name. Every name for the platform key (Ctrl, Cmd and the rest) is Mod, and
+ * Option is Alt.
+ */
 function storedModifier(token: string): string | undefined {
   switch (token) {
     case "mod":
     case "ctrl":
+    case "control":
     case "cmd":
+    case "command":
+    case "meta":
+    case "win":
+    case "windows":
+    case "super":
       return "Mod";
     case "alt":
     case "option":
@@ -117,26 +126,43 @@ function storedModifier(token: string): string | undefined {
   }
 }
 
+/** The order the stored modifiers are kept in, whatever order the person typed them in. */
+const MODIFIER_ORDER: readonly string[] = ["Mod", "Alt", "Shift"];
+
+function storedKey(part: string): string {
+  const named = STORED_KEYS[part.toLowerCase()];
+  if (named !== undefined) return named;
+  return part.length === 1 ? part.toUpperCase() : part;
+}
+
 function storedStep(step: string): string {
-  return step
-    .split("+")
-    .map((part) => part.trim())
-    .filter((part) => part !== "")
-    .map((part) => {
-      const lower = part.toLowerCase();
-      const modifier = storedModifier(lower);
-      if (modifier !== undefined) return modifier;
-      const named = STORED_KEYS[lower];
-      if (named !== undefined) return named;
-      return part.length === 1 ? part.toUpperCase() : part;
-    })
-    .join("+");
+  const modifiers = new Set<string>();
+  const keys: string[] = [];
+  for (const part of step.split("+").map((text) => text.trim())) {
+    if (part === "") continue;
+    const modifier = storedModifier(part.toLowerCase());
+    if (modifier === undefined) keys.push(storedKey(part));
+    else modifiers.add(modifier);
+  }
+  return [...MODIFIER_ORDER.filter((name) => modifiers.has(name)), ...keys].join("+");
 }
 
 /**
  * The stored form of a chord a person typed. The names the field shows (Ctrl or Cmd, Option, arrow glyphs) and the
- * stored names (Mod, Alt, ArrowUp) both work; the stored form is what the registry keeps and matches.
+ * stored names (Mod, Alt, ArrowUp) both work. The modifiers are kept in one order (Mod, Alt, Shift) whatever order
+ * they were typed in.
  */
 export function storedChord(typed: string): string {
   return typed.trim().split(/\s+/).map(storedStep).join(" ");
+}
+
+/**
+ * Whether every step of a stored chord ends in a key. A chord of modifiers alone ("Mod", "Mod+Shift") cannot be
+ * pressed, and neither can an empty chord.
+ */
+export function chordHasKey(chord: string): boolean {
+  return chord
+    .trim()
+    .split(/\s+/)
+    .every((step) => step.split("+").some((part) => part !== "" && !MODIFIER_ORDER.includes(part)));
 }

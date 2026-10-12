@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { capabilityStatus, useCapabilities } from "@/registry-core";
-import { chordLabel, isApplePlatform, storedChord } from "./chord-label";
+import { chordHasKey, chordLabel, isApplePlatform, storedChord } from "./chord-label";
 import {
   useShortcutBindings,
   useShortcutError,
@@ -120,6 +120,11 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
                               return;
                             }
                             const chord = storedChord(typed);
+                            // A chord with no key cannot be pressed: it is refused and the old chord stays.
+                            if (!chordHasKey(chord)) {
+                              setConflict("Add a key, for example Ctrl+K.");
+                              return;
+                            }
                             const result = registry.rebind(binding.id, chord);
                             // A refusal names the chord the way the person's keyboard does, not the stored form.
                             const refusal = result.error

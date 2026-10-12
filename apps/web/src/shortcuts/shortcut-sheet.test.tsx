@@ -244,6 +244,29 @@ describe("the rebind field speaks the person's key names", () => {
     fireEvent.blur(input);
     expect(screen.getByRole("alert").textContent).toBe("Your browser keeps Ctrl+J for itself");
   });
+
+  test("a chord with no key is refused in one sentence, and the old chord keeps working", () => {
+    const store = new MemoryPreferenceStore();
+    renderSheet(store);
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl+Enter" }));
+    const input = screen.getByRole("textbox", { name: "Rebind Send message" });
+    fireEvent.change(input, { target: { value: "Ctrl+Shift+" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toBe("Add a key, for example Ctrl+K.");
+    expect(storedOverrides(store)).toEqual({});
+    expect(screen.getByRole("button", { name: "Ctrl+Enter" })).toBeTruthy();
+  });
+
+  test("Control is stored as Mod, so the sheet and the registry agree on the chord", () => {
+    const store = new MemoryPreferenceStore();
+    renderSheet(store);
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl+Enter" }));
+    const input = screen.getByRole("textbox", { name: "Rebind Send message" });
+    fireEvent.change(input, { target: { value: "Control+Shift+J" } });
+    fireEvent.blur(input);
+    expect(storedOverrides(store)).toEqual({ "U0.send": "Mod+Shift+J" });
+    expect(screen.getByRole("button", { name: "Ctrl+Shift+J" })).toBeTruthy();
+  });
 });
 
 describe("ShortcutSheet capability gating", () => {

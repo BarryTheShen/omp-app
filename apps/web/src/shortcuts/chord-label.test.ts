@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { chordLabel, isApplePlatform, storedChord } from "./chord-label";
+import { chordHasKey, chordLabel, isApplePlatform, storedChord } from "./chord-label";
 
 const MAC = { mac: true } as const;
 const OTHER = { mac: false } as const;
@@ -56,9 +56,35 @@ describe("storedChord", () => {
     ["Escape", "Esc"],
     ["Mod+Shift+Enter", "Mod+Shift+Enter"],
     ["Mod+K Mod+C", "Mod+K Mod+C"],
+    ["Control+Shift+L", "Mod+Shift+L"],
+    ["Meta+Shift+M", "Mod+Shift+M"],
+    ["Command+K", "Mod+K"],
+    ["Control+K", "Mod+K"],
+    ["Win+K", "Mod+K"],
+    ["Windows+K", "Mod+K"],
+    ["Super+K", "Mod+K"],
+    ["Ctrl+Cmd+K", "Mod+K"],
+    ["Shift+Ctrl+K", "Mod+Shift+K"],
+    ["Shift+Option+K", "Alt+Shift+K"],
+    ["Alt+Ctrl+K", "Mod+Alt+K"],
   ])("%s is stored as %s", (typed, stored) => {
     expect(storedChord(typed)).toBe(stored);
   });
+});
+
+describe("chordHasKey", () => {
+  test.each(["Ctrl", "Ctrl+Shift", "Ctrl+Shift+", "Ctrl++", "Shift+Meta", "Ctrl+K Ctrl", ""])(
+    "%j has no key, so the sheet refuses it",
+    (typed) => {
+      expect(chordHasKey(storedChord(typed))).toBe(false);
+    },
+  );
+  test.each(["Ctrl+K", "Ctrl+Shift+Enter", "F5", "Alt+ArrowUp", "Esc", "Mod+K Mod+C"])(
+    "%s has a key",
+    (typed) => {
+      expect(chordHasKey(storedChord(typed))).toBe(true);
+    },
+  );
 });
 
 describe("the chord the field shows is the chord it stores again", () => {
