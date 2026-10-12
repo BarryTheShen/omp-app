@@ -67,9 +67,7 @@ describe("U2.2 ComposerSurface", () => {
   test("chooses steer while R0 reports a running turn and shows the hint", async () => {
     const submitPrompt = vi.fn(async () => undefined);
     renderComposer(true, submitPrompt);
-    expect(
-      screen.getByText("Enter steers this turn. Ctrl+Enter queues a message for after it."),
-    ).toBeTruthy();
+    expect(screen.getByText("Enter steers · Ctrl+Enter queues")).toBeTruthy();
     const input = screen.getByRole("textbox", { name: "Message input" });
     fireEvent.change(input, { target: { value: "steer text" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -81,6 +79,21 @@ describe("U2.2 ComposerSurface", () => {
     });
   });
 
+  test("the steer hint sits in the toolbar row with the stop control, so it adds no line above the editor", () => {
+    renderComposer(
+      true,
+      vi.fn(async () => undefined),
+    );
+    const hint = screen.getByText("Enter steers · Ctrl+Enter queues");
+    const stop = screen.getByRole("button", { name: "Stop generating" });
+    const row = hint.closest("[data-composer-toolbar]");
+    expect(row).not.toBeNull();
+    expect(row?.contains(stop)).toBe(true);
+    expect(hint.getAttribute("title")).toBe(
+      "Enter steers this turn. Ctrl+Enter queues a message for after it.",
+    );
+  });
+
   test("on a Mac the steer hint names Cmd+Enter as the way to queue a message", () => {
     const userAgent = vi
       .spyOn(window.navigator, "userAgent", "get")
@@ -90,9 +103,7 @@ describe("U2.2 ComposerSurface", () => {
         true,
         vi.fn(async () => undefined),
       );
-      expect(
-        screen.getByText("Enter steers this turn. Cmd+Enter queues a message for after it."),
-      ).toBeTruthy();
+      expect(screen.getByText("Enter steers · Cmd+Enter queues")).toBeTruthy();
     } finally {
       userAgent.mockRestore();
     }
@@ -376,9 +387,7 @@ describe("U2.2 ComposerSurface", () => {
     const input = screen.getByRole("textbox", { name: "Message input" });
     fireEvent.change(input, { target: { value: "still typing" } });
 
-    expect(
-      screen.queryByText("Enter steers this turn. Ctrl+Enter queues a message for after it."),
-    ).toBeNull();
+    expect(screen.queryByText("Enter steers · Ctrl+Enter queues")).toBeNull();
     expect(screen.getByRole("button", { name: "Stop generating" }).hasAttribute("disabled")).toBe(
       true,
     );

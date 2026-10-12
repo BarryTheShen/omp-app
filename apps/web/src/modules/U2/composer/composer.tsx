@@ -315,6 +315,10 @@ export function ComposerSurface({
     [attachments, canCancel, composer, handleCancel, onDoubleLeftArrow, submit, text],
   );
 
+  const chord = chordLabel("Mod+Enter", { mac: isApplePlatform() });
+  const steerHint = `Enter steers · ${chord} queues`;
+  const steerHintTitle = `Enter steers this turn. ${chord} queues a message for after it.`;
+
   return (
     <ComposerPrimitive.Root
       className="relative flex w-full flex-col"
@@ -360,14 +364,6 @@ export function ComposerSurface({
             submitMode="none"
             className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
           />
-          {isStreaming && sendBlockedReason === undefined && modeForText(text) === "prompt" && (
-            <p
-              data-composer-steer-hint="true"
-              className="text-muted-foreground px-(--space-md) text-xs"
-            >
-              {`Enter steers this turn. ${chordLabel("Mod+Enter", { mac: isApplePlatform() })} queues a message for after it.`}
-            </p>
-          )}
         </div>
         {error && (
           <>
@@ -415,7 +411,8 @@ export function ComposerSurface({
           </p>
         )}
         <div
-          className="flex min-w-0 items-center gap-(--space-xs)"
+          className="@container flex min-w-0 items-center gap-(--space-xs)"
+          data-composer-toolbar="true"
           style={replaced ? { display: "none" } : undefined}
         >
           <ComposerPrimitive.AddAttachment
@@ -432,6 +429,15 @@ export function ComposerSurface({
             }
           />
           {toolbar}
+          {isStreaming && sendBlockedReason === undefined && modeForText(text) === "prompt" && (
+            <p
+              className="text-muted-foreground hidden min-w-0 flex-1 whitespace-nowrap text-xs @[38rem]:block"
+              data-composer-steer-hint="true"
+              title={steerHintTitle}
+            >
+              {steerHint}
+            </p>
+          )}
           <div className="ms-auto flex shrink-0 items-center gap-(--space-xs)">
             {canCancel ? (
               <Button

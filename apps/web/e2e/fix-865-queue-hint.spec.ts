@@ -15,7 +15,7 @@ import {
  * Mac), and a queued follow-up sits under 'After this turn', not 'After yield'. Captured in light, dark and at 390 px.
  */
 
-const HINT = "Enter steers this turn. Ctrl+Enter queues a message for after it.";
+const HINT = "Enter steers · Ctrl+Enter queues";
 
 realTest.setTimeout(420_000);
 
@@ -72,20 +72,21 @@ realTest("in dark, the same running turn reads the same", async ({ realApp }) =>
   await page.screenshot({ path: join(screenshots, "fix-865-queue-dark.png"), fullPage: true });
 });
 
-realTest("at 390 px, the hint and the queue lane fit the screen", async ({ realApp }) => {
-  const page = await realApp.open();
-  const composer = await startChat(page);
-  await startQueuedRun(page, composer);
-  await queueAFollowUp(page, composer);
-  // The resize comes after the chat starts and the follow-up queues: a sidebar that narrows while the chat is still
-  // starting is not stable enough to click.
-  await page.setViewportSize({ width: 390, height: 844 });
-  await composer.fill("a second follow-up");
-  await expect(page.getByText(HINT, { exact: true })).toBeVisible();
-  const hint = await page.getByText(HINT, { exact: true }).boundingBox();
-  expect((hint?.x ?? 0) + (hint?.width ?? 0)).toBeLessThanOrEqual(390);
-  const bar = await queueBar(page).boundingBox();
-  expect((bar?.x ?? 0) + (bar?.width ?? 0)).toBeLessThanOrEqual(390);
-  await waitForFiniteAnimations(page);
-  await page.screenshot({ path: join(screenshots, "fix-865-queue-narrow.png"), fullPage: true });
-});
+realTest(
+  "at 390 px, the queue lane fits the screen and the steer hint is hidden",
+  async ({ realApp }) => {
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await startQueuedRun(page, composer);
+    await queueAFollowUp(page, composer);
+    // The resize comes after the chat starts and the follow-up queues: a sidebar that narrows while the chat is still
+    // starting is not stable enough to click.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await composer.fill("a second follow-up");
+    await expect(page.getByText(HINT, { exact: true })).toBeHidden();
+    const bar = await queueBar(page).boundingBox();
+    expect((bar?.x ?? 0) + (bar?.width ?? 0)).toBeLessThanOrEqual(390);
+    await waitForFiniteAnimations(page);
+    await page.screenshot({ path: join(screenshots, "fix-865-queue-narrow.png"), fullPage: true });
+  },
+);

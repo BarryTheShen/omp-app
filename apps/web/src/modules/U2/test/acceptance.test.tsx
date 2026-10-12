@@ -388,9 +388,7 @@ describe("U2 composer CC6 acceptance", () => {
         await streaming.controller.submitPrompt(intent);
       },
     });
-    expect(
-      screen.getByText("Enter steers this turn. Ctrl+Enter queues a message for after it."),
-    ).toBeTruthy();
+    expect(screen.getByText("Enter steers · Ctrl+Enter queues")).toBeTruthy();
     const input = screen.getByRole("textbox", { name: "Message input" });
     fireEvent.change(input, { target: { value: "Inspect the assertion" } });
     fireEvent.keyDown(input, { key: "Enter" });
