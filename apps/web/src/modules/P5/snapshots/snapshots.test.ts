@@ -48,6 +48,7 @@ function runtimeState(
       steeringMode: "all",
       followUpMode: "all",
       interruptMode: "immediate",
+      liveSteered: 0,
       ...overrides.queue,
     },
     tools: { ...overrides.tools },

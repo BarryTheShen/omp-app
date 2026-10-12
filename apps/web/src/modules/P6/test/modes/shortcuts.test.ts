@@ -11,7 +11,7 @@ describe("P6 shortcut descriptors", () => {
       }),
       expect.objectContaining({
         id: "P6.message.dequeue",
-        chord: "Alt+Up",
+        chord: "Alt+ArrowUp",
         covers: ["P5.dequeue-queued-message", "P5.app-message-dequeue"],
       }),
     ]);

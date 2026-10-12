@@ -107,6 +107,8 @@ export interface QueueState {
   readonly steeringMode: QueueMode;
   readonly followUpMode: QueueMode;
   readonly interruptMode: OmpWire.InterruptMode;
+  /** Leading steering messages omp already sent into the reply (omp 18.9 `liveSteered`); 0 before that. */
+  readonly liveSteered: number;
 }
 
 export interface PendingExtensionUiRequest {
@@ -238,6 +240,7 @@ const EMPTY_QUEUE: QueueState = Object.freeze({
   steeringMode: "all",
   followUpMode: "all",
   interruptMode: "immediate",
+  liveSteered: 0,
 });
 const EMPTY_PENDING: PendingRequestsState = Object.freeze({
   extensionUi: Object.freeze({}),
@@ -539,8 +542,16 @@ function updateQueues(next: MutableSnapshot, queue: Partial<QueueState>): void {
     steeringMode: queue.steeringMode ?? previous.steeringMode,
     followUpMode: queue.followUpMode ?? previous.followUpMode,
     interruptMode: queue.interruptMode ?? previous.interruptMode,
+    liveSteered: queue.liveSteered ?? previous.liveSteered,
   };
   next.queue = nextQueue;
+}
+
+/** omp 18.9 counts the leading steering messages it already sent into the reply; 0 when the field is absent. */
+function liveSteeredOf(message: unknown): number {
+  if (typeof message !== "object" || message === null || !("liveSteered" in message)) return 0;
+  const count = message.liveSteered;
+  return typeof count === "number" && Number.isInteger(count) && count >= 0 ? count : 0;
 }
 
 function updateTodos(next: MutableSnapshot, phases: readonly TodoPhase[]): void {
@@ -1122,6 +1133,7 @@ export class OmpRuntimeStore {
     updateQueues(next, {
       steering: state.queuedMessages?.steering,
       followUp: state.queuedMessages?.followUp,
+      liveSteered: liveSteeredOf(state.queuedMessages),
       steeringMode: state.steeringMode,
       followUpMode: state.followUpMode,
       interruptMode: state.interruptMode,
@@ -1541,6 +1553,7 @@ export class OmpRuntimeStore {
           updateQueues(next, {
             steering: event.steering.filter((item): item is string => typeof item === "string"),
             followUp: event.followUp.filter((item): item is string => typeof item === "string"),
+            liveSteered: liveSteeredOf(event),
           });
         }
         return;

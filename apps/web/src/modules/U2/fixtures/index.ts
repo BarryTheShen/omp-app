@@ -184,6 +184,7 @@ function snapshotProjection(input: {
       steeringMode: "one-at-a-time",
       followUpMode: "one-at-a-time",
       interruptMode: "immediate",
+      liveSteered: 0,
     },
     session: {
       model,

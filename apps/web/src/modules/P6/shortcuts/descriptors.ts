@@ -1,5 +1,11 @@
 import type { ShortcutDescriptor } from "@omp-app/contracts";
 
+/** The app registers Alt+Up's action under this id (app/queue-dequeue-shortcut.ts). */
+export const P6_DEQUEUE_SHORTCUT_ID = "P6.message.dequeue" as const;
+
+/** Alt+Up also fires while focus is in the message box, so its descriptor opts in. */
+type EditableShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable: true };
+
 /**
  * Browser-local queue controls from omp's v18.6.1 input grammar:
  * `Ctrl/Cmd+Enter` queues a follow-up and `Alt+Up` restores a queued message. The browser app
@@ -18,15 +24,16 @@ export const P6_SHORTCUT_DESCRIPTORS = [
     requires: [],
   },
   {
-    id: "P6.message.dequeue",
+    id: P6_DEQUEUE_SHORTCUT_ID,
     owner: "P6",
     title: "Restore queued message",
     kind: "shortcut",
-    chord: "Alt+Up",
+    chord: "Alt+ArrowUp",
     scope: "composer",
+    allowInEditable: true,
     covers: ["P5.dequeue-queued-message", "P5.app-message-dequeue"],
     requires: [],
   },
-] as const satisfies readonly ShortcutDescriptor[];
+] as const satisfies readonly (ShortcutDescriptor | EditableShortcutDescriptor)[];
 
 export type P6ShortcutDescriptor = (typeof P6_SHORTCUT_DESCRIPTORS)[number];

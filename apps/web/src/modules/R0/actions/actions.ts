@@ -37,6 +37,8 @@ export interface QueueSnapshot {
   readonly followUpMode: QueueMode;
   readonly interruptMode: InterruptMode;
   readonly isStreaming: boolean;
+  /** Leading steering messages omp already sent into the reply; absent before omp 18.9. */
+  readonly liveSteered?: number;
 }
 
 export interface QueueSubmitIntent {
@@ -160,6 +162,7 @@ function queueSnapshot(snapshot: RuntimeSnapshot): QueueSnapshot {
     steeringMode: snapshot.queue.steeringMode,
     followUpMode: snapshot.queue.followUpMode,
     interruptMode: snapshot.queue.interruptMode,
+    liveSteered: snapshot.queue.liveSteered,
     isStreaming: snapshot.prompt.streaming,
   };
 }

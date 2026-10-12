@@ -77,6 +77,7 @@ describe("R0.5 QueueController", () => {
       steeringMode: "one-at-a-time",
       followUpMode: "all",
       interruptMode: "wait",
+      liveSteered: 0,
       isStreaming: true,
     });
     expect(snapshots.at(-1)?.steering).toEqual(["s1"]);

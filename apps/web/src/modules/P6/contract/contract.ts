@@ -41,6 +41,8 @@ export interface QueueItemView extends QueueItemState {
 export interface QueueAdapterSnapshot {
   readonly items: readonly QueueItemView[];
   readonly steerItems: readonly QueueItemView[];
+  /** Leading steering messages omp already sent into the reply: `remove_queued_message` cannot reach them. */
+  readonly liveSteered: number;
   readonly steeringMode: QueueSnapshot["steeringMode"];
   readonly followUpMode: QueueSnapshot["followUpMode"];
   readonly interruptMode: QueueSnapshot["interruptMode"];
@@ -173,6 +175,7 @@ export function createQueueAdapter(
     return {
       items: viewItems("followUp", snapshot.followUp, capabilities),
       steerItems: viewItems("steering", snapshot.steering, capabilities),
+      liveSteered: snapshot.liveSteered ?? 0,
       steeringMode: snapshot.steeringMode,
       followUpMode: snapshot.followUpMode,
       interruptMode: snapshot.interruptMode,

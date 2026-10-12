@@ -101,7 +101,12 @@ import { type ToolRendererResolver, ToolRendererResolverContext } from "@/module
 import { AttachmentChips, AttachmentManager } from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import { ComposerSurface } from "@/modules/U2/composer";
-import type { AttachmentAdapter, PromptIntent, SubmitPolicy } from "@/modules/U2/contract";
+import type {
+  AttachmentAdapter,
+  DraftRestoreRequest,
+  PromptIntent,
+  SubmitPolicy,
+} from "@/modules/U2/contract";
 import {
   createDraftStoreAdapter,
   type DraftController,
@@ -157,6 +162,7 @@ import { useExecutionModesSurface } from "./execution-modes";
 import { FolderSwitcher } from "./folder-switcher";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
+import { useQueueDequeueShortcut } from "./queue-dequeue-shortcut";
 import { saveTextFile } from "./save-file";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
@@ -927,6 +933,25 @@ function ActiveThreadReady({
     (text: string) => draftController.setDraft(text, attachmentManager.toDraftRefs()),
     [attachmentManager, draftController],
   );
+
+  const queueDraft = useCallback(
+    (): DraftRestoreRequest => ({
+      text: draftController.getSnapshot().text,
+      attachmentRefs: attachmentManager.toDraftRefs(),
+    }),
+    [attachmentManager, draftController],
+  );
+  const restoreQueued = useCallback(
+    (request: DraftRestoreRequest) => setEditorText(request.text),
+    [setEditorText],
+  );
+  useQueueDequeueShortcut({
+    queue: queueAdapter,
+    draft: queueDraft,
+    restore: restoreQueued,
+    notify: setCommandStatus,
+    fail: setCommandError,
+  });
   // The server instance now, read through a ref that a layout effect refreshes, since the client can be replaced.
   const instanceIdOf = useRef<() => string | undefined>(() => undefined);
   useLayoutEffect(() => {
