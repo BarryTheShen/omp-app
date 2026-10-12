@@ -8,11 +8,13 @@ import {
   AttachmentBlobStore,
   type CapabilityMap,
   type DescriptorId,
+  DraftScope,
   FolderPath,
   type HostCallId,
   HostMetadataPort,
   type ModelChoice,
   OmpCommandGateway,
+  type OmpWire,
   RpcSessionPort,
   SessionFileStore,
   ThreadId,
@@ -77,7 +79,7 @@ import { QueueLaneBar } from "@/modules/P6/bar/bar";
 import { resolveQueueSubmitPolicy } from "@/modules/P6/composer/composer";
 import { createQueueAdapter } from "@/modules/P6/contract";
 import { createQueueController, type QueueController } from "@/modules/R0/actions";
-import { useOmpRuntime } from "@/modules/R0/runtime";
+import { type StoppedQueue, useOmpRuntime } from "@/modules/R0/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
 import { watchSessionFileChanges } from "@/modules/R1/catalog/session-changes";
@@ -173,6 +175,17 @@ import { HistorySearchDialog, useHistorySearchShortcut } from "./history-search-
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
 import { useQueueDequeueShortcut } from "./queue-dequeue-shortcut";
+import {
+  composeRestoredDraft,
+  restoredCount,
+  restoredQueueText,
+  stopRestoreNotice,
+} from "./queue-stop-restore";
+import {
+  imageUploadTo,
+  restoreStoppedQueueIntoSavedDraft,
+  storeRestoredImages,
+} from "./queue-stop-saved-draft";
 import { saveTextFile } from "./save-file";
 import { openSavedChatModelPicker } from "./saved-chat-model-picker";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
@@ -891,6 +904,41 @@ function ActiveThreadReady({
   useRetryShortcut({ threadId, status: p3Runs.status, retry: p3Handlers.retry });
   useAgentHubShortcut(openAgentHub);
   useComposerClipboardShortcuts({ notify: setCommandStatus, fail: setCommandError });
+  // Stop hands back what omp withdrew. The chat on screen takes it through its draft; any other chat keeps it in its
+  // saved draft by its thread id, so it waits there whether or not that chat is still on screen.
+  const restoreStoppedRef = useRef<
+    ((restored: OmpWire.AbortAndRestoreQueueResult) => Promise<void>) | null
+  >(null);
+  const uploadRestoredImage = useMemo(
+    () => imageUploadTo(createAttachmentBlobStore(client.port(AttachmentBlobStore))),
+    [client],
+  );
+  const handleQueueRestored = useCallback(
+    (stopped: StoppedQueue) => {
+      const restoreMounted = restoreStoppedRef.current;
+      if (stopped.threadId === threadId && restoreMounted !== null) {
+        void restoreMounted(stopped.restored);
+        return;
+      }
+      void restoreStoppedQueueIntoSavedDraft(
+        {
+          drafts: createDraftStoreAdapter(client),
+          scope: DraftScope.parse({ kind: "thread", threadId: stopped.threadId }),
+          upload: uploadRestoredImage,
+        },
+        stopped.restored,
+      )
+        .then((lost) => {
+          if (lost > 0) {
+            reportDraftFailure("Storing a queued image in that chat's draft failed")(
+              new Error(`${lost} image(s) were not stored`),
+            );
+          }
+        })
+        .catch(reportDraftFailure("Keeping what Stop withdrew in that chat's draft failed"));
+    },
+    [client, threadId, uploadRestoredImage],
+  );
   const { controller: runtimeController, runtime } = useOmpRuntime({
     store,
     send: guardedSend,
@@ -898,6 +946,7 @@ function ActiveThreadReady({
     attachments: runtimeAttachments,
     onEdit: p3Handlers.onEdit,
     onReload: p3Handlers.onReload,
+    onQueueRestored: handleQueueRestored,
   });
   useEffect(
     () => p3Runs.handoff.attach(threadId, runtimeController),
@@ -957,6 +1006,34 @@ function ActiveThreadReady({
     (text: string) => draftController.setDraft(text, attachmentManager.toDraftRefs()),
     [attachmentManager, draftController],
   );
+
+  // Stop with queued messages in the chat on screen: the withdrawn images are stored and the draft takes them ahead of
+  // its attachments, and the text goes in ahead of what was typed. An answer that withdrew nothing changes nothing.
+  const restoreStopped = useCallback(
+    async (restored: OmpWire.AbortAndRestoreQueueResult): Promise<void> => {
+      if (restoredCount(restored) === 0) return;
+      const { refs, lost } = await storeRestoredImages(restored, uploadRestoredImage);
+      draftController.setDraft(
+        composeRestoredDraft(restoredQueueText(restored), draftController.getSnapshot().text),
+        [...refs, ...attachmentManager.toDraftRefs()],
+      );
+      setCommandStatus(stopRestoreNotice(restored));
+      if (lost > 0) {
+        setCommandError(
+          lost === 1
+            ? "A queued image could not be brought back into the message box."
+            : "Some queued images could not be brought back into the message box.",
+        );
+      }
+    },
+    [attachmentManager, draftController, uploadRestoredImage],
+  );
+  useLayoutEffect(() => {
+    restoreStoppedRef.current = restoreStopped;
+    return () => {
+      restoreStoppedRef.current = null;
+    };
+  }, [restoreStopped]);
 
   const queueDraft = useCallback(
     (): DraftRestoreRequest => ({

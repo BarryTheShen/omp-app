@@ -164,7 +164,6 @@ describe("probeCapabilities", () => {
       .split("\n")
       .filter((line) => line !== "");
     const unprobed = [
-      "abort_and_restore_queue",
       "set_slow_mode",
       "get_logout_accounts",
       "logout",
@@ -181,6 +180,17 @@ describe("probeCapabilities", () => {
       });
     }
     expect(result.capabilities["omp.cmd.logout"]).toMatchObject({ state: "unavailable" });
+  });
+
+  test("probes abort_and_restore_queue with a bare frame, since the app sends it to cancel a run", async () => {
+    const { result, root } = await runProbe();
+    const sent = (await readFile(join(root, "commands.log"), "utf8"))
+      .split("\n")
+      .filter((line) => line !== "");
+    expect(sent).toContain("abort_and_restore_queue");
+    expect(result.capabilities["omp.cmd.abort_and_restore_queue"]).toMatchObject({
+      state: "available",
+    });
   });
 
   test("keeps protocol v2 unavailable for a v1-only ready frame", async () => {

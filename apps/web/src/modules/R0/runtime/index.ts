@@ -6,6 +6,7 @@ export type {
   PromptMode,
   RuntimeMessageView,
   RuntimeToolStateReference,
+  StoppedQueue,
 } from "./runtime";
 export {
   convertMessage,

@@ -59,6 +59,14 @@ export interface OmpRuntimeOptions {
    */
   readonly onEdit?: NonNullable<ExternalStoreAdapter<RuntimeMessageView>["onEdit"]>;
   readonly onReload?: NonNullable<ExternalStoreAdapter<RuntimeMessageView>["onReload"]>;
+  /** Gets what omp withdrew when Stop cancelled a run with queued input, with the thread it was queued in. */
+  readonly onQueueRestored?: (stopped: StoppedQueue) => void;
+}
+
+/** What a Stop withdrew, and the chat it was queued in: that chat may no longer be on screen when omp answers. */
+export interface StoppedQueue {
+  readonly threadId: RuntimeSnapshot["threadId"];
+  readonly restored: OmpWire.AbortAndRestoreQueueResult;
 }
 
 /** A stable external-store item; only the affected item is replaced when a tool changes. */
@@ -853,6 +861,7 @@ export class OmpRuntimeController {
   private onRefetchThread: (() => Promise<void>) | undefined;
   private onEdit: OmpRuntimeOptions["onEdit"];
   private onReload: OmpRuntimeOptions["onReload"];
+  private onQueueRestored: OmpRuntimeOptions["onQueueRestored"];
   private bashRunning = false;
 
   private readonly onNew = async (message: AppendMessage): Promise<void> => {
@@ -871,15 +880,20 @@ export class OmpRuntimeController {
     this.onRefetchThread = options.onRefetchThread;
     this.onEdit = options.onEdit;
     this.onReload = options.onReload;
+    this.onQueueRestored = options.onQueueRestored;
   }
 
   public update(
-    options: Pick<OmpRuntimeOptions, "capabilities" | "onEdit" | "onRefetchThread" | "onReload">,
+    options: Pick<
+      OmpRuntimeOptions,
+      "capabilities" | "onEdit" | "onQueueRestored" | "onRefetchThread" | "onReload"
+    >,
   ): void {
     this.capabilities = options.capabilities ?? EMPTY_CAPABILITIES;
     this.onRefetchThread = options.onRefetchThread;
     this.onEdit = options.onEdit;
     this.onReload = options.onReload;
+    this.onQueueRestored = options.onQueueRestored;
   }
 
   public getSnapshot(): RuntimeSnapshot {
@@ -965,6 +979,10 @@ export class OmpRuntimeController {
   }
 
   public async cancel(options?: { readonly signal?: AbortSignalLike }): Promise<void> {
+    if (this.shouldRestoreQueueOnCancel()) {
+      await this.cancelAndRestoreQueue(options);
+      return;
+    }
     const command = this.bashRunning ? "abort_bash" : "abort";
     const capability = `omp.cmd.${command}` as CapabilityKey;
     if (!capabilityAvailable(this.capabilities, capability)) {
@@ -978,6 +996,35 @@ export class OmpRuntimeController {
     } catch (error) {
       throw asFailure(error, "Cancelling the omp session failed");
     }
+  }
+
+  /** Stop with queued input: omp withdraws the queued messages and aborts in one command. */
+  private async cancelAndRestoreQueue(options?: {
+    readonly signal?: AbortSignalLike;
+  }): Promise<void> {
+    // Read now: omp's answer may come after the person has moved to another chat.
+    const threadId = this.store.getSnapshot().threadId;
+    let restored: OmpWire.AbortAndRestoreQueueResult;
+    try {
+      restored = await this.send(
+        { threadId, command: { type: "abort_and_restore_queue" } },
+        options,
+      );
+    } catch (error) {
+      throw asFailure(error, "Cancelling the omp session failed");
+    }
+    this.onQueueRestored?.({ threadId, restored });
+  }
+
+  /** A queue exists, no bash command runs, and omp can restore it: only then Stop withdraws the queue. */
+  private shouldRestoreQueueOnCancel(): boolean {
+    const { queue } = this.store.getSnapshot();
+    const hasQueued = queue.steering.length > 0 || queue.followUp.length > 0;
+    return (
+      hasQueued &&
+      !this.bashRunning &&
+      capabilityAvailable(this.capabilities, "omp.cmd.abort_and_restore_queue")
+    );
   }
 
   public createAdapter(
@@ -1022,20 +1069,30 @@ export interface OmpRuntime {
 
 /** React hook that wires one OmpRuntimeStore to assistant-ui's ExternalStoreRuntime. */
 export function useOmpRuntime(options: OmpRuntimeOptions): OmpRuntime {
-  const { attachments, capabilities, onEdit, onRefetchThread, onReload, send, store } = options;
+  const {
+    attachments,
+    capabilities,
+    onEdit,
+    onQueueRestored,
+    onRefetchThread,
+    onReload,
+    send,
+    store,
+  } = options;
   const controller = useMemo(
     () =>
       new OmpRuntimeController({
         capabilities,
         onEdit,
+        onQueueRestored,
         onRefetchThread,
         onReload,
         send,
         store,
       }),
-    [capabilities, onEdit, onRefetchThread, onReload, send, store],
+    [capabilities, onEdit, onQueueRestored, onRefetchThread, onReload, send, store],
   );
-  controller.update({ capabilities, onEdit, onRefetchThread, onReload });
+  controller.update({ capabilities, onEdit, onQueueRestored, onRefetchThread, onReload });
   const subscribe = useCallback(
     (listener: (snapshot: RuntimeSnapshot) => void): (() => void) => controller.subscribe(listener),
     [controller],

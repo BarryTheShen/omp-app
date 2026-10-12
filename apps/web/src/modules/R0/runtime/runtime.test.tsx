@@ -405,6 +405,61 @@ describe("R0.3 assistant-ui runtime", () => {
     expect(unavailable.unstable_enableToolInvocations).toBe(false);
   });
 
+  test("Stop with queued input withdraws it with abort_and_restore_queue and hands it back", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.ingest(
+      {
+        kind: "omp",
+        event: { type: "queue_update", steering: ["steer first"], followUp: ["follow second"] },
+      } as Parameters<OmpRuntimeStore["ingest"]>[0],
+      1,
+    );
+    const withdrawn = {
+      steering: [{ text: "steer first" }],
+      followUp: [{ text: "follow second" }],
+    };
+    const commands: unknown[] = [];
+    const handedBack: unknown[] = [];
+    const send: RpcSessionSend = async ({ command }) => {
+      commands.push(command);
+      return withdrawn as never;
+    };
+    const controller = createOmpRuntime({
+      store,
+      send,
+      capabilities: {
+        ...capabilities,
+        "omp.cmd.abort_and_restore_queue": { state: "available", via: "rpc" },
+      },
+      onQueueRestored: (restored) => handedBack.push(restored),
+    });
+    await controller.cancel();
+    expect(commands).toEqual([{ type: "abort_and_restore_queue" }]);
+    expect(handedBack).toEqual([{ threadId, restored: withdrawn }]);
+  });
+
+  test("Stop with nothing queued still sends plain abort and hands nothing back", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const commands: unknown[] = [];
+    const handedBack: unknown[] = [];
+    const send: RpcSessionSend = async ({ command }) => {
+      commands.push(command);
+      return undefined as never;
+    };
+    const controller = createOmpRuntime({
+      store,
+      send,
+      capabilities: {
+        ...capabilities,
+        "omp.cmd.abort_and_restore_queue": { state: "available", via: "rpc" },
+      },
+      onQueueRestored: (restored) => handedBack.push(restored),
+    });
+    await controller.cancel();
+    expect(commands).toEqual([{ type: "abort" }]);
+    expect(handedBack).toEqual([]);
+  });
+
   test("offers edit and regenerate only while omp can branch", () => {
     const store = new OmpRuntimeStore({ threadId });
     const send: RpcSessionSend = async () => undefined as never;
