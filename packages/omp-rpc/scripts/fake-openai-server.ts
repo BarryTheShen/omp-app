@@ -105,6 +105,32 @@ const STREAMED_LONG_CODE_REPLY = [
   "```",
 ].join("\n");
 
+/**
+ * A reply with math in every form a model writes: `$...$`, `$$...$$`, `\(...\)` and `\[...\]`, two prices in prose
+ * (which stay text), and a code block (which stays code). The e2e spec `apps/web/e2e/fix-1167-math.spec.ts` counts on it.
+ */
+const STREAMED_MATH_REPLY = [
+  "The total energy is $E = KE + V$, where $V$ is the potential energy.",
+  "",
+  "Inside the box the potential is zero, so $E_n = \\frac{n^2 h^2}{8 m L^2}$. The same idea in the other notation is \\(E_1 = \\frac{h^2}{8mL^2}\\).",
+  "",
+  "The wave function in display form:",
+  "",
+  "$$\\psi_n(x) = \\sqrt{\\tfrac{2}{L}}\\,\\sin\\!\\left(\\tfrac{n\\pi x}{L}\\right)$$",
+  "",
+  "The normalisation condition is:",
+  "",
+  "\\[\\int_0^L |\\psi_n|^2\\,dx = 1\\]",
+  "",
+  "which fixes the amplitude.",
+  "",
+  "It costs $5 and $10, which is plain text. Code stays code: `$x$`.",
+  "",
+  "```text",
+  "$y = mx + b$",
+  "```",
+].join("\n");
+
 /** The content of a reply, cut into pieces when the reply is streamed in pieces; otherwise one piece. */
 function contentDeltas(content: string, inPieces: boolean): string[] {
   if (!inPieces) return [content];
@@ -211,6 +237,7 @@ function reply(request: Request): Reply {
   if (prompt.includes("stream_code")) return { text: STREAMED_CODE_REPLY, streamed: true };
   if (prompt.includes("stream_long_code"))
     return { text: STREAMED_LONG_CODE_REPLY, streamed: true };
+  if (prompt.includes("stream_math")) return { text: STREAMED_MATH_REPLY, streamed: true };
   if (prompt.includes("ask_user"))
     return {
       tool: "ask",

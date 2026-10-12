@@ -15,6 +15,7 @@ import remarkGfm from "remark-gfm";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
+import { rehypeMath, remarkMath } from "@/lib/markdown-math";
 import { cn } from "@/lib/utils";
 
 type MarkdownTextProps = Partial<TextMessagePartProps> & {
@@ -35,6 +36,10 @@ const useShallowStable = <T extends Record<string, unknown> | undefined>(value: 
   return ref.current;
 };
 
+/** The math plugins are constants, so the primitive gets the same arrays on every render. */
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [rehypeMath];
+
 const MarkdownTextImpl: FC<MarkdownTextProps> = ({ components }) => {
   const stableComponents = useShallowStable(components);
   const markdownComponents = useMemo(() => {
@@ -47,7 +52,8 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({ components }) => {
 
   return (
     <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm]}
+      rehypePlugins={REHYPE_PLUGINS}
+      remarkPlugins={REMARK_PLUGINS}
       className="aui-md"
       components={markdownComponents}
       defer

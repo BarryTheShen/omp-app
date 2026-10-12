@@ -7,6 +7,7 @@ import {
 import { type FC, type HTMLAttributes, isValidElement, memo, type ReactNode } from "react";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { rehypeMath, remarkMath } from "@/lib/markdown-math";
 import { cn } from "@/lib/utils";
 import { SafeImage } from "../media";
 import { CodeView } from "./code-view";
@@ -215,6 +216,11 @@ const compactMarkdownComponents = memoizeMarkdownComponents({
   ),
 });
 
+/** The math plugins are constants, so the primitive gets the same arrays on every render. */
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REMARK_PLUGINS_KEEPING_LINE_BREAKS = [remarkGfm, remarkBreaks, remarkMath];
+const REHYPE_PLUGINS = [rehypeMath];
+
 /** U1.4's one Markdown implementation: assistant-ui's react-markdown primitive with safe components. */
 export const MarkdownText: FC<MarkdownTextProps> = memo(
   ({ variant = "default", lineBreaks = false, ...props }) => (
@@ -222,7 +228,8 @@ export const MarkdownText: FC<MarkdownTextProps> = memo(
       {...props}
       components={variant === "compact" ? compactMarkdownComponents : markdownComponents}
       defer={false}
-      remarkPlugins={lineBreaks ? [remarkGfm, remarkBreaks] : [remarkGfm]}
+      rehypePlugins={REHYPE_PLUGINS}
+      remarkPlugins={lineBreaks ? REMARK_PLUGINS_KEEPING_LINE_BREAKS : REMARK_PLUGINS}
       skipHtml
       smooth={false}
     />
