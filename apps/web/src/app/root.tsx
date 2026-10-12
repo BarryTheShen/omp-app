@@ -88,6 +88,7 @@ import { type NewChatStatus, SessionCatalogSidebar } from "@/modules/R1/ui";
 import { MessageParts } from "@/modules/U1/parts";
 import { TranscriptDisplayPolicyProvider } from "@/modules/U1/policy";
 import { ToolCallsControl } from "@/modules/U1/policy/tool-calls-control";
+import { ToolsHiddenNotice } from "@/modules/U1/policy/tools-hidden-notice";
 import {
   type ReadingPlace,
   readStoredReadingPlace,
@@ -1133,6 +1134,10 @@ function ActiveThreadReady({
       render: () => (
         <P3EditSurface onClose={() => setEditing(null)} store={store} target={editing} />
       ),
+    },
+    toolsHidden: {
+      title: "Tool activity hidden",
+      render: () => <ToolsHiddenNotice />,
     },
     toolCalls: {
       title: "Tool calls",

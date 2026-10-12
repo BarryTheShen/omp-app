@@ -29,6 +29,7 @@ export type SurfaceId =
   | "queue"
   | "scrollFollow"
   | "toolCalls"
+  | "toolsHidden"
   | "editRun"
   | "editHandoff"
   | "context"
@@ -58,8 +59,18 @@ export const LAYOUT: AppLayout = {
   composerToolbar: ["mode", "executionModes", "queue"],
   /** Under that row. */
   composerFooter: ["editHandoff", "attachments"],
-  /** At the bottom of the transcript. */
-  threadFooter: ["connection", "watchNotice", "editRun", "toolCalls", "scrollFollow"],
+  /**
+   * At the bottom of the transcript. The hidden-tools line comes first: while tool activity is shown it is empty, so
+   * the controls on the right stay where they were.
+   */
+  threadFooter: [
+    "toolsHidden",
+    "connection",
+    "watchNotice",
+    "editRun",
+    "toolCalls",
+    "scrollFollow",
+  ],
   /**
    * Over the end of the transcript, just above its footer: the notices float here and never cover the
    * footer's controls (Jump to latest), and the composer and the status bar do not move for them.
