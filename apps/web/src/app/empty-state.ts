@@ -45,7 +45,7 @@ export function emptyStateCopy({
     };
   }
   return {
-    title: "Ready when you are",
+    title: error?.code === "model_unavailable" ? "This chat could not open" : "Ready when you are",
     detail:
       error === null
         ? "Choose a workspace folder and start a new session."

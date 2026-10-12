@@ -1,3 +1,4 @@
+import { AppFailure, type UsableModel } from "@omp-app/contracts";
 import { z } from "zod";
 import { PATIENT_PROBE_TIMEOUT_MS } from ".";
 
@@ -122,6 +123,47 @@ async function countUsableModels(
   }
   const list = ModelList.safeParse(json);
   return list.success ? list.data.models.length : null;
+}
+
+const ModelsOutput = z.object({
+  models: z.array(
+    z.object({ provider: z.string().min(1), id: z.string().min(1), name: z.string() }),
+  ),
+});
+
+function parseModels(stdout: string): z.infer<typeof ModelsOutput> | null {
+  try {
+    const parsed = ModelsOutput.safeParse(JSON.parse(stdout));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The models omp can use now, as the picker lists them (`omp models --json`). It throws a plain failure when omp
+ * cannot list them, so the picker says so instead of showing an empty list.
+ */
+export async function listUsableModels(
+  binary: string,
+  env: Record<string, string>,
+  cwd: string,
+  timeoutMs: number = OMP_MODELS_TIMEOUT_MS,
+): Promise<UsableModel[]> {
+  const run = await runOmp(binary, ["models", "--json"], env, cwd, timeoutMs);
+  const list = run.kind === "exited" && run.exitCode === 0 ? parseModels(run.stdout) : null;
+  if (list === null) {
+    throw new AppFailure({
+      code: "unavailable",
+      message: "omp could not list its models. Try again.",
+      retryable: true,
+    });
+  }
+  return list.models.map((model) => ({
+    provider: model.provider,
+    modelId: model.id,
+    name: model.name,
+  }));
 }
 
 /**

@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { AppFailure, HostCallId, type RpcSessionEvent, UiRequestId } from "@omp-app/contracts";
-import { type RpcDuplex, RpcSession, type RpcSessionTimer } from "../src/session";
+import {
+  modelUnavailableFailure,
+  type RpcDuplex,
+  RpcSession,
+  type RpcSessionTimer,
+  savedModelFromOmpText,
+} from "../src/session";
 
 const encoder = new TextEncoder();
 const uiId = UiRequestId.parse("ui-1");
@@ -481,5 +487,69 @@ describe("RpcSession agent_busy refusals", () => {
       () => undefined,
     );
     expect(events.map((event) => event.kind)).toEqual([]);
+  });
+});
+
+describe("RpcSession model restore refusals", () => {
+  const RESTORE_TEXT = "Could not restore model fake/gone-model";
+
+  test("a refused open_session that names a saved model omp could not restore fails as model_unavailable, in plain words", async () => {
+    const duplex = new FakeDuplex();
+    const timer = new ManualTimer();
+    const session = await readySession(duplex, timer);
+    const opened = session.send({ type: "open_session", sessionDir: "/workspace/chats" });
+    await flush();
+    const command = lastWrite(duplex);
+    duplex.emit({
+      type: "response",
+      id: command.id,
+      command: "open_session",
+      success: false,
+      error: RESTORE_TEXT,
+    });
+    const failure: unknown = await opened.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+    expect(failure.appError).toMatchObject({ code: "model_unavailable", retryable: false });
+    expect(failure.appError.message).toBe(
+      "This chat used fake/gone-model, which is not available any more. Pick another model to open it.",
+    );
+    expect(JSON.stringify(failure.appError)).not.toContain("Could not restore");
+  });
+
+  test("a refused command that names no saved model keeps its omp_error", async () => {
+    const duplex = new FakeDuplex();
+    const timer = new ManualTimer();
+    const session = await readySession(duplex, timer);
+    const sent = session.send({ type: "get_state" });
+    await flush();
+    const command = lastWrite(duplex);
+    duplex.emit({
+      type: "response",
+      id: command.id,
+      command: "get_state",
+      success: false,
+      error: "no state",
+    });
+    const failure: unknown = await sent.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+    expect(failure.appError).toMatchObject({ code: "omp_error", message: "no state" });
+  });
+
+  test("the saved model is read from omp's words, and text without the refusal names none", () => {
+    expect(
+      savedModelFromOmpText("error: Could not restore model fake/gone-model\n    at a8u (x)"),
+    ).toBe("fake/gone-model");
+    expect(savedModelFromOmpText("Could not restore model openai/gpt-5.")).toBe("openai/gpt-5");
+    expect(savedModelFromOmpText("No default model selected.")).toBeUndefined();
+    expect(modelUnavailableFailure("fake/gone-model").appError).toMatchObject({
+      code: "model_unavailable",
+      retryable: false,
+    });
   });
 });

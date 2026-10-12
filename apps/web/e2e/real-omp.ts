@@ -193,6 +193,7 @@ async function startServer(
     readonly seedToolResults: SeedToolResults | undefined;
     readonly seedEntries: SeedEntries | undefined;
     readonly ompBinary: string | undefined;
+    readonly defaultModel: boolean;
     readonly noModel: boolean;
     readonly port: number;
     readonly serverFolder: string;
@@ -312,7 +313,7 @@ const server = await createCompositionServer({
   agentDir: ${JSON.stringify(join(root, "agent"))},
   appDataDir: ${JSON.stringify(join(root, "app-data"))},
   ompBin: ${JSON.stringify(options.ompBinary ?? REAL_OMP)},
-  ompArgs: ${options.noModel ? "[]" : '["--model", "fake/fake-model"]'},
+  ompArgs: ${options.noModel || !options.defaultModel ? "[]" : '["--model", "fake/fake-model"]'},
   staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
   idleCloseMs: ${options.idleCloseMs === undefined ? "undefined" : options.idleCloseMs},
   logger: createLogger({ dir: ${JSON.stringify(join(root, "logs"))} }),
@@ -376,6 +377,7 @@ export const realTest = test.extend<{
   seedAgentDotEnv: string | undefined;
   seedWorkspace: SeedWorkspace | undefined;
   ompBinary: string | undefined;
+  defaultModel: boolean;
   noModel: boolean;
   serverPort: number;
   /** Extra environment for the app's server and the omp it starts (omp reads these as overrides). */
@@ -392,6 +394,7 @@ export const realTest = test.extend<{
   seedAgentDotEnv: [undefined, { option: true }],
   seedWorkspace: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
+  defaultModel: [true, { option: true }],
   noModel: [false, { option: true }],
   serverPort: [0, { option: true }],
   serverEnv: [{}, { option: true }],
@@ -408,6 +411,7 @@ export const realTest = test.extend<{
       seedAgentDotEnv,
       seedWorkspace,
       ompBinary,
+      defaultModel,
       noModel,
       serverPort,
       serverEnv,
@@ -470,10 +474,14 @@ export const realTest = test.extend<{
         seedToolResults,
         seedEntries,
         ompBinary,
+        defaultModel,
         noModel,
         port: serverPort,
         serverFolder: serverInHome ? home : folder,
       });
+      // A port of 0 is a free port picked at each start. The first start's port is kept, so a restart comes back at the
+      // same address (and the browser's storage for that address still applies).
+      const keptPort = serverPort === 0 ? Number(new URL(server.url).port) : serverPort;
       let url = server.url;
       const open = async (options: OpenOptions = {}): Promise<Page> => {
         const page = await browser.newPage();
@@ -499,8 +507,9 @@ export const realTest = test.extend<{
           seedToolResults,
           seedEntries,
           ompBinary,
+          defaultModel,
           noModel,
-          port: serverPort,
+          port: keptPort,
           serverFolder: serverInHome ? home : folder,
         });
         url = server.url;

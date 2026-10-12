@@ -1,5 +1,6 @@
 import { AssistantRuntimeProvider, useAui, useAuiState } from "@assistant-ui/react";
 import {
+  type AppError,
   AppFailure,
   type AppHealth,
   AppPort,
@@ -10,6 +11,7 @@ import {
   FolderPath,
   type HostCallId,
   HostMetadataPort,
+  type ModelChoice,
   OmpCommandGateway,
   RpcSessionPort,
   SessionFileStore,
@@ -164,6 +166,7 @@ import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
 import { useQueueDequeueShortcut } from "./queue-dequeue-shortcut";
 import { saveTextFile } from "./save-file";
+import { openSavedChatModelPicker } from "./saved-chat-model-picker";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
@@ -270,11 +273,24 @@ function SettingsButton({
   );
 }
 
-function EmptyTranscript({ copy }: { readonly copy: EmptyStateCopy }) {
+/** A chat that did not open because its saved model is gone: the empty screen offers the picker for it. */
+interface OpenFailure {
+  readonly threadId: ThreadId;
+  readonly error: AppError;
+}
+
+function EmptyTranscript({
+  copy,
+  action,
+}: {
+  readonly copy: EmptyStateCopy;
+  readonly action?: ReactNode;
+}) {
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-2 px-6 py-12 text-center">
       <p className="text-lg font-medium tracking-tight">{copy.title}</p>
       <p className="text-muted-foreground text-sm">{copy.detail}</p>
+      {action}
     </div>
   );
 }
@@ -1358,6 +1374,7 @@ function ConnectedApp({
   const folder = FolderPath.safeParse(folderText).success ? FolderPath.parse(folderText) : null;
 
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [openFailure, setOpenFailure] = useState<OpenFailure | null>(null);
   // The sidebar starts a New chat before the history controller opens it: its state shows here meanwhile.
   const [newChat, setNewChat] = useState<NewChatStatus>({ state: "idle" });
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
@@ -1403,6 +1420,27 @@ function ConnectedApp({
       onTurnSettled: readList,
     });
   }, [catalogCache, client, folder]);
+  // Records a chat whose saved model omp cannot restore. With no chat open, the empty screen shows its sentence and the
+  // picker, and the chat is the one this browser had open, so a reload or restart shows it again. With another chat open,
+  // that chat stays on screen: the picker opens over it, with the sentence first, and the saved chat id stays the open chat's.
+  const reportOpenFailure = useCallback(
+    (threadId: ThreadId, error: AppError): void => {
+      if (controller && controller.getSnapshot().threadId !== undefined) {
+        openSavedChatModelPicker({
+          overlay,
+          client,
+          lead: error.message,
+          onPick: (model) => {
+            void controller.openExisting(threadId, model).catch(() => undefined);
+          },
+        });
+        return;
+      }
+      writeSessionValue(THREAD_KEY, String(threadId));
+      setOpenFailure({ threadId, error });
+    },
+    [client, controller, overlay],
+  );
   const remote = useMemo(
     () =>
       catalog
@@ -1446,9 +1484,17 @@ function ConnectedApp({
     setResumePlace(readStoredReadingPlace(saved.data));
     void controller
       .reopenSaved(saved.data)
-      .catch(() => writeSessionValue(THREAD_KEY, null))
+      .catch((error: unknown) => {
+        // A saved chat whose model omp can no longer restore stays the chat this browser had open: its screen offers the
+        // picker, and a model remembered for the chat was already tried by the history.
+        if (error instanceof AppFailure && error.appError.code === "model_unavailable") {
+          reportOpenFailure(saved.data, error.appError);
+          return;
+        }
+        writeSessionValue(THREAD_KEY, null);
+      })
       .finally(() => setResumePlace(null));
-  }, [controller]);
+  }, [controller, reportOpenFailure]);
   // The sidebar's list is fetched again after the person's message has been answered: omp writes a
   // new chat's file during its first turn, and a chat's title and time change with each turn. The
   // end of the answer is read from the messages, not from the prompt flags: a page that attaches
@@ -1545,8 +1591,10 @@ function ConnectedApp({
       return false;
     }
   };
-  const openThread = useCallback(
-    async (threadId: ThreadId): Promise<void> => {
+  // Opens a chat through the history. A chat whose saved model omp cannot restore is recorded with its id, so the
+  // empty screen offers the model picker for that chat, and a model picked there opens that chat with it.
+  const openHistoryChat = useCallback(
+    async (threadId: ThreadId, model?: ModelChoice): Promise<void> => {
       if (!controller) {
         throw new AppFailure({
           code: "unavailable",
@@ -1555,9 +1603,21 @@ function ConnectedApp({
           capability: "host.session-files",
         });
       }
-      await controller.openExisting(threadId);
+      try {
+        await controller.openExisting(threadId, model);
+      } catch (error) {
+        if (error instanceof AppFailure && error.appError.code === "model_unavailable") {
+          reportOpenFailure(threadId, error.appError);
+        }
+        throw error;
+      }
+      setOpenFailure(null);
     },
-    [controller],
+    [controller, reportOpenFailure],
+  );
+  const openThread = useCallback(
+    (threadId: ThreadId): Promise<void> => openHistoryChat(threadId),
+    [openHistoryChat],
   );
   // The sidebar's New chat holds the chat switch from its first step until its chat is open, so a send made meanwhile
   // waits for the new chat instead of going to the chat before it.
@@ -1705,6 +1765,7 @@ function ConnectedApp({
             confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
             remote={remote}
             onNewChatStatus={reportNewChat}
+            onOpenFailed={reportOpenFailure}
           />
         ) : null,
     },
@@ -1774,10 +1835,37 @@ function ConnectedApp({
       />
     );
   }
+  const emptyError =
+    history.error ??
+    (newChat.state === "failed" ? newChat.error : null) ??
+    openFailure?.error ??
+    null;
   const emptyCopy = emptyStateCopy({
     opening: history.isLoading || newChat.state === "opening",
-    error: history.error ?? (newChat.state === "failed" ? newChat.error : null),
+    error: emptyError,
   });
+  // A saved chat whose model omp cannot restore gets the picker; picking a model opens that chat with it.
+  const savedModelThreadId =
+    controller && emptyError?.code === "model_unavailable" ? openFailure?.threadId : undefined;
+  const savedModelAction =
+    savedModelThreadId === undefined ? undefined : (
+      <Button
+        onClick={() => {
+          openSavedChatModelPicker({
+            overlay,
+            client,
+            lead: "Pick a model to open this chat with.",
+            onPick: (model) => {
+              // The history records a failed open on this screen (history.error), so the rejection is not raised again.
+              void openHistoryChat(savedModelThreadId, model).catch(() => undefined);
+            },
+          });
+        }}
+        type="button"
+      >
+        Pick a model
+      </Button>
+    );
   return (
     <div className="h-dvh" data-app-root="true">
       <CommandPaletteHost capabilities={capabilities} handlers={idleHandlers} />
@@ -1795,7 +1883,7 @@ function ConnectedApp({
         transcript={
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex min-h-0 flex-1 flex-col">
-              <EmptyTranscript copy={emptyCopy} />
+              <EmptyTranscript action={savedModelAction} copy={emptyCopy} />
             </div>
             <div className="border-border bg-background border-t px-6 py-2 empty:hidden">
               <LayoutArea

@@ -25,6 +25,21 @@ describe("emptyStateCopy", () => {
     });
   });
 
+  test("a saved chat whose model is gone says so in plain words, without the ready title", () => {
+    const modelGone: AppError = {
+      code: "model_unavailable",
+      message:
+        "This chat used fake/gone-model, which is not available any more. Pick another model to open it.",
+      retryable: false,
+    };
+    expect(emptyStateCopy({ opening: false, error: modelGone })).toEqual({
+      title: "This chat could not open",
+      detail:
+        "This chat used fake/gone-model, which is not available any more. Pick another model to open it.",
+      composer: null,
+    });
+  });
+
   test("with nothing happening, asks for a folder and a session, and leaves the composer's own text", () => {
     expect(emptyStateCopy({ opening: false, error: null })).toEqual({
       title: "Ready when you are",

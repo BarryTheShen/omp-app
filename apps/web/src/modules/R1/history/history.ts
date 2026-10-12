@@ -3,6 +3,7 @@ import type {
   AppError,
   CapabilityMap,
   FolderPath,
+  ModelChoice,
   OpenThreadArgs,
   PortClient,
   RpcSessionClient,
@@ -21,6 +22,7 @@ import {
 } from "@/modules/R0/history/history";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import { releaseThread } from "../release";
+import { pickedModelFor, rememberPickedModel } from "./picked-model";
 
 interface EventSubscription {
   readonly stream: string;
@@ -168,12 +170,22 @@ export class SelectedThreadHistoryController {
   /**
    * Opens an existing chat. Several requests for the chat while its open is pending share that open: a button clicked
    * ten times used to close and reopen the chat ten times (issue 922). A request for another chat in between starts its own
-   * open, so the last pick is the one shown.
+   * open, so the last pick is the one shown. A model picked for a chat omp could not restore opens it as a fresh open, and is
+   * remembered: when omp refuses the chat's saved model again, the chat opens with the model remembered for it.
    */
-  public openExisting(threadId: ThreadId): Promise<OmpRuntimeStore> {
+  public openExisting(threadId: ThreadId, model?: ModelChoice): Promise<OmpRuntimeStore> {
+    if (model !== undefined) return this.openWithModel(threadId, model);
     const pending = this.pendingOpen;
     if (pending !== undefined && pending.threadId === threadId) return pending.open;
-    const open = this.open({ threadId });
+    const open = this.open({ threadId }).catch((error: unknown) => {
+      // omp refuses a chat whose saved model is gone. The model remembered for the chat, if any, opens it.
+      const picked =
+        asFailure(error, "").appError.code === "model_unavailable"
+          ? pickedModelFor(threadId)
+          : undefined;
+      if (picked === undefined) throw error;
+      return this.openWithModel(threadId, picked);
+    });
     const entry = { threadId, open };
     this.pendingOpen = entry;
     const settle = (): void => {
@@ -181,6 +193,12 @@ export class SelectedThreadHistoryController {
     };
     void open.then(settle, settle);
     return open;
+  }
+
+  private async openWithModel(threadId: ThreadId, model: ModelChoice): Promise<OmpRuntimeStore> {
+    const store = await this.open({ threadId, model });
+    rememberPickedModel(threadId, model);
+    return store;
   }
 
   public async openNew(): Promise<OmpRuntimeStore> {

@@ -6,6 +6,7 @@ import {
   CapabilityMap,
   type ClientErrorReport,
   type DebugReport,
+  UsableModels,
 } from "@omp-app/contracts";
 import { truncate } from "../../logging";
 import { fileWatchMessage } from "../../modules/A1/fs/file-watch-registry";
@@ -42,6 +43,8 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
         CapabilityMap.parse(context.capabilities),
       health: (_args: unknown, _call: PortHandlerContext): AppHealth =>
         AppHealth.parse(currentHealth(context)),
+      usableModels: async (_args: unknown, _call: PortHandlerContext) =>
+        UsableModels.parse({ models: [...((await context.usableModels?.()) ?? [])] }),
       reportClientError: (args: unknown, _call: PortHandlerContext): null => {
         const report = args as ClientErrorReport;
         const now = Date.now();

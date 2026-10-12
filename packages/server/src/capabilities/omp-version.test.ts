@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
+  listUsableModels,
   OMP_PROBLEM,
   probeOmp,
   probeOmpPatiently,
@@ -132,6 +133,24 @@ describe("unhealthyAfterFailedChecks", () => {
     expect(await unhealthyAfterFailedChecks(binary, ENV, cwd)).toEqual({
       status: "unhealthy",
       detail: OMP_PROBLEM.checksFailed,
+    });
+  });
+});
+
+describe("listUsableModels", () => {
+  test("lists the usable models from omp models --json, as provider, model id and name", async () => {
+    const { binary, cwd } = await fakeOmp(
+      `echo '{"models":[{"provider":"fake","kind":"chat","id":"fake-model","selector":"fake/fake-model","name":"Fake Model"}]}'`,
+    );
+    expect(await listUsableModels(binary, ENV, cwd)).toEqual([
+      { provider: "fake", modelId: "fake-model", name: "Fake Model" },
+    ]);
+  });
+
+  test("a listing omp cannot give is a plain failure, not an empty list", async () => {
+    const { binary, cwd } = await fakeOmp("exit 1");
+    await expect(listUsableModels(binary, ENV, cwd)).rejects.toMatchObject({
+      appError: { code: "unavailable", retryable: true },
     });
   });
 });

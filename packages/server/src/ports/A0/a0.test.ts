@@ -65,6 +65,10 @@ class FakeProcess implements OmpProcess {
   stopGate: Promise<void> | undefined;
   /** When set, `start()` fails with it, like an omp that cannot be spawned. */
   startFailure: AppFailure | undefined;
+  /** The stderr omp printed before it stopped: the tail the server reads for why it stopped. */
+  stderr = "";
+  /** When set, the fake exits on its next request instead of answering it: an omp that dies after it started. */
+  exitOnWrite = false;
   #status: OmpProcessEvent["status"] = "starting";
   #eventListeners = new Set<(event: OmpProcessEvent) => void>();
   #chunkListeners = new Set<(chunk: Uint8Array) => void>();
@@ -86,7 +90,7 @@ class FakeProcess implements OmpProcess {
   }
 
   get stderrTail(): string {
-    return "";
+    return this.stderr;
   }
 
   start(): Promise<void> {
@@ -126,6 +130,11 @@ class FakeProcess implements OmpProcess {
   }
 
   writeLine(line: string): Promise<void> {
+    if (this.exitOnWrite) {
+      this.exitOnWrite = false;
+      this.crash();
+      return Promise.resolve();
+    }
     const frame = JSON.parse(line) as Record<string, unknown>;
     this.writes.push(frame);
     const command = frame.type;
@@ -379,6 +388,107 @@ describe("A0.7 RpcSessionPort handlers", () => {
     const resumeHandlers = handlersFor(context(resumeCreated), 0);
     await getHandler(resumeHandlers, "open")({ threadId: authorityThread }, call("resume"));
     expect(resumeCreated[0]?.args).toEqual(["--resume", authorityFile]);
+  });
+
+  test("opening a chat with a model the person picked passes it to omp as --model", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+    await getHandler(handlers, "open")(
+      { threadId: authorityThread, model: { provider: "fake", modelId: "fake-model" } },
+      call("picked"),
+    );
+    expect(created[0]?.args).toEqual(["--resume", authorityFile, "--model", "fake/fake-model"]);
+  });
+
+  test("omp that stops at start because a saved model is gone fails the open as model_unavailable, in plain words", async () => {
+    const created: FakeProcess[] = [];
+    const processRegistry = new OmpProcessRegistry({
+      createProcess: (options: OmpProcessOptions) => {
+        const process = new FakeProcess(options, {
+          threadId: authorityThread,
+          sessionFile: authorityFile,
+        });
+        process.startFailure = new AppFailure({
+          code: "omp_exited",
+          message: "omp exited (exit code 1): at async Rg (/$bunfs/root/omp-linux-x64:636241:19)",
+          retryable: true,
+        });
+        process.stderr = [
+          `636980 |       throw new Error(\`Could not restore model \${Ct[0]}\`);`,
+          "                     ^",
+          "error: Could not restore model fake/gone-model",
+          "      at a8u (/$bunfs/root/omp-linux-x64:636980:13)",
+          "",
+        ].join("\n");
+        created.push(process);
+        return process;
+      },
+    });
+    const handlers = handlersFor({ ...context(created), processRegistry }, 0);
+    let failure: unknown;
+    try {
+      await getHandler(handlers, "open")({ threadId: authorityThread }, call("saved"));
+    } catch (error: unknown) {
+      failure = error;
+    }
+    if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+    expect(failure.appError).toEqual({
+      code: "model_unavailable",
+      message:
+        "This chat used fake/gone-model, which is not available any more. Pick another model to open it.",
+      retryable: false,
+    });
+  });
+
+  test("a chat whose omp exits as it opens opens again with a fresh omp, not the exited one", async () => {
+    const created: FakeProcess[] = [];
+    const processRegistry = new OmpProcessRegistry({
+      createProcess: (options: OmpProcessOptions) => {
+        const process = new FakeProcess(options, {
+          threadId: authorityThread,
+          sessionFile: authorityFile,
+        });
+        // The first omp starts, then exits on its first request, as one that dies while the chat opens does. The
+        // retry must start a new omp; it must not reuse the one that exited.
+        if (created.length === 0) {
+          process.exitOnWrite = true;
+          process.stderr = "error: Could not restore model fake/gone-model\n";
+        }
+        created.push(process);
+        return process;
+      },
+    });
+    const handlers = handlersFor({ ...context(created), processRegistry }, 0);
+    await expect(
+      getHandler(handlers, "open")({ threadId: authorityThread }, call("saved")),
+    ).rejects.toMatchObject({ appError: { code: "model_unavailable" } });
+
+    await getHandler(handlers, "open")(
+      { threadId: authorityThread, model: { provider: "fake", modelId: "fake-model" } },
+      call("saved"),
+    );
+
+    expect(created).toHaveLength(2);
+    expect(created[1]?.args).toEqual(["--resume", authorityFile, "--model", "fake/fake-model"]);
+  });
+
+  test("a chat opened with a model the person picked starts omp with that model again after a crash", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+    await getHandler(handlers, "open")(
+      { threadId: authorityThread, model: { provider: "fake", modelId: "fake-model" } },
+      call("picked"),
+    );
+    const crashed = created[0];
+    if (crashed === undefined) throw new Error("missing fake process");
+    crashed.crash();
+    await getHandler(handlers, "send")(
+      { threadId: authorityThread, command: { type: "prompt", message: "after the crash" } },
+      call("picked"),
+    );
+    const revived = created[1];
+    if (revived === undefined) throw new Error("omp was not started again");
+    expect(revived.args).toEqual(["--resume", authorityFile, "--model", "fake/fake-model"]);
   });
 
   test("a second connection that asks for the newest chat is refused in plain words, and the first viewer keeps its process", async () => {

@@ -15,6 +15,7 @@ import {
   probeTimedOutEntirely,
 } from "../src/capabilities";
 import {
+  listUsableModels,
   OMP_PROBLEM,
   type OmpProbe,
   probeOmpPatiently,
@@ -246,6 +247,7 @@ export async function createCompositionServer(
         ownPid: hostPid,
       }),
     capabilities,
+    usableModels: () => listUsableModels(ompBinary, env, launchFolder),
     serverInfo: {
       instanceId,
       serverVersion,

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useCapabilityStatus } from "@/registry-core";
 import type { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
+import { pickedModelFor } from "../history/picked-model";
 
 /** Where a New chat click stands: opening (omp is starting the chat), idle (nothing to say), or failed, with the reason. */
 export type NewChatStatus =
@@ -25,6 +26,8 @@ export interface SessionCatalogSidebarProps {
   readonly onOpenThread?: (threadId: ThreadId) => Promise<void> | void;
   readonly onNewChatStatus?: (status: NewChatStatus) => void;
   readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
+  /** Shows why a picked chat did not open, when the chat's saved model cannot be restored (the picker offers another). */
+  readonly onOpenFailed?: (threadId: ThreadId, error: AppError) => void;
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
   /** Asks before a chat is deleted; the chat is deleted only when this resolves true. `title` is the chat's name. */
   readonly confirmDelete?: (session: SessionMetadata, title: string) => Promise<boolean> | boolean;
@@ -151,6 +154,7 @@ export function SessionCatalogSidebar({
   onOpenThread,
   onNewChat,
   onNewChatStatus,
+  onOpenFailed,
   onPinChange,
   confirmDelete,
 }: SessionCatalogSidebarProps) {
@@ -261,10 +265,39 @@ export function SessionCatalogSidebar({
     catalog.requestFocus(undefined);
   }, [catalog, focusRequest, sessions]);
 
+  /**
+   * Opens a chat through the page. The page reports a refusal of the chat's model where the chat opens (the picker over
+   * the open chat, or the empty screen), so that refusal is not raised again here.
+   */
+  const openThreadReported = async (threadId: ThreadId): Promise<void> => {
+    try {
+      await onOpenThread?.(threadId);
+    } catch (error) {
+      if (error instanceof AppFailure && error.appError.code === "model_unavailable") return;
+      throw error;
+    }
+  };
+
   const openSession = async (session: SessionMetadata): Promise<void> => {
     catalog.setActionError(undefined);
-    const initialized = await unlessSuperseded(remote.initialize(session.id));
-    if (initialized) await onOpenThread?.(initialized.remoteId as ThreadId);
+    const threadId = session.id as ThreadId;
+    let openId: ThreadId;
+    try {
+      const initialized = await unlessSuperseded(remote.initialize(session.id));
+      if (!initialized) return;
+      openId = initialized.remoteId as ThreadId;
+    } catch (error) {
+      if (!(error instanceof AppFailure) || error.appError.code !== "model_unavailable")
+        throw error;
+      // A model remembered for this chat opens it again: the history retries the open with that model.
+      if (pickedModelFor(threadId) === undefined) {
+        // omp refused the chat before it opened: the picker, over the open chat or on the empty screen, says so once.
+        onOpenFailed?.(threadId, error.appError);
+        return;
+      }
+      openId = threadId;
+    }
+    await openThreadReported(openId);
   };
 
   const createNewChat = async (): Promise<void> => {

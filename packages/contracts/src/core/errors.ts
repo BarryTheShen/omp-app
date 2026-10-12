@@ -20,6 +20,8 @@ export const APP_ERROR_CODES = [
   /** omp is still running a turn, so a new prompt was refused. The browser offers to queue it or to interrupt it. */
   "agent_busy",
   "not_found",
+  /** omp cannot restore a chat's saved model; the message says which, and a model can be picked to open the chat. */
+  "model_unavailable",
   "permission",
   /** A bug in the app; never a user-facing condition. */
   "internal",

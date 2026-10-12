@@ -29,9 +29,15 @@ const WireRecord = z.record(z.string(), z.unknown());
 export const ThreadRef = z.object({ threadId: ThreadId }).strict();
 export type ThreadRef = z.infer<typeof ThreadRef>;
 
+/** A chat model to open a chat with: its provider and model id, as omp names them (`provider/modelId`). */
+export const ModelChoice = z
+  .object({ provider: z.string().min(1), modelId: z.string().min(1) })
+  .strict();
+export type ModelChoice = z.infer<typeof ModelChoice>;
+
 /** Open an existing thread, create a fresh thread, or resume the newest thread in a folder. */
 export const OpenThreadArgs = z.union([
-  z.object({ threadId: ThreadId }).strict(),
+  z.object({ threadId: ThreadId, model: ModelChoice.optional() }).strict(),
   z.object({ folderPath: FolderPath, start: z.literal("new") }).strict(),
   z.object({ folderPath: FolderPath, start: z.literal("latest") }).strict(),
 ]);

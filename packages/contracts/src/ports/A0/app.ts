@@ -57,6 +57,15 @@ export type ClientErrorReport = z.infer<typeof ClientErrorReport>;
 export const DebugReport = z.object({ fileName: z.string().min(1), text: z.string() }).strict();
 export type DebugReport = z.infer<typeof DebugReport>;
 
+/** A model omp can use now (listed by `omp models --json`), named as omp names it: provider and model id. */
+export const UsableModel = z
+  .object({ provider: z.string().min(1), modelId: z.string().min(1), name: z.string() })
+  .strict();
+export type UsableModel = z.infer<typeof UsableModel>;
+
+export const UsableModels = z.object({ models: z.array(UsableModel) }).strict();
+export type UsableModels = z.infer<typeof UsableModels>;
+
 export const AppPort = definePort({
   name: "A0.app",
   methods: {
@@ -79,6 +88,10 @@ export const AppPort = definePort({
     debugReport: {
       args: EmptyArgs,
       result: DebugReport,
+    },
+    usableModels: {
+      args: EmptyArgs,
+      result: UsableModels,
     },
   },
   events: {},

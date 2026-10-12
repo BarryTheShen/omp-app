@@ -19,6 +19,7 @@ import {
   type RpcSessionNotification,
 } from "@omp-app/contracts";
 import { FrameDecoder, type FrameDecoderInput, type FrameDecoderOptions } from "../frame";
+import { modelUnavailableFailure, savedModelFromOmpText } from "./model-restore";
 
 const DIALOG_METHODS: Record<string, true> = {
   select: true,
@@ -295,6 +296,9 @@ function agentBusyFailure(): AppFailure {
 
 function commandFailure(response: OmpResponse): AppFailure {
   const message = typeof response.error === "string" ? response.error : "omp command failed";
+  // A refused `open_session` or `switch_session` names the saved model omp could not restore: a plain failure.
+  const savedModel = savedModelFromOmpText(message);
+  if (savedModel !== undefined) return modelUnavailableFailure(savedModel);
   if (isAgentBusyRefusal(message)) return agentBusyFailure();
   return createFailure("omp_error", message, false, {
     command: response.command,

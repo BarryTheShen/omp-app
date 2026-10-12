@@ -11,6 +11,7 @@ import {
   type FolderPath,
   isOpenQuestion,
   isStateFrame,
+  type ModelChoice,
   type OmpWire,
   type OpenQuestionRecord,
   type OpenThreadArgs,
@@ -28,8 +29,14 @@ import {
   type SubscribeArgs,
   stateFrameKey,
   ThreadId,
+  type UsableModel,
 } from "@omp-app/contracts";
-import { type CommandFuture, RpcSession } from "@omp-app/omp-rpc";
+import {
+  type CommandFuture,
+  modelUnavailableFailure,
+  RpcSession,
+  savedModelFromOmpText,
+} from "@omp-app/omp-rpc";
 import { z } from "zod";
 import { capabilitiesForProtocol } from "../../capabilities";
 import type { Logger } from "../../logging";
@@ -49,6 +56,7 @@ export interface ThreadBootstrap {
   readonly folderPath: FolderPath;
   readonly sessionFile: SessionFilePath;
   readonly args?: readonly string[];
+  readonly model?: ModelChoice;
 }
 
 export interface A0PortContext {
@@ -92,6 +100,13 @@ export interface A0PortContext {
   readonly logger?: Logger;
   /** Builds the debug report the browser can save; absent when the app runs without a debug log. */
   readonly debugReport?: () => Promise<{ readonly fileName: string; readonly text: string }>;
+  /** Lists the models omp can use now (`omp models --json`), for the picker that opens a chat omp cannot restore. */
+  readonly usableModels?: () => Promise<readonly UsableModel[]>;
+}
+
+/** The arguments that open a chat with a model the person picked: omp's `--model`, as `provider/modelId`. */
+function modelArgs(model: ModelChoice | undefined): string[] {
+  return model === undefined ? [] : ["--model", `${model.provider}/${model.modelId}`];
 }
 
 interface ViewerPreference {
@@ -325,10 +340,15 @@ export class RpcSessionPortRuntime {
     } catch (error) {
       await session.close();
       this.#dropEntry(entry);
+      // The process that failed is stopped and forgotten now: the next open starts omp again, and does not reuse it.
+      await this.#context.processRegistry.stopIfUnwatched(entry.bootstrap.threadId);
       if (error instanceof AppFailure && error.appError.code === "omp_exited") {
-        // omp stopped before the chat was ready. Its last words say why; the browser gets that as a typed reason.
-        if ("threadId" in args) throw notFound(error.appError.message);
+        // omp stopped before the chat was ready. Its last words say why. A saved model it could not restore is a
+        // plain failure that offers another model; any other reason reaches the browser as a typed reason.
         await process.stderrSettled?.();
+        const savedModel = savedModelFromOmpText(process.stderrTail);
+        if (savedModel !== undefined) throw modelUnavailableFailure(savedModel);
+        if ("threadId" in args) throw notFound(error.appError.message);
         throw new AppFailure({ ...error.appError, startup: startupReason(process.stderrTail) });
       }
       throw error;
@@ -730,7 +750,7 @@ export class RpcSessionPortRuntime {
         retryable: false,
       });
     }
-    const args = ["--resume", sessionFile];
+    const args = ["--resume", sessionFile, ...modelArgs(entry.bootstrap.model)];
     // The registry stops the old process (already gone after a crash) and keeps the chat's viewers.
     const process = await this.#context.processRegistry.respawn({
       threadId,
@@ -855,7 +875,11 @@ export class RpcSessionPortRuntime {
       if (existing !== undefined) return existing.bootstrap;
       const resolved = await this.#context.resolveThread(args.threadId, call.signal);
       if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
-      return { ...resolved, args: ["--resume", resolved.sessionFile] };
+      return {
+        ...resolved,
+        args: ["--resume", resolved.sessionFile, ...modelArgs(args.model)],
+        ...(args.model === undefined ? {} : { model: args.model }),
+      };
     }
     if (args.start === "new") return provisionalBootstrap(args.folderPath, []);
     return provisionalBootstrap(args.folderPath, ["--continue"]);

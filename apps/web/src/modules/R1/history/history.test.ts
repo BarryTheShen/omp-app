@@ -12,6 +12,7 @@ import { describe, expect, test, vi } from "vitest";
 import { SessionHistoryLoader } from "@/modules/R0/history/history";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import { createSelectedThreadHistoryController } from ".";
+import { pickedModelFor, rememberPickedModel } from "./picked-model";
 
 const folder = "/workspace/project" as FolderPath;
 const threadOne = ThreadIdSchema.parse("thread-one");
@@ -125,6 +126,53 @@ describe("SelectedThreadHistoryController open and paging", () => {
     } finally {
       older.mockRestore();
     }
+  });
+
+  test("a model picked for a chat omp could not restore is passed to the open", async () => {
+    const opened: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opened.push(args);
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await controller.openExisting(threadOne, { provider: "fake", modelId: "fake-model" });
+
+    expect(opened).toEqual([
+      { threadId: threadOne, model: { provider: "fake", modelId: "fake-model" } },
+    ]);
+  });
+
+  test("a chat omp refuses for its saved model opens with the model remembered for it, and keeps that model", async () => {
+    localStorage.clear();
+    rememberPickedModel(threadOne, { provider: "fake", modelId: "fake-model" });
+    const opened: OpenThreadArgs[] = [];
+    const rpc = createRpc((args) => {
+      opened.push(args);
+      if (!("model" in args) || args.model === undefined) {
+        throw new AppFailure({
+          code: "model_unavailable",
+          message: "This chat used fake/gone-model, which is not available any more.",
+          retryable: false,
+        });
+      }
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await controller.openExisting(threadOne);
+
+    expect(opened).toEqual([
+      { threadId: threadOne },
+      { threadId: threadOne, model: { provider: "fake", modelId: "fake-model" } },
+    ]);
+    expect(pickedModelFor(threadOne)).toEqual({ provider: "fake", modelId: "fake-model" });
   });
 
   test("reads the newest window from the thread's session file through the file-store port", async () => {
