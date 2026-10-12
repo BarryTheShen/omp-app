@@ -1,8 +1,9 @@
 import type { Descriptor } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { z } from "zod";
 import { ShortcutRegistryProvider, ShortcutSheet, ShortcutSheetHost } from "./index";
-import { MemoryPreferenceStore } from "./registry";
+import { MemoryPreferenceStore, SHORTCUT_PREFERENCES_KEY } from "./registry";
 
 const descriptors: readonly Descriptor[] = [
   {
@@ -158,7 +159,7 @@ describe("ShortcutSheet", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Ctrl+Enter" }));
     const input = screen.getByRole("textbox", { name: "Rebind Send message" });
-    expect(input).toHaveProperty("value", "Mod+Enter");
+    expect(input).toHaveProperty("value", "Ctrl+Enter");
     fireEvent.change(input, { target: { value: "Mod+Shift+Enter" } });
     fireEvent.blur(input);
     expect(screen.getByRole("alert").textContent).toContain("U0 and U2");
@@ -179,6 +180,69 @@ describe("ShortcutSheet", () => {
     fireEvent.click(reset);
     expect(screen.getByRole("button", { name: "Alt+T" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Reset Toggle thinking" })).toBeNull();
+  });
+});
+
+function renderSheet(store: MemoryPreferenceStore) {
+  return render(
+    <ShortcutRegistryProvider descriptors={descriptors} preferenceStore={store}>
+      <ShortcutSheet open onOpenChange={() => undefined} />
+    </ShortcutRegistryProvider>,
+  );
+}
+
+/** The overrides the registry has stored, as the preference store holds them. */
+function storedOverrides(store: MemoryPreferenceStore): Record<string, string> {
+  const raw = store.get(SHORTCUT_PREFERENCES_KEY);
+  return raw === undefined ? {} : z.record(z.string(), z.string()).parse(JSON.parse(raw));
+}
+
+describe("the rebind field speaks the person's key names", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  test("typing the name the field shows stores the chord the registry matches", () => {
+    const store = new MemoryPreferenceStore();
+    renderSheet(store);
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl+Enter" }));
+    const input = screen.getByRole("textbox", { name: "Rebind Send message" });
+    expect(input).toHaveProperty("value", "Ctrl+Enter");
+    fireEvent.change(input, { target: { value: "Ctrl+Shift+J" } });
+    fireEvent.blur(input);
+    expect(storedOverrides(store)).toEqual({ "U0.send": "Mod+Shift+J" });
+    expect(screen.getByRole("button", { name: "Ctrl+Shift+J" })).toBeTruthy();
+  });
+
+  test("on an Apple platform the field shows Cmd and Option, and typing them stores Mod and Alt", () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)",
+    );
+    const store = new MemoryPreferenceStore();
+    renderSheet(store);
+    fireEvent.click(screen.getByRole("button", { name: "Cmd+Enter" }));
+    const input = screen.getByRole("textbox", { name: "Rebind Send message" });
+    expect(input).toHaveProperty("value", "Cmd+Enter");
+    fireEvent.change(input, { target: { value: "Cmd+Shift+J" } });
+    fireEvent.blur(input);
+    expect(storedOverrides(store)).toEqual({ "U0.send": "Mod+Shift+J" });
+    expect(screen.getByRole("button", { name: "Cmd+Shift+J" })).toBeTruthy();
+  });
+
+  test("leaving the field with its text unchanged stores nothing", () => {
+    const store = new MemoryPreferenceStore();
+    renderSheet(store);
+    fireEvent.click(screen.getByRole("button", { name: "Alt+T" }));
+    fireEvent.blur(screen.getByRole("textbox", { name: "Rebind Toggle thinking" }));
+    expect(storedOverrides(store)).toEqual({});
+  });
+
+  test("a chord the browser keeps is refused in the name the person typed", () => {
+    renderSheet(new MemoryPreferenceStore());
+    fireEvent.click(screen.getByRole("button", { name: "Alt+T" }));
+    const input = screen.getByRole("textbox", { name: "Rebind Toggle thinking" });
+    fireEvent.change(input, { target: { value: "Ctrl+J" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toBe("Your browser keeps Ctrl+J for itself");
   });
 });
 

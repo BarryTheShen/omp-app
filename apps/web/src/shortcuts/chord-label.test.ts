@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { chordLabel, isApplePlatform } from "./chord-label";
+import { chordLabel, isApplePlatform, storedChord } from "./chord-label";
 
 const MAC = { mac: true } as const;
 const OTHER = { mac: false } as const;
@@ -42,5 +42,44 @@ describe("isApplePlatform", () => {
     ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", false],
   ])("reads %s as Apple: %s", (userAgent, expected) => {
     expect(isApplePlatform(userAgent)).toBe(expected);
+  });
+});
+
+describe("storedChord", () => {
+  test.each([
+    ["Ctrl+Shift+J", "Mod+Shift+J"],
+    ["Cmd+Shift+J", "Mod+Shift+J"],
+    ["ctrl+shift+j", "Mod+Shift+J"],
+    ["Option+T", "Alt+T"],
+    ["Alt+↑", "Alt+ArrowUp"],
+    ["Ctrl+←", "Mod+ArrowLeft"],
+    ["Escape", "Esc"],
+    ["Mod+Shift+Enter", "Mod+Shift+Enter"],
+    ["Mod+K Mod+C", "Mod+K Mod+C"],
+  ])("%s is stored as %s", (typed, stored) => {
+    expect(storedChord(typed)).toBe(stored);
+  });
+});
+
+describe("the chord the field shows is the chord it stores again", () => {
+  const stored = [
+    "Mod+Shift+H",
+    "Mod+Enter",
+    "Alt+T",
+    "Shift+Tab",
+    "Alt+ArrowUp",
+    "Mod+ArrowLeft",
+    "Esc",
+    "Space",
+    "Mod+K Mod+C",
+    "Mod+Shift+Enter",
+    "F5",
+    "PageDown",
+  ];
+  test.each(stored)("%s on a Mac", (chord) => {
+    expect(storedChord(chordLabel(chord, MAC))).toBe(chord);
+  });
+  test.each(stored)("%s on other systems", (chord) => {
+    expect(storedChord(chordLabel(chord, OTHER))).toBe(chord);
   });
 });

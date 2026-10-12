@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { capabilityStatus, useCapabilities } from "@/registry-core";
-import { chordLabel, isApplePlatform } from "./chord-label";
+import { chordLabel, isApplePlatform, storedChord } from "./chord-label";
 import {
   useShortcutBindings,
   useShortcutError,
@@ -109,13 +109,26 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
                           aria-label={`Rebind ${binding.title}`}
                           autoFocus
                           className="border-input w-32 rounded-md border px-2 py-1 text-right font-mono text-xs"
-                          defaultValue={binding.chord}
+                          defaultValue={chordLabel(binding.chord, { mac: apple })}
                           onBlur={(event) => {
-                            const result = registry.rebind(binding.id, event.currentTarget.value);
+                            const shown = chordLabel(binding.chord, { mac: apple });
+                            const typed = event.currentTarget.value.trim();
+                            setEditingId(undefined);
+                            // A field left with the text it showed stores nothing.
+                            if (typed === shown) {
+                              setConflict(undefined);
+                              return;
+                            }
+                            const chord = storedChord(typed);
+                            const result = registry.rebind(binding.id, chord);
+                            // A refusal names the chord the way the person's keyboard does, not the stored form.
+                            const refusal = result.error
+                              ?.split(chord)
+                              .join(chordLabel(chord, { mac: apple }));
                             setConflict(
                               result.ok
                                 ? undefined
-                                : (result.error ??
+                                : (refusal ??
                                     `Shortcut conflicts with ${[
                                       ...new Set(
                                         result.conflicts.flatMap(({ first, second }) => [
@@ -125,7 +138,6 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
                                       ),
                                     ].join(" and ")}.`),
                             );
-                            setEditingId(undefined);
                           }}
                           onKeyDown={(event) => {
                             if (event.key === "Escape") {
