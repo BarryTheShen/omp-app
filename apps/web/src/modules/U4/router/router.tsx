@@ -206,6 +206,7 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
   }
 
   public async sync(snapshot: RouterPendingSnapshot, context: RouterContext): Promise<void> {
+    this.closeDropped(snapshot.extensionUi);
     const requests = [
       ...Object.values(snapshot.extensionUi),
       ...Object.values(snapshot.hostTools),
@@ -219,6 +220,19 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
           pending as PendingRequestLike<OmpWire.HostToolCallRequest | OmpWire.HostUriRequest>,
           context,
         );
+      }
+    }
+  }
+
+  /**
+   * Closes an open question whose request R0 no longer holds: omp exited, so nothing can answer it now. Nothing is sent
+   * back. The newest is closed first, so the host does not hand a question queued behind it to a dialog that is about
+   * to close.
+   */
+  private closeDropped(extensionUi: RouterPendingSnapshot["extensionUi"]): void {
+    for (const [id, kind] of [...this.pending].reverse()) {
+      if (kind === "extension" && extensionUi[id] === undefined) {
+        this.dialogHost.cancel(id as UiRequestId);
       }
     }
   }

@@ -905,11 +905,13 @@ export class RpcSessionPortRuntime {
 
   /**
    * Publishes one of omp's events on the chat's stream, and keeps the chat's open questions in step. A question is open
-   * from the moment it is published until it is answered, cancelled, or omp is replaced. omp reports none of them and
-   * writes nothing when one is answered, so the server is the only place that knows which ones omp still waits on.
+   * from the moment it is published until it is answered, cancelled, omp exits, or omp is replaced. omp reports none
+   * of them and writes nothing when one is answered, so the server is the only place that knows which ones omp waits on.
    */
   #publishEvent(entry: ThreadEntry, event: RpcSessionEvent): void {
     const frame = this.#context.replay.publish(entry.stream, event);
+    // An omp that has exited can take no answer, so its questions close with it: a reload must not ask them again.
+    if (event.kind === "process" && event.status === "exited") entry.openQuestions.clear();
     if (event.kind !== "notification") return;
     const notice = event.frame;
     if (notice.type !== "extension_ui_request") return;

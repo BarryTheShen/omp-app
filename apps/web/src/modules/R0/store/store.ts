@@ -597,6 +597,14 @@ function cancelActiveTools(next: MutableSnapshot): void {
     }
   }
 }
+
+/** omp that exited can take no answer: its questions are no longer open, and the router closes their dialogs. */
+function dropExtensionUiRequests(next: MutableSnapshot): void {
+  const pending = copyPending(next);
+  pending.extensionUi = {};
+  setPending(next, pending);
+}
+
 function recordTranscriptEntry(next: MutableSnapshot, entry: TranscriptEntry): void {
   const entries = next.transcript.entries as Record<string, TranscriptEntry>;
   const order = next.transcript.order as EntryId[];
@@ -1259,8 +1267,11 @@ export class OmpRuntimeStore {
       setPending(next, pending);
       this.commit(next);
     } catch (error) {
-      const appError = appErrorFromUnknown(error, "Answering the extension UI request failed");
-      this.fail(appError);
+      // An answer that reaches an omp which has already exited fails because omp is gone. The exit is the reason the
+      // banner shows, so that failure is not shown in its place.
+      if (this.snapshot.process.status !== "exited") {
+        this.fail(appErrorFromUnknown(error, "Answering the extension UI request failed"));
+      }
       throw error;
     }
   }
@@ -1376,6 +1387,7 @@ export class OmpRuntimeStore {
       this.streamKeys.clear();
       cancelActiveTools(next);
       updatePrompt(next, { streaming: false });
+      dropExtensionUiRequests(next);
     }
   }
 

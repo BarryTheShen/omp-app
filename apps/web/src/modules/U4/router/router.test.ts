@@ -429,4 +429,27 @@ describe("ExtensionUiRequestRouterController", () => {
     );
     expect(handoffs).toEqual(["notify", "notify"]);
   });
+
+  test("a question the store drops closes without an answer, newest first, so a queued one is not handed over", async () => {
+    const dialogHost = new FakeDialogHost();
+    const router = new ExtensionUiRequestRouterController({
+      dialogHost,
+      overlay: new FakeOverlay(),
+      hostAnswers: new FakeHostAnswers(),
+    });
+    const shown = router.routeExtensionUi(
+      { request: selectRequest("q-shown"), receivedSeq: 1 },
+      { threadId },
+    );
+    const queued = router.routeExtensionUi(
+      { request: selectRequest("q-queued"), receivedSeq: 2 },
+      { threadId },
+    );
+    expect(dialogHost.opened.map((request) => String(request.id))).toEqual(["q-shown", "q-queued"]);
+    // omp exited, so R0 holds neither question. Both dialogs close without an answer, and the newer one closes first:
+    // the host shows the next queued question as soon as the one showing closes.
+    await router.sync({ extensionUi: {}, hostTools: {}, hostUris: {} }, { threadId });
+    expect(dialogHost.cancelled).toEqual(["q-queued", "q-shown"]);
+    await Promise.all([shown, queued]);
+  });
 });

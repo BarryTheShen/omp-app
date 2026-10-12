@@ -7,6 +7,7 @@ import type {
   ToolCallId,
   UiRequestId,
 } from "@omp-app/contracts";
+import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "./store";
 
@@ -786,6 +787,89 @@ describe("OmpRuntimeStore", () => {
     });
     expect(store.getSnapshot().pending.extensionUi).toEqual({});
     expect(calls).toHaveLength(1);
+  });
+
+  test("omp's exit drops the questions it asked, since it can no longer answer them", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "process", status: "ready" }, 1);
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "ui-open",
+          method: "confirm",
+          title: "Continue?",
+          message: "yes",
+        },
+      },
+      2,
+    );
+    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-open"]);
+    ingest(
+      store,
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      },
+      3,
+    );
+    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+    expect(store.getSnapshot().error).toMatchObject({ message: "omp exited (signal SIGKILL)" });
+  });
+
+  test("an answer that fails because omp exited first leaves the exit reason on the banner", async () => {
+    const answered = Promise.withResolvers<void>();
+    const store = new OmpRuntimeStore({
+      threadId,
+      transport: {
+        answerExtensionUi: async () => {
+          await answered.promise;
+          throw new AppFailure({
+            code: "not_found",
+            message: "No pending extension UI request",
+            retryable: false,
+          });
+        },
+      },
+    });
+    ingest(store, { kind: "process", status: "ready" }, 1);
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "ui-late",
+          method: "confirm",
+          title: "Continue?",
+          message: "yes",
+        },
+      },
+      2,
+    );
+    const answer = store.answerExtensionUi({
+      type: "extension_ui_response",
+      id: "ui-late" as UiRequestId,
+      confirmed: true,
+    });
+    ingest(
+      store,
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      },
+      3,
+    );
+    answered.resolve();
+    await expect(answer).rejects.toMatchObject({ appError: { code: "not_found" } });
+    expect(store.getSnapshot().error).toMatchObject({
+      code: "omp_exited",
+      message: "omp exited (signal SIGKILL)",
+    });
   });
 
   test("ignores unknown notifications, replays, and events after a sequence gap", () => {

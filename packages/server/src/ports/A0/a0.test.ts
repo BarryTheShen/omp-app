@@ -1221,6 +1221,26 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(openQuestions()).toEqual([]);
   });
 
+  test("a question omp was waiting on is not open once omp has exited", async () => {
+    const created: FakeProcess[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext, 0);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    process.emitRequest({
+      type: "extension_ui_request",
+      id: "ui-1",
+      method: "confirm",
+      title: "Go on?",
+      message: "",
+    });
+    const openQuestions = getHandler(handlers, "openQuestions");
+    expect(openQuestions({ threadId: authorityThread }, call("one"))).toHaveLength(1);
+    process.crash();
+    expect(openQuestions({ threadId: authorityThread }, call("one"))).toEqual([]);
+  });
+
   test("keeps the status, widget and title omp last set until each is replaced or cleared, and a restart drops them", async () => {
     const created: FakeProcess[] = [];
     const runtimeContext = context(created);
