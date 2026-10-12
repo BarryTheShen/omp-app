@@ -10,6 +10,8 @@ import type {
 } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { splitToolResult } from "../U3/tool-card/result";
+import { hideImageData, resultImagePreviews } from "../U3/tool-card/result-image";
+import { ResultImages } from "../U3/tool-card/result-images";
 import { TextOutput } from "../U3/tool-card/text-output";
 import { decodeHostTool, decodeHostUri } from "./models";
 
@@ -127,6 +129,8 @@ function SafeDetails({
   const rawResult = state.result ?? state.partialResult ?? props.result;
   // omp's text for the call, when its result carries one: it is what a person came to read.
   const text = splitToolResult(rawResult).text;
+  // omp's pictures for the call: each is drawn below its text, and its base64 is never shown as text.
+  const images = resultImagePreviews(rawResult);
   const unavailable = unavailableReason(props, state);
   const artifact = state.outputMeta?.artifactId ?? state.outputMeta?.truncation?.artifactId;
   return (
@@ -142,7 +146,10 @@ function SafeDetails({
       {artifact && <p className="text-muted-foreground text-xs">Artifact available: {artifact}</p>}
       <ArgumentRows args={rawArgs} />
       {text !== "" && <TextOutput testId="t7-fallback-text" text={text} />}
-      {text === "" && rawResult !== undefined && <JsonTree label="Result" value={rawResult} />}
+      {images.length > 0 && <ResultImages alt="Picture returned by the tool" previews={images} />}
+      {text === "" && images.length === 0 && rawResult !== undefined && (
+        <JsonTree label="Result" value={hideImageData(rawResult)} />
+      )}
       <Button
         className="mt-2"
         size="xs"
@@ -155,7 +162,10 @@ function SafeDetails({
       </Button>
       {showRaw && (
         <div className="border-border bg-muted/40 mt-2 max-h-56 overflow-auto rounded border p-2">
-          <JsonTree label="Raw details" value={{ args: rawArgs, result: rawResult }} />
+          <JsonTree
+            label="Raw details"
+            value={{ args: rawArgs, result: hideImageData(rawResult) }}
+          />
         </div>
       )}
     </section>

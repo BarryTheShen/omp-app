@@ -172,3 +172,73 @@ describe("T7 fallback body", () => {
     expect(screen.getByTestId("t7-fallback-details")).toBeTruthy();
   });
 });
+
+const PICTURE = "iVBORw0KGgo=";
+
+describe("T7 fallback, a result that holds pictures", () => {
+  test("draws the picture below the call and never shows its base64 as text", () => {
+    render(
+      <T7ToolFallback
+        {...props(
+          { content: [{ type: "image", data: PICTURE, mimeType: "image/png" }] },
+          "t7-picture",
+        )}
+        toolName="mcp__fixture_show_picture"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "MCP tool: Complete" }));
+    const pictures = document.querySelectorAll('[data-slot="tool-result-image"] img');
+    expect(pictures.length).toBe(1);
+    expect(pictures[0]?.getAttribute("src")).toBe(`data:image/png;base64,${PICTURE}`);
+    expect(screen.queryByText(/^Result:/)).toBeNull();
+    expect(document.body.textContent).not.toContain(PICTURE);
+  });
+
+  test("says in plain words why a picture is not drawn, as the read card does", () => {
+    render(
+      <T7ToolFallback
+        {...props(
+          { content: [{ type: "image", data: PICTURE, mimeType: "image/svg+xml" }] },
+          "t7-vector",
+        )}
+        toolName="mcp__fixture_draw_vector"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "MCP tool: Complete" }));
+    expect(screen.getByText("This type of image cannot be shown here.")).toBeTruthy();
+    expect(document.querySelectorAll("img").length).toBe(0);
+    expect(document.body.textContent).not.toContain(PICTURE);
+  });
+
+  test("says how large an oversize picture is, and draws none", () => {
+    // 5,592,408 characters of base64 decode to 4,194,305 bytes, one more than the card's cap.
+    const overCap = `${"A".repeat(5_592_404)}AAA=`;
+    render(
+      <T7ToolFallback
+        {...props({ content: [{ type: "image", data: overCap, mimeType: "image/png" }] }, "t7-big")}
+        toolName="mcp__fixture_show_picture"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "MCP tool: Complete" }));
+    expect(
+      screen.getByText(
+        "This image is 4.0 MB. This card shows images up to 4 MB, so it is not drawn here.",
+      ),
+    ).toBeTruthy();
+    expect(document.querySelectorAll("img").length).toBe(0);
+    expect(document.body.textContent).not.toContain(overCap.slice(0, 64));
+  });
+
+  test("keeps the base64 out of the raw details too", () => {
+    render(
+      <T7ToolFallback
+        {...props({ content: [{ type: "image", data: PICTURE, mimeType: "image/png" }] }, "t7-raw")}
+        toolName="mcp__fixture_show_picture"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "MCP tool: Complete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show raw details" }));
+    expect(screen.getByText("[picture data not shown]")).toBeTruthy();
+    expect(document.body.textContent).not.toContain(PICTURE);
+  });
+});

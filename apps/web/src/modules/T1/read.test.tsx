@@ -2,8 +2,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
+import { RESULT_IMAGE_MAX_BYTES } from "../U3/tool-card/result-image";
 import { ReadCard } from "./read";
-import { READ_IMAGE_MAX_BYTES } from "./read-image";
 
 afterEach(() => cleanup());
 
@@ -208,13 +208,13 @@ describe("ReadCard", () => {
     expect(missing.container.querySelector("img")).toBeNull();
     missing.unmount();
 
-    const tooLargeData = "A".repeat(Math.ceil(((READ_IMAGE_MAX_BYTES + 1) * 4) / 3 / 4) * 4);
+    const tooLargeData = "A".repeat(Math.ceil(((RESULT_IMAGE_MAX_BYTES + 1) * 4) / 3 / 4) * 4);
     const tooLarge = render(
       <ReadCard
         rendererProps={rendererProps(
           {
             content: [{ type: "image", data: tooLargeData, mimeType: "image/png" }],
-            details: { fileSize: READ_IMAGE_MAX_BYTES + 1 },
+            details: { fileSize: RESULT_IMAGE_MAX_BYTES + 1 },
           },
           { path: "/workspace/big.png" },
         )}

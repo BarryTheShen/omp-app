@@ -74,7 +74,7 @@ async function useVisionModel(page: Page): Promise<void> {
   await expect(dialog).toHaveCount(0);
 }
 
-const pictureOf = (page: Page) => page.locator('[data-slot="t1-read-image"] img');
+const pictureOf = (page: Page) => page.locator('[data-slot="tool-result-image"] img');
 
 for (const variant of ["light", "dark", "narrow"] as const) {
   realTest(
