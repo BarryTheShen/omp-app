@@ -180,11 +180,9 @@ realTest(
     await pressDimmedArea(page);
     // The press neither answered nor cancelled the question: it is still there, and an answer goes through.
     await expect(question).toBeVisible();
-    await question.getByText("SQLite").first().click();
-    await question
-      .getByRole("button", { name: /choose/i })
-      .first()
-      .click();
+    await question.getByRole("radio", { name: /^SQLite/ }).click();
+    await question.getByRole("button", { name: "Review", exact: true }).click();
+    await question.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(page.getByText(/tool said:/)).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(realApp.problems).toEqual([]);

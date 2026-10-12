@@ -65,7 +65,7 @@ const AskQuestionSchema = z.strictObject({
   header: z.string().min(1).optional(),
   options: z.array(AskOptionSchema).min(1),
   multi: z.boolean().optional(),
-  /** Index into `options` of the recommended choice; used only on an omp timeout. */
+  /** Index into `options` of the recommended choice: the dialog marks it, and omp picks it when the question times out. */
   recommended: z.int().min(0).optional(),
 });
 export type AskQuestion = z.infer<typeof AskQuestionSchema>;

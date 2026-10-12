@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../../U3/tool-card/contract";
 import { U4_REAL_RESULTS } from "../fixtures/real-results";
-import { AskToolRenderer } from "./ask-result";
+import { AskToolRenderer, askSummary } from "./ask-result";
 
 afterEach(cleanup);
 
@@ -59,5 +59,62 @@ describe("AskToolRenderer on recorded results", () => {
       .getAllByRole("alert")
       .filter((alert) => alert.textContent?.includes(reason));
     expect(alerts).toHaveLength(1);
+  });
+});
+
+describe("the ask card's one-line summary", () => {
+  test("one question with several choices reads as its choices, and several questions count their answers", () => {
+    expect(
+      askSummary([{ question: "Which tools should run?", answers: ["Read", "Grep"] }], false),
+    ).toBe("Read, Grep");
+    expect(askSummary([{ question: "Which database?", answers: ["SQLite"] }], false)).toBe(
+      "SQLite",
+    );
+    expect(
+      askSummary(
+        [
+          { question: "Which database?", answers: ["SQLite"] },
+          { question: "Which tools should run?", answers: ["Read", "Bash"] },
+        ],
+        false,
+      ),
+    ).toBe("3 answers returned");
+  });
+
+  test("a question still open with no answer says the app waits for the person's answer", () => {
+    expect(askSummary([], true)).toBe("Waiting for the person's answer");
+  });
+
+  test("a question that ended with no answer says No answer returned", () => {
+    expect(askSummary([], false)).toBe("No answer returned");
+  });
+
+  test("a question answered with none ticked reads None", () => {
+    expect(askSummary([{ question: "Which tools should run?", answers: [] }], false)).toBe("None");
+  });
+});
+
+describe("the card's line while a question has no answer", () => {
+  test("a question still open reads that the app waits for the person's answer", () => {
+    render(
+      <AskToolRenderer
+        {...({
+          type: "tool-call",
+          toolCallId: "u4-ask-open",
+          toolName: "ask",
+          args: {},
+          argsText: "{}",
+          status: { type: "running" },
+        } as unknown as ToolRendererProps)}
+      />,
+    );
+    expect(screen.getByText("Waiting for the person's answer")).toBeTruthy();
+    expect(screen.queryByText("No answer returned")).toBeNull();
+  });
+
+  test("a call that ended with no answer still reads No answer returned", () => {
+    renderRecorded("ask: skipped before it ran");
+    expect(screen.getByText("No answer returned")).toBeTruthy();
+    expect(screen.queryByText("Waiting for the person's answer")).toBeNull();
   });
 });

@@ -370,6 +370,7 @@
   --color-diff-remove-surface: var(--diff-remove-surface);
   --color-diff-remove-foreground: var(--diff-remove-foreground);
 
+  --radius-xs: calc(var(--radius) * 0.25);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

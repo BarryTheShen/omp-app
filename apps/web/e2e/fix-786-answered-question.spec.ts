@@ -4,7 +4,8 @@ import { expect, realTest, sendPrompt, startChat } from "./real-omp";
 realTest.setTimeout(300_000);
 
 const PROMPT = "Please ask_user which database to use.";
-const QUESTION = /Which database\?/;
+/** The ask dialog is named by its heading, "Answer questions" (#850). */
+const QUESTION = /^Answer questions$/;
 /** The fake model's turn that runs for about twenty seconds (a bash sleep). */
 const LONG_TURN = "run_queued_pair";
 
@@ -13,8 +14,9 @@ async function askAndAnswer(page: Page): Promise<void> {
   await sendPrompt(page.getByRole("textbox", { name: "Message input" }), PROMPT);
   const question = page.getByRole("dialog", { name: QUESTION });
   await expect(question).toBeVisible({ timeout: 45_000 });
-  await question.getByRole("option", { name: /^SQLite/ }).click();
-  await question.getByRole("button", { name: "Choose", exact: true }).click();
+  await question.getByRole("radio", { name: /^SQLite/ }).click();
+  await question.getByRole("button", { name: "Review", exact: true }).click();
+  await question.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(question).toBeHidden({ timeout: 30_000 });
 }
 

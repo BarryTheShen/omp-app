@@ -16,6 +16,7 @@ import {
   OmpCommandGateway,
   type OmpWire,
   RpcSessionPort,
+  type RpcSessionSend,
   SessionFileStore,
   ThreadId,
   ToolCallId,
@@ -134,6 +135,8 @@ import { openChatDeleteConfirm } from "@/modules/U4/dialogs/confirm-chat-delete"
 import { DialogHostController, useDisposeWhenReplaced } from "@/modules/U4/host";
 import {
   ExtensionUiRequestRouterController,
+  optIntoRichAsk,
+  richAskOffered,
   subscribeNonModalExtensionUi,
 } from "@/modules/U4/router";
 import { PanelShell } from "@/modules/U5/panel/shell";
@@ -322,12 +325,16 @@ function RouterBridge({
   queueController,
   dialogHost,
   notificationProjector,
+  askDialogOffered,
+  send,
 }: {
   readonly store: OmpRuntimeStore;
   readonly threadId: ThreadId;
   readonly queueController: QueueController;
   readonly dialogHost: DialogHostController;
   readonly notificationProjector: NotificationProjector;
+  readonly askDialogOffered: boolean;
+  readonly send: RpcSessionSend;
 }) {
   // Stable: the router must not be rebuilt every time some overlay opens or closes.
   const overlay = useStableOverlayHost();
@@ -408,6 +415,19 @@ function RouterBridge({
     () => subscribeNonModalExtensionUi(store, router, { threadId }),
     [router, store, threadId],
   );
+
+  // omp asks each question as a select list until this session opts in to rich `ask` requests. A page sends the opt-in
+  // each time it shows the chat, which covers a restarted server; the server keeps it for the chat and re-sends it to
+  // every new omp (rpc-session.ts, #respawn).
+  useEffect(() => {
+    if (!askDialogOffered) return;
+    void optIntoRichAsk(send, threadId).catch((error: unknown) =>
+      reportClientError({
+        kind: "error",
+        message: `Rich ask questions could not be turned on: ${error instanceof Error ? error.message : "unknown error"}`,
+      }),
+    );
+  }, [askDialogOffered, send, threadId]);
   return null;
 }
 
@@ -1391,6 +1411,8 @@ function ActiveThreadReady({
         queueController={queueController}
         store={store}
         threadId={threadId}
+        askDialogOffered={richAskOffered(capabilities)}
+        send={guardedSend}
       />
       <ToolRunScope runBackgroundJobCommand={runBackgroundJobCommand} store={store}>
         <TaskSubagentsScope agents={agents}>

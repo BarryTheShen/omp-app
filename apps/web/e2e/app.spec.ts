@@ -149,8 +149,8 @@ realTest(
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Command palette" })).toHaveCount(0);
 
-    // The fake provider answers a prompt containing "ask_user" with omp's ask tool, which makes
-    // omp send a select request to the app (packages/omp-rpc/scripts/fake-openai-server.ts).
+    // The fake provider answers a prompt containing "ask_user" with omp's ask tool, which makes omp send its question
+    // to the app as an ask dialog (packages/omp-rpc/scripts/fake-openai-server.ts).
     await sendPrompt(messageInput, "Please ask_user which database to use.");
     const question = page.getByRole("dialog");
     try {
@@ -173,11 +173,9 @@ realTest(
     await mkdir(screenshots, { recursive: true });
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "app-root-omp-question.png") });
-    await question.getByText("SQLite").first().click();
-    await question
-      .getByRole("button", { name: /choose/i })
-      .first()
-      .click();
+    await question.getByRole("radio", { name: /^SQLite/ }).click();
+    await question.getByRole("button", { name: "Review", exact: true }).click();
+    await question.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(page.getByText(/tool said:/)).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("dialog")).toHaveCount(0);
   },

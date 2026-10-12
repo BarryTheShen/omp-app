@@ -18,17 +18,13 @@ const TrimmedNonEmpty = z
 export const AskAnswerValueSchema = z
   .strictObject({
     id: z.string().min(1),
-    /** May be empty: an `Other`-only answer has zero selected options. */
+    /** May be empty: an `Other`-only answer, or a checkbox question answered with none ticked. */
     selectedOptions: z.array(z.string().min(1)),
     customInput: TrimmedNonEmpty.optional(),
   })
   .refine(
     (answer) => new Set(answer.selectedOptions).size === answer.selectedOptions.length,
     "selectedOptions must not repeat a label",
-  )
-  .refine(
-    (answer) => answer.selectedOptions.length > 0 || answer.customInput !== undefined,
-    "must select an option or provide custom text",
   );
 export type AskAnswerValue = z.infer<typeof AskAnswerValueSchema>;
 
@@ -114,8 +110,8 @@ export function resolveConfirm(result: DialogResultFor<ConfirmDialogRequest>): b
 
 /**
  * Validates one `ask` answer set against its request: same length/order/ids as `questions`, exact
- * option labels, and a single-select question (`multi` falsy) accepts at most one option and
- * cannot combine an option with custom text (`research/modules/U4.md` §3.3 VERIFIED).
+ * option labels, and a single-select question (`multi` falsy) accepts at most one option, cannot combine an option with
+ * custom text, and needs an answer. A checkbox question may take none: omp accepts an empty selection (ask.ts:837).
  */
 export function validateAskAnswers(
   request: AskDialogRequest,
@@ -147,6 +143,13 @@ export function validateAskAnswers(
         ok: false,
         reason: `question "${question.id}" cannot combine an option with custom text`,
       };
+    }
+    if (
+      !question.multi &&
+      answer.selectedOptions.length === 0 &&
+      answer.customInput === undefined
+    ) {
+      return { ok: false, reason: `question "${question.id}" needs an answer` };
     }
   }
   return { ok: true };

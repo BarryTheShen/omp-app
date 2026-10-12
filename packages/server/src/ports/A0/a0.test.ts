@@ -914,6 +914,41 @@ describe("A0.7 RpcSessionPort handlers", () => {
     await processRegistry.closeAll();
   });
 
+  test("the ask-dialog opt-in lasts for one omp process: a restart tells the new omp again, and a chat that never opted in is not told", async () => {
+    const created: FakeProcess[] = [];
+    const { processRegistry, open, handlers } = withIdleClose(created, 1_000);
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    const send = getHandler(handlers, "send");
+    const restart = getHandler(handlers, "restart");
+    const optIns = (process: FakeProcess | undefined) =>
+      process?.writes
+        .filter((frame) => frame.type === "set_ask_dialog")
+        .map((frame) => frame.enabled) ?? [];
+
+    // A chat nobody opted in: its restarted omp is told nothing about rich ask questions.
+    await restart({ threadId: authorityThread }, call("one"));
+    expect(optIns(created.at(-1))).toEqual([]);
+
+    await expect(
+      send(
+        { threadId: authorityThread, command: { type: "set_ask_dialog", enabled: true } },
+        call("one"),
+      ),
+    ).resolves.toEqual({});
+    await restart({ threadId: authorityThread }, call("one"));
+    expect(optIns(created.at(-1))).toEqual([true]);
+    await restart({ threadId: authorityThread }, call("one"));
+    expect(optIns(created.at(-1))).toEqual([true]);
+
+    await send(
+      { threadId: authorityThread, command: { type: "set_ask_dialog", enabled: false } },
+      call("one"),
+    );
+    await restart({ threadId: authorityThread }, call("one"));
+    expect(optIns(created.at(-1))).toEqual([]);
+    await processRegistry.closeAll();
+  });
+
   test("a closed connection releases every chat it opened, and the process stops once nobody watches it", async () => {
     const created: FakeProcess[] = [];
     const { processRegistry, registration, open } = withIdleClose(created, 25);

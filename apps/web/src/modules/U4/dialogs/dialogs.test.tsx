@@ -1,5 +1,5 @@
 import type { ThreadId, UiRequestId } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { AskDialogRequest, DialogRequest, DialogResponse } from "../contract";
 import { toWireExtensionUiResponse } from "../contract/responses";
@@ -32,6 +32,11 @@ function renderRequest(request: DialogRequest) {
       return cancellations;
     },
   };
+}
+
+/** The mark an option shows: "true" while it is ticked or chosen, "false" otherwise. */
+function markOf(option: HTMLElement): string | null {
+  return option.querySelector("[data-selected]")?.getAttribute("data-selected") ?? null;
 }
 
 describe("select dialog", () => {
@@ -221,6 +226,117 @@ describe("rich Ask dialog and result card", () => {
     expect(result.answers).toEqual([
       { kind: "ask", answers: [{ id: "q1", selectedOptions: [], customInput: "Custom mode" }] },
     ]);
+  });
+
+  const checkboxRequest: AskDialogRequest = {
+    kind: "ask",
+    id: "ask-2" as UiRequestId,
+    questions: [
+      {
+        id: "tools",
+        question: "Which tools should run?",
+        options: [{ label: "Read" }, { label: "Grep" }, { label: "Bash" }],
+        multi: true,
+      },
+    ],
+  };
+
+  test("a checkbox question marks each ticked option and says it takes any number of answers", () => {
+    renderRequest(checkboxRequest);
+    expect(screen.getByText("Choose any number of options.")).toBeTruthy();
+    const read = screen.getByRole("checkbox", { name: "Read" });
+    expect(markOf(read)).toBe("false");
+    fireEvent.click(read);
+    expect(read.getAttribute("aria-checked")).toBe("true");
+    expect(markOf(read)).toBe("true");
+  });
+
+  test("text typed under Other stays when a checkbox is ticked, and both reach the answer", () => {
+    const result = renderRequest(checkboxRequest);
+    fireEvent.click(screen.getByRole("button", { name: "Other" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Other answer" }), {
+      target: { value: "Custom tool" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Read" }));
+    expect(screen.getByRole("textbox", { name: "Other answer" })).toHaveProperty(
+      "value",
+      "Custom tool",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(screen.getByTestId("ask-review").textContent).toContain("Read, Custom tool");
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(result.answers).toEqual([
+      {
+        kind: "ask",
+        answers: [{ id: "tools", selectedOptions: ["Read"], customInput: "Custom tool" }],
+      },
+    ]);
+  });
+
+  test("arrow keys move through a single-answer question and select the option focus reaches", () => {
+    renderRequest(askRequest);
+    expect(screen.getByText("Choose one option.")).toBeTruthy();
+    const fast = screen.getByRole("radio", { name: /Fast/ });
+    const thorough = screen.getByRole("radio", { name: /Thorough/ });
+    expect(fast.tabIndex).toBe(0);
+    expect(thorough.tabIndex).toBe(-1);
+    fast.focus();
+    fireEvent.keyDown(fast, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(thorough);
+    expect(thorough.getAttribute("aria-checked")).toBe("true");
+    fireEvent.keyDown(thorough, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(fast);
+    expect(fast.getAttribute("aria-checked")).toBe("true");
+  });
+
+  test("arrow keys move focus between checkboxes without ticking them", () => {
+    renderRequest(checkboxRequest);
+    const read = screen.getByRole("checkbox", { name: "Read" });
+    const grep = screen.getByRole("checkbox", { name: "Grep" });
+    read.focus();
+    fireEvent.keyDown(read, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(grep);
+    expect(grep.getAttribute("aria-checked")).toBe("false");
+  });
+
+  const recommendedRequest: AskDialogRequest = {
+    kind: "ask",
+    id: "ask-3" as UiRequestId,
+    questions: [
+      {
+        id: "mode",
+        question: "Pick a mode",
+        options: [{ label: "Fast" }, { label: "Thorough" }],
+        recommended: 1,
+      },
+    ],
+  };
+
+  test("the recommended option carries a visible Recommended tag, and no other option does", () => {
+    renderRequest(recommendedRequest);
+    expect(
+      within(screen.getByRole("radio", { name: /Thorough/ })).getByText("Recommended"),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole("radio", { name: /Fast/ })).queryByText("Recommended"),
+    ).toBeNull();
+  });
+
+  test("a checkbox question can be answered with none ticked: Review says None and Submit sends an empty set", () => {
+    const result = renderRequest(checkboxRequest);
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(screen.queryByText("Choose an option or enter an answer before continuing.")).toBeNull();
+    expect(screen.getByTestId("ask-review").textContent).toContain("None");
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    expect(result.answers).toEqual([
+      { kind: "ask", answers: [{ id: "tools", selectedOptions: [] }] },
+    ]);
+  });
+
+  test("a single-choice question still needs an answer before Review", () => {
+    renderRequest(askRequest);
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(screen.getByText("Choose an option or enter an answer before continuing.")).toBeTruthy();
   });
 
   test("the result card uses text-only rendering for normalized answers", () => {

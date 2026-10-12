@@ -96,6 +96,7 @@ export const spacingTokens = {
 export type SpacingToken = keyof typeof spacingTokens;
 
 export const radiusTokens = {
+  xs: "var(--radius-xs)",
   sm: "var(--radius-sm)",
   md: "var(--radius-md)",
   lg: "var(--radius-lg)",

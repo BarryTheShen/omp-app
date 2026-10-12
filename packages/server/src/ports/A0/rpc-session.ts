@@ -138,6 +138,8 @@ interface ThreadEntry {
   arbitration: Promise<void>;
   /** Set while omp is being started again for this chat; everyone who needs omp waits on it. */
   respawning?: Promise<void>;
+  /** Set once the app opts this chat's omp in to rich `ask` requests; a restarted omp is told again. */
+  askDialogOptedIn?: boolean;
 }
 
 const LEVEL_RANK: Record<ViewerPreference["level"], number> = {
@@ -414,6 +416,8 @@ export class RpcSessionPortRuntime {
     >;
     void future.catch(() => undefined);
     const admitted = await future.admitted;
+    if (args.command.type === "set_ask_dialog")
+      entry.askDialogOptedIn = args.command.enabled === true;
     if (SESSION_SWITCH_COMMANDS[args.command.type] === true) {
       await this.#refreshIdentity(entry, call.signal);
     }
@@ -777,6 +781,10 @@ export class RpcSessionPortRuntime {
     await session.start();
     await this.#refreshIdentity(entry, signal);
     await this.#reapplyHostRegistrations(entry, signal);
+    // The opt-in for rich `ask` requests lasts for one omp process, so the new one is told again.
+    if (entry.askDialogOptedIn === true) {
+      await session.send({ type: "set_ask_dialog", enabled: true }, { signal });
+    }
     // Only what a tab asked for is told to the new omp; a chat nobody tuned keeps omp's defaults.
     if (entry.preferences.size > 0) await this.#arbitrate(entry, signal);
   }

@@ -38,13 +38,13 @@ describe("DialogResponseSchema", () => {
 });
 
 describe("AskAnswerValueSchema", () => {
-  test("accepts an option answer, a custom-text-only answer, and rejects a bare empty answer", () => {
+  test("accepts an option answer, a custom-text-only answer, and an empty selection the request may allow", () => {
     expect(AskAnswerValueSchema.safeParse({ id: "q1", selectedOptions: ["A"] }).success).toBe(true);
     expect(
       AskAnswerValueSchema.safeParse({ id: "q1", selectedOptions: [], customInput: "free text" })
         .success,
     ).toBe(true);
-    expect(AskAnswerValueSchema.safeParse({ id: "q1", selectedOptions: [] }).success).toBe(false);
+    expect(AskAnswerValueSchema.safeParse({ id: "q1", selectedOptions: [] }).success).toBe(true);
   });
 
   test("rejects a duplicate selected option and a non-trimmed customInput", () => {
@@ -230,6 +230,21 @@ describe("validateAskAnswers", () => {
         { id: "q2", selectedOptions: [] },
       ]).ok,
     ).toBe(false);
+  });
+
+  test("a single-select question needs an answer, and a checkbox question may be answered with none", () => {
+    expect(
+      validateAskAnswers(request, [
+        { id: "q1", selectedOptions: [] },
+        { id: "q2", selectedOptions: [] },
+      ]).ok,
+    ).toBe(false);
+    expect(
+      validateAskAnswers(request, [
+        { id: "q1", selectedOptions: ["A"] },
+        { id: "q2", selectedOptions: [] },
+      ]),
+    ).toEqual({ ok: true });
   });
 
   test("allows a multi-select question to combine options with custom text", () => {

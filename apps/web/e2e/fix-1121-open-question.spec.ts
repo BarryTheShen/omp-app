@@ -14,7 +14,7 @@ realTest.setTimeout(300_000);
 
 /** The fake model asks omp's question (Which database? Postgres, SQLite) for a prompt that asks for ask_user. */
 const PROMPT = "Please ask_user which database to use.";
-const QUESTION = /Which database\?/;
+const QUESTION = /^Answer questions$/;
 
 function question(page: Page): Locator {
   return page.getByRole("dialog", { name: QUESTION });
@@ -28,9 +28,10 @@ async function setTheme(page: Page, dark: boolean): Promise<void> {
 /** Answers the question with SQLite and waits until omp has taken the answer. */
 async function answerWithSqlite(page: Page): Promise<void> {
   await question(page)
-    .getByRole("option", { name: /^SQLite/ })
+    .getByRole("radio", { name: /^SQLite/ })
     .click();
-  await question(page).getByRole("button", { name: "Choose", exact: true }).click();
+  await question(page).getByRole("button", { name: "Review", exact: true }).click();
+  await question(page).getByRole("button", { name: "Submit", exact: true }).click();
   await expect(page.getByText(/tool said:/)).toBeVisible({ timeout: 45_000 });
 }
 

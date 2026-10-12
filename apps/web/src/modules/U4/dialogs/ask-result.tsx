@@ -31,7 +31,7 @@ export function AskResultCard({
               <dd className="text-muted-foreground">
                 {[...(answer?.selectedOptions ?? []), answer?.customInput ?? ""]
                   .filter(Boolean)
-                  .join(", ") || "No answer"}
+                  .join(", ") || "None"}
               </dd>
             </div>
           );
@@ -60,9 +60,25 @@ const AskResultDetailsSchema = z.looseObject({
   results: z.array(AskAnswerDetailsSchema).optional(),
 });
 
-interface AskAnswerRow {
+export interface AskAnswerRow {
   readonly question: string;
   readonly answers: readonly string[];
+}
+
+/**
+ * The one-line summary of an ask card. One question shows its chosen options joined ("Read, Grep"); several questions
+ * count their answers ("3 answers returned"). A question with no answer yet reads that the app waits for the person
+ * while it is open; one that ended with no answer at all reads "No answer returned". A question answered with none
+ * ticked reads "None".
+ */
+export function askSummary(rows: readonly AskAnswerRow[], open: boolean): string {
+  const chosen = rows.flatMap((row) => row.answers);
+  if (rows.length === 0) return open ? "Waiting for the person's answer" : "No answer returned";
+  if (chosen.length === 0) return "None";
+  if (rows.length === 1) return chosen.join(", ");
+  return chosen.length === 1
+    ? (chosen[0] ?? "Answer returned")
+    : `${chosen.length} answers returned`;
 }
 
 function askAnswerRows(details: unknown): readonly AskAnswerRow[] {
@@ -86,13 +102,8 @@ export const AskToolRenderer: ToolRenderer = (props) => {
   const state = normalizeToolRendererProps(props);
   const split = splitToolResult(props.result ?? state.result ?? state.partialResult);
   const rows = askAnswerRows(split.details);
-  const chosen = rows.flatMap((row) => row.answers);
-  const summary =
-    chosen.length === 0
-      ? "No answer returned"
-      : chosen.length === 1
-        ? (chosen[0] ?? "Answer returned")
-        : `${chosen.length} answers returned`;
+  // A running call is a question still open: omp waits for the person's answer.
+  const summary = askSummary(rows, state.phase === "running");
   return (
     <div data-slot="u4-ask-tool-card" data-testid="u4-ask-tool-card">
       <ToolCard
@@ -106,7 +117,7 @@ export const AskToolRenderer: ToolRenderer = (props) => {
             {rows.map((row) => (
               <div key={row.question} className="flex flex-col gap-1">
                 <dt className="font-medium">{row.question}</dt>
-                <dd className="text-muted-foreground">{row.answers.join(", ") || "No answer"}</dd>
+                <dd className="text-muted-foreground">{row.answers.join(", ") || "None"}</dd>
               </div>
             ))}
           </dl>

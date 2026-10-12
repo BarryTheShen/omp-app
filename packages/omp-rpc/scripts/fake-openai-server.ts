@@ -262,6 +262,42 @@ function reply(request: Request): Reply {
   if (prompt.includes("stream_code")) return { text: STREAMED_CODE_REPLY, streamed: true };
   if (prompt.includes("stream_long_code"))
     return { text: STREAMED_LONG_CODE_REPLY, streamed: true };
+  // Multi-select questions (issue #1157): one checkbox question, and a single plus a checkbox question in one ask.
+  if (prompt.includes("checkbox_ask_two"))
+    return {
+      tool: "ask",
+      args: {
+        questions: [
+          {
+            id: "db",
+            question: "Which database?",
+            options: [{ label: "Postgres" }, { label: "SQLite" }],
+          },
+          {
+            id: "tools",
+            question: "Which tools should run?",
+            options: [{ label: "Read" }, { label: "Grep" }, { label: "Bash" }],
+            multi: true,
+          },
+        ],
+      },
+      thinking: "I need to ask two questions.",
+    };
+  if (prompt.includes("checkbox_ask_one"))
+    return {
+      tool: "ask",
+      args: {
+        questions: [
+          {
+            id: "tools",
+            question: "Which tools should run?",
+            options: [{ label: "Read" }, { label: "Grep" }, { label: "Bash" }],
+            multi: true,
+          },
+        ],
+      },
+      thinking: "I need to ask which tools to run.",
+    };
   if (prompt.includes("stream_math")) return { text: STREAMED_MATH_REPLY, streamed: true };
   if (prompt.includes("ask_user"))
     return {
@@ -276,6 +312,21 @@ function reply(request: Request): Reply {
         ],
       },
       thinking: "I need to ask.",
+    };
+  if (prompt.includes("ask_recommended"))
+    return {
+      tool: "ask",
+      args: {
+        questions: [
+          {
+            id: "db",
+            question: "Which database?",
+            options: [{ label: "Postgres" }, { label: "SQLite" }],
+            recommended: 1,
+          },
+        ],
+      },
+      thinking: "I need to ask, and SQLite is the one I recommend.",
     };
   if (prompt.includes("make_todos"))
     return {

@@ -11,12 +11,12 @@ import {
 } from "./real-omp";
 
 /**
- * omp's question dialog is named by its question, not by its kind (#850). The fake model answers a
- * prompt containing "ask_user" with a select request titled "Which database?"; the dialog's accessible
- * name must be that question. Captured in light, dark and at 390 px.
+ * omp's question dialog is named by its visible heading, not by its kind (#850). The fake model answers a
+ * prompt containing "ask_user" with the ask dialog, whose heading is "Answer questions" (dialogName in
+ * U4/contract/dialog.ts); the dialog's accessible name must be that heading. Captured in light, dark and at 390 px.
  */
 
-const QUESTION = /Which database\?/;
+const QUESTION = /^Answer questions$/;
 
 /** Lets finite transitions settle before a screenshot. Bounded, so a transition that never ends cannot hang the case. */
 async function settle(page: Page): Promise<void> {
@@ -32,7 +32,7 @@ async function setTheme(page: Page, dark: boolean): Promise<void> {
 }
 
 realTest(
-  "#850: omp's question dialog is named by its question, in light, dark and at 390 px",
+  "#850: omp's question dialog is named by its visible heading, in light, dark and at 390 px",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
     await mkdir(screenshots, { recursive: true });

@@ -14,11 +14,9 @@ realTest(
     const question = page.getByRole("dialog");
     await expect(question).toBeVisible({ timeout: 45_000 });
     await expect(question).toContainText("Which database?");
-    await question.getByText("SQLite").first().click();
-    await question
-      .getByRole("button", { name: /choose/i })
-      .first()
-      .click();
+    await question.getByRole("radio", { name: /^SQLite/ }).click();
+    await question.getByRole("button", { name: "Review", exact: true }).click();
+    await question.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(page.getByText(/tool said:/)).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("dialog")).toHaveCount(0);
   },
@@ -34,11 +32,9 @@ realTest(
     const question = page.getByRole("dialog");
     await expect(question).toBeVisible({ timeout: 45_000 });
     await expect(question).toContainText("Which database?");
-    await question.getByText("SQLite").first().click();
-    await question
-      .getByRole("button", { name: /choose/i })
-      .first()
-      .click();
+    await question.getByRole("radio", { name: /^SQLite/ }).click();
+    await question.getByRole("button", { name: "Review", exact: true }).click();
+    await question.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(page.getByText(/tool said:/)).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole("dialog")).toHaveCount(0);
   },
