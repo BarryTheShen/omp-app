@@ -203,4 +203,55 @@ describe("S1.3 appearance settings surface", () => {
     expect(screen.getByLabelText("Appearance preview").getAttribute("data-palette")).toBe("dark");
     expect(document.documentElement.classList.contains("dark")).toBe(wasDark);
   });
+
+  test("the section tabs move focus and selection with the arrow, Home and End keys", async () => {
+    const state: FakeConfig = {
+      entries: [...DEFAULT_ENTRIES],
+      revision: "revision-1",
+      writes: [],
+      failNextList: false,
+    };
+    render(<AppearanceSettingsHarness client={fakeClient(state)} />);
+
+    await screen.findByRole("tab", { name: "Images" });
+    const tabs = screen.getAllByRole("tab");
+    const last = tabs.length - 1;
+    expect(last).toBeGreaterThan(1);
+    const tabAt = (index: number): HTMLElement => {
+      const tab = tabs[index];
+      if (!tab) throw new Error(`No tab at ${index}.`);
+      return tab;
+    };
+    tabAt(0).focus();
+    fireEvent.keyDown(tabAt(0), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(tabAt(1));
+    expect(tabAt(1).getAttribute("aria-selected")).toBe("true");
+    expect(tabAt(0).tabIndex).toBe(-1);
+    fireEvent.keyDown(tabAt(1), { key: "End" });
+    expect(document.activeElement).toBe(tabAt(last));
+    fireEvent.keyDown(tabAt(last), { key: "ArrowRight" });
+    expect(document.activeElement).toBe(tabAt(0));
+    fireEvent.keyDown(tabAt(0), { key: "ArrowLeft" });
+    expect(document.activeElement).toBe(tabAt(last));
+    fireEvent.keyDown(tabAt(last), { key: "Home" });
+    expect(document.activeElement).toBe(tabAt(0));
+    expect(tabAt(0).getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("says that these settings change omp's terminal only", async () => {
+    const state: FakeConfig = {
+      entries: [...DEFAULT_ENTRIES],
+      revision: "revision-1",
+      writes: [],
+      failNextList: false,
+    };
+    render(<AppearanceSettingsHarness client={fakeClient(state)} />);
+
+    expect(
+      await screen.findByText(
+        "These settings change omp's terminal only. This app does not use them.",
+      ),
+    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Terminal preview" })).toBeTruthy();
+  });
 });

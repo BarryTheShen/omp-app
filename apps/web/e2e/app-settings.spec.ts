@@ -50,6 +50,22 @@ realTest("opens core settings and renders light, dark, and narrow layouts", asyn
   );
   await expect(page.getByText("Save settings to", { exact: true })).toBeVisible();
   await expect(page.getByText("Dark Theme", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("These settings change omp's terminal only. This app does not use them.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Terminal preview", exact: true })).toBeVisible();
+  const appearanceTabs = page
+    .getByRole("tablist", { name: "Appearance sections", exact: true })
+    .getByRole("tab");
+  expect(await appearanceTabs.count()).toBeGreaterThan(1);
+  await appearanceTabs.first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(appearanceTabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(appearanceTabs.nth(1)).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(appearanceTabs.first()).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: /Choose dark theme/ })).toHaveCount(0);
   await expectStyledSettings(page, "light");
   await mkdir(screenshots, { recursive: true });

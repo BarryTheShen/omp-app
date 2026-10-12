@@ -344,7 +344,7 @@ export const IMAGES_SETTINGS_SECTION = section(
     booleanControl(
       "terminal.showImages",
       "Show Inline Images",
-      "Show images inline or as placeholders in this app and omp's terminal.",
+      "Show images inline or as placeholders in omp's terminal.",
       previewValue("terminal.showImages"),
     ),
     booleanControl("images.autoResize", "Auto-Resize Images"),

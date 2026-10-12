@@ -49,7 +49,7 @@ export function AppearancePreview({ model }: { readonly model: AppearancePreview
       data-palette={model.palette}
     >
       <header>
-        <h2 className="font-semibold">Preview</h2>
+        <h2 className="font-semibold">Terminal preview</h2>
         {model.themeNote ? (
           <p className="text-muted-foreground mt-1 text-sm">{model.themeNote}</p>
         ) : null}

@@ -21,6 +21,22 @@ function statusLabel(status: string): string {
   return status.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+/** The tab an arrow, Home or End key moves to; wraps at either end. Undefined for other keys. */
+function appearanceTabTarget(key: string, index: number, count: number): number | undefined {
+  switch (key) {
+    case "ArrowRight":
+      return (index + 1) % count;
+    case "ArrowLeft":
+      return (index - 1 + count) % count;
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    default:
+      return undefined;
+  }
+}
+
 function ActiveSectionView({
   section,
   actions,
@@ -173,6 +189,9 @@ export function AppearanceSettingsView({
           </Button>
         </header>
       ) : null}
+      <p className="text-muted-foreground text-sm">
+        These settings change omp's terminal only. This app does not use them.
+      </p>
 
       <div className="space-y-3">
         <label className="text-sm font-medium" htmlFor="s1-appearance-search">
@@ -188,7 +207,7 @@ export function AppearanceSettingsView({
       </div>
 
       <div className="flex flex-wrap gap-2" aria-label="Appearance sections" role="tablist">
-        {model.sections.map((section) => (
+        {model.sections.map((section, index) => (
           <Button
             key={section.id}
             id={`appearance-tab-${section.id}`}
@@ -196,8 +215,18 @@ export function AppearanceSettingsView({
             role="tab"
             aria-controls={`appearance-panel-${section.id}`}
             aria-selected={section.selected}
+            tabIndex={section.selected ? 0 : -1}
             variant={section.selected ? "default" : "outline"}
             onClick={() => actions.onSelectSection(section.id)}
+            onKeyDown={(event) => {
+              const target = appearanceTabTarget(event.key, index, model.sections.length);
+              if (target === undefined) return;
+              event.preventDefault();
+              const next = model.sections[target];
+              if (!next) return;
+              actions.onSelectSection(next.id);
+              document.getElementById(`appearance-tab-${next.id}`)?.focus();
+            }}
           >
             {section.title}
           </Button>
