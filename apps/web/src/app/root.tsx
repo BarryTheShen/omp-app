@@ -442,6 +442,7 @@ function reportDraftFailure(what: string): (error: unknown) => void {
 }
 
 function DraftComposer({
+  chat,
   controller,
   capabilities,
   submit,
@@ -458,6 +459,8 @@ function DraftComposer({
   onDoubleLeftArrow,
 }: {
   readonly controller: DraftController;
+  /** The chat the draft belongs to (see `useChatDraft`): a different one once the person switches chats. */
+  readonly chat: object;
   readonly capabilities: CapabilityMap;
   readonly submit: (intent: PromptIntent) => Promise<void>;
   readonly cancel: () => Promise<void>;
@@ -502,6 +505,7 @@ function DraftComposer({
   }, [controller]);
   const isRecalledPrompt = useIsRecalledPrompt();
   useComposerDraft({
+    chat,
     controller,
     text,
     composer: aui.composer,
@@ -1368,6 +1372,7 @@ function ActiveThreadReady({
         <DraftComposer
           capabilities={capabilities}
           cancel={cancel}
+          chat={chatDraft.chat}
           controller={draftController}
           footer={area("composerFooter")}
           footerOpen={editing !== null}

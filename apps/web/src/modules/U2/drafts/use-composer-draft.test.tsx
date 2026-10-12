@@ -40,6 +40,7 @@ class HeldReadStore extends ScopedDraftStore {
 const NO_ATTACHMENTS = { pending: [], complete: [], error: null };
 const noAttachments = {
   restore: async () => undefined,
+  dropPending: () => undefined,
   toDraftRefs: () => [],
   getState: () => NO_ATTACHMENTS,
   subscribe: () => () => undefined,
@@ -56,10 +57,12 @@ interface ShownComposer {
 type ComposerAttachments = Parameters<typeof useComposerDraft>[0]["attachments"];
 
 function Composer({
+  chat,
   controller,
   shown,
   attachments,
 }: {
+  readonly chat: object;
   readonly controller: DraftController;
   readonly shown: ShownComposer;
   readonly attachments: ComposerAttachments;
@@ -69,6 +72,7 @@ function Composer({
   shown.text = text;
   shown.type = setText;
   useComposerDraft({
+    chat,
     controller,
     text,
     composer,
@@ -78,17 +82,28 @@ function Composer({
   return null;
 }
 
-/** Renders the composer that stays mounted across chats, as the app does, and switches the chat it binds to. */
+/**
+ * Renders the composer as the app shows it, bound to a chat. Another chat is another `chat` identity, and its draft is
+ * built again; a move of the same chat's draft keeps the identity and changes only the controller.
+ */
 function renderComposer(
   controller: DraftController,
   attachments: ComposerAttachments = noAttachments,
 ) {
   const shown: ShownComposer = { text: "", type: () => undefined };
-  const view = render(<Composer attachments={attachments} controller={controller} shown={shown} />);
+  const chat = {};
+  const view = render(
+    <Composer attachments={attachments} chat={chat} controller={controller} shown={shown} />,
+  );
   return {
     shown,
-    switchTo: (next: DraftController) =>
-      view.rerender(<Composer attachments={attachments} controller={next} shown={shown} />),
+    chat,
+    /** Shows another draft: another chat by default, or the same chat (`chat`) with a moved draft. */
+    switchTo: (next: DraftController, nextChat: object = {}) =>
+      view.rerender(
+        <Composer attachments={attachments} chat={nextChat} controller={next} shown={shown} />,
+      ),
+    unmount: () => view.unmount(),
   };
 }
 
@@ -642,6 +657,27 @@ describe("useComposerDraft: attachments", () => {
     expect(saved.draft?.attachments.map((ref) => ref.name)).toEqual(["photo.png"]);
   });
 
+  test("a picture still loading when the chat's draft loads is kept, and saved once it is attached", async () => {
+    const store = new ScopedDraftStore();
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
+    const chat = new DraftController({ store, scope: chatScope("chat-d5"), timers: noTimers });
+    renderComposer(chat, manager);
+    // The image is dropped, and its upload has not answered when the chat's draft loads.
+    const loading = await act(async () =>
+      manager.add({ file: new File(["png bytes"], "photo.png", { type: "image/png" }) }),
+    );
+    await act(async () => {
+      await chat.load();
+    });
+    expect(manager.getState().pending.map((attachment) => attachment.id)).toEqual([loading.id]);
+    await act(async () => {
+      await manager.send(loading);
+      await chat.flush();
+    });
+    const saved = await store.get({ scope: chatScope("chat-d5") });
+    expect(saved.draft?.attachments.map((ref) => ref.name)).toEqual(["photo.png"]);
+  });
+
   test("an attachment dropped before the chat's draft loads is saved when the chat is left, and comes back when it is opened again", async () => {
     const store = new ScopedDraftStore();
     const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
@@ -688,5 +724,80 @@ describe("useComposerDraft: attachments", () => {
     });
     const saved = await store.get({ scope: chatScope("chat-d4") });
     expect(saved.draft?.attachments.map((ref) => ref.name)).toEqual(["photo.png"]);
+  });
+});
+
+/** Uploads that wait until `release()`: a picture that is still being attached when the test acts. */
+class HeldUploadBlobStore extends MemoryBlobStore {
+  private resume: (() => void) | undefined;
+
+  override async put(input: {
+    readonly id: string;
+    readonly file: File;
+  }): Promise<StoredAttachment> {
+    await new Promise<void>((resolve) => {
+      this.resume = resolve;
+    });
+    return super.put(input);
+  }
+
+  release(): void {
+    this.resume?.();
+  }
+}
+
+describe("useComposerDraft: a picture still being attached, and the chat it was dropped in", () => {
+  test("a move of the same chat's draft keeps the picture still being attached", async () => {
+    const store = new ScopedDraftStore();
+    const manager = new AttachmentManager({ blobStore: new HeldUploadBlobStore() });
+    const first = new DraftController({ store, scope: chatScope("chat-v1"), timers: noTimers });
+    const view = renderComposer(first, manager);
+    const loading = await act(async () =>
+      manager.add({ file: new File(["png bytes"], "photo.png", { type: "image/png" }) }),
+    );
+    // The chat's draft moves to another scope: another controller, the same chat.
+    const moved = new DraftController({ store, scope: chatScope("chat-v2"), timers: noTimers });
+    await act(async () => {
+      view.switchTo(moved, view.chat);
+    });
+    expect(manager.getState().pending.map((attachment) => attachment.id)).toEqual([loading.id]);
+  });
+
+  test("switching to another chat drops the picture still being attached, and its late upload adds nothing", async () => {
+    const store = new ScopedDraftStore();
+    const blobs = new HeldUploadBlobStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const first = new DraftController({ store, scope: chatScope("chat-v3"), timers: noTimers });
+    const view = renderComposer(first, manager);
+    const loading = await act(async () =>
+      manager.add({ file: new File(["png bytes"], "photo.png", { type: "image/png" }) }),
+    );
+    const answer = manager.send(loading).catch((error: unknown) => error);
+    const second = new DraftController({ store, scope: chatScope("chat-v4"), timers: noTimers });
+    await act(async () => {
+      view.switchTo(second);
+    });
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
+    await act(async () => {
+      blobs.release();
+      expect(await answer).toMatchObject({ appError: { code: "cancelled" } });
+    });
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
+    expect(manager.toDraftRefs()).toEqual([]);
+  });
+
+  test("leaving the chat (its composer goes) drops the picture still being attached", async () => {
+    const store = new ScopedDraftStore();
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore() });
+    const draft = new DraftController({ store, scope: chatScope("chat-v5"), timers: noTimers });
+    const view = renderComposer(draft, manager);
+    await act(async () => {
+      await manager.add({ file: new File(["png bytes"], "photo.png", { type: "image/png" }) });
+    });
+    expect(manager.getState().pending).toHaveLength(1);
+    await act(async () => {
+      view.unmount();
+    });
+    expect(manager.getState().pending).toEqual([]);
   });
 });

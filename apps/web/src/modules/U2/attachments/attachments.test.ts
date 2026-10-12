@@ -43,6 +43,29 @@ class MemoryBlobStore implements AttachmentBlobStore {
   }
 }
 
+/** Uploads that wait while `held`: a picture that is still being attached when the test acts. */
+class HeldUploadStore extends MemoryBlobStore {
+  held = false;
+  private readonly waiting: Array<() => void> = [];
+
+  override async put(input: {
+    readonly id: string;
+    readonly file: File;
+  }): Promise<StoredAttachment> {
+    if (this.held) {
+      await new Promise<void>((resolve) => {
+        this.waiting.push(resolve);
+      });
+    }
+    return super.put(input);
+  }
+
+  release(): void {
+    this.held = false;
+    for (const resume of this.waiting.splice(0)) resume();
+  }
+}
+
 describe("U2.3 AttachmentManager", () => {
   test("adds, sends, projects refs, and removes an image attachment", async () => {
     const blobs = new MemoryBlobStore();
@@ -148,6 +171,44 @@ describe("U2.3 AttachmentManager", () => {
     await reloaded.restore(refs);
     expect(reloaded.toDraftRefs()).toEqual(refs);
     expect(reloaded.getState().complete[0]?.name).toBe("notes.txt");
+  });
+
+  test("restore keeps a picture that is still being attached in the list", async () => {
+    const blobs = new MemoryBlobStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const saved = await manager.add({
+      file: new File(["text"], "notes.txt", { type: "text/plain" }),
+    });
+    await manager.send(saved);
+    const refs = manager.toDraftRefs();
+    // A picture dropped while the draft loads: its upload has not answered yet.
+    const loading = await manager.add({
+      file: new File(["png"], "photo.png", { type: "image/png" }),
+    });
+    await manager.restore(refs);
+    expect(manager.getState().pending.map((attachment) => attachment.id)).toEqual([loading.id]);
+    expect(manager.toDraftRefs()).toEqual(refs);
+  });
+
+  test("dropPending drops a picture still uploading: its late answer adds nothing, attached pictures stay", async () => {
+    const blobs = new HeldUploadStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const attached = await manager.add({
+      file: new File(["text"], "notes.txt", { type: "text/plain" }),
+    });
+    await manager.send(attached);
+    blobs.held = true;
+    const loading = await manager.add({
+      file: new File(["png"], "photo.png", { type: "image/png" }),
+    });
+    const answer = manager.send(loading).catch((error: unknown) => error);
+    manager.dropPending();
+    expect(manager.getState().pending).toEqual([]);
+    expect(manager.getState().complete.map((item) => item.name)).toEqual(["notes.txt"]);
+    blobs.release();
+    expect(await answer).toMatchObject({ appError: { code: "cancelled" } });
+    expect(manager.getState().pending).toEqual([]);
+    expect(manager.toDraftRefs().map((ref) => ref.name)).toEqual(["notes.txt"]);
   });
 
   test("keeps removal out of the next draft projection", async () => {

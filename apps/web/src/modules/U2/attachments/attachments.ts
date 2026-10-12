@@ -181,6 +181,10 @@ export class AttachmentManager implements AttachmentAdapter {
         signal: options.signal,
       });
       if (isAbort(options.signal)) throw appFailure("cancelled", "Attachment upload cancelled");
+      // Dropped while it uploaded (see `dropPending`): its answer adds nothing.
+      if (!this.pending.has(current.id)) {
+        throw appFailure("cancelled", "Attachment was dropped before it finished attaching");
+      }
       const complete = attachmentFromStored(stored, current.file);
       this.pending.delete(current.id);
       this.complete.set(complete.id, complete);
@@ -191,6 +195,8 @@ export class AttachmentManager implements AttachmentAdapter {
     } catch (error) {
       const failure =
         error instanceof AppFailure ? error : appFailure("internal", "Attachment upload failed");
+      // A picture dropped while it uploaded is not shown again, and its failure is not reported.
+      if (!this.pending.has(current.id)) throw failure;
       this.error = failure;
       this.pending.set(current.id, {
         ...current,
@@ -234,11 +240,24 @@ export class AttachmentManager implements AttachmentAdapter {
     this.notify();
   }
 
+  /**
+   * Drops the pictures still being attached. A chat the person has left takes them with it, and an upload that answers
+   * later adds nothing (see `send`). The pictures already attached stay.
+   */
+  public dropPending(): void {
+    this.pending.clear();
+    this.error = null;
+    this.notify();
+  }
+
+  /**
+   * Replaces the draft's attachments with `refs`, each loaded from its blob. A picture still being attached, or one
+   * that failed, is not on the draft yet: it stays in the list, so loading a draft never drops it.
+   */
   public async restore(
     refs: readonly AttachmentRef[],
     options?: { readonly signal?: AbortSignal },
   ): Promise<void> {
-    this.pending.clear();
     this.complete.clear();
     this.error = null;
     this.refs.clear();

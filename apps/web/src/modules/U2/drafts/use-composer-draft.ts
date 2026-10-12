@@ -11,10 +11,18 @@ interface ComposerTextTarget {
 interface UseComposerDraftOptions {
   /** The controller that holds the chat's draft right now. */
   readonly controller: DraftController;
+  /**
+   * The chat the draft belongs to (`useChatDraft`'s `chat`): the same object while the chat's draft moves between
+   * scopes, and another one once the person switches to another chat.
+   */
+  readonly chat: object;
   /** The text the composer shows now. */
   readonly text: string;
   readonly composer: ComposerTextTarget;
-  readonly attachments: Pick<AttachmentManager, "restore" | "subscribe" | "toDraftRefs">;
+  readonly attachments: Pick<
+    AttachmentManager,
+    "restore" | "subscribe" | "toDraftRefs" | "dropPending"
+  >;
   /** A prompt Up or Down recalled (U2.5) is not the draft. */
   readonly isRecalledPrompt: (text: string) => boolean;
 }
@@ -49,6 +57,7 @@ function sameRefs(left: readonly AttachmentRef[], right: readonly AttachmentRef[
  * save to a draft this tab has no unsaved edit to) is shown in the composer, and is not saved back as typing.
  */
 export function useComposerDraft({
+  chat,
   controller,
   text,
   composer,
@@ -193,4 +202,9 @@ export function useComposerDraft({
     () => attachments.subscribe(() => saveAttachments(controller)),
     [attachments, controller, saveAttachments],
   );
+  // A picture still being attached belongs to the chat it was dropped in. It is dropped when that chat is left: the
+  // chat's identity ends (the person switched to another chat), or the composer goes with it. A move of the same chat's
+  // draft keeps the identity, so the cleanup does not run.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the cleanup runs when the chat changes.
+  useEffect(() => () => attachments.dropPending(), [attachments, chat]);
 }

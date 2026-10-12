@@ -28,6 +28,11 @@ export interface UseChatDraftOptions {
 export interface UseChatDraftResult {
   /** The controller the composer shows. It changes when the chat's draft moves to another scope. */
   readonly controller: DraftController;
+  /**
+   * The chat the draft belongs to: the same object while the chat's draft moves between scopes, and another one once
+   * the person switches to another chat (the chat's draft is then built again).
+   */
+  readonly chat: object;
   /** Sends a prompt from the chat's current draft. */
   readonly submit: (
     intent: PromptIntent,
@@ -81,6 +86,7 @@ export function useChatDraft({
   const controller = useSyncExternalStore(chat.subscribe, () => chat.controller);
   return {
     controller,
+    chat,
     submit: chat.submit,
     retry: chat.retry,
     resolveConflict: chat.resolveConflict,
