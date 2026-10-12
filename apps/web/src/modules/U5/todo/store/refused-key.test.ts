@@ -35,10 +35,11 @@ describe("the todo list and a failed prompt", () => {
     expect(adapter.getSnapshot().error).toBeNull();
   });
 
-  test("any other failed prompt still shows as the todo list's error", () => {
+  test("any other failed prompt is the chat's failure too, so the todo list is not in error", () => {
     const runtime = new OmpRuntimeStore({ threadId });
     const adapter = new TodoStoreAdapter({ store: runtime, now });
     runtime.ingest(failedPrompt(500) as never, 1);
-    expect(adapter.getSnapshot().error?.message).toBe("401 Invalid API key");
+    expect(runtime.getSnapshot().error?.message).toBe("401 Invalid API key");
+    expect(adapter.getSnapshot().error).toBeNull();
   });
 });
