@@ -166,6 +166,7 @@ describe("#1272 omp subcommands that run at once are answered by the app, not se
       "/ssh rm dev --scope user",
       "/mcp remove github",
       "/mcp rm github",
+      "/mcp reload",
       "/marketplace remove market",
       "/marketplace rm market",
       "/marketplace uninstall plugin@market",

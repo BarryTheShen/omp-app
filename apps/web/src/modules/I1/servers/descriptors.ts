@@ -67,7 +67,7 @@ export const I1_MCP_SERVER_DESCRIPTORS = [
     kind: "command",
     id: "I1.mcpReload",
     owner: "I1",
-    title: "Reload MCP servers",
+    title: "Refresh command list",
     covers: ["C4.mcp-reload"],
     requires: ["host.command-gateway", "host.mcp"],
   },

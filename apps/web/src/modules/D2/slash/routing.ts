@@ -59,6 +59,8 @@ function triggerRuns(trigger: Trigger, rest: string): boolean {
  * - `memory clear` and `memory reset` delete the persisted memory (builtin-lifecycle.ts:571-573).
  * - `ssh remove|rm` and `mcp remove|rm` delete a named host or server (helpers/ssh.ts:139-152, :188-190; helpers/mcp.ts:456-468,
  *   :527-528). Without a name they print usage.
+ * - `mcp reload` refreshes omp's command list over RPC and reconnects no server (helpers/mcp.ts:518-520; rpc-mode.ts:1805),
+ *   so the app answers it with the typed reload and says what that did.
  * - `marketplace remove|rm` delete a marketplace source, and `uninstall` deletes a plugin's installed files
  *   (builtin-marketplace.ts:124-130 and :181-187; marketplace/manager.ts:578-638, the removal at :636).
  * - `modelpreset delete <name>` deletes a saved preset (builtin-modes.ts:847-849, :981-983).
@@ -72,7 +74,7 @@ const GUARDED_OMP_COMMANDS: Record<string, true | Record<string, Trigger>> = {
   usage: { reset: "target" },
   memory: { clear: "any", reset: "any" },
   ssh: { remove: "name", rm: "name" },
-  mcp: { remove: "name", rm: "name" },
+  mcp: { remove: "name", rm: "name", reload: "any" },
   marketplace: { remove: "target", rm: "target", uninstall: "target" },
   modelpreset: { delete: "target" },
   wt: true,

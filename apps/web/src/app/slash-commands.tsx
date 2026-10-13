@@ -3,6 +3,8 @@ import {
   AppFailure,
   type CapabilityMap,
   type CommandRunResult,
+  type McpCommandActionArgs,
+  type McpCommandActionResult,
   type ModeChangeRequest,
   type ModeChangeResult,
   modeChangeFromCommand,
@@ -274,6 +276,36 @@ export function shareSlashCommand({
   readonly run: SlashAppCommand["run"];
 }): SlashAppCommand {
   return { name: "share", description: "Share this chat as a link", run };
+}
+
+/**
+ * `/mcp reload`: over RPC omp only refreshes its command list and reconnects no MCP server, so the app runs the typed
+ * reload (A1's `action`) and shows the message that says what it did, not omp's own words for it.
+ */
+export function mcpReloadSlashCommand({
+  commands,
+  threadId,
+}: {
+  readonly commands: {
+    readonly action: (
+      args: McpCommandActionArgs,
+      options?: PortCallOptions,
+    ) => Promise<McpCommandActionResult>;
+  };
+  readonly threadId: ThreadId;
+}): SlashAppCommand {
+  return {
+    name: "mcp reload",
+    description: "Refresh the command list omp offers",
+    unlisted: true,
+    run: async ({ signal }) => {
+      const result = await commands.action(
+        { threadId, operation: "reload", operationId: crypto.randomUUID() },
+        signal === undefined ? {} : { signal },
+      );
+      return { message: result.message ?? "The command list was refreshed." };
+    },
+  };
 }
 
 /** The part of the chat's command gateway the guarded forms use: running one omp command, and the typed `/session delete`. */

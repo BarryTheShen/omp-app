@@ -249,3 +249,10 @@ describe("I1 typed MCP command adapter", () => {
     expect(fixture.calls).toHaveLength(0);
   });
 });
+
+describe("the MCP reload control", () => {
+  test("is titled for what it does over RPC: it refreshes the command list, and reconnects no server", () => {
+    const reload = I1_MCP_SERVER_DESCRIPTORS.find((descriptor) => descriptor.id === "I1.mcpReload");
+    expect(reload?.title).toBe("Refresh command list");
+  });
+});

@@ -38,6 +38,7 @@ import {
   guardOmpSend,
   hotkeysSlashCommand,
   loginSlashCommand,
+  mcpReloadSlashCommand,
   newChatSlashCommand,
   routeSubmit,
   runSlashRoute,
@@ -899,6 +900,26 @@ describe("#1271 a typed terminal-only command is refused in the composer, and om
     });
     expect(fake.runs).toEqual([]);
     provider.dispose();
+  });
+});
+
+describe("#1284 /mcp reload shows what the typed reload did, not omp's words", () => {
+  test("the app runs the typed reload once, and shows the message the server gives for it", async () => {
+    const message =
+      "The command list was refreshed. MCP servers were not reconnected: that needs omp's terminal.";
+    const action = vi.fn(async () => ({
+      operationId: "reload-op",
+      status: "configured" as const,
+      server: null,
+      message,
+    }));
+    const command = mcpReloadSlashCommand({ commands: { action }, threadId });
+    await expect(command.run({})).resolves.toEqual({ message });
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(action).toHaveBeenCalledWith(
+      { threadId, operation: "reload", operationId: expect.any(String) },
+      {},
+    );
   });
 });
 

@@ -438,6 +438,14 @@ describe("McpCommandsService", () => {
     );
     expect(tested.message).toBe("Connected to the MCP server. Found 1 tool.");
   });
+  test("a reload omp answers over RPC says the command list was refreshed, and that no server reconnected", async () => {
+    const reloaded = await serviceFor("MCP runtime reload requested.").service.action(
+      mcpAction({ operation: "reload", operationId: "reload-one" }),
+    );
+    expect(reloaded.message).toBe(
+      "The command list was refreshed. MCP servers were not reconnected: that needs omp's terminal.",
+    );
+  });
   test("quotes MCP add words so omp's parser preserves every argument", async () => {
     const serverName = "maas-slack";
     const expectedArguments = [

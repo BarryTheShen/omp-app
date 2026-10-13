@@ -522,7 +522,18 @@ function parseActionOutput(
       break;
     }
     case "reload":
-      if (output === "MCP runtime reload requested." || /^MCP reload complete\n/.test(output)) {
+      // Over RPC omp only refreshes its command list and reconnects no MCP server (rpc-mode.ts:1805 maps `refreshCommands`
+      // to the command list update), so the answer says that. Only a completed reload says the servers were reloaded.
+      if (output === "MCP runtime reload requested.") {
+        return McpCommandActionResult.parse({
+          operationId: args.operationId,
+          status: "configured",
+          server: null,
+          message:
+            "The command list was refreshed. MCP servers were not reconnected: that needs omp's terminal.",
+        });
+      }
+      if (/^MCP reload complete\n/.test(output)) {
         return McpCommandActionResult.parse({
           operationId: args.operationId,
           status: "configured",
