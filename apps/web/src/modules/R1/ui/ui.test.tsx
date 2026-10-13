@@ -1504,6 +1504,40 @@ describe("SessionCatalogSidebar New chat status", () => {
     await waitFor(() => expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]));
   });
 
+  test("a chat picked while a New chat starts ends the New chat's opening, and the New chat does not open over the pick", async () => {
+    const statuses: unknown[] = [];
+    const opened: string[] = [];
+    const newChatOpened: string[] = [];
+    const newChatStarted = Promise.withResolvers<{ remoteId: string }>();
+    renderSidebar({
+      remote: {
+        ...fakeRemote([]),
+        initialize: async (id: string) =>
+          id === "new" ? newChatStarted.promise : { remoteId: id },
+      },
+      onNewChat: async () => {
+        newChatOpened.push("new");
+      },
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+      onNewChatStatus: (status) => statuses.push(status),
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }]));
+    // The person picks a chat while the New chat is still starting: the chat picked is the one on screen now.
+    fireEvent.click(screen.getByRole("option", { name: /Newest chat/ }));
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]));
+    // The New chat's answer comes after the pick: the New chat does not open over the chat picked.
+    newChatStarted.resolve({ remoteId: "thread-new" });
+    // The answer is read within a few turns of the event loop; the New chat then ends without a second report.
+    for (let index = 0; index < 20; index += 1) await Promise.resolve();
+    expect(newChatOpened).toEqual([]);
+    expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]);
+    expect(opened).toHaveLength(1);
+  });
+
   test("reports a New chat that fails with its reason, instead of leaving the page unchanged", async () => {
     const statuses: unknown[] = [];
     const failure = new AppFailure({

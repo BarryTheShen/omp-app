@@ -189,6 +189,8 @@ export function SessionCatalogSidebar({
   const previousCatalog = useRef(catalog);
   const listRef = useRef<HTMLDivElement | null>(null);
   const newChatRef = useRef<HTMLButtonElement | null>(null);
+  // The New chat that is starting, if any: a pick ends it (see `openSession`).
+  const pendingNewChat = useRef<object | null>(null);
   const attachList = useCallback(
     (element: HTMLDivElement | null) => {
       listRef.current = element;
@@ -332,6 +334,11 @@ export function SessionCatalogSidebar({
 
   const openSession = async (session: Pick<SessionMetadata, "id">): Promise<void> => {
     catalog.setActionError(undefined);
+    // A pick ends a New chat that is still starting: the chat picked is the one the person is in now.
+    if (pendingNewChat.current !== null) {
+      pendingNewChat.current = null;
+      onNewChatStatus?.({ state: "idle" });
+    }
     const threadId = session.id as ThreadId;
     // The picked row is selected at once; the pick stands until its chat has opened, or was refused.
     catalog.select(threadId);
@@ -362,13 +369,24 @@ export function SessionCatalogSidebar({
 
   const createNewChat = async (): Promise<void> => {
     catalog.setActionError(undefined);
+    const token = {};
+    pendingNewChat.current = token;
     onNewChatStatus?.({ state: "opening" });
+    // Reports the end unless a pick already ended this New chat, and reported that itself.
+    const finish = (status: NewChatStatus): void => {
+      if (pendingNewChat.current !== token) return;
+      pendingNewChat.current = null;
+      onNewChatStatus?.(status);
+    };
     try {
       const initialized = await unlessSuperseded(remote.initialize("new"));
-      if (initialized) await onNewChat?.(initialized.remoteId as ThreadId);
-      onNewChatStatus?.({ state: "idle" });
+      // A chat picked since the click is the one the person wants: this New chat does not open over it.
+      if (initialized && pendingNewChat.current === token) {
+        await onNewChat?.(initialized.remoteId as ThreadId);
+      }
+      finish({ state: "idle" });
     } catch (error) {
-      onNewChatStatus?.({ state: "failed", error: newChatFailure(error) });
+      finish({ state: "failed", error: newChatFailure(error) });
     }
   };
 

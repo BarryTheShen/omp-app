@@ -131,6 +131,7 @@ import type {
   SubmitPolicy,
 } from "@/modules/U2/contract";
 import {
+  type ChatMessagesSource,
   createDraftStoreAdapter,
   type DraftController,
   DraftNotice,
@@ -563,6 +564,8 @@ interface ActiveThreadProps {
   ) => () => void;
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly history: SelectedThreadHistoryState;
+  /** A New chat started from the chat on screen has not replaced it yet: the composer's draft is the folder's new-chat draft. */
+  readonly newChatStarting: boolean;
   /** Loads the page of messages older than the ones shown; the thread offers it while history is older. */
   readonly onLoadOlder?: () => Promise<void>;
   /** Loads the full text of a tool output the thread shows shortened. */
@@ -588,6 +591,13 @@ interface ActiveThreadProps {
   readonly watchSurface: Surface;
 }
 
+const NO_MESSAGE_ORDER = { messageOrder: [] as readonly string[] };
+/** The messages of a chat that is not open yet: none, so a New chat starting keeps its draft in the folder's. */
+const NO_CHAT_MESSAGES: ChatMessagesSource = {
+  subscribe: () => () => undefined,
+  getSnapshot: () => NO_MESSAGE_ORDER,
+};
+
 function ActiveThreadContent(props: ActiveThreadProps) {
   if (!props.history.store || !props.history.threadId) return null;
   return <ActiveThreadReady {...props} />;
@@ -599,6 +609,7 @@ function ActiveThreadReady({
   folder,
   catalog,
   history,
+  newChatStarting,
   leftSidebar,
   onPromptSent,
   openThread,
@@ -1075,8 +1086,9 @@ function ActiveThreadReady({
     draftStore,
     folder,
     threadId,
-    startsUnsent: history.openedNew,
-    messages: store,
+    // A New chat that is starting takes the composer before its chat opens: its text and files are the folder's draft.
+    startsUnsent: history.openedNew || newChatStarting,
+    messages: newChatStarting ? NO_CHAT_MESSAGES : store,
     loaded: !history.isLoading,
     buffer: draftBuffer,
   });
@@ -1651,6 +1663,8 @@ function ConnectedApp({
   const [openFailure, setOpenFailure] = useState<OpenFailure | null>(null);
   // The sidebar starts a New chat before the history controller opens it: its state shows here meanwhile.
   const [newChat, setNewChat] = useState<NewChatStatus>({ state: "idle" });
+  // The chat on screen when a New chat started: its composer takes the new chat's draft until another chat replaces it.
+  const [newChatFrom, setNewChatFrom] = useState<ThreadId | null>(null);
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
@@ -1919,6 +1933,7 @@ function ConnectedApp({
     (status: NewChatStatus): void => {
       setNewChat(status);
       if (status.state === "opening") {
+        setNewChatFrom(controller?.getSnapshot().threadId ?? null);
         newChatHold.current ??= controller?.holdSwitch();
         return;
       }
@@ -2116,6 +2131,9 @@ function ConnectedApp({
           client={client}
           folder={folder}
           history={history}
+          newChatStarting={
+            newChatFrom !== null && newChat.state === "opening" && history.threadId === newChatFrom
+          }
           resumePlace={resumePlace}
           connectionSurface={connectionSurface}
           watchSurface={watchSurface}
