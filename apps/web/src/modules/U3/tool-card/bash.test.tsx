@@ -1,5 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  MemoryThinkingVisibilityStore,
+  TranscriptDisplayPolicyProvider,
+  useTranscriptDisplayPolicy,
+} from "@/modules/U1/policy/policy";
 import { ReadOnlyNestedTranscript, TurnCancelContext } from "@/modules/U1/thread";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import { BackgroundJobCommandContext } from "./background-job";
@@ -46,6 +51,16 @@ function toolResult(output: string, details: Record<string, unknown> = {}) {
     content: [{ type: "text", text: `${output}\n\nWall time: 0.01 seconds` }],
     details: { wallTimeMs: 13, ...details },
   };
+}
+
+/** The button that toggles the transcript's expand-all flag, inside the provider the cards read. */
+function PolicyControls() {
+  const policy = useTranscriptDisplayPolicy();
+  return (
+    <button type="button" onClick={policy.toggleExpandTools}>
+      Toggle tool output
+    </button>
+  );
 }
 
 describe("BashCard notes omp adds to a failed command", () => {
@@ -611,6 +626,30 @@ describe("BashCard output the app holds in part", () => {
 
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show all 40 lines" }));
     expect(screen.getByText("Full output loaded")).toBeTruthy();
+  });
+
+  test("with every tool call expanded, the note says every loaded line is shown, not the first 12", () => {
+    const partial = {
+      ...toolResult(numbered(40)),
+      outputCut: { shownBytes: 65_536, totalBytes: 209_715 },
+    };
+    render(
+      <TranscriptDisplayPolicyProvider
+        storage={new MemoryThinkingVisibilityStore()}
+        threadId="bash-expand-all-cut"
+      >
+        <PolicyControls />
+        <BashCard rendererProps={props(partial)} />
+      </TranscriptDisplayPolicyProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Toggle tool output" }));
+    expect(screen.getByTestId("u3-bash-stdout").textContent).toContain("line 40");
+    expect(
+      screen.getByText("Showing the 40 loaded lines; the app has loaded 64 KB of 205 KB.", {
+        exact: true,
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Showing the first 12/)).toBeNull();
   });
 });
 

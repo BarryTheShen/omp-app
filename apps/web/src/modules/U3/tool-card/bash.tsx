@@ -557,7 +557,7 @@ function BashOutput({
       {cut !== undefined && (
         <OutputCutNote
           cut={cut}
-          lead={partialOutputNote(cut, preview)}
+          lead={partialOutputNote(cut, outputExpanded ? { ...preview, cut: false } : preview)}
           onLoaded={full.onLoaded}
           toolCallId={state.toolCallId}
         />
