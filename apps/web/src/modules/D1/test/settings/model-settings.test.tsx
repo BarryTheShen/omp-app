@@ -1,3 +1,4 @@
+import { AppFailure } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ConfigSnapshot, SettingValue, StageResult } from "@/modules/S1/settings-kit";
@@ -5,9 +6,13 @@ import type { SettingsRuntime, SettingsRuntimeSnapshot } from "../../../S1/runti
 import { modelSettingsSections } from "../../settings/descriptors";
 import { ModelSettingsSection } from "../../settings/model-settings";
 
+const REFUSAL =
+  "This setting could not be written to the settings file. Check the settings file for an entry that conflicts with it.";
+
 function runtime(
   descriptor: (typeof modelSettingsSections)[number],
   phase: SettingsRuntimeSnapshot["phase"] = "ready",
+  patch: Partial<SettingsRuntimeSnapshot> = {},
 ): SettingsRuntime {
   const config: ConfigSnapshot = {
     folder: null,
@@ -37,6 +42,7 @@ function runtime(
     environmentOverride: null,
     lastChange: null,
     unsavedKeys: [],
+    ...patch,
   };
   const listeners = new Set<(next: SettingsRuntimeSnapshot) => void>();
   return {
@@ -116,5 +122,78 @@ describe("D1 model settings sections", () => {
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Keep mine" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+  });
+
+  test("names the settings omp did not save, with the reason, and marks their rows", () => {
+    const descriptor = modelSettingsSections[0];
+    if (!descriptor) throw new Error("missing thinking section");
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "editing", {
+          unsavedKeys: ["defaultThinkingLevel"],
+          error: new AppFailure({ code: "invalid_args", message: REFUSAL, retryable: false })
+            .appError,
+        })}
+      />,
+    );
+    expect(screen.getByText("Not saved: Thinking Level.")).toBeTruthy();
+    expect(screen.getByText(REFUSAL)).toBeTruthy();
+    expect(screen.getByText("Not saved", { exact: true })).toBeTruthy();
+    expect(screen.queryByText("Applied")).toBeNull();
+  });
+
+  test("says in a sentence that the environment still overrides a saved setting, not Applied", () => {
+    const descriptor = modelSettingsSections[0];
+    if (!descriptor) throw new Error("missing thinking section");
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "ready", {
+          applyStatus: "applied",
+          environmentOverride: { variables: ["PI_EXAMPLE"] },
+        })}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Saved, but omp still uses the environment variable PI_EXAMPLE until it is removed.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Applied")).toBeNull();
+  });
+
+  test("keeps a status other than Applied beside the environment sentence", () => {
+    const descriptor = modelSettingsSections[0];
+    if (!descriptor) throw new Error("missing thinking section");
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "ready", {
+          applyStatus: "restart-required",
+          environmentOverride: { variables: ["PI_EXAMPLE"] },
+        })}
+      />,
+    );
+    expect(screen.getByText("Restart required")).toBeTruthy();
+    expect(
+      screen.getByText(/Saved, but omp still uses the environment variable PI_EXAMPLE/),
+    ).toBeTruthy();
+  });
+
+  test("shows a failure that names no unsaved setting as an error beside the section", () => {
+    const descriptor = modelSettingsSections[0];
+    if (!descriptor) throw new Error("missing thinking section");
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "ready", {
+          error: new AppFailure({ code: "invalid_args", message: REFUSAL, retryable: false })
+            .appError,
+        })}
+      />,
+    );
+    expect(screen.getByText(REFUSAL)).toBeTruthy();
+    expect(screen.queryByText(/^Not saved/)).toBeNull();
   });
 });

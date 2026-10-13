@@ -1,9 +1,13 @@
 import { useEffect } from "react";
+import { InlineError } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import {
+  environmentOverrideText,
   SettingsSection,
   type SettingsSectionDescriptor,
   type StagedSettings,
+  settingLabels,
+  UnsavedSettingsNotice,
 } from "@/modules/S1/settings-kit";
 import { type SettingsRuntime, useSettingsRuntime } from "../../S1/runtime";
 
@@ -75,10 +79,26 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
   }
 
   const staged = snapshot.staged;
+  // A failed save is recorded in the runtime's snapshot (its error and unsaved keys), which is shown below.
   const apply = () => void runtime.save().catch(() => undefined);
   const onStage = (next: StagedSettings) => {
     for (const [key, value] of changedEdits(staged, next)) runtime.stage(key, value);
   };
+
+  // A save omp refused, or only part-wrote, is named below with its reason. An environment variable that still
+  // overrides a written setting is said in a sentence, and the status pill then does not say Applied.
+  const unsavedLabels = settingLabels(descriptor, snapshot.unsavedKeys);
+  const override = snapshot.environmentOverride;
+  const notice = override === null ? undefined : environmentOverrideText(override);
+  const applied = snapshot.applyStatus
+    ? applyStatusLabel(snapshot.applyStatus)
+    : phaseLabel(snapshot.phase);
+  const status =
+    notice === undefined
+      ? applied
+      : snapshot.applyStatus && snapshot.applyStatus !== "applied"
+        ? applyStatusLabel(snapshot.applyStatus)
+        : undefined;
 
   return (
     <div
@@ -90,9 +110,9 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
         snapshot={config}
         staged={staged}
         validation={snapshot.validation}
-        applyStatus={
-          snapshot.applyStatus ? applyStatusLabel(snapshot.applyStatus) : phaseLabel(snapshot.phase)
-        }
+        applyStatus={status}
+        notice={notice}
+        unsavedKeys={snapshot.unsavedKeys}
         onStage={onStage}
         onCommit={apply}
         onCancel={() => runtime.cancel()}
@@ -125,6 +145,10 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
             </Button>
           </span>
         </div>
+      ) : unsavedLabels.length > 0 ? (
+        <UnsavedSettingsNotice labels={unsavedLabels} reason={snapshot.error?.message ?? ""} />
+      ) : snapshot.error ? (
+        <InlineError message={snapshot.error.message} variant="compact" />
       ) : null}
     </div>
   );
