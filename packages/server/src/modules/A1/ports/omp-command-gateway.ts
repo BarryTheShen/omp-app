@@ -6,7 +6,10 @@ import {
   modeChangeCommand,
   OmpCommandGateway,
   SessionDeleteCommandResult,
+  SessionFileChanged,
+  SessionFileStore,
   ShareResult,
+  streamKey,
 } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
 import type { A1PortContext } from "./context";
@@ -81,6 +84,17 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
           if (error instanceof AppFailure) return { outcome: "failed" };
           throw error;
         }
+        // The sidebar's own delete publishes this removal on the session file stream, and every open tab drops the row.
+        // A typed delete publishes the same change once the file is gone and omp has stopped.
+        context.publish(
+          streamKey(SessionFileStore.name, "changed"),
+          SessionFileChanged.parse({
+            folder: check.file.cwd,
+            sessionFile: check.file.sessionFile,
+            id: check.file.id,
+            kind: "removed",
+          }),
+        );
         return result;
       },
     },
