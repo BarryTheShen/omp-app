@@ -137,6 +137,17 @@ export interface PendingRequestsState {
   readonly hostUris: Readonly<Record<string, PendingHostUriRequest>>;
 }
 
+/**
+ * A failure the chat's banner shows. `heading` replaces the banner's default line when the failure is not the
+ * conversation stopping. `extension` names the extension whose failure this is, and the banner shows it before the
+ * reason. `source` names the part of omp that sent an error notice; it is kept, and not shown.
+ */
+export type ChatFailure = AppError & {
+  readonly heading?: string | undefined;
+  readonly extension?: string | undefined;
+  readonly source?: string | undefined;
+};
+
 export interface ProcessState {
   readonly status: "starting" | "ready" | "running" | "stopped" | "restarting" | "exited" | "error";
   readonly error: AppError | null;
@@ -193,7 +204,7 @@ export interface RuntimeSnapshot {
   readonly pending: PendingRequestsState;
   readonly process: ProcessState;
   readonly session: SessionInfoState;
-  readonly error: AppError | null;
+  readonly error: ChatFailure | null;
 }
 
 export type RuntimeStoreListener = (snapshot: RuntimeSnapshot) => void;
@@ -831,8 +842,21 @@ function setPending(next: MutableSnapshot, pending: PendingDraft): void {
   next.pending = pending;
 }
 
-function setError(next: MutableSnapshot, error: AppError): void {
+function setError(next: MutableSnapshot, error: ChatFailure): void {
   next.error = cloneValue(error);
+}
+
+/** The banner's heading for an extension's error, and for an error omp reports itself. */
+const EXTENSION_ERROR_HEADING = "An extension reported an error";
+const NOTICE_ERROR_HEADING = "omp reported a problem";
+
+/** The name a person knows an extension by: its file's name, or its folder's when the file is `index`. */
+function extensionNameOf(path: unknown): string | undefined {
+  if (typeof path !== "string") return undefined;
+  const parts = path.split(/[\\/]/).filter((part) => part.length > 0);
+  const file = parts.at(-1)?.replace(/\.[^.]+$/, "");
+  if (file !== "index") return file || undefined;
+  return parts.at(-2) || undefined;
 }
 
 /**
@@ -1534,7 +1558,13 @@ export class OmpRuntimeStore {
       }
       case "extension_error":
         if (typeof frame.error === "string") {
-          setError(next, { code: "omp_error", message: frame.error, retryable: false });
+          setError(next, {
+            code: "omp_error",
+            message: frame.error,
+            retryable: false,
+            heading: EXTENSION_ERROR_HEADING,
+            extension: extensionNameOf(frame.extensionPath),
+          });
         }
         return;
       case "rpc_frame_error":
@@ -1619,7 +1649,13 @@ export class OmpRuntimeStore {
         return;
       case "notice":
         if (event.level === "error" && typeof event.message === "string") {
-          setError(next, { code: "omp_error", message: event.message, retryable: true });
+          setError(next, {
+            code: "omp_error",
+            message: event.message,
+            retryable: true,
+            heading: NOTICE_ERROR_HEADING,
+            source: typeof event.source === "string" ? event.source : undefined,
+          });
         }
         return;
       default:

@@ -30,7 +30,7 @@ import {
 } from "@/modules/D3/auth/credential-actions";
 import { CredentialFailureNotice } from "@/modules/D3/auth/credential-notice";
 import { useDescriptor, useRenderer } from "@/registry-core";
-import type { OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
+import type { ChatFailure, OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
 import { FullOutputProvider } from "../../U3/tool-card/full-output";
 import { failureShownUnderAnswer } from "../parts/message-ending";
 import { splitProviderError } from "../parts/provider-error";
@@ -106,7 +106,7 @@ function RuntimeError({
   onRetry,
   onRestartOmp,
 }: {
-  error: AppError;
+  error: ChatFailure;
   /** Whether the banner repeats omp's words; not when the answer that stopped already says them. */
   showDetail: boolean;
   onRetry?: () => Promise<void> | void;
@@ -121,6 +121,9 @@ function RuntimeError({
   // An omp that stopped is started again; any other failure is retried by whoever owns it.
   const stopped = error.code === "omp_exited";
   const action = stopped ? onRestartOmp : onRetry;
+  // The reason omp gave, with the extension that failed in front ("notes: index is locked").
+  const reason = splitProviderError(error.message).reason;
+  const detail = error.extension ? `${error.extension}: ${reason}` : reason;
 
   const retry = async () => {
     if (action === undefined || retrying) return;
@@ -159,8 +162,10 @@ function RuntimeError({
         data-slot="u1-thread-error"
         role="alert"
       >
-        <p className="text-sm font-medium">The conversation could not continue.</p>
-        {showDetail && <p className="mt-1 text-sm">{splitProviderError(error.message).reason}</p>}
+        <p className="text-sm font-medium">
+          {error.heading ?? "The conversation could not continue."}
+        </p>
+        {showDetail && <p className="mt-1 text-sm">{detail}</p>}
         {action !== undefined && retryError?.retryable !== false && (
           <button
             className="border-danger/40 bg-danger-surface-foreground/10 mt-3 rounded-md border px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"

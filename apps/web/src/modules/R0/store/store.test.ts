@@ -1584,4 +1584,38 @@ describe("OmpRuntimeStore", () => {
     expect(heard).toEqual([{ id: "state-build", seq: 2, replayed: true }]);
     expect(store.getSnapshot().lastSeq).toBe(1);
   });
+
+  test("an extension's error keeps the extension's name and omp's reason, under its own heading", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_error",
+          extensionPath: "/extensions/notes-ext/index.ts",
+          event: "session_start",
+          error: "index is locked",
+        },
+      },
+      1,
+    );
+    expect(store.getSnapshot().error).toEqual({
+      code: "omp_error",
+      message: "index is locked",
+      retryable: false,
+      heading: "An extension reported an error",
+      extension: "notes-ext",
+    });
+  });
+
+  test("an error-level notice keeps the source omp gave it", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    omp(store, { type: "notice", level: "error", message: "disk is full", source: "Context" }, 1);
+    expect(store.getSnapshot().error).toMatchObject({
+      message: "disk is full",
+      heading: "omp reported a problem",
+      source: "Context",
+    });
+  });
 });

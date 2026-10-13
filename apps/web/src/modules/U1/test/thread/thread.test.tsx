@@ -114,6 +114,26 @@ describe("ThreadShell states", () => {
     expect(screen.getByText("No messages yet.")).toBeTruthy();
   });
 
+  test("names an extension's error under its own heading, not as a conversation that stopped", () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_error",
+          extensionPath: "/extensions/notes-ext/index.ts",
+          event: "session_start",
+          error: "index is locked",
+        },
+      } as unknown as RpcSessionEvent,
+      2,
+    );
+    renderThread(store);
+    expect(screen.getByText("An extension reported an error")).toBeTruthy();
+    expect(screen.getByText("notes-ext: index is locked")).toBeTruthy();
+    expect(screen.queryByText("The conversation could not continue.")).toBeNull();
+  });
+
   test("says the chat is loading until its history is read, then that it is empty", () => {
     const store = readyStore();
     const reading = { threadId, resumeAt: null, historyLoading: true };
