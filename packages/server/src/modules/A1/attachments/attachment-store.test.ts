@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, utimes } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AppFailure, type AttachmentRef } from "@omp-app/contracts";
+import { DraftStoreService } from "../drafts/store";
 import { AttachmentStoreService } from "./attachment-store";
 
 const temporaryDirectories: string[] = [];
@@ -41,7 +42,7 @@ describe("AttachmentStoreService", () => {
     const appDataDir = await temporaryDirectory();
     const store = new AttachmentStoreService({
       appDataDir,
-      referencedAttachments: async () => [],
+      referencedAttachments: async () => ({ refs: [], complete: true }),
     });
     const put = await store.put({
       id: "attachment-1",
@@ -66,7 +67,7 @@ describe("AttachmentStoreService", () => {
     const store = new AttachmentStoreService({
       appDataDir,
       maxTotalBytes: 100,
-      referencedAttachments: async () => [],
+      referencedAttachments: async () => ({ refs: [], complete: true }),
     });
     await expectAppFailure(
       store.put({
@@ -94,7 +95,7 @@ describe("AttachmentStoreService", () => {
     const store = new AttachmentStoreService({
       appDataDir,
       maxTotalBytes: 8,
-      referencedAttachments: async () => referenced,
+      referencedAttachments: async () => ({ refs: referenced, complete: true }),
     });
     const first = await store.put({
       id: "first",
@@ -128,7 +129,7 @@ describe("AttachmentStoreService", () => {
     const store = new AttachmentStoreService({
       appDataDir,
       maxTotalBytes: 4,
-      referencedAttachments: async () => referenced,
+      referencedAttachments: async () => ({ refs: referenced, complete: true }),
     });
     const first = await store.put({
       id: "first",
@@ -150,7 +151,7 @@ describe("AttachmentStoreService", () => {
     const store = new AttachmentStoreService({
       appDataDir,
       maxTotalBytes: 100,
-      referencedAttachments: async () => referenced,
+      referencedAttachments: async () => ({ refs: referenced, complete: true }),
     });
     const keep = await store.put({
       id: "keep",
@@ -179,7 +180,7 @@ describe("AttachmentStoreService", () => {
     const appDataDir = await temporaryDirectory();
     const store = new AttachmentStoreService({
       appDataDir,
-      referencedAttachments: async () => [],
+      referencedAttachments: async () => ({ refs: [], complete: true }),
     });
     await expectAppFailure(
       store.get({ ref: { id: "../bad", name: "x.txt", mediaType: "text/plain" } }),
@@ -194,7 +195,7 @@ describe("AttachmentStoreService", () => {
       referencedAttachments: async () => {
         if (scanFailed)
           throw new AppFailure({ code: "internal", message: "scan failed", retryable: false });
-        return [];
+        return { refs: [], complete: true };
       },
     });
     const first = await store.put({
@@ -209,5 +210,79 @@ describe("AttachmentStoreService", () => {
     ).then((error) => expect(error.appError.code).toBe("internal"));
     expect((await store.list()).refs).toHaveLength(2);
     expect(await store.get({ ref: first.ref })).toEqual({ ref: first.ref, bytes: base64("1234") });
+  });
+
+  test("keeps every picture, and keeps uploads working, while a draft file cannot be read", async () => {
+    const appDataDir = await temporaryDirectory();
+    const drafts = new DraftStoreService({ appDataDir });
+    await mkdir(join(drafts.draftsDir, "threads"), { recursive: true });
+    const unreadable = join(drafts.draftsDir, "threads", "unreadable.json");
+    await writeFile(unreadable, "", "utf8");
+    const store = new AttachmentStoreService({
+      appDataDir,
+      referencedAttachments: () => drafts.referencedAttachments(),
+    });
+    const orphan = await store.put({
+      id: "orphan",
+      name: "orphan.txt",
+      mediaType: "text/plain",
+      bytes: base64("orphan"),
+    });
+    const fresh = await store.put({
+      id: "fresh",
+      name: "fresh.txt",
+      mediaType: "text/plain",
+      bytes: base64("fresh"),
+    });
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    await utimes(join(appDataDir, "attachments", `${orphan.ref.id}.blob`), old, old);
+    await utimes(join(appDataDir, "attachments", `${orphan.ref.id}.json`), old, old);
+    await store.cleanup({ orphanAgeMs: 24 * 60 * 60 * 1000 });
+    const kept = (await store.list()).refs.map((ref) => ref.id).sort();
+    expect(kept).toEqual([orphan.ref.id, fresh.ref.id].sort());
+    expect(await readFile(unreadable, "utf8")).toBe("");
+
+    // Once the file is fixed or removed, the old orphan is evicted again.
+    await rm(unreadable);
+    await store.cleanup({ orphanAgeMs: 24 * 60 * 60 * 1000 });
+    expect((await store.list()).refs.map((ref) => ref.id)).toEqual([fresh.ref.id]);
+  });
+
+  test("startup is not refused over the cap while a draft cannot be read; an upload over it is", async () => {
+    const appDataDir = await temporaryDirectory();
+    const roomy = new AttachmentStoreService({
+      appDataDir,
+      maxTotalBytes: 100,
+      referencedAttachments: async () => ({ refs: [], complete: true }),
+    });
+    const first = await roomy.put({
+      id: "first",
+      name: "a.txt",
+      mediaType: "text/plain",
+      bytes: base64("1234"),
+    });
+    const second = await roomy.put({
+      id: "second",
+      name: "b.txt",
+      mediaType: "text/plain",
+      bytes: base64("5678"),
+    });
+    // The cap is now smaller than what is stored, and a draft cannot be read.
+    const drafts = new DraftStoreService({ appDataDir });
+    await mkdir(join(drafts.draftsDir, "threads"), { recursive: true });
+    await writeFile(join(drafts.draftsDir, "threads", "unreadable.json"), "", "utf8");
+    const store = new AttachmentStoreService({
+      appDataDir,
+      maxTotalBytes: 4,
+      referencedAttachments: () => drafts.referencedAttachments(),
+    });
+    await expect(store.cleanup()).resolves.toBeUndefined();
+    const failure = await expectAppFailure(
+      store.put({ id: "third", name: "c.txt", mediaType: "text/plain", bytes: base64("abcd") }),
+    );
+    expect(failure.appError).toMatchObject({ code: "unavailable", retryable: false });
+    // The refused picture is not left behind; the stored ones are kept.
+    const kept = (await store.list()).refs.map((ref) => ref.id).sort();
+    expect(kept).toEqual([first.ref.id, second.ref.id].sort());
   });
 });

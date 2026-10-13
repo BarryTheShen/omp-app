@@ -323,7 +323,13 @@ export async function createCompositionServer(
       pathEnvironment: env.PATH ?? "",
     },
   );
-  const draftStore = createDraftStore({ env, homeDir, appDataDir, watchRegistry: fileWatch });
+  const draftStore = createDraftStore({
+    env,
+    homeDir,
+    appDataDir,
+    watchRegistry: fileWatch,
+    onError: (error) => logger.warn("drafts.error", { detail: error.appError.message }),
+  });
   const checkpointStore = new CheckpointStoreService({
     appDataDir,
     onError: (error) => logger.warn("checkpoints.error", { detail: error.appError.message }),

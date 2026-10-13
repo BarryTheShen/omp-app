@@ -32,8 +32,12 @@ export interface AttachmentStoreOptions {
   readonly homeDir?: string;
   readonly cwd?: string;
   readonly maxTotalBytes?: number;
-  /** Fresh DraftStore-backed references used for every cleanup/eviction pass. */
-  readonly referencedAttachments: () => Promise<readonly AttachmentRef[]>;
+  /** Fresh DraftStore-backed references for every cleanup and eviction pass. */
+  readonly referencedAttachments: () => Promise<{
+    readonly refs: readonly AttachmentRef[];
+    /** False while a draft file cannot be read: its pictures are unknown, so no blob is removed. */
+    readonly complete: boolean;
+  }>;
 }
 
 interface StoredMeta {
@@ -203,8 +207,10 @@ export class AttachmentStoreService {
     } catch (error) {
       throw toFailure(error, "write attachment metadata");
     }
-    await this.evictIfNeeded();
-    if (!(await this.fileExists(blobPath))) {
+    const withinCap = await this.evictIfNeeded();
+    if (!withinCap || !(await this.fileExists(blobPath))) {
+      // Refused: a blob this call wrote is removed, since nothing refers to it yet.
+      if (!existing.exists) await this.removeBlob(hash);
       throw unavailable("Attachment storage full: all remaining blobs are referenced.");
     }
     return { ref };
@@ -257,7 +263,10 @@ export class AttachmentStoreService {
     return { refs };
   }
 
-  /** Removes old unreferenced or over-cap blobs using a fresh DraftStore reference snapshot. */
+  /**
+   * Removes old unreferenced blobs, and over-cap ones, using a fresh DraftStore reference snapshot.
+   * Start-up is never refused for being over the cap: an upload is (see `put`).
+   */
   async cleanup(options: { readonly orphanAgeMs?: number } = {}): Promise<void> {
     this.assertOpen();
     await this.evictIfNeeded(options.orphanAgeMs);
@@ -280,15 +289,26 @@ export class AttachmentStoreService {
     return join(this.attachmentsDir, `${hash}.json`);
   }
 
-  private async evictIfNeeded(orphanAgeMs?: number): Promise<void> {
+  private async removeBlob(hash: string): Promise<void> {
+    await fs.rm(this.blobPath(hash), { force: true });
+    await fs.rm(this.metaPath(hash), { force: true });
+  }
+
+  /**
+   * Removes unreferenced blobs, oldest first, until the store is within its cap, and returns whether
+   * it is. While a draft cannot be read, or a reference names no blob, every blob counts as
+   * referenced, so none is removed.
+   */
+  private async evictIfNeeded(orphanAgeMs?: number): Promise<boolean> {
     const max = Math.max(1, Math.floor(this.#options.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES));
+    const references = await this.#options.referencedAttachments();
     const referenced = new Set<string>();
-    let malformedReference = false;
-    for (const ref of await this.#options.referencedAttachments()) {
+    let keepEveryBlob = !references.complete;
+    for (const ref of references.refs) {
       try {
         referenced.add(hashFromRef(ref));
       } catch {
-        malformedReference = true;
+        keepEveryBlob = true;
       }
     }
     await fs.mkdir(this.attachmentsDir, { recursive: true, mode: 0o700 });
@@ -315,16 +335,14 @@ export class AttachmentStoreService {
     blobs.sort((left, right) => left.createdAt - right.createdAt);
     const now = Date.now();
     for (const blob of blobs) {
-      const isReferenced = malformedReference || referenced.has(blob.hash);
+      const isReferenced = keepEveryBlob || referenced.has(blob.hash);
       const isOldOrphan =
         orphanAgeMs !== undefined && !isReferenced && now - blob.createdAt >= orphanAgeMs;
       if (!isOldOrphan && (total <= max || isReferenced)) continue;
-      await fs.rm(this.blobPath(blob.hash), { force: true });
-      await fs.rm(this.metaPath(blob.hash), { force: true });
+      await this.removeBlob(blob.hash);
       total -= blob.size;
     }
-    if (total > max)
-      throw unavailable("Attachment storage full: all remaining blobs are referenced.");
+    return total <= max;
   }
 
   private async fileExists(path: string): Promise<boolean> {

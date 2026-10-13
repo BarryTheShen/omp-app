@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppFailure, type DraftInput } from "@omp-app/contracts";
@@ -85,7 +85,7 @@ describe("DraftStoreService", () => {
     ).toMatchObject({
       text: "thread text",
     });
-    expect(await store.referencedAttachments()).toEqual([attachment()]);
+    expect(await store.referencedAttachments()).toEqual({ refs: [attachment()], complete: true });
     store.dispose();
   });
 
@@ -107,7 +107,7 @@ describe("DraftStoreService", () => {
     expect(saved.failedSends[0]?.text).toBe("failed-1");
     const loaded = (await store.get({ scope: { kind: "thread", threadId: "history" } })).draft;
     expect(loaded?.failedSends).toHaveLength(20);
-    expect((await store.referencedAttachments()).map((ref) => ref.id)).toEqual([
+    expect((await store.referencedAttachments()).refs.map((ref) => ref.id)).toEqual([
       "attachment-1",
       "failed-attachment",
     ]);
@@ -216,6 +216,49 @@ describe("DraftStoreService", () => {
     );
     expect(malformed.appError.code).toBe("invalid_args");
     expect(errors).toHaveLength(0);
+    store.dispose();
+  });
+
+  test("an unreadable draft file is named in a report and skipped; other pictures still count", async () => {
+    const root = await temporaryDirectory();
+    const errors: AppFailure[] = [];
+    const store = new DraftStoreService({
+      appDataDir: join(root, "app"),
+      onError: (error) => errors.push(error),
+    });
+    await store.save({
+      scope: { kind: "thread", threadId: "readable" },
+      draft: draftInput("kept"),
+      expectedRevision: null,
+    });
+    const threads = join(store.draftsDir, "threads");
+    const folders = join(store.draftsDir, "folders");
+    await mkdir(threads, { recursive: true });
+    await mkdir(folders, { recursive: true });
+    const empty = join(threads, "empty.json");
+    const notJson = join(threads, "not-json.json");
+    const newerVersion = join(folders, "newer.json");
+    await writeFile(empty, "", "utf8");
+    await writeFile(notJson, "{not-json", "utf8");
+    const newer = { version: 2, kind: "draft", text: "", attachments: [], failedSends: [] };
+    await writeFile(newerVersion, `${JSON.stringify(newer)}\n`, "utf8");
+
+    expect(await store.referencedAttachments()).toEqual({ refs: [attachment()], complete: false });
+    const messages = errors.map((error) => error.appError.message);
+    expect(messages).toHaveLength(3);
+    expect(messages).toContain(
+      `Cannot read draft file ${empty}: Draft file contains malformed JSON.`,
+    );
+    expect(messages).toContain(
+      `Cannot read draft file ${notJson}: Draft file contains malformed JSON.`,
+    );
+    expect(messages).toContain(
+      `Cannot read draft file ${newerVersion}: Draft file has an unsupported format.`,
+    );
+    // The unreadable files are left as they are, and the readable draft still loads.
+    expect(await readFile(empty, "utf8")).toBe("");
+    const loaded = await store.get({ scope: { kind: "thread", threadId: "readable" } });
+    expect(loaded.draft?.text).toBe("kept");
     store.dispose();
   });
 

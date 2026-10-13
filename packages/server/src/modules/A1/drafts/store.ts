@@ -51,6 +51,12 @@ export interface DraftStoreOptions {
 
 export type DraftChangeListener = (change: DraftChanged) => void | Promise<void>;
 
+/** What the saved drafts hold. `complete` is false while a draft file cannot be read. */
+export interface DraftAttachmentReferences {
+  readonly refs: readonly AttachmentRef[];
+  readonly complete: boolean;
+}
+
 type DraftScopeRequest =
   | { readonly kind: "thread"; readonly threadId: string }
   | { readonly kind: "folder"; readonly folder: string };
@@ -157,6 +163,12 @@ function reportError(callback: DraftStoreOptions["onError"], error: unknown): vo
   } catch {
     // An error observer must never become an uncaught watcher exception.
   }
+}
+
+/** A draft file that cannot be read: its path, so the person can find it, and the cause. */
+function unreadableDraft(path: string, error: unknown): AppFailure {
+  const cause = isAppFailure(error) ? error.appError.message : "it cannot be opened";
+  return appFailure("invalid_args", `Cannot read draft file ${path}: ${cause}`);
 }
 
 function scopeKey(scope: DraftScopeValue): string {
@@ -288,9 +300,14 @@ export class DraftStoreService {
     this.draftsDir = join(this.appDataDir, DRAFTS_DIRECTORY);
   }
 
-  /** Returns attachment refs from every valid persisted draft; tombstones contribute none. */
-  async referencedAttachments(): Promise<readonly AttachmentRef[]> {
+  /**
+   * The pictures the saved drafts hold. A draft file that cannot be read is reported by name
+   * through `onError` and skipped. The others still count, and `complete` is false, so no picture
+   * is taken for an orphan while a draft is unread. A folder that cannot be listed still fails.
+   */
+  async referencedAttachments(): Promise<DraftAttachmentReferences> {
     const refs = new Map<string, AttachmentRef>();
+    let complete = true;
     for (const directory of [THREADS_DIRECTORY, FOLDERS_DIRECTORY]) {
       const root = join(this.draftsDir, directory);
       let entries: string[] = [];
@@ -312,19 +329,23 @@ export class DraftStoreService {
         throw toFailure(error, "list draft attachments");
       }
       for (const entry of entries) {
+        const path = join(root, entry);
+        let value: StoredValue;
         try {
-          const value = parseStoredValue(await fs.readFile(join(root, entry), "utf8"));
-          if (value.kind !== "draft") continue;
-          for (const attachment of value.attachments) refs.set(attachment.id, attachment);
-          for (const failedSend of value.failedSends) {
-            for (const attachment of failedSend.attachments) refs.set(attachment.id, attachment);
-          }
+          value = parseStoredValue(await fs.readFile(path, "utf8"));
         } catch (error) {
-          throw toFailure(error, "read draft attachments");
+          complete = false;
+          reportError(this.#options.onError, unreadableDraft(path, error));
+          continue;
+        }
+        if (value.kind !== "draft") continue;
+        for (const attachment of value.attachments) refs.set(attachment.id, attachment);
+        for (const failedSend of value.failedSends) {
+          for (const attachment of failedSend.attachments) refs.set(attachment.id, attachment);
         }
       }
     }
-    return [...refs.values()];
+    return { refs: [...refs.values()], complete };
   }
 
   async get(args: DraftGetRequest): Promise<{ draft: Draft | null }> {
