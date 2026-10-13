@@ -15,6 +15,7 @@ import {
   type ModelChoice,
   OmpCommandGateway,
   type OmpWire,
+  type RpcSessionClient,
   RpcSessionPort,
   type RpcSessionSend,
   SessionFileStore,
@@ -209,6 +210,7 @@ import {
   useSlashCommands,
 } from "./slash-commands";
 import { finishedAnswerAt } from "./turn-end";
+import { useGoalCommands } from "./use-goal-command";
 
 const FOLDER_KEY = "omp.app.root.folder";
 const THREAD_KEY = "omp.app.root.thread";
@@ -770,6 +772,15 @@ function ActiveThreadReady({
       restoreFocus: composerInput() ?? undefined,
     });
   }, [capabilities, client, overlay, threadId]);
+  // omp's goal over RPC: the typed `/goal` and the palette's goal commands (use-goal-command.ts).
+  const { command: goalCommand, runFromPalette: runGoalFromPalette } = useGoalCommands({
+    capabilities,
+    fail: setCommandError,
+    notify: setCommandStatus,
+    rpc: rpc as RpcSessionClient,
+    store,
+    threadId,
+  });
   const commandHandlers = useMemo(() => {
     const handlers = new Map<DescriptorId, CommandPaletteHandler>();
     handlers.set("D5.new", () => {
@@ -864,6 +875,11 @@ function ActiveThreadReady({
     handlers.set("U0.themeSystem", () => setThemePreference("system"));
     handlers.set("U0.themeLight", () => setThemePreference("light"));
     handlers.set("U0.themeDark", () => setThemePreference("dark"));
+    // The palette's goal commands send the same operations as the typed `/goal` and report in the same header line.
+    handlers.set("U0.goalShow", () => runGoalFromPalette(""));
+    handlers.set("U0.goalPause", () => runGoalFromPalette("pause"));
+    handlers.set("U0.goalResume", () => runGoalFromPalette("resume"));
+    handlers.set("U0.goalDrop", () => runGoalFromPalette("drop"));
     return handlers;
   }, [
     catalog,
@@ -874,6 +890,7 @@ function ActiveThreadReady({
     openSessionBrowser,
     openThread,
     remote,
+    runGoalFromPalette,
     threadId,
   ]);
   const clearReason =
@@ -1105,8 +1122,10 @@ function ActiveThreadReady({
         },
       }),
       agentHubSlashCommand({ openAgentHub }),
+      goalCommand,
     ],
     [
+      goalCommand,
       lifecycle,
       onOpenSettings,
       openAgentHub,

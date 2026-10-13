@@ -70,9 +70,54 @@ export const U0_SHORTCUT_SHEET_COMMAND = {
   requires: [],
 } as const satisfies CommandDescriptor;
 
+/**
+ * The palette's goal commands. Each runs the same operation as the typed `/goal` form, and needs omp's `goal` command.
+ */
+export const U0_GOAL_COMMANDS = [
+  {
+    kind: "command",
+    id: "U0.goalShow",
+    owner: "U0",
+    title: "Show goal",
+    covers: [],
+    requires: ["omp.cmd.goal"],
+  },
+  {
+    kind: "command",
+    id: "U0.goalPause",
+    owner: "U0",
+    title: "Pause goal",
+    covers: [],
+    requires: ["omp.cmd.goal"],
+  },
+  {
+    kind: "command",
+    id: "U0.goalResume",
+    owner: "U0",
+    title: "Resume goal",
+    covers: [],
+    requires: ["omp.cmd.goal"],
+  },
+  {
+    kind: "command",
+    id: "U0.goalDrop",
+    owner: "U0",
+    title: "Drop goal",
+    covers: [],
+    requires: ["omp.cmd.goal"],
+  },
+] as const satisfies readonly CommandDescriptor[];
+
+/** The typed `/goal` form, which the shortcut sheet lists under Typed commands. */
+export const U0_GOAL_TYPED_COMMAND = {
+  text: "/goal",
+  title: "Show, set, pause, resume or drop the goal",
+} as const;
+
 /** Every palette command the U0 part owns; the composed registry lists them (`registry/index.ts`). */
 export const U0_PALETTE_COMMANDS = [
   U0_MODEL_COMMAND,
   U0_SHORTCUT_SHEET_COMMAND,
+  ...U0_GOAL_COMMANDS,
   ...U0_THEME_COMMANDS,
 ] as const;

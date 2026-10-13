@@ -23,9 +23,11 @@ import {
 } from "@/modules/D2/slash";
 import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { modeOutcomeText } from "@/modules/D7/modes";
+import type { GoalRpcArgs, GoalRpcResult } from "@/modules/D8/contract";
 import { createMcpProtocolCatalogs } from "@/modules/I1/protocol";
 import type { PromptIntent } from "@/modules/U2/contract";
 import type { AgentHubOpenResult } from "./agents/agent-hub-shortcut";
+import { describeGoalResult, parseGoalCommand } from "./goal-command";
 
 /**
  * The slash provider for the open chat. It is built once per chat and disposed when the chat changes.
@@ -198,6 +200,31 @@ export function hotkeysSlashCommand({
 }
 
 /**
+ * `/goal`: omp's goal mode is a terminal command (`handleTui`), but its RPC runs the same lifecycle as the `goal`
+ * command, so the app sends it there and says what omp now has. Bare `/goal` shows the goal; text after it sets one;
+ * `pause`, `resume` and `drop` act on it (goal-command.ts).
+ */
+export function goalSlashCommand({
+  sendGoal,
+}: {
+  readonly sendGoal: (args: GoalRpcArgs) => Promise<GoalRpcResult>;
+}): SlashAppCommand {
+  return {
+    name: "goal",
+    description: "Show, set, pause, resume or drop the goal",
+    takesArguments: true,
+    run: async ({ args }) => {
+      const command = parseGoalCommand(args ?? "");
+      if (command.kind === "refused") {
+        throw new AppFailure({ code: "unavailable", message: command.reason, retryable: false });
+      }
+      const result = await sendGoal(command.args);
+      return { message: describeGoalResult(command.args.op, result) };
+    },
+  };
+}
+
+/**
  * `/hub`: omp's Agent Hub is a terminal panel, so the app opens its own, the one Alt+A and the palette open. A chat
  * with no agent yet has nothing to show, and the header says so.
  */
@@ -326,7 +353,9 @@ export async function runSlashRoute({
   showStatus(null);
   const signal = intent.signal === undefined ? {} : { signal: intent.signal };
   if (route.kind === "app") {
-    const outcome = await route.command.run(signal);
+    const outcome = await route.command.run(
+      route.args === undefined ? signal : { ...signal, args: route.args },
+    );
     if (outcome.message !== undefined) showStatus(outcome.message);
     return;
   }

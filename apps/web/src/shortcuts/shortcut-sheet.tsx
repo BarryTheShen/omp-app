@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { P1_AGENT_HUB_TYPED_COMMAND } from "@/modules/P1/hub/descriptors";
-import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
+import { U0_GOAL_TYPED_COMMAND, U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { capabilityStatus, useCapabilities } from "@/registry-core";
 import { chordHasKey, chordLabel, isApplePlatform, storedChord } from "./chord-label";
 import {
@@ -18,8 +18,8 @@ import {
   useShortcutRegistry,
 } from "./context";
 
-/** The app's typed commands that open a surface; the sheet lists them under Typed commands. */
-const TYPED_COMMANDS = [P1_AGENT_HUB_TYPED_COMMAND];
+/** The app's typed commands that open a surface or run an omp command; the sheet lists them under Typed commands. */
+const TYPED_COMMANDS = [P1_AGENT_HUB_TYPED_COMMAND, U0_GOAL_TYPED_COMMAND];
 
 export interface ShortcutSheetProps {
   readonly open: boolean;

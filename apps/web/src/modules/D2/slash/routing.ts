@@ -2,21 +2,26 @@ import { type AbortSignalLike, AppFailure } from "@omp-app/contracts";
 import type { SlashListEntry } from "./rank";
 
 /**
- * A command the app runs itself, such as `/new`. It is named without the slash and takes no arguments; the
- * composition supplies `run`, and D2 never imports the module that does the work.
+ * A command the app runs itself, such as `/new`. It is named without the slash; the composition supplies `run`, and D2
+ * never imports the module that does the work. A bare name runs it with no arguments. A command that sets
+ * `takesArguments` also runs when text follows its name, and `run` then gets that text as `args`.
  */
 export interface SlashAppCommand {
   readonly name: string;
   readonly description: string;
+  /** Set for a command that reads the text after its name (`/goal ship the release`). Without it, `/name text` is not the app's. */
+  readonly takesArguments?: true;
   /** Resolves with an optional plain-English note for the header. Rejects with an AppFailure whose message the person sees. */
   readonly run: (options: {
     readonly signal?: AbortSignalLike;
+    /** The text after the name, trimmed. Given only when the command takes arguments and some were typed. */
+    readonly args?: string;
   }) => Promise<{ readonly message?: string }>;
 }
 
 export type SlashRoute =
   | { readonly kind: "omp"; readonly command: string }
-  | { readonly kind: "app"; readonly command: SlashAppCommand };
+  | { readonly kind: "app"; readonly command: SlashAppCommand; readonly args?: string };
 
 /**
  * omp commands the app answers itself in every form, because omp runs them the moment they are sent, whatever
@@ -82,6 +87,12 @@ export function routeSlashText(
     if (trimmed === `/${app.name}`) return { kind: "app", command: app };
   }
   const head = /^\S+/u.exec(trimmed)?.[0] ?? "";
+  // A command that takes arguments is the app's when text follows its name. The bare name is matched above, unchanged.
+  for (const app of appCommands) {
+    if (app.takesArguments === true && head === `/${app.name}`) {
+      return { kind: "app", command: app, args: trimmed.slice(head.length).trim() };
+    }
+  }
   const name = head.slice(1);
   if (name === "") return null;
   const known = entries.some(
