@@ -3,6 +3,7 @@ import type { AppError, AttachmentRef, CapabilityMap } from "@omp-app/contracts"
 import { AppFailure } from "@omp-app/contracts";
 import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
 import {
+  type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -14,6 +15,7 @@ import {
 import { chordLabel, isApplePlatform } from "@/shortcuts";
 import { Button } from "../../../components/ui/button";
 import type { PromptDelivery, PromptIntent } from "../../R0/runtime/runtime";
+import { classifyLargePaste, pastedTextName } from "../attachments";
 import {
   type ComposerDraft,
   type ComposerKeyChord,
@@ -150,7 +152,18 @@ function intentsForDecision(
   ];
 }
 
+/** A paste at or above the large-paste line count, waiting for the person to choose where it goes. */
+interface LargePaste {
+  readonly text: string;
+  readonly lineCount: number;
+  readonly selectionStart: number;
+  readonly selectionEnd: number;
+}
+
 const NO_CAPABILITIES: CapabilityMap = Object.freeze({});
+
+/** Why a message is not sent yet while a large paste's choice is open: its text is not in the message until it is chosen. */
+const PASTE_CHOICE_REASON = "Choose where the pasted text goes first. The message is not sent yet.";
 
 /** U2's assistant-ui composer surface; all submissions go through the injected R0.3 callback. */
 export function ComposerSurface({
@@ -183,8 +196,15 @@ export function ComposerSurface({
   const arrowGesture = useRef<ArrowGesture>(NO_ARROW_GESTURE);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const blockedId = useId();
-  // What holds a send back: the connection, or an image the message holds. Only the connection also holds Stop back.
-  const notSentReason = sendBlockedReason ?? attachmentHoldReason;
+  // A large paste waiting for the person's choice, and a counter for the names of pasted-text chips.
+  const [largePaste, setLargePaste] = useState<LargePaste | null>(null);
+  const pasteCount = useRef(0);
+  // What holds a send back: the connection, an image the message holds, or a large paste whose choice is open.
+  // Only the connection also holds Stop back.
+  const notSentReason =
+    sendBlockedReason ??
+    attachmentHoldReason ??
+    (largePaste === null ? undefined : PASTE_CHOICE_REASON);
   useRemeasureOnWidthChange(inputRef);
   const submit = useCallback(
     async (keyChord: ComposerKeyChord, delivery?: PromptDelivery) => {
@@ -263,6 +283,59 @@ export function ComposerSurface({
     }
   }, [canCancel, cancel, sendBlockedReason]);
 
+  /** Puts a large paste's text into the box where it was pasted, and tells the runtime the box changed. */
+  const insertLargePaste = useCallback((paste: LargePaste): void => {
+    const input = inputRef.current;
+    if (input === null) return;
+    const start = Math.min(paste.selectionStart, input.value.length);
+    const end = Math.min(paste.selectionEnd, input.value.length);
+    input.setRangeText(paste.text, start, end, "end");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, []);
+
+  const pasteInline = useCallback((): void => {
+    if (largePaste === null) return;
+    insertLargePaste(largePaste);
+    setLargePaste(null);
+    inputRef.current?.focus();
+  }, [insertLargePaste, largePaste]);
+
+  const attachAsBlock = useCallback(async (): Promise<void> => {
+    if (largePaste === null) return;
+    const name = pastedTextName(++pasteCount.current, largePaste.lineCount);
+    // The choice is answered at once, so a second press cannot add a second copy.
+    setLargePaste(null);
+    inputRef.current?.focus();
+    try {
+      await composer.addAttachment(new File([largePaste.text], name, { type: "text/plain" }));
+    } catch (cause) {
+      // The chip could not be added: the text goes into the box instead, so it is not lost.
+      insertLargePaste(largePaste);
+      setError(appFailure(cause).appError);
+    }
+  }, [composer, insertLargePaste, largePaste]);
+
+  const handlePaste = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      // A pasted file is attached by assistant-ui; only plain text can be a large paste.
+      if (event.clipboardData.files.length > 0) return;
+      const pasted = event.clipboardData.getData("text/plain");
+      const decision = classifyLargePaste(pasted);
+      if (decision.kind !== "choose") return;
+      event.preventDefault();
+      // A second large paste while a choice is open: the first goes inline now, so no text is dropped.
+      if (largePaste !== null) insertLargePaste(largePaste);
+      const input = event.currentTarget;
+      setLargePaste({
+        text: pasted,
+        lineCount: decision.lineCount,
+        selectionStart: input.selectionStart,
+        selectionEnd: input.selectionEnd,
+      });
+    },
+    [insertLargePaste, largePaste],
+  );
+
   const handleSubmitCapture = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -284,6 +357,18 @@ export function ComposerSurface({
         });
         arrowGesture.current = step.gesture;
         if (step.doubleTap) onDoubleLeftArrow?.();
+      }
+      // A large paste waiting for its choice goes inline on Escape, so its text is never lost. A key a trigger list
+      // already handled (defaultPrevented) is not the composer's to act on.
+      if (
+        event.key === "Escape" &&
+        largePaste !== null &&
+        !event.defaultPrevented &&
+        !event.nativeEvent.isComposing
+      ) {
+        event.preventDefault();
+        pasteInline();
+        return;
       }
       // A running turn takes Escape first, in bash and Python mode too: one press stops the turn
       // and the mode stays. With no turn running, Escape or an empty Backspace leaves bash and
@@ -315,7 +400,17 @@ export function ComposerSurface({
       event.stopPropagation();
       void submit(enterChord(event));
     },
-    [attachments, canCancel, composer, handleCancel, onDoubleLeftArrow, submit, text],
+    [
+      attachments,
+      canCancel,
+      composer,
+      handleCancel,
+      largePaste,
+      onDoubleLeftArrow,
+      pasteInline,
+      submit,
+      text,
+    ],
   );
 
   const chord = chordLabel("Mod+Enter", { mac: isApplePlatform() });
@@ -363,12 +458,29 @@ export function ComposerSurface({
               composingRef.current = true;
             }}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="Send a message..."
             rows={1}
             submitMode="none"
             className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
           />
         </div>
+        {largePaste !== null && !replaced && (
+          <div
+            className="flex flex-wrap items-center gap-(--space-xs) px-(--space-md)"
+            data-composer-paste-choice="true"
+          >
+            <p className="text-muted-foreground mr-auto text-sm">
+              Pasted {largePaste.lineCount} lines. Where should they go?
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void attachAsBlock()}>
+              Attach as a wrapped block
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={pasteInline}>
+              Paste inline
+            </Button>
+          </div>
+        )}
         {error && (
           <>
             <p

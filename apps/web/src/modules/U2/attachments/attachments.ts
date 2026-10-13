@@ -343,3 +343,57 @@ export async function applyLargePaste(
   if (choice === "inline") return { kind: "inline", text };
   return { kind: "attachment", ref: await manager.addTextAttachment(text) };
 }
+
+/** The name of a pasted-text chip: its number and line count, so two pastes never share a name. */
+export function pastedTextName(sequence: number, lineCount: number): string {
+  return `Pasted text ${sequence} (${lineCount} lines).txt`;
+}
+
+/** The name `pastedTextName` gives. Any other attachment is a file the person chose, and is sent as it always was. */
+const PASTED_TEXT_NAME = /^Pasted text \d+ \(\d+ lines\)\.txt$/;
+
+/** Wraps pasted text as omp does (omp v18.9.1 input-controller.ts:216-218): one quoted block for the model. */
+function wrappedBlock(text: string): string {
+  return `<attachment>\n${text}\n</attachment>`;
+}
+
+function unreadablePaste(): AppFailure {
+  return new AppFailure({
+    code: "internal",
+    message: "The pasted text could not be read. Remove it and paste it again.",
+    retryable: false,
+  });
+}
+
+/** The text a `data:` URL carries, decoded as UTF-8: the bytes the manager stored for the chip's file. */
+function textOfDataUrl(dataUrl: string): string {
+  const comma = dataUrl.indexOf(",");
+  if (!dataUrl.startsWith("data:") || comma < 0) throw unreadablePaste();
+  const bytes = Uint8Array.from(atob(dataUrl.slice(comma + 1)), (character) =>
+    character.charCodeAt(0),
+  );
+  return new TextDecoder().decode(bytes);
+}
+
+/** The full text of a pasted-text chip, read from the file the chip holds. Undefined for any other attachment. */
+function pastedText(attachment: CompleteAttachment): string | undefined {
+  if (!PASTED_TEXT_NAME.test(attachment.name)) return undefined;
+  for (const part of attachment.content) {
+    if (part.type === "file") return textOfDataUrl(part.data);
+  }
+  throw unreadablePaste();
+}
+
+/**
+ * The typed text, then the full text of each pasted-text chip in `attachments`, in chip order, each as omp's wrapped
+ * block. The text is read from the chip's own file, which the manager keeps with the chip, so a chip restored from a
+ * saved draft after a reload still sends its text.
+ */
+export function withPastedText(text: string, attachments: readonly CompleteAttachment[]): string {
+  const blocks: string[] = [];
+  for (const attachment of attachments) {
+    const pasted = pastedText(attachment);
+    if (pasted !== undefined) blocks.push(wrappedBlock(pasted));
+  }
+  return [text, ...blocks].filter((part) => part.length > 0).join("\n\n");
+}

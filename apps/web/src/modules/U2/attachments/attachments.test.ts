@@ -1,3 +1,4 @@
+import type { CompleteAttachment } from "@assistant-ui/react";
 import type { AttachmentRef } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import {
@@ -6,6 +7,7 @@ import {
   applyLargePaste,
   classifyLargePaste,
   type StoredAttachment,
+  withPastedText,
 } from "./attachments";
 
 class MemoryBlobStore implements AttachmentBlobStore {
@@ -220,5 +222,53 @@ describe("U2.3 AttachmentManager", () => {
     const complete = await manager.send(pending);
     await manager.remove(complete);
     expect(manager.toDraftRefs()).toEqual([]);
+  });
+});
+
+/** A completed chip as the manager holds it: its file's bytes stored as a data URL, the way the app's blob store does. */
+function completeChip(name: string, text: string | undefined): CompleteAttachment {
+  const data = `data:text/plain;base64,${btoa(String.fromCharCode(...new TextEncoder().encode(text ?? "")))}`;
+  return {
+    id: `id-${name}`,
+    type: "file",
+    name,
+    contentType: "text/plain",
+    status: { type: "complete" },
+    content: text === undefined ? [] : [{ type: "file", data, mimeType: "text/plain" }],
+  };
+}
+
+describe("U2.3 withPastedText", () => {
+  test("sends the typed text, then each pasted chip's text as omp's wrapped block, in chip order", () => {
+    const chips = [
+      completeChip("Pasted text 1 (2 lines).txt", "a\nb"),
+      completeChip("Pasted text 2 (1 lines).txt", "c"),
+    ];
+    expect(withPastedText("Summarize", chips)).toBe(
+      "Summarize\n\n<attachment>\na\nb\n</attachment>\n\n<attachment>\nc\n</attachment>",
+    );
+  });
+
+  test("with no typed text, sends only the blocks", () => {
+    expect(withPastedText("", [completeChip("Pasted text 1 (1 lines).txt", "a")])).toBe(
+      "<attachment>\na\n</attachment>",
+    );
+  });
+
+  test("a file the person chose is not wrapped, and the text is left as typed", () => {
+    expect(withPastedText("see attached", [completeChip("notes.txt", "x")])).toBe("see attached");
+  });
+
+  test("the text comes back as UTF-8, with accents and emoji intact", () => {
+    const text = "café 🙂";
+    expect(withPastedText("", [completeChip("Pasted text 1 (1 lines).txt", text)])).toBe(
+      `<attachment>\n${text}\n</attachment>`,
+    );
+  });
+
+  test("a pasted-text chip whose file cannot be read is an error, never a message without its text", () => {
+    expect(() =>
+      withPastedText("hi", [completeChip("Pasted text 1 (1 lines).txt", undefined)]),
+    ).toThrow("The pasted text could not be read");
   });
 });

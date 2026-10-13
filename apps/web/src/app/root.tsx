@@ -114,7 +114,12 @@ import {
 import { TranscriptShortcuts } from "@/modules/U1/shortcuts";
 import { ThreadShell, TurnCancelScope } from "@/modules/U1/thread";
 import { type ToolRendererResolver, ToolRendererResolverContext } from "@/modules/U1/tool-slots";
-import { AttachmentChips, AttachmentManager, attachmentHoldReason } from "@/modules/U2/attachments";
+import {
+  AttachmentChips,
+  AttachmentManager,
+  attachmentHoldReason,
+  withPastedText,
+} from "@/modules/U2/attachments";
 import { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-store";
 import { ComposerSurface } from "@/modules/U2/composer";
 import type {
@@ -1194,6 +1199,8 @@ function ActiveThreadReady({
       if (route === null) {
         await runtimeController.submitPrompt({
           ...intent,
+          // A pasted-text chip sends its full text, from the file the manager holds (also a chip restored after a reload).
+          text: withPastedText(intent.text, attachmentManager.getState().complete),
           attachmentRefs: attachmentManager.toDraftRefs(),
         });
         return;

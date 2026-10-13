@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { type PropsWithChildren, useMemo } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { PromptIntent } from "../../R0/runtime/runtime";
+import { type AttachmentBlobStore, AttachmentManager } from "../attachments";
 import type { SubmitPolicy } from "../contract";
 import { ComposerSurface } from "./composer";
 
@@ -552,5 +553,175 @@ describe("U2.2 ComposerSurface", () => {
       pressAt(input, "ArrowLeft", 1_200, init);
       expect(onDoubleLeftArrow).not.toHaveBeenCalled();
     });
+  });
+});
+
+/** The blob store the composer tests need: a pasted chip's text stays in the manager, so nothing is stored. */
+const NO_BLOBS: AttachmentBlobStore = {
+  put: async ({ id, file }) => ({
+    ref: { id, name: file.name, mediaType: file.type },
+    content: [],
+  }),
+  get: async () => {
+    throw new Error("the composer test never restores an attachment");
+  },
+  delete: async () => undefined,
+};
+
+function AttachmentRuntime({
+  children,
+  maxBytes,
+}: PropsWithChildren<{ readonly maxBytes?: number }>) {
+  const messages = useMemo<readonly ThreadMessage[]>(() => [], []);
+  const adapters = useMemo(
+    () => ({ attachments: new AttachmentManager({ blobStore: NO_BLOBS, maxBytes }) }),
+    [maxBytes],
+  );
+  const runtime = useExternalStoreRuntime({
+    messages,
+    adapters,
+    onNew: async () => undefined,
+    onCancel: async () => undefined,
+  });
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
+}
+
+/** Pastes plain text into the composer; false when the composer took the paste over (default prevented). */
+function pasteText(input: HTMLElement, text: string): boolean {
+  return fireEvent.paste(input, {
+    clipboardData: { files: [], getData: (type: string) => (type === "text/plain" ? text : "") },
+  });
+}
+
+describe("a large paste in the composer", () => {
+  const LARGE = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
+  const CHOICE = "Pasted 100 lines. Where should they go?";
+  const HOLD = "Choose where the pasted text goes first. The message is not sent yet.";
+
+  test("a paste of 100 lines opens the choice and keeps the text out of the box", () => {
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface submitPrompt={vi.fn(async () => undefined)} cancel={() => undefined} />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    expect(pasteText(input, LARGE)).toBe(false);
+    expect(screen.getByText(CHOICE)).toBeTruthy();
+    expect(input).toHaveProperty("value", "");
+  });
+
+  test("a paste of 99 lines is left to the box, as typed, with no choice", () => {
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface submitPrompt={vi.fn(async () => undefined)} cancel={() => undefined} />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    expect(pasteText(input, LARGE.split("\n").slice(0, 99).join("\n"))).toBe(true);
+    expect(screen.queryByText(/Where should they go/)).toBeNull();
+  });
+
+  test("Paste inline puts the full text where it was pasted", async () => {
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface submitPrompt={vi.fn(async () => undefined)} cancel={() => undefined} />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "ab" } });
+    input.setSelectionRange(1, 1);
+    pasteText(input, LARGE);
+    fireEvent.click(screen.getByRole("button", { name: "Paste inline" }));
+    await waitFor(() => expect(input).toHaveProperty("value", `a${LARGE}b`));
+    expect(screen.queryByText(CHOICE)).toBeNull();
+  });
+
+  test("Escape puts the text inline, so it is not lost", async () => {
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface submitPrompt={vi.fn(async () => undefined)} cancel={() => undefined} />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "ab" } });
+    input.setSelectionRange(1, 1);
+    pasteText(input, LARGE);
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(input).toHaveProperty("value", `a${LARGE}b`));
+    expect(screen.queryByText(CHOICE)).toBeNull();
+  });
+
+  test("Attach as a wrapped block adds one chip, and Send carries that chip with the typed text", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <AttachmentRuntime>
+        <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+      </AttachmentRuntime>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    pasteText(input, LARGE);
+    fireEvent.click(screen.getByRole("button", { name: "Attach as a wrapped block" }));
+    await waitFor(() =>
+      expect(screen.getAllByText("Pasted text 1 (100 lines).txt")).toHaveLength(1),
+    );
+    expect(screen.queryByText(CHOICE)).toBeNull();
+    expect(input).toHaveProperty("value", "");
+    fireEvent.change(input, { target: { value: "Summarize" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "prompt",
+        text: "Summarize",
+        attachmentRefs: [expect.objectContaining({ name: "Pasted text 1 (100 lines).txt" })],
+      }),
+    );
+  });
+
+  test("Enter waits while the choice is open: nothing is sent and the text stays; Paste inline releases it", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "ab" } });
+    input.setSelectionRange(1, 1);
+    pasteText(input, LARGE);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(submitPrompt).not.toHaveBeenCalled();
+    expect(input).toHaveProperty("value", "ab");
+    expect(screen.getByText(HOLD)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send message" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Paste inline" }));
+    await waitFor(() => expect(input).toHaveProperty("value", `a${LARGE}b`));
+    expect(screen.queryByText(HOLD)).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(submitPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "prompt", text: `a${LARGE}b` }),
+      ),
+    );
+  });
+
+  test("a chip that cannot be added puts the text into the box, and says why", async () => {
+    render(
+      <AttachmentRuntime maxBytes={10}>
+        <ComposerSurface submitPrompt={vi.fn(async () => undefined)} cancel={() => undefined} />
+      </AttachmentRuntime>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "ab" } });
+    input.setSelectionRange(1, 1);
+    pasteText(input, LARGE);
+    fireEvent.click(screen.getByRole("button", { name: "Attach as a wrapped block" }));
+    await waitFor(() => expect(input).toHaveProperty("value", `a${LARGE}b`));
+    expect(screen.queryByText(CHOICE)).toBeNull();
+    expect(screen.queryByText("Pasted text 1 (100 lines).txt")).toBeNull();
+    expect(screen.getByText("Attachment exceeds the 10 byte limit")).toBeTruthy();
   });
 });

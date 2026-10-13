@@ -13,5 +13,7 @@ export {
   applyLargePaste,
   attachmentHoldReason,
   classifyLargePaste,
+  pastedTextName,
+  withPastedText,
 } from "./attachments";
 export { AttachmentChips } from "./chips";
