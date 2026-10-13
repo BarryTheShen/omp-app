@@ -5,6 +5,7 @@ import {
   ModeChangeResult,
   modeChangeCommand,
   OmpCommandGateway,
+  SessionDeleteCommandResult,
   ShareResult,
 } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
@@ -55,6 +56,26 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
           }
           throw cause;
         }
+      },
+      sessionDelete: async (args, handlerContext): Promise<SessionDeleteCommandResult> => {
+        const command = "/session delete";
+        const caller = { connectionId: handlerContext.connectionId };
+        // The server checks the chat before omp deletes its file, then finishes the delete once omp reports it: omp can
+        // write the chat back when its omp stops, so the server stops it first, as the sidebar's own delete does.
+        const file = await context.sessionFileStore.checkOmpDelete(args.threadId, caller);
+        const { data } = await context.ompCommandGateway.runWithParser<SessionDeleteCommandResult>(
+          { threadId: args.threadId, command },
+          { signal: handlerContext.signal },
+        );
+        const result = typedReply(
+          data,
+          (value) => SessionDeleteCommandResult.parse(value),
+          command,
+        );
+        if (result.outcome === "deleted" && file !== undefined) {
+          await context.sessionFileStore.finishOmpDelete(file, caller);
+        }
+        return result;
       },
     },
     context.publish,

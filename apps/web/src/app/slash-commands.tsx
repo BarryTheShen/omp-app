@@ -8,6 +8,8 @@ import {
   modeChangeFromCommand,
   type PortCallOptions,
   type RpcSessionSend,
+  type SessionDeleteCommandArgs,
+  type SessionDeleteCommandResult,
   type ThreadId,
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -269,18 +271,22 @@ export function shareSlashCommand({
   return { name: "share", description: "Share this chat as a link", run };
 }
 
-/** The part of the chat's command gateway a guarded form uses: running one omp command. */
+/** The part of the chat's command gateway the guarded forms use: running one omp command, and the typed `/session delete`. */
 interface CommandRunGateway {
   readonly run: (
     args: { readonly threadId: ThreadId; readonly command: string },
     options?: PortCallOptions,
   ) => Promise<CommandRunResult>;
+  readonly sessionDelete: (
+    args: SessionDeleteCommandArgs,
+    options?: PortCallOptions,
+  ) => Promise<SessionDeleteCommandResult>;
 }
 
 /**
- * A guarded form that omp runs at once: `/session delete` or `/usage reset <target>`. The app asks first, the way its own
- * controls do. Confirm sends the command to omp once, through the chat's gateway, and shows omp's words; Cancel sends
- * nothing. `args` is the text after the words, for a command that takes arguments.
+ * A guarded form that omp runs at once, such as `/usage reset <target>`. The app asks first, the way its own controls do.
+ * Confirm sends the command to omp once, through the chat's gateway, and shows omp's words; Cancel sends nothing. `args` is
+ * the text after the words, for a command that takes arguments.
  */
 export function askFirstSlashCommand({
   name,
@@ -337,8 +343,99 @@ function sidebarChatName(
 }
 
 /**
- * The two guarded forms that run an omp command at once. `/session delete` asks with the chat's own delete question,
- * naming the chat the way the sidebar does; `/usage reset <target>` names the account and says that one reset is spent.
+ * `/session delete`: asks with the chat's own delete question, naming the chat the way the sidebar does. Confirm sends the
+ * command to omp once, through the typed gateway; Cancel sends nothing. omp deletes the chat's file, and only its reply
+ * saying so changes the view: the open chat leaves first, a new chat taking its place as the sidebar's own Delete leaves
+ * it, and then the chat's row goes from the list. The header shows no note for it: a note set on the chat that left would
+ * never show on the new chat. Any other reply changes nothing, and omp's words show.
+ */
+export function sessionDeleteSlashCommand({
+  confirm,
+  gateway,
+  threadId,
+  catalog,
+  lifecycle,
+  openThread,
+  showReport,
+}: {
+  readonly confirm: () => Promise<boolean>;
+  readonly gateway: CommandRunGateway;
+  readonly threadId: ThreadId;
+  readonly catalog: SessionCatalogModel | null;
+  readonly lifecycle: SessionLifecycleController | null;
+  readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly showReport: (report: CommandReport) => void;
+}): SlashAppCommand {
+  return {
+    name: "session delete",
+    description: "Delete this chat, after you confirm",
+    unlisted: true,
+    run: async ({ signal }) => {
+      if (!(await confirm())) return {};
+      const result = await gateway.sessionDelete(
+        { threadId },
+        signal === undefined ? {} : { signal },
+      );
+      if (result.outcome === "deleted") {
+        try {
+          await leaveDeletedChat(lifecycle, openThread);
+        } finally {
+          // The file is gone whatever the new chat did, so the row goes even when the new chat could not open.
+          removeListedChat(catalog, threadId);
+        }
+        // The view has left the chat, so the header has no note to show: the sidebar's own Delete shows none either.
+        return {};
+      }
+      const note = commandNote(result.outputs, "/session delete", showReport);
+      return note === undefined ? {} : { message: note };
+    },
+  };
+}
+
+/**
+ * Opens a new chat in place of the deleted one: the lifecycle's new session, the same one the sidebar's own New chat
+ * starts. A new session that cannot start is the failure the person sees.
+ */
+async function leaveDeletedChat(
+  lifecycle: SessionLifecycleController | null,
+  openThread: (threadId: ThreadId) => Promise<void>,
+): Promise<void> {
+  if (lifecycle === null) {
+    throw new AppFailure({
+      code: "unavailable",
+      message: "Starting a new chat requires a selected workspace folder.",
+      retryable: false,
+    });
+  }
+  const outcome = await lifecycle.newSession();
+  if (outcome.status === "completed") {
+    await openThread(outcome.value);
+    return;
+  }
+  if (outcome.status === "cancelled") return;
+  throw new AppFailure(outcome.error);
+}
+
+/**
+ * Drops the deleted chat's row from the folder's list. The catalog takes the change the server's `removed` event carries
+ * for the sidebar's own Delete, so the row goes and no later read brings it back. A chat the list does not hold has no row.
+ */
+function removeListedChat(catalog: SessionCatalogModel | null, threadId: ThreadId): void {
+  if (catalog === null) return;
+  const session = catalog.getSnapshot().sessions.find((item) => item.id === threadId);
+  if (session === undefined) return;
+  void catalog.reconcile({
+    kind: "removed",
+    folder: session.cwd,
+    sessionFile: session.sessionFile,
+    id: threadId,
+  });
+}
+
+/**
+ * The two guarded forms that run at once. `/session delete` asks with the chat's own delete question, naming the chat the
+ * way the sidebar does, and changes the view only once omp says it deleted the chat's file; `/usage reset <target>` names
+ * the account and says that one reset is spent.
  */
 export function askFirstSlashCommands({
   catalog,
@@ -346,6 +443,8 @@ export function askFirstSlashCommands({
   overlay,
   gateway,
   threadId,
+  lifecycle,
+  openThread,
   showReport,
 }: {
   readonly catalog: SessionCatalogModel | null;
@@ -354,17 +453,21 @@ export function askFirstSlashCommands({
   readonly overlay: OverlayOpener;
   readonly gateway: CommandRunGateway;
   readonly threadId: ThreadId;
+  /** Opens the new chat that takes the deleted chat's place, as the sidebar's own Delete does. */
+  readonly lifecycle: SessionLifecycleController | null;
+  readonly openThread: (threadId: ThreadId) => Promise<void>;
   /** Shows omp's words for a reply with several lines, in the command output panel. */
   readonly showReport: (report: CommandReport) => void;
 }): readonly SlashAppCommand[] {
   return [
-    askFirstSlashCommand({
-      name: "session delete",
-      description: "Delete this chat, after you confirm",
+    sessionDeleteSlashCommand({
       confirm: () =>
         openChatDeleteConfirm(overlay, sidebarChatName(catalog, threadId, fallbackTitle)),
       gateway,
       threadId,
+      catalog,
+      lifecycle,
+      openThread,
       showReport,
     }),
     askFirstSlashCommand({

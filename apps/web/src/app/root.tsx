@@ -1186,6 +1186,8 @@ function ActiveThreadReady({
         fallbackTitle: title,
         overlay,
         gateway: commandGateway,
+        lifecycle,
+        openThread,
         showReport: showCommandOutput,
       }),
       agentHubSlashCommand({ openAgentHub }),

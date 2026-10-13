@@ -109,7 +109,9 @@ realTest(
     await sendTyped(page, composer, "/session delete");
     await expect(deleteQuestion(page)).toBeVisible();
     await deleteQuestion(page).getByRole("button", { name: "Delete", exact: true }).click();
-    await expect(page.getByText(/Session deleted:/)).toBeVisible({ timeout: 30_000 });
+    // The open chat leaves for a new chat, and a deleted chat's header shows no note: the sidebar's own Delete shows none either (#1351).
+    await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Session deleted:/)).toHaveCount(0);
     await expect.poll(() => sessionFiles(realApp.agentDir), { timeout: 30_000 }).toHaveLength(0);
     await settle(page);
     await page.screenshot({ path: join(screenshots, "fix-1272-session-delete-after.png") });

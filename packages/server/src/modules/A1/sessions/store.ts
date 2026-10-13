@@ -555,6 +555,51 @@ export class SessionFileStore {
   }
 
   /**
+   * The checks a `/session delete` omp runs itself gets before omp runs: the chat's file is found, its turn does not run,
+   * and no other view holds it. omp writes a chat back once its file is gone, so a chat another view could still write
+   * must not be deleted at all; the sidebar's own delete makes the same refusals (`deleteSession`). Undefined when the chat
+   * has no file on disk: omp's own refusal says so.
+   */
+  async checkOmpDelete(
+    sessionId: string,
+    caller: { readonly connectionId: string },
+  ): Promise<SessionFile | undefined> {
+    const file = await this.findSession(sessionId);
+    if (file === undefined) return undefined;
+    if (file.turn === "running") throw appFailure("conflict", RUNNING_TURN_SENTENCE, true);
+    const views = this.#options.views;
+    if (
+      views !== undefined &&
+      views.watcherCount(file.id) > views.viewsOf(file.id, caller.connectionId)
+    ) {
+      throw heldFailure(this.#options, file.id, true);
+    }
+    return file;
+  }
+
+  /**
+   * Finishes a `/session delete` that omp ran on a chat and that deleted its file. omp writes the chat back when its omp
+   * stops, so the caller lets go of its own views, the chat's omp is stopped when nothing else watches it (the step the
+   * sidebar's delete takes before it removes a file), and the file is removed again if omp wrote it back. A stop that fails
+   * throws, and the error reaches the person.
+   */
+  async finishOmpDelete(
+    file: SessionFile,
+    caller: { readonly connectionId: string },
+  ): Promise<void> {
+    const views = this.#options.views;
+    if (views !== undefined && views.viewsOf(file.id, caller.connectionId) > 0) {
+      await views.releaseViews(file.id, caller.connectionId);
+    }
+    await this.#options.stopUnwatched?.(file.id);
+    try {
+      await fs.rm(file.sessionFile, { force: true });
+    } catch (error) {
+      throw appFailure("permission", "Unable to delete the omp session file", true, error);
+    }
+  }
+
+  /**
    * The refusals of a delete from `caller` that change nothing: a turn that runs, and another connection's view. Then the
    * caller's own views are let go, so the stop that follows treats the chat as unwatched.
    */

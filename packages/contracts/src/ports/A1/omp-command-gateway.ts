@@ -216,6 +216,19 @@ export const ModeChangeResult = z.union([
   }),
 ]);
 export type ModeChangeResult = z.infer<typeof ModeChangeResult>;
+/**
+ * `/session delete`: omp deletes the chat's file itself and replies (builtin-session.ts:274-288 at omp v18.6.1). `deleted` says
+ * omp removed the file, so the app leaves the chat and drops its row. `unknown` is any other reply (a refusal, a usage
+ * line): omp's own words are kept as omp sent them, and nothing changes. The browser does not read the words.
+ */
+export const SessionDeleteCommandArgs = z.strictObject({ threadId: ThreadId });
+export type SessionDeleteCommandArgs = z.infer<typeof SessionDeleteCommandArgs>;
+
+export const SessionDeleteCommandResult = z.union([
+  z.strictObject({ outcome: z.literal("deleted"), outputs: z.array(z.string()) }),
+  z.strictObject({ outcome: z.literal("unknown"), outputs: z.array(z.string()) }),
+]);
+export type SessionDeleteCommandResult = z.infer<typeof SessionDeleteCommandResult>;
 
 export const OmpCommandGateway = definePort({
   name: "A1.ompCommandGateway",
@@ -238,6 +251,11 @@ export const OmpCommandGateway = definePort({
     modeChange: {
       args: ModeChangeArgs,
       result: ModeChangeResult,
+      capability: "host.command-gateway",
+    },
+    sessionDelete: {
+      args: SessionDeleteCommandArgs,
+      result: SessionDeleteCommandResult,
       capability: "host.command-gateway",
     },
   },
