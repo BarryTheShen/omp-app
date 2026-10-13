@@ -51,6 +51,25 @@ async function expectStylesLoaded(page: Page): Promise<void> {
   );
 }
 
+/**
+ * Waits until the sessions drawer has finished opening: it takes input once its `inert` is gone, and its slide starts a
+ * frame after that, so two frames pass before the finite animations are awaited. Measuring before then reads the drawer
+ * mid-slide (issue 1519).
+ */
+async function waitForSessionsDrawerOpen(page: Page): Promise<void> {
+  await expect(page.locator("#shell-sessions-sidebar")).not.toHaveAttribute("inert", "");
+  await page.evaluate(async () => {
+    const nextFrame = (): Promise<void> => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      requestAnimationFrame(() => resolve());
+      return promise;
+    };
+    await nextFrame();
+    await nextFrame();
+  });
+  await waitForFiniteAnimations(page);
+}
+
 realTest(
   "a regenerated answer lists as a branch of its chat, with its own line, and the two rows read apart",
   async ({ realApp }, testInfo) => {
@@ -149,6 +168,7 @@ realTest(
     await page.getByRole("button", { name: "Show sessions sidebar" }).click();
     await expect(branch).toBeVisible();
     await expect(original).toBeVisible();
+    await waitForSessionsDrawerOpen(page);
     expect(await marker.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
     );
