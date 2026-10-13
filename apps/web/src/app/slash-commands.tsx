@@ -39,6 +39,7 @@ import {
 } from "@/modules/U4/dialogs/confirm-chat-delete";
 import { openDestructiveCommandConfirm } from "@/modules/U4/dialogs/confirm-destructive-command";
 import { openSpendResetConfirm } from "@/modules/U4/dialogs/confirm-spend-reset";
+import { openWorktreeConfirm } from "@/modules/U4/dialogs/confirm-worktree";
 import type { AgentHubOpenResult } from "./agents/agent-hub-shortcut";
 import type { CommandReport } from "./command-report/command-report";
 import { describeGoalResult, parseGoalCommand } from "./goal-command";
@@ -495,6 +496,17 @@ export function askFirstSlashCommands({
       threadId,
       showReport,
     }),
+    ...["wt", "worktree"].map((name) =>
+      askFirstSlashCommand({
+        name,
+        description: "Move this chat into a worktree, after you confirm",
+        takesArguments: true,
+        confirm: (branch) => openWorktreeConfirm(overlay, branch),
+        gateway,
+        threadId,
+        showReport,
+      }),
+    ),
     ...DESTRUCTIVE_FORMS.map((form) =>
       askFirstSlashCommand({
         name: form,

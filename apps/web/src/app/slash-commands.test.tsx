@@ -698,6 +698,57 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     expect(gateway.run).not.toHaveBeenCalled();
   });
 
+  /** Sends `/wt <branch>` through the app's own command list and renders the question it opens, the way the overlay would. */
+  function askedMoveQuestion(branch: string) {
+    const opened: OverlayOpenOptions[] = [];
+    const gateway = gatewayAnswering("Moved to worktree /tmp/feature (checked out).");
+    const commands = askFirstSlashCommands({
+      catalog: null,
+      fallbackTitle: "Conversation",
+      overlay: {
+        open: (options) => {
+          opened.push(options);
+          return undefined;
+        },
+      },
+      gateway,
+      threadId,
+      lifecycle: null,
+      openThread: async () => undefined,
+      showReport: () => undefined,
+    });
+    const move = commands.find((command) => command.name === "wt");
+    if (move === undefined) throw new Error("The app answers no /wt command.");
+    const done = move.run({ args: branch });
+    const content = opened[0]?.content;
+    if (typeof content !== "function") throw new Error("The question has no render function.");
+    render(
+      content({
+        id: "move-to-worktree",
+        close: () => undefined,
+        requestClose: () => undefined,
+        update: () => undefined,
+      }),
+    );
+    return { done, opened, gateway };
+  }
+
+  test("/wt asks with its own question, and Cancel sends nothing to omp", async () => {
+    const { done, opened, gateway } = askedMoveQuestion("feature");
+    expect(opened.map((options) => options.label)).toEqual(["Move to worktree"]);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await expect(done).resolves.toEqual({});
+    expect(gateway.run).not.toHaveBeenCalled();
+  });
+
+  test("Move chat sends `/wt <branch>` to omp once", async () => {
+    const { done, gateway } = askedMoveQuestion("feature");
+    fireEvent.click(screen.getByRole("button", { name: "Move chat" }));
+    await done;
+    expect(gateway.run).toHaveBeenCalledTimes(1);
+    expect(gateway.run).toHaveBeenCalledWith({ threadId, command: "/wt feature" }, {});
+  });
+
   test("a send that fails rejects with the same error, so the composer keeps the typed text", async () => {
     const failure = new AppFailure({
       code: "unavailable",
@@ -721,7 +772,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     await expect(command.run({})).rejects.toBe(failure);
   });
 
-  test("the app answers /session delete, /usage reset and each form that deletes data, and only the ones with arguments take a target", () => {
+  test("the app answers exactly /session delete, /usage reset, /wt, /worktree and each form that deletes data, and only the ones with a target take one", () => {
     const commands = askFirstSlashCommands({
       catalog: null,
       fallbackTitle: "Seeded chat 2",
@@ -735,6 +786,8 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     expect(commands.map((command) => [command.name, command.takesArguments])).toEqual([
       ["session delete", undefined],
       ["usage reset", true],
+      ["wt", true],
+      ["worktree", true],
       ...DESTRUCTIVE_FORMS.map((form) => [form, true]),
     ]);
   });

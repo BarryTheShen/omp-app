@@ -62,6 +62,9 @@ function triggerRuns(trigger: Trigger, rest: string): boolean {
  * - `marketplace remove|rm` delete a marketplace source, and `uninstall` deletes a plugin's installed files
  *   (builtin-marketplace.ts:124-130 and :181-187; marketplace/manager.ts:578-638, the removal at :636).
  * - `modelpreset delete <name>` deletes a saved preset (builtin-modes.ts:847-849, :981-983).
+ * - `wt` and its alias `worktree` move the chat into a new worktree. With omp's "Clean Source Checkout on /wt" setting on, they
+ *   also reset and clean the folder's checkout (builtin-lifecycle.ts:747, session-worktree.ts:96-103). The app cannot read that
+ *   setting, so every form asks first.
  */
 const GUARDED_OMP_COMMANDS: Record<string, true | Record<string, Trigger>> = {
   share: true,
@@ -72,6 +75,8 @@ const GUARDED_OMP_COMMANDS: Record<string, true | Record<string, Trigger>> = {
   mcp: { remove: "name", rm: "name" },
   marketplace: { remove: "target", rm: "target", uninstall: "target" },
   modelpreset: { delete: "target" },
+  wt: true,
+  worktree: true,
 };
 
 /** omp's `parseSubcommand`: the first word of the arguments in lower case, and the text after it. */

@@ -226,6 +226,13 @@ describe("#1272 omp subcommands that run at once are answered by the app, not se
     expect(guardedForm("/session delete now")).toBeNull();
     expect(guardedForm("/share now")).toEqual({ name: "share", args: "now" });
   });
+
+  test("/wt and its alias /worktree are guarded in every form: omp's clean-up of the source checkout needs the app's question", () => {
+    expect(guardedForm("/wt")).toEqual({ name: "wt", args: "" });
+    expect(guardedForm("/wt feature")).toEqual({ name: "wt", args: "feature" });
+    expect(guardedForm("/WT:feature")).toEqual({ name: "wt", args: "feature" });
+    expect(guardedForm("/worktree")).toEqual({ name: "worktree", args: "" });
+  });
 });
 
 describe("#1271 omp's terminal-only commands are answered by the app in plain words, never sent to the model", () => {
