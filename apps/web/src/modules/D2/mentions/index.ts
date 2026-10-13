@@ -15,4 +15,4 @@ export {
   rankFileMentions,
 } from "./mentions";
 export type { ComposerTriggerCandidate } from "./trigger-slot";
-export { MentionComposerSlot, MentionTriggerSlot } from "./trigger-slot";
+export { MentionComposerSlot } from "./trigger-slot";

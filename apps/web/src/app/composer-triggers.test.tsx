@@ -72,7 +72,13 @@ function Composed({
 }) {
   return (
     <RuntimeHarness>
-      <ComposerTriggers capabilities={capabilities} client={client} folder={folder}>
+      <ComposerTriggers
+        capabilities={capabilities}
+        client={client}
+        folder={folder}
+        notify={() => undefined}
+        fail={() => undefined}
+      >
         <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
       </ComposerTriggers>
     </RuntimeHarness>
@@ -228,7 +234,13 @@ describe("#818: Enter chooses the highlighted item, and does not send it", () =>
   ) {
     render(
       <RuntimeHarness>
-        <ComposerTriggers capabilities={EVERYTHING} client={client} folder={folder}>
+        <ComposerTriggers
+          capabilities={EVERYTHING}
+          client={client}
+          folder={folder}
+          notify={() => undefined}
+          fail={() => undefined}
+        >
           <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
         </ComposerTriggers>
       </RuntimeHarness>,

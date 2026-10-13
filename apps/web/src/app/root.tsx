@@ -1419,6 +1419,8 @@ function ActiveThreadReady({
       client={client}
       folder={folder}
       slash={slashProvider}
+      notify={setCommandStatus}
+      fail={setCommandError}
     >
       <ComposerHistory store={store}>
         <DraftComposer

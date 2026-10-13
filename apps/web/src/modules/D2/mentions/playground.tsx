@@ -1,14 +1,24 @@
 import {
   AssistantRuntimeProvider,
+  ComposerPrimitive,
   type ThreadMessage,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { useMemo, useState } from "react";
+import { type ComponentProps, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "../../../index.css";
 import { ComposerSurface } from "../../U2/composer/composer";
 import type { MentionProvider, TriggerSearchResult } from "../contract";
-import { MentionTriggerSlot } from "./trigger-slot";
+import { MentionComposerSlot } from "./trigger-slot";
+
+/** The mention lists under a trigger root of their own, as the playground mounts them. */
+function MentionTriggerSlot(props: ComponentProps<typeof MentionComposerSlot>) {
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <MentionComposerSlot {...props} />
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
+  );
+}
 
 const fileProvider: MentionProvider = {
   trigger: "@",
@@ -139,6 +149,8 @@ function Playground() {
             onSelect={(candidate) => {
               setSelected(candidate.label);
             }}
+            notify={setSelected}
+            fail={setSelected}
           >
             <ComposerSurface
               submitPrompt={async () => {

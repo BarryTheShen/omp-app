@@ -1,15 +1,25 @@
 import {
   AssistantRuntimeProvider,
+  ComposerPrimitive,
   type ThreadMessage,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ComposerSurface } from "@/modules/U2/composer";
 import type { MentionProvider, TriggerCandidate, TriggerSearchResult } from "../contract";
 import { type LocalProvider, LocalTriggerSlot } from "../local";
-import { MentionTriggerSlot } from "../mentions";
+import { MentionComposerSlot } from "../mentions";
+
+/** The mention lists under a trigger root of their own, as a test mounts them on their own. */
+function MentionTriggerSlot(props: ComponentProps<typeof MentionComposerSlot>) {
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <MentionComposerSlot {...props} />
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
+  );
+}
 
 function RuntimeHarness({ children }: { readonly children: ReactNode }) {
   const runtime = useExternalStoreRuntime({
@@ -55,7 +65,12 @@ function heldFileComposer(submitted: () => Promise<void>) {
   } as unknown as MentionProvider;
   render(
     <RuntimeHarness>
-      <MentionTriggerSlot providers={[provider]} onSelect={() => undefined}>
+      <MentionTriggerSlot
+        notify={() => undefined}
+        fail={() => undefined}
+        providers={[provider]}
+        onSelect={() => undefined}
+      >
         <ComposerSurface submitPrompt={submitted} cancel={() => undefined} />
       </MentionTriggerSlot>
     </RuntimeHarness>,
@@ -123,7 +138,12 @@ describe("#818: Enter waits for a list that is still loading", () => {
     const submitted = vi.fn(async () => undefined);
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[provider]} onSelect={() => undefined}>
+        <MentionTriggerSlot
+          notify={() => undefined}
+          fail={() => undefined}
+          providers={[provider]}
+          onSelect={() => undefined}
+        >
           <ComposerSurface submitPrompt={submitted} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -162,7 +182,12 @@ describe("#818: Enter waits for a list that is still loading", () => {
     } as unknown as MentionProvider;
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[provider]} onSelect={() => undefined}>
+        <MentionTriggerSlot
+          notify={() => undefined}
+          fail={() => undefined}
+          providers={[provider]}
+          onSelect={() => undefined}
+        >
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -309,7 +334,12 @@ describe("#1334: an Enter that commits an IME word does not choose the highlight
     const submitted = vi.fn(async () => undefined);
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[provider]} onSelect={() => undefined}>
+        <MentionTriggerSlot
+          notify={() => undefined}
+          fail={() => undefined}
+          providers={[provider]}
+          onSelect={() => undefined}
+        >
           <ComposerSurface submitPrompt={submitted} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,

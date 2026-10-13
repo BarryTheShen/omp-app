@@ -23,6 +23,8 @@ interface TriggerKeyScopeValue {
   readonly loading: (delta: 1 | -1, answer?: () => KeptEnterAnswer) => void;
   /** Presses Enter in the composer again once a choose has committed, so the chosen command is sent. */
   readonly sendAfterChoose: () => void;
+  /** The composer's textarea, read when it is needed: the caret and the text are current only there. */
+  readonly composerTextarea: () => HTMLTextAreaElement | null;
 }
 
 /** An Enter kept while a list loads: the scope it was pressed in, and the composer's textarea. */
@@ -120,6 +122,7 @@ export function TriggerKeyScope({
           if (textarea) pressEnterAgain(textarea);
         });
       },
+      composerTextarea: () => element.current?.querySelector("textarea") ?? null,
     }),
     [],
   );
@@ -177,4 +180,10 @@ export function useTriggerListLoading(loading: boolean, answer?: () => KeptEnter
 export function useSendAfterChoose(): () => void {
   const scope = useContext(TriggerKeyScopeContext);
   return useCallback(() => scope?.sendAfterChoose(), [scope]);
+}
+
+/** The composer's textarea inside this scope, for a list action that reads or moves the caret. */
+export function useComposerTextarea(): () => HTMLTextAreaElement | null {
+  const scope = useContext(TriggerKeyScopeContext);
+  return useCallback(() => scope?.composerTextarea() ?? null, [scope]);
 }

@@ -4,7 +4,7 @@ import {
   type Unstable_TriggerItem,
   unstable_useLiveCompletionAdapter,
 } from "@assistant-ui/react";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ComposerTriggerProvider, ComposerTriggerSlotProps } from "../../U2/contract";
 import type { TriggerCandidate, TriggerSearchResult } from "../contract";
 import { TriggerKeyScope, useTriggerListLoading } from "../shared/trigger-keys";
@@ -31,6 +31,8 @@ const URL_TRIGGER_CHARS = [
 interface TriggerItemsResult {
   readonly items: readonly Unstable_TriggerItem[];
   readonly candidates: ReadonlyMap<string, TriggerCandidate>;
+  /** Why the search could not answer, in plain words. It is shown in the list, never as a row to choose. */
+  readonly status: string | undefined;
 }
 
 function resultItems(result: TriggerSearchResult, trigger: LocalTrigger): TriggerItemsResult {
@@ -45,17 +47,7 @@ function resultItems(result: TriggerSearchResult, trigger: LocalTrigger): Trigge
       metadata: { insertText: candidate.insertText ?? `${trigger}${candidate.label} ` },
     };
   });
-  if (result.error) {
-    const id = `${trigger}:state:${result.error.state}`;
-    items.push({
-      id,
-      type: "state",
-      label: result.error.error.message,
-      description: result.error.state === "unavailable" ? "Unavailable" : "Search failed",
-      metadata: { insertText: "" },
-    });
-  }
-  return { items, candidates };
+  return { items, candidates, status: result.error?.error.message };
 }
 
 function directiveFormatter(trigger: LocalTrigger): Unstable_DirectiveFormatter {
@@ -73,10 +65,16 @@ function directiveFormatter(trigger: LocalTrigger): Unstable_DirectiveFormatter 
 function renderItems(
   items: readonly Unstable_TriggerItem[],
   trigger: LocalTrigger,
+  status: string | undefined,
 ): React.ReactNode {
   return (
     <div className="border-border bg-popover text-popover-foreground shadow-overlay max-h-72 min-w-64 overflow-y-auto rounded-lg border p-1">
-      {items.length === 0 ? (
+      {status !== undefined && (
+        <p role="status" className="text-muted-foreground px-3 py-2 text-sm">
+          {status}
+        </p>
+      )}
+      {items.length === 0 && status === undefined ? (
         <p className="text-muted-foreground px-3 py-2 text-sm">No matches</p>
       ) : (
         items.map((item, index) => (
@@ -138,12 +136,15 @@ function LocalTriggerPopover({
   readonly onSelect: (candidate: TriggerCandidate) => void;
 }) {
   const candidateMap = useRef<ReadonlyMap<string, TriggerCandidate>>(new Map());
+  // Why the last search could not answer: shown in the list, never as a row to choose.
+  const [status, setStatus] = useState<string | undefined>(undefined);
   const fetcher = useCallback(
     async (query: string): Promise<readonly Unstable_TriggerItem[]> => {
       if (!provider || !("searchTyped" in provider)) return [];
       const result = await provider.searchTyped(query);
       const next = resultItems(result, trigger);
       candidateMap.current = next.candidates;
+      setStatus(next.status);
       return next.items;
     },
     [provider, trigger],
@@ -180,7 +181,7 @@ function LocalTriggerPopover({
         onInserted={handleInserted}
       />
       <ComposerPrimitive.Unstable_TriggerPopoverItems>
-        {(items) => renderItems(items, trigger)}
+        {(items) => renderItems(items, trigger, status)}
       </ComposerPrimitive.Unstable_TriggerPopoverItems>
     </ComposerPrimitive.Unstable_TriggerPopover>
   );

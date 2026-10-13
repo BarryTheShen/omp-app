@@ -1,16 +1,27 @@
 import {
   AssistantRuntimeProvider,
+  ComposerPrimitive,
   type ThreadMessage,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import type { AppClient } from "@omp-app/client";
 import { FolderPath } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ComposerSurface } from "../../U2/composer/composer";
 import type { MentionProvider, TriggerSearchResult } from "../contract";
 import { createGithubMentionProvider } from "./mentions";
-import { MentionTriggerSlot } from "./trigger-slot";
+import { MentionComposerSlot } from "./trigger-slot";
+
+/** The mention lists under a trigger root of their own, as a test mounts them on their own. */
+function MentionTriggerSlot(props: ComponentProps<typeof MentionComposerSlot>) {
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <MentionComposerSlot {...props} />
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
+  );
+}
 
 function RuntimeHarness({ children }: { readonly children: React.ReactNode }) {
   const runtime = useExternalStoreRuntime({
@@ -22,6 +33,24 @@ function RuntimeHarness({ children }: { readonly children: React.ReactNode }) {
 }
 
 afterEach(() => cleanup());
+
+/** Where an action row reports, in the tests that do not read the report. */
+const quiet = { notify: () => undefined, fail: () => undefined };
+
+/** Presses one key as a browser does: `beforeinput` first, while the text is still the old text, then the change. */
+function pressKey(input: HTMLTextAreaElement, key: string, next: string): void {
+  fireEvent(
+    input,
+    new InputEvent("beforeinput", {
+      inputType: "insertText",
+      data: key,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  fireEvent.change(input, { target: { value: next } });
+  input.setSelectionRange(next.length, next.length);
+}
 
 /** Lets a pending search answer and the popover settle before a negative assertion. */
 function pause(): Promise<void> {
@@ -82,7 +111,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     const selected = vi.fn();
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[provider]} onSelect={selected}>
+        <MentionTriggerSlot {...quiet} providers={[provider]} onSelect={selected}>
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -114,7 +143,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     };
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[provider]} onSelect={() => undefined}>
+        <MentionTriggerSlot {...quiet} providers={[provider]} onSelect={() => undefined}>
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -131,7 +160,7 @@ describe("D2.4 MentionTriggerSlot", () => {
   test("with no provider offered, @ and # open no popover and typing is untouched", async () => {
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[]} onSelect={() => undefined}>
+        <MentionTriggerSlot {...quiet} providers={[]} onSelect={() => undefined}>
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -147,7 +176,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     }
   });
 
-  test("an unavailable search shows its row and never No matches", async () => {
+  test("an unavailable search shows its reason as text in the list, never No matches", async () => {
     const result: TriggerSearchResult = {
       state: "unavailable",
       candidates: [],
@@ -170,7 +199,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     };
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[files]} onSelect={() => undefined}>
+        <MentionTriggerSlot {...quiet} providers={[files]} onSelect={() => undefined}>
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -197,7 +226,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     };
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[github]} onSelect={() => undefined}>
+        <MentionTriggerSlot {...quiet} providers={[github]} onSelect={() => undefined}>
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -216,7 +245,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     const submitPrompt = vi.fn(async () => undefined);
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[issueTwelve]} onSelect={() => undefined}>
+        <MentionTriggerSlot {...quiet} providers={[issueTwelve]} onSelect={() => undefined}>
           <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -237,7 +266,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     const submitPrompt = vi.fn(async () => undefined);
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[issueTwelve]} onSelect={() => undefined}>
+        <MentionTriggerSlot {...quiet} providers={[issueTwelve]} onSelect={() => undefined}>
           <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -263,7 +292,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     };
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[github]} onSelect={() => undefined}>
+        <MentionTriggerSlot {...quiet} providers={[github]} onSelect={() => undefined}>
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -278,7 +307,11 @@ describe("D2.4 MentionTriggerSlot", () => {
   test("a bare # opens its list, and the list closes once a space makes the # a heading", async () => {
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[realGithubProvider()]} onSelect={() => undefined}>
+        <MentionTriggerSlot
+          {...quiet}
+          providers={[realGithubProvider()]}
+          onSelect={() => undefined}
+        >
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -296,7 +329,11 @@ describe("D2.4 MentionTriggerSlot", () => {
     const submitPrompt = vi.fn(async () => undefined);
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[realGithubProvider()]} onSelect={() => undefined}>
+        <MentionTriggerSlot
+          {...quiet}
+          providers={[realGithubProvider()]}
+          onSelect={() => undefined}
+        >
           <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -337,7 +374,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     };
     render(
       <RuntimeHarness>
-        <MentionTriggerSlot providers={[files]} onSelect={() => undefined}>
+        <MentionTriggerSlot {...quiet} providers={[files]} onSelect={() => undefined}>
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </MentionTriggerSlot>
       </RuntimeHarness>,
@@ -346,5 +383,175 @@ describe("D2.4 MentionTriggerSlot", () => {
     fireEvent.change(input, { target: { value: "before @src" } });
     (input as HTMLTextAreaElement).setSelectionRange(11, 11);
     expect(await screen.findByRole("listbox", { name: "File suggestions" })).toBeTruthy();
+  });
+
+  test("an unavailable search shows its reason in place of a row, so Enter sends the text", async () => {
+    const result: TriggerSearchResult = {
+      state: "unavailable",
+      candidates: [],
+      error: {
+        state: "unavailable",
+        error: {
+          code: "unavailable",
+          message: "File search is unavailable here.",
+          retryable: false,
+        },
+      },
+    };
+    const files: MentionProvider = {
+      trigger: "@",
+      kind: "file",
+      source: "a1.file-search",
+      search: async () => [],
+      searchTyped: async () => result,
+    };
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot {...quiet} providers={[files]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "before @src" } });
+    input.setSelectionRange(11, 11);
+    expect(await screen.findByText("File search is unavailable here.")).toBeTruthy();
+    expect(screen.queryByRole("option")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(submitPrompt).toHaveBeenCalledWith({
+        mode: "prompt",
+        text: "before @src",
+        delivery: "new",
+      }),
+    );
+  });
+
+  test("Move cursor to start removes the # and puts the caret at the start of the message", async () => {
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot
+          {...quiet}
+          providers={[realGithubProvider()]}
+          onSelect={() => undefined}
+        >
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "hello #" } });
+    input.setSelectionRange(7, 7);
+    fireEvent.click(await screen.findByText("Move cursor to start"));
+    await waitFor(() => expect(input.value).toBe("hello "));
+    expect(input.selectionStart).toBe(0);
+  });
+
+  test("Copy current line copies the line the # sits on, without the #, and says so", async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const notify = vi.fn();
+    try {
+      render(
+        <RuntimeHarness>
+          <MentionTriggerSlot
+            {...quiet}
+            notify={notify}
+            providers={[realGithubProvider()]}
+            onSelect={() => undefined}
+          >
+            <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+          </MentionTriggerSlot>
+        </RuntimeHarness>,
+      );
+      const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+      fireEvent.change(input, { target: { value: "first line\nsecond #" } });
+      input.setSelectionRange(19, 19);
+      fireEvent.click(await screen.findByText("Copy current line"));
+      await waitFor(() => expect(notify).toHaveBeenCalledWith("Copied the current line."));
+      expect(writeText).toHaveBeenCalledWith("second ");
+      expect(input.value).toBe("first line\nsecond ");
+    } finally {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  test("Undo reverts the last word typed before the #", async () => {
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot
+          {...quiet}
+          providers={[realGithubProvider()]}
+          onSelect={() => undefined}
+        >
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    let typed = "";
+    for (const character of "hello world #") {
+      pressKey(input, character, `${typed}${character}`);
+      typed += character;
+    }
+    fireEvent.click(await screen.findByText("Undo"));
+    await waitFor(() => expect(input.value).toBe("hello "));
+  });
+
+  test("Undo with nothing typed before the # says so and leaves the text as it is", async () => {
+    const notify = vi.fn();
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot
+          {...quiet}
+          notify={notify}
+          providers={[realGithubProvider()]}
+          onSelect={() => undefined}
+        >
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "#" } });
+    input.setSelectionRange(1, 1);
+    fireEvent.click(await screen.findByText("Undo"));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("There is nothing to undo."));
+    expect(input.value).toBe("");
+  });
+
+  test("a GitHub row is inserted as its link, not run as an action", async () => {
+    const result: TriggerSearchResult = {
+      state: "ready",
+      candidates: [
+        {
+          id: "github:current:issue:12",
+          kind: "github",
+          source: "a1.github-refs",
+          label: "issue #12",
+          insertText: "issue://12 ",
+        },
+      ],
+    };
+    const github: MentionProvider = {
+      trigger: "#",
+      kind: "github",
+      source: "a1.github-refs",
+      search: async () => [],
+      searchTyped: async () => result,
+    };
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot {...quiet} providers={[github]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "see #12" } });
+    input.setSelectionRange(7, 7);
+    fireEvent.click(await screen.findByText("issue #12"));
+    await waitFor(() => expect(input.value).toBe("see issue://12 "));
   });
 });

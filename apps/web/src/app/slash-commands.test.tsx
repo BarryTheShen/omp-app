@@ -358,6 +358,8 @@ describe("D2.3 the list inside the composer's trigger root", () => {
           client={fake.client}
           folder={null}
           capabilities={available}
+          notify={() => undefined}
+          fail={() => undefined}
           slash={provider}
         >
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />

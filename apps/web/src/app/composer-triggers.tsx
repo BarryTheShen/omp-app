@@ -29,6 +29,10 @@ export interface ComposerTriggersProps {
   /** The open chat's slash-command provider; `/` opens its command list when present. */
   readonly slash?: SlashCommandProvider | null | undefined;
   readonly children: ReactNode;
+  /** Says what a `#` action row did (a copy, or nothing to undo), in plain English: the app's status line. */
+  readonly notify: (message: string) => void;
+  /** Says why a `#` action row could not run, in plain English: the app's error line. */
+  readonly fail: (message: string) => void;
 }
 
 /** An available capability, or one that works through a fallback path. */
@@ -38,8 +42,8 @@ function usable(status: CapabilityStatus | undefined): boolean {
 
 /**
  * The providers the open chat's composer offers. A trigger whose capability is missing is left out
- * entirely. A provider whose search reports itself unavailable stays in: D2 keeps that trigger's
- * list closed, so the character types as plain text and no list or message appears.
+ * entirely. A provider whose search reports itself unavailable stays in: its list shows the reason
+ * as plain text, with no row to choose, so Enter sends what was typed.
  */
 export function composerTriggerProviders({
   client,
@@ -76,6 +80,8 @@ export function ComposerTriggers({
   folder,
   capabilities,
   slash,
+  notify,
+  fail,
   children,
 }: ComposerTriggersProps) {
   const providers = useMemo(
@@ -85,7 +91,12 @@ export function ComposerTriggers({
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverRoot>
       <LocalComposerSlot onSelect={keepInsertedText} providers={providers.local}>
-        <MentionComposerSlot onSelect={keepInsertedText} providers={providers.mention}>
+        <MentionComposerSlot
+          onSelect={keepInsertedText}
+          providers={providers.mention}
+          notify={notify}
+          fail={fail}
+        >
           <SlashComposerSlot onSelect={keepInsertedText} providers={slash ? [slash] : []}>
             {children}
           </SlashComposerSlot>

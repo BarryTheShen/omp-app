@@ -45,7 +45,13 @@ function RuntimeHarness({ children }: { readonly children: ReactNode }) {
 function Composed({ store }: { readonly store: OmpRuntimeStore }) {
   return (
     <RuntimeHarness>
-      <ComposerTriggers capabilities={{}} client={client} folder={null}>
+      <ComposerTriggers
+        capabilities={{}}
+        client={client}
+        folder={null}
+        notify={() => undefined}
+        fail={() => undefined}
+      >
         <ComposerHistory store={store}>
           <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
         </ComposerHistory>

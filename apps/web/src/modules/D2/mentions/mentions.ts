@@ -485,7 +485,7 @@ function replaceRange(
   };
 }
 
-function isPromptAction(value: unknown): value is PromptAction {
+export function isPromptAction(value: unknown): value is PromptAction {
   return typeof value === "string" && Object.hasOwn(ACTION_LABELS, value);
 }
 
