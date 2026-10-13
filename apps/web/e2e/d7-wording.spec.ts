@@ -89,7 +89,7 @@ test("the mode descriptions and statuses use plain words in light, dark and narr
   for (const sentence of [
     "Use larger context windows where the model supports them. This can cost more. Saved for every chat.",
     "Get faster replies when the model supports it.",
-    "Use the provider's slower, lower-cost option when it has one. Saved for every chat.",
+    "Use the provider's slower, lower-cost option when it has one.",
     "Replies run as usual when none of the settings above is on.",
     "Always available.",
   ]) {

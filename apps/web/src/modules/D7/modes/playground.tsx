@@ -23,8 +23,8 @@ function outcomeFor(request: ModeChangeRequest): ModeChangeResult {
 }
 
 /**
- * omp's get_state for Slow mode, per `?slow=` fixture: not offered (the default, as on the fake model), on, or on
- * with a usage-limit stage (`wrap-up` or `low-priority`), for the screenshots of those states.
+ * omp's get_state for Slow mode, per `?slow=` fixture: not offered (the default, as on the fake model), on, on for
+ * this chat only (`session`), or on with a usage-limit stage (`wrap-up` or `low-priority`), for the screenshots.
  */
 function slowFixture(
   value: string | null,
@@ -33,6 +33,8 @@ function slowFixture(
   switch (value) {
     case "on":
       return { slowModeSupported: true, slowModeEnabled: true, slowModeScope: "global" };
+    case "session":
+      return { slowModeSupported: true, slowModeEnabled: false, slowModeScope: "session" };
     case "wrap-up":
       return {
         slowModeSupported: true,

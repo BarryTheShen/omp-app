@@ -456,3 +456,56 @@ test("Slow mode says the low-priority stage and its allowance left in plain word
   });
   expect(problems).toEqual([]);
 });
+
+test("Slow mode says it applies to this chat only, in light, dark and narrow layouts", async ({
+  page,
+}) => {
+  const problems = collectProblems(page);
+  const sentence =
+    "Use the provider's slower, lower-cost option when it has one. Applies to this chat only.";
+  await page.goto(`${PLAYGROUND}?slow=session`);
+  await expect(page.getByTestId("d7-3-modes-playground")).toBeVisible();
+  await assertStyled(page);
+  const slow = page.getByRole("group", { name: "Slow mode controls" });
+  await expect(page.getByText(sentence, { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Use the provider's slower, lower-cost option when it has one. Saved for every chat.",
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  await expect(slow.getByRole("button", { name: "Turn off" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.mouse.move(0, 0);
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "fix-1300-slow-session-light.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+
+  const dark = await page.context().newPage();
+  const darkProblems = collectProblems(dark);
+  await dark.goto(`${PLAYGROUND}?slow=session&theme=dark`);
+  await expect(dark.locator("html")).toHaveClass(/dark/);
+  await expect(dark.getByTestId("d7-3-modes-playground")).toBeVisible();
+  await assertStyled(dark);
+  await dark.screenshot({
+    path: join(SCREENSHOT_ROOT, "fix-1300-slow-session-dark.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByText(sentence, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: join(SCREENSHOT_ROOT, "fix-1300-slow-session-narrow.png"),
+    animations: "disabled",
+    fullPage: true,
+  });
+  expect([...problems, ...darkProblems]).toEqual([]);
+});

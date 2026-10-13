@@ -10,6 +10,8 @@ afterEach(cleanup);
 
 const threadId = "d7-slow-row-thread" as ThreadId;
 
+const SLOW_BASE = "Use the provider's slower, lower-cost option when it has one.";
+
 function capabilities(): CapabilityMap {
   return {
     "host.command-gateway": CapabilityStatus.parse({ state: "available", via: "host" }),
@@ -143,6 +145,68 @@ describe("the Slow mode row as omp reports it", () => {
     expect(slow.getByRole("button", { name: "Turn on" }).getAttribute("aria-pressed")).toBe(
       "false",
     );
+    controller.dispose();
+  });
+
+  test("a model whose slow mode is saved in the settings says so in the row", async () => {
+    const controller = controllerWith(() =>
+      stateWith({ slowModeSupported: true, slowModeEnabled: false, slowModeScope: "global" }),
+    );
+    render(<ConnectedModeControls controller={controller} />);
+    expect(
+      await screen.findByText(`${SLOW_BASE} Saved for every chat.`, { exact: true }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(`${SLOW_BASE} Applies to this chat only.`, { exact: true }),
+    ).toBeNull();
+    controller.dispose();
+  });
+
+  test("a model whose slow mode is for this chat says so, and still says it while a change is sent", async () => {
+    let finishChange: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => {
+      finishChange = resolve;
+    });
+    const controller = controllerWith(
+      () =>
+        stateWith({ slowModeSupported: true, slowModeEnabled: false, slowModeScope: "session" }),
+      async (enabled) => {
+        await pending;
+        return { enabled };
+      },
+    );
+    render(<ConnectedModeControls controller={controller} />);
+    const slow = within(screen.getByRole("group", { name: "Slow mode controls" }));
+    const sentence = `${SLOW_BASE} Applies to this chat only.`;
+    expect(await screen.findByText(sentence, { exact: true })).toBeTruthy();
+    fireEvent.click(slow.getByRole("button", { name: "Turn on" }));
+    expect(await screen.findByText("Checking with omp…", { exact: true })).toBeTruthy();
+    expect(screen.getByText(sentence, { exact: true })).toBeTruthy();
+    expect(screen.queryByText(`${SLOW_BASE} Saved for every chat.`, { exact: true })).toBeNull();
+    finishChange();
+    controller.dispose();
+  });
+
+  test("before omp has reported Slow mode, the row names no place", () => {
+    const controller = controllerWith(() =>
+      stateWith({ slowModeSupported: true, slowModeEnabled: false, slowModeScope: "session" }),
+    );
+    render(<ConnectedModeControls controller={controller} refreshOnMount={false} />);
+    expect(screen.getByText(SLOW_BASE, { exact: true })).toBeTruthy();
+    expect(
+      screen.queryByText(`${SLOW_BASE} Applies to this chat only.`, { exact: true }),
+    ).toBeNull();
+    controller.dispose();
+  });
+
+  test("a model without slow mode names no place for it", async () => {
+    const controller = controllerWith(() =>
+      stateWith({ slowModeSupported: false, slowModeEnabled: false, slowModeScope: "global" }),
+    );
+    render(<ConnectedModeControls controller={controller} />);
+    expect(await screen.findByText(SLOW_UNSUPPORTED_TEXT, { exact: true })).toBeTruthy();
+    expect(screen.getByText(SLOW_BASE, { exact: true })).toBeTruthy();
+    expect(screen.queryByText(`${SLOW_BASE} Saved for every chat.`, { exact: true })).toBeNull();
     controller.dispose();
   });
 });

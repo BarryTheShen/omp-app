@@ -103,6 +103,13 @@ realTest(
 
     const before = await openDialog(page);
     await expectSlow(before, false);
+    // Haiku is a direct Anthropic model: omp keeps its Slow mode in the saved settings, and the row says so.
+    await expect(
+      before.getByText(
+        "Use the provider's slower, lower-cost option when it has one. Saved for every chat.",
+        { exact: true },
+      ),
+    ).toBeVisible();
     await capture(page, before, "fix-1200-slow-off-light.png");
     await slowButton(before, "Turn on").click();
     await expectSlow(before, true);

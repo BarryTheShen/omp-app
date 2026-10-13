@@ -2,7 +2,7 @@ import { type AppError, AppFailure } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { InlineError, Section, SettingRow, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
-import type { ModeSnapshot, ModeState } from "../contract";
+import type { ModeScope, ModeSnapshot, ModeState } from "../contract";
 import { type BrowserVisibility, type D73Mode, MODE_LABELS } from "./commands";
 import type { ModeControllerPort } from "./controller";
 import { usageLimitText } from "./slow";
@@ -92,6 +92,26 @@ function knownText(mode: D73Mode, state: ModeStateLike): string {
  */
 function fastChoice(fast: ModeSnapshot["fast"]): boolean | undefined {
   return fast.state === "known" ? fast.enabled : fast.requested;
+}
+
+/** The sentence on where Slow mode applies, in plain words, for each scope omp reports. */
+const SLOW_SCOPE_TEXT: Readonly<Partial<Record<ModeScope, string>>> = {
+  settings: "Saved for every chat.",
+  session: "Applies to this chat only.",
+};
+
+/**
+ * The Slow mode row's description. It names where Slow mode applies only once omp has said: direct Anthropic
+ * models keep it in the saved settings, OpenAI and Google models keep it for this chat. Before omp reports Slow
+ * mode, and for a model without it, the row names no place.
+ */
+function slowDescription(state: ModeState | undefined): string {
+  const base = "Use the provider's slower, lower-cost option when it has one.";
+  if (state === undefined) return base;
+  const reported =
+    state.state === "known" || (state.state === "requested" && state.requested !== undefined);
+  const scopeText = reported ? SLOW_SCOPE_TEXT[state.scope] : undefined;
+  return scopeText === undefined ? base : `${base} ${scopeText}`;
 }
 
 function isDisabled(state: ModeStateLike | undefined, busy: boolean): boolean {
@@ -287,7 +307,7 @@ export function ModeControls({ model, actions }: ModeControlsProps) {
             shownError={shownError}
           />
           <ToggleRow
-            description="Use the provider's slower, lower-cost option when it has one. Saved for every chat."
+            description={slowDescription(model.snapshot.modes.slow)}
             mode="slow"
             onRequest={actions.onRequest}
             chosen={model.snapshot.modes.slow?.requested}

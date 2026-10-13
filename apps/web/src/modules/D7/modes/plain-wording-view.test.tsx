@@ -99,7 +99,7 @@ describe("plain words in the mode descriptions", () => {
     "Allow omp to use the computer-control tool in this chat.",
     "Use larger context windows where the model supports them. This can cost more. Saved for every chat.",
     "Get faster replies when the model supports it.",
-    "Use the provider's slower, lower-cost option when it has one. Saved for every chat.",
+    "Use the provider's slower, lower-cost option when it has one.",
     "Replies run as usual when none of the settings above is on.",
     "Always available.",
   ])("shows %s", (sentence) => {
