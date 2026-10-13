@@ -177,6 +177,33 @@ function backgroundStarts(count: number): Reply {
 }
 
 /**
+ * `run_stale_background` starts three jobs: one ends after four seconds, one runs for fifteen minutes, and one ends
+ * after 25 seconds. A wait returns at the first job to end, so a card made then still lists the other two as running.
+ * The long job outlasts the wait for the third job's notice, even on a loaded machine.
+ */
+function staleBackgroundStarts(): Reply {
+  return {
+    tools: [
+      {
+        tool: "bash",
+        args: { command: "sleep 4; echo short-done", async: true },
+        id: "call_stale_0",
+      },
+      {
+        tool: "bash",
+        args: { command: "sleep 900; echo long-job", async: true },
+        id: "call_stale_1",
+      },
+      {
+        tool: "bash",
+        args: { command: "sleep 25; echo later-done", async: true },
+        id: "call_stale_2",
+      },
+    ],
+  };
+}
+
+/**
  * `stream_probe_child` takes one slow step, then streams one line of text and fails: its stream ends with an error
  * event, so omp's run fails and keeps the text it streamed. The step lets a wait card list the worker while it runs.
  */
@@ -248,6 +275,11 @@ function reply(request: Request): Reply {
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
     if (done === 0) return named;
     return { text: "background job started" };
+  }
+  if (text(messages[lastUser]?.content).includes("run_stale_background")) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done === 0) return staleBackgroundStarts();
+    return { text: "background jobs started" };
   }
   // Background jobs: each bash call returns at once (`async`), so the turn ends while each job keeps running.
   const backgroundCount = backgroundJobCountOf(text(messages[lastUser]?.content));

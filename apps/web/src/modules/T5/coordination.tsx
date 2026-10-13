@@ -258,6 +258,11 @@ export function JobRows({
           {stops.allOutcome.sentence}
         </p>
       )}
+      {stops.statusesAsOfCall && (
+        <p className="text-xs text-muted-foreground">
+          {"omp did not say which of these jobs it stopped, so their statuses may be out of date."}
+        </p>
+      )}
       {note !== undefined && <p className="text-xs text-muted-foreground">{note}</p>}
       <ul className="grid gap-2 text-xs">
         {jobs.slice(0, MAX_ITEMS).map((job) => (

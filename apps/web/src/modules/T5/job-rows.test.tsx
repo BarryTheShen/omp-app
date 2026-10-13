@@ -116,6 +116,7 @@ describe("T5 Tasks view: stopping background jobs", () => {
     );
     expect(screen.getAllByText("Cancelled")).toHaveLength(2);
     expect(screen.queryByText("Running")).toBeNull();
+    expect(screen.queryByText(/may be out of date/)).toBeNull();
   });
 
   test("Stop all with no running job left reads the running rows as Already finished", async () => {
@@ -131,19 +132,28 @@ describe("T5 Tasks view: stopping background jobs", () => {
     );
     expect(screen.getByText("Already finished")).toBeTruthy();
     expect(screen.queryByText("Running")).toBeNull();
+    expect(screen.queryByText(/may be out of date/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();
   });
 
-  test("a Stop all whose count differs from the rows shown keeps their status and says omp's count", async () => {
+  test("a Stop all whose count differs from the rows shown keeps their Stop controls, and says their statuses may be out of date", async () => {
     const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled 1 background job."]);
     renderJobs([job("bg_1", "running"), job("bg_2", "running")], gateway);
     fireEvent.click(screen.getByRole("button", { name: "Stop all background jobs" }));
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toBe("Stopped 1 background job."),
     );
-    // omp stopped one job, but the card lists two running ones and cannot tell which: no row claims a status.
+    // omp stopped one job, but the card lists two running ones and cannot tell which: no row claims a status, and
+    // each keeps its Stop control so it can still be stopped.
     expect(screen.getAllByText("Running")).toHaveLength(2);
     expect(screen.queryByText("Cancelled")).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop background job bg_2" })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "omp did not say which of these jobs it stopped, so their statuses may be out of date.",
+      ),
+    ).toBeTruthy();
   });
 
   test("a job stopped on its own, then Stop all, reads Cancelled for the rest", async () => {

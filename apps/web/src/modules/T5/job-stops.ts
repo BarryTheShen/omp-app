@@ -67,17 +67,22 @@ export interface JobStops {
    * ran; a stop that omp answered says what the job is now.
    */
   statusOf(job: JobSnapshot): string;
-  /** Whether a job shows its Stop control: it runs by the stops' answers, and no Stop all has ended the rest. */
+  /** Whether a job shows its Stop control: it runs by the stops' answers, and no Stop all has ended every running job. */
   canStop(job: JobSnapshot): boolean;
   /** omp's answer to the Stop of one job, once asked. */
   outcomeOf(jobId: string): StopOutcome | undefined;
   /** omp's answer to Stop all, once asked. */
   readonly allOutcome: StopOutcome | undefined;
+  /**
+   * Whether the card's statuses are only as of the call that listed the jobs: a Stop all answered, but omp's count did
+   * not say that every running job stopped.
+   */
+  readonly statusesAsOfCall: boolean;
   stop(jobId: string): Promise<void>;
   /**
    * Stops every job omp runs. `running` lists the card's jobs that run now. When omp's count of the jobs it stopped is
-   * the number of `running`, those are the jobs it stopped. Otherwise the card cannot tell which ones, so their status
-   * stays as the snapshot had it.
+   * the number of `running`, those are the jobs it stopped, and no Stop control is left. Otherwise the card cannot tell
+   * which ones it stopped: their status stays as the snapshot had it, and their Stop controls stay, so they can be stopped.
    */
   stopAll(running: readonly string[]): Promise<void>;
 }
@@ -89,8 +94,8 @@ export function useJobStops(): JobStops {
   const [allOutcome, setAllOutcome] = useState<StopOutcome | undefined>(undefined);
   const [cancelledByAll, setCancelledByAll] = useState<readonly string[]>([]);
   const [pending, setPending] = useState(false);
-  // omp stopped every job it runs, or had none running: no Stop control is left.
-  const allEnded = allOutcome?.status === "stopped" || allOutcome?.status === "finished";
+  // omp stopped every running job, or had none running: no Stop control is left. Otherwise the rows keep theirs.
+  const [endedAll, setEndedAll] = useState(false);
 
   async function stop(jobId: string): Promise<void> {
     const command = stopCommandFor(jobId);
@@ -112,8 +117,11 @@ export function useJobStops(): JobStops {
     setPending(true);
     try {
       const texts = await runCommand(STOP_ALL_COMMAND);
-      setAllOutcome(stopAllOutcomeOf(texts));
-      setCancelledByAll(stopAllCountOf(texts) === running.length ? running : []);
+      const outcome = stopAllOutcomeOf(texts);
+      const everyRunningJob = stopAllCountOf(texts) === running.length;
+      setAllOutcome(outcome);
+      setCancelledByAll(everyRunningJob ? running : []);
+      setEndedAll(everyRunningJob || outcome.status === "finished");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setAllOutcome({
@@ -136,7 +144,7 @@ export function useJobStops(): JobStops {
   function canStop(job: JobSnapshot): boolean {
     return (
       runCommand !== undefined &&
-      !allEnded &&
+      !endedAll &&
       statusOf(job) === "running" &&
       stopCommandFor(job.id) !== undefined
     );
@@ -150,6 +158,7 @@ export function useJobStops(): JobStops {
       return outcomes[jobId];
     },
     allOutcome,
+    statusesAsOfCall: allOutcome !== undefined && !endedAll,
     stop,
     stopAll,
   };
