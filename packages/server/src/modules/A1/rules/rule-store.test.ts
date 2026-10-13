@@ -65,7 +65,7 @@ describe("RuleStoreService", () => {
       name: "RULES",
       scope: "global",
       source: "agent",
-      enabled: true,
+      enabled: false,
       content: "Sticky",
     });
     expect(global.rules.find((rule) => rule.id === "alpha.md")).toMatchObject({
@@ -80,6 +80,31 @@ describe("RuleStoreService", () => {
       scope: "project",
       source: "project",
       content: "Project rule",
+    });
+  });
+
+  test("a RULES.md turned off is read back as off, as omp reads a sticky rule with enabled: false (issue 1365)", async () => {
+    const home = await temporaryDirectory();
+    const agent = join(home, ".omp", "agent");
+    await mkdir(agent, { recursive: true });
+    await writeFile(join(agent, "RULES.md"), "Sticky body", "utf8");
+    const store = new RuleStoreService({ homeDir: home, env: {} });
+    const before = await store.list({ scope: "global", folder: null });
+    const written = await store.write({
+      scope: "global",
+      folder: null,
+      id: RuleName.parse("RULES.md"),
+      content: "Sticky body",
+      enabled: false,
+      expectedRevision: before.revision,
+    });
+
+    expect(written.rule).toMatchObject({ id: "RULES.md", enabled: false });
+    expect(await readFile(join(agent, "RULES.md"), "utf8")).toContain("enabled: false");
+    const after = await store.list({ scope: "global", folder: null });
+    expect(after.rules.find((rule) => rule.id === "RULES.md")).toMatchObject({
+      enabled: false,
+      content: "Sticky body",
     });
   });
 

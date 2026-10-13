@@ -435,13 +435,17 @@ export class RuleStoreService {
     }
   }
 
+  /**
+   * A rule is on or off as its file says. A RULES.md with `enabled: false` is off: omp skips it (omp v18.8.9
+   * `discovery/helpers.ts:276`, loaded for RULES.md by `discovery/builtin.ts` `loadStickyRulesFile`).
+   */
   private ruleFromFile(location: RuleLocation, file: RuleFile): Rule {
     return {
       id: file.id,
       name: ruleName(file.id),
       scope: location.scope,
       content: file.parsed.content,
-      enabled: file.id === STICKY_RULE_NAME ? true : file.parsed.enabled,
+      enabled: file.parsed.enabled,
       source: location.source,
       revision: fileRevision(file.snapshot),
     };
