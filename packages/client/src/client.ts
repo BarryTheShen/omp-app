@@ -146,11 +146,17 @@ interface PendingRequest {
   settled: boolean;
 }
 
+/** One caller's hold on a stream: the listeners it attached, and whether it has let go. */
+interface SubscriptionHolder {
+  readonly listeners: Set<(payload: unknown, seq: number) => void>;
+  released: boolean;
+}
+
 interface SubscriptionRecord {
   stream: StreamKey;
   payload: z.ZodType;
-  listeners: Set<(payload: unknown, seq: number) => void>;
-  publicSubscription: AppClientSubscription<unknown>;
+  /** Every caller still holding the stream: it stays subscribed while any of them does. */
+  holders: Set<SubscriptionHolder>;
   lastSeq: number;
   active: boolean;
   subscribed: boolean;
@@ -337,10 +343,10 @@ class AppClientImpl implements AppClient {
     const listener = options.onEvent as ((payload: unknown, seq: number) => void) | undefined;
     const existing = this.subscriptions.get(stream);
     if (existing) {
-      // The stream is already subscribed (a chat kept for its running turn): the listener joins that subscription,
-      // and no second request is sent.
-      if (listener) existing.listeners.add(listener);
-      return existing.publicSubscription as AppClientSubscription<PortEventValue<P, E>>;
+      // The stream is already subscribed (a chat kept for its running turn): this caller joins it with a hold of its
+      // own, and no second request is sent. Letting go of that hold leaves the stream to the other callers.
+      const joined = this.addHolder(existing, listener);
+      return this.handleFor(existing, joined) as AppClientSubscription<PortEventValue<P, E>>;
     }
 
     const record = this.createSubscription(
@@ -349,7 +355,7 @@ class AppClientImpl implements AppClient {
       options.afterSeq ?? 0,
       options.afterSeq !== undefined,
     );
-    if (listener) record.listeners.add(listener);
+    const own = this.addHolder(record, listener);
     this.subscriptions.set(stream, record);
     try {
       await this.waitForOpen(options.signal);
@@ -358,11 +364,12 @@ class AppClientImpl implements AppClient {
         record.hasCursor ? record.lastSeq : undefined,
         options.signal,
       );
-      return record.publicSubscription as AppClientSubscription<PortEventValue<P, E>>;
+      return this.handleFor(record, own) as AppClientSubscription<PortEventValue<P, E>>;
     } catch (error) {
       // Only this subscribe's own record leaves the map; a later subscribe may have made another for the stream.
       if (this.subscriptions.get(stream) === record) this.subscriptions.delete(stream);
       record.active = false;
+      record.holders.clear();
       throw error;
     }
   }
@@ -379,7 +386,7 @@ class AppClientImpl implements AppClient {
     this.rejectOpenWaiters(error);
     for (const record of this.subscriptions.values()) {
       record.active = false;
-      record.listeners.clear();
+      record.holders.clear();
     }
     this.subscriptions.clear();
     const socket = this.socket;
@@ -548,7 +555,9 @@ class AppClientImpl implements AppClient {
       return;
     }
     record.lastSeq = frame.seq;
-    for (const listener of record.listeners) {
+    for (const listener of this.listenersOf(record)) {
+      // A listener that an earlier listener for this event released gets nothing more of it.
+      if (!record.active || !this.holdsListener(record, listener)) continue;
       try {
         listener(payload.data, frame.seq);
       } catch {
@@ -566,12 +575,30 @@ class AppClientImpl implements AppClient {
     const record = {} as SubscriptionRecord;
     record.stream = stream;
     record.payload = payload;
-    record.listeners = new Set();
+    record.holders = new Set();
     record.lastSeq = lastSeq;
     record.hasCursor = hasCursor;
     record.subscribed = false;
     record.active = true;
-    record.publicSubscription = {
+    return record;
+  }
+
+  private addHolder(
+    record: SubscriptionRecord,
+    listener: ((payload: unknown, seq: number) => void) | undefined,
+  ): SubscriptionHolder {
+    const holder: SubscriptionHolder = { listeners: new Set(), released: false };
+    if (listener) holder.listeners.add(listener);
+    record.holders.add(holder);
+    return holder;
+  }
+
+  /** One caller's handle on the stream: its listeners and its unsubscribe are its own, the stream is shared. */
+  private handleFor(
+    record: SubscriptionRecord,
+    holder: SubscriptionHolder,
+  ): AppClientSubscription<unknown> {
+    return {
       get stream() {
         return record.stream;
       },
@@ -579,20 +606,53 @@ class AppClientImpl implements AppClient {
         return record.lastSeq;
       },
       onEvent: (listener: (payload: unknown, seq: number) => void) => {
-        record.listeners.add(listener);
-        return () => record.listeners.delete(listener);
+        if (holder.released) return () => undefined;
+        holder.listeners.add(listener);
+        return () => {
+          holder.listeners.delete(listener);
+        };
       },
-      unsubscribe: () => this.unsubscribeRecord(record),
+      unsubscribe: () => this.releaseHolder(record, holder),
     };
-    return record;
+  }
+
+  /** Every listener any holder attached, each once: a listener two callers attached gets each event once. */
+  private listenersOf(record: SubscriptionRecord): Array<(payload: unknown, seq: number) => void> {
+    const listeners = new Set<(payload: unknown, seq: number) => void>();
+    for (const holder of record.holders) {
+      for (const listener of holder.listeners) listeners.add(listener);
+    }
+    return [...listeners];
+  }
+
+  private holdsListener(
+    record: SubscriptionRecord,
+    listener: (payload: unknown, seq: number) => void,
+  ): boolean {
+    for (const holder of record.holders) {
+      if (holder.listeners.has(listener)) return true;
+    }
+    return false;
+  }
+
+  /** Lets one caller's hold go: its listeners go with it, and the stream ends only when no caller holds it. */
+  private async releaseHolder(
+    record: SubscriptionRecord,
+    holder: SubscriptionHolder,
+  ): Promise<void> {
+    if (holder.released) return;
+    holder.released = true;
+    holder.listeners.clear();
+    record.holders.delete(holder);
+    if (record.holders.size === 0) await this.unsubscribeRecord(record);
   }
 
   private async unsubscribeRecord(record: SubscriptionRecord): Promise<void> {
     if (!record.active) return;
     record.active = false;
     record.subscribed = false;
-    this.subscriptions.delete(record.stream);
-    record.listeners.clear();
+    if (this.subscriptions.get(record.stream) === record) this.subscriptions.delete(record.stream);
+    record.holders.clear();
     if (!this.socket || !this.welcomeReceived || this.disposed) return;
     const id = this.nextRequestId();
     const frame = UnsubscribeFrame.parse({ type: "unsubscribe", id, stream: record.stream });
@@ -657,7 +717,7 @@ class AppClientImpl implements AppClient {
         record.subscribed = false;
         if (this.subscriptions.get(record.stream) === record)
           this.subscriptions.delete(record.stream);
-        record.listeners.clear();
+        record.holders.clear();
         this.emitResync({
           reason: "subscription-failed",
           stream: record.stream,

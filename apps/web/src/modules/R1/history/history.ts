@@ -375,16 +375,16 @@ export class SelectedThreadHistoryController {
   }
 
   /**
-   * A watched chat is opened again: the open takes its subscription over, and only the watch's hold is let go, since
-   * the open holds the chat now. Returns whether the chat was watched.
+   * A watched chat is opened again: the watch's listener goes and its server hold is let go. Returns the subscription the
+   * watch held, which `openNow` lets go once the open holds the chat itself; undefined when the chat was not watched.
    */
-  private takeOverTurnWatch(threadId: ThreadId): boolean {
+  private takeOverTurnWatch(threadId: ThreadId): EventSubscription | undefined {
     const watch = this.turnWatches.get(threadId);
-    if (watch === undefined) return false;
+    if (watch === undefined) return undefined;
     this.turnWatches.delete(threadId);
     watch.off();
     void this.release(threadId);
-    return true;
+    return watch.subscription;
   }
 
   /** Best effort: see `releaseThread`. */
@@ -416,11 +416,14 @@ export class SelectedThreadHistoryController {
     const closesAtStart = this.closes;
     await this.closeNow();
     this.commit({ isLoading: true, error: null });
+    // The subscription a watch held on this chat, if the open took the chat over. Let go only after the open subscribes.
+    let watchHold: EventSubscription | undefined;
     try {
       const result = await this.rpc.open(args);
       const threadId = result.threadId;
       // A chat left while its turn ran, and opened again now: this open takes over that chat's watch.
-      if (this.takeOverTurnWatch(threadId)) this.reopenedWhileRunning = threadId;
+      watchHold = this.takeOverTurnWatch(threadId);
+      if (watchHold) this.reopenedWhileRunning = threadId;
       const store = this.options.createStore?.(threadId, this.rpc) ?? this.defaultStore(threadId);
       const loader =
         this.options.createLoader?.(threadId, this.rpc, store) ??
@@ -463,6 +466,13 @@ export class SelectedThreadHistoryController {
       await this.closeNow();
       this.commit({ isLoading: false, error: failure.appError });
       throw failure;
+    } finally {
+      // The watch's hold goes once the open holds the chat, so the stream never drops in between.
+      if (watchHold) {
+        watchHold.unsubscribe().catch((error: unknown) => {
+          console.error("[omp-app] could not let go a watched chat's hold", error);
+        });
+      }
     }
   }
 

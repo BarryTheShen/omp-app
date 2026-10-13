@@ -76,6 +76,8 @@ class FakeServer {
   /** Events the fake server replays to a subscription that asks for a cursor, sent before its result. */
   readonly replay: ServerFrame[] = [];
   readonly subscribeAfterSeq: Array<number | undefined> = [];
+  /** The streams the client asked the server to stop, in order. */
+  readonly unsubscribed: string[] = [];
   readonly resyncConflicts = new Set<number>();
   /** Connection indexes whose subscribe requests are refused with `not_found`. */
   readonly refusedSubscriptions = new Set<number>();
@@ -207,6 +209,7 @@ class FakeServer {
       return;
     }
     if (frame.type === "unsubscribe") {
+      this.unsubscribed.push(frame.stream);
       connection.subscriptions.delete(frame.stream);
       socket.deliver({ type: "result", id: frame.id, ok: true, value: null });
       return;
@@ -482,7 +485,7 @@ describe("createAppClient", () => {
     client.dispose();
   });
 
-  test("a failed first subscribe leaves in place the record a later subscribe made for the chat, so that record still gets its events", async () => {
+  test("a refused first subscribe leaves no record: a later subscribe makes a fresh one and gets its events", async () => {
     const server = new FakeServer();
     const client = await openClient(server);
     // The first subscribe's request is held, so its record is still pending while the rest of the sequence runs.
@@ -491,20 +494,80 @@ describe("createAppClient", () => {
       .subscribe(EventPort, "updated", { scope: "thread-1" })
       .catch((error: unknown) => error);
     await eventually(() => server.heldSubscribes.length === 1);
-    // A second subscribe joins the pending record; unsubscribing that handle takes the record out of the map.
-    const joined = await client.subscribe(EventPort, "updated", { scope: "thread-1" });
-    await joined.unsubscribe();
+    // The server refuses the first request: its record leaves the map, so the next subscribe asks for a new one.
+    server.answerHeldSubscribe(true);
+    expect(await first).toMatchObject({ appError: { code: "not_found" } });
     const seqs: number[] = [];
     const later = await client.subscribe(EventPort, "updated", {
       scope: "thread-1",
       onEvent: (_payload, seq) => seqs.push(seq),
     });
-    // The first request is refused now. Its failure must not remove the record the later subscribe made.
-    server.answerHeldSubscribe(true);
-    expect(await first).toMatchObject({ appError: { code: "not_found" } });
+    expect(server.subscribeAfterSeq).toHaveLength(2);
     server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
     await eventually(() => seqs.length === 1);
     expect(later.lastSeq).toBe(1);
+    client.dispose();
+  });
+
+  test("letting go of one hold on a shared stream leaves the stream to the others, and the server hears once", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const received: number[] = [];
+    const first = await client.subscribe(EventPort, "updated", { scope: "thread-1" });
+    const second = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (_payload, seq) => received.push(seq),
+    });
+    await first.unsubscribe();
+    expect(server.unsubscribed).toEqual([]);
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => received.length === 1);
+    expect(second.lastSeq).toBe(1);
+    await second.unsubscribe();
+    expect(server.unsubscribed).toEqual(["A0.testEvents/updated/thread-1"]);
+    client.dispose();
+  });
+
+  test("a listener goes with the hold that attached it; the other hold's listener keeps receiving", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const kept: number[] = [];
+    const dropped: number[] = [];
+    const first = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (_payload, seq) => kept.push(seq),
+    });
+    const second = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (_payload, seq) => dropped.push(seq),
+    });
+    await second.unsubscribe();
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => kept.length === 1);
+    expect(dropped).toEqual([]);
+    expect(first.stream).toBe(second.stream);
+    client.dispose();
+  });
+
+  test("a listener two holds attached gets each event once, and keeps it while either hold is there", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const seen: number[] = [];
+    const listener = (_payload: { readonly value: string }, seq: number) => {
+      seen.push(seq);
+    };
+    const first = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: listener,
+    });
+    await client.subscribe(EventPort, "updated", { scope: "thread-1", onEvent: listener });
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => seen.length === 1);
+    expect(seen).toEqual([1]);
+    await first.unsubscribe();
+    server.emit("A0.testEvents/updated/thread-1", 2, { value: "two" });
+    await eventually(() => seen.length === 2);
+    expect(seen).toEqual([1, 2]);
     client.dispose();
   });
 
@@ -608,6 +671,31 @@ describe("createAppClient", () => {
       error: { code: "permission", message: "Launch link has expired" },
       tokenRefusal: "expired",
     });
+    client.dispose();
+  });
+
+  test("a listener that lets go of its hold during an event stops that hold's other listeners for it", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const seen: string[] = [];
+    const held = await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: () => {
+        seen.push("releases");
+        void held.unsubscribe();
+      },
+    });
+    held.onEvent(() => {
+      seen.push("other");
+    });
+    const kept: number[] = [];
+    await client.subscribe(EventPort, "updated", {
+      scope: "thread-1",
+      onEvent: (_payload, seq) => kept.push(seq),
+    });
+    server.emit("A0.testEvents/updated/thread-1", 1, { value: "one" });
+    await eventually(() => kept.length === 1);
+    expect(seen).toEqual(["releases"]);
     client.dispose();
   });
 

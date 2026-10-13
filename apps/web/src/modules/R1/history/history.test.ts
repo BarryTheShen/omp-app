@@ -57,6 +57,8 @@ interface SubscriptionRecord {
   readonly options?: SubscribeOptions;
   readonly listeners: Array<(event: RpcSessionEvent, seq: number) => void>;
   unsubscribed: boolean;
+  /** How many subscriptions the app had made when this one was let go. */
+  subscribesWhenUnsubscribed?: number;
 }
 
 function fakeClient(
@@ -91,6 +93,7 @@ function fakeClient(
         },
         unsubscribe: async () => {
           record.unsubscribed = true;
+          record.subscribesWhenUnsubscribed = subscriptions.length;
         },
       };
       return subscription as never;
@@ -857,6 +860,9 @@ describe("SelectedThreadHistoryController turns that run after the chat is left"
     await controller.openExisting(threadTwo);
 
     await controller.openExisting(threadOne);
+    // The watch's hold went after the open subscribed, so the stream never dropped in between.
+    expect(subscriptions[0]?.unsubscribed).toBe(true);
+    expect(subscriptions[0]?.subscribesWhenUnsubscribed).toBe(3);
 
     await vi.waitFor(() => expect(released).toContain(threadOne));
     expect(released.filter((threadId) => threadId === threadOne)).toEqual([threadOne]);
