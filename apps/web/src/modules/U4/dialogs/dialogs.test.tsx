@@ -107,6 +107,52 @@ describe("select dialog", () => {
     expect(result.answers).toEqual([]);
     expect(result.cancellations).toBe(1);
   });
+
+  test("typing a filter that hides the chosen option clears the choice, so Choose cannot send it", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-hidden" as UiRequestId,
+      title: "Choose an action",
+      options: ["Delete all", "Archive", "Rename", "Move", "Copy", "Export", "Share", "Cancel"],
+    });
+    fireEvent.click(screen.getByRole("option", { name: "Delete all" }));
+    expect((screen.getByRole("button", { name: "Choose" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter options" }), {
+      target: { value: "can" },
+    });
+    expect(screen.queryByRole("option", { name: "Delete all" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Choose" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(result.answers).toEqual([]);
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter options" }), {
+      target: { value: "" },
+    });
+    expect(screen.getByRole("option", { name: "Delete all" }).getAttribute("aria-selected")).toBe(
+      "false",
+    );
+    expect((screen.getByRole("button", { name: "Choose" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  test("after a filter hides the chosen option, Enter picks the option it leaves, and Choose sends that one", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-enter" as UiRequestId,
+      title: "Choose an action",
+      options: ["Delete all", "Archive", "Rename", "Move", "Copy", "Export", "Share", "Cancel"],
+    });
+    const filter = screen.getByRole("textbox", { name: "Filter options" });
+    fireEvent.click(screen.getByRole("option", { name: "Delete all" }));
+    fireEvent.change(filter, { target: { value: "can" } });
+    fireEvent.keyDown(filter, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(result.answers).toEqual([{ kind: "select", value: "Cancel" }]);
+  });
 });
 
 describe("confirm dialog", () => {

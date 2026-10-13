@@ -5,6 +5,21 @@ import type { SelectDialogRequest } from "../contract";
 import type { DialogRenderContext } from "../host";
 import { ANSWER_NOT_SENT, CancelButton, DialogFrame, ErrorText, SubmitButton } from "./common";
 
+/** The options a filter leaves listed: every option when the text is empty, otherwise those whose label or description contains it. */
+function listedOptions(request: SelectDialogRequest, text: string) {
+  const normalized = text.trim().toLocaleLowerCase();
+  return request.options
+    .map((label, index) => ({
+      label,
+      index,
+      description: request.optionDetails?.[index]?.description,
+    }))
+    .filter(({ label, description }) => {
+      if (!normalized) return true;
+      return `${label} ${description ?? ""}`.toLocaleLowerCase().includes(normalized);
+    });
+}
+
 export function SelectDialog({
   request,
   context,
@@ -17,19 +32,10 @@ export function SelectDialog({
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const showFilter = request.options.length > 7;
-  const filteredOptions = useMemo(() => {
-    const normalized = showFilter ? query.trim().toLocaleLowerCase() : "";
-    return request.options
-      .map((label, index) => ({
-        label,
-        index,
-        description: request.optionDetails?.[index]?.description,
-      }))
-      .filter(({ label, description }) => {
-        if (!normalized) return true;
-        return `${label} ${description ?? ""}`.toLocaleLowerCase().includes(normalized);
-      });
-  }, [query, request.options, request.optionDetails, showFilter]);
+  const filteredOptions = useMemo(
+    () => listedOptions(request, showFilter ? query : ""),
+    [query, request, showFilter],
+  );
 
   useEffect(() => {
     if (activeIndex >= filteredOptions.length)
@@ -81,8 +87,16 @@ export function SelectDialog({
             placeholder="Filter options"
             value={query}
             onChange={(event) => {
-              setQuery(event.currentTarget.value);
+              const nextQuery = event.currentTarget.value;
+              setQuery(nextQuery);
               setActiveIndex(0);
+              // A chosen option the new filter hides is unchosen, so Choose never sends an option that is not listed.
+              if (
+                selected !== null &&
+                !listedOptions(request, nextQuery).some((option) => option.label === selected)
+              ) {
+                setSelected(null);
+              }
             }}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
