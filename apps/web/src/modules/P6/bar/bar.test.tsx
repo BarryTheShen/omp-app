@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   createQueueAdapter,
@@ -6,7 +6,7 @@ import {
   type QueuePort,
   type QueueSnapshot,
 } from "../contract";
-import { QueueLaneBar } from "./bar";
+import { QueueLaneBar, useQueueOpen } from "./bar";
 
 afterEach(cleanup);
 
@@ -133,5 +133,15 @@ describe("QueueLaneBar", () => {
     const state = fixture({ ...snapshot, steering: [], followUp: [] });
     render(<QueueLaneBar controller={state.controller} />);
     expect(screen.queryByRole("complementary", { name: "Queued messages" })).toBeNull();
+  });
+
+  test("the queue's row is open only while a message waits, and follows the queue as it fills and empties", () => {
+    const state = fixture({ ...snapshot, steering: [], followUp: [] });
+    const { result } = renderHook(() => useQueueOpen(state.controller));
+    expect(result.current).toBe(false);
+    act(() => state.replace(snapshot));
+    expect(result.current).toBe(true);
+    act(() => state.replace({ ...snapshot, steering: [], followUp: [] }));
+    expect(result.current).toBe(false);
   });
 });

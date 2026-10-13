@@ -83,7 +83,7 @@ import {
   useP3RunHandlers,
 } from "@/modules/P3/runs";
 import { BranchSummaryRow, branchSummaryOfRow } from "@/modules/P3/summary";
-import { QueueLaneBar } from "@/modules/P6/bar/bar";
+import { QueueLaneBar, useQueueOpen } from "@/modules/P6/bar/bar";
 import { resolveQueueSubmitPolicy } from "@/modules/P6/composer/composer";
 import { createQueueAdapter } from "@/modules/P6/contract";
 import {
@@ -455,6 +455,7 @@ function DraftComposer({
   cancel,
   policy,
   toolbar,
+  queue,
   footer,
   footerOpen,
   editing,
@@ -471,8 +472,10 @@ function DraftComposer({
   readonly submit: (intent: PromptIntent) => Promise<void>;
   readonly cancel: () => Promise<void>;
   readonly policy: SubmitPolicy;
-  /** The composer's areas from the layout (`composerToolbar`, `composerFooter`). */
+  /** The composer's areas from the layout (`composerToolbar`, `composerQueue`, `composerFooter`). */
   readonly toolbar: ReactNode;
+  /** The queued messages' row (`composerQueue`), under the controls. */
+  readonly queue: ReactNode;
   readonly footer: ReactNode;
   readonly footerOpen: boolean;
   readonly editing: boolean;
@@ -520,6 +523,7 @@ function DraftComposer({
       sendBlockedReason={sendBlockedReason}
       submitPrompt={submit}
       toolbar={toolbar}
+      queue={queue}
       showAttachmentNames={false}
       onDoubleLeftArrow={onDoubleLeftArrow}
     >
@@ -1024,6 +1028,7 @@ function ActiveThreadReady({
     };
   }, [queueController]);
   const queueAdapter = useMemo(() => createQueueAdapter(queueController), [queueController]);
+  const queueOpen = useQueueOpen(queueAdapter);
   const todoStore = useChatTodoStore(store);
   const todoSnapshot = useSyncExternalStore(
     (listener) => todoStore.subscribe(listener),
@@ -1368,7 +1373,7 @@ function ActiveThreadReady({
     mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
     queue: {
       title: "Queued messages",
-      fullRow: true,
+      open: queueOpen,
       render: () => <QueueLaneBar connection={queueConnection} controller={queueAdapter} />,
     },
     attachments: {
@@ -1454,6 +1459,7 @@ function ActiveThreadReady({
           sendBlockedReason={sendBlockedReason}
           submit={submit}
           toolbar={area("composerToolbar")}
+          queue={area("composerQueue")}
         />
       </ComposerHistory>
       <HistorySearchDialog

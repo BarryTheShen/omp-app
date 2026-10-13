@@ -110,6 +110,17 @@ const STREAMED_LONG_CODE_REPLY = [
 ].join("\n");
 
 /**
+ * A reply that streams for about a minute: 240 lines of about eighty-eight characters, sent in pieces. A spec that queues
+ * messages during a reply needs the turn to stay open on a loaded machine, where the reply of `stream_long_code` is too
+ * short for that.
+ */
+const STREAMED_STEADY_REPLY = Array.from(
+  { length: 240 },
+  (_, index) =>
+    `Steady line ${index}: the reply keeps streaming while the queue waits, so the turn stays open.`,
+).join("\n");
+
+/**
  * A reply with math in every form a model writes: `$...$`, `$$...$$`, `\(...\)` and `\[...\]`, two prices in prose
  * (which stay text), and a code block (which stays code). The e2e spec `apps/web/e2e/fix-1167-math.spec.ts` counts on it.
  */
@@ -300,6 +311,7 @@ function reply(request: Request): Reply {
   if (prompt.includes("stream_code")) return { text: STREAMED_CODE_REPLY, streamed: true };
   if (prompt.includes("stream_long_code"))
     return { text: STREAMED_LONG_CODE_REPLY, streamed: true };
+  if (prompt.includes("stream_steady")) return { text: STREAMED_STEADY_REPLY, streamed: true };
   // Multi-select questions (issue #1157): one checkbox question, and a single plus a checkbox question in one ask.
   if (prompt.includes("checkbox_ask_two"))
     return {

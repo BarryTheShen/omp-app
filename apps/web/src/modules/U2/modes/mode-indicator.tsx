@@ -20,7 +20,7 @@ export const ModeIndicator: FC<ModeIndicatorProps> = ({ capabilities }) => {
   return (
     <fieldset
       data-slot="u2-mode-indicator"
-      className="flex min-w-0 items-center gap-(--space-2xs) border-0 p-0"
+      className="flex min-w-0 flex-wrap items-center gap-(--space-2xs) border-0 p-0"
     >
       <legend className="sr-only">Input mode</legend>
       <Button

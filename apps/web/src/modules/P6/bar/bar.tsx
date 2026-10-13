@@ -1,5 +1,5 @@
 import { ArrowUpIcon, XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "../../../components/ui/button";
 import {
   P6_QUEUE_CAPABILITIES,
@@ -181,4 +181,16 @@ export function QueueLaneBar({
       </div>
     </aside>
   );
+}
+
+/**
+ * Whether a message waits in the queue. The queue's row in the composer is open only then, so an empty queue takes no
+ * space, and the row follows the queue as it fills and empties.
+ */
+export function useQueueOpen(controller: QueueAdapterController): boolean {
+  const waiting = () => {
+    const snapshot = controller.getSnapshot();
+    return snapshot.items.length > 0 || snapshot.steerItems.length > 0;
+  };
+  return useSyncExternalStore((listener) => controller.subscribe(listener), waiting, waiting);
 }

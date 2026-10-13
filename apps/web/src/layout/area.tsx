@@ -29,11 +29,6 @@ export interface Surface {
   readonly reveal?: number;
   /** In a row area, take the free space (e.g. the header title). */
   readonly grow?: boolean;
-  /**
-   * In a row area that wraps, start a line of its own and take all of it, so a block such as a card
-   * never sits beside the controls on the line above it. Rendered empty, it takes no space.
-   */
-  readonly fullRow?: boolean;
   readonly render: () => ReactNode;
 }
 
@@ -45,6 +40,7 @@ const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   header: "flex min-w-0 flex-1 items-center gap-3",
   panels: "flex min-h-0 flex-1 flex-col",
   composerToolbar: "flex min-w-0 flex-wrap items-center gap-(--space-xs)",
+  composerQueue: "flex min-w-0 flex-col",
   composerFooter: "flex min-w-0 flex-col",
   threadFooter: "flex min-w-0 flex-1 flex-wrap items-center justify-end gap-(--space-sm)",
   // Above the transcript's sticky footer, so it follows that footer. It takes no pointer events itself:
@@ -84,11 +80,7 @@ export function areaSurfaces(
 
 function surfaceClass(area: LayoutAreaName, surface: Surface): string {
   const row = ROW_AREAS[area] === true;
-  return cn(
-    "min-w-0",
-    surface.grow && (row ? "flex-1" : "flex min-h-0 flex-1 flex-col"),
-    surface.fullRow && row && "basis-full empty:hidden",
-  );
+  return cn("min-w-0", surface.grow && (row ? "flex-1" : "flex min-h-0 flex-1 flex-col"));
 }
 
 type ListedPanels = readonly (readonly [SurfaceId, Surface])[];

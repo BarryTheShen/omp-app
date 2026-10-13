@@ -11,6 +11,7 @@ export type LayoutAreaName =
   | "header"
   | "panels"
   | "composerToolbar"
+  | "composerQueue"
   | "composerFooter"
   | "threadFooter"
   | "threadOverlay"
@@ -57,8 +58,10 @@ export const LAYOUT: AppLayout = {
    */
   panels: ["todo", "contextCard", "agents", "rewind", "commandOutput"],
   /** The inline control row inside the composer, left to right. */
-  composerToolbar: ["mode", "executionModes", "queue"],
-  /** Under that row. */
+  composerToolbar: ["mode", "executionModes"],
+  /** The queued messages, on a row of their own under the controls. The row is open only while a message waits. */
+  composerQueue: ["queue"],
+  /** Under the controls and the queue, at the foot of the composer. */
   composerFooter: ["editHandoff", "attachments"],
   /**
    * At the bottom of the transcript. The hidden-tools line comes first: while tool activity is shown it is empty, so
