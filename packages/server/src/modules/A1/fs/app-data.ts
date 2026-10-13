@@ -50,8 +50,8 @@ function pathFromInput(input?: string | AppDataDirectoryOptions): string {
 }
 
 /**
- * Ensures the app-owned data root exists with private permissions and removes
- * orphaned atomic-write files left by an interrupted process.
+ * Ensures the app-owned data root exists with private permissions and removes atomic-write temp files that no
+ * writer can still be using (see `cleanupAtomicTempFiles`).
  */
 export async function ensureAppDataDir(input?: string | AppDataDirectoryOptions): Promise<string> {
   const directory = pathFromInput(input);

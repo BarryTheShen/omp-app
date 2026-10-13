@@ -1,12 +1,24 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { watch } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppFailure } from "@omp-app/contracts";
 import {
   compareAndSwapFile,
   ensureAppDataDir,
+  ensureAppDataDirSync,
   hashContent,
   mayConcernFile,
   NO_FILE,
@@ -22,6 +34,25 @@ async function makeTemporaryDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "omp-app-fs-"));
   temporaryDirectories.push(directory);
   return directory;
+}
+
+/** The atomic-write temp files in a directory, by name. */
+async function temporaryFileNames(directory: string): Promise<string[]> {
+  const names = await readdir(directory);
+  return names.filter((name) => name.startsWith(".omp-atomic-") && name.endsWith(".tmp"));
+}
+
+async function setLastWrite(path: string, ageMs: number): Promise<void> {
+  const modified = new Date(Date.now() - ageMs);
+  await utimes(path, modified, modified);
+}
+
+/** Leaves a temp file of the kind an interrupted write leaves, last written `ageMs` ago; returns its name. */
+async function leaveTemporaryFile(directory: string, ageMs: number): Promise<string> {
+  const name = `.omp-atomic-${randomBytes(16).toString("hex")}.tmp`;
+  await writeFile(join(directory, name), "partial");
+  await setLastWrite(join(directory, name), ageMs);
+  return name;
 }
 
 async function waitForFilesystemEvents(): Promise<void> {
@@ -140,7 +171,7 @@ describe("atomic files", () => {
     expect(["left", "right"]).toContain(await readFile(path, "utf8"));
   });
 
-  test("leaves the old file after a crash before rename and cleans the orphan on restart", async () => {
+  test("leaves the old file after a crash before rename, and cleans the orphan once it is stale", async () => {
     const directory = await makeTemporaryDirectory();
     const path = join(directory, "crash.txt");
     await writeFile(path, "old");
@@ -153,19 +184,56 @@ describe("atomic files", () => {
     const child = Bun.spawn(["bun", "-e", script], { stderr: "pipe", stdout: "pipe" });
     expect(await child.exited).toBe(17);
     expect(await readFile(path, "utf8")).toBe("old");
-    expect(
-      (await readdir(directory)).some(
-        (name) => name.startsWith(".omp-atomic-") && name.endsWith(".tmp"),
-      ),
-    ).toBe(true);
+    expect(await temporaryFileNames(directory)).toHaveLength(1);
 
+    // The orphan of the crash has not been written for far longer than any live write takes.
+    for (const name of await temporaryFileNames(directory)) {
+      await setLastWrite(join(directory, name), 60 * 60_000);
+    }
     await ensureAppDataDir(directory);
-    expect(
-      (await readdir(directory)).some(
-        (name) => name.startsWith(".omp-atomic-") && name.endsWith(".tmp"),
-      ),
-    ).toBe(false);
+    expect(await temporaryFileNames(directory)).toEqual([]);
     expect(await readFile(path, "utf8")).toBe("old");
+  });
+
+  test("a sweep leaves alone the temp file of a write that is still in progress", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "draft.json");
+    await writeFileAtomic(path, "saved", {
+      // Between the fsync of the temp file and its rename, another write into the folder runs its sweep.
+      beforeRename: async () => {
+        await ensureAppDataDir(directory);
+        ensureAppDataDirSync(directory);
+      },
+    });
+    expect(await readFile(path, "utf8")).toBe("saved");
+    expect(await temporaryFileNames(directory)).toEqual([]);
+  });
+
+  test("a sweep leaves a temp file alone in the process writing it, however old its last write", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "draft.json");
+    await writeFileAtomic(path, "saved", {
+      beforeRename: async () => {
+        for (const name of await temporaryFileNames(directory)) {
+          await setLastWrite(join(directory, name), 60 * 60_000);
+        }
+        await ensureAppDataDir(directory);
+        ensureAppDataDirSync(directory);
+      },
+    });
+    expect(await readFile(path, "utf8")).toBe("saved");
+  });
+
+  test("a sweep removes only temp files last written over a minute ago", async () => {
+    const directory = await makeTemporaryDirectory();
+    const recent = await leaveTemporaryFile(directory, 0);
+    await leaveTemporaryFile(directory, 60 * 60_000);
+    await ensureAppDataDir(directory);
+    expect(await temporaryFileNames(directory)).toEqual([recent]);
+
+    await leaveTemporaryFile(directory, 60 * 60_000);
+    ensureAppDataDirSync(directory);
+    expect(await temporaryFileNames(directory)).toEqual([recent]);
   });
 });
 

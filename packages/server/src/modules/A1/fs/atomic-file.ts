@@ -15,7 +15,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { type AppError, AppFailure } from "@omp-app/contracts";
 
 const ATOMIC_TEMP_FILE_PATTERN = /^\.omp-atomic-[a-f0-9]{32}\.tmp$/;
@@ -23,6 +23,13 @@ const ATOMIC_LOCK_FILE_PATTERN = /^\.omp-atomic-lock-[a-f0-9]{32}\.lock$/;
 const SELF_WRITE_RETENTION_MS = 5_000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_WAIT_TIMEOUT_MS = 15_000;
+/**
+ * A temp file last written this long ago was left by a writer that died: a live writer renames its file moments
+ * after writing it. A sweep also never removes a temp file this process is still writing (`temporaryFilesInUse`).
+ */
+const ATOMIC_TEMP_STALE_MS = 60_000;
+/** The names of the temp files this process is writing and has not yet renamed or removed. */
+const temporaryFilesInUse = new Set<string>();
 
 export type AtomicFileContent = string | Uint8Array;
 export type ExpectedFileHash = string | null;
@@ -280,14 +287,20 @@ async function writeTempFile(
       throw error;
     }
   }
+  const name = basename(path);
+  temporaryFilesInUse.add(name);
   try {
     await handle.writeFile(content);
     await handle.chmod(0o600);
     await handle.sync();
     return { path, handle };
   } catch (error) {
-    await handle.close();
-    await unlinkTempFile(path);
+    try {
+      await handle.close();
+      await unlinkTempFile(path);
+    } finally {
+      temporaryFilesInUse.delete(name);
+    }
     throw error;
   }
 }
@@ -351,6 +364,8 @@ export async function writeFileAtomic(
         }
         await unlinkTempFile(temporary.path);
         throw error;
+      } finally {
+        temporaryFilesInUse.delete(basename(temporary.path));
       }
     }),
   );
@@ -389,6 +404,22 @@ function lockIsStaleSync(lockPath: string): boolean {
   }
 }
 
+/**
+ * Removes a temp file that no writer can still be using: not one this process is writing, and not one written
+ * within the last ATOMIC_TEMP_STALE_MS.
+ */
+async function removeStaleTempFile(path: string, name: string): Promise<void> {
+  if (temporaryFilesInUse.has(name)) return;
+  let modifiedMs: number;
+  try {
+    modifiedMs = (await fs.stat(path)).mtimeMs;
+  } catch (error) {
+    if (hasErrorCode(error, "ENOENT")) return;
+    throw error;
+  }
+  if (Date.now() - modifiedMs > ATOMIC_TEMP_STALE_MS) await unlinkTempFile(path);
+}
+
 export async function cleanupAtomicTempFiles(directory: string): Promise<void> {
   let entries: Dirent[];
   try {
@@ -403,12 +434,29 @@ export async function cleanupAtomicTempFiles(directory: string): Promise<void> {
       if (entry.isDirectory()) {
         await cleanupAtomicTempFiles(entryPath);
       } else if (ATOMIC_TEMP_FILE_PATTERN.test(entry.name)) {
-        await unlinkTempFile(entryPath);
+        await removeStaleTempFile(entryPath, entry.name);
       } else if (ATOMIC_LOCK_FILE_PATTERN.test(entry.name)) {
         await cleanupStaleLock(entryPath);
       }
     }),
   );
+}
+
+function removeStaleTempFileSync(path: string, name: string): void {
+  if (temporaryFilesInUse.has(name)) return;
+  let modifiedMs: number;
+  try {
+    modifiedMs = statSync(path).mtimeMs;
+  } catch (error) {
+    if (hasErrorCode(error, "ENOENT")) return;
+    throw error;
+  }
+  if (Date.now() - modifiedMs <= ATOMIC_TEMP_STALE_MS) return;
+  try {
+    unlinkSync(path);
+  } catch (error) {
+    if (!hasErrorCode(error, "ENOENT")) throw error;
+  }
 }
 
 export function cleanupAtomicTempFilesSync(directory: string): void {
@@ -419,11 +467,7 @@ export function cleanupAtomicTempFilesSync(directory: string): void {
     if (entry.isDirectory()) {
       cleanupAtomicTempFilesSync(entryPath);
     } else if (ATOMIC_TEMP_FILE_PATTERN.test(entry.name)) {
-      try {
-        unlinkSync(entryPath);
-      } catch (error) {
-        if (!hasErrorCode(error, "ENOENT")) throw error;
-      }
+      removeStaleTempFileSync(entryPath, entry.name);
     } else if (ATOMIC_LOCK_FILE_PATTERN.test(entry.name) && lockIsStaleSync(entryPath)) {
       try {
         unlinkSync(entryPath);
