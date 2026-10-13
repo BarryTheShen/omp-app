@@ -41,6 +41,14 @@ describe("U2.6 composer modes", () => {
     expect(textForMode("!!ls", "prompt")).toBe("ls");
   });
 
+  test("clicking the mode that is already on keeps the text as typed, marker included", () => {
+    expect(textForMode("!!cat ~/.netrc", "bash")).toBe("!!cat ~/.netrc");
+    expect(textForMode("!ls", "bash")).toBe("!ls");
+    expect(textForMode("$$ x", "python")).toBe("$$ x");
+    expect(textForMode("$ x", "python")).toBe("$ x");
+    expect(textForMode("ls", "prompt")).toBe("ls");
+  });
+
   test("does not exit prompt mode and exits bash/python on Escape or empty Backspace", () => {
     expect(shouldExitMode("prompt", "Escape", "")).toBe(false);
     expect(shouldExitMode("bash", "Escape", "cmd")).toBe(true);

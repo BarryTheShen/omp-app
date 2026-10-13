@@ -59,9 +59,13 @@ export function composerTextForIntent(intent: PromptIntent): string {
   }
 }
 
-/** Adds/removes terminal mode prefixes without keeping a second mode state. */
+/**
+ * Adds/removes terminal mode prefixes without keeping a second mode state. The text already in the mode that is
+ * asked for is returned as typed, so a `!!` or `$$` marker survives a click on the mode that is already on.
+ */
 export function textForMode(text: string, mode: PromptMode): string {
   const parsed = parseComposerMode(text);
+  if (parsed.mode === mode) return text;
   const body = parsed.mode === "prompt" ? text : parsed.text;
   switch (mode) {
     case "prompt":
