@@ -43,12 +43,42 @@ export interface GithubMentionProviderOptions {
 
 const DEFAULT_FILE_LIMIT = 30;
 const DEFAULT_GITHUB_LIMIT = 10;
-const ACTION_LABELS: Readonly<Record<PromptAction, string>> = {
-  "copy-current-line": "Copy current line",
-  "copy-prompt": "Copy prompt",
-  undo: "Undo",
-  "cursor-start": "Move cursor to start",
-  "cursor-end": "Move cursor to end",
+/** One `#` action row: the label, and the plain-words description a person reads under it. */
+interface PromptActionRow {
+  readonly label: string;
+  readonly description: string;
+}
+
+/** The `#` action rows in the order the list shows them. Each description says what the row does, in words. */
+const ACTIONS: Readonly<Record<PromptAction, PromptActionRow>> = {
+  "copy-current-line": {
+    label: "Copy current line",
+    description: "Copies the line the cursor is on",
+  },
+  "copy-prompt": {
+    label: "Copy whole prompt",
+    description: "Copies everything typed so far",
+  },
+  undo: {
+    label: "Undo",
+    description: "Takes back the last word typed",
+  },
+  "cursor-start": {
+    label: "Move cursor to message start",
+    description: "Moves the cursor to the start of the message",
+  },
+  "cursor-end": {
+    label: "Move cursor to message end",
+    description: "Moves the cursor to the end of the message",
+  },
+  "cursor-line-start": {
+    label: "Move cursor to line start",
+    description: "Moves the cursor to the start of this line",
+  },
+  "cursor-line-end": {
+    label: "Move cursor to line end",
+    description: "Moves the cursor to the end of this line",
+  },
 };
 
 export interface PromptActionEffect {
@@ -381,22 +411,32 @@ function githubTriggerCandidate(
 
 function actionCandidates(query: string): readonly TriggerCandidate[] {
   const normalized = query.trim().toLocaleLowerCase();
-  return (Object.entries(ACTION_LABELS) as Array<[PromptAction, string]>)
+  return (Object.entries(ACTIONS) as Array<[PromptAction, PromptActionRow]>)
     .filter(
-      ([action, label]) =>
+      ([action, { label }]) =>
         normalized.length === 0 ||
         action.includes(normalized) ||
         label.toLocaleLowerCase().includes(normalized),
     )
-    .map(([action, label]) => ({
+    .map(([action, { label, description }]) => ({
       id: `action:${action}`,
       kind: "prompt-action" as const,
       source: "client" as const,
       label,
-      description: `#${action}`,
+      description,
       insertText: "",
       metadata: { action },
     }));
+}
+
+/** The start and the end of the line the caret is on: the end is the newline after it, or the end of the text. */
+function lineBounds(
+  text: string,
+  cursor: number,
+): { readonly start: number; readonly end: number } {
+  const start = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+  const newline = text.indexOf("\n", cursor);
+  return { start, end: newline < 0 ? text.length : newline };
 }
 
 export function executePromptAction(
@@ -407,9 +447,8 @@ export function executePromptAction(
   const cursor = Math.max(0, Math.min(cursorPosition, text.length));
   switch (action) {
     case "copy-current-line": {
-      const start = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
-      const newline = text.indexOf("\n", cursor);
-      return { text, cursor, copyText: text.slice(start, newline < 0 ? text.length : newline) };
+      const { start, end } = lineBounds(text, cursor);
+      return { text, cursor, copyText: text.slice(start, end) };
     }
     case "copy-prompt":
       return { text, cursor, copyText: text };
@@ -419,6 +458,10 @@ export function executePromptAction(
       return { text, cursor: 0 };
     case "cursor-end":
       return { text, cursor: text.length };
+    case "cursor-line-start":
+      return { text, cursor: lineBounds(text, cursor).start };
+    case "cursor-line-end":
+      return { text, cursor: lineBounds(text, cursor).end };
   }
 }
 
@@ -486,7 +529,7 @@ function replaceRange(
 }
 
 export function isPromptAction(value: unknown): value is PromptAction {
-  return typeof value === "string" && Object.hasOwn(ACTION_LABELS, value);
+  return typeof value === "string" && Object.hasOwn(ACTIONS, value);
 }
 
 function metadataLineRange(value: unknown): FileMentionCandidate["lineRange"] | undefined {

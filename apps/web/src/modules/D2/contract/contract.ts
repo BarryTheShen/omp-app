@@ -161,6 +161,8 @@ export const PromptAction = z.enum([
   "undo",
   "cursor-start",
   "cursor-end",
+  "cursor-line-start",
+  "cursor-line-end",
 ]);
 export type PromptAction = z.infer<typeof PromptAction>;
 

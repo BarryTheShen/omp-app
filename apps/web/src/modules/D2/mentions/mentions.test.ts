@@ -151,6 +151,32 @@ describe("D2.4 mention detection and expansion", () => {
     expect(executePromptAction("cursor-end", "first\nsecond line", 0).cursor).toBe(17);
     expect(executePromptAction("undo", "first\nsecond line", 4).undo).toBe(true);
   });
+  test("moves the caret to the start and the end of the line it is on", () => {
+    const text = "first\nsecond line";
+    expect(executePromptAction("cursor-line-start", text, 10)).toEqual({ text, cursor: 6 });
+    expect(executePromptAction("cursor-line-end", text, 10)).toEqual({ text, cursor: 17 });
+    expect(executePromptAction("cursor-line-end", text, 2)).toEqual({ text, cursor: 5 });
+    expect(executePromptAction("cursor-line-start", text, 0)).toEqual({ text, cursor: 0 });
+    expect(executePromptAction("cursor-line-start", text, 6)).toEqual({ text, cursor: 6 });
+    expect(executePromptAction("cursor-line-end", "", 0)).toEqual({ text: "", cursor: 0 });
+  });
+  test("lists omp's action rows with their labels and plain descriptions, in the app's order", async () => {
+    const client = fakeClient(async () => ({ candidates: [], truncated: false }));
+    const provider = createGithubMentionProvider({ client, folder: "/workspace" as never });
+    const result = await provider.searchTyped("");
+    expect(result.candidates.map(({ label, description }) => [label, description])).toEqual([
+      ["Copy current line", "Copies the line the cursor is on"],
+      ["Copy whole prompt", "Copies everything typed so far"],
+      ["Undo", "Takes back the last word typed"],
+      ["Move cursor to message start", "Moves the cursor to the start of the message"],
+      ["Move cursor to message end", "Moves the cursor to the end of the message"],
+      ["Move cursor to line start", "Moves the cursor to the start of this line"],
+      ["Move cursor to line end", "Moves the cursor to the end of this line"],
+    ]);
+    for (const { description } of result.candidates) {
+      expect(description, `${description} reads as words, not an id`).not.toMatch(/#|[a-z]-[a-z]/);
+    }
+  });
 });
 
 describe("D2.4 host-backed providers", () => {

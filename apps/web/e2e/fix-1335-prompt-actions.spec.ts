@@ -34,7 +34,7 @@ async function expectStyled(page: Page): Promise<void> {
 }
 
 realTest(
-  "#1335: Move cursor to start removes the # and puts the caret at the start of the message",
+  "#1335: Move cursor to message start removes the # and puts the caret at the start of the message",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
     await mkdir(screenshots, { recursive: true });
@@ -45,7 +45,7 @@ realTest(
     const composer = await startChat(page);
     await composer.pressSequentially("hello #");
     await expect(githubList(page)).toBeVisible();
-    await expect(page.getByText("Move cursor to start", { exact: true })).toBeVisible();
+    await expect(page.getByText("Move cursor to message start", { exact: true })).toBeVisible();
     await expect(page.getByText("Copy current line", { exact: true })).toBeVisible();
     await expectStyled(page);
     await settle(page);
@@ -63,7 +63,7 @@ realTest(
     await settle(page);
     await page.screenshot({ path: join(screenshots, "fix-1335-actions-narrow.png") });
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.getByText("Move cursor to start", { exact: true }).click();
+    await page.getByText("Move cursor to message start", { exact: true }).click();
     await expect(composer).toHaveValue("hello ");
     await composer.pressSequentially("x");
     await expect(composer).toHaveValue("xhello ");

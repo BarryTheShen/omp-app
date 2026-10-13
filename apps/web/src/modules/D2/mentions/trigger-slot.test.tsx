@@ -428,7 +428,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     );
   });
 
-  test("Move cursor to start removes the # and puts the caret at the start of the message", async () => {
+  test("Move cursor to message start removes the # and puts the caret at the start of the message", async () => {
     render(
       <RuntimeHarness>
         <MentionTriggerSlot
@@ -443,7 +443,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "hello #" } });
     input.setSelectionRange(7, 7);
-    fireEvent.click(await screen.findByText("Move cursor to start"));
+    fireEvent.click(await screen.findByText("Move cursor to message start"));
     await waitFor(() => expect(input.value).toBe("hello "));
     expect(input.selectionStart).toBe(0);
   });
