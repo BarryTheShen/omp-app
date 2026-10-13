@@ -8,7 +8,7 @@
 import type { Descriptor } from "@omp-app/contracts";
 import { D1_DESCRIPTORS } from "../modules/D1/descriptors";
 import { modelSettingsSections } from "../modules/D1/settings/descriptors";
-import { D2_TRIGGER_DESCRIPTORS } from "../modules/D2/contract";
+import { D2_DESCRIPTORS } from "../modules/D2";
 import { D3_LOGIN_DESCRIPTORS } from "../modules/D3/descriptors";
 import { D4_COPY_DESCRIPTORS } from "../modules/D4/copy/descriptors";
 import { D4_SHARE_DESCRIPTORS } from "../modules/D4/share/descriptors";
@@ -122,7 +122,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...P4_DESCRIPTORS,
   ...P6_DESCRIPTORS,
   ...I1_MCP_SERVER_DESCRIPTORS,
-  ...D2_TRIGGER_DESCRIPTORS,
+  ...D2_DESCRIPTORS,
   // ASK_TOOL_DESCRIPTOR (TOOL_RENDERERS above) carries U4.ask's row, so U4's copy is left out.
   ...U4Descriptors.filter((descriptor) => descriptor.id !== ASK_TOOL_DESCRIPTOR.id),
   ...U5Descriptors,
