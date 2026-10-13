@@ -146,10 +146,75 @@ export function guardedRoute(
 }
 
 /**
+ * omp's commands that only its terminal runs: the top-level builtins with a `handleTui` and no text `handle` in omp
+ * v18.9.1, the same at v18.8.9 (builtin-*.ts). omp leaves them out of its list, and its RPC prompt has no handler for
+ * them, so it hands their text to the model (acp-builtins.ts:66, rpc-mode.ts:1798-1838). The app answers each one
+ * itself. The value is the app's own control for the same job, or null. Names the app already answers (`/new`,
+ * `/settings`, `/login`, `/hotkeys`, `/hub`, `/goal`) are not listed, so their other forms stay prompts.
+ */
+const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, string | null>> = {
+  agents: null,
+  branch: null,
+  rewind: null,
+  btw: null,
+  cleanse: null,
+  clear: "Use New chat instead.",
+  collab: null,
+  copy: "Use Copy from this chat instead.",
+  debug: null,
+  delete: "Delete a chat from the session list instead.",
+  exit: null,
+  extensions: null,
+  status: null,
+  fork: null,
+  git: null,
+  "guided-goal": null,
+  join: null,
+  leave: null,
+  live: null,
+  logout: "Provider sign-in is in Settings.",
+  loop: null,
+  omfg: null,
+  open: null,
+  pause: null,
+  plan: null,
+  "plan-review": null,
+  providers: null,
+  q: null,
+  queue: null,
+  quit: null,
+  record: null,
+  restart: null,
+  resume: "Use the session list instead.",
+  setup: null,
+  skills: null,
+  tan: null,
+  tree: null,
+  vibe: null,
+};
+
+/** The app's answer to a typed name that only omp's terminal runs: one plain sentence, and nothing sent to omp. */
+function terminalOnlyRoute(name: string): SlashRoute | null {
+  if (!Object.hasOwn(TERMINAL_ONLY_OMP_COMMANDS, name)) return null;
+  const equivalent = TERMINAL_ONLY_OMP_COMMANDS[name] ?? null;
+  const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
+  const message = equivalent === null ? sentence : `${sentence} ${equivalent}`;
+  return {
+    kind: "app",
+    command: {
+      name,
+      description: "Only runs in omp's terminal",
+      run: () => Promise.reject(new AppFailure({ code: "unavailable", message, retryable: false })),
+    },
+  };
+}
+
+/**
  * Decides where a submitted message goes. Only text that starts with the slash, whose first word is a
  * command omp or the app lists, is a command. Anything else, including `/etc/hosts`, an unknown `/word`
  * and text that starts with a space, is a normal prompt and returns null. A guarded form (see
- * GUARDED_OMP_COMMANDS) is a command, and leading spaces do not hide it.
+ * GUARDED_OMP_COMMANDS) is a command, and leading spaces do not hide it. A name only omp's terminal runs is refused by
+ * the app (TERMINAL_ONLY_OMP_COMMANDS), so its text never reaches the model.
  */
 export function routeSlashText(
   text: string,
@@ -177,5 +242,6 @@ export function routeSlashText(
   const known = entries.some(
     (entry) => entry.name === name || (entry.aliases ?? []).includes(name),
   );
-  return known ? { kind: "omp", command: trimmed } : null;
+  if (known) return { kind: "omp", command: trimmed };
+  return terminalOnlyRoute(name);
 }

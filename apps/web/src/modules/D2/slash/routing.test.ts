@@ -1,3 +1,4 @@
+import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { SlashCommand } from "../contract";
 import { guardedForm, routeSlashText, type SlashAppCommand } from "./routing";
@@ -224,5 +225,110 @@ describe("#1272 omp subcommands that run at once are answered by the app, not se
     expect(guardedForm("/session:delete")).toEqual({ name: "session delete", args: "" });
     expect(guardedForm("/session delete now")).toBeNull();
     expect(guardedForm("/share now")).toEqual({ name: "share", args: "now" });
+  });
+});
+
+describe("#1271 omp's terminal-only commands are answered by the app in plain words, never sent to the model", () => {
+  /** The message the app's route refuses with for a typed text: undefined when the text is not the app's route. */
+  async function refusalOf(text: string): Promise<string | undefined> {
+    const route = routeSlashText(text, entries, []);
+    if (route?.kind !== "app") return undefined;
+    try {
+      await route.command.run({});
+      return "ran";
+    } catch (error) {
+      return error instanceof AppFailure ? error.appError.message : undefined;
+    }
+  }
+
+  test("every name that only omp's terminal runs is refused by the app, and nothing runs", async () => {
+    const names = [
+      "clear",
+      "delete",
+      "resume",
+      "btw",
+      "tan",
+      "omfg",
+      "cleanse",
+      "debug",
+      "restart",
+      "setup",
+      "plan",
+      "vibe",
+      "guided-goal",
+      "loop",
+      "queue",
+      "pause",
+      "record",
+      "live",
+      "logout",
+      "fork",
+      "tree",
+      "copy",
+      "open",
+      "exit",
+      "quit",
+      "q",
+      "branch",
+      "rewind",
+      "agents",
+      "extensions",
+      "status",
+      "git",
+      "skills",
+      "providers",
+      "collab",
+      "join",
+      "leave",
+      "plan-review",
+    ];
+    for (const name of names) {
+      const message = await refusalOf(`/${name}`);
+      expect(message, name).toMatch(
+        new RegExp(`^/${name} only runs in omp's terminal, so nothing was sent\\.`),
+      );
+    }
+  });
+
+  test("the refusal names the app's own control where one exists", async () => {
+    expect(await refusalOf("/clear")).toBe(
+      "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
+    );
+    expect(await refusalOf("/copy")).toBe(
+      "/copy only runs in omp's terminal, so nothing was sent. Use Copy from this chat instead.",
+    );
+    expect(await refusalOf("/resume")).toBe(
+      "/resume only runs in omp's terminal, so nothing was sent. Use the session list instead.",
+    );
+    expect(await refusalOf("/logout")).toBe(
+      "/logout only runs in omp's terminal, so nothing was sent. Provider sign-in is in Settings.",
+    );
+    expect(await refusalOf("/delete")).toBe(
+      "/delete only runs in omp's terminal, so nothing was sent. Delete a chat from the session list instead.",
+    );
+    expect(await refusalOf("/pause")).toBe(
+      "/pause only runs in omp's terminal, so nothing was sent.",
+    );
+  });
+
+  test("text that only looks like one of these names, or is a path, is still a prompt", () => {
+    for (const text of [
+      "/clearance",
+      "/clear-cache",
+      "/deleted",
+      "/copies",
+      "/tree-view",
+      "/etc/hosts",
+    ]) {
+      expect(routeSlashText(text, entries, []), text).toBeNull();
+    }
+  });
+
+  test("a name omp's list advertises keeps its omp route, even where omp's terminal has a builtin of that name", () => {
+    const fileClear = SlashCommand.parse({ name: "clear", source: "file" });
+    expect(routeSlashText("/clear", [...entries, fileClear], [])).toEqual({
+      kind: "omp",
+      command: "/clear",
+    });
   });
 });

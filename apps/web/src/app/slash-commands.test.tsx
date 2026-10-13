@@ -681,3 +681,28 @@ describe("#1272 the account a reset names, in plain words", () => {
     expect(describeResetTarget("active")).toBe('the account "active"');
   });
 });
+
+describe("#1271 a typed terminal-only command is refused in the composer, and omp runs nothing", () => {
+  test("/clear is not a plain prompt: the send is answered by the app, refused, and no omp command runs", async () => {
+    const fake = fakeSlashClient();
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+    const intent: PromptIntent = { mode: "prompt", text: "/clear", delivery: "new" };
+    const route = await routeSubmit({ intent, hasAttachments: false, provider });
+    // A null route is a plain prompt, which the composer sends to the model. This one must not reach that path.
+    if (route === null) throw new Error("/clear would be sent to the model");
+    await expect(
+      runSlashRoute({ route, intent, provider, showStatus: vi.fn(), showReport: vi.fn() }),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message: "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
+      },
+    });
+    expect(fake.runs).toEqual([]);
+    provider.dispose();
+  });
+});
