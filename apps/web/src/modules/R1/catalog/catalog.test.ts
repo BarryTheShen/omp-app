@@ -387,6 +387,76 @@ describe("SessionCatalogModel reconciliation", () => {
     expect(model.getSnapshot().sessions[0]).toMatchObject({ id: original.id, title: "Renamed" });
   });
 
+  test("a changed chat that does not match the search is not added to the results", async () => {
+    const match = session("alpha", "2026-10-03T00:00:00.000Z");
+    const other = session("beta", "2026-10-04T00:00:00.000Z");
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [match], nextCursor: null }),
+        readSession: async () => other,
+      },
+    });
+    await model.list({ filter: { scope, query: "alpha" }, limit: 20 });
+
+    await model.reconcile({
+      folder,
+      sessionFile: other.sessionFile,
+      id: other.id,
+      kind: "updated",
+    });
+
+    expect(model.getSnapshot().sessions.map((item) => item.id)).toEqual([match.id]);
+  });
+
+  test("a listed chat that a change renames out of the search leaves the results", async () => {
+    const original = {
+      ...session("one", "2026-10-03T00:00:00.000Z"),
+      title: "alpha notes",
+      displayTitle: "alpha notes",
+    };
+    const renamed = { ...original, title: "Renamed", displayTitle: "Renamed" };
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [original], nextCursor: null }),
+        readSession: async () => renamed,
+      },
+    });
+    await model.list({ filter: { scope, query: "alpha" }, limit: 20 });
+
+    await model.reconcile({
+      folder,
+      sessionFile: original.sessionFile,
+      id: original.id,
+      kind: "updated",
+    });
+
+    expect(model.getSnapshot().sessions).toEqual([]);
+  });
+
+  test("a changed chat that matches the search is added to the results", async () => {
+    const match = session("alpha", "2026-10-03T00:00:00.000Z");
+    const added = session("alpha-two", "2026-10-04T00:00:00.000Z");
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [match], nextCursor: null }),
+        readSession: async () => added,
+      },
+    });
+    await model.list({ filter: { scope, query: "alpha" }, limit: 20 });
+
+    await model.reconcile({
+      folder,
+      sessionFile: added.sessionFile,
+      id: added.id,
+      kind: "updated",
+    });
+
+    expect(model.getSnapshot().sessions.map((item) => item.id)).toEqual([added.id, match.id]);
+  });
+
   test("a stale update resolving after remove cannot resurrect a deleted session", async () => {
     const original = session("one", "2026-10-03T00:00:00.000Z");
     let resolveRead!: (value: SessionFile) => void;

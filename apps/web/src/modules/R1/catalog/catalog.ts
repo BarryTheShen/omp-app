@@ -356,7 +356,8 @@ export class SessionCatalogModel {
   /**
    * Reconcile one A1 changed event. An update is dropped when a newer update for its chat has begun or the chat was
    * removed, so a stale update cannot resurrect it. A list that begins meanwhile does not drop it: the list's copy of
-   * the chat is older, and the overlay of changed rows keeps this one.
+   * the chat is older, and the overlay of changed rows keeps this one. A chat that changes out of the list's scope or
+   * out of its search leaves the list, and a changed chat is added only when it matches the search, as a list load does.
    */
   public async reconcile(change: SessionFileChanged): Promise<void> {
     if (!this.eventInScope(change)) return;
@@ -376,7 +377,10 @@ export class SessionCatalogModel {
       const file = await this.options.sessionFiles.readSession({ sessionFile: change.sessionFile });
       if (this.reconcileBegun.get(change.id) !== begun || this.tombstones.has(change.id)) return;
       const metadata = metadataFromFile(file, this.snapshot.scope, this.pins);
-      if (!changedInScope(this.snapshot.scope, metadata)) {
+      if (
+        !changedInScope(this.snapshot.scope, metadata) ||
+        !queryMatches(metadata, this.snapshot.filter.query)
+      ) {
         this.markChanged(change.id);
         this.commit({
           sessions: this.snapshot.sessions.filter((session) => session.id !== change.id),
