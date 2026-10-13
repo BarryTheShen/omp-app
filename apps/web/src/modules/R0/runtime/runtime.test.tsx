@@ -255,6 +255,40 @@ describe("R0.3 assistant-ui runtime", () => {
     ).not.toThrow();
   });
 
+  test("a message a todo reminder follows closes its row, so the answer after it is a row of its own", () => {
+    const answer = (closesRow: boolean): RuntimeMessageView[] => [
+      {
+        record: runtimeMessage(
+          assistantMessage([{ type: "text", text: "tool said" }]),
+          "entry:runtime-test-thread:entry-a",
+        ),
+        toolStates: [],
+        joinedAssistantEntryIds: ["entry-a", "entry-b"],
+        closesRow,
+      },
+      {
+        record: runtimeMessage(
+          assistantMessage([{ type: "text", text: "pong" }]),
+          "entry:runtime-test-thread:entry-b",
+        ),
+        toolStates: [],
+        joinedAssistantEntryIds: ["entry-a", "entry-b"],
+      },
+    ];
+    const joined = unstable_convertExternalMessages(
+      answer(false),
+      convertExternalMessage,
+      false,
+      {},
+    );
+    expect(joined.map((row) => row.id)).toEqual(["entry:runtime-test-thread:entry-a"]);
+    const split = unstable_convertExternalMessages(answer(true), convertExternalMessage, false, {});
+    expect(split.map((row) => row.id)).toEqual([
+      "entry:runtime-test-thread:entry-a",
+      "entry:runtime-test-thread:entry-b",
+    ]);
+  });
+
   test("keeps an orphaned tool result visible instead of dropping it", () => {
     const orphan: RuntimeMessageView = {
       record: runtimeMessage(toolResultMessage("orphan-tool"), "entry:runtime-test-thread:orphan"),

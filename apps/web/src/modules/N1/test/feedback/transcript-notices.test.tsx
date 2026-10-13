@@ -3,7 +3,7 @@ import { ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "../../../R0/store";
-import { TranscriptNoticeList } from "../../feedback";
+import { TranscriptNoticeList, transcriptNoticeSource } from "../../feedback";
 import { NotificationProjector } from "../../notifications";
 
 const threadId = ThreadIdSchema.parse("thread-n1-transcript-list");
@@ -119,5 +119,55 @@ describe("TranscriptNoticeList", () => {
     expect(container.innerHTML).toBe("");
     expect(container.textContent).not.toContain("Another chat's failure");
     projector.dispose();
+  });
+});
+
+describe("transcriptNoticeSource", () => {
+  const reminder = {
+    severity: "warning" as const,
+    placement: "transcript" as const,
+    message: "Unfinished todos (attempt 1 of 3)\n• Write the thing",
+    source: "omp.todo",
+    live: "polite" as const,
+    focus: "preserve" as const,
+  };
+
+  test("lists this chat's notices with the row each follows, and draws a group by its keys", () => {
+    const { projector } = chat();
+    const other = ThreadIdSchema.parse("thread-n1-transcript-other");
+    const transcript = projector.getTranscript();
+    transcript.upsert({
+      ...reminder,
+      threadId,
+      dedupeKey: "todo-reminder:1:aaaaaa",
+      afterMessage: "stream:thread-n1-transcript-list:0:m1",
+    });
+    transcript.upsert({
+      ...reminder,
+      threadId: other,
+      dedupeKey: "todo-reminder:1:bbbbbb",
+      afterMessage: "stream:thread-n1-transcript-list:0:m2",
+    });
+
+    const source = transcriptNoticeSource(projector, threadId);
+    expect(source.getSnapshot()).toEqual([
+      { key: "todo-reminder:1:aaaaaa", afterRow: "stream:thread-n1-transcript-list:0:m1" },
+    ]);
+    const { container } = render(source.renderGroup(["todo-reminder:1:aaaaaa"]));
+    expect(
+      container.querySelector('[data-dedupe-key="todo-reminder:1:aaaaaa"]')?.textContent,
+    ).toContain("Unfinished todos (attempt 1 of 3)");
+    expect(container.querySelector('[data-dedupe-key="todo-reminder:1:bbbbbb"]')).toBeNull();
+  });
+
+  test("the list is the same array until the transcript changes", () => {
+    const { projector } = chat();
+    const source = transcriptNoticeSource(projector, threadId);
+    const first = source.getSnapshot();
+    expect(source.getSnapshot()).toBe(first);
+    projector
+      .getTranscript()
+      .upsert({ ...reminder, threadId, dedupeKey: "todo-reminder:1:cccccc" });
+    expect(source.getSnapshot()).not.toBe(first);
   });
 });

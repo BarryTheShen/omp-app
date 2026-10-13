@@ -18,7 +18,7 @@ const NOTICES = "Notices in this conversation";
 
 /**
  * Issue #1282. A turn that stops with unfinished todos makes omp send `todo_reminder`; the app writes
- * the reminder into the chat's transcript, after the messages, with its unfinished items and the attempt.
+ * the reminder into the chat's transcript, after the row it follows, with its unfinished items and the attempt.
  */
 realTest(
   "real omp: a turn that ends with unfinished todos shows the reminder with its items in the transcript",

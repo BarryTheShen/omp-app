@@ -591,6 +591,37 @@ describe("OmpRuntimeStore", () => {
     });
   });
 
+  test("a todo reminder follows the row of the newest message, and that row keeps its id once the message is saved", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    omp(store, { type: "agent_start" }, 1);
+    omp(store, { type: "message_start", messageId: "m1", message: assistant("") }, 2);
+    omp(store, { type: "message_end", messageId: "m1", message: assistant("hello") }, 3);
+    const row = "stream:thread-r0:0:m1";
+    omp(
+      store,
+      {
+        type: "todo_reminder",
+        todos: [{ content: "b", status: "pending" }],
+        attempt: 1,
+        maxAttempts: 3,
+      },
+      4,
+    );
+    expect(store.getSnapshot().todoReminders.at(-1)?.afterMessage).toBe(row);
+
+    store.pairEndedMessages([
+      {
+        type: "message",
+        id: "entry-first",
+        parentId: null,
+        timestamp: new Date(at).toISOString(),
+        message: assistant("hello"),
+      },
+    ]);
+    expect(store.getSnapshot().messageOrder).toEqual(["entry:thread-r0:entry-first"]);
+    expect(store.getSnapshot().todoReminders.at(-1)?.afterMessage).toBe(row);
+  });
+
   test("shares unchanged state between snapshots and freezes what changed", () => {
     const store = new OmpRuntimeStore({ threadId });
     const start = (id: string, seq: number) =>

@@ -55,6 +55,14 @@ export interface RuntimeMessage {
   readonly rowKey?: MessageKey;
 }
 
+/**
+ * The id of a message's transcript row: the key of its streamed copy when it has one, because the row keeps that id
+ * when the saved entry replaces the copy (issue 1047). It does not change when the message is saved.
+ */
+export function rowIdOf(record: RuntimeMessage): MessageKey {
+  return record.rowKey ?? record.key;
+}
+
 export interface TranscriptEntry {
   readonly id: EntryId;
   readonly parentId: EntryId | null;
@@ -160,7 +168,7 @@ export interface TodoReminderState {
   readonly todos: readonly TodoItem[];
   readonly attempt: number;
   readonly maxAttempts: number;
-  /** The message the panel follows in the transcript; null when the transcript was empty. */
+  /** The row the panel follows in the transcript (see `rowIdOf`); null when the transcript was empty. */
   readonly afterMessage: MessageKey | null;
 }
 
@@ -525,6 +533,14 @@ function removeMessage(next: MutableSnapshot, key: MessageKey): void {
   const order = next.messageOrder as MessageKey[];
   const index = order.indexOf(key);
   if (index >= 0) order.splice(index, 1);
+}
+
+/** The row id of the newest message, or null when the transcript is empty: where a reminder that arrives now belongs. */
+function lastRowId(next: MutableSnapshot): MessageKey | null {
+  const last = next.messageOrder.at(-1);
+  if (last === undefined) return null;
+  const record = next.messages[last];
+  return record === undefined ? last : rowIdOf(record);
 }
 
 function updatePrompt(
@@ -1669,7 +1685,7 @@ export class OmpRuntimeStore {
           todos: cloneValue(event.todos) as TodoItem[],
           attempt: typeof event.attempt === "number" ? event.attempt : 1,
           maxAttempts: typeof event.maxAttempts === "number" ? event.maxAttempts : 1,
-          afterMessage: next.messageOrder.at(-1) ?? null,
+          afterMessage: lastRowId(next),
         };
         next.todoReminders = [...next.todoReminders, reminder].slice(-MAX_TODO_REMINDERS);
         return;

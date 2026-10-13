@@ -22,11 +22,12 @@ import type {
 import { AppFailure } from "@omp-app/contracts";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { credentialFailureFromMessage, credentialStatusError } from "@/modules/D3/auth/credential";
-import type {
-  OmpRuntimeStore,
-  RuntimeMessage,
-  RuntimeSnapshot,
-  ToolCallState,
+import {
+  type OmpRuntimeStore,
+  type RuntimeMessage,
+  type RuntimeSnapshot,
+  rowIdOf,
+  type ToolCallState,
 } from "../store/store";
 
 export type PromptMode = "prompt" | "bash" | "python";
@@ -82,6 +83,11 @@ export interface RuntimeMessageView {
   readonly stoppedToolCallIds?: readonly string[];
   /** The usage of the assistant turn before this one (null when none): a cache miss is measured from it. */
   readonly previousAssistantUsage?: OmpWire.Usage | null;
+  /**
+   * A todo reminder follows this message, so the answer after it starts a row of its own: the notice drawn after this
+   * row then sits between the two. See `convertExternalMessage`.
+   */
+  readonly closesRow?: boolean;
 }
 
 export interface RuntimeToolStateReference {
@@ -133,7 +139,7 @@ function imageSource(data: unknown, url: unknown, mimeType: unknown): string | u
 function messageIdFor(record: RuntimeMessage | undefined, index: number): string {
   // The row's id is the key of its streamed copy when it has one: its entry replaces the copy in the store, and the row
   // keeps its element then (issue 1047). Its store key is kept in the metadata (`ompMessageKey`).
-  const key = record?.rowKey ?? record?.key;
+  const key = record === undefined ? undefined : rowIdOf(record);
   return typeof key === "string" && key.length > 0 ? key : `omp-message-${index}`;
 }
 
@@ -587,9 +593,23 @@ export function convertMessage(
   return convertRecord(undefined, input, index, []) as ThreadMessageLike;
 }
 
-/** The callback used by assistant-ui's external converter, including its supported join strategy. */
+/**
+ * The callback used by assistant-ui's external converter, including its supported join strategy. A message a todo
+ * reminder follows closes its row (`joinStrategy: "none"`): the answer after it starts a row of its own, whether or not
+ * omp's reminder note is drawn between them yet.
+ */
 export function convertExternalMessage(input: RuntimeMessageView): ExternalMessage {
-  return convertRecord(input.record, input.record.message, 0, input.toolStates, input, true);
+  const converted = convertRecord(
+    input.record,
+    input.record.message,
+    0,
+    input.toolStates,
+    input,
+    true,
+  );
+  if (!input.closesRow || converted.role !== "assistant") return converted;
+  const closed = { ...converted, convertConfig: { joinStrategy: "none" as const } };
+  return closed;
 }
 
 /** A referentially stable converter cache for one external runtime. */
@@ -734,6 +754,11 @@ class RuntimeMessageProjector {
     const metadata = projectedMessageMetadata(snapshot);
     const previousUsages = previousAssistantUsages(snapshot);
     const stopped = stoppedToolCallIds(snapshot);
+    // The rows a todo reminder follows (its `afterMessage` is that row's id): see `convertExternalMessage`.
+    const reminded = new Set<string>();
+    for (const reminder of snapshot.todoReminders) {
+      if (reminder.afterMessage !== null) reminded.add(reminder.afterMessage);
+    }
     for (const key of snapshot.messageOrder) {
       const record = snapshot.messages[key];
       if (!record || isHiddenMessage(record.message)) continue;
@@ -742,13 +767,15 @@ class RuntimeMessageProjector {
         toolResultMatched: undefined,
       };
       const previousUsage = previousUsages.get(key) ?? null;
+      const closesRow = reminded.has(rowIdOf(record));
       const previous = this.entries.get(record);
       if (previous) {
         let unchanged =
           sameIds(previous.view.joinedAssistantEntryIds, projected.joinedAssistantEntryIds) &&
           (previous.view.previousAssistantUsage ?? null) === previousUsage &&
           previous.view.toolResultMatched === projected.toolResultMatched &&
-          sameIds(previous.view.stoppedToolCallIds, stopped);
+          sameIds(previous.view.stoppedToolCallIds, stopped) &&
+          (previous.view.closesRow ?? false) === closesRow;
         for (const reference of previous.references) {
           if (
             snapshot.tools[reference.toolCallId as keyof typeof snapshot.tools] !== reference.state
@@ -776,6 +803,7 @@ class RuntimeMessageProjector {
         toolResultMatched: projected.toolResultMatched,
         stoppedToolCallIds: stopped,
         previousAssistantUsage: previousUsage,
+        closesRow,
       };
       this.entries.set(record, { references, view });
       views.push(view);

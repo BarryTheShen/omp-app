@@ -9,10 +9,20 @@ import {
   type MessageState,
   type ThreadMessageLike,
   ThreadPrimitive,
+  useAuiState,
 } from "@assistant-ui/react";
 import type { AppError, DescriptorId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
-import { type ReactNode, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { File } from "@/components/assistant-ui/elements/file";
 import { Image } from "@/components/assistant-ui/elements/image";
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
@@ -30,7 +40,12 @@ import {
 } from "@/modules/D3/auth/credential-actions";
 import { CredentialFailureNotice } from "@/modules/D3/auth/credential-notice";
 import { useDescriptor, useRenderer } from "@/registry-core";
-import type { ChatFailure, OmpRuntimeStore, RuntimeSnapshot } from "../../R0/store";
+import {
+  type ChatFailure,
+  type OmpRuntimeStore,
+  type RuntimeSnapshot,
+  rowIdOf,
+} from "../../R0/store";
 import { FullOutputProvider } from "../../U3/tool-card/full-output";
 import { failureShownUnderAnswer } from "../parts/message-ending";
 import { splitProviderError } from "../parts/provider-error";
@@ -44,6 +59,7 @@ import {
 } from "../scroll/anchor";
 import type { ReadingPlace } from "../scroll/reading-place";
 import { useReadingPlace } from "../scroll/use-reading-place";
+import { type NoticePlacement, placeNotices, type ThreadNotice } from "./notice-placement";
 import { TurnCancelContext } from "./turn-cancel";
 
 const MESSAGE_DESCRIPTOR_BY_ROLE = {
@@ -90,8 +106,22 @@ export interface ThreadShellProps {
   readonly readingPlace?: ThreadReadingPlace;
   /** What a refused-key notice can do: open the model list, open sign-in, and read each provider's sign-in. */
   readonly credentialActions?: CredentialActions;
-  /** Drawn after the messages: the notices the chat's projection writes into its transcript. */
-  readonly notices?: ReactNode;
+  /**
+   * The notices the chat's projection writes into its transcript. Each is drawn after the row it follows (see
+   * `placeNotices`); a group of them is drawn by the source's `renderGroup`.
+   */
+  readonly notices?: ThreadNoticeSource;
+}
+
+/**
+ * The notices a chat draws, read as an external store, and how a group of them is drawn. The card itself is N1's;
+ * `renderGroup` draws the notices with these keys in one place.
+ */
+export interface ThreadNoticeSource {
+  readonly subscribe: (listener: () => void) => () => void;
+  /** The notices now, oldest first. The same array until one of them changes. */
+  readonly getSnapshot: () => readonly ThreadNotice[];
+  readonly renderGroup: (keys: readonly string[]) => ReactNode;
 }
 
 interface RuntimeFailureProps {
@@ -400,6 +430,76 @@ function EarlierMessagesControl({
 /** How long the reader's place is held after older rows land, while rows above take their real heights (issue 1165). */
 const EARLIER_SETTLE_MS = 2_000;
 
+const NO_NOTICE_ROWS: readonly ThreadNotice[] = [];
+/** A chat with no notice source: nothing is drawn, and the thread reads no store. */
+const NO_NOTICES: ThreadNoticeSource = {
+  subscribe: () => () => undefined,
+  getSnapshot: () => NO_NOTICE_ROWS,
+  renderGroup: () => null,
+};
+
+/** Where each notice is drawn. With no notices, nothing is placed. */
+const NO_PLACEMENT: NoticePlacement = { top: [], after: new Map(), end: [] };
+const NoticePlacementContext = createContext<NoticePlacement>(NO_PLACEMENT);
+
+/**
+ * Places the notices after the rows the chat draws. assistant-ui decides which rows are drawn (an answer and the tool
+ * results it gathered are one row), so the drawn rows are read from it here. Only this provider subscribes to them: a
+ * change in the drawn rows re-renders the placement and the rows that carry notices, not the thread's shell.
+ */
+function NoticePlacementProvider({
+  notices,
+  rowOrder,
+  children,
+}: {
+  readonly notices: readonly ThreadNotice[];
+  readonly rowOrder: readonly string[];
+  readonly children: ReactNode;
+}) {
+  const drawnMessages = useAuiState((state) => state.thread.messages);
+  const placement = useMemo(() => {
+    if (notices.length === 0) return NO_PLACEMENT;
+    const drawnRows = new Set(drawnMessages.map((message) => message.id));
+    return placeNotices(notices, rowOrder, drawnRows);
+  }, [drawnMessages, notices, rowOrder]);
+  return (
+    <NoticePlacementContext.Provider value={placement}>{children}</NoticePlacementContext.Provider>
+  );
+}
+
+/** The notices drawn at one end of the transcript: before the first row, or after the last. */
+function PlacedNotices({
+  at,
+  source,
+}: {
+  readonly at: "top" | "end";
+  readonly source: ThreadNoticeSource;
+}) {
+  const placement = useContext(NoticePlacementContext);
+  const keys = at === "top" ? placement.top : placement.end;
+  return keys.length === 0 ? null : source.renderGroup(keys);
+}
+
+/** A drawn row, and the notices that follow it. */
+function PlacedRow({
+  message,
+  slots,
+  source,
+}: {
+  readonly message: MessageState;
+  readonly slots?: ThreadRowSlots;
+  readonly source: ThreadNoticeSource;
+}) {
+  const placement = useContext(NoticePlacementContext);
+  const noticesAfter = placement.after.get(message.id);
+  return (
+    <>
+      <MessageRow message={message} slots={slots} />
+      {noticesAfter === undefined ? null : source.renderGroup(noticesAfter)}
+    </>
+  );
+}
+
 /**
  * Renders inside the caller's assistant-ui runtime provider and supplies stable message rows. The
  * composer is intentionally not included: U2 owns that surface and consumes this thread runtime.
@@ -421,6 +521,21 @@ export function ThreadShell({
     (listener) => store.subscribe(listener),
     () => store.getSnapshot(),
     () => store.getSnapshot(),
+  );
+  const noticeSource = notices ?? NO_NOTICES;
+  const noticeList = useSyncExternalStore(
+    noticeSource.subscribe,
+    noticeSource.getSnapshot,
+    noticeSource.getSnapshot,
+  );
+  // The row ids of the transcript, oldest first: where each notice goes (see `NoticePlacementProvider`).
+  const rowOrder = useMemo(
+    () =>
+      snapshot.messageOrder.map((key) => {
+        const record = snapshot.messages[key];
+        return record === undefined ? key : rowIdOf(record);
+      }),
+    [snapshot.messageOrder, snapshot.messages],
   );
   const viewportRef = useRef<HTMLDivElement>(null);
   const historyLoading = readingPlace?.historyLoading ?? false;
@@ -535,10 +650,20 @@ export function ThreadShell({
                 {onLoadOlder !== undefined && (snapshot.transcript.hasOlder || earlierInFlight) && (
                   <EarlierMessagesControl onLoad={loadEarlier} />
                 )}
-                <ThreadPrimitive.Messages>
-                  {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
-                </ThreadPrimitive.Messages>
-                {notices}
+                <NoticePlacementProvider notices={noticeList} rowOrder={rowOrder}>
+                  <PlacedNotices at="top" source={noticeSource} />
+                  <ThreadPrimitive.Messages>
+                    {({ message }) => (
+                      <PlacedRow
+                        key={message.id}
+                        message={message}
+                        slots={slots}
+                        source={noticeSource}
+                      />
+                    )}
+                  </ThreadPrimitive.Messages>
+                  <PlacedNotices at="end" source={noticeSource} />
+                </NoticePlacementProvider>
               </div>
               <ThreadPrimitive.ViewportFooter
                 className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 flex-col border-t border-border bg-background"

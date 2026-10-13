@@ -737,7 +737,10 @@ export class NotificationProjector {
         if (this.seenReminders.has(identity)) continue;
         this.seenReminders.add(identity);
         this.clearFailure(next.threadId);
-        this.publishNotification(todoReminderNotification(next.threadId, validReminder, identity));
+        this.publishNotification(
+          todoReminderNotification(next.threadId, validReminder, identity),
+          validReminder.afterMessage,
+        );
       }
       for (const identity of this.seenReminders) {
         if (!currentIdentities.has(identity)) this.seenReminders.delete(identity);
@@ -796,15 +799,18 @@ export class NotificationProjector {
     return true;
   };
 
-  private readonly publishNotification = (next: Notification): boolean => {
+  private readonly publishNotification = (
+    next: Notification,
+    afterMessage?: string | null,
+  ): boolean => {
     if (this.bus.publish(next) === "deduplicated") return false;
-    if (next.placement === "transcript") this.writeTranscript(next);
+    if (next.placement === "transcript") this.writeTranscript(next, afterMessage);
     return true;
   };
 
-  private readonly writeTranscript = (next: Notification): void => {
+  private readonly writeTranscript = (next: Notification, afterMessage?: string | null): void => {
     try {
-      this.transcript.upsert(next);
+      this.transcript.upsert(afterMessage === undefined ? next : { ...next, afterMessage });
     } catch (error) {
       this.recordFailure(
         internalProjection("This update could not be added to the conversation.", error),

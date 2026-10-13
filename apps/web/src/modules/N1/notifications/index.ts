@@ -17,4 +17,5 @@ export type {
 export { MAX_WIDGET_LINES, NotificationProjector, PROJECTION_ERROR_KEY } from "./projection";
 export type { RetiredNotices } from "./retired";
 export { sessionRetiredNotices } from "./retired";
+export type { TranscriptNotice, TranscriptNoticesSnapshot } from "./transcript";
 export { TranscriptNotices } from "./transcript";

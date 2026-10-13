@@ -69,7 +69,7 @@ import { FAST_REFUSAL_NOTICE_SOURCE } from "@/modules/D7/modes";
 import {
   NotificationFeedback,
   NotificationNotices,
-  TranscriptNoticeList,
+  transcriptNoticeSource,
 } from "@/modules/N1/feedback";
 import { NotificationProjector, sessionRetiredNotices } from "@/modules/N1/notifications";
 import {
@@ -1170,6 +1170,11 @@ function ActiveThreadReady({
   const retireFastRefusalNotice = useCallback(() => {
     notificationProjector?.getBus().retireQuietFrom(threadId, FAST_REFUSAL_NOTICE_SOURCE);
   }, [notificationProjector, threadId]);
+  // The chat's notices, as the thread draws them: each after the row it follows.
+  const transcriptNotices = useMemo(
+    () => transcriptNoticeSource(notificationProjector, threadId),
+    [notificationProjector, threadId],
+  );
   const shortcutRegistry = useShortcutRegistry();
   // The output of the last command that printed several lines, in the chat it ran in, until the person closes it.
   const {
@@ -1564,12 +1569,7 @@ function ActiveThreadReady({
                           onLoadOlder={onLoadOlder}
                           onLoadFullOutput={onLoadFullOutput}
                           onRestartOmp={restartOmp}
-                          notices={
-                            <TranscriptNoticeList
-                              projector={notificationProjector}
-                              threadId={threadId}
-                            />
-                          }
+                          notices={transcriptNotices}
                           slots={{
                             renderMessage: (message, renderNested) => {
                               const branchSummary = branchSummaryOfRow(message);

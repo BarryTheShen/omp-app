@@ -73,4 +73,18 @@ describe("TranscriptNotices", () => {
     transcript.upsert(notice("retry:result", "Retry failed", "omp.retry"));
     expect(changes).toBe(2);
   });
+
+  test("a notice keeps the row it follows, and a later notice of its kind carries the row that one follows", () => {
+    const transcript = new TranscriptNotices();
+    transcript.upsert({
+      ...notice("todo-reminder:1", "attempt 1", "omp.todo"),
+      afterMessage: "row-1",
+    });
+    expect(transcript.getSnapshot().notices[0]?.afterMessage).toBe("row-1");
+    transcript.upsert({
+      ...notice("todo-reminder:2", "attempt 2", "omp.todo"),
+      afterMessage: "row-2",
+    });
+    expect(transcript.getSnapshot().notices.map((item) => item.afterMessage)).toEqual(["row-2"]);
+  });
 });
