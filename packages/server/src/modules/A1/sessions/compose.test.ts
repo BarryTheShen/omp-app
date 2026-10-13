@@ -206,6 +206,7 @@ async function chatFor(root: string, chats: OmpProcessRegistry, name: string) {
     sessionsRoot: path.join(root, "sessions"),
     home: root,
     chats,
+    leaseProbe: () => "inactive",
   });
   const file = path.join(store.bucketPath(cwd), `${name}.jsonl`);
   await writeSession(file, name, cwd);
@@ -235,6 +236,7 @@ describe("the session store the server composes", () => {
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         chats,
+        leaseProbe: () => "inactive",
       });
       const file = path.join(store.bucketPath(cwd), "open-idle.jsonl");
       await writeSession(file, "open-idle", cwd);
@@ -264,6 +266,7 @@ describe("the session store the server composes", () => {
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         chats: new OmpProcessRegistry({ createProcess: (options) => new StubProcess(options) }),
+        leaseProbe: () => "inactive",
       });
       const file = path.join(store.bucketPath(cwd), "closed.jsonl");
       await writeSession(file, "closed", cwd);
@@ -272,6 +275,61 @@ describe("the session store the server composes", () => {
 
       expect(result).toEqual({ id: "closed", sessionFile: file });
       expect(await exists(file)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat another omp holds open is refused with the same sentence, and its file stays", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const store = createServerSessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        chats: new OmpProcessRegistry({ createProcess: (options) => new StubProcess(options) }),
+        // Another omp holds the chat's lease, as the composed app's probe reports it.
+        leaseProbe: () => "active",
+      });
+      const file = path.join(store.bucketPath(cwd), "held-elsewhere.jsonl");
+      await writeSession(file, "held-elsewhere", cwd);
+
+      const error = await store.deleteSession({ folder: cwd, sessionFile: file }).then(
+        () => undefined,
+        (failure: unknown) => failure,
+      );
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "Close this chat before deleting it: omp has it open.",
+        },
+      });
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the chat list reports a chat another omp holds as held", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const store = createServerSessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        chats: new OmpProcessRegistry({ createProcess: (options) => new StubProcess(options) }),
+        // Another omp holds the chat's lease, as the composed app's probe reports it.
+        leaseProbe: () => "active",
+      });
+      const file = path.join(store.bucketPath(cwd), "held-listed.jsonl");
+      await writeSession(file, "held-listed", cwd);
+
+      const listed = await store.listSessions({ folder: cwd });
+
+      expect(listed.sessions.map((session) => [session.id, session.liveness])).toEqual([
+        ["held-listed", { lease: "held", serverProcess: false }],
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -288,6 +346,7 @@ describe("the session store the server composes", () => {
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         chats,
+        leaseProbe: () => "inactive",
       });
       const file = path.join(store.bucketPath(cwd), "open-port.jsonl");
       await writeSession(file, "open-port", cwd);

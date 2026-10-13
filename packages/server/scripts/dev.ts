@@ -61,6 +61,7 @@ import {
   logOmpProcess,
   OmpProcessRegistry,
   ompSessionOwnersDir,
+  sessionLeaseProbe,
   spawnOmpProcess,
 } from "../src/process";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
@@ -224,6 +225,8 @@ export async function createCompositionServer(
     sessionsRoot: join(agentDir, "sessions"),
     home: homeDir,
     chats: processRegistry,
+    // Another omp holds a chat by its lease: the store refuses to delete such a chat, and lists it as held.
+    leaseProbe: sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
   });
   const resolveThread: A0PortContext["resolveThread"] = async (threadId, _signal) => {
     const file = await sessionFileStore.findSession(threadId);

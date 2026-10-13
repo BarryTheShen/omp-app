@@ -87,5 +87,30 @@ export async function probeSessionLease(options: SessionLeaseOptions): Promise<S
     return "unknown";
   }
   const name = `@${leaseSocketName(options.sessionId, options.ownersDir)}`;
+  // A free chat's name is not in the table at all, so the rows are parsed only when the name is there.
+  if (!procNetUnix.includes(name)) return "free";
   return unixDatagramNames(procNetUnix).has(name) ? "held" : "free";
+}
+
+/**
+ * The lease probe the session store takes (`leaseProbe`): `active` while another omp holds the chat, so a delete
+ * refuses it and a listing shows it held; `inactive` when none does. `unknown` off Linux and when the socket table
+ * cannot be read: the store does not refuse those. The owners directory is read on each probe, as the rename's
+ * check reads it.
+ */
+export function sessionLeaseProbe(
+  options: Omit<SessionLeaseOptions, "sessionId" | "ownersDir"> & {
+    readonly ownersDir: () => string;
+  },
+): (sessionId: string) => Promise<"active" | "inactive" | "unknown"> {
+  return async (sessionId) => {
+    const lease = await probeSessionLease({
+      ...options,
+      ownersDir: options.ownersDir(),
+      sessionId,
+    });
+    if (lease === "held") return "active";
+    if (lease === "free") return "inactive";
+    return "unknown";
+  };
 }

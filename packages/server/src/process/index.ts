@@ -12,4 +12,4 @@ export {
   OmpProcessRegistry,
   type OmpProcessRegistryOptions,
 } from "./registry";
-export { ompSessionOwnersDir } from "./session-lease";
+export { ompSessionOwnersDir, sessionLeaseProbe } from "./session-lease";

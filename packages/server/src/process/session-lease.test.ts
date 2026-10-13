@@ -4,6 +4,7 @@ import {
   leaseSocketName,
   ompSessionOwnersDir,
   probeSessionLease,
+  sessionLeaseProbe,
   unixDatagramNames,
 } from "./session-lease";
 
@@ -145,5 +146,32 @@ describe("probeSessionLease", () => {
       }),
     ).resolves.toBe("unsupported");
     expect(reads).toBe(0);
+  });
+});
+
+describe("sessionLeaseProbe", () => {
+  test("answers active while a live omp holds the chat, inactive when none does, and unknown where the lease cannot be read", async () => {
+    const lease = leaseSocketName(sessionId, ownersDir);
+    const answer = (
+      readUnixSockets: () => Promise<string>,
+      platform: "linux" | "darwin" = "linux",
+    ) => sessionLeaseProbe({ ownersDir: () => ownersDir, platform, readUnixSockets })(sessionId);
+
+    // Only a datagram socket with the lease's name is omp's lease; a stream socket with that name is not.
+    expect(await answer(async () => procNetUnix([{ type: "0002", name: `@${lease}` }]))).toBe(
+      "active",
+    );
+    expect(await answer(async () => procNetUnix([{ type: "0001", name: `@${lease}` }]))).toBe(
+      "inactive",
+    );
+    expect(await answer(async () => procNetUnix([]))).toBe("inactive");
+    expect(
+      await answer(async () => {
+        throw new Error("the socket table cannot be read");
+      }),
+    ).toBe("unknown");
+    expect(
+      await answer(async () => procNetUnix([{ type: "0002", name: `@${lease}` }]), "darwin"),
+    ).toBe("unknown");
   });
 });
