@@ -255,6 +255,8 @@ function CommandPaletteDialog({
                 variant={activeIndex === index ? "secondary" : "ghost"}
                 className={cn(
                   "h-auto w-full flex-col items-stretch justify-start whitespace-normal gap-(--space-2xs) px-(--space-sm) py-(--space-xs) text-start",
+                  // The secondary surface is the panel's own colour in the dark theme, so the highlighted row takes the accent there.
+                  activeIndex === index && "dark:bg-accent dark:hover:bg-accent",
                   entry.available && !isRunning
                     ? "cursor-pointer text-foreground"
                     : "cursor-not-allowed text-muted-foreground",
