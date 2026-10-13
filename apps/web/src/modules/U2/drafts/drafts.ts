@@ -430,11 +430,6 @@ export class DraftController {
       });
     }
     this.clearTimer();
-    const held: HeldDraft = {
-      text: this.snapshot.text,
-      attachments: [...this.snapshot.attachments],
-      failedSends: [...this.snapshot.failedSends],
-    };
     if (this.snapshot.revision !== null) {
       const cleared = await trackWrite(
         this.scope,
@@ -452,6 +447,14 @@ export class DraftController {
         throw new AppFailure({ code: "conflict", message: MOVE_CONFLICT, retryable: true });
       }
     }
+    // Read after the clear: text the person typed while it ran is part of this chat's draft, and it moves with the
+    // chat. Read before the clear, that text would be dropped by the reset below and the composer would show the
+    // text this move carried over, the held command, instead.
+    const held: HeldDraft = {
+      text: this.snapshot.text,
+      attachments: [...this.snapshot.attachments],
+      failedSends: [...this.snapshot.failedSends],
+    };
     this.setState({
       text: "",
       attachments: [],
