@@ -221,13 +221,7 @@ export async function createCompositionServer(
       ),
   });
   const replay = new EventReplayHub();
-  const sessionFileStore = createServerSessionFileStore({
-    sessionsRoot: join(agentDir, "sessions"),
-    home: homeDir,
-    chats: processRegistry,
-    // Another omp holds a chat by its lease: the store refuses to delete such a chat, and lists it as held.
-    leaseProbe: sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
-  });
+
   const resolveThread: A0PortContext["resolveThread"] = async (threadId, _signal) => {
     const file = await sessionFileStore.findSession(threadId);
     if (file === undefined) return undefined;
@@ -292,6 +286,14 @@ export async function createCompositionServer(
         }),
   };
   const a0Runtime = createA0Runtime(a0Context);
+  const sessionFileStore = createServerSessionFileStore({
+    sessionsRoot: join(agentDir, "sessions"),
+    home: homeDir,
+    chats: processRegistry,
+    // Another omp holds a chat by its lease: the store refuses to delete such a chat, and lists it as held.
+    leaseProbe: sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
+    views: a0Runtime.views,
+  });
   const resolveSession = async (threadId: ThreadId): Promise<RpcSession> => {
     const session = a0Runtime.sessionFor(threadId);
     if (session === undefined) {

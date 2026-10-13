@@ -10,7 +10,7 @@ import {
 } from "../../../process";
 import type { A1PortContext } from "../ports/context";
 import { createSessionFileStoreRegistration } from "../ports/session-file-store";
-import { createServerSessionFileStore } from "./compose";
+import { createServerSessionFileStore, type ServerViews } from "./compose";
 
 const WORKTREE_DATA = path.resolve(import.meta.dir, "../../../../../../.data");
 
@@ -206,6 +206,7 @@ async function chatFor(root: string, chats: OmpProcessRegistry, name: string) {
     sessionsRoot: path.join(root, "sessions"),
     home: root,
     chats,
+    views: NO_VIEWS,
     leaseProbe: () => "inactive",
   });
   const file = path.join(store.bucketPath(cwd), `${name}.jsonl`);
@@ -217,6 +218,28 @@ async function chatFor(root: string, chats: OmpProcessRegistry, name: string) {
     file,
     threadId,
     options: { threadId, folder: FolderPath.parse(cwd), ompBin: "stub" },
+  };
+}
+
+/** No connection holds a view: a delete from any connection keeps its views as they are. */
+const NO_VIEWS: ServerViews = { viewsOf: () => 0, releaseViews: async () => undefined };
+
+/**
+ * A stand-in for the app's A0 runtime over one chat: `holds` counts each connection's views. A release lets those views
+ * go the way A0 does, once per view, into the real registry.
+ */
+function viewsOver(
+  chats: OmpProcessRegistry,
+  threadId: ThreadId,
+  holds: Map<string, number>,
+): ServerViews {
+  return {
+    viewsOf: (id, connectionId) => (id === threadId ? (holds.get(connectionId) ?? 0) : 0),
+    releaseViews: async (id, connectionId) => {
+      const count = holds.get(connectionId) ?? 0;
+      holds.delete(connectionId);
+      for (let released = 0; released < count; released += 1) chats.release(id);
+    },
   };
 }
 
@@ -236,6 +259,7 @@ describe("the session store the server composes", () => {
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         chats,
+        views: NO_VIEWS,
         leaseProbe: () => "inactive",
       });
       const file = path.join(store.bucketPath(cwd), "open-idle.jsonl");
@@ -266,6 +290,7 @@ describe("the session store the server composes", () => {
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         chats: new OmpProcessRegistry({ createProcess: (options) => new StubProcess(options) }),
+        views: NO_VIEWS,
         leaseProbe: () => "inactive",
       });
       const file = path.join(store.bucketPath(cwd), "closed.jsonl");
@@ -288,6 +313,7 @@ describe("the session store the server composes", () => {
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         chats: new OmpProcessRegistry({ createProcess: (options) => new StubProcess(options) }),
+        views: NO_VIEWS,
         // Another omp holds the chat's lease, as the composed app's probe reports it.
         leaseProbe: () => "active",
       });
@@ -319,6 +345,7 @@ describe("the session store the server composes", () => {
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         chats: new OmpProcessRegistry({ createProcess: (options) => new StubProcess(options) }),
+        views: NO_VIEWS,
         // Another omp holds the chat's lease, as the composed app's probe reports it.
         leaseProbe: () => "active",
       });
@@ -346,6 +373,7 @@ describe("the session store the server composes", () => {
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         chats,
+        views: NO_VIEWS,
         leaseProbe: () => "inactive",
       });
       const file = path.join(store.bucketPath(cwd), "open-port.jsonl");
@@ -413,7 +441,8 @@ describe("the session store the server composes", () => {
       expect(error).toMatchObject({
         appError: {
           code: "conflict",
-          message: "Close this chat before deleting it: omp has it open.",
+          message:
+            "Another tab or window has this chat open. Close it there, then delete it again.",
         },
       });
       expect(await exists(file)).toBe(true);
@@ -477,7 +506,8 @@ describe("the session store the server composes", () => {
       expect(await refused).toMatchObject({
         appError: {
           code: "conflict",
-          message: "Close this chat before deleting it: omp has it open.",
+          message:
+            "Another tab or window has this chat open. Close it there, then delete it again.",
         },
       });
       expect(await exists(file)).toBe(true);
@@ -504,7 +534,8 @@ describe("the session store the server composes", () => {
       expect(await refused).toMatchObject({
         appError: {
           code: "conflict",
-          message: "Close this chat before deleting it: omp has it open.",
+          message:
+            "Another tab or window has this chat open. Close it there, then delete it again.",
         },
       });
       expect(await exists(file)).toBe(true);
@@ -606,6 +637,115 @@ describe("the session store the server composes", () => {
       expect(await exists(file)).toBe(true);
       expect(firstOf(processes).status).toBe("running");
       expect(chats.has(threadId)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a delete from the tab that holds an idle chat deletes it, and that tab's view goes with it", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const { chats } = recordingRegistry();
+      const threadId = ThreadId.parse("tab-held");
+      const holds = new Map([["tab-one", 1]]);
+      const store = createServerSessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        chats,
+        views: viewsOver(chats, threadId, holds),
+        leaseProbe: () => "inactive",
+      });
+      const file = path.join(store.bucketPath(cwd), "tab-held.jsonl");
+      await writeSession(file, "tab-held", cwd);
+      chats.acquire({ threadId, folder: FolderPath.parse(cwd), ompBin: "stub" });
+
+      const result = await store.deleteSession(
+        { folder: cwd, sessionFile: file },
+        { connectionId: "tab-one" },
+      );
+
+      expect(result).toEqual({ id: "tab-held", sessionFile: file });
+      expect(await exists(file)).toBe(false);
+      expect(chats.has(threadId)).toBe(false);
+      expect(holds.size).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat another tab also holds is refused, and the tab asking keeps its view", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const { chats } = recordingRegistry();
+      const threadId = ThreadId.parse("two-tabs");
+      const holds = new Map([["tab-one", 1]]);
+      const store = createServerSessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        chats,
+        views: viewsOver(chats, threadId, holds),
+        leaseProbe: () => "inactive",
+      });
+      const file = path.join(store.bucketPath(cwd), "two-tabs.jsonl");
+      await writeSession(file, "two-tabs", cwd);
+      const options = { threadId, folder: FolderPath.parse(cwd), ompBin: "stub" };
+      chats.acquire(options); // tab one
+      chats.acquire(options); // tab two
+
+      const error = await rejectionOf(
+        store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+      );
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message:
+            "Another tab or window has this chat open. Close it there, then delete it again.",
+        },
+      });
+      expect(holds.get("tab-one")).toBe(1);
+      expect(chats.watcherCount(threadId)).toBe(2);
+      expect(chats.has(threadId)).toBe(true);
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat whose turn runs is refused, and the tab asking keeps its view and its omp", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const { chats } = recordingRegistry();
+      const threadId = ThreadId.parse("busy-tab");
+      const holds = new Map([["tab-one", 1]]);
+      const store = createServerSessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        chats,
+        views: viewsOver(chats, threadId, holds),
+        leaseProbe: () => "inactive",
+      });
+      const file = path.join(store.bucketPath(cwd), "busy-tab.jsonl");
+      await writeSession(file, "busy-tab", cwd);
+      chats.acquire({ threadId, folder: FolderPath.parse(cwd), ompBin: "stub" });
+      chats.setBusy(threadId, true);
+
+      const error = await rejectionOf(
+        store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+      );
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "Wait for this chat's turn to finish, then delete it.",
+        },
+      });
+      expect(holds.get("tab-one")).toBe(1);
+      expect(chats.has(threadId)).toBe(true);
+      expect(await exists(file)).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

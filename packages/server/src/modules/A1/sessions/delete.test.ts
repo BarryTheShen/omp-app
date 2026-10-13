@@ -250,7 +250,7 @@ describe("SessionFileStore.deleteSession", () => {
     }
   });
 
-  test("refuses a chat a viewer holds open with the close sentence, and keeps it", async () => {
+  test("refuses a chat another view holds open in the other-tab sentence, and keeps it", async () => {
     const root = await makeTempRoot();
     try {
       const cwd = "/workspace/app";
@@ -266,7 +266,8 @@ describe("SessionFileStore.deleteSession", () => {
       expect(error).toMatchObject({
         appError: {
           code: "conflict",
-          message: "Close this chat before deleting it: omp has it open.",
+          message:
+            "Another tab or window has this chat open. Close it there, then delete it again.",
         },
       });
       expect(await exists(file)).toBe(true);
@@ -337,4 +338,130 @@ describe("SessionFileStore.deleteSession", () => {
       }
     },
   );
+
+  describe("a delete from a connection that holds the chat", () => {
+    /**
+     * One chat held by the given connections' views, with the server's omp for it. A view let go is released from the
+     * holders; an omp nobody watches is stopped, as the process registry stops it.
+     */
+    function heldBy(holders: readonly string[]) {
+      const state = { holders: [...holders], omp: true, released: [] as string[] };
+      const options: SessionFileStoreOptions = {
+        serverSessionIds: () => (state.omp ? new Set(["held-chat"]) : new Set<string>()),
+        serverWatches: () => state.holders.length > 0,
+        stopUnwatched: async () => {
+          if (state.holders.length === 0) state.omp = false;
+        },
+        views: {
+          viewsOf: (_sessionId, connectionId) =>
+            state.holders.filter((holder) => holder === connectionId).length,
+          watcherCount: () => state.holders.length,
+          releaseViews: async (_sessionId, connectionId) => {
+            state.released.push(connectionId);
+            state.holders = state.holders.filter((holder) => holder !== connectionId);
+          },
+        },
+      };
+      return { state, options };
+    }
+
+    test("lets its own view go once the delete is certain, and deletes the chat", async () => {
+      const root = await makeTempRoot();
+      try {
+        const cwd = "/workspace/app";
+        const chat = heldBy(["tab-one"]);
+        const store = storeFor(root, chat.options);
+        const file = path.join(store.bucketPath(cwd), "held-chat.jsonl");
+        await writeSession(file, "held-chat", cwd);
+
+        const result = await store.deleteSession(
+          { folder: cwd, sessionFile: file },
+          { connectionId: "tab-one" },
+        );
+
+        expect(result).toEqual({ id: "held-chat", sessionFile: file });
+        expect(chat.state.released).toEqual(["tab-one"]);
+        expect(await exists(file)).toBe(false);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    test("is refused while another connection holds the chat, and keeps its own view", async () => {
+      const root = await makeTempRoot();
+      try {
+        const cwd = "/workspace/app";
+        const chat = heldBy(["tab-one", "tab-two"]);
+        const store = storeFor(root, chat.options);
+        const file = path.join(store.bucketPath(cwd), "held-chat.jsonl");
+        await writeSession(file, "held-chat", cwd);
+
+        const error = await refusal(
+          store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+        );
+
+        expect(error).toMatchObject({
+          appError: {
+            code: "conflict",
+            message:
+              "Another tab or window has this chat open. Close it there, then delete it again.",
+          },
+        });
+        expect(chat.state.released).toEqual([]);
+        expect(chat.state.holders).toEqual(["tab-one", "tab-two"]);
+        expect(await exists(file)).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    test("is refused while the chat's turn runs, and keeps its own view", async () => {
+      const root = await makeTempRoot();
+      try {
+        const cwd = "/workspace/app";
+        const chat = heldBy(["tab-one"]);
+        const store = storeFor(root, { ...chat.options, turnOf: () => "running" });
+        const file = path.join(store.bucketPath(cwd), "held-chat.jsonl");
+        await writeSession(file, "held-chat", cwd);
+
+        const error = await refusal(
+          store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+        );
+
+        expect(error).toMatchObject({
+          appError: {
+            code: "conflict",
+            message: "Wait for this chat's turn to finish, then delete it.",
+          },
+        });
+        expect(chat.state.released).toEqual([]);
+        expect(chat.state.holders).toEqual(["tab-one"]);
+        expect(chat.state.omp).toBe(true);
+        expect(await exists(file)).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    test("is refused as before when the asking connection holds no view of the chat", async () => {
+      const root = await makeTempRoot();
+      try {
+        const cwd = "/workspace/app";
+        const chat = heldBy(["tab-two"]);
+        const store = storeFor(root, chat.options);
+        const file = path.join(store.bucketPath(cwd), "held-chat.jsonl");
+        await writeSession(file, "held-chat", cwd);
+
+        const error = await refusal(
+          store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+        );
+
+        expect(error).toMatchObject({ appError: { code: "conflict" } });
+        expect(chat.state.released).toEqual([]);
+        expect(await exists(file)).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+  });
 });

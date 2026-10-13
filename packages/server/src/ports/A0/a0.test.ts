@@ -22,7 +22,12 @@ import {
 } from "../../process";
 import type { PortHandlerContext as ServerPortHandlerContext } from "../../registry/ports";
 import { EventReplayHub } from "../../replay";
-import { type A0PortContext, createA0PortRegistrations, type ThreadBootstrap } from "./index";
+import {
+  type A0PortContext,
+  createA0PortRegistrations,
+  createA0Runtime,
+  type ThreadBootstrap,
+} from "./index";
 
 const encoder = new TextEncoder();
 const folder = FolderPath.parse("/workspace/a0-7");
@@ -316,6 +321,25 @@ function withIdleClose(created: FakeProcess[], idleCloseMs: number) {
   if (registration === undefined) throw new Error("missing registration");
   const handlers = registration.handlers as HandlerSet;
   return { processRegistry, registration, open: getHandler(handlers, "open"), handlers };
+}
+
+/** The A0 runtime and its handlers over a process registry that stops unwatched chats after `idleCloseMs`. */
+function runtimeWithIdleClose(created: FakeProcess[], idleCloseMs: number) {
+  const processRegistry = new OmpProcessRegistry({
+    idleCloseMs,
+    createProcess: (options: OmpProcessOptions) => {
+      const process = new FakeProcess(options, {
+        threadId: authorityThread,
+        sessionFile: authorityFile,
+      });
+      created.push(process);
+      return process;
+    },
+  });
+  const runtime = createA0Runtime({ ...context(created), processRegistry });
+  const registration = runtime.registrations[0];
+  if (registration === undefined) throw new Error("missing registration");
+  return { processRegistry, runtime, handlers: registration.handlers as HandlerSet };
 }
 
 /** A process registry whose fake processes are kept in `created`; `configure` sets each one before it starts. */
@@ -923,6 +947,62 @@ describe("A0.7 RpcSessionPort handlers", () => {
       .at(-1);
     expect(clearedTools?.tools).toEqual([]);
     expect(clearedSchemes?.schemes).toEqual([]);
+    await processRegistry.closeAll();
+  });
+
+  test("releaseViews lets go of one connection's views and its host tools, and keeps the other connection's", async () => {
+    const created: FakeProcess[] = [];
+    const { processRegistry, runtime, handlers } = runtimeWithIdleClose(created, 1_000);
+    const open = getHandler(handlers, "open");
+    const send = getHandler(handlers, "send");
+    await open({ threadId: authorityThread }, call("one"));
+    await open({ threadId: authorityThread }, call("two"));
+    await open({ threadId: authorityThread }, call("one"));
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(2);
+    expect(runtime.views.viewsOf(authorityThread, "two")).toBe(1);
+    expect(runtime.views.viewsOf(ThreadId.parse("never-opened"), "one")).toBe(0);
+    expect(processRegistry.watcherCount(authorityThread)).toBe(3);
+
+    const oneTool = {
+      name: "tab_one",
+      label: "tab_one",
+      description: "First tab tool",
+      parameters: { type: "object" },
+    };
+    const twoTool = {
+      name: "tab_two",
+      label: "tab_two",
+      description: "Second tab tool",
+      parameters: { type: "object" },
+    };
+    await send(
+      {
+        threadId: authorityThread,
+        registrationOwner: "owner-one",
+        command: { type: "set_host_tools", tools: [oneTool] },
+      },
+      call("one"),
+    );
+    await send(
+      {
+        threadId: authorityThread,
+        registrationOwner: "owner-two",
+        command: { type: "set_host_tools", tools: [twoTool] },
+      },
+      call("two"),
+    );
+
+    await runtime.views.releaseViews(authorityThread, "one");
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(0);
+    expect(runtime.views.viewsOf(authorityThread, "two")).toBe(1);
+    expect(processRegistry.watcherCount(authorityThread)).toBe(1);
+    expect(created[0]?.status).toBe("running");
+    const tools = created[0]?.writes.filter((frame) => frame.type === "set_host_tools").at(-1);
+    expect(tools?.tools).toEqual([twoTool]);
+
+    // A connection with no view of the chat has nothing to let go: nothing changes.
+    await runtime.views.releaseViews(authorityThread, "one");
+    expect(processRegistry.watcherCount(authorityThread)).toBe(1);
     await processRegistry.closeAll();
   });
 

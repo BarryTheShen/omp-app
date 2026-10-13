@@ -138,22 +138,29 @@ function serverOwnsSession(
   return ids?.has(sessionId) ?? false;
 }
 
+/** The sentence a delete gives while the chat's turn runs: omp would write the chat back once its file is gone. */
+const RUNNING_TURN_SENTENCE = "Wait for this chat's turn to finish, then delete it.";
+
+/** The sentence for a chat another tab or window has open: the person closes it there, then deletes it again. */
+const OTHER_VIEW_SENTENCE =
+  "Another tab or window has this chat open. Close it there, then delete it again.";
+
 /**
  * The refusal of a delete for a chat omp still holds. A chat the server keeps only for omp's idle time, which no view
- * holds, has an omp still on its way out: the person is asked to try again. A chat a view holds open, or a lease another
- * process holds, is open: the person is asked to close it.
+ * holds, has an omp still on its way out: the person is asked to try again. A chat another view holds open is refused in
+ * words that say so. A lease another process holds is refused as a chat omp has open.
  */
 function heldFailure(
   options: SessionFileStoreOptions,
   sessionId: string,
   serverProcess: boolean,
 ): AppFailure {
-  const stillFinishing = serverProcess && options.serverWatches?.(sessionId) === false;
+  if (serverProcess && options.serverWatches?.(sessionId) === false) {
+    return appFailure("conflict", "omp is still finishing this chat. Try again in a moment.", true);
+  }
   return appFailure(
     "conflict",
-    stillFinishing
-      ? "omp is still finishing this chat. Try again in a moment."
-      : "Close this chat before deleting it: omp has it open.",
+    serverProcess ? OTHER_VIEW_SENTENCE : "Close this chat before deleting it: omp has it open.",
     true,
   );
 }
@@ -495,30 +502,31 @@ export class SessionFileStore {
   /**
    * Deletes one chat: its session file and the artifacts directory beside it. Only a file that the listing of `folder`
    * returns can be deleted. The path is resolved; it must lie inside the sessions root and be a regular file, not a
-   * symlink, that reads as a session. This server first stops its own omp for the chat when nobody watches it and no
-   * turn runs (`stopUnwatched`), then reads the chat again. A chat that is still watched, one a viewer opened during the
-   * stop, or one whose turn runs, is refused, because omp would write it back. The server's own chats are checked once
-   * more with no await before the removal. The artifacts directory is checked the same way before anything is removed.
-   * Once the chat's file is gone the delete succeeds: artifacts that cannot be removed stay, and are reported as
-   * `artifactsKept`.
+   * symlink, that reads as a session. A delete from `caller` is refused first, with nothing changed, when the chat's turn
+   * runs or another connection holds it (`#letGoOwnViews`). Otherwise the caller's own views are let go, and this server
+   * stops its own omp for the chat when nobody else watches it and no turn runs (`stopUnwatched`), then reads the chat
+   * again. A chat that is still watched, one a viewer opened during the stop, or one whose turn runs, is refused, because
+   * omp would write it back. The server's own chats are checked once more with no await before the removal. The artifacts
+   * directory is checked the same way before anything is removed. Once the chat's file is gone the delete succeeds:
+   * artifacts that cannot be removed stay, and are reported as `artifactsKept`. A refusal after the caller's views were
+   * let go, which happens only when omp does not stop or a viewer opens the chat while omp stops, leaves them let go.
    */
-  async deleteSession(args: {
-    readonly folder: string;
-    readonly sessionFile: string;
-  }): Promise<SessionDeletion> {
+  async deleteSession(
+    args: { readonly folder: string; readonly sessionFile: string },
+    caller?: { readonly connectionId: string },
+  ): Promise<SessionDeletion> {
     const sessionFile = await this.#deletableSessionFile(args.folder, args.sessionFile);
     const artifacts = await this.#artifactsDirectory(sessionFile);
     const first = await this.#readSessionFile(sessionFile);
     if (!first.file) throw notListed();
+    await this.#letGoOwnViews(first.file, caller);
     // The id comes from the file, so the stop follows the first read. Stopping waits for a stop already under way, so
     // the chat is not read while omp is still exiting.
     await this.#options.stopUnwatched?.(first.file.id);
     const outcome = await this.#readSessionFile(sessionFile);
     if (!outcome.file) throw notListed();
     const { file } = outcome;
-    if (file.turn === "running") {
-      throw appFailure("conflict", "Wait for this chat's turn to finish, then delete it.", true);
-    }
+    if (file.turn === "running") throw appFailure("conflict", RUNNING_TURN_SENTENCE, true);
     if (file.liveness.serverProcess || file.liveness.lease === "held") {
       throw heldFailure(this.#options, file.id, file.liveness.serverProcess);
     }
@@ -541,6 +549,23 @@ export class SessionFileStore {
       }
     }
     return { id: file.id, sessionFile, ...(artifactsKept === undefined ? {} : { artifactsKept }) };
+  }
+
+  /**
+   * The refusals of a delete from `caller` that change nothing: a turn that runs, and another connection's view. Then the
+   * caller's own views are let go, so the stop that follows treats the chat as unwatched.
+   */
+  async #letGoOwnViews(
+    file: SessionFile,
+    caller: { readonly connectionId: string } | undefined,
+  ): Promise<void> {
+    const views = this.#options.views;
+    if (caller === undefined || views === undefined) return;
+    const own = views.viewsOf(file.id, caller.connectionId);
+    if (own === 0) return;
+    if (file.turn === "running") throw appFailure("conflict", RUNNING_TURN_SENTENCE, true);
+    if (views.watcherCount(file.id) > own) throw heldFailure(this.#options, file.id, true);
+    await views.releaseViews(file.id, caller.connectionId);
   }
 
   async #listedSessionFile(value: string): Promise<string> {

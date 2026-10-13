@@ -280,7 +280,12 @@ export class OmpProcessRegistry {
 
   /** Whether a viewer holds the thread open. A process the registry keeps for omp's idle time alone is not watched. */
   watched(threadId: ThreadId): boolean {
-    return (this.#entries.get(threadId)?.watchers ?? 0) > 0;
+    return this.watcherCount(threadId) > 0;
+  }
+
+  /** How many viewers hold the thread open, across every connection. `watched` is this count above zero. */
+  watcherCount(threadId: ThreadId): number {
+    return this.#entries.get(threadId)?.watchers ?? 0;
   }
 
   /** The processes held right now: what the debug log's periodic sample reports. */

@@ -879,6 +879,30 @@ export class RpcSessionPortRuntime {
     }
   }
 
+  /** How many views one connection holds on a chat: what its open calls took, less what its closes let go. */
+  viewsOf(threadId: ThreadId, connectionId: string): number {
+    return this.#entryOrUndefined(threadId)?.viewers.get(connectionId) ?? 0;
+  }
+
+  /**
+   * Lets go of every view one connection holds on a chat, as deleting the chat does: the connection's host registrations
+   * on it are removed and the process registry is told once per view, as `releaseConnection` does for every chat a
+   * connection views. The other connections' views of the chat are kept.
+   */
+  async releaseViews(threadId: ThreadId, connectionId: string): Promise<void> {
+    const entry = this.#entryOrUndefined(threadId);
+    const count = entry?.viewers.get(connectionId) ?? 0;
+    if (entry === undefined || count === 0) return;
+    const signal = new AbortController().signal;
+    await this.#releaseHostRegistrations(entry, connectionId, signal);
+    entry.viewers.delete(connectionId);
+    entry.preferences.delete(connectionId);
+    for (let opened = 0; opened < count; opened += 1) {
+      this.#context.processRegistry.release(entry.bootstrap.threadId);
+    }
+    if (entry.viewers.size > 0) await this.#arbitrate(entry, signal);
+  }
+
   async dispose(): Promise<void> {
     for (const entry of this.#entries.values()) entry.unsubscribeEvents();
     this.#entries.clear();

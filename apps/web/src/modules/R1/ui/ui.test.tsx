@@ -563,8 +563,9 @@ describe("SessionCatalogSidebar", () => {
     expect(screen.getByText("Newest chat")).toBeTruthy();
   });
 
-  test("deleting the open chat starts a new chat first, and a refusal from the server is shown as its sentence", async () => {
+  test("deleting the open chat asks the server first: a refusal shows as its sentence, and the chat stays open", async () => {
     const calls: string[] = [];
+    const opened: string[] = [];
     const refused = new AppFailure({
       code: "conflict",
       message: "Close this chat before deleting it: omp has it open.",
@@ -585,6 +586,9 @@ describe("SessionCatalogSidebar", () => {
           catalog={modelWithSessions()}
           confirmDelete={() => true}
           currentThreadId={ThreadIdSchema.parse("new")}
+          onNewChat={async (threadId) => {
+            opened.push(threadId);
+          }}
           remote={remote}
         />,
       ),
@@ -595,7 +599,127 @@ describe("SessionCatalogSidebar", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("Close this chat before deleting it: omp has it open.");
-    expect(calls).toEqual(["initialize:new", "delete:new"]);
+    // The server refused, so no new chat starts: the person stays in the chat they were in.
+    expect(calls).toEqual(["delete:new"]);
+    expect(opened).toEqual([]);
+  });
+
+  test("deleting the open chat leaves it for a new chat only after the server has deleted it", async () => {
+    const calls: string[] = [];
+    const opened: string[] = [];
+    const remote = {
+      ...fakeRemote(calls),
+      delete: async (id: string) => {
+        calls.push(`delete:${id}`);
+      },
+    };
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={() => true}
+          currentThreadId={ThreadIdSchema.parse("new")}
+          onNewChat={async (threadId) => {
+            opened.push(threadId);
+          }}
+          remote={remote}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+    await waitFor(() => expect(opened).toEqual(["new"]));
+    expect(calls).toEqual(["delete:new", "initialize:new"]);
+  });
+
+  test("a chat the person picks while the server answers keeps the selection: no new chat takes its place", async () => {
+    const calls: string[] = [];
+    const statuses: unknown[] = [];
+    const deleting = Promise.withResolvers<void>();
+    const remote = {
+      ...fakeRemote(calls),
+      delete: async (id: string) => {
+        calls.push(`delete:${id}`);
+        await deleting.promise;
+      },
+    };
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={() => true}
+          currentThreadId={ThreadIdSchema.parse("new")}
+          onNewChatStatus={(status) => statuses.push(status)}
+          remote={remote}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+    await waitFor(() => expect(calls).toEqual(["delete:new"]));
+    // The person picks the older chat while the server still answers for the deleted one. The pick finishes first.
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    await waitFor(() => expect(calls).toEqual(["delete:new", "initialize:old"]));
+    deleting.resolve();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("option", { name: /Old chat/ })),
+    );
+    expect(calls).toEqual(["delete:new", "initialize:old"]);
+    expect(statuses).toEqual([]);
+  });
+
+  test("a chat the person is still opening when the server answers is kept: no new chat starts over it", async () => {
+    const calls: string[] = [];
+    const statuses: unknown[] = [];
+    const deleting = Promise.withResolvers<void>();
+    const opening = Promise.withResolvers<{ remoteId: string }>();
+    const remote = {
+      ...fakeRemote(calls),
+      initialize: async (id: string) => {
+        calls.push(`initialize:${id}`);
+        return id === "old" ? opening.promise : { remoteId: id };
+      },
+      delete: async (id: string) => {
+        calls.push(`delete:${id}`);
+        await deleting.promise;
+      },
+    };
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={() => true}
+          currentThreadId={ThreadIdSchema.parse("new")}
+          onNewChatStatus={(status) => statuses.push(status)}
+          remote={remote}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+    await waitFor(() => expect(calls).toEqual(["delete:new"]));
+    // The older chat is still opening (its open is held) when the server answers for the deleted one.
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    await waitFor(() => expect(calls).toEqual(["delete:new", "initialize:old"]));
+    deleting.resolve();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("option", { name: /Old chat/ })),
+    );
+    expect(calls).toEqual(["delete:new", "initialize:old"]);
+    expect(statuses).toEqual([]);
+    opening.resolve({ remoteId: "old" });
   });
 
   test("deleting the open chat while its turn runs keeps the chat open, and says why it is not deleted", async () => {

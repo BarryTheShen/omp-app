@@ -1645,8 +1645,7 @@ function ConnectedApp({
             open: rpc.open,
             close: rpc.close,
             rename: rpc.rename,
-            deleteThread: (threadId) =>
-              deleteChatFile({ threadId, catalog, sessionFiles, close: rpc.close }),
+            deleteThread: (threadId) => deleteChatFile({ threadId, catalog, sessionFiles }),
           })
         : null,
     [catalog, rpc.open, rpc.close, rpc.rename, sessionFiles],

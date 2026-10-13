@@ -27,7 +27,7 @@ function sessionFilesRecording(calls: string[], refusal?: AppFailure): SessionFi
 }
 
 describe("deleteChatFile", () => {
-  test("reads the chat, lets its hold go, then asks the server to delete its file, in that order", async () => {
+  test("reads the chat, then asks the server to delete its file: the chat's view is not let go before the server decides", async () => {
     const calls: string[] = [];
     await deleteChatFile({
       threadId: threadA,
@@ -36,31 +36,9 @@ describe("deleteChatFile", () => {
         return session();
       }),
       sessionFiles: sessionFilesRecording(calls),
-      close: async ({ threadId }) => {
-        calls.push(`close ${threadId}`);
-        return null;
-      },
     });
 
-    expect(calls).toEqual([
-      "fetch",
-      "close thread-a",
-      "delete /workspace/app /workspace/app/.omp/thread-a.jsonl",
-    ]);
-  });
-
-  test("a chat the server has already forgotten still deletes: the failed release is not a reason to stop", async () => {
-    const calls: string[] = [];
-    await deleteChatFile({
-      threadId: threadA,
-      catalog: catalogFetching(async () => session()),
-      sessionFiles: sessionFilesRecording(calls),
-      close: async () => {
-        throw new AppFailure({ code: "not_found", message: "forgotten", retryable: false });
-      },
-    });
-
-    expect(calls).toEqual(["delete /workspace/app /workspace/app/.omp/thread-a.jsonl"]);
+    expect(calls).toEqual(["fetch", "delete /workspace/app /workspace/app/.omp/thread-a.jsonl"]);
   });
 
   test("a chat that cannot be read is not sent to the server", async () => {
@@ -72,7 +50,6 @@ describe("deleteChatFile", () => {
           throw new AppFailure({ code: "not_found", message: "gone", retryable: false });
         }),
         sessionFiles: sessionFilesRecording(calls),
-        close: async () => null,
       }),
     ).rejects.toMatchObject({ appError: { code: "not_found" } });
 
@@ -82,7 +59,7 @@ describe("deleteChatFile", () => {
   test("a refusal from the server reaches the caller unchanged, with its code", async () => {
     const refusal = new AppFailure({
       code: "conflict",
-      message: "Close this chat before deleting it: omp has it open.",
+      message: "Wait for this chat's turn to finish, then delete it.",
       retryable: true,
     });
     const calls: string[] = [];
@@ -91,7 +68,6 @@ describe("deleteChatFile", () => {
         threadId: threadA,
         catalog: catalogFetching(async () => session()),
         sessionFiles: sessionFilesRecording(calls, refusal),
-        close: async () => null,
       }),
     ).rejects.toBe(refusal);
   });

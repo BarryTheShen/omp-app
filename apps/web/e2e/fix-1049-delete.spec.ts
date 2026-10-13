@@ -114,8 +114,16 @@ realTest(
     await expect(chatRow(page, "Seeded chat 2")).toHaveCount(0, { timeout: 30_000 });
     expect(await sessionFilesNamed(realApp.agentDir, SEEDED_CHAT_2_ID)).toEqual([]);
 
-    // A prompt in another chat must not bring the deleted one back, in the list or on disk.
+    // A prompt in another chat must not bring the deleted one back, in the list or on disk. The deleted chat's new chat
+    // opens after its row goes, so the prompt waits until chat 3 is on screen: a prompt sent before that goes to the chat
+    // on screen, which is still the new one.
     await chatRow(page, "Seeded chat 3").click();
+    await expect(
+      page
+        .getByRole("region", { name: "Conversation transcript" })
+        .getByText("Seeded chat 3", { exact: true })
+        .first(),
+    ).toBeVisible({ timeout: 60_000 });
     const composer = page.getByRole("textbox", { name: "Message input" });
     await expect(composer).toBeVisible({ timeout: 60_000 });
     await sendPrompt(composer, "ping");

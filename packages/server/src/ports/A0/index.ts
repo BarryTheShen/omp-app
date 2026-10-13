@@ -19,6 +19,11 @@ export * from "./rpc-session";
 export interface A0Runtime {
   readonly registrations: readonly PortRegistration[];
   sessionFor(threadId: ThreadId): RpcSession | undefined;
+  /** The views each connection holds on the chats this runtime runs: a delete of a chat lets its own views go. */
+  readonly views: {
+    viewsOf(threadId: ThreadId, connectionId: string): number;
+    releaseViews(threadId: ThreadId, connectionId: string): Promise<void>;
+  };
 }
 
 export function createA0Runtime(context: A0PortContext): A0Runtime {
@@ -34,6 +39,10 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
       createAppPortRegistration(context),
     ],
     sessionFor: (threadId) => rpc.runtime.sessionFor(threadId),
+    views: {
+      viewsOf: (threadId, connectionId) => rpc.runtime.viewsOf(threadId, connectionId),
+      releaseViews: (threadId, connectionId) => rpc.runtime.releaseViews(threadId, connectionId),
+    },
   };
 }
 

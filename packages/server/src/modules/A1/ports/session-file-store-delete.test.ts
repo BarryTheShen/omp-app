@@ -111,4 +111,53 @@ describe("the session file port deletes a chat and publishes it as removed", () 
       }
     },
   );
+
+  test("the connection that asks reaches the store, so the views it holds go with its delete", async () => {
+    await mkdir(WORKTREE_DATA, { recursive: true });
+    const root = await mkdtemp(path.join(WORKTREE_DATA, "session-port-delete-views-"));
+    try {
+      const cwd = "/workspace/app";
+      const released: string[] = [];
+      const store = new SessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        tempRoot: path.join(root, "tmp"),
+        views: {
+          viewsOf: (_sessionId, connectionId) => (connectionId === "tab-one" ? 1 : 0),
+          watcherCount: () => 1,
+          releaseViews: async (_sessionId, connectionId) => {
+            released.push(connectionId);
+          },
+        },
+      });
+      const file = path.join(store.bucketPath(cwd), "chat-views.jsonl");
+      await mkdir(path.dirname(file), { recursive: true });
+      const header = {
+        type: "session",
+        version: 3,
+        id: "chat-views",
+        timestamp: "2026-10-10T12:00:00.000Z",
+        cwd,
+      };
+      await writeFile(file, `${JSON.stringify(header)}\n`, "utf8");
+
+      const context = {
+        sessionFileStore: store,
+        publish: () => undefined,
+        watchStreamActivity: () => () => undefined,
+      } as unknown as A1PortContext;
+      const handler = createSessionFileStoreRegistration(context).handlers.deleteSession;
+      if (handler === undefined) throw new Error("the port has no deleteSession handler");
+
+      await handler({ folder: cwd, sessionFile: file }, {
+        signal: new AbortController().signal,
+        connectionId: "tab-one",
+      } as never);
+
+      expect(released).toEqual(["tab-one"]);
+      await expect(access(file)).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -780,8 +780,8 @@ export function SessionCatalogSidebar({
                             const neighbour =
                               index < 0 ? undefined : (rowIds[index + 1] ?? rowIds[index - 1]);
                             try {
-                              // An open chat whose turn runs is not left: the sentence says why it cannot be deleted, in
-                              // the chat the person is in. Leaving first would put the person in a new, empty chat.
+                              // A chat whose turn streams in this view is refused here, with no round trip: the live store
+                              // knows it, and a turn that was just sent may not be busy on the server yet.
                               if (
                                 session.id === currentThreadId &&
                                 currentTurnRunning?.() === true
@@ -790,11 +790,18 @@ export function SessionCatalogSidebar({
                                 catalog.requestFocus({ kind: "row", id: session.id });
                                 return;
                               }
-                              // The view leaves an open chat first. The server then sees nobody watching it, stops its
-                              // omp and deletes the file. A refusal is kept on the catalog, so it still shows if this
-                              // sidebar is rebuilt in the meantime.
-                              if (session.id === currentThreadId) await createNewChat();
+                              // The server decides first. It refuses a chat whose turn runs (a background job keeps it
+                              // busy) or that another tab or window holds, and the refusal shows here while the chat stays
+                              // on screen. The view leaves an open chat only once the server has deleted it.
+                              const selectionBefore = catalog.getSnapshot().selectionRevision;
                               await remote.delete(session.id);
+                              // A chat the person picks while the server answers, or is still opening, is the one they want:
+                              // a new chat must not take its place, because it would be the later pick.
+                              const after = catalog.getSnapshot();
+                              const picked =
+                                after.selectionRevision !== selectionBefore ||
+                                after.selectedThreadId !== null;
+                              if (session.id === currentThreadId && !picked) await createNewChat();
                               catalog.requestFocus(
                                 neighbour ? { kind: "row", id: neighbour } : { kind: "newChat" },
                               );

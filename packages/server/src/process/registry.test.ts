@@ -741,4 +741,23 @@ describe("OmpProcessRegistry", () => {
     expect(registry.has(thread)).toBe(true);
     expect(registry.watched(thread)).toBe(false);
   });
+  test("watcherCount counts every viewer that holds the thread, and watched is that count above zero", () => {
+    const registry = new OmpProcessRegistry({
+      timer: new ManualTimer(),
+      createProcess: (processOptions) => new StubProcess(processOptions),
+    });
+    const thread = ThreadId.parse("thread-watcher-count");
+    expect(registry.watcherCount(thread)).toBe(0);
+
+    registry.acquire(options(thread, "/workspace/watcher-count"));
+    registry.acquire(options(thread, "/workspace/watcher-count"));
+    expect(registry.watcherCount(thread)).toBe(2);
+    expect(registry.watched(thread)).toBe(true);
+
+    registry.release(thread);
+    expect(registry.watcherCount(thread)).toBe(1);
+    registry.release(thread);
+    expect(registry.watcherCount(thread)).toBe(0);
+    expect(registry.watched(thread)).toBe(false);
+  });
 });

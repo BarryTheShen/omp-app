@@ -182,7 +182,9 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
       },
       deleteSession: async (args, handlerContext) => {
         assertNotAborted(handlerContext);
-        const deleted = await context.sessionFileStore.deleteSession(args);
+        const deleted = await context.sessionFileStore.deleteSession(args, {
+          connectionId: handlerContext.connectionId,
+        });
         if (deleted.artifactsKept !== undefined) {
           context.logger?.warn("sessions.artifacts_kept", { path: deleted.artifactsKept });
         }
