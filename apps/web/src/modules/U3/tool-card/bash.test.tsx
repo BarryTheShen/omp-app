@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { type ReactNode, useMemo, useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { BackgroundJobView } from "@/modules/R0/store/background-jobs";
 import {
   MemoryThinkingVisibilityStore,
   TranscriptDisplayPolicyProvider,
@@ -7,7 +9,12 @@ import {
 } from "@/modules/U1/policy/policy";
 import { ReadOnlyNestedTranscript, TurnCancelContext } from "@/modules/U1/thread";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
-import { BackgroundJobCommandContext } from "./background-job";
+import {
+  BackgroundJobCommandContext,
+  BackgroundJobsContext,
+  type BackgroundJobsScope,
+  type StopOutcome,
+} from "./background-job";
 import { BashCard, decodeBashResult, failureMessage } from "./bash";
 import type { ToolRendererProps } from "./contract";
 import { FullOutputProvider } from "./full-output";
@@ -684,9 +691,42 @@ describe("a command omp moved to the background", () => {
     details: { async: { state: "running", jobId: "bg_1", type: "bash" }, timeoutSeconds: 300 },
     isError: false,
   };
+  const running: BackgroundJobView = { kind: "running", jobId: "bg_1" };
+
+  /**
+   * The chat's jobs for a test: the view it gives this job, and the stops its cards keep in state, as ToolRunScope keeps
+   * them. A stop recorded here re-renders the cards, as it does in the chat.
+   */
+  function ChatJobs({
+    view,
+    stops = [],
+    children,
+  }: {
+    readonly view: BackgroundJobView | undefined;
+    readonly stops?: readonly (readonly [string, StopOutcome])[];
+    readonly children: ReactNode;
+  }) {
+    const [outcomes, setOutcomes] = useState(() => new Map<string, StopOutcome>(stops));
+    const scope = useMemo<BackgroundJobsScope>(
+      () => ({
+        viewOf: () => view,
+        outcomeOf: (toolCallId) => outcomes.get(toolCallId),
+        recordOutcome: (toolCallId, outcome) =>
+          setOutcomes((current) => new Map(current).set(toolCallId, outcome)),
+      }),
+      [view, outcomes],
+    );
+    return (
+      <BackgroundJobsContext.Provider value={scope}>{children}</BackgroundJobsContext.Provider>
+    );
+  }
 
   test("says it runs in the background with its job number, and shows none of omp's words for the model", () => {
-    render(<BashCard rendererProps={props(backgrounded)} />);
+    render(
+      <ChatJobs view={running}>
+        <BashCard rendererProps={props(backgrounded)} />
+      </ChatJobs>,
+    );
     expandToolCards();
     expect(
       screen.getByText(
@@ -703,7 +743,9 @@ describe("a command omp moved to the background", () => {
     const run = vi.fn(async (_command: string) => ["Cancelled background job bg_1."]);
     render(
       <BackgroundJobCommandContext.Provider value={run}>
-        <BashCard rendererProps={props(backgrounded)} />
+        <ChatJobs view={running}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
       </BackgroundJobCommandContext.Provider>,
     );
     expandToolCards();
@@ -718,7 +760,11 @@ describe("a command omp moved to the background", () => {
   });
 
   test("offers no Stop without the chat's command gateway", () => {
-    render(<BashCard rendererProps={props(backgrounded)} />);
+    render(
+      <ChatJobs view={running}>
+        <BashCard rendererProps={props(backgrounded)} />
+      </ChatJobs>,
+    );
     expandToolCards();
     expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
   });
@@ -727,7 +773,9 @@ describe("a command omp moved to the background", () => {
     const run = vi.fn(async (_command: string) => ['No running background job with id "bg_1".']);
     render(
       <BackgroundJobCommandContext.Provider value={run}>
-        <BashCard rendererProps={props(backgrounded)} />
+        <ChatJobs view={running}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
       </BackgroundJobCommandContext.Provider>,
     );
     expandToolCards();
@@ -747,7 +795,9 @@ describe("a command omp moved to the background", () => {
     });
     render(
       <BackgroundJobCommandContext.Provider value={run}>
-        <BashCard rendererProps={props(backgrounded)} />
+        <ChatJobs view={running}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
       </BackgroundJobCommandContext.Provider>,
     );
     expandToolCards();
@@ -758,5 +808,70 @@ describe("a command omp moved to the background", () => {
       ).toBeTruthy(),
     );
     expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
+  });
+
+  test("says a finished job finished, with no Stop", () => {
+    const run = vi.fn(async (_command: string) => ["Cancelled background job bg_1."]);
+    render(
+      <BackgroundJobCommandContext.Provider value={run}>
+        <ChatJobs view={{ kind: "finished", jobId: "bg_1" }}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    expect(screen.getByText("Background job bg_1 finished.", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Finished", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Stop background job/ })).toBeNull();
+    expect(screen.queryByText(/Running in the background/)).toBeNull();
+  });
+
+  test("says omp stopped before a job's result came back, once its process has ended", () => {
+    const run = vi.fn(async (_command: string) => ["Cancelled background job bg_1."]);
+    render(
+      <BackgroundJobCommandContext.Provider value={run}>
+        <ChatJobs view={{ kind: "ended", jobId: "bg_1" }}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    expect(
+      screen.getByText("Background job bg_1. omp stopped before its result came back.", {
+        exact: true,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText("Ended", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Stop background job/ })).toBeNull();
+    expect(screen.queryByText(/Running in the background/)).toBeNull();
+  });
+
+  test("claims nothing about a job the chat cannot place, not even that it runs", () => {
+    const run = vi.fn(async (_command: string) => ["Cancelled background job bg_1."]);
+    render(
+      <BackgroundJobCommandContext.Provider value={run}>
+        <BashCard rendererProps={props(backgrounded)} />
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    expect(screen.getByText("Background job bg_1.", { exact: true })).toBeTruthy();
+    expect(screen.getByText("In background", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Stop background job/ })).toBeNull();
+    expect(screen.queryByText(/Running in the background/)).toBeNull();
+  });
+
+  test("keeps a stop for the chat, so a card shown again still says what its stop said", () => {
+    render(
+      <ChatJobs
+        view={running}
+        stops={[["bash-call", { status: "stopped", sentence: "Stopped background job bg_1." }]]}
+      >
+        <BashCard rendererProps={props(backgrounded)} />
+      </ChatJobs>,
+    );
+    expandToolCards();
+    expect(screen.getByText("Stopped", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Stopped background job bg_1.", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Stop background job/ })).toBeNull();
   });
 });

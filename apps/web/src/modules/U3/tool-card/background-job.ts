@@ -1,4 +1,5 @@
 import { createContext } from "react";
+import type { BackgroundJobView } from "@/modules/R0/store/background-jobs";
 
 /**
  * Runs one omp slash command through the chat's command gateway and resolves with omp's own words, one entry per text
@@ -10,6 +11,19 @@ export type BackgroundJobCommand = (command: string) => Promise<readonly string[
 export const BackgroundJobCommandContext = createContext<BackgroundJobCommand | undefined>(
   undefined,
 );
+
+/**
+ * The chat's background jobs: each job's view, from its transcript and omp's process, by its call; and the stop each
+ * card last got. The chat keeps a stop for its page, so a card shown again still knows what its stop said.
+ */
+export interface BackgroundJobsScope {
+  viewOf(toolCallId: string): BackgroundJobView | undefined;
+  outcomeOf(toolCallId: string): StopOutcome | undefined;
+  recordOutcome(toolCallId: string, outcome: StopOutcome): void;
+}
+
+/** The chat's background jobs, read by a background bash card. Without them a card claims nothing about its job. */
+export const BackgroundJobsContext = createContext<BackgroundJobsScope | undefined>(undefined);
 
 /** omp's job ids are short words such as `bg_12` or `bash_a1b2c3`; anything else is never sent to omp. */
 const JOB_ID = /^[A-Za-z0-9_-]{1,60}$/u;

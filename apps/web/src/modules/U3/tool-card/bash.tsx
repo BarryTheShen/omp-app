@@ -1,12 +1,14 @@
 import type { OmpWire } from "@omp-app/contracts";
 import { useContext, useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import type { BackgroundJobView } from "@/modules/R0/store/background-jobs";
 import { useTranscriptDisplayPolicy } from "@/modules/U1/policy/policy";
 import { TurnCancelContext } from "@/modules/U1/thread";
 import { Button } from "../../../components/ui/button";
 import { Icons } from "../../../tokens";
 import {
   BackgroundJobCommandContext,
+  BackgroundJobsContext,
   type StopOutcome,
   stopCommandFor,
   stopFailedOutcome,
@@ -36,10 +38,18 @@ const MAX_OUTPUT_CHARS = 8_000;
 /** A command omp moved to the background. Its chip reads "In background" with the muted look of the unrecorded phase: nothing failed, and nothing more is known. */
 const BACKGROUND_OUTCOME: ToolCardOutcome = { label: "In background", phase: "unrecorded" };
 
-/** The card's chip for a background command: "Stopped" or "Finished" once omp answered a Stop, else "In background". */
-function backgroundChip(stop: StopOutcome | undefined): ToolCardOutcome {
+/**
+ * The card's chip for a background command: what its stop said, else what the chat knows of its job. A job that
+ * omp's process ended before its result came back reads "Ended"; a job the chat cannot place reads "In background".
+ */
+function backgroundChip(
+  stop: StopOutcome | undefined,
+  view: BackgroundJobView | undefined,
+): ToolCardOutcome {
   if (stop?.status === "stopped") return { label: "Stopped", phase: "unrecorded" };
   if (stop?.status === "finished") return { label: "Finished", phase: "unrecorded" };
+  if (view?.kind === "finished") return { label: "Finished", phase: "unrecorded" };
+  if (view?.kind === "ended") return { label: "Ended", phase: "unrecorded" };
   return BACKGROUND_OUTCOME;
 }
 
@@ -68,7 +78,8 @@ export interface BashCardProps {
 /** Renders one normalized bash tool call; stop cancels the parent turn: the one supplied, else the chat's. */
 export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
   const chatCancel = useContext(TurnCancelContext);
-  const [stopOutcome, setStopOutcome] = useState<StopOutcome | undefined>(undefined);
+  const jobs = useContext(BackgroundJobsContext);
+  const [localOutcome, setLocalOutcome] = useState<StopOutcome | undefined>(undefined);
   const normalized = normalizeToolRendererProps(rendererProps);
   const result = decodeBashResult(
     rendererProps.result ?? normalized.result ?? normalized.partialResult,
@@ -77,7 +88,15 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
   const command = commandFromArgs(rendererProps.args);
   const cwd = cwdFromArgs(rendererProps.args) ?? result?.workingDir;
   const summary = singleLine(command);
-  const outcome = result?.background === undefined ? undefined : backgroundChip(stopOutcome);
+  const background = result?.background;
+  // With the chat's jobs, a stop is kept for the chat's page; without them (a card on its own) it is kept by this card.
+  const stopOutcome = jobs === undefined ? localOutcome : jobs.outcomeOf(rendererProps.toolCallId);
+  const onStopOutcome = (next: StopOutcome): void => {
+    if (jobs === undefined) setLocalOutcome(next);
+    else jobs.recordOutcome(rendererProps.toolCallId, next);
+  };
+  const view = jobs?.viewOf(rendererProps.toolCallId);
+  const outcome = background === undefined ? undefined : backgroundChip(stopOutcome, view);
 
   return (
     <div data-slot="u3-bash-card" data-testid="u3-bash-card" title={command}>
@@ -95,7 +114,8 @@ export function BashCard({ rendererProps, onCancel, onCopy }: BashCardProps) {
           onCancel={onCancel ?? chatCancel}
           onCopy={onCopy}
           stopOutcome={stopOutcome}
-          onStopOutcome={setStopOutcome}
+          onStopOutcome={onStopOutcome}
+          view={view}
         />
       </ToolCard>
     </div>
@@ -423,6 +443,7 @@ function BashOutput({
   onCopy,
   stopOutcome,
   onStopOutcome,
+  view,
 }: {
   readonly result: BashResult | undefined;
   readonly state: ToolCardState;
@@ -431,6 +452,7 @@ function BashOutput({
   readonly onCopy?: CopyHandler;
   readonly stopOutcome: StopOutcome | undefined;
   readonly onStopOutcome: (outcome: StopOutcome) => void;
+  readonly view: BackgroundJobView | undefined;
 }) {
   const policy = useTranscriptDisplayPolicy();
   const [expanded, setExpanded] = useState(false);
@@ -461,7 +483,12 @@ function BashOutput({
   }
   if (result.background !== undefined)
     return (
-      <BackgroundNote job={result.background} onOutcome={onStopOutcome} outcome={stopOutcome} />
+      <BackgroundNote
+        job={result.background}
+        onOutcome={onStopOutcome}
+        outcome={stopOutcome}
+        view={view}
+      />
     );
   if ((state.phase === "error" || state.phase === "cancelled") && repeatsBanner(result))
     return null;
@@ -569,21 +596,26 @@ function BashOutput({
   );
 }
 
-/** omp moved the command to the background: the card names the job and shows none of omp's words for the model. While the job runs, the card can stop that job, and only that job. */
+/**
+ * omp moved the command to the background: the card names the job and shows none of omp's words for the model. Only a
+ * job the chat knows to be running offers a Stop, and that Stop is for this job alone.
+ */
 function BackgroundNote({
   job,
+  view,
   outcome,
   onOutcome,
 }: {
   readonly job: BackgroundJob;
+  readonly view: BackgroundJobView | undefined;
   readonly outcome: StopOutcome | undefined;
   readonly onOutcome: (outcome: StopOutcome) => void;
 }) {
   const runCommand = useContext(BackgroundJobCommandContext);
   const [pending, setPending] = useState(false);
   const command = runCommand === undefined ? undefined : stopCommandFor(job.jobId);
-  const ended = outcome?.status === "stopped" || outcome?.status === "finished";
-  const running = job.state === "running" && !ended;
+  const stopped = outcome?.status === "stopped" || outcome?.status === "finished";
+  const running = view?.kind === "running" && !stopped;
   async function stop(): Promise<void> {
     if (runCommand === undefined || command === undefined) return;
     setPending(true);
@@ -602,11 +634,7 @@ function BackgroundNote({
       className="text-muted-foreground flex flex-wrap items-center gap-2 px-3 py-2 text-xs"
       data-slot="u3-bash-background"
     >
-      <p>
-        {running
-          ? `Running in the background as job ${job.jobId}. Its output is added to the conversation when it finishes.`
-          : `Background job ${job.jobId}.`}
-      </p>
+      <p>{backgroundNoteOf(job.jobId, view, running)}</p>
       {running && command !== undefined && (
         <Button
           aria-label={`Stop background job ${job.jobId}`}
@@ -622,6 +650,23 @@ function BackgroundNote({
       {outcome !== undefined && <p role="status">{outcome.sentence}</p>}
     </div>
   );
+}
+
+/**
+ * What the card says of its job, from what the chat knows of it. A job the chat cannot place is not said to run, and
+ * a job whose omp process ended before its result came back is said to have ended.
+ */
+function backgroundNoteOf(
+  jobId: string,
+  view: BackgroundJobView | undefined,
+  running: boolean,
+): string {
+  if (running)
+    return `Running in the background as job ${jobId}. Its output is added to the conversation when it finishes.`;
+  if (view?.kind === "finished") return `Background job ${jobId} finished.`;
+  if (view?.kind === "ended")
+    return `Background job ${jobId}. omp stopped before its result came back.`;
+  return `Background job ${jobId}.`;
 }
 
 /** The turn's stop, offered while the command runs: it stops the chat's turn, as the composer's stop does. */

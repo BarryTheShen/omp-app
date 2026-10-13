@@ -911,6 +911,32 @@ describe("OmpRuntimeStore", () => {
     expect(notifications).toBeGreaterThan(0);
   });
 
+  test("a process frame's start time is kept until a frame says when its own process started", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "process", status: "starting", startedAt: 1_000 }, 1);
+    expect(store.getSnapshot().process).toEqual({
+      status: "starting",
+      error: null,
+      startedAt: 1_000,
+    });
+    ingest(store, { kind: "process", status: "ready", startedAt: 1_000 }, 2);
+    // A frame that says nothing of its start keeps the time the last one gave.
+    ingest(store, { kind: "process", status: "running" }, 3);
+    expect(store.getSnapshot().process).toEqual({
+      status: "running",
+      error: null,
+      startedAt: 1_000,
+    });
+    // Another process says its own start.
+    ingest(store, { kind: "process", status: "exited", startedAt: 1_000 }, 4);
+    ingest(store, { kind: "process", status: "starting", startedAt: 2_000 }, 5);
+    expect(store.getSnapshot().process).toEqual({
+      status: "starting",
+      error: null,
+      startedAt: 2_000,
+    });
+  });
+
   test("resumes after a refetch where the stream really is, including on a fresh store", () => {
     const store = new OmpRuntimeStore({ threadId });
     // A new viewer joins a stream that is already past seq 1041: the first event is a gap.

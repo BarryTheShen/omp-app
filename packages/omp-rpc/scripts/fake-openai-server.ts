@@ -165,6 +165,26 @@ function backgroundStarts(count: number): Reply {
   return { tools };
 }
 
+/**
+ * `run_quick_background` starts one job that ends after two seconds, so its result is delivered while the chat is open.
+ * `run_second_background` starts one long job with a call id of its own, for a second job in the same chat.
+ */
+function namedBackgroundStart(prompt: string): Reply | undefined {
+  if (prompt.includes("run_quick_background"))
+    return {
+      tool: "bash",
+      args: { command: "sleep 2; echo quick-done", async: true },
+      id: "call_quick_background",
+    };
+  if (prompt.includes("run_second_background"))
+    return {
+      tool: "bash",
+      args: { command: "sleep 120; echo second-job", async: true },
+      id: "call_second_background",
+    };
+  return undefined;
+}
+
 function reply(request: Request): Reply {
   const messages = request.messages ?? [];
   const steerChild = steerChildReply(messages);
@@ -177,6 +197,12 @@ function reply(request: Request): Reply {
     if (done < LOOP_STEPS)
       return { tool: "bash", args: { command: `echo loop-${done}` }, id: `call_loop_${done}` };
     return { text: "loop finished" };
+  }
+  const named = namedBackgroundStart(text(messages[lastUser]?.content));
+  if (named !== undefined) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done === 0) return named;
+    return { text: "background job started" };
   }
   // Background jobs: each bash call returns at once (`async`), so the turn ends while each job keeps running.
   const backgroundCount = backgroundJobCountOf(text(messages[lastUser]?.content));

@@ -91,6 +91,8 @@ export interface RpcSessionTimer {
 export interface RpcSessionOptions {
   readonly timer?: RpcSessionTimer;
   readonly decoder?: FrameDecoderOptions;
+  /** When this omp process started, in ms since the epoch. Tests fix it so replays compare equal. */
+  readonly now?: () => number;
 }
 
 export type RpcSessionState = "new" | "starting" | "negotiating" | "ready" | "error" | "stopped";
@@ -365,6 +367,7 @@ export class RpcSession {
   readonly #duplex: RpcDuplex;
   readonly #decoder: FrameDecoder;
   readonly #timer: RpcSessionTimer;
+  readonly #now: () => number;
   readonly #pending = new Map<string, PendingCommand>();
   readonly #uiRequests = new Map<string, OmpWire.ExtensionUiRequest>();
   readonly #hostToolRequests = new Map<string, OmpWire.HostToolCallRequest>();
@@ -382,11 +385,14 @@ export class RpcSession {
   #protocolVersion: 1 | 2 = 1;
   #nextCommandId = 0;
   #closed = false;
+  /** When this omp process started: its first `start()`. Every process event carries it. */
+  #processStartedAt?: number;
 
   constructor(duplex: RpcDuplex, options: RpcSessionOptions = {}) {
     this.#duplex = duplex;
     this.#decoder = new FrameDecoder(options.decoder);
     this.#timer = options.timer ?? defaultTimer();
+    this.#now = options.now ?? Date.now;
     this.#readyPromise = new Promise((resolve) => {
       this.#resolveReady = resolve;
     });
@@ -413,7 +419,8 @@ export class RpcSession {
       return Promise.reject(createFailure("cancelled", "The RPC session is closed", false));
     }
     this.#state = "starting";
-    this.#emit({ kind: "process", status: "starting" });
+    this.#processStartedAt ??= this.#now();
+    this.#emitProcess("starting");
     this.#startPromise = this.#startHandshake();
     return this.#startPromise;
   }
@@ -518,7 +525,7 @@ export class RpcSession {
     this.#uiRequests.clear();
     this.#hostToolRequests.clear();
     this.#hostUriRequests.clear();
-    this.#emit({ kind: "process", status: "stopped" });
+    this.#emitProcess("stopped");
     try {
       await this.#duplex.close?.();
     } catch {
@@ -548,7 +555,7 @@ export class RpcSession {
         this.#protocolVersion = 2;
       }
       this.#state = "ready";
-      this.#emit({ kind: "process", status: "ready" });
+      this.#emitProcess("ready");
     } catch (cause) {
       const failure = cause instanceof AppFailure ? cause : asTransportFailure(cause);
       this.#state = "error";
@@ -859,8 +866,21 @@ export class RpcSession {
     for (const listener of [...this.#listeners]) listener(event);
   }
 
+  /** A process event. It carries when this omp process started, so a transcript entry can be told from another process's. */
+  #emitProcess(
+    status: "starting" | "stopped" | "ready" | "error" | "exited",
+    error?: AppError,
+  ): void {
+    this.#emit({
+      kind: "process",
+      status,
+      ...(this.#processStartedAt === undefined ? {} : { startedAt: this.#processStartedAt }),
+      ...(error === undefined ? {} : { error }),
+    });
+  }
+
   #emitProcessError(failure: AppFailure): void {
-    this.#emit({ kind: "process", status: "error", error: failure.appError });
+    this.#emitProcess("error", failure.appError);
   }
 
   #writeInbound(frame: object): Promise<void> {
@@ -911,7 +931,7 @@ export class RpcSession {
     this.#uiRequests.clear();
     this.#hostToolRequests.clear();
     this.#hostUriRequests.clear();
-    this.#emit({ kind: "process", status: "exited", error: failure.appError });
+    this.#emitProcess("exited", failure.appError);
   }
 
   #rejectAll(failure: AppFailure): void {

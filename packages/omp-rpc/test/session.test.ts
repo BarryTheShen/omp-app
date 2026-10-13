@@ -173,6 +173,29 @@ describe("RpcSession startup and command correlation", () => {
     expect(events.map((event) => event.kind)).toEqual(["process", "process"]);
   });
 
+  test("every process event says when this omp process started, from the session's clock", async () => {
+    const duplex = new FakeDuplex();
+    const timer = new ManualTimer();
+    const events: RpcSessionEvent[] = [];
+    const session = new RpcSession(duplex, { timer, now: () => 1_700_000_000_000 });
+    session.onEvent((event) => events.push(event));
+    const start = session.start();
+    duplex.emit({
+      type: "ready",
+      protocolVersion: 1,
+      supportedProtocolVersions: [1],
+      maxFrameBytes: 1024 * 1024,
+      maxReassembledFrameBytes: 64 * 1024 * 1024,
+    });
+    await flush();
+    await start;
+    const processEvents = events.flatMap((event) => (event.kind === "process" ? [event] : []));
+    expect(processEvents.map((event) => event.status)).toEqual(["starting", "ready"]);
+    expect(processEvents.map((event) => event.startedAt)).toEqual([
+      1_700_000_000_000, 1_700_000_000_000,
+    ]);
+  });
+
   test("honors schema timeouts, leaves null-timeout commands running, and rejects omp failures", async () => {
     const duplex = new FakeDuplex();
     const timer = new ManualTimer();

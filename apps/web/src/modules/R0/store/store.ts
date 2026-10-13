@@ -151,6 +151,8 @@ export type ChatFailure = AppError & {
 export interface ProcessState {
   readonly status: "starting" | "ready" | "running" | "stopped" | "restarting" | "exited" | "error";
   readonly error: AppError | null;
+  /** When the process started (ms since the epoch), as its frames say. Undefined until a frame has said. */
+  readonly startedAt?: number;
 }
 
 /** omp's `todo_reminder`: the unfinished tasks when a turn stops, shown as a transcript panel (not todo state). */
@@ -589,13 +591,24 @@ function todoPhasesFromResult(
   return phases as TodoPhase[];
 }
 
-function setProcess(next: MutableSnapshot, status: ProcessState["status"], error?: AppError): void {
+function setProcess(
+  next: MutableSnapshot,
+  status: ProcessState["status"],
+  error?: AppError,
+  startedAt?: number,
+): void {
   const processError = error
     ? cloneValue(error)
     : status === "error" || status === "exited"
       ? errorForProcess(status)
       : null;
-  next.process = { status, error: processError };
+  // A frame that does not say when its process started keeps the time the last one gave.
+  const since = startedAt ?? next.process.startedAt;
+  next.process = {
+    status,
+    error: processError,
+    ...(since === undefined ? {} : { startedAt: since }),
+  };
   if (processError) next.error = processError;
   else if (status === "ready" || status === "running" || status === "starting") next.error = null;
 }
@@ -1054,6 +1067,7 @@ export class OmpRuntimeStore {
             next,
             status as ProcessState["status"],
             isRecord(eventValue.error) ? (cloneValue(eventValue.error) as AppError) : undefined,
+            typeof eventValue.startedAt === "number" ? eventValue.startedAt : undefined,
           );
         }
         break;
@@ -1413,6 +1427,7 @@ export class OmpRuntimeStore {
     next: MutableSnapshot,
     status: ProcessState["status"],
     error?: AppError,
+    startedAt?: number,
   ): void {
     const previousStatus = this.snapshot.process.status;
     const startsNewProcess =
@@ -1427,7 +1442,7 @@ export class OmpRuntimeStore {
       this.interruptStreamingMessages(next);
       this.streamKeys.clear();
     }
-    setProcess(next, status, error);
+    setProcess(next, status, error, startedAt);
     if (status === "exited") {
       this.interruptStreamingMessages(next);
       this.streamKeys.clear();

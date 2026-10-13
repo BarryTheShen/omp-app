@@ -1,0 +1,106 @@
+import type { MessageKey } from "@omp-app/contracts";
+import { z } from "zod";
+import type { ProcessState, RuntimeMessage } from "./store";
+
+/**
+ * What the chat's transcript and omp's process say about one background bash job.
+ * - `running`: the job's launch belongs to the omp process that runs now, and no result has come back.
+ * - `finished`: omp delivered the job's result into the chat. omp does not mark a failed job, so it is finished too.
+ * - `ended`: the job's launch belongs to an omp process that is gone (or none runs), and no result came back.
+ * - `unknown`: a process runs, but the chat does not yet know when it started, so the card claims nothing.
+ */
+export type BackgroundJobView =
+  | { readonly kind: "running"; readonly jobId: string }
+  | { readonly kind: "finished"; readonly jobId: string }
+  | { readonly kind: "ended"; readonly jobId: string }
+  | { readonly kind: "unknown"; readonly jobId: string };
+
+/** A bash call omp moved to the background: its call, its job, and when its tool result was written (ms). */
+interface Launch {
+  readonly toolCallId: string;
+  readonly jobId: string;
+  readonly at: number;
+}
+
+/** omp's `details.async` on a command it moved to the background (the launch result). */
+const AsyncLaunch = z.looseObject({
+  async: z.looseObject({ jobId: z.string(), state: z.string() }),
+});
+
+/** omp's `details.jobs` on an `async-result` message: the jobs whose results it delivered. */
+const DeliveredJobs = z.looseObject({
+  jobs: z.array(z.looseObject({ jobId: z.string() })),
+});
+
+/** The process states in which an omp process may still run a background job. */
+const LIVE: Partial<Record<ProcessState["status"], true>> = {
+  starting: true,
+  ready: true,
+  running: true,
+};
+
+/**
+ * The view of every background bash job in the chat, keyed by its call id. A delivered result belongs to the nearest
+ * earlier launch with the same job id: omp numbers its jobs per process, so a later process reuses ids, and a result
+ * delivered after a relaunch belongs to the relaunch. A job that no result follows is `running` only when its launch is
+ * in the process that runs now (launched at or after that process started); any other launch is `ended`.
+ */
+export function backgroundJobViews(
+  order: readonly MessageKey[],
+  messages: Readonly<Record<MessageKey, RuntimeMessage>>,
+  process: ProcessState,
+): ReadonlyMap<string, BackgroundJobView> {
+  const launches: Launch[] = [];
+  const awaiting = new Map<string, Launch>();
+  const delivered = new Set<string>();
+  for (const key of order) {
+    const message = messages[key]?.message;
+    if (message?.role === "toolResult") {
+      const launch = launchOf(
+        message.toolCallId,
+        message.toolName,
+        message.details,
+        message.timestamp,
+      );
+      if (launch === undefined) continue;
+      launches.push(launch);
+      awaiting.set(launch.jobId, launch);
+    } else if (message?.role === "custom" && message.customType === "async-result") {
+      for (const job of deliveredJobsOf(message.details)) {
+        const launch = awaiting.get(job.jobId);
+        if (launch === undefined) continue;
+        delivered.add(launch.toolCallId);
+        awaiting.delete(job.jobId);
+      }
+    }
+  }
+  const views = new Map<string, BackgroundJobView>();
+  for (const launch of launches) {
+    views.set(launch.toolCallId, viewOf(launch, delivered.has(launch.toolCallId), process));
+  }
+  return views;
+}
+
+function launchOf(
+  toolCallId: string,
+  toolName: string,
+  details: unknown,
+  at: number,
+): Launch | undefined {
+  if (toolName !== "bash") return undefined;
+  const parsed = AsyncLaunch.safeParse(details);
+  return parsed.success ? { toolCallId, jobId: parsed.data.async.jobId, at } : undefined;
+}
+
+function deliveredJobsOf(details: unknown): readonly { readonly jobId: string }[] {
+  const parsed = DeliveredJobs.safeParse(details);
+  return parsed.success ? parsed.data.jobs : [];
+}
+
+function viewOf(launch: Launch, finished: boolean, process: ProcessState): BackgroundJobView {
+  const { jobId } = launch;
+  if (finished) return { kind: "finished", jobId };
+  if (LIVE[process.status] !== true) return { kind: "ended", jobId };
+  if (process.startedAt === undefined) return { kind: "unknown", jobId };
+  return launch.at >= process.startedAt ? { kind: "running", jobId } : { kind: "ended", jobId };
+}

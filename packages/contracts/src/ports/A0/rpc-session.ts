@@ -448,6 +448,8 @@ const ProcessStatusPayload = z
   .object({
     kind: z.literal("process"),
     status: ProcessStatus,
+    /** When this omp process started (ms since the epoch). A transcript entry written before it belongs to an earlier process. */
+    startedAt: z.number().nonnegative().optional(),
     error: AppError.optional(),
   })
   .strict();
