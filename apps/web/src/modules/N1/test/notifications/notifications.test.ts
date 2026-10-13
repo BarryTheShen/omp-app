@@ -169,13 +169,12 @@ describe("NotificationProjector", () => {
 
   test("projects retries as transient banners and keeps only retry failures in the transcript", () => {
     const store = new OmpRuntimeStore({ threadId });
-    const transcript: Notification[] = [];
     const projector = new NotificationProjector({
       source: store,
       events: store,
       now: () => 1_000,
-      transcript: { upsert: (notification) => transcript.push(notification) },
     });
+    const transcript = () => projector.getTranscript().getSnapshot().notices;
 
     publishRuntimeEvent(
       store,
@@ -194,7 +193,7 @@ describe("NotificationProjector", () => {
       live: "polite",
       message: "Retrying (1/3) in 1.5s: temporary provider failure",
     });
-    expect(transcript).toHaveLength(0);
+    expect(transcript()).toHaveLength(0);
 
     publishRuntimeEvent(
       store,
@@ -213,7 +212,7 @@ describe("NotificationProjector", () => {
       live: "assertive",
       message: "Retry failed after 3 attempts: provider down",
     });
-    expect(transcript).toHaveLength(1);
+    expect(transcript()).toHaveLength(1);
 
     publishRuntimeEvent(
       store,
@@ -358,7 +357,7 @@ describe("NotificationProjector", () => {
       placement: "transcript",
       live: "polite",
     });
-    expect(reminder?.message).toContain("Todo reminder (2/5)");
+    expect(reminder?.message).toContain("Unfinished todos (attempt 2 of 5)");
     expect(reminder?.message).toContain("ship");
     expect(store.getSnapshot().todoPhases).toHaveLength(1);
 

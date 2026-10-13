@@ -367,18 +367,18 @@ describe("the live regions suit a screen reader", () => {
     projector.dispose();
   });
 
-  test("a notice the strip does not show is not read, even when it is an error", () => {
+  test("a notice the app does not draw is not read, even when it is an error", () => {
     const projector = makeProjector();
     render(<LiveAnnouncer projector={projector} />);
 
     act(() => {
       projector.getBus().publish(
         notice({
-          dedupeKey: "transcript-error",
-          placement: "transcript",
+          dedupeKey: "inline-error",
+          placement: "inline",
           severity: "error",
           live: "assertive",
-          message: "Retry failed in the transcript",
+          message: "Shown inline elsewhere",
         }),
       );
     });
@@ -393,6 +393,35 @@ describe("the live regions suit a screen reader", () => {
         );
     });
     expect(read("polite")).toEqual(["Shown in the strip"]);
+    projector.dispose();
+  });
+
+  test("a notice the transcript shows is read, politely or assertively, as its live setting says", () => {
+    const projector = makeProjector();
+    render(<LiveAnnouncer projector={projector} />);
+
+    act(() => {
+      projector.getBus().publish(
+        notice({
+          dedupeKey: "transcript-todo",
+          placement: "transcript",
+          severity: "warning",
+          live: "polite",
+          message: "Unfinished todos (attempt 1 of 3)",
+        }),
+      );
+      projector.getBus().publish(
+        notice({
+          dedupeKey: "transcript-error",
+          placement: "transcript",
+          severity: "error",
+          live: "assertive",
+          message: "Retry failed in the transcript",
+        }),
+      );
+    });
+    expect(read("polite")).toEqual(["Unfinished todos (attempt 1 of 3)"]);
+    expect(read("assertive")).toEqual(["Retry failed in the transcript"]);
     projector.dispose();
   });
 });

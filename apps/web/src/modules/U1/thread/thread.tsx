@@ -90,6 +90,8 @@ export interface ThreadShellProps {
   readonly readingPlace?: ThreadReadingPlace;
   /** What a refused-key notice can do: open the model list, open sign-in, and read each provider's sign-in. */
   readonly credentialActions?: CredentialActions;
+  /** Drawn after the messages: the notices the chat's projection writes into its transcript. */
+  readonly notices?: ReactNode;
 }
 
 interface RuntimeFailureProps {
@@ -408,6 +410,7 @@ export function ThreadShell({
   onLoadFullOutput,
   readingPlace,
   credentialActions,
+  notices,
 }: ThreadShellProps) {
   const snapshot = useSyncExternalStore(
     (listener) => store.subscribe(listener),
@@ -530,6 +533,7 @@ export function ThreadShell({
                 <ThreadPrimitive.Messages>
                   {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
                 </ThreadPrimitive.Messages>
+                {notices}
               </div>
               <ThreadPrimitive.ViewportFooter
                 className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 flex-col border-t border-border bg-background"

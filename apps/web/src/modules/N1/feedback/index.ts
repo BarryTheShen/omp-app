@@ -7,3 +7,4 @@ export {
 } from "./feedback";
 export { NotificationBanners, NotificationQuiet, NotificationToasts } from "./notices";
 export { ExtensionWidgets, ProjectionStatus, type WidgetPlacement } from "./status";
+export { TranscriptNoticeList } from "./transcript-notices";

@@ -17,6 +17,7 @@ import {
 } from "../contract";
 import { NotificationBus } from "./bus";
 import type { RetiredNotices } from "./retired";
+import { TranscriptNotices } from "./transcript";
 
 export interface NormalizedRuntimeEventSource {
   readonly subscribeOmpEvents: (
@@ -32,11 +33,6 @@ export type RuntimeSnapshotSource = Pick<
   },
   "getSnapshot" | "subscribe"
 >;
-
-export interface TranscriptNoticeSink {
-  /** Upsert by the notification's `(threadId, dedupeKey)` identity. */
-  readonly upsert: (notification: Notification) => void;
-}
 
 export interface PresentationContext {
   readonly threadId: ThreadId;
@@ -72,7 +68,6 @@ export interface NotificationProjectorOptions {
   /** Used when no `bus` is given: the stream notices a person let go of, which a replay must not bring back. */
   readonly retired?: RetiredNotices;
   readonly events?: NormalizedRuntimeEventSource;
-  readonly transcript?: TranscriptNoticeSink;
   readonly onEditorText?: (text: string, context: PresentationContext) => void;
   readonly now?: () => number;
 }
@@ -377,7 +372,7 @@ function todoReminderNotification(
     dedupeKey: `todo-reminder:${reminder.attempt}:${hashText(identity)}`,
     severity: "warning",
     placement: "transcript",
-    message: `Todo reminder (${reminder.attempt}/${reminder.maxAttempts})${lines.length > 0 ? `\n${lines.join("\n")}${suffix}` : ""}`,
+    message: `Unfinished todos (attempt ${reminder.attempt} of ${reminder.maxAttempts})${lines.length > 0 ? `\n${lines.join("\n")}${suffix}` : ""}`,
     source: "omp.todo",
     live: "polite",
   });
@@ -478,7 +473,7 @@ function freezeProjectionError(error: AppFailure): AppError {
 export class NotificationProjector {
   private readonly source: RuntimeSnapshotSource;
   private readonly bus: NotificationBus;
-  private readonly transcript: TranscriptNoticeSink | undefined;
+  private readonly transcript = new TranscriptNotices();
   private readonly onEditorText: NotificationProjectorOptions["onEditorText"];
   private readonly now: () => number;
   private readonly listeners = new Set<(snapshot: NotificationProjectionSnapshot) => void>();
@@ -496,7 +491,6 @@ export class NotificationProjector {
   public constructor(options: NotificationProjectorOptions) {
     this.source = options.source;
     this.bus = options.bus ?? new NotificationBus({ retired: options.retired });
-    this.transcript = options.transcript;
     this.onEditorText = options.onEditorText;
     this.now = options.now ?? (() => Date.now());
     this.runtimeSnapshot = options.source.getSnapshot();
@@ -519,6 +513,10 @@ export class NotificationProjector {
 
   public getBus(): NotificationBus {
     return this.bus;
+  }
+
+  public getTranscript(): TranscriptNotices {
+    return this.transcript;
   }
 
   public getSnapshot(): NotificationProjectionSnapshot {
@@ -805,7 +803,6 @@ export class NotificationProjector {
   };
 
   private readonly writeTranscript = (next: Notification): void => {
-    if (!this.transcript) return;
     try {
       this.transcript.upsert(next);
     } catch (error) {

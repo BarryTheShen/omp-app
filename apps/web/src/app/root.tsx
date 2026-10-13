@@ -63,7 +63,11 @@ import type {
 } from "@/modules/D5/contract";
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { FAST_REFUSAL_NOTICE_SOURCE } from "@/modules/D7/modes";
-import { NotificationFeedback, NotificationNotices } from "@/modules/N1/feedback";
+import {
+  NotificationFeedback,
+  NotificationNotices,
+  TranscriptNoticeList,
+} from "@/modules/N1/feedback";
 import { NotificationProjector, sessionRetiredNotices } from "@/modules/N1/notifications";
 import {
   createP3Runs,
@@ -1481,6 +1485,12 @@ function ActiveThreadReady({
                           onLoadOlder={onLoadOlder}
                           onLoadFullOutput={onLoadFullOutput}
                           onRestartOmp={restartOmp}
+                          notices={
+                            <TranscriptNoticeList
+                              projector={notificationProjector}
+                              threadId={threadId}
+                            />
+                          }
                           slots={{
                             renderMessage: (message, renderNested) => {
                               const branchSummary = branchSummaryOfRow(message);

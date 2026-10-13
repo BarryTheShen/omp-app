@@ -12,10 +12,14 @@ import { type NotificationProjector, PROJECTION_ERROR_KEY } from "../notificatio
 const KEPT_ANNOUNCEMENTS = 3;
 
 /**
- * The placements the strip shows. A notice placed in the transcript is shown nowhere (the app gives the
- * projector no transcript sink), so it is not read either.
+ * The placements the app draws: the strip's banners and toasts, and the transcript. A notice placed anywhere
+ * else is not drawn here, so it is not read either.
  */
-const SHOWN_PLACEMENTS: ReadonlySet<Notification["placement"]> = new Set(["banner", "toast"]);
+const SHOWN_PLACEMENTS: ReadonlySet<Notification["placement"]> = new Set([
+  "banner",
+  "toast",
+  "transcript",
+]);
 
 export interface AnnouncementPass {
   /** Every announceable notice still on the bus, by key. The next pass compares against it. */
