@@ -173,6 +173,42 @@ describe("ThreadShell states", () => {
     expect(await screen.findByRole("button", { name: "Restart omp" })).toBeTruthy();
   });
 
+  test("puts a stopped omp's notice in the footer, after the last message", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "omp",
+        event: { type: "message_start", messageId: "m-1", message: assistant("hello") },
+      },
+      2,
+    );
+    store.ingest(
+      {
+        kind: "omp",
+        event: { type: "message_end", messageId: "m-1", message: assistant("hello") },
+      },
+      3,
+    );
+    store.ingest(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      4,
+    );
+    renderThread(store, { onRestartOmp: vi.fn(async () => undefined) });
+
+    expect(await screen.findByText("hello")).toBeTruthy();
+    const banner = screen.getByRole("alert");
+    const footer = document.querySelector('[data-slot="u1-thread-footer"]');
+    const messages = document.querySelector('[data-slot="u1-thread-messages"]');
+    // The notice sits in the sticky footer, where the reader is, and not above the first message.
+    expect(footer?.contains(banner)).toBe(true);
+    expect(messages?.contains(banner)).toBe(false);
+    expect(screen.getByRole("button", { name: "Restart omp" })).toBeTruthy();
+  });
+
   test("says plainly why omp could not be restarted and takes the button away when it can never work", async () => {
     const store = readyStore();
     store.ingest(

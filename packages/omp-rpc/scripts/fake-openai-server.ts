@@ -255,6 +255,14 @@ function reply(request: Request): Reply {
       thinking: "I should run the slow step.",
     };
   if (prompt.includes("make_it_big")) return { text: "a".repeat(1_100_000) };
+  // Forty paragraphs: the chat runs well past one screen, so the reader sits at its bottom (issue 1295).
+  if (prompt.includes("long_reply_probe")) {
+    const paragraphs = Array.from(
+      { length: 40 },
+      (_, index) => `Paragraph ${index + 1} of a long reply.`,
+    );
+    return { text: paragraphs.join("\n\n") };
+  }
   // One unbroken 306-character token, as a long URL or hash is: the reply must wrap it, not run past its box.
   if (prompt.includes("long_word_probe"))
     return { text: `Token: token-${"a1b2c3d4e5".repeat(30)} end of the token.` };

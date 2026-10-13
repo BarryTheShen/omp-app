@@ -92,9 +92,8 @@ export interface ThreadShellProps {
   readonly credentialActions?: CredentialActions;
 }
 
-interface RuntimeStateSurfaceProps {
+interface RuntimeFailureProps {
   readonly snapshot: RuntimeSnapshot;
-  readonly historyLoading: boolean;
   readonly onRetry?: () => Promise<void> | void;
   readonly onRestartOmp?: () => Promise<void> | void;
 }
@@ -144,14 +143,14 @@ function RuntimeError({
   const failure = credentialFailureFromError(error);
   if (failure !== null) {
     return (
-      <div className="mx-auto my-6 w-full max-w-(--layout-thread-width) px-6">
+      <div className="px-6 pt-3">
         <CredentialFailureNotice failure={failure} variant="default" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto my-6 w-full max-w-(--layout-thread-width) px-6">
+    <div className="px-6 pt-3">
       <div
         aria-live="assertive"
         className="border-danger bg-danger-surface text-danger-surface-foreground rounded-lg border p-4"
@@ -190,30 +189,42 @@ function lastAnswerRefusedKey(snapshot: RuntimeSnapshot): boolean {
   );
 }
 
-function RuntimeStateSurface({
-  snapshot,
-  historyLoading,
-  onRetry,
-  onRestartOmp,
-}: RuntimeStateSurfaceProps) {
+/** The failure the footer shows, or null: a refused key that the transcript's last answer already says is not said again. */
+function footerFailure(snapshot: RuntimeSnapshot): AppError | null {
   const error = snapshot.error ?? snapshot.process.error;
   // A refused key is said once: under the answer that stopped, when the transcript has that answer.
   const shownUnderAnswer =
     credentialFailureFromError(error) !== null && lastAnswerRefusedKey(snapshot);
-  if (error !== null && !shownUnderAnswer) {
-    // A provider failure that the most recent failed answer already says is not said again here;
-    // the banner keeps its heading.
-    const answers = snapshot.messageOrder.map((key) => snapshot.messages[key]?.message);
-    const showDetail = !failureShownUnderAnswer(error, latestErroredAnswer(answers));
-    return (
-      <RuntimeError
-        error={error}
-        showDetail={showDetail}
-        onRetry={onRetry}
-        onRestartOmp={onRestartOmp}
-      />
-    );
-  }
+  return error !== null && !shownUnderAnswer ? error : null;
+}
+
+/** The failure notice and its Restart omp or Retry button. It sits in the thread's footer, where the reader is. */
+function RuntimeFailure({ snapshot, onRetry, onRestartOmp }: RuntimeFailureProps) {
+  const error = footerFailure(snapshot);
+  if (error === null) return null;
+  // A provider failure that the most recent failed answer already says is not said again here;
+  // the banner keeps its heading.
+  const answers = snapshot.messageOrder.map((key) => snapshot.messages[key]?.message);
+  const showDetail = !failureShownUnderAnswer(error, latestErroredAnswer(answers));
+  return (
+    <RuntimeError
+      error={error}
+      showDetail={showDetail}
+      onRetry={onRetry}
+      onRestartOmp={onRestartOmp}
+    />
+  );
+}
+
+/** The loading or empty copy at the top of the thread. A failure is said in the footer instead. */
+function RuntimeStateSurface({
+  snapshot,
+  historyLoading,
+}: {
+  readonly snapshot: RuntimeSnapshot;
+  readonly historyLoading: boolean;
+}) {
+  if (footerFailure(snapshot) !== null) return null;
 
   // Until the chat's history is read, an empty list does not mean the chat is empty.
   if (
@@ -511,12 +522,7 @@ export function ThreadShell({
             turnAnchor="bottom"
           >
             <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
-              <RuntimeStateSurface
-                snapshot={snapshot}
-                historyLoading={historyLoading}
-                onRetry={onRetry}
-                onRestartOmp={onRestartOmp}
-              />
+              <RuntimeStateSurface snapshot={snapshot} historyLoading={historyLoading} />
               <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
                 {onLoadOlder !== undefined && (snapshot.transcript.hasOlder || earlierInFlight) && (
                   <EarlierMessagesControl onLoad={loadEarlier} />
@@ -525,9 +531,15 @@ export function ThreadShell({
                   {({ message }) => <MessageRow key={message.id} message={message} slots={slots} />}
                 </ThreadPrimitive.Messages>
               </div>
-              <ThreadPrimitive.ViewportFooter className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 items-center justify-between gap-(--space-md) border-t border-border bg-background px-6 py-2">
-                <RuntimeSettledStatus snapshot={snapshot} />
-                {footer}
+              <ThreadPrimitive.ViewportFooter
+                className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 flex-col border-t border-border bg-background"
+                data-slot="u1-thread-footer"
+              >
+                <RuntimeFailure snapshot={snapshot} onRetry={onRetry} onRestartOmp={onRestartOmp} />
+                <div className="flex items-center justify-between gap-(--space-md) px-6 py-2">
+                  <RuntimeSettledStatus snapshot={snapshot} />
+                  {footer}
+                </div>
               </ThreadPrimitive.ViewportFooter>
             </div>
           </ThreadPrimitive.Viewport>
