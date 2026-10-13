@@ -2,7 +2,12 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isJsonObject, parseSessionContent } from "./parser";
-import type { ParseWarning, SubagentFinalStatus, SubagentTranscript } from "./types";
+import type {
+  ParseWarning,
+  SessionLeaseState,
+  SubagentFinalStatus,
+  SubagentTranscript,
+} from "./types";
 
 function isAdvisorTranscriptName(name: string): boolean {
   return name === "__advisor.jsonl" || (name.startsWith("__advisor.") && name.endsWith(".jsonl"));
@@ -72,6 +77,26 @@ function finalStatusOf(entries: readonly unknown[], aborted: boolean): SubagentF
   return "unknown";
 }
 
+/** Whether a live omp holds one worker's own session. `free` means none does, so the worker cannot still be running. */
+export type WorkerLeaseProbe = (
+  sessionId: string,
+  sessionFile: string,
+) => Promise<SessionLeaseState>;
+
+/**
+ * A worker that records no end is `unknown`, because omp may still be running it. When no live omp holds the worker's
+ * own session, nothing runs it: omp was stopped or killed before the worker could record an end, so it is stopped.
+ */
+async function settledStatus(
+  status: SubagentFinalStatus,
+  sessionId: string,
+  sessionFile: string,
+  leaseOf: WorkerLeaseProbe | undefined,
+): Promise<SubagentFinalStatus> {
+  if (status !== "unknown" || leaseOf === undefined) return status;
+  return (await leaseOf(sessionId, sessionFile)) === "free" ? "stopped" : status;
+}
+
 /** The newest modification time among the files that exist, as an ISO string; null when none does. */
 async function lastWrittenAt(files: readonly string[]): Promise<string | null> {
   let newest = 0;
@@ -95,6 +120,7 @@ interface WalkContext {
   readonly parentKey: string | null;
   readonly output: SubagentTranscript[];
   readonly warnings: ParseWarning[];
+  readonly leaseOf: WorkerLeaseProbe | undefined;
 }
 
 async function walkSubagentDirectory(context: WalkContext): Promise<void> {
@@ -147,7 +173,12 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
         return isJsonObject(entry) && typeof entry.id === "string";
       });
       const aborted = files.includes(tombstoneName(name));
-      const status = finalStatusOf(entriesWithoutHeader, aborted);
+      const status = await settledStatus(
+        finalStatusOf(entriesWithoutHeader, aborted),
+        parsed.header.id,
+        sessionFile,
+        context.leaseOf,
+      );
       const transcript: SubagentTranscript = {
         key,
         agentId,
@@ -182,6 +213,7 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
         parentKey: key,
         output: context.output,
         warnings: context.warnings,
+        leaseOf: context.leaseOf,
       });
     }
   }
@@ -191,8 +223,12 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
  * Discover nested `<session-stem>/<AgentId>.jsonl` transcripts. Advisor files,
  * backups and symlinked directories are excluded exactly as omp's collector
  * does; tombstones remain visible as `aborted` metadata.
+ * With `leaseOf`, a worker that records no end is stopped once no live omp holds its own session.
  */
-export async function collectSubagentTranscripts(sessionFile: string): Promise<SubagentCollection> {
+export async function collectSubagentTranscripts(
+  sessionFile: string,
+  leaseOf?: WorkerLeaseProbe,
+): Promise<SubagentCollection> {
   if (!sessionFile.endsWith(".jsonl")) return { subagents: [], parseWarnings: [] };
   const output: SubagentTranscript[] = [];
   const warnings: ParseWarning[] = [];
@@ -201,6 +237,7 @@ export async function collectSubagentTranscripts(sessionFile: string): Promise<S
     parentKey: null,
     output,
     warnings,
+    leaseOf,
   });
   return { subagents: output, parseWarnings: warnings };
 }

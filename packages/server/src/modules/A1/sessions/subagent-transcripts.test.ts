@@ -170,6 +170,45 @@ describe("a worker's final status, end time and agent come from its own records"
       expect(worker).toMatchObject({ status: "unknown", endedAt: null, agent: "task" });
     }));
 
+  test("a worker that records no end is stopped once no live omp holds its own session", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Orphan.jsonl"), [
+        init("task"),
+        assistant("toolUse"),
+      ]);
+      const store = new SessionFileStore({
+        sessionsRoot: fixture.sessionsRoot,
+        home: fixture.root,
+        tempRoot: path.join(fixture.root, "tmp"),
+        leaseProbe: () => "inactive",
+      });
+      const { transcripts } = await store.listSubagents(fixture.chat);
+      expect(transcripts.find((worker) => worker.agentId === "Orphan")).toMatchObject({
+        status: "stopped",
+        agent: "task",
+      });
+      expect(transcripts.find((worker) => worker.agentId === "Orphan")?.endedAt).not.toBeNull();
+    }));
+
+  test("a worker that records no end stays unknown while a live omp holds its own session", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Held.jsonl"), [
+        init("task"),
+        assistant("toolUse"),
+      ]);
+      const store = new SessionFileStore({
+        sessionsRoot: fixture.sessionsRoot,
+        home: fixture.root,
+        tempRoot: path.join(fixture.root, "tmp"),
+        leaseProbe: () => "active",
+      });
+      const { transcripts } = await store.listSubagents(fixture.chat);
+      expect(transcripts.find((worker) => worker.agentId === "Held")).toMatchObject({
+        status: "unknown",
+        endedAt: null,
+      });
+    }));
+
   test("a worker that stopped without a yield, and whose session omp disposed last, is stopped", () =>
     withFixture(async (fixture) => {
       await writeWorker(path.join(workerDir(fixture), "Quiet.jsonl"), [

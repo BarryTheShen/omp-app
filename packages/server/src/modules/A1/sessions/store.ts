@@ -18,7 +18,7 @@ import {
   sessionBucketPath,
 } from "./paths";
 import { readSubagentPage, type SubagentPage, subagentTranscriptPath } from "./subagent-read";
-import { collectSubagentTranscripts } from "./subagents";
+import { collectSubagentTranscripts, type WorkerLeaseProbe } from "./subagents";
 import { readSessionHeader, type SessionSummary, summarizeSessionFile } from "./summary";
 import type {
   ListFoldersArgs,
@@ -332,6 +332,9 @@ export class SessionFileStore {
   readonly #options: SessionFileStoreOptions;
   readonly #summaries = new Map<string, CachedSummary>();
   readonly #cwds = new Map<string, { size: number; mtimeMs: number; cwd: string | undefined }>();
+  /** A worker's own session lease, read by `collectSubagentTranscripts`: `free` once no live omp holds that session. */
+  readonly #workerLease: WorkerLeaseProbe = async (sessionId, sessionFile) =>
+    (await detectSessionLiveness(sessionId, sessionFile, this.#options.leaseProbe)).lease;
 
   constructor(options: SessionFileStoreOptions = {}) {
     this.#options = options;
@@ -654,7 +657,7 @@ export class SessionFileStore {
       if (isMissing(error)) throw appFailure("not_found", "Session file was not found", false);
       throw appFailure("permission", "Unable to read omp session file", true, error);
     }
-    const collection = await collectSubagentTranscripts(sessionFile);
+    const collection = await collectSubagentTranscripts(sessionFile, this.#workerLease);
     return { sessionFile, transcripts: collection.subagents };
   }
 
@@ -839,7 +842,7 @@ export class SessionFileStore {
     const parsed = parseSessionContent(content, sessionFile);
     if (!parsed.header) return { parseWarnings: parsed.parseWarnings, missing: false };
 
-    const subagents = await collectSubagentTranscripts(sessionFile);
+    const subagents = await collectSubagentTranscripts(sessionFile, this.#workerLease);
     const header = parsed.header as SessionHeader;
     const serverProcess = serverOwnsSession(this.#options, header.id, sessionFile);
     const lease = serverProcess
