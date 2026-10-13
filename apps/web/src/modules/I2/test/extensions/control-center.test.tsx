@@ -1,5 +1,5 @@
 import { AppFailure, FolderPath } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { ExtensionCatalog, ExtensionCatalogSnapshot } from "../../catalog";
 import { ExtensionControlCenter } from "../../extensions";
@@ -84,6 +84,54 @@ describe("ExtensionControlCenter", () => {
       target: { value: "plugin" },
     });
     expect(screen.getByTestId("extension-item-plugin-one")).toBeTruthy();
+  });
+
+  test("two copies of one plugin share an id: each row selects and shows only its own copy", async () => {
+    const copies: ExtensionCatalogSnapshot = {
+      ...snapshot,
+      extensions: [
+        {
+          id: "shadowed",
+          name: "Shadowed",
+          provider: "demo",
+          source: "plugin",
+          version: "1.0.0",
+          enabled: true,
+          shadowed: true,
+          capabilities: [],
+        },
+        {
+          id: "shadowed",
+          name: "Shadowed",
+          provider: "demo",
+          source: "plugin",
+          version: "2.0.0",
+          enabled: true,
+          shadowed: false,
+          capabilities: [],
+        },
+      ],
+      sources: [{ source: "plugin", provider: "demo", total: 2, enabled: 2, shadowed: 1 }],
+    };
+    const fake: ExtensionCatalog = {
+      list: vi.fn(async () => copies),
+      reload: vi.fn(async () => copies),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(<ExtensionControlCenter catalog={fake} folder={folder} capabilities={available} />);
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    const list = await screen.findByRole("list", { name: "plugins results" });
+    const [first, second] = within(list).getAllByRole("button");
+    if (first === undefined || second === undefined) throw new Error("two rows were expected");
+    fireEvent.click(second);
+    expect(screen.getByTestId("extension-inspector").textContent).toContain("2.0.0");
+    expect(screen.getByTestId("extension-inspector").textContent).not.toContain("1.0.0");
+    expect(second.className).toContain("bg-accent");
+    expect(first.className).not.toContain("bg-accent");
+    fireEvent.click(first);
+    expect(screen.getByTestId("extension-inspector").textContent).toContain("1.0.0");
+    expect(first.className).toContain("bg-accent");
+    expect(second.className).not.toContain("bg-accent");
   });
 
   test("an empty tab says what is missing in its own words, and a search with no result says so", async () => {

@@ -60,6 +60,27 @@ function itemId(item: ControlItem): string {
   return "id" in item ? item.id : `prompt:${item.provider}:${item.name}`;
 }
 
+/**
+ * The key of each row in its tab. omp keeps two copies of one plugin or skill under one id (the earlier one is marked
+ * shadowed), so an id alone is not unique: a copy whose id is shared gets its relative path, and copies that still
+ * match get their place among them. Keys come from the whole tab, not from the search results, so a search does not
+ * change which copy a row is.
+ */
+function rowKeysOf(list: readonly ControlItem[]): ReadonlyMap<ControlItem, string> {
+  const copies = new Map<string, number>();
+  for (const item of list) copies.set(itemId(item), (copies.get(itemId(item)) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const keys = new Map<ControlItem, string>();
+  for (const item of list) {
+    const id = itemId(item);
+    const base = (copies.get(id) ?? 0) > 1 ? `${id}|${item.path ?? ""}` : id;
+    const count = (seen.get(base) ?? 0) + 1;
+    seen.set(base, count);
+    keys.set(item, count === 1 ? base : `${base}#${count}`);
+  }
+  return keys;
+}
+
 function itemName(item: ControlItem): string {
   return item.name;
 }
@@ -196,8 +217,13 @@ export function ExtensionControlCenter({
     });
   }, [catalogState.snapshot, query, tab]);
 
+  const rowKeys = useMemo(
+    () => rowKeysOf(catalogState.snapshot ? tabItems(catalogState.snapshot, tab) : []),
+    [catalogState.snapshot, tab],
+  );
+  const keyOf = (item: ControlItem): string => rowKeys.get(item) ?? itemId(item);
   const selected =
-    selectedId === null ? null : (items.find((item) => itemId(item) === selectedId) ?? null);
+    selectedId === null ? null : (items.find((item) => keyOf(item) === selectedId) ?? null);
   useEffect(() => {
     if (!narrow || selected === null) return;
     requestAnimationFrame(() => inspectorHeadingRef.current?.focus());
@@ -313,15 +339,15 @@ export function ExtensionControlCenter({
                 {(!narrow || selected === null) && (
                   <ul aria-label={`${tab} results`} className="min-h-0 space-y-1 overflow-auto">
                     {items.map((item) => (
-                      <li key={itemId(item)}>
+                      <li key={keyOf(item)}>
                         <button
                           ref={(node) => {
-                            if (itemId(item) === selectedId) selectedButtonRef.current = node;
+                            if (keyOf(item) === selectedId) selectedButtonRef.current = node;
                           }}
-                          className={`border-border flex w-full min-w-0 flex-col rounded-md border px-2 py-2 text-start text-sm ${selected && itemId(selected) === itemId(item) ? "bg-accent" : "bg-background"}`}
-                          data-testid={`extension-item-${itemId(item)}`}
+                          className={`border-border flex w-full min-w-0 flex-col rounded-md border px-2 py-2 text-start text-sm ${selected === item ? "bg-accent" : "bg-background"}`}
+                          data-testid={`extension-item-${keyOf(item)}`}
                           type="button"
-                          onClick={() => setSelectedId(itemId(item))}
+                          onClick={() => setSelectedId(keyOf(item))}
                         >
                           <span className="truncate font-medium">{itemName(item)}</span>
                           <span className="truncate text-xs text-muted-foreground">
