@@ -31,6 +31,23 @@ function composerError(page: Page): Locator {
   return page.locator('[data-composer-error="true"]');
 }
 
+/**
+ * Types a command, then waits until the list shows that it could not be read, and presses Enter until the held reason
+ * shows. An Enter pressed while the list loads is dropped for text that is no command, and the list can load again
+ * after its first answer, so one Enter is not enough. A dropped Enter stores nothing, and a held send keeps the text,
+ * so pressing again is safe.
+ */
+async function typeCommand(page: Page, composer: Locator, text: string): Promise<void> {
+  await composer.fill(text);
+  await expect(page.getByText("omp could not list its commands.", { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(async () => {
+    await composer.press("Enter");
+    await expect(composerError(page)).toHaveText(HELD, { timeout: 3_000 });
+  }).toPass({ timeout: 60_000 });
+}
+
 realTest(
   "a typed command is held in the composer with the reason, and omp never receives it",
   async ({ realApp }, testInfo) => {
@@ -38,8 +55,7 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
 
-    await composer.fill("/compact");
-    await composer.press("Enter");
+    await typeCommand(page, composer, "/compact");
     await expect(composerError(page)).toHaveText(HELD, { timeout: 60_000 });
     // The text stays in the composer, and the fake model never answered it.
     await expect(composer).toHaveValue("/compact");
@@ -48,8 +64,21 @@ realTest(
     await waitForFiniteAnimations(page);
     await mkdir(screenshots, { recursive: true });
     await page.screenshot({ path: join(screenshots, "fix-1371-held-light.png"), fullPage: true });
+  },
+);
 
-    // Text that is not a command still reaches the model while the list is unreadable: the fake model answers "pong".
+realTest(
+  "text that is not a command still reaches the model while the list is unreadable",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const page = await realApp.open();
+    const composer = await startChat(page);
+
+    // The fake model answers "pong" to any text that is not a command, even while omp's command list cannot be read.
+    await composer.fill("/");
+    await expect(page.getByText("omp could not list its commands.", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
     await composer.fill("hello there");
     await composer.press("Enter");
     await expect(page.getByText("pong").first()).toBeVisible({ timeout: 60_000 });
@@ -65,8 +94,7 @@ realTest(
     await page.reload();
     const composer = await startChat(page);
 
-    await composer.fill("/compact");
-    await composer.press("Enter");
+    await typeCommand(page, composer, "/compact");
     await expect(composerError(page)).toHaveText(HELD, { timeout: 60_000 });
     await expect(page.locator("html")).toHaveClass(/dark/);
     // The reason is painted with the app's own colour, not the browser's default text colour.
