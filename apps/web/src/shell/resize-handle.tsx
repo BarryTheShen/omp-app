@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type PointerEvent, useRef } from "react";
+import { cn } from "@/lib/utils";
 
 export type ResizeSide = "left" | "right";
 
@@ -75,7 +76,11 @@ export function ResizeHandle({ side, value, minimum, maximum, onChange }: Resize
       aria-valuemax={maximum}
       aria-valuemin={minimum}
       aria-valuenow={value}
-      className="absolute inset-y-0 end-0 z-sticky w-1 cursor-col-resize outline-none focus-visible:bg-ring/50"
+      className={cn(
+        "absolute inset-y-0 h-auto border-0 z-sticky w-1 cursor-col-resize outline-none focus-visible:bg-ring/50",
+        // The grip sits on the sidebar's inner border: Sessions draws its border on the end edge, Panels on the start edge.
+        side === "left" ? "end-0" : "start-0",
+      )}
       data-shell-resize-handle={side}
       tabIndex={0}
       onKeyDown={onKeyDown}
