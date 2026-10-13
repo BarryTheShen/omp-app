@@ -63,10 +63,17 @@ async function openListedChat(page: Page, firstPrompt: string): Promise<void> {
   });
 }
 
-/** Drops one image onto the composer, as a person does. No text is typed. */
+/**
+ * Drops one image onto the composer, as a person does. No text is typed. Returns once the picture is attached: a
+ * picture still uploading is dropped when its chat is left, so a test must not leave the chat before this returns.
+ */
 async function dropImage(page: Page, target: Locator): Promise<void> {
   await dispatchImageDrop(target);
   await expect(page.locator(ATTACHMENTS)).toContainText(IMAGE);
+  // A picture that is still uploading has no Remove button; an attached picture has one.
+  await expect(page.getByRole("button", { name: `Remove ${IMAGE}` })).toBeVisible({
+    timeout: 60_000,
+  });
 }
 
 /** Dispatches the drop of one image onto the composer; the composer decides whether to take it. */
