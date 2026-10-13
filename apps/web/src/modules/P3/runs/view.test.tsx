@@ -37,7 +37,7 @@ const failed: P3FailedState = {
 };
 
 describe("P3RunStatusView", () => {
-  test("says the edit went to a new branch, that workspace files were not restored, and offers the way back", () => {
+  test("says the edit went to a new branch, says nothing about files no restore touched, and offers the way back", () => {
     const onOpenSource = vi.fn();
     render(
       <P3RunStatusView
@@ -50,11 +50,7 @@ describe("P3RunStatusView", () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        "Sent in this new chat, branched from the original. Workspace files were not restored.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Sent in this new chat, branched from the original.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open the original chat" }));
     expect(onOpenSource).toHaveBeenCalledTimes(1);
   });
@@ -71,12 +67,32 @@ describe("P3RunStatusView", () => {
       />,
     );
 
+    expect(screen.getByText("Sent in a new chat branched from this one.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open the original chat" })).toBeNull();
+  });
+
+  test("a restore the app managed says what it restored", () => {
+    const props = {
+      canRetry: false,
+      onOpenSource: () => undefined,
+      onRetry: () => undefined,
+      openError: null,
+      showOpenSource: true,
+    };
+    const { rerender } = render(
+      <P3RunStatusView {...props} state={{ ...sent, workspaceGuarantee: "boundary" }} />,
+    );
     expect(
       screen.getByText(
-        "Sent in a new chat branched from this one. Workspace files were not restored.",
+        "Sent in this new chat, branched from the original. Workspace files were restored to the last checkpoint.",
       ),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Open the original chat" })).toBeNull();
+    rerender(<P3RunStatusView {...props} state={{ ...sent, workspaceGuarantee: "exact" }} />);
+    expect(
+      screen.getByText(
+        "Sent in this new chat, branched from the original. Workspace files were restored to the state before this message.",
+      ),
+    ).toBeTruthy();
   });
 
   test("keeps a failed edit's text on screen and offers Try again only where a retry can run", () => {

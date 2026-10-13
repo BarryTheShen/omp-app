@@ -6,8 +6,11 @@ import type { WorkspaceGuarantee } from "../contract";
 import type { P3Runs } from "./runs";
 import type { P3FailedState, P3RunState, P3SentState } from "./status";
 
-const RESTORE_COPY: Record<WorkspaceGuarantee, string> = {
-  "not-managed": "Workspace files were not restored.",
+/**
+ * What a restore the app managed says about the files. A run that no restore managed says nothing about files: none was
+ * attempted, and omp's branch only moves the conversation (issue 1379).
+ */
+const RESTORE_COPY: Record<Exclude<WorkspaceGuarantee, "not-managed">, string> = {
   boundary: "Workspace files were restored to the last checkpoint.",
   exact: "Workspace files were restored to the state before this message.",
 };
@@ -36,7 +39,11 @@ function SentNotice({
     : "in a new chat branched from this one";
   return (
     <div className="flex flex-col gap-1" role="status">
-      <p>{`${verb} ${where}. ${RESTORE_COPY[state.workspaceGuarantee]}`}</p>
+      <p>
+        {state.workspaceGuarantee === "not-managed"
+          ? `${verb} ${where}.`
+          : `${verb} ${where}. ${RESTORE_COPY[state.workspaceGuarantee]}`}
+      </p>
       {state.partialFailure ? (
         <p className="text-danger">{`Some workspace files could not be restored: ${state.partialFailure}`}</p>
       ) : null}
