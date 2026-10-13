@@ -61,7 +61,7 @@ function ThoughtTrigger({
     <CollapsibleTrigger
       aria-label={label}
       className={cn(
-        "text-muted-foreground hover:text-foreground flex max-w-[75%] items-center gap-2 py-1.5 text-sm transition-[color,scale] active:scale-[0.98]",
+        "group/trigger text-muted-foreground hover:text-foreground flex max-w-[75%] items-center gap-2 py-1.5 text-sm transition-[color,scale] active:scale-[0.98]",
         active && "shimmer motion-reduce:animate-none",
       )}
       data-u1-reasoning-trigger
@@ -71,7 +71,7 @@ function ThoughtTrigger({
       <span className="inline-block leading-none tabular-nums">{label}</span>
       <ChevronRightIcon
         aria-hidden="true"
-        className="size-4 shrink-0 transition-transform duration-(--animation-duration) motion-reduce:transition-none group-data-open/trigger:rotate-90"
+        className="size-4 shrink-0 transition-transform duration-(--duration-base) motion-reduce:transition-none group-data-panel-open/trigger:rotate-90"
       />
     </CollapsibleTrigger>
   );

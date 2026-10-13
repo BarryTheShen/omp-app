@@ -121,6 +121,8 @@ export const durationTokens = {
   fast: 120,
   base: 180,
   slow: 260,
+  spin: 600,
+  loop: 2000,
 } as const satisfies Record<string, number>;
 export type DurationToken = keyof typeof durationTokens;
 

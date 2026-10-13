@@ -6,8 +6,8 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
 /**
  * Motion (#1173, part 3, #1207): the command palette fades and scales in and out over the motion duration, and
  * stays mounted for its exit. The page records, in every frame, whether the palette is in the document and the
- * opacity of its popup. With the default motion preference the popup's opacity changes over several frames on open,
- * the palette is still mounted for several frames after Escape, and the popup animates over the token duration
+ * opacity of its popup. With the default motion preference the popup's opacity changes over time on open, the palette is
+ * still mounted for at least 100 ms after Escape, and the popup animates over the token duration
  * (--duration-base, 180 ms). With prefers-reduced-motion: reduce it appears and vanishes at once.
  */
 
@@ -76,22 +76,42 @@ realTest("the command palette fades and scales in and out", async ({ realApp }, 
   await page.keyboard.press("Control+k");
   await expect(page.locator(PALETTE)).toBeVisible();
   await waitForFiniteAnimations(page);
-  const opening = await framesSince(page, openAt);
   const declared = await page
     .locator(PALETTE)
     .evaluate((element) => getComputedStyle(element).animationDuration);
   expect(declared, "the popup animates over --duration-base").toBe("0.18s");
-  expect(opening.opacities, "distinct opacities while the palette opens").toBeGreaterThanOrEqual(3);
+  // Timed on the clock, not counted in frames: a busy machine draws fewer frames, but the fade still takes its time.
+  const opening = await page.evaluate((from) => {
+    const shown = (window.__overlay ?? []).filter((sample) => sample.at >= from && sample.present);
+    const first = shown[0];
+    const full = shown.find((sample) => sample.opacity >= 1);
+    return {
+      ms: first && full ? full.at - first.at : 0,
+      partial: shown.filter((sample) => sample.opacity > 0 && sample.opacity < 1).length,
+    };
+  }, openAt);
+  expect(opening.ms, "the palette takes its time to reach full opacity").toBeGreaterThanOrEqual(
+    100,
+  );
+  expect(
+    opening.partial,
+    "the palette shows part-way opacities while it opens",
+  ).toBeGreaterThanOrEqual(1);
 
   const closeAt = await page.evaluate(() => performance.now());
   await page.keyboard.press("Escape");
   await expect(page.locator(PALETTE)).toHaveCount(0);
-  const closing = await framesSince(page, closeAt);
-  expect(closing.mounted, "frames the palette stays mounted while it exits").toBeGreaterThanOrEqual(
-    4,
+  const stayed = await page.evaluate((from) => {
+    const gone = (window.__overlay ?? []).find((sample) => sample.at >= from && !sample.present);
+    return gone ? gone.at - from : -1;
+  }, closeAt);
+  expect(stayed, "the palette is removed after Escape").toBeGreaterThanOrEqual(0);
+  expect(stayed, "the palette stays mounted for its exit, at least 100 ms").toBeGreaterThanOrEqual(
+    100,
   );
+  expect(stayed, "and is gone within 2 s").toBeLessThan(2000);
   console.log(
-    `palette: open shows ${opening.opacities} opacities over ${opening.mounted} frames; close stays mounted ${closing.mounted} frames`,
+    `palette: full opacity after ${Math.round(opening.ms)} ms with ${opening.partial} part-way samples; close stays mounted ${Math.round(stayed)} ms`,
   );
 });
 

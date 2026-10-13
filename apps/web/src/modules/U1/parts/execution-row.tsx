@@ -18,7 +18,7 @@ export function ExecutionRow({ record }: { readonly record: ExecutionRecord }) {
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-xs">
         <ChevronRightIcon
           aria-hidden="true"
-          className="size-4 shrink-0 transition-transform duration-(--animation-duration) motion-reduce:transition-none group-open:rotate-90"
+          className="size-4 shrink-0 transition-transform duration-(--duration-base) motion-reduce:transition-none group-open:rotate-90"
         />
         <span className="text-foreground font-medium">{label}</span>
         <span className="text-muted-foreground">{statusOf(record)}</span>

@@ -123,7 +123,7 @@ export function EarlierSteps({
         <ChevronRightIcon
           aria-hidden="true"
           className={cn(
-            "size-4 shrink-0 transition-transform duration-(--animation-duration) motion-reduce:transition-none",
+            "size-4 shrink-0 transition-transform duration-(--duration-base) motion-reduce:transition-none",
             open && "rotate-90",
           )}
         />
