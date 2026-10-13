@@ -21,7 +21,7 @@ export interface FileMention {
   readonly path: string;
   readonly lineCount?: number;
   readonly image?: boolean;
-  readonly skippedReason?: string;
+  readonly skippedReason?: "tooLarge" | "binary";
 }
 
 export interface FileMentionRowProps {
@@ -160,36 +160,40 @@ export function CustomMessageRow({
   );
 }
 
-/** Compact safe file rows; skipped/binary files explain why no content is shown. */
+/** The line under a file's path: why its text is not shown, or how much of it there is. */
+function fileMentionDetail(file: FileMention): string {
+  if (file.skippedReason === "binary") return "Skipped: binary file";
+  if (file.skippedReason === "tooLarge") return "Skipped: too large";
+  if (file.image) return "Image";
+  if (file.lineCount === undefined) return "Line count unknown";
+  return file.lineCount === 1 ? "1 line" : `${file.lineCount} lines`;
+}
+
+/** Compact file rows for an omp file mention. The system surface around them supplies the frame. */
 export function FileMentionRow({ files }: FileMentionRowProps) {
   return (
-    <RowSurface kind="file-mention">
-      <div className="space-y-1.5">
-        {files.length === 0 && <p className="text-muted-foreground">No files to show.</p>}
-        {files.map((file) => (
-          <div className="flex items-start gap-2" key={file.path}>
-            {file.image ? (
-              <ImageIcon
-                aria-hidden="true"
-                className="text-muted-foreground mt-0.5 size-4 shrink-0"
-              />
-            ) : (
-              <FileTextIcon
-                aria-hidden="true"
-                className="text-muted-foreground mt-0.5 size-4 shrink-0"
-              />
-            )}
-            <div className="min-w-0">
-              <p className="break-all font-mono text-xs">{file.path}</p>
-              <p className="text-muted-foreground text-xs">
-                {file.skippedReason ??
-                  (file.lineCount === undefined ? "File available" : `${file.lineCount} lines`)}
-              </p>
-            </div>
+    <div className="space-y-1.5" data-u1-row-kind="file-mention">
+      {files.length === 0 && <p className="text-muted-foreground text-xs">No files to show.</p>}
+      {files.map((file) => (
+        <div className="flex items-start gap-2" key={file.path}>
+          {file.image ? (
+            <ImageIcon
+              aria-hidden="true"
+              className="text-muted-foreground mt-0.5 size-4 shrink-0"
+            />
+          ) : (
+            <FileTextIcon
+              aria-hidden="true"
+              className="text-muted-foreground mt-0.5 size-4 shrink-0"
+            />
+          )}
+          <div className="min-w-0">
+            <p className="text-foreground break-all font-mono text-xs">{file.path}</p>
+            <p className="text-muted-foreground text-xs">{fileMentionDetail(file)}</p>
           </div>
-        ))}
-      </div>
-    </RowSurface>
+        </div>
+      ))}
+    </div>
   );
 }
 

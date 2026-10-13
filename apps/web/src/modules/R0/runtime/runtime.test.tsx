@@ -806,6 +806,26 @@ describe("R0.3 assistant-ui runtime", () => {
     ).not.toThrow();
   });
 
+  test("shows omp's file mention as a system row that keeps its file list, not the fallback (issue 1266)", () => {
+    const message = {
+      role: "fileMention",
+      files: [{ path: "notes.txt", content: "first\nsecond\n", lineCount: 2 }],
+      timestamp: 1_759_600_000_000,
+    } as unknown as OmpMessage;
+    const converted = convertMessage(
+      runtimeMessage(message, "entry:runtime-test-thread:files") as RuntimeMessageView["record"],
+    );
+    expect(converted.role).toBe("system");
+    expect(converted.metadata?.custom).toMatchObject({
+      ompRole: "fileMention",
+      ompFileMention: message,
+    });
+    expect(converted.metadata?.custom).not.toHaveProperty("ompFallback");
+    expect(() =>
+      fromThreadMessageLike(converted, "files", { type: "complete", reason: "unknown" }),
+    ).not.toThrow();
+  });
+
   test("a row keeps the id of its streamed copy, and its metadata carries the store key (issue 1047)", () => {
     const message = {
       role: "user",

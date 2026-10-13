@@ -27,7 +27,7 @@ function RowsPlayground() {
             files={[
               { path: "src/app.ts", lineCount: 42 },
               { path: "assets/logo.png", image: true },
-              { path: "archive.zip", skippedReason: "binary file" },
+              { path: "archive.zip", skippedReason: "binary" },
             ]}
           />
           <SessionEntryRow detail="fake-model → fast-model" kind="model-change" />

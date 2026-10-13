@@ -6,10 +6,12 @@ import { cn } from "@/lib/utils";
 import { executionRecordOf } from "@/modules/U2/execution";
 import { MarkdownText } from "../markdown";
 import { ReasoningGroup } from "../reasoning";
+import { type FileMention, FileMentionRow } from "../rows";
 import { type ToolRendererMap, ToolSlot } from "../tool-slots";
 import { CustomNote, type CustomNoteSource } from "./custom-note";
 import { EarlierSteps, isTurnGroup, useTurnGroupBy } from "./earlier-steps";
 import { ExecutionRow } from "./execution-row";
+import { fileMentionFilesOf } from "./file-mention";
 import { endingOf, MessageEndingNote } from "./message-ending";
 import { storeKeyOf } from "./store-key";
 export interface MessagePartsProps {
@@ -157,6 +159,12 @@ function executionOf(message: MessageState) {
   return raw === undefined ? undefined : executionRecordOf(storeKeyOf(message), raw);
 }
 
+/** The file rows of one of omp's file mentions: R0 keeps omp's message in the metadata; undefined for any other message. */
+function fileMentionOf(message: MessageState): readonly FileMention[] | undefined {
+  const raw: unknown = message.metadata.custom.ompFileMention;
+  return raw === undefined ? undefined : fileMentionFilesOf(raw);
+}
+
 /** Renders one assistant-ui message with U1's role grammar and U3's tool boundary. */
 export function MessageParts({
   message,
@@ -171,6 +179,7 @@ export function MessageParts({
   const isSystem = role === "system";
   const note = isSystem ? customNoteOf(message) : undefined;
   const execution = isSystem ? executionOf(message) : undefined;
+  const files = isSystem ? fileMentionOf(message) : undefined;
   const ending = endingOf(message);
   // A very long assistant turn folds its earlier steps away (see earlier-steps.tsx).
   const groupBy = useTurnGroupBy(!isUser && !isSystem);
@@ -200,6 +209,8 @@ export function MessageParts({
           <CustomNote source={note} />
         ) : execution !== undefined ? (
           <ExecutionRow record={execution} />
+        ) : files !== undefined ? (
+          <FileMentionRow files={files} />
         ) : (
           <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="never">
             {({ part, children }) => {

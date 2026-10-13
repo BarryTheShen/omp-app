@@ -542,6 +542,15 @@ function convertRecord(
         content: [textPart("")],
         metadata: { custom: { ...metadata.custom, ompExecution: message } },
       } as unknown as ThreadMessageLike;
+    case "fileMention":
+      // omp's file mentions: one row per file (its path, and its line count, image marker or skip reason). U1 draws them.
+      return {
+        role: "system",
+        id,
+        ...(createdAt ? { createdAt } : {}),
+        content: [textPart("")],
+        metadata: { custom: { ...metadata.custom, ompFileMention: message } },
+      } as unknown as ThreadMessageLike;
     default:
       return fallbackMessage(id);
   }

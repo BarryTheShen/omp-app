@@ -34,7 +34,9 @@ describe("U1.6 transcript rows", () => {
           files={[
             { path: "src/main.ts", lineCount: 12 },
             { path: "assets/logo.png", image: true },
-            { path: "archive.zip", skippedReason: "binary file" },
+            { path: "archive.zip", skippedReason: "binary" },
+            { path: "huge.log", skippedReason: "tooLarge" },
+            { path: "notes.md", lineCount: 1 },
           ]}
         />
         <SessionEntryRow detail="model-x → model-y" kind="model-change" />
@@ -45,7 +47,10 @@ describe("U1.6 transcript rows", () => {
 
     expect(screen.getByText("src/main.ts")).toBeTruthy();
     expect(screen.getByText("12 lines")).toBeTruthy();
-    expect(screen.getByText("binary file")).toBeTruthy();
+    expect(screen.getByText("Image")).toBeTruthy();
+    expect(screen.getByText("Skipped: binary file")).toBeTruthy();
+    expect(screen.getByText("Skipped: too large")).toBeTruthy();
+    expect(screen.getByText("1 line")).toBeTruthy();
     expect(screen.getByText("Model changed: model-x → model-y")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Compaction summary" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Branch summary" })).toBeTruthy();
