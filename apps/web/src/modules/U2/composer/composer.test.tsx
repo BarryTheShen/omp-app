@@ -743,6 +743,10 @@ describe("a large paste in the composer", () => {
     await waitFor(() => expect(input).toHaveProperty("value", `a${LARGE}b`));
     expect(screen.queryByText(CHOICE)).toBeNull();
     expect(screen.queryByText("Pasted text 1 (100 lines).txt")).toBeNull();
-    expect(screen.getByText("Attachment exceeds the 10 byte limit")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Pasted text 1 (100 lines).txt was not attached. Files over 10 bytes can't be attached.",
+      ),
+    ).toBeTruthy();
   });
 });

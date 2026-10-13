@@ -5,7 +5,12 @@ import {
   MAX_ATTACHMENT_BYTES,
   type PortClient,
 } from "@omp-app/contracts";
-import type { AttachmentBlobStore, StoredAttachment } from "./attachments";
+import {
+  type AttachmentBlobStore,
+  notAttachedMessage,
+  type StoredAttachment,
+  sizeInWords,
+} from "./attachments";
 
 type AttachmentBlobClient = PortClient<typeof AttachmentBlobStorePort>;
 
@@ -44,7 +49,10 @@ export function createAttachmentBlobStore(client: AttachmentBlobClient): Attachm
         if (file.size > MAX_ATTACHMENT_BYTES) {
           throw new AppFailure({
             code: "invalid_args",
-            message: `Attachment exceeds the ${MAX_ATTACHMENT_BYTES} byte limit.`,
+            message: notAttachedMessage(
+              file.name,
+              `Files over ${sizeInWords(MAX_ATTACHMENT_BYTES)} can't be attached.`,
+            ),
             retryable: false,
           });
         }

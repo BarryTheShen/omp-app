@@ -12,6 +12,7 @@ import {
   FolderPath,
   type HostCallId,
   HostMetadataPort,
+  MAX_ATTACHMENT_BYTES,
   type ModelChoice,
   OmpCommandGateway,
   type OmpWire,
@@ -921,6 +922,7 @@ function ActiveThreadReady({
     () =>
       new AttachmentManager({
         blobStore: createAttachmentBlobStore(client.port(AttachmentBlobStore)),
+        maxBytes: MAX_ATTACHMENT_BYTES,
       }),
     [client],
   );

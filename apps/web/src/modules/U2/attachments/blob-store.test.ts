@@ -83,7 +83,12 @@ describe("createAttachmentBlobStore", () => {
           type: "text/plain",
         }),
       }),
-    ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
+    ).rejects.toMatchObject({
+      appError: {
+        code: "invalid_args",
+        message: "large.bin was not attached. Files over 700 KB can't be attached.",
+      },
+    });
     expect(calls).toBe(0);
   });
 });

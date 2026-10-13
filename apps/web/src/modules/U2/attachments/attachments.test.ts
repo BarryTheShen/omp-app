@@ -1,9 +1,10 @@
 import type { CompleteAttachment } from "@assistant-ui/react";
-import type { AttachmentRef } from "@omp-app/contracts";
+import { type AttachmentRef, MAX_ATTACHMENT_BYTES } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import {
   type AttachmentBlobStore,
   AttachmentManager,
+  acceptedKindsText,
   applyLargePaste,
   classifyLargePaste,
   type StoredAttachment,
@@ -119,23 +120,50 @@ describe("U2.3 AttachmentManager", () => {
     expect(blobs.putIds).toEqual([pending.id]);
   });
 
-  test("rejects disallowed MIME types and oversized files with clear typed errors", async () => {
-    const manager = new AttachmentManager({
-      blobStore: new MemoryBlobStore(),
-      allowedMimeTypes: ["image/png"],
-      maxBytes: 3,
-    });
+  test("refuses a file the composer will not take, naming the file and the reason", async () => {
+    const manager = new AttachmentManager({ blobStore: new MemoryBlobStore(), maxBytes: 3 });
     await expect(
-      manager.add({ file: new File(["text"], "notes.txt", { type: "text/plain" }) }),
+      manager.add({ file: new File(["%PDF"], "report.pdf", { type: "application/pdf" }) }),
     ).rejects.toMatchObject({
-      appError: { code: "invalid_args", message: expect.stringContaining("type") },
+      appError: {
+        code: "invalid_args",
+        message:
+          "report.pdf was not attached. Only images, plain text and Markdown files can be attached.",
+      },
     });
     await expect(
       manager.add({ file: new File(["1234"], "photo.png", { type: "image/png" }) }),
     ).rejects.toMatchObject({
-      appError: { code: "invalid_args", message: expect.stringContaining("limit") },
+      appError: {
+        code: "invalid_args",
+        message: "photo.png was not attached. Files over 3 bytes can't be attached.",
+      },
     });
     expect(manager.getState().pending).toHaveLength(0);
+  });
+
+  test("a picture the upload would refuse is refused when it is added, by default", async () => {
+    const blobs = new MemoryBlobStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    await expect(
+      manager.add({
+        file: new File([new Uint8Array(MAX_ATTACHMENT_BYTES + 1)], "photo.png", {
+          type: "image/png",
+        }),
+      }),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "invalid_args",
+        message: "photo.png was not attached. Files over 700 KB can't be attached.",
+      },
+    });
+    expect(blobs.putIds).toEqual([]);
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
+  });
+  test("says in plain words which kinds of file the composer takes", () => {
+    expect(acceptedKindsText("image/*,text/plain,text/markdown")).toBe(
+      "Only images, plain text and Markdown files can be attached.",
+    );
   });
 
   test("uses omp's 100-line large-paste threshold and supports inline or attachment choices", async () => {

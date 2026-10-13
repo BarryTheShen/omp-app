@@ -5,11 +5,36 @@ import type {
   ThreadUserMessagePart,
 } from "@assistant-ui/react";
 import type { AttachmentRef } from "@omp-app/contracts";
-import { AppFailure } from "@omp-app/contracts";
+import { AppFailure, MAX_ATTACHMENT_BYTES } from "@omp-app/contracts";
 import type { AttachmentAdapter, AttachmentState } from "../contract";
 
-export const DEFAULT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_LARGE_PASTE_LINE_THRESHOLD = 100;
+
+const KIND_WORDS: Readonly<Record<string, string>> = {
+  "image/*": "images",
+  "text/plain": "plain text",
+  "text/markdown": "Markdown files",
+};
+
+/** The sentence that says which kinds of file an accept list takes, in words a person reads. */
+export function acceptedKindsText(accept: string): string {
+  const words = accept.split(",").map((type) => KIND_WORDS[type.trim()] ?? type.trim());
+  const last = words.pop();
+  const kinds = words.length > 0 ? `${words.join(", ")} and ${last}` : last;
+  return `Only ${kinds} can be attached.`;
+}
+
+/** A size in words for a refusal: "700 KB", "5 MB". */
+export function sizeInWords(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} bytes`;
+}
+
+/** What a person reads when the composer does not take a file: which file, and why. */
+export function notAttachedMessage(name: string, reason: string): string {
+  return `${name} was not attached. ${reason}`;
+}
 
 export type LargePasteChoice = "attachment" | "inline";
 
@@ -123,7 +148,7 @@ export class AttachmentManager implements AttachmentAdapter {
     this.blobStore = options.blobStore;
     this.allowedMimeTypes = options.allowedMimeTypes ?? ["image/*", "text/plain", "text/markdown"];
     this.accept = options.accept ?? this.allowedMimeTypes.join(",");
-    this.maxBytes = options.maxBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES;
+    this.maxBytes = options.maxBytes ?? MAX_ATTACHMENT_BYTES;
     this.idPrefix = options.idPrefix ?? "attachment";
   }
 
@@ -292,10 +317,19 @@ export class AttachmentManager implements AttachmentAdapter {
 
   private validate(file: File): void {
     if (!matchesMime(file.type, this.allowedMimeTypes)) {
-      throw appFailure("invalid_args", `Attachment type ${file.type || "unknown"} is not allowed`);
+      throw appFailure(
+        "invalid_args",
+        notAttachedMessage(file.name, acceptedKindsText(this.allowedMimeTypes.join(","))),
+      );
     }
     if (file.size > this.maxBytes) {
-      throw appFailure("invalid_args", `Attachment exceeds the ${this.maxBytes} byte limit`);
+      throw appFailure(
+        "invalid_args",
+        notAttachedMessage(
+          file.name,
+          `Files over ${sizeInWords(this.maxBytes)} can't be attached.`,
+        ),
+      );
     }
   }
 

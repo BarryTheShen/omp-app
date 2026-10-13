@@ -1,4 +1,10 @@
-import { type Attachment, ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
+import {
+  type Attachment,
+  ComposerPrimitive,
+  useAui,
+  useAuiEvent,
+  useAuiState,
+} from "@assistant-ui/react";
 import type { AppError, AttachmentRef, CapabilityMap } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
@@ -8,10 +14,12 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useCallback,
+  useEffect,
   useId,
   useRef,
   useState,
 } from "react";
+import { InlineError } from "@/components/blocks";
 import { chordLabel, isApplePlatform } from "@/shortcuts";
 import { Button } from "../../../components/ui/button";
 import type { PromptDelivery, PromptIntent } from "../../R0/runtime/runtime";
@@ -32,6 +40,7 @@ import {
   textForMode,
 } from "../modes";
 import { type ArrowGesture, arrowGestureStep, NO_ARROW_GESTURE } from "./arrow-gesture";
+import { offeredFiles, refusalNotice } from "./refused-files";
 import { useRemeasureOnWidthChange } from "./remeasure";
 
 export interface ComposerSurfaceProps {
@@ -190,8 +199,10 @@ export function ComposerSurface({
   const canCancel = useAuiState(
     (state) => state.thread.isRunning && state.thread.capabilities.cancel,
   );
+  const accept = useAuiState((state) => state.composer.attachmentAccept);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
+  const offers = useRef<File[]>([]);
   const composingRef = useRef(false);
   const arrowGesture = useRef<ArrowGesture>(NO_ARROW_GESTURE);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -206,6 +217,30 @@ export function ComposerSurface({
     attachmentHoldReason ??
     (largePaste === null ? undefined : PASTE_CHOICE_REASON);
   useRemeasureOnWidthChange(inputRef);
+  useAuiEvent("composer.attachmentAddError", (failure) => {
+    setError({
+      code: "invalid_args",
+      message: refusalNotice(failure, accept, offers.current),
+      retryable: false,
+    });
+  });
+  useAuiEvent("composer.attachmentAdd", () => setError(null));
+  useEffect(() => {
+    const offer = (event: Event) => {
+      const files = offeredFiles(event);
+      if (files.length === 0) return;
+      offers.current = files;
+      // Whatever this offer did not use is dropped once its browser event has finished, so no later refusal names it.
+      window.setTimeout(() => {
+        if (offers.current === files) offers.current = [];
+      });
+    };
+    const kinds = ["drop", "paste", "change"] as const;
+    for (const kind of kinds) document.addEventListener(kind, offer, true);
+    return () => {
+      for (const kind of kinds) document.removeEventListener(kind, offer, true);
+    };
+  }, []);
   const submit = useCallback(
     async (keyChord: ComposerKeyChord, delivery?: PromptDelivery) => {
       if (disabled || notSentReason !== undefined || isSubmitting || !hasContent(text, attachments))
@@ -488,13 +523,9 @@ export function ComposerSurface({
         )}
         {error && (
           <>
-            <p
-              data-composer-error="true"
-              role="alert"
-              className="text-destructive px-(--space-md) text-sm"
-            >
-              {error.message}
-            </p>
+            <div className="px-(--space-md)" data-composer-error="true">
+              <InlineError message={error.message} variant="message" />
+            </div>
             {error.code === "agent_busy" && (
               <div
                 className="flex flex-wrap gap-(--space-xs) px-(--space-md)"
