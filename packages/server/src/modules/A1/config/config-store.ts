@@ -536,7 +536,8 @@ export class ConfigStoreService {
     }
 
     const after = await this.readScope(folder);
-    await this.refreshWatchState(currentWriteSnapshot.path);
+    // The change reaches the open watchers now, as a hand edit's does: another page's open chat sees the new value.
+    await this.publishFileChange({ path: currentWriteSnapshot.path, layer: args.layer, folder });
     // A hidden value that is removed reads back as an unset secret, as a removed secret does.
     const entry = this.entryForKey(key, after, secret || hiddenUrl);
     return {
@@ -1006,7 +1007,7 @@ export class ConfigStoreService {
         })
         .catch((error) => reportError(this.options.onError, error));
       try {
-        const watcher = watchFile(descriptor.path, () => this.handleFileChange(descriptor), {
+        const watcher = watchFile(descriptor.path, () => this.publishFileChange(descriptor), {
           debounceMs: this.options.watchDebounceMs,
           onError: (error) => reportError(this.options.onError, error),
           registry: this.options.watchRegistry,
@@ -1038,18 +1039,12 @@ export class ConfigStoreService {
     return [...paths];
   }
 
-  private async refreshWatchState(path: string): Promise<void> {
-    const watched = this.watchedPaths.get(path);
-    if (!watched) return;
-    try {
-      const snapshot = await readFileSnapshot(path);
-      watched.values = snapshot.exists ? parseYaml(snapshot.content ?? "", path).values : new Map();
-    } catch (error) {
-      reportError(this.options.onError, error);
-    }
-  }
-
-  private async handleFileChange(descriptor: {
+  /**
+   * Publishes what changed in one settings file to the open watchers. A hand edit reaches it from the file watcher, and
+   * an in-app write calls it once the file is written. Whichever records the new contents first publishes the change; the
+   * other finds nothing new, so one write publishes once.
+   */
+  private async publishFileChange(descriptor: {
     path: string;
     layer: PersistedLayer;
     folder: string | null;

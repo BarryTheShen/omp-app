@@ -173,15 +173,17 @@ describe("ConfigStoreService", () => {
       value: { secret: true, action: "set", value: "second-secret" },
     });
     expect(JSON.stringify(writeResult)).not.toContain("second-secret");
-    expect(changes).toHaveLength(0);
+    await waitForWatchers();
+    expect(changes).toHaveLength(1);
+    expect(JSON.stringify(changes[0])).not.toContain("second-secret");
 
     await writeText(
       join(agent, "config.yml"),
       "provider:\n  apiKey: external-secret\n  name: demo\n",
     );
     await waitForWatchers();
-    expect(changes).toHaveLength(1);
-    expect(JSON.stringify(changes[0])).not.toContain("external-secret");
+    expect(changes).toHaveLength(2);
+    expect(JSON.stringify(changes[1])).not.toContain("external-secret");
     unsubscribe();
     store.dispose();
   });
@@ -312,7 +314,7 @@ describe("ConfigStoreService", () => {
     store.dispose();
   });
 
-  test("emits one external change and suppresses its own atomic write", async () => {
+  test("publishes an in-app write once, and a later external edit once more", async () => {
     const root = await temporaryDirectory();
     const agent = join(root, "agent");
     const configPath = join(agent, "config.yml");
@@ -332,13 +334,62 @@ describe("ConfigStoreService", () => {
       value: { secret: false, value: "own" },
     });
     await waitForWatchers();
-    expect(events).toHaveLength(0);
-    await writeFile(configPath, "model: external\n", "utf8");
-    await waitForWatchers();
     expect(events).toHaveLength(1);
     expect(events[0]?.key).toBe("model");
+    await writeFile(configPath, "model: external\n", "utf8");
+    await waitForWatchers();
+    expect(events).toHaveLength(2);
+    expect(events[1]?.key).toBe("model");
     unsubscribe();
     store.dispose();
+  });
+
+  test("an in-app write reaches a folder subscriber with the new value and revision, and a write that changes nothing reaches nobody", async () => {
+    const root = await temporaryDirectory();
+    const agent = join(root, "agent");
+    const project = join(root, "project");
+    await writeText(join(agent, "config.yml"), "model: old\n");
+    await mkdir(project, { recursive: true });
+    const store = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+    const changes: ConfigChanged[] = [];
+    const unsubscribe = store.subscribe(project, (change) => {
+      changes.push(change);
+    });
+    try {
+      await waitForWatchers();
+      const revision = (await store.list({ folder: null })).revision;
+      await store.write({
+        key: "model",
+        layer: "global",
+        folder: null,
+        expectedRevision: revision,
+        value: { secret: false, value: "new" },
+      });
+      await waitForWatchers();
+      // The folder subscriber hears the change with its own scope's revision, which the global write moved too.
+      const projectRevision = (await store.list({ folder: project })).revision;
+      expect(changes).toHaveLength(1);
+      expect(changes[0]).toMatchObject({
+        key: "model",
+        layer: "global",
+        folder: null,
+        revision: projectRevision,
+      });
+      expect(changes[0]?.entry).toMatchObject({ key: "model", value: "new" });
+      const globalRevision = (await store.list({ folder: null })).revision;
+      await store.write({
+        key: "model",
+        layer: "global",
+        folder: null,
+        expectedRevision: globalRevision,
+        value: { secret: false, value: "new" },
+      });
+      await waitForWatchers();
+      expect(changes).toHaveLength(1);
+    } finally {
+      unsubscribe();
+      store.dispose();
+    }
   });
 });
 
