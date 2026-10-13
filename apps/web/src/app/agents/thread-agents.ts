@@ -35,6 +35,8 @@ export interface ThreadAgents {
     parentToolCallId: ToolCallId,
     workerIds?: readonly string[],
   ): readonly TaskSubagent[];
+  /** The newest worker the roster knows by this id, with its transcript; undefined when the chat does not know it. */
+  workerFor(id: string): TaskSubagent | undefined;
   /** Releases the progress subscription and the roster. Calling it again does nothing. */
   dispose(): Promise<void>;
 }
@@ -62,6 +64,16 @@ export function createThreadAgents({
   const sources = new Map<string, TaskSubagent>();
   let starting: Promise<void> | undefined;
   let disposed = false;
+  const sourceFor = (agent: RosterAgent): TaskSubagent => {
+    const cached = sources.get(agent.key);
+    if (cached !== undefined && cached.agent === agent) return cached;
+    const next: TaskSubagent = {
+      agent,
+      source: createNestedTranscriptSource({ agent, client, finished }),
+    };
+    sources.set(agent.key, next);
+    return next;
+  };
   return {
     threadId,
     client,
@@ -86,16 +98,19 @@ export function createThreadAgents({
             agent !== undefined &&
             (agent.parentToolCallId === parentToolCallId || workerIds.includes(agent.id)),
         )
-        .map((agent) => {
-          const cached = sources.get(agent.key);
-          if (cached !== undefined && cached.agent === agent) return cached;
-          const next: TaskSubagent = {
-            agent,
-            source: createNestedTranscriptSource({ agent, client, finished }),
-          };
-          sources.set(agent.key, next);
-          return next;
-        });
+        .map(sourceFor);
+    },
+    workerFor(id) {
+      const snapshot = roster.getSnapshot();
+      // An id omp reuses names a later incarnation of the worker: the newest one is the worker a notice means.
+      let latest: RosterAgent | undefined;
+      for (const key of snapshot.order) {
+        const agent = snapshot.agents[key];
+        if (agent?.id === id && (latest === undefined || agent.incarnation > latest.incarnation)) {
+          latest = agent;
+        }
+      }
+      return latest === undefined ? undefined : sourceFor(latest);
     },
     async dispose() {
       if (disposed) return;

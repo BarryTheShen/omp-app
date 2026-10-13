@@ -17,6 +17,7 @@ const REPLY_SLACK_BYTES = 64 * 1024;
 const FILLER_LINES = 2_300;
 const FILLER_TEXT = "x".repeat(4_000);
 const TRANSCRIPT = '[data-slot="p1-agent-transcript"]';
+const NOTICE = '[data-slot="u1-custom-note"]';
 /** The worker's task, which omp writes after the header: it is on screen only once the page that holds it is read. */
 const TASK_TEXT = "nested_probe_child";
 const COULD_NOT_READ = "The transcript could not be read";
@@ -55,7 +56,7 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_subagent");
-    await expect(page.getByText("Background job NestedProbe has completed")).toBeVisible({
+    await expect(page.locator(NOTICE).filter({ hasText: "NestedProbe finished." })).toBeVisible({
       timeout: 240_000,
     });
 

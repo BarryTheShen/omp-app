@@ -18,7 +18,7 @@ import {
  * the turn settles, the call must still read Complete, never Cancelled.
  */
 const TRIGGER = '[data-slot="u3-tool-card-trigger"]';
-const COMPLETED = /Background job SlowProbe has completed/;
+const NOTICE = '[data-slot="u1-custom-note"]';
 
 /** Lets finite transitions settle before a screenshot. Bounded: a transition a headless page never finishes must not hang the case. */
 async function settle(page: Page): Promise<void> {
@@ -45,7 +45,9 @@ realTest(
     // The turn settles after its bash (10 s); the worker reported inside that turn. The job's completion message
     // then starts its resume turn, which must also settle without cancelling the call.
     await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
-    await expect(page.getByText(COMPLETED)).toBeVisible({ timeout: 120_000 });
+    await expect(page.locator(NOTICE).filter({ hasText: "SlowProbe finished." })).toBeVisible({
+      timeout: 120_000,
+    });
     await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
     const trigger = card.locator(TRIGGER).first();
     // The resume turn's settle is the last event that could cancel the call: give it 3 s to finish before the check.

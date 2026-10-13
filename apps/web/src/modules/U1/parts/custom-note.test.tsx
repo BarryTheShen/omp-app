@@ -1,7 +1,14 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { U1_REAL_ENTRIES } from "../fixtures/real-entries";
-import { CustomNote, describeCustomMessage, withoutWrapper } from "./custom-note";
+import {
+  CustomNote,
+  type CustomNoteSource,
+  describeCustomMessage,
+  WorkerNoteContext,
+  type WorkerNoteLookup,
+  withoutWrapper,
+} from "./custom-note";
 
 afterEach(() => cleanup());
 
@@ -136,5 +143,89 @@ describe("CustomNote", () => {
     expect(screen.getByText("Message from Reviewer")).toBeTruthy();
     expect(container.querySelector('[data-slot="u1-custom-note-body"]')).not.toBeNull();
     expect(container.querySelector('[data-slot="u1-skill-card"]')).toBeNull();
+  });
+});
+
+describe("a background worker's notice", () => {
+  // omp's text for a worker that failed: it tells the model what to do next, and it carries a raw log path.
+  const failedWorker = {
+    customType: "async-result",
+    details: { jobs: [{ jobId: "FailProbe", type: "task", label: "FailProbe", durationMs: 1200 }] },
+    text:
+      "<system-notice>\nBackground job FailProbe has completed. Resume your work using the result below.\n" +
+      "400 fake provider failure for the failing subagent (type=invalid_request_error) raw-http-request=/home/someone/.omp/logs/http-400-requests/x.json\n" +
+      "FailProbe is now idle — message it via `write agent://FailProbe` to follow up; transcript at `history://FailProbe`.\n</system-notice>",
+  };
+  const ompText = [
+    "Resume your work",
+    "write agent://",
+    "history://",
+    "raw-http-request",
+    "400 fake provider",
+  ];
+
+  function renderNote(
+    lookup: WorkerNoteLookup | undefined,
+    source: CustomNoteSource = failedWorker,
+  ) {
+    return render(
+      <WorkerNoteContext.Provider value={lookup}>
+        <CustomNote source={source} />
+      </WorkerNoteContext.Provider>,
+    );
+  }
+
+  test("names the worker and how it ended, and its transcript is one click away", () => {
+    const { container } = renderNote(() => ({
+      status: "failed",
+      transcript: <p>Its own transcript.</p>,
+    }));
+    expect(screen.getByText("FailProbe failed.")).toBeTruthy();
+    expect(screen.queryByText("Its own transcript.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "View transcript" }));
+    expect(screen.getByText("Its own transcript.")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Hide transcript" }).getAttribute("aria-expanded"),
+    ).toBe("true");
+    for (const text of ompText) expect(container.textContent).not.toContain(text);
+  });
+
+  test("shows none of omp's text for the model, with the transcript closed or open", () => {
+    const { container } = renderNote(() => ({ status: "failed", transcript: null }));
+    for (const text of ompText) expect(container.textContent).not.toContain(text);
+  });
+
+  test.each([
+    ["completed", "FailProbe finished."],
+    ["failed", "FailProbe failed."],
+    ["aborted", "FailProbe was aborted."],
+    ["stopped", "FailProbe was stopped."],
+    ["running", "FailProbe has ended."],
+  ] as const)("a worker whose roster status is %s reads: %s", (status, line) => {
+    renderNote(() => ({ status, transcript: null }));
+    expect(screen.getByText(line)).toBeTruthy();
+  });
+
+  test("a worker the chat does not know has ended, and no transcript is offered", () => {
+    const { container } = renderNote(() => undefined);
+    expect(screen.getByText("FailProbe has ended.")).toBeTruthy();
+    expect(screen.getByText("Its transcript is not available here.")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    for (const text of ompText) expect(container.textContent).not.toContain(text);
+  });
+
+  test("a notice that also names a command keeps omp's text, because only workers have a transcript", () => {
+    const { container } = renderNote(() => ({ status: "completed", transcript: null }), {
+      customType: "async-result",
+      details: {
+        jobs: [
+          { jobId: "bg_1", type: "bash" },
+          { jobId: "FailProbe", type: "task" },
+        ],
+      },
+      text: "<system-notice>\nBackground job bg_1 has completed.\n</system-notice>",
+    });
+    expect(screen.getByText("Background job finished")).toBeTruthy();
+    expect(container.querySelector('[data-slot="u1-custom-note-worker"]')).toBeNull();
   });
 });

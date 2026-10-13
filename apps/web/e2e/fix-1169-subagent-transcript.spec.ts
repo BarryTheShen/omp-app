@@ -12,6 +12,7 @@ import { expect, realTest, screenshots, sendPrompt, startChat } from "./real-omp
  */
 
 const TRANSCRIPT = '[data-slot="p1-agent-transcript"]';
+const NOTICE = '[data-slot="u1-custom-note"]';
 const CANCELLED_TEXT = "long_probe_child: run one slow step.";
 const NEVER_SAVED = "omp did not save this worker's transcript.";
 const COULD_NOT_READ = "The transcript could not be read";
@@ -117,8 +118,8 @@ realTest(
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_subagent");
     // The task card reads "Complete" as soon as the spawn returns, while the worker still runs. A restart stops a worker
-    // that has not finished, and its file then never gets its end, so wait for the notice that the worker has completed.
-    await expect(page.getByText("Background job NestedProbe has completed")).toBeVisible({
+    // that has not finished, and its file then never gets its end, so wait for the notice that the worker finished.
+    await expect(page.locator(NOTICE).filter({ hasText: "NestedProbe finished." })).toBeVisible({
       timeout: 240_000,
     });
 
@@ -152,7 +153,7 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_subagent");
-    await expect(page.getByText("Background job NestedProbe has completed")).toBeVisible({
+    await expect(page.locator(NOTICE).filter({ hasText: "NestedProbe finished." })).toBeVisible({
       timeout: 240_000,
     });
 

@@ -132,6 +132,23 @@ describe("ThreadAgents", () => {
     await agents.dispose();
   });
 
+  test("a notice finds its worker by the id omp gave it, with the source the task card uses", async () => {
+    const omp = fakeOmp();
+    const agents = createThreadAgents({
+      threadId: threadA,
+      store: new OmpRuntimeStore({ threadId: threadA }),
+      session: omp.session,
+      files: unreadFiles,
+      capabilities: CAPABILITIES,
+    });
+    await agents.start();
+    const worker = agents.workerFor("worker-1");
+    expect(worker?.agent.id).toBe("worker-1");
+    expect(worker?.source).toBe(agents.subagentsFor(ToolCallId.parse("call-1"))[0]?.source);
+    expect(agents.workerFor("nobody")).toBeUndefined();
+    await agents.dispose();
+  });
+
   test("a task card finds a worker by the id its result names, even without a link to the call", async () => {
     const omp = fakeOmp();
     const agents = createThreadAgents({
@@ -303,5 +320,44 @@ describe("the chat's subagents in the transcript", () => {
 
     view.unmount();
     await waitFor(() => expect(omp.levels).toContainEqual({ threadId: threadB, level: "off" }));
+  });
+
+  test("closing a chat whose roster release is refused raises no unhandled error", async () => {
+    const omp = fakeOmp();
+    // The connection is already refused (an expired launch link), so the release that closing the chat sends fails.
+    const levels: Array<{ readonly threadId: string; readonly level: string }> = [];
+    const refused = {
+      send: omp.session.send,
+      setSubagentSubscription: async (args: { threadId: string; level: string }) => {
+        levels.push(args);
+        if (args.level === "off") throw new Error("Launch link has expired");
+        return { level: args.level };
+      },
+    } as unknown as SubagentSession;
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", record);
+    try {
+      const view = render(
+        <Chat
+          session={refused}
+          store={new OmpRuntimeStore({ threadId: threadA })}
+          threadId={threadA}
+          withCard
+        />,
+      );
+      await waitFor(() => expect(view.getByTestId("workers").textContent).toBe("worker-1"));
+      view.unmount();
+      await waitFor(() => expect(levels).toContainEqual({ threadId: threadA, level: "off" }));
+      // An error nobody handles is reported once the queue drains: give it a turn before the check.
+      const { promise: settled, resolve: settle } = Promise.withResolvers<void>();
+      setTimeout(settle, 20);
+      await settled;
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
   });
 });

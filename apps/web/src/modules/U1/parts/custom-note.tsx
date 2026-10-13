@@ -1,3 +1,5 @@
+import { createContext, type ReactNode, useContext, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { MarkdownContent } from "../markdown";
 import {
   describeSkillPrompt,
@@ -24,11 +26,47 @@ export interface CustomNoteView {
   readonly bodyInDetails?: boolean;
 }
 
+/** A worker a background-job notice names, as the chat's roster knows it: how it ended, and its transcript. */
+export interface WorkerNote {
+  readonly status: "pending" | "running" | "completed" | "failed" | "aborted" | "stopped";
+  /** The worker's transcript, shown on request. */
+  readonly transcript: ReactNode;
+}
+
+/** The worker a notice names, by its id; undefined when the chat does not know it. The app provides it. */
+export type WorkerNoteLookup = (jobId: string) => WorkerNote | undefined;
+
+export const WorkerNoteContext = createContext<WorkerNoteLookup | undefined>(undefined);
+
 function field(value: unknown, key: string): unknown {
   return typeof value === "object" && value !== null && key in value
     ? Reflect.get(value, key)
     : undefined;
 }
+
+/** The task jobs a notice names, when every job it names is a task. A notice that also names a command keeps its text. */
+function workerJobIds(source: CustomNoteSource): readonly string[] | undefined {
+  if (source.customType !== "async-result") return undefined;
+  const jobs = field(source.details, "jobs");
+  if (!Array.isArray(jobs) || jobs.length === 0) return undefined;
+  const ids: string[] = [];
+  for (const job of jobs) {
+    const id = field(job, "jobId");
+    if (typeof id !== "string" || field(job, "type") !== "task") return undefined;
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** How a worker ended, in plain words, from the roster's typed status. omp's own text is not read here. */
+const WORKER_ENDINGS: Record<WorkerNote["status"], string> = {
+  pending: "has ended",
+  running: "has ended",
+  completed: "finished",
+  failed: "failed",
+  aborted: "was aborted",
+  stopped: "was stopped",
+};
 
 /**
  * omp wraps the text it sends the model in a tag of its own (`<system-notice>...</system-notice>`).
@@ -95,8 +133,74 @@ export function describeCustomMessage(source: CustomNoteSource): CustomNoteView 
   }
 }
 
+/** The workers a notice names: one line each, how it ended, and its transcript on request. */
+function WorkerNotes({
+  jobIds,
+  lookup,
+}: {
+  readonly jobIds: readonly string[];
+  readonly lookup: WorkerNoteLookup | undefined;
+}) {
+  return (
+    <div
+      className="flex min-w-0 flex-col gap-2"
+      data-custom-type="async-result"
+      data-slot="u1-custom-note"
+    >
+      {jobIds.map((jobId) => (
+        <WorkerLine key={jobId} jobId={jobId} worker={lookup?.(jobId)} />
+      ))}
+    </div>
+  );
+}
+
+function WorkerLine({
+  jobId,
+  worker,
+}: {
+  readonly jobId: string;
+  readonly worker: WorkerNote | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  if (worker === undefined) {
+    return (
+      <div className="flex min-w-0 flex-col gap-1" data-slot="u1-custom-note-worker">
+        <p className="text-foreground text-xs font-medium" data-slot="u1-custom-note-heading">
+          {`${jobId} has ended.`}
+        </p>
+        <p className="text-muted-foreground text-xs">Its transcript is not available here.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-w-0 flex-col gap-1" data-slot="u1-custom-note-worker">
+      <p className="text-foreground text-xs font-medium" data-slot="u1-custom-note-heading">
+        {`${jobId} ${WORKER_ENDINGS[worker.status]}.`}
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-expanded={open}
+        className="self-start"
+        onClick={() => setOpen((value) => !value)}
+      >
+        {open ? "Hide transcript" : "View transcript"}
+      </Button>
+      {open && (
+        <div className="min-w-0" data-slot="u1-custom-note-transcript">
+          {worker.transcript}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One of omp's own messages in the transcript: a muted note, its heading, and its text. */
 export function CustomNote({ source }: { readonly source: CustomNoteSource }) {
+  const lookup = useContext(WorkerNoteContext);
+  const jobIds = workerJobIds(source);
+  if (jobIds !== undefined) return <WorkerNotes jobIds={jobIds} lookup={lookup} />;
   if (source.customType === SKILL_PROMPT_CUSTOM_TYPE) {
     return (
       <div

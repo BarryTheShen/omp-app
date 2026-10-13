@@ -1,5 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { NestedAgentTranscript } from "@/modules/P1/transcript";
 import { type TaskSubagentLookup, TaskSubagentsContext } from "@/modules/T5/task";
+import { WorkerNoteContext, type WorkerNoteLookup } from "@/modules/U1/parts/custom-note";
 import { createThreadAgents, type ThreadAgents, type ThreadAgentsOptions } from "./thread-agents";
 
 interface Current {
@@ -30,7 +32,8 @@ export function useThreadAgents(options: ThreadAgentsOptions): ThreadAgents | nu
     const agents = createThreadAgents(inputs);
     setCurrent({ inputs, agents });
     return () => {
-      void agents.dispose();
+      // The release can be refused once the connection is gone (an expired launch link): nothing is left to show.
+      agents.dispose().catch(() => undefined);
     };
   }, [capabilities, files, session, store, threadId]);
   if (current === null) return null;
@@ -65,5 +68,23 @@ export function TaskSubagentsScope({
           void agents.start().catch(() => undefined);
           return agents.subagentsFor(parentToolCallId, workerIds);
         };
-  return <TaskSubagentsContext.Provider value={lookup}>{children}</TaskSubagentsContext.Provider>;
+  // A notice names its worker by id: the same roster gives that worker's status and its transcript.
+  const workerNote: WorkerNoteLookup | undefined =
+    agents === null
+      ? undefined
+      : (jobId) => {
+          void agents.start().catch(() => undefined);
+          const worker = agents.workerFor(jobId);
+          return worker === undefined
+            ? undefined
+            : {
+                status: worker.agent.status,
+                transcript: <NestedAgentTranscript source={worker.source} taskName={jobId} />,
+              };
+        };
+  return (
+    <TaskSubagentsContext.Provider value={lookup}>
+      <WorkerNoteContext.Provider value={workerNote}>{children}</WorkerNoteContext.Provider>
+    </TaskSubagentsContext.Provider>
+  );
 }

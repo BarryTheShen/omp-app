@@ -1,5 +1,8 @@
 import { expect, realTest, sendPrompt, startChat } from "./real-omp";
 
+/** The notice a finished worker's line goes in: the one that names the worker and how it ended. */
+const NOTICE = '[data-slot="u1-custom-note"]';
+
 /*
  * Issue 781. A worker that stopped without calling yield, and whose session omp disposed, records no end, so the
  * Agent Hub listed nothing for it after a reload. It now sits under Recent as Stopped, and its transcript opens.
@@ -13,7 +16,9 @@ realTest(
     await sendPrompt(composer, "spawn_quiet_subagent");
     // The task returns while the worker still runs in the background. Once its turn ends it is idle, and omp keeps
     // its session open until the app stops.
-    await expect(page.getByText(/Background job QuietProbe has completed/).first()).toBeVisible({
+    await expect(
+      page.locator(NOTICE).filter({ hasText: "QuietProbe finished." }).first(),
+    ).toBeVisible({
       timeout: 180_000,
     });
 
@@ -26,11 +31,12 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_quiet_subagent/ })
       .click();
-    await expect(reopened.getByText(/Background job QuietProbe has completed/).first()).toBeVisible(
-      {
-        timeout: 120_000,
-      },
-    );
+    // The restart stopped the worker, so the notice it left reads as stopped.
+    await expect(
+      reopened.locator(NOTICE).filter({ hasText: "QuietProbe was stopped." }).first(),
+    ).toBeVisible({
+      timeout: 120_000,
+    });
     await reopened.getByRole("tab", { name: "Agents" }).click();
     const hub = reopened.getByRole("region", { name: "Agent Hub" });
     const stopped = hub.getByRole("option", { name: /Stopped.*QuietProbe/ });
@@ -60,7 +66,9 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_quiet_subagent");
-    await expect(page.getByText(/Background job QuietProbe has completed/).first()).toBeVisible({
+    await expect(
+      page.locator(NOTICE).filter({ hasText: "QuietProbe finished." }).first(),
+    ).toBeVisible({
       timeout: 180_000,
     });
 
