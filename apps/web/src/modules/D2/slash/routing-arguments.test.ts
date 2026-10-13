@@ -68,3 +68,17 @@ describe("#1261 a command that takes arguments receives the text after its name"
     expect(routeSlashText(" /goal pause", entries, [withArguments])).toBeNull();
   });
 });
+
+describe("#1273 a command that takes arguments takes them after a colon too, as omp reads it", () => {
+  test("/goal:pause is /goal with the text pause, and a bare /goal: is the bare name", () => {
+    expect(routeSlashText("/goal:pause", entries, [withArguments])).toEqual({
+      kind: "app",
+      command: withArguments,
+      args: "pause",
+    });
+    expect(routeSlashText("/goal:", entries, [withArguments])).toEqual({
+      kind: "app",
+      command: withArguments,
+    });
+  });
+});

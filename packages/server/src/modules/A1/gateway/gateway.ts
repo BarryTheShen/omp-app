@@ -73,11 +73,14 @@ function reportError(callback: OmpCommandGatewayOptions["onError"], error: AppFa
   }
 }
 
-/** The bare command name (no leading `/`, no arguments), matched against omp's catalog. */
+/**
+ * The bare command name (no leading `/`, no arguments), read the way omp reads it: up to the first colon, so `force:read`
+ * is `force` (parse.ts). It names the typed parser; the catalog check in `run` also accepts the whole first word.
+ */
 function commandName(command: string): string {
   const withoutSlash = command.slice(1);
   const firstToken = withoutSlash.split(/\s+/, 1)[0];
-  return firstToken ?? "";
+  return (firstToken ?? "").split(":", 1)[0] ?? "";
 }
 function parserName(name: string): string {
   const normalized = name.startsWith("/") ? name.slice(1) : name;
@@ -335,16 +338,21 @@ export class OmpCommandGatewayService {
       throw resolveFailure;
     }
 
+    const word = args.command.slice(1).split(/\s+/, 1)[0] ?? "";
     const name = commandName(args.command);
     try {
       return await this.#queue.run(args.threadId, signal, async () => {
         await raceAbort(signal, async () => {
           const catalogFuture = session.send({ type: "get_available_commands" }, { signal });
           const catalog = await catalogFuture;
-          if (!commandCatalogHas(catalog.commands, name)) {
+          // omp lists a colon name whole (`github:review`); any other word is read up to its first colon.
+          if (
+            !commandCatalogHas(catalog.commands, word) &&
+            !commandCatalogHas(catalog.commands, name)
+          ) {
             throw failure(
               "unavailable",
-              `Slash command /${name} is not available in this omp session.`,
+              `Slash command /${word} is not available in this omp session.`,
               true,
             );
           }

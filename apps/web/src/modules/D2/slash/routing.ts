@@ -213,8 +213,9 @@ function terminalOnlyRoute(name: string): SlashRoute | null {
  * Decides where a submitted message goes. Only text that starts with the slash, whose first word is a
  * command omp or the app lists, is a command. Anything else, including `/etc/hosts`, an unknown `/word`
  * and text that starts with a space, is a normal prompt and returns null. A guarded form (see
- * GUARDED_OMP_COMMANDS) is a command, and leading spaces do not hide it. A name only omp's terminal runs is refused by
- * the app (TERMINAL_ONLY_OMP_COMMANDS), so its text never reaches the model.
+ * GUARDED_OMP_COMMANDS) is a command, and leading spaces do not hide it. A name ends at its first whitespace or colon, as
+ * omp reads it (`/force:read` is `force`). A name only omp's terminal runs is refused by the app
+ * (TERMINAL_ONLY_OMP_COMMANDS), so its text never reaches the model.
  */
 export function routeSlashText(
   text: string,
@@ -230,18 +231,25 @@ export function routeSlashText(
     if (app.name.includes(" ") || trimmed !== `/${app.name}`) continue;
     return { kind: "app", command: app };
   }
-  const head = /^\S+/u.exec(trimmed)?.[0] ?? "";
+  // omp reads a name up to its first whitespace or colon (parse.ts): `/goal:pause` is `/goal pause`.
+  const named = /^\/([^\s:]*)/u.exec(trimmed)?.[1] ?? "";
   // A command that takes arguments is the app's when text follows its name. The bare name is matched above, unchanged.
   for (const app of appCommands) {
-    if (app.takesArguments === true && head === `/${app.name}`) {
-      return { kind: "app", command: app, args: trimmed.slice(head.length).trim() };
+    if (app.takesArguments === true && named === app.name) {
+      const args = trimmed
+        .slice(named.length + 1)
+        .replace(/^:/u, "")
+        .trim();
+      return args === "" ? { kind: "app", command: app } : { kind: "app", command: app, args };
     }
   }
-  const name = head.slice(1);
-  if (name === "") return null;
-  const known = entries.some(
-    (entry) => entry.name === name || (entry.aliases ?? []).includes(name),
+  const word = /^\/(\S*)/u.exec(trimmed)?.[1] ?? "";
+  if (word === "") return null;
+  // omp's list names a colon name whole (`github:review`); any other word is also read as its name before the colon.
+  const known = [word, named].some((candidate) =>
+    entries.some((entry) => entry.name === candidate || (entry.aliases ?? []).includes(candidate)),
   );
   if (known) return { kind: "omp", command: trimmed };
-  return terminalOnlyRoute(name);
+  // omp reads the name up to its first whitespace or colon, so `/clear:now` is refused like `/clear`.
+  return terminalOnlyRoute(named);
 }

@@ -160,9 +160,13 @@ export function modeChangeCommand(request: ModeChangeRequest): string {
     : `/${request.mode} ${request.requested ? "on" : "off"}`;
 }
 
-/** The typed request for one of the spellings above, or null for any other text. */
+/**
+ * The typed request for one of the spellings above, or null for any other text. omp reads the name up to a colon as it
+ * reads up to a space (parse.ts), so `/slow:on` is the same request as `/slow on`.
+ */
 export function modeChangeFromCommand(command: string): ModeChangeRequest | null {
-  return MODE_CHANGE_SPELLINGS.find(([spelling]) => spelling === command)?.[1] ?? null;
+  const spelled = command.replace(/^(\/[^\s:]+):/u, "$1 ");
+  return MODE_CHANGE_SPELLINGS.find(([spelling]) => spelling === spelled)?.[1] ?? null;
 }
 
 export const ModeChangeArgs = z.strictObject({ threadId: ThreadId, request: ModeChangeRequest });

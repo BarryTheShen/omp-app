@@ -331,4 +331,54 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
       command: "/clear",
     });
   });
+
+  test("a colon form of a terminal-only name is refused like the bare name, since omp reads it as that name and its words", async () => {
+    expect(await refusalOf("/clear:now")).toBe(
+      "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
+    );
+    expect(await refusalOf("/clear:")).toBe(
+      "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
+    );
+    expect(await refusalOf("/loop:5")).toBe(
+      "/loop only runs in omp's terminal, so nothing was sent.",
+    );
+  });
+
+  test("a colon form of a name omp's list advertises keeps its omp route", () => {
+    const fileClear = SlashCommand.parse({ name: "clear", source: "file" });
+    expect(routeSlashText("/clear:now", [...entries, fileClear], [])).toEqual({
+      kind: "omp",
+      command: "/clear:now",
+    });
+  });
+});
+
+describe("#1273 a command typed with a colon is read the way omp reads it, up to the colon", () => {
+  test("omp's colon forms route to omp with the text as typed, so omp runs the command it names", () => {
+    expect(routeSlashText("/force:read summarize", entries, [])).toEqual({
+      kind: "omp",
+      command: "/force:read summarize",
+    });
+    expect(routeSlashText("/fast:on", entries, [])).toEqual({ kind: "omp", command: "/fast:on" });
+    expect(routeSlashText("/browser:visible", entries, [])).toEqual({
+      kind: "omp",
+      command: "/browser:visible",
+    });
+    expect(routeSlashText("/slow:status", entries, [])).toEqual({
+      kind: "omp",
+      command: "/slow:status",
+    });
+    expect(routeSlashText("/force:", entries, [])).toEqual({ kind: "omp", command: "/force:" });
+  });
+
+  test("a colon name omp lists whole keeps its route, and a name nothing lists is still a prompt", () => {
+    const withSkill = [...entries, SlashCommand.parse({ name: "skill:review", source: "skill" })];
+    expect(routeSlashText("/skill:review tests", withSkill, [])).toEqual({
+      kind: "omp",
+      command: "/skill:review tests",
+    });
+    for (const text of ["/nosuch:read summarize", "/etc:hosts", "/:force", ":force read"]) {
+      expect(routeSlashText(text, entries, []), text).toBeNull();
+    }
+  });
 });

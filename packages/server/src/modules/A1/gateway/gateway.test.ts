@@ -342,6 +342,38 @@ describe("OmpCommandGatewayService", () => {
     expect(writes[0]?.type).toBe("get_available_commands");
   });
 
+  test("a colon form is checked by the name omp reads, and omp gets the text as typed", async () => {
+    const { duplex, gateway } = await createHarness();
+    const future = gateway.run({ threadId, command: "/force:read summarize" });
+    const afterAvailability = await answerAvailability(duplex, 0, ["force"]);
+    const promptWrite = writesAfter(duplex, afterAvailability)[0];
+    expect(promptWrite).toMatchObject({ type: "prompt", message: "/force:read summarize" });
+    if (promptWrite?.type !== "prompt") throw new Error("expected a prompt write");
+    duplex.emit({
+      type: "response",
+      id: promptWrite.id,
+      command: "prompt",
+      success: true,
+      data: { agentInvoked: false },
+    });
+    await expect(future).resolves.toMatchObject({ command: "/force:read summarize" });
+  });
+
+  test("a colon name omp does not list is unavailable, and nothing is sent", async () => {
+    const { duplex, gateway } = await createHarness();
+    const run = gateway.run({ threadId, command: "/nosuch:read summarize" });
+    await answerAvailability(duplex, 0, ["force"]);
+    let rejection: unknown;
+    try {
+      await run;
+    } catch (error) {
+      rejection = error;
+    }
+    expect(rejection).toBeInstanceOf(AppFailure);
+    expect((rejection as AppFailure).appError.code).toBe("unavailable");
+    expect(writesAfter(duplex, 0)).toHaveLength(1);
+  });
+
   test("cancels a running command and rejects with AppFailure cancelled", async () => {
     const { duplex, gateway } = await createHarness();
     const controller = new AbortController();

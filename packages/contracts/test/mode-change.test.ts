@@ -41,6 +41,20 @@ describe("mode-change spellings", () => {
       expect(modeChangeFromCommand(text), text).toBeNull();
     }
   });
+
+  test("omp reads a colon spelling as the spaced one, so /slow:on is the same request as /slow on", () => {
+    expect(modeChangeFromCommand("/slow:on")).toEqual({ mode: "slow", requested: true });
+    expect(modeChangeFromCommand("/extended-context:off")).toEqual({
+      mode: "extended-context",
+      requested: false,
+    });
+    expect(modeChangeFromCommand("/browser:visible")).toEqual({
+      mode: "browser",
+      visibility: "visible",
+    });
+    expect(modeChangeFromCommand("/slow:status")).toBeNull();
+    expect(modeChangeFromCommand("/fast:on")).toBeNull();
+  });
 });
 
 describe("mode-change requests and arguments", () => {
