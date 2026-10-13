@@ -408,11 +408,15 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
       const nextModal = shouldPromote
         ? current.find((record) => record.kind === "modal" && record.status === "queued")
         : undefined;
-      // A modal stays mounted while its exit plays (see OverlayView); any other surface is removed now.
+      // A modal on screen stays mounted while its exit plays (see OverlayView). Any other record
+      // is removed now: a modal still waiting its turn was never drawn, so it has no exit to play
+      // and would stay in the list forever (issue 1296).
       commit(
         current.flatMap((record) => {
           if (record.id === id)
-            return target.kind === "modal" ? [{ ...record, leaving: true }] : [];
+            return target.kind === "modal" && target.status === "open"
+              ? [{ ...record, leaving: true }]
+              : [];
           if (nextModal && record.id === nextModal.id)
             return [{ ...record, status: "open" as const }];
           return [record];

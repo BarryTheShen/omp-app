@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { type ReactNode, StrictMode, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -206,6 +206,51 @@ describe("OverlayHost ordering and dismissal", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(await screen.findByRole("button", { name: "Second modal" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "First modal" })).toBeNull();
+  });
+
+  test("a modal closed while it waits its turn is dropped, and the next one takes the place of the one that closes", async () => {
+    // The issue's steps through the host's API: open A, B and C; close B while it waits; close A with Escape.
+    let latest: OverlayHostApi | undefined;
+    function HostHandle() {
+      latest = useOverlayHost();
+      return null;
+    }
+    renderHost(<HostHandle />);
+    const host = (): OverlayHostApi => {
+      if (!latest) throw new Error("The overlay host has not rendered.");
+      return latest;
+    };
+
+    const opened: OverlayOpenResult[] = [];
+    act(() => {
+      for (const label of ["First", "Second", "Third"]) {
+        opened.push(
+          host().open({
+            kind: "modal",
+            label,
+            content: <button type="button">{label} modal</button>,
+          }),
+        );
+      }
+    });
+    const second = opened[1];
+    if (!second) throw new Error("The second modal did not open.");
+    expect(await screen.findByRole("button", { name: "First modal" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Second modal" })).toBeNull();
+    expect(host().overlays.map((overlay) => overlay.status)).toEqual(["open", "queued", "queued"]);
+
+    act(() => host().close(second.id, "programmatic"));
+    await expect(second.closed).resolves.toBe("programmatic");
+    expect(host().overlays.map((overlay) => overlay.status)).toEqual(["open", "queued"]);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(await screen.findByRole("button", { name: "Third modal" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "First modal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Second modal" })).toBeNull();
+    expect(host().overlays.map((overlay) => overlay.status)).toEqual(["open"]);
+    expect(document.querySelector("[data-overlay-background]")?.getAttribute("aria-hidden")).toBe(
+      "true",
+    );
   });
 
   test("Escape closes only the visible topmost overlay", async () => {
