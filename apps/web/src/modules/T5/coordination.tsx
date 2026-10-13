@@ -2,14 +2,15 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ToolCardState } from "../U3/tool-card/contract";
 import type { JobStops } from "./job-stops";
-import type {
-  AgentActivity,
-  CancelOutcome,
-  DaemonSnapshot,
-  IrcMessage,
-  IrcReceipt,
-  JobSnapshot,
-  Peer,
+import {
+  type AgentActivity,
+  type CancelOutcome,
+  type DaemonSnapshot,
+  type IrcMessage,
+  type IrcReceipt,
+  type JobSnapshot,
+  type Peer,
+  shownJobText,
 } from "./models";
 
 export const MAX_ITEMS = 20;
@@ -280,16 +281,23 @@ export function JobRows({
               )}
             </div>
             <JobStopLine job={job} stops={stops} />
-            {job.resultText !== undefined && job.resultText.length > 0 && (
-              <Preview text={job.resultText} />
-            )}
-            {job.errorText !== undefined && job.errorText.length > 0 && (
-              <Preview text={job.errorText} />
-            )}
+            <JobTexts job={job} />
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+/** A job's result and error, as the row shows them: the words the worker produced, with omp's envelope read away. */
+function JobTexts({ job }: { readonly job: JobSnapshot }) {
+  const result = shownJobText(job.resultText);
+  const error = shownJobText(job.errorText);
+  return (
+    <>
+      {result !== undefined && <Preview text={result} />}
+      {error !== undefined && <Preview text={error} />}
+    </>
   );
 }
 

@@ -10,6 +10,7 @@ import {
   decodeWaitDetails,
   decodeYieldDetails,
   hasT5Capability,
+  shownJobText,
   T5CapabilityKeys,
   toT5AppFailure,
   VibeKillArgsSchema,
@@ -184,5 +185,63 @@ describe("T5 descriptors", () => {
       by: "name",
       name: "task",
     });
+  });
+});
+
+/** What omp's wait writes for a stopped task: its envelope, then omp's words for the model. */
+const STOPPED_TASK =
+  '<task-result id="SteerProbe" agent="task" status="cancelled" duration="938ms">\n<meta lines="1" size="0B" />\n<abort-reason>The operation was aborted.</abort-reason>\n<output>\n(no output) after 2 req\n</output>\n</task-result>\n\nSteerProbe was aborted — transcript at history://SteerProbe';
+
+describe("shownJobText", () => {
+  test("a stopped task shows its output alone: the envelope, its abort reason and omp's words after it are not shown", () => {
+    expect(shownJobText(STOPPED_TASK)).toBe("(no output) after 2 req");
+  });
+
+  test("a failed task's error shows the output that ended it, from a recorded wait result", () => {
+    const sample = T5_REAL_RESULTS.find(
+      (item) => item.name === "wait: a task that failed, with its error",
+    );
+    const decoded = decodeWaitDetails(sample?.result.details);
+    const errorText = decoded.ok ? decoded.value.jobs?.[0]?.errorText : undefined;
+    expect(errorText).toContain("<task-result");
+    expect(shownJobText(errorText)).toContain("Interrupted OpenAI Codex response");
+    expect(shownJobText(errorText)).not.toContain("<task-result");
+  });
+
+  test("a preview cut for length shows the preview, and not the path of the full output", () => {
+    const cut =
+      '<task-result id="X" agent="task" status="completed" duration="1s">\n<preview full-output="agent://X">\nFirst lines.\n</preview>\n</task-result>';
+    expect(shownJobText(cut)).toBe("First lines.");
+  });
+
+  test("a task that failed after it produced text shows the reason first, then the text it produced", () => {
+    const failed =
+      '<task-result id="StreamProbe" agent="task" status="failed (exit 1)" duration="2.1s">\n<meta lines="1" size="0B" />\n<error>fake stream failure after the partial answer</error>\n<output>\nPartial answer before the stream failed.\n</output>\n</task-result>';
+    expect(shownJobText(failed)).toBe(
+      "fake stream failure after the partial answer\n\nPartial answer before the stream failed.",
+    );
+  });
+
+  test("a task that failed after a cut preview shows the reason, then the preview, and not the path of the full output", () => {
+    const failedCut =
+      '<task-result id="StreamProbe" agent="task" status="failed (exit 1)" duration="2.1s">\n<error>a reason</error>\n<preview full-output="agent://StreamProbe">\nFirst lines of the text.\n</preview>\n</task-result>';
+    expect(shownJobText(failedCut)).toBe("a reason\n\nFirst lines of the text.");
+  });
+
+  test("the abort reason stays hidden: a stopped task shows only the output it produced", () => {
+    const stopped =
+      '<task-result id="SteerProbe" agent="task" status="cancelled" duration="938ms">\n<abort-reason>The operation was aborted.</abort-reason>\n<output>\nPartly done.\n</output>\n</task-result>';
+    expect(shownJobText(stopped)).toBe("Partly done.");
+  });
+
+  test("an envelope with no output shows nothing, and text without an envelope is shown as it is", () => {
+    expect(
+      shownJobText(
+        '<task-result id="X" agent="task" status="cancelled" duration="1s">\n<abort-reason>Stopped.</abort-reason>\n</task-result>',
+      ),
+    ).toBeUndefined();
+    expect(shownJobText("Plain command output.")).toBe("Plain command output.");
+    expect(shownJobText("")).toBeUndefined();
+    expect(shownJobText(undefined)).toBeUndefined();
   });
 });

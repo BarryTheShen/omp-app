@@ -74,6 +74,30 @@ export const JobSnapshotSchema = z.looseObject({
 });
 export type JobSnapshot = z.infer<typeof JobSnapshotSchema>;
 
+/** omp's `<task-result>` envelope (`prompts/tools/task-summary.md`), and the parts of it a row shows. */
+const TASK_RESULT = /<task-result\b[^>]*>([\s\S]*?)<\/task-result>/u;
+const TASK_ERROR = /<error\b[^>]*>([\s\S]*?)<\/error>/u;
+const TASK_OUTPUT = /<(output|preview)\b[^>]*>([\s\S]*?)<\/\1>/u;
+
+/**
+ * The text of a job's result or error that a Tasks row shows. A task's text is omp's `<task-result>` envelope. Its
+ * `<error>` is why the run failed, when it failed after it produced text (task-result.ts sets it only then), and its
+ * `<output>`, or its `<preview>` when the output was cut, is what the worker produced, or the preview of the error when
+ * it produced nothing. The reason comes first. The envelope's status, duration and abort reason are for the model, and
+ * the row's chip and stop line already say how the job ended, so none of them is shown. Text without an envelope (a
+ * command's output) is shown as it is. Undefined when there is no text to show.
+ */
+export function shownJobText(text: string | undefined): string | undefined {
+  if (text === undefined) return undefined;
+  const envelope = TASK_RESULT.exec(text);
+  if (envelope === null) return text.length > 0 ? text : undefined;
+  const body = envelope[1] ?? "";
+  const reason = TASK_ERROR.exec(body)?.[1]?.trim() ?? "";
+  const output = TASK_OUTPUT.exec(body)?.[2]?.trim() ?? "";
+  const shown = [reason, output].filter((part) => part.length > 0).join("\n\n");
+  return shown.length > 0 ? shown : undefined;
+}
+
 /** A cancel outcome for one job: `cancelled`, `not_found` or `already_completed`. */
 export const CancelOutcomeSchema = z.looseObject({
   id: z.string().min(1),

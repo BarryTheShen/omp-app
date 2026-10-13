@@ -57,7 +57,7 @@ describe("T5.3 wait card on recorded results", () => {
       sampleNamed("wait: a task that failed, with its error").result.details,
     );
     if (!decoded.ok) throw new Error("the recorded result does not decode");
-    const recordedError = decoded.value.jobs?.[0]?.errorText ?? "";
+    if (decoded.value.jobs?.[0] === undefined) throw new Error("the recorded result has no job");
     const { container } = render(
       <WaitCard rendererProps={recorded("wait: a task that failed, with its error")} />,
     );
@@ -67,18 +67,16 @@ describe("T5.3 wait card on recorded results", () => {
       "Interrupted OpenAI Codex response",
     );
     expect(screen.queryByText(/Showing 500 of/)).toBeNull();
+    // The row shows the output inside omp's envelope: a long output is the long text, cut at 500 characters.
     const longer = alteredResult(
       "wait: a task that failed, with its error",
       ["details", "jobs", 0, "errorText"],
-      recordedError.repeat(3),
+      `<task-result id="ScoutThree" agent="scout" status="failed (exit 1)" duration="16m15s">\n<output>\n${"x".repeat(1_488)}\n</output>\n</task-result>`,
     );
     cleanup();
     render(<WaitCard rendererProps={longer} />);
     expandToolCards();
-    const shown = recordedError.length * 3;
-    expect(
-      screen.getByText(`Showing 500 of ${shown.toLocaleString("en-US")} characters`),
-    ).toBeTruthy();
+    expect(screen.getByText("Showing 500 of 1,488 characters")).toBeTruthy();
   });
 
   test("an interruption says so and shows the text omp returned", () => {

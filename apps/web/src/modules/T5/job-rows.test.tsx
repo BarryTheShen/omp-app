@@ -160,4 +160,21 @@ describe("T5 Tasks view: stopping background jobs", () => {
     expect(screen.getAllByText("Cancelled")).toHaveLength(2);
     expect(screen.queryByText("Running")).toBeNull();
   });
+
+  test("a stopped task's row shows the output its worker produced, not omp's result block or its words for the model", () => {
+    const stopped: JobSnapshot = {
+      id: "SteerProbe",
+      type: "task",
+      status: "cancelled",
+      label: "SteerProbe",
+      durationMs: 939,
+      resultText:
+        '<task-result id="SteerProbe" agent="task" status="cancelled" duration="938ms">\n<meta lines="1" size="0B" />\n<abort-reason>The operation was aborted.</abort-reason>\n<output>\n(no output) after 2 req\n</output>\n</task-result>\n\nSteerProbe was aborted — transcript at history://SteerProbe',
+    };
+    const { container } = renderJobs([stopped], undefined);
+    expect(screen.getByText("Cancelled")).toBeTruthy();
+    expect(screen.getByText("(no output) after 2 req")).toBeTruthy();
+    expect(container.textContent).not.toContain("<task-result");
+    expect(container.textContent).not.toContain("history://");
+  });
 });

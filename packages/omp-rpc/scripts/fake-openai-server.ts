@@ -5,7 +5,7 @@ type Request = { messages?: Message[]; stream?: boolean };
 /** One tool call an assistant message makes. */
 type ToolCall = { tool: string; args: Record<string, unknown>; id?: string };
 type Reply =
-  | { text: string; thinking?: string; streamed?: boolean }
+  | { text: string; thinking?: string; streamed?: boolean; streamFailure?: string }
   | (ToolCall & { thinking?: string })
   | { tools: readonly ToolCall[]; thinking?: string }
   | { failure: string }
@@ -177,6 +177,28 @@ function backgroundStarts(count: number): Reply {
 }
 
 /**
+ * `stream_probe_child` takes one slow step, then streams one line of text and fails: its stream ends with an error
+ * event, so omp's run fails and keeps the text it streamed. The step lets a wait card list the worker while it runs.
+ */
+function streamProbeReply(messages: readonly Message[]): Reply | undefined {
+  const user = messages.findLastIndex((message) => message.role === "user");
+  if (user < 0 || !text(messages[user]?.content).includes("stream_probe_child")) return undefined;
+  const steps = messages.slice(user + 1).filter((message) => message.role === "tool").length;
+  if (steps === 0)
+    return {
+      tool: "bash",
+      args: { command: "sleep 15; echo warming-up" },
+      thinking: "I should take one slow step first.",
+    };
+  return {
+    text: "Partial answer before the stream failed.",
+    streamed: true,
+    streamFailure: "fake stream failure after the partial answer",
+    thinking: "I will write one line, then the stream fails.",
+  };
+}
+
+/**
  * `run_quick_background` starts one job that ends after two seconds, so its result is delivered while the chat is open.
  * `run_second_background` starts one long job with a call id of its own, for a second job in the same chat.
  */
@@ -200,6 +222,8 @@ function reply(request: Request): Reply {
   const messages = request.messages ?? [];
   const steerChild = steerChildReply(messages);
   if (steerChild !== undefined) return steerChild;
+  const streamChild = streamProbeReply(messages);
+  if (streamChild !== undefined) return streamChild;
   const last = messages.at(-1);
   const lastUser = messages.findLastIndex((message) => message.role === "user");
   if (lastUser >= 0 && text(messages[lastUser]?.content).includes("long_loop")) {
@@ -266,6 +290,17 @@ function reply(request: Request): Reply {
   if (prompt.includes("auth_probe")) return { unauthorized: "Invalid API key" };
   if (prompt.includes("fail_probe_child"))
     return { failure: "fake provider failure for the failing subagent" };
+  if (prompt.includes("spawn_stream_failing_subagent"))
+    return {
+      tool: "task",
+      args: {
+        name: "StreamProbe",
+        agent: "task",
+        task: "stream_probe_child: write one line of text, then the stream fails.",
+        solutionSpace: "one line of text, then a stream failure",
+      },
+      thinking: "I should start one child task whose stream fails after its text.",
+    };
   if (prompt.includes("spawn_quiet_subagent"))
     return {
       tool: "task",
@@ -554,7 +589,8 @@ const server = Bun.serve({
     };
     // A reply flagged `streamed` (the `stream_code` and `stream_reasoning` keywords) is sent in pieces, its reasoning
     // too, a little apart.
-    const inPieces = "text" in value && value.streamed === true;
+    const streamFailure = "text" in value ? value.streamFailure : undefined;
+    const inPieces = "text" in value && (value.streamed === true || streamFailure !== undefined);
     const chunks = [
       ...(value.thinking === undefined
         ? []
@@ -592,7 +628,14 @@ const server = Bun.serve({
       },
       { ...base, choices: [], usage },
     ];
-    const lines = chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`);
+    // A reply that fails after its text ends its stream with an error event, in place of the finish and the usage.
+    const lines =
+      streamFailure === undefined
+        ? chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+        : [
+            ...chunks.slice(0, -2).map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`),
+            `data: ${JSON.stringify({ error: { message: streamFailure, type: "invalid_request_error" } })}\n\n`,
+          ];
     const stream =
       inPieces ||
       body.messages?.some(
@@ -605,7 +648,7 @@ const server = Bun.serve({
             controller.enqueue(line);
             await Bun.sleep(inPieces ? STREAMED_PIECE_DELAY_MS : 100);
           }
-          controller.enqueue("data: [DONE]\n\n");
+          if (streamFailure === undefined) controller.enqueue("data: [DONE]\n\n");
           controller.close();
         },
       });
