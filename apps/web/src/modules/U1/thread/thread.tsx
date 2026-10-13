@@ -94,6 +94,7 @@ export interface ThreadShellProps {
 
 interface RuntimeStateSurfaceProps {
   readonly snapshot: RuntimeSnapshot;
+  readonly historyLoading: boolean;
   readonly onRetry?: () => Promise<void> | void;
   readonly onRestartOmp?: () => Promise<void> | void;
 }
@@ -189,7 +190,12 @@ function lastAnswerRefusedKey(snapshot: RuntimeSnapshot): boolean {
   );
 }
 
-function RuntimeStateSurface({ snapshot, onRetry, onRestartOmp }: RuntimeStateSurfaceProps) {
+function RuntimeStateSurface({
+  snapshot,
+  historyLoading,
+  onRetry,
+  onRestartOmp,
+}: RuntimeStateSurfaceProps) {
   const error = snapshot.error ?? snapshot.process.error;
   // A refused key is said once: under the answer that stopped, when the transcript has that answer.
   const shownUnderAnswer =
@@ -209,7 +215,12 @@ function RuntimeStateSurface({ snapshot, onRetry, onRestartOmp }: RuntimeStateSu
     );
   }
 
-  if (snapshot.process.status === "starting" || snapshot.process.status === "restarting") {
+  // Until the chat's history is read, an empty list does not mean the chat is empty.
+  if (
+    snapshot.process.status === "starting" ||
+    snapshot.process.status === "restarting" ||
+    (historyLoading && snapshot.messageOrder.length === 0)
+  ) {
     return (
       <div
         aria-live="polite"
@@ -393,11 +404,12 @@ export function ThreadShell({
     () => store.getSnapshot(),
   );
   const viewportRef = useRef<HTMLDivElement>(null);
+  const historyLoading = readingPlace?.historyLoading ?? false;
   const place = useReadingPlace({
     viewportRef,
     threadId: readingPlace?.threadId,
     resumeAt: readingPlace?.resumeAt ?? null,
-    historyLoading: readingPlace?.historyLoading ?? false,
+    historyLoading,
     messageOrder: snapshot.messageOrder,
     hasOlder: snapshot.transcript.hasOlder,
     loadOlder: onLoadOlder,
@@ -501,6 +513,7 @@ export function ThreadShell({
             <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
               <RuntimeStateSurface
                 snapshot={snapshot}
+                historyLoading={historyLoading}
                 onRetry={onRetry}
                 onRestartOmp={onRestartOmp}
               />

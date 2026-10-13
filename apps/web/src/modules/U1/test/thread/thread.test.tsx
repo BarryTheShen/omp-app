@@ -114,6 +114,24 @@ describe("ThreadShell states", () => {
     expect(screen.getByText("No messages yet.")).toBeTruthy();
   });
 
+  test("says the chat is loading until its history is read, then that it is empty", () => {
+    const store = readyStore();
+    const reading = { threadId, resumeAt: null, historyLoading: true };
+    const { rerender } = renderThread(store, { readingPlace: reading });
+
+    expect(screen.getByText("Loading conversation…")).toBeTruthy();
+    expect(screen.queryByText("No messages yet.")).toBeNull();
+
+    rerender(
+      <RuntimeThread
+        props={{ readingPlace: { ...reading, historyLoading: false } }}
+        store={store}
+      />,
+    );
+    expect(screen.queryByText("Loading conversation…")).toBeNull();
+    expect(screen.getByText("No messages yet.")).toBeTruthy();
+  });
+
   test("renders a safe AppFailure state with a retry action", () => {
     const store = readyStore();
     store.ingest(
