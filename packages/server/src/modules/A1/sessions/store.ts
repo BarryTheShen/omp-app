@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   AppFailure,
+  type SessionDeleteRefusal,
   type SessionEntryOutputArgs,
   type SessionEntryOutputResult,
   type SessionEntryWindow,
@@ -555,26 +556,31 @@ export class SessionFileStore {
   }
 
   /**
-   * The checks a `/session delete` omp runs itself gets before omp runs: the chat's file is found, its turn does not run,
-   * and no other view holds it. omp writes a chat back once its file is gone, so a chat another view could still write
-   * must not be deleted at all; the sidebar's own delete makes the same refusals (`deleteSession`). Undefined when the chat
-   * has no file on disk: omp's own refusal says so.
+   * The checks a `/session delete` omp runs itself gets before omp runs: the chat's turn does not run, and no other view
+   * holds it. omp writes a chat back once its file is gone, so a chat another view could still write must not be deleted
+   * at all; the sidebar's own delete makes the same refusals (`deleteSession`). A refusal comes back with its reason, so
+   * the person reads it in the header. The file is undefined when the chat has none on disk: omp's own reply says so.
    */
   async checkOmpDelete(
     sessionId: string,
     caller: { readonly connectionId: string },
-  ): Promise<SessionFile | undefined> {
+  ): Promise<
+    | { readonly outcome: "refused"; readonly reason: SessionDeleteRefusal }
+    | { readonly outcome: "clear"; readonly file: SessionFile | undefined }
+  > {
     const file = await this.findSession(sessionId);
-    if (file === undefined) return undefined;
-    if (file.turn === "running") throw appFailure("conflict", RUNNING_TURN_SENTENCE, true);
+    if (file === undefined) return { outcome: "clear", file: undefined };
+    if (file.turn === "running") return { outcome: "refused", reason: "running" };
     const views = this.#options.views;
     if (
       views !== undefined &&
       views.watcherCount(file.id) > views.viewsOf(file.id, caller.connectionId)
     ) {
-      throw heldFailure(this.#options, file.id, true);
+      // The split `heldFailure` makes: a chat only omp is still finishing asks the person to try again.
+      const finishing = this.#options.serverWatches?.(file.id) === false;
+      return { outcome: "refused", reason: finishing ? "finishing" : "open-elsewhere" };
     }
-    return file;
+    return { outcome: "clear", file };
   }
 
   /**

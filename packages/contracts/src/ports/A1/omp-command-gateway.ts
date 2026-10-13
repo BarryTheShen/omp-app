@@ -217,16 +217,22 @@ export const ModeChangeResult = z.union([
 ]);
 export type ModeChangeResult = z.infer<typeof ModeChangeResult>;
 /**
- * `/session delete`: omp deletes the chat's file itself and replies (builtin-session.ts:274-288 at omp v18.6.1). `deleted` says
- * omp removed the file, so the app leaves the chat and drops its row. `unknown` is any other reply (a refusal, a usage
- * line): omp's own words are kept as omp sent them, and nothing changes. The browser does not read the words.
+ * `/session delete`, as the server reports it. The browser never reads omp's words (AP4): A1 reads omp's one-line reply
+ * (builtin-session.ts:274-288 at omp v18.6.1) and gives one of these outcomes. `deleted`: omp removed the chat's file,
+ * so the app leaves the chat and drops its row. `refused`: nothing was deleted, and the reason says why. `failed`: the
+ * chat's file could not be removed. `unknown`: a reply A1 does not recognise, so nothing changes.
  */
 export const SessionDeleteCommandArgs = z.strictObject({ threadId: ThreadId });
 export type SessionDeleteCommandArgs = z.infer<typeof SessionDeleteCommandArgs>;
 
-export const SessionDeleteCommandResult = z.union([
-  z.strictObject({ outcome: z.literal("deleted"), outputs: z.array(z.string()) }),
-  z.strictObject({ outcome: z.literal("unknown"), outputs: z.array(z.string()) }),
+export const SessionDeleteRefusal = z.enum(["running", "open-elsewhere", "finishing", "not-saved"]);
+export type SessionDeleteRefusal = z.infer<typeof SessionDeleteRefusal>;
+
+export const SessionDeleteCommandResult = z.discriminatedUnion("outcome", [
+  z.strictObject({ outcome: z.literal("deleted") }),
+  z.strictObject({ outcome: z.literal("refused"), reason: SessionDeleteRefusal }),
+  z.strictObject({ outcome: z.literal("failed") }),
+  z.strictObject({ outcome: z.literal("unknown") }),
 ]);
 export type SessionDeleteCommandResult = z.infer<typeof SessionDeleteCommandResult>;
 

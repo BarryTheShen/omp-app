@@ -475,11 +475,17 @@ describe("#957 /share never reaches omp unconfirmed", () => {
 });
 
 describe("#1272 /session delete and /usage reset ask first, and only Confirm sends omp the command", () => {
-  /** A gateway that answers each command with omp's words for it, and records what it was sent. */
-  function gatewayAnswering(text: string) {
+  /**
+   * A gateway that answers each command with omp's words for it, gives `/session delete` the reply it is told, and records
+   * what it was sent.
+   */
+  function gatewayAnswering(
+    text: string,
+    reply: SessionDeleteCommandResult = { outcome: "unknown" },
+  ) {
     return {
       run: vi.fn(async ({ command }: { readonly command: string }) => completedRun(command, text)),
-      sessionDelete: vi.fn(async () => ({ outcome: "unknown" as const, outputs: [text] })),
+      sessionDelete: vi.fn(async () => reply),
     };
   }
 
@@ -492,15 +498,14 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       catalog: null,
       lifecycle: null,
       openThread: async () => undefined,
-      showReport: () => undefined,
     });
     await expect(command.run({})).resolves.toEqual({});
     expect(gateway.sessionDelete).not.toHaveBeenCalled();
   });
 
-  test("Confirm sends the typed command to omp once, and a reply that deletes nothing shows omp's words", async () => {
+  test("Confirm sends the typed command to omp once, and a refusal says why in the header", async () => {
     const confirm = vi.fn(async () => true);
-    const gateway = gatewayAnswering("Cannot delete the session while streaming.");
+    const gateway = gatewayAnswering("unused", { outcome: "refused", reason: "running" });
     const command = sessionDeleteSlashCommand({
       confirm,
       gateway,
@@ -508,10 +513,9 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       catalog: null,
       lifecycle: null,
       openThread: async () => undefined,
-      showReport: () => undefined,
     });
     await expect(command.run({})).resolves.toEqual({
-      message: "omp: Cannot delete the session while streaming.",
+      message: "Wait for this chat's turn to finish, then delete it.",
     });
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(gateway.sessionDelete).toHaveBeenCalledTimes(1);
@@ -524,8 +528,6 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     cwd: "/workspace",
     sessionFile: "/sessions/one.jsonl",
   } as unknown as SessionMetadata;
-  const deletedLine =
-    "Session deleted: /sessions/one.jsonl. Use ACP `session/load` to switch to another session.";
   const newThread = ThreadId.parse("thread-new-1351");
 
   function runDelete(
@@ -558,13 +560,12 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       catalog,
       lifecycle: lifecycle as unknown as SessionLifecycleController,
       openThread,
-      showReport: () => undefined,
     });
     return { command, order, reconcile, openThread, lifecycle };
   }
 
   test("a deleted reply opens a new chat in place of the chat, then drops the chat's row, and shows no header note", async () => {
-    const run = runDelete({ outcome: "deleted", outputs: [deletedLine] }, [listedChat], {
+    const run = runDelete({ outcome: "deleted" }, [listedChat], {
       status: "completed",
       value: newThread,
     });
@@ -579,7 +580,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
   });
 
   test("a deleted chat's row still goes when no new chat opens, and the new chat's failure is what the person sees", async () => {
-    const run = runDelete({ outcome: "deleted", outputs: [deletedLine] }, [listedChat], {
+    const run = runDelete({ outcome: "deleted" }, [listedChat], {
       status: "error",
       error: { code: "unavailable", message: "Starting a new session failed.", retryable: false },
     });
@@ -590,22 +591,50 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     expect(run.reconcile).toHaveBeenCalledTimes(1);
   });
 
-  test("a reply that deletes nothing leaves the chat and its row as they are", async () => {
-    const run = runDelete(
-      { outcome: "unknown", outputs: ["Cannot delete the session while streaming."] },
-      [listedChat],
-      { status: "completed", value: newThread },
-    );
+  test("a refused delete leaves the chat and its row as they are, and the header says why", async () => {
+    const run = runDelete({ outcome: "refused", reason: "open-elsewhere" }, [listedChat], {
+      status: "completed",
+      value: newThread,
+    });
     await expect(run.command.run({})).resolves.toEqual({
-      message: "omp: Cannot delete the session while streaming.",
+      message: "Another tab or window has this chat open. Close it there, then delete it again.",
     });
     expect(run.lifecycle.newSession).not.toHaveBeenCalled();
     expect(run.openThread).not.toHaveBeenCalled();
     expect(run.reconcile).not.toHaveBeenCalled();
   });
 
+  test.each([
+    [
+      { outcome: "refused", reason: "running" },
+      "Wait for this chat's turn to finish, then delete it.",
+    ],
+    [
+      { outcome: "refused", reason: "open-elsewhere" },
+      "Another tab or window has this chat open. Close it there, then delete it again.",
+    ],
+    [
+      { outcome: "refused", reason: "finishing" },
+      "omp is still finishing this chat. Try again in a moment.",
+    ],
+    [
+      { outcome: "refused", reason: "not-saved" },
+      "This chat is not saved yet, so there is nothing to delete.",
+    ],
+    [{ outcome: "failed" }, "The chat was not deleted. Try again."],
+    [{ outcome: "unknown" }, "omp did not delete the chat."],
+  ] as const)(
+    "a delete that deletes nothing (%j) says why in the header",
+    async (reply, message) => {
+      const run = runDelete(reply, [listedChat], { status: "completed", value: newThread });
+      await expect(run.command.run({})).resolves.toEqual({ message });
+      expect(run.openThread).not.toHaveBeenCalled();
+      expect(run.reconcile).not.toHaveBeenCalled();
+    },
+  );
+
   test("a deleted chat the list does not hold has no row to drop, and the view still leaves it", async () => {
-    const run = runDelete({ outcome: "deleted", outputs: [deletedLine] }, [], {
+    const run = runDelete({ outcome: "deleted" }, [], {
       status: "completed",
       value: newThread,
     });
@@ -687,7 +716,6 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       catalog: null,
       lifecycle: null,
       openThread: async () => undefined,
-      showReport: () => undefined,
     });
     await expect(command.run({})).rejects.toBe(failure);
   });

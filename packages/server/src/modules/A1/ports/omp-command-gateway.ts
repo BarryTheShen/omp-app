@@ -62,7 +62,8 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
         const caller = { connectionId: handlerContext.connectionId };
         // The server checks the chat before omp deletes its file, then finishes the delete once omp reports it: omp can
         // write the chat back when its omp stops, so the server stops it first, as the sidebar's own delete does.
-        const file = await context.sessionFileStore.checkOmpDelete(args.threadId, caller);
+        const check = await context.sessionFileStore.checkOmpDelete(args.threadId, caller);
+        if (check.outcome === "refused") return { outcome: "refused", reason: check.reason };
         const { data } = await context.ompCommandGateway.runWithParser<SessionDeleteCommandResult>(
           { threadId: args.threadId, command },
           { signal: handlerContext.signal },
@@ -72,8 +73,13 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
           (value) => SessionDeleteCommandResult.parse(value),
           command,
         );
-        if (result.outcome === "deleted" && file !== undefined) {
-          await context.sessionFileStore.finishOmpDelete(file, caller);
+        if (result.outcome !== "deleted" || check.file === undefined) return result;
+        try {
+          await context.sessionFileStore.finishOmpDelete(check.file, caller);
+        } catch (error) {
+          // A stop omp did not make, or a file that would not go: the chat stays open and listed, and the person tries again.
+          if (error instanceof AppFailure) return { outcome: "failed" };
+          throw error;
         }
         return result;
       },

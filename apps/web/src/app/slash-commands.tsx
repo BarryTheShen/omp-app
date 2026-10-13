@@ -10,6 +10,7 @@ import {
   type RpcSessionSend,
   type SessionDeleteCommandArgs,
   type SessionDeleteCommandResult,
+  type SessionDeleteRefusal,
   type ThreadId,
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -343,11 +344,25 @@ function sidebarChatName(
 }
 
 /**
+ * The header's plain sentence for a `/session delete` that deleted nothing, by its typed reason. The app writes these, so
+ * the browser never reads omp's words.
+ */
+const SESSION_DELETE_NOTE: Record<SessionDeleteRefusal | "failed" | "unknown", string> = {
+  running: "Wait for this chat's turn to finish, then delete it.",
+  "open-elsewhere":
+    "Another tab or window has this chat open. Close it there, then delete it again.",
+  finishing: "omp is still finishing this chat. Try again in a moment.",
+  "not-saved": "This chat is not saved yet, so there is nothing to delete.",
+  failed: "The chat was not deleted. Try again.",
+  unknown: "omp did not delete the chat.",
+};
+
+/**
  * `/session delete`: asks with the chat's own delete question, naming the chat the way the sidebar does. Confirm sends the
- * command to omp once, through the typed gateway; Cancel sends nothing. omp deletes the chat's file, and only its reply
- * saying so changes the view: the open chat leaves first, a new chat taking its place as the sidebar's own Delete leaves
- * it, and then the chat's row goes from the list. The header shows no note for it: a note set on the chat that left would
- * never show on the new chat. Any other reply changes nothing, and omp's words show.
+ * command to omp once, through the typed gateway; Cancel sends nothing. Only a `deleted` outcome changes the view: the open
+ * chat leaves first, a new chat taking its place as the sidebar's own Delete leaves it, and then the chat's row goes from
+ * the list. The header shows no note for that: a note set on the chat that left would never show on the new chat. Every
+ * other outcome changes nothing, and the header says why in a plain sentence (`SESSION_DELETE_NOTE`).
  */
 export function sessionDeleteSlashCommand({
   confirm,
@@ -356,7 +371,6 @@ export function sessionDeleteSlashCommand({
   catalog,
   lifecycle,
   openThread,
-  showReport,
 }: {
   readonly confirm: () => Promise<boolean>;
   readonly gateway: CommandRunGateway;
@@ -364,7 +378,6 @@ export function sessionDeleteSlashCommand({
   readonly catalog: SessionCatalogModel | null;
   readonly lifecycle: SessionLifecycleController | null;
   readonly openThread: (threadId: ThreadId) => Promise<void>;
-  readonly showReport: (report: CommandReport) => void;
 }): SlashAppCommand {
   return {
     name: "session delete",
@@ -386,8 +399,8 @@ export function sessionDeleteSlashCommand({
         // The view has left the chat, so the header has no note to show: the sidebar's own Delete shows none either.
         return {};
       }
-      const note = commandNote(result.outputs, "/session delete", showReport);
-      return note === undefined ? {} : { message: note };
+      const reason = result.outcome === "refused" ? result.reason : result.outcome;
+      return { message: SESSION_DELETE_NOTE[reason] };
     },
   };
 }
@@ -468,7 +481,6 @@ export function askFirstSlashCommands({
       catalog,
       lifecycle,
       openThread,
-      showReport,
     }),
     askFirstSlashCommand({
       name: "usage reset",

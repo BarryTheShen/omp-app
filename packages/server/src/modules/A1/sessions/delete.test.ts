@@ -467,52 +467,51 @@ describe("SessionFileStore.deleteSession", () => {
 });
 
 describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs itself)", () => {
-  test("the check returns the chat's file, and nothing for a chat with no file", async () => {
+  test("the check returns the chat's file as a clear delete, and a clear delete with no file for a chat with none", async () => {
     const root = await makeTempRoot();
     try {
       const cwd = "/workspace/app";
       const store = storeFor(root);
       const file = path.join(store.bucketPath(cwd), "2026-10-10_chat-one.jsonl");
       await writeSession(file, "chat-one", cwd);
-      expect((await store.checkOmpDelete("chat-one", { connectionId: "app" }))?.sessionFile).toBe(
-        file,
-      );
-      expect(await store.checkOmpDelete("chat-missing", { connectionId: "app" })).toBeUndefined();
+      expect(await store.checkOmpDelete("chat-one", { connectionId: "app" })).toMatchObject({
+        outcome: "clear",
+        file: { sessionFile: file },
+      });
+      expect(await store.checkOmpDelete("chat-missing", { connectionId: "app" })).toEqual({
+        outcome: "clear",
+        file: undefined,
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("the check refuses a chat another view holds, and a chat whose turn runs, before omp could delete it", async () => {
+  test("the check returns the refusal for a chat another view holds, a chat omp is still finishing, and a chat whose turn runs", async () => {
     const root = await makeTempRoot();
     try {
       const cwd = "/workspace/app";
       const file = path.join(storeFor(root).bucketPath(cwd), "2026-10-10_chat-one.jsonl");
       await writeSession(file, "chat-one", cwd);
-      const shared = storeFor(root, {
-        views: {
-          viewsOf: () => 1,
-          watcherCount: () => 2,
-          releaseViews: async () => undefined,
-        },
+      const views = {
+        viewsOf: () => 1,
+        watcherCount: () => 2,
+        releaseViews: async () => undefined,
+      };
+      const held = storeFor(root, { views });
+      expect(await held.checkOmpDelete("chat-one", { connectionId: "app" })).toEqual({
+        outcome: "refused",
+        reason: "open-elsewhere",
       });
-      const heldError = await refusal(shared.checkOmpDelete("chat-one", { connectionId: "app" }));
-      expect(heldError).toMatchObject({
-        appError: {
-          code: "conflict",
-          message:
-            "Another tab or window has this chat open. Close it there, then delete it again.",
-        },
+      const finishing = storeFor(root, { views, serverWatches: () => false });
+      expect(await finishing.checkOmpDelete("chat-one", { connectionId: "app" })).toEqual({
+        outcome: "refused",
+        reason: "finishing",
       });
       const running = storeFor(root, { turnOf: () => "running" });
-      const runningError = await refusal(
-        running.checkOmpDelete("chat-one", { connectionId: "app" }),
-      );
-      expect(runningError).toMatchObject({
-        appError: {
-          code: "conflict",
-          message: "Wait for this chat's turn to finish, then delete it.",
-        },
+      expect(await running.checkOmpDelete("chat-one", { connectionId: "app" })).toEqual({
+        outcome: "refused",
+        reason: "running",
       });
       expect(await exists(file)).toBe(true);
     } finally {
@@ -542,10 +541,12 @@ describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs
         },
       });
       const checked = await store.checkOmpDelete("chat-one", { connectionId: "app" });
-      if (checked === undefined) throw new Error("the chat has no file");
+      if (checked.outcome !== "clear" || checked.file === undefined) {
+        throw new Error("the chat has no file");
+      }
       // omp deletes the file itself, and then the server finishes the delete.
       await rm(file);
-      await store.finishOmpDelete(checked, { connectionId: "app" });
+      await store.finishOmpDelete(checked.file, { connectionId: "app" });
       expect(order).toEqual(["release chat-one app", "stop chat-one"]);
       expect(await exists(file)).toBe(false);
     } finally {
@@ -565,8 +566,10 @@ describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs
         },
       });
       const checked = await store.checkOmpDelete("chat-one", { connectionId: "app" });
-      if (checked === undefined) throw new Error("the chat has no file");
-      await expect(store.finishOmpDelete(checked, { connectionId: "app" })).rejects.toThrow(
+      if (checked.outcome !== "clear" || checked.file === undefined) {
+        throw new Error("the chat has no file");
+      }
+      await expect(store.finishOmpDelete(checked.file, { connectionId: "app" })).rejects.toThrow(
         "omp did not stop",
       );
       expect(await exists(file)).toBe(true);

@@ -23,50 +23,75 @@ const DELETED = (path: string) =>
   `Session deleted: ${path}. Use ACP \`session/load\` to switch to another session.`;
 
 describe("parseSessionDeleteReply on omp's /session delete replies", () => {
-  test("omp's one deleted line, from a command that ran no agent turn, reads as deleted, with its words kept", () => {
+  test("omp's one deleted line, from a command that ran no agent turn, reads as deleted", () => {
     const line = DELETED("/sessions/example/one.jsonl");
     expect(parseSessionDeleteReply(replyTo("/session delete", [line]))).toEqual({
       outcome: "deleted",
-      outputs: [line],
     });
   });
 
-  test("a refusal or a usage line is unknown: omp's words are kept, and nothing is read as deleted", () => {
-    for (const text of [
-      "Cannot delete the session while streaming.",
-      "No session file to delete (in-memory session).",
-      "Failed to delete session: EACCES",
-      "Usage: /session [info|delete|pin [account]]",
-    ]) {
-      expect(parseSessionDeleteReply(replyTo("/session delete", [text])), text).toEqual({
-        outcome: "unknown",
-        outputs: [text],
-      });
-    }
+  test("omp's refusal while it streams reads as refused, because the chat's turn runs", () => {
+    expect(
+      parseSessionDeleteReply(
+        replyTo("/session delete", ["Cannot delete the session while streaming."]),
+      ),
+    ).toEqual({ outcome: "refused", reason: "running" });
   });
 
-  test("a deleted line that comes with another line, or from a command that invoked an agent turn, is not read as deleted", () => {
-    const line = DELETED("/sessions/example/one.jsonl");
+  test("omp's reply for a chat with no session file reads as refused, because the chat is not saved yet", () => {
     expect(
-      parseSessionDeleteReply(replyTo("/session delete", [line, "A second line."])).outcome,
-    ).toBe("unknown");
-    expect(parseSessionDeleteReply(replyTo("/session delete", [line], true)).outcome).toBe(
-      "unknown",
-    );
+      parseSessionDeleteReply(
+        replyTo("/session delete", ["No session file to delete (in-memory session)."]),
+      ),
+    ).toEqual({ outcome: "refused", reason: "not-saved" });
+  });
+
+  test("omp's failed delete reads as failed, and its error text is not part of the result", () => {
+    expect(
+      parseSessionDeleteReply(replyTo("/session delete", ["Failed to delete session: EACCES"])),
+    ).toEqual({ outcome: "failed" });
+  });
+
+  test("a usage line or any other single line is unknown, and nothing reads as deleted", () => {
+    expect(
+      parseSessionDeleteReply(
+        replyTo("/session delete", ["Usage: /session [info|delete|pin [account]]"]),
+      ),
+    ).toEqual({ outcome: "unknown" });
+  });
+
+  test("a refusal line with another line, or from a command that invoked an agent turn, is unknown", () => {
+    const streaming = "Cannot delete the session while streaming.";
+    expect(
+      parseSessionDeleteReply(replyTo("/session delete", [streaming, "A second line."])),
+    ).toEqual({
+      outcome: "unknown",
+    });
+    expect(parseSessionDeleteReply(replyTo("/session delete", [streaming], true))).toEqual({
+      outcome: "unknown",
+    });
+  });
+
+  test("a deleted line with another line, or from a command that invoked an agent turn, is not read as deleted", () => {
+    const line = DELETED("/sessions/example/one.jsonl");
+    expect(parseSessionDeleteReply(replyTo("/session delete", [line, "A second line."]))).toEqual({
+      outcome: "unknown",
+    });
+    expect(parseSessionDeleteReply(replyTo("/session delete", [line], true))).toEqual({
+      outcome: "unknown",
+    });
   });
 
   test("text that only starts like the deleted line, without its ACP part, is unknown", () => {
     expect(
-      parseSessionDeleteReply(replyTo("/session delete", ["Session deleted: /sessions/one.jsonl."]))
-        .outcome,
-    ).toBe("unknown");
+      parseSessionDeleteReply(
+        replyTo("/session delete", ["Session deleted: /sessions/one.jsonl."]),
+      ),
+    ).toEqual({ outcome: "unknown" });
   });
 
   test("a reply with no output at all is unknown", () => {
-    expect(parseSessionDeleteReply(replyTo("/session delete", []))).toEqual({
-      outcome: "unknown",
-      outputs: [],
-    });
+    expect(parseSessionDeleteReply(replyTo("/session delete", []))).toEqual({ outcome: "unknown" });
   });
 
   test("a context for another command is refused as an internal failure, never guessed", () => {
