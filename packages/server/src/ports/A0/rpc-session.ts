@@ -303,6 +303,10 @@ export class RpcSessionPortRuntime {
   sessionFor(threadId: ThreadId): RpcSession | undefined {
     return this.#entryOrUndefined(threadId)?.session;
   }
+  /** The session file an open chat's omp runs: known before omp writes the file, which a new chat's omp does after its first reply. */
+  sessionFileOf(threadId: ThreadId): SessionFilePath | undefined {
+    return this.#entryOrUndefined(threadId)?.bootstrap.sessionFile;
+  }
 
   async open(args: OpenThreadArgs, call: PortHandlerContext) {
     if (this.#context.health.status !== "ok") {

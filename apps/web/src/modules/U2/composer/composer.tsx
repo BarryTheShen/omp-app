@@ -79,6 +79,11 @@ export interface ComposerSurfaceProps {
   readonly children?: ReactNode;
   /** Two presses of ← in the empty editor, close together: omp's gesture that opens the Agent Hub. */
   readonly onDoubleLeftArrow?: () => void;
+  /**
+   * Saves a large paste's full text as a file the chat's agent can read, and returns the reference the message cites
+   * (for example `local://paste-1.md`). Without it the choice offers only the wrapped block and inline.
+   */
+  readonly savePasteFile?: (text: string) => Promise<string>;
 }
 
 function attachmentRef(attachment: Attachment): AttachmentRef {
@@ -179,6 +184,12 @@ const NO_CAPABILITIES: CapabilityMap = Object.freeze({});
 
 /** Why a message is not sent yet while a large paste's choice is open: its text is not in the message until it is chosen. */
 const PASTE_CHOICE_REASON = "Choose where the pasted text goes first. The message is not sent yet.";
+/** Why a message is not sent yet while a large paste is saved as a file: its reference is not in the text yet. */
+const SAVING_PASTE_REASON =
+  "The pasted text is being saved to a file. The message is not sent yet.";
+/** What a person reads when a large paste could not be saved as a file: the text is attached instead, so it is not lost. */
+const LOCAL_FILE_FALLBACK =
+  "The pasted text could not be saved to a file, so it was attached instead.";
 
 /** U2's assistant-ui composer surface; all submissions go through the injected R0.3 callback. */
 export function ComposerSurface({
@@ -196,6 +207,7 @@ export function ComposerSurface({
   toolbar,
   queue,
   onDoubleLeftArrow,
+  savePasteFile,
   children,
 }: ComposerSurfaceProps): ReactNode {
   const aui = useAui();
@@ -216,13 +228,15 @@ export function ComposerSurface({
   const blockedId = useId();
   // A large paste waiting for the person's choice, and a counter for the names of pasted-text chips.
   const [largePaste, setLargePaste] = useState<LargePaste | null>(null);
+  const [savingPaste, setSavingPaste] = useState(false);
   const pasteCount = useRef(0);
-  // What holds a send back: the connection, an image the message holds, or a large paste whose choice is open.
+  // What holds a send back: the connection, an image the message holds, or a large paste whose choice is open or saving.
   // Only the connection also holds Stop back.
   const notSentReason =
     sendBlockedReason ??
     attachmentHoldReason ??
-    (largePaste === null ? undefined : PASTE_CHOICE_REASON);
+    (largePaste === null ? undefined : PASTE_CHOICE_REASON) ??
+    (savingPaste ? SAVING_PASTE_REASON : undefined);
   useRemeasureOnWidthChange(inputRef);
   useAuiEvent("composer.attachmentAddError", (failure) => {
     setError({
@@ -325,13 +339,13 @@ export function ComposerSurface({
     }
   }, [canCancel, cancel, sendBlockedReason]);
 
-  /** Puts a large paste's text into the box where it was pasted, and tells the runtime the box changed. */
-  const insertLargePaste = useCallback((paste: LargePaste): void => {
+  /** Puts a large paste's text (or the reference that stands for it) into the box where it was pasted, and tells the runtime the box changed. */
+  const insertLargePaste = useCallback((paste: LargePaste, text: string = paste.text): void => {
     const input = inputRef.current;
     if (input === null) return;
     const start = Math.min(paste.selectionStart, input.value.length);
     const end = Math.min(paste.selectionEnd, input.value.length);
-    input.setRangeText(paste.text, start, end, "end");
+    input.setRangeText(text, start, end, "end");
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }, []);
 
@@ -342,20 +356,55 @@ export function ComposerSurface({
     inputRef.current?.focus();
   }, [insertLargePaste, largePaste]);
 
+  /** Attaches a large paste's text as a pasted-text chip. If the chip cannot be added, the text goes into the box. */
+  const addPasteAsChip = useCallback(
+    async (paste: LargePaste): Promise<boolean> => {
+      const name = pastedTextName(++pasteCount.current, paste.lineCount);
+      try {
+        await composer.addAttachment(new File([paste.text], name, { type: "text/plain" }));
+        return true;
+      } catch (cause) {
+        // The chip could not be added: the text goes into the box instead, so it is not lost.
+        insertLargePaste(paste);
+        setError(appFailure(cause).appError);
+        return false;
+      }
+    },
+    [composer, insertLargePaste],
+  );
+
   const attachAsBlock = useCallback(async (): Promise<void> => {
     if (largePaste === null) return;
-    const name = pastedTextName(++pasteCount.current, largePaste.lineCount);
     // The choice is answered at once, so a second press cannot add a second copy.
     setLargePaste(null);
     inputRef.current?.focus();
+    await addPasteAsChip(largePaste);
+  }, [addPasteAsChip, largePaste]);
+
+  /**
+   * Saves a large paste's full text as a file the chat's agent can read, and puts the file's reference in the box
+   * where the paste was, as omp does. If the file cannot be saved, the text is attached as a chip instead, so it is
+   * not lost.
+   */
+  const attachAsLocalFile = useCallback(async (): Promise<void> => {
+    if (largePaste === null || savePasteFile === undefined) return;
+    const paste = largePaste;
+    // The choice is answered at once, so a second press cannot save a second copy.
+    setLargePaste(null);
+    setSavingPaste(true);
+    inputRef.current?.focus();
     try {
-      await composer.addAttachment(new File([largePaste.text], name, { type: "text/plain" }));
+      const reference = await savePasteFile(paste.text);
+      insertLargePaste(paste, `${reference} `);
     } catch (cause) {
-      // The chip could not be added: the text goes into the box instead, so it is not lost.
-      insertLargePaste(largePaste);
-      setError(appFailure(cause).appError);
+      // Adding a chip clears the error, so the notice is set once the chip is in.
+      if (await addPasteAsChip(paste)) {
+        setError({ ...appFailure(cause).appError, message: LOCAL_FILE_FALLBACK });
+      }
+    } finally {
+      setSavingPaste(false);
     }
-  }, [composer, insertLargePaste, largePaste]);
+  }, [addPasteAsChip, insertLargePaste, largePaste, savePasteFile]);
 
   const largePasteThreshold = useLargePasteMenuThreshold();
   const handlePaste = useCallback(
@@ -524,6 +573,16 @@ export function ComposerSurface({
             <Button type="button" variant="outline" size="sm" onClick={() => void attachAsBlock()}>
               Attach as a wrapped block
             </Button>
+            {savePasteFile === undefined ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void attachAsLocalFile()}
+              >
+                Attach as local file
+              </Button>
+            )}
             <Button type="button" variant="outline" size="sm" onClick={pasteInline}>
               Paste inline
             </Button>

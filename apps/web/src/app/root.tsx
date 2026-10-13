@@ -16,6 +16,7 @@ import {
   type ModelChoice,
   OmpCommandGateway,
   type OmpWire,
+  PasteFileStore,
   type RpcSessionClient,
   RpcSessionPort,
   type RpcSessionSend,
@@ -482,6 +483,7 @@ function DraftComposer({
   onResolve,
   sendBlockedReason,
   onDoubleLeftArrow,
+  savePasteFile,
 }: {
   readonly controller: DraftController;
   /** The chat the draft belongs to (see `useChatDraft`): a different one once the person switches chats. */
@@ -504,6 +506,8 @@ function DraftComposer({
   readonly onResolve: (choice: "local" | "remote") => Promise<void>;
   /** Why the composer cannot send right now; the text stays in the composer while it is set. */
   readonly sendBlockedReason?: string;
+  /** Saves a large paste's full text as a file the chat's agent reads; the composer puts the reference in the box. */
+  readonly savePasteFile?: (text: string) => Promise<string>;
   readonly onDoubleLeftArrow: () => void;
 }) {
   const aui = useAui();
@@ -540,6 +544,7 @@ function DraftComposer({
       attachmentHoldReason={attachmentHoldReason(attachmentState)}
       sendBlockedReason={sendBlockedReason}
       submitPrompt={submit}
+      savePasteFile={savePasteFile}
       toolbar={toolbar}
       queue={queue}
       showAttachmentNames={false}
@@ -632,6 +637,11 @@ function ActiveThreadReady({
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
   const guardedSend = useMemo(() => guardOmpSend(rpc.send), [rpc.send]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
+  const pasteFiles = useMemo(() => client.port(PasteFileStore), [client]);
+  const savePasteFile = useCallback(
+    async (text: string) => (await pasteFiles.save({ threadId, text })).reference,
+    [pasteFiles, threadId],
+  );
   const agents = useThreadAgents({
     threadId,
     store,
@@ -1492,6 +1502,7 @@ function ActiveThreadReady({
           onRetry={chatDraft.retry}
           onDoubleLeftArrow={openAgentHub}
           policy={resolveQueueSubmitPolicy}
+          savePasteFile={savePasteFile}
           sendBlockedReason={sendBlockedReason}
           submit={submit}
           toolbar={area("composerToolbar")}

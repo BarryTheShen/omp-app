@@ -47,6 +47,7 @@ import { readWorkspaceState } from "../src/modules/A1/git";
 import { createGithubRefs } from "../src/modules/A1/github-refs";
 import { readHostMetadata } from "../src/modules/A1/host";
 import { createMemoryStore } from "../src/modules/A1/memory";
+import { createPasteFileStore } from "../src/modules/A1/paste-files";
 import { createSessionPinStore } from "../src/modules/A1/pins";
 import { createPlanDocumentStore } from "../src/modules/A1/plans";
 import { type A1PortContext, createA1PortRegistrations } from "../src/modules/A1/ports";
@@ -406,6 +407,7 @@ export async function createCompositionServer(
   });
   const publish = replay.publish.bind(replay);
   const watchStreamActivity = replay.registerStreamActivity.bind(replay);
+  const pasteFileStore = createPasteFileStore();
   const a1Context: A1PortContext = {
     sessionFileStore,
     processBusy: processRegistry,
@@ -421,6 +423,7 @@ export async function createCompositionServer(
     ruleStore,
     sessionImportStore,
     attachmentStore,
+    pasteFileStore,
     githubRefs,
     urlCatalog,
     planDocumentStore,
@@ -429,6 +432,7 @@ export async function createCompositionServer(
     readHostMetadata,
     publish,
     watchStreamActivity,
+    openSessionFile: (threadId) => a0Runtime.sessionFileOf(threadId),
     logger,
   };
   const registry: PortRegistry = createPortRegistry([

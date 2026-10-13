@@ -815,4 +815,126 @@ describe("a large paste in the composer", () => {
       ),
     ).toBeTruthy();
   });
+
+  test("the choice offers a wrapped block, a local file and inline, in that order", () => {
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface
+          submitPrompt={vi.fn(async () => undefined)}
+          cancel={() => undefined}
+          savePasteFile={vi.fn(async () => "local://paste-1.md")}
+        />
+      </RuntimeProvider>,
+    );
+    pasteText(screen.getByRole("textbox", { name: "Message input" }), LARGE);
+    const wrapped = screen.getByRole("button", { name: "Attach as a wrapped block" });
+    const file = screen.getByRole("button", { name: "Attach as local file" });
+    const inline = screen.getByRole("button", { name: "Paste inline" });
+    expect(wrapped.compareDocumentPosition(file) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(file.compareDocumentPosition(inline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test("without a way to save a file, the choice offers no local file option", () => {
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface submitPrompt={vi.fn(async () => undefined)} cancel={() => undefined} />
+      </RuntimeProvider>,
+    );
+    pasteText(screen.getByRole("textbox", { name: "Message input" }), LARGE);
+    expect(screen.queryByRole("button", { name: "Attach as local file" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Paste inline" })).toBeTruthy();
+  });
+
+  test("Attach as local file saves the full text, and puts its reference where the paste was", async () => {
+    const savePasteFile = vi.fn(async () => "local://paste-1.md");
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface
+          submitPrompt={vi.fn(async () => undefined)}
+          cancel={() => undefined}
+          savePasteFile={savePasteFile}
+        />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "ab" } });
+    input.setSelectionRange(1, 1);
+    pasteText(input, LARGE);
+    fireEvent.click(screen.getByRole("button", { name: "Attach as local file" }));
+    await waitFor(() => expect(input).toHaveProperty("value", "alocal://paste-1.md b"));
+    expect(savePasteFile).toHaveBeenCalledWith(LARGE);
+    expect(screen.queryByText(CHOICE)).toBeNull();
+    expect(screen.queryByText("Pasted text 1 (100 lines).txt")).toBeNull();
+  });
+
+  test("Enter waits while the file is saved, then the message goes with the reference", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    let finish: (reference: string) => void = () => undefined;
+    const savePasteFile = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <RuntimeProvider running={false}>
+        <ComposerSurface
+          submitPrompt={submitPrompt}
+          cancel={() => undefined}
+          savePasteFile={savePasteFile}
+        />
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    pasteText(input, LARGE);
+    fireEvent.click(screen.getByRole("button", { name: "Attach as local file" }));
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(submitPrompt).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("The pasted text is being saved to a file. The message is not sent yet."),
+    ).toBeTruthy();
+
+    finish("local://paste-1.md");
+    await waitFor(() => expect(input).toHaveProperty("value", "local://paste-1.md "));
+    expect(screen.queryByText(HOLD)).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(submitPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "prompt",
+          text: expect.stringContaining("local://paste-1.md"),
+        }),
+      ),
+    );
+  });
+
+  test("a file that cannot be saved attaches the text as a chip, and says why", async () => {
+    const savePasteFile = vi.fn(async () => {
+      throw new AppFailure({
+        code: "internal",
+        message: "The pasted text could not be saved to the chat's folder.",
+        retryable: false,
+      });
+    });
+    render(
+      <AttachmentRuntime>
+        <ComposerSurface
+          submitPrompt={vi.fn(async () => undefined)}
+          cancel={() => undefined}
+          savePasteFile={savePasteFile}
+        />
+      </AttachmentRuntime>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    pasteText(input, LARGE);
+    fireEvent.click(screen.getByRole("button", { name: "Attach as local file" }));
+    await waitFor(() =>
+      expect(screen.getAllByText("Pasted text 1 (100 lines).txt")).toHaveLength(1),
+    );
+    expect(input).toHaveProperty("value", "");
+    expect(screen.queryByText(CHOICE)).toBeNull();
+    expect(
+      screen.getByText("The pasted text could not be saved to a file, so it was attached instead."),
+    ).toBeTruthy();
+  });
 });

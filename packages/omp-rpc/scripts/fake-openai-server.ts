@@ -218,6 +218,16 @@ function namedBackgroundStart(prompt: string): Reply | undefined {
   return undefined;
 }
 
+/**
+ * `read_pasted_reference local://paste-N.md` makes the model read that reference with omp's own `read` tool, once. The
+ * reply after the read is plain text, so the read's result is what the chat holds for the file.
+ */
+function readPastedReferenceStart(prompt: string): Reply | undefined {
+  const reference = /read_pasted_reference (local:\/\/paste-\d+\.md)/.exec(prompt)?.[1];
+  if (reference === undefined) return undefined;
+  return { tool: "read", args: { path: reference }, id: "call_read_pasted_reference" };
+}
+
 function reply(request: Request): Reply {
   const messages = request.messages ?? [];
   const steerChild = steerChildReply(messages);
@@ -245,6 +255,12 @@ function reply(request: Request): Reply {
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
     if (done === 0) return backgroundStarts(backgroundCount);
     return { text: "background jobs started" };
+  }
+  const readReference = readPastedReferenceStart(text(messages[lastUser]?.content));
+  if (readReference !== undefined) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done === 0) return readReference;
+    return { text: "reference read" };
   }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";

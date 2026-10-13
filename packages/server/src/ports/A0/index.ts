@@ -1,4 +1,4 @@
-import type { ThreadId } from "@omp-app/contracts";
+import type { SessionFilePath, ThreadId } from "@omp-app/contracts";
 import type { RpcSession } from "@omp-app/omp-rpc";
 import type { PortRegistration } from "../../registry/ports";
 import { createAppPortRegistration } from "./app";
@@ -19,6 +19,7 @@ export * from "./rpc-session";
 export interface A0Runtime {
   readonly registrations: readonly PortRegistration[];
   sessionFor(threadId: ThreadId): RpcSession | undefined;
+  sessionFileOf(threadId: ThreadId): SessionFilePath | undefined;
   /** The views each connection holds on the chats this runtime runs: a delete of a chat lets its own views go. */
   readonly views: {
     viewsOf(threadId: ThreadId, connectionId: string): number;
@@ -39,6 +40,7 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
       createAppPortRegistration(context),
     ],
     sessionFor: (threadId) => rpc.runtime.sessionFor(threadId),
+    sessionFileOf: (threadId) => rpc.runtime.sessionFileOf(threadId),
     views: {
       viewsOf: (threadId, connectionId) => rpc.runtime.viewsOf(threadId, connectionId),
       releaseViews: (threadId, connectionId) => rpc.runtime.releaseViews(threadId, connectionId),

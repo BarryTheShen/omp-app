@@ -11,6 +11,7 @@ import { createHostMetadataRegistration } from "./host-metadata";
 import { createMcpCommandsRegistration } from "./mcp-commands";
 import { createMemoryStoreRegistration } from "./memory-store";
 import { createOmpCommandGatewayRegistration } from "./omp-command-gateway";
+import { createPasteFileStoreRegistration } from "./paste-file-store";
 import { createPlanDocumentRegistration } from "./plan-documents";
 import { createProviderAccountStoreRegistration } from "./provider-accounts";
 import { createRuleStoreRegistration } from "./rule-store";
@@ -45,6 +46,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createGithubRefsRegistration(context),
     createUrlCatalogRegistration(context),
     createUsageLimitStoreRegistration(context),
+    createPasteFileStoreRegistration(context),
   ];
 }
 

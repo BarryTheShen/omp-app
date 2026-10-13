@@ -19,9 +19,11 @@ import {
   McpCommandsPort,
   MemoryStore,
   OmpCommandGateway,
+  PasteFileStore,
   PlanDocumentStore,
   ProviderAccountStore,
   RuleStore,
+  SessionFilePath,
   SessionFileStore,
   SessionImportPort,
   SessionPinStore,
@@ -317,6 +319,10 @@ function createContext(
     searchWorkspaceFiles: async () => ({ results: [], truncated: false }),
     readHostMetadata: async () => ({ hostname: "host", displayPath: "~/code" }),
     publish: () => undefined,
+    openSessionFile: () => SessionFilePath.parse("/workspace/session-1.jsonl"),
+    pasteFileStore: {
+      save: async () => ({ name: "paste-1.md", reference: "local://paste-1.md" }),
+    },
     watchStreamActivity: () => () => undefined,
   };
   return context as unknown as A1PortContext;
@@ -390,6 +396,7 @@ describe("A1.9 port registrations", () => {
       ["A1.ruleStore", "list", { scope: "global", folder: null }],
       ["A1.githubRefs", "search", { folder: "/workspace", query: "test", kind: "issue", limit: 5 }],
       ["A1.urlCatalog", "list", { query: "", limit: 10 }],
+      ["A1.pasteFileStore", "save", { threadId: "session-1", text: "pasted text" }],
     ];
     for (const [index, [port, method, args]] of calls.entries()) {
       const result = await call(session, socket, `call-${index}`, port, method, args);
@@ -413,6 +420,7 @@ describe("A1.9 port registrations", () => {
       MemoryStore,
       McpCommandsPort,
       OmpCommandGateway,
+      PasteFileStore,
       PlanDocumentStore,
       AttachmentBlobStore,
       ProviderAccountStore,

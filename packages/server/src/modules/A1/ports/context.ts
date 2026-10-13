@@ -1,4 +1,4 @@
-import type { ThreadId } from "@omp-app/contracts";
+import type { SessionFilePath, ThreadId } from "@omp-app/contracts";
 import type { Logger } from "../../../logging";
 import type { ProviderAccountStoreService } from "../accounts";
 import type { AttachmentStoreService } from "../attachments";
@@ -12,6 +12,7 @@ import type { readWorkspaceState } from "../git";
 import type { GithubRefsService } from "../github-refs";
 import type { readHostMetadata } from "../host";
 import type { MemoryStoreService } from "../memory";
+import type { PasteFileStoreService } from "../paste-files";
 import type { SessionPinStoreService } from "../pins";
 import type { PlanDocumentStoreService } from "../plans";
 import type { RuleStoreService } from "../rules";
@@ -38,6 +39,7 @@ export interface A1PortContext {
   readonly githubRefs: GithubRefsService;
   readonly urlCatalog: UrlCatalogService;
   readonly planDocumentStore: PlanDocumentStoreService;
+  readonly pasteFileStore: PasteFileStoreService;
   readonly readWorkspaceState?: typeof readWorkspaceState;
   readonly searchWorkspaceFiles?: typeof searchWorkspaceFiles;
   readonly readHostMetadata?: typeof readHostMetadata;
@@ -47,6 +49,8 @@ export interface A1PortContext {
   readonly processBusy?: {
     onBusyChange(listener: (threadId: ThreadId, busy: boolean) => void): () => void;
   };
+  /** The session file of a chat that is open now. A new chat's file is named before omp writes it to disk. */
+  readonly openSessionFile: (threadId: ThreadId) => SessionFilePath | undefined;
   /** The app's debug log; absent in tests and embeddings. */
   readonly logger?: Logger;
 }
