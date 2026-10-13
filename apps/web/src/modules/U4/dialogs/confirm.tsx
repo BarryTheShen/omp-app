@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ConfirmDialogRequest } from "../contract";
 import type { DialogRenderContext } from "../host";
-import { CancelButton, DialogFrame } from "./common";
+import { ANSWER_NOT_SENT, CancelButton, DialogFrame, ErrorText } from "./common";
 
 export function ConfirmDialog({
   request,
@@ -17,8 +17,14 @@ export function ConfirmDialog({
     return () => clearTimeout(timer);
   }, []);
 
+  const [error, setError] = useState<string | null>(null);
   const decide = async (confirmed: boolean) => {
-    await context.answer({ kind: "confirm", confirmed });
+    setError(null);
+    try {
+      await context.answer({ kind: "confirm", confirmed });
+    } catch {
+      setError(ANSWER_NOT_SENT);
+    }
   };
 
   return (
@@ -46,6 +52,7 @@ export function ConfirmDialog({
       <p className="rounded-md border border-warning/30 bg-warning-surface p-3 text-sm text-warning-surface-foreground">
         Review this request before continuing. Deny is the safe default.
       </p>
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </DialogFrame>
   );
 }

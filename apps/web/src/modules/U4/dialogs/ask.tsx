@@ -5,7 +5,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ASK_DIALOG_HEADING, type AskDialogRequest } from "../contract";
 import type { DialogRenderContext } from "../host";
-import { CancelButton, DialogFrame, ErrorText, Input, SubmitButton } from "./common";
+import {
+  ANSWER_NOT_SENT,
+  CancelButton,
+  DialogFrame,
+  ErrorText,
+  Input,
+  SubmitButton,
+} from "./common";
 
 type AnswerDraft = { selectedOptions: string[]; customInput: string };
 
@@ -169,7 +176,12 @@ export function AskDialog({
       setError("Answer every question before submitting.");
       return;
     }
-    await context.answer({ kind: "ask", answers });
+    setError(null);
+    try {
+      await context.answer({ kind: "ask", answers });
+    } catch {
+      setError(ANSWER_NOT_SENT);
+    }
   };
 
   return (

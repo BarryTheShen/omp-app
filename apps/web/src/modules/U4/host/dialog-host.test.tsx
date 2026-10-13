@@ -1,4 +1,5 @@
 import type { CapabilityMap, OmpWire, ThreadId, UiRequestId } from "@omp-app/contracts";
+import { AppFailure } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -37,6 +38,9 @@ interface HarnessState {
   answers: OmpWire.ExtensionUiResponse[];
   answer: ((response: DialogResponse) => Promise<void>) | undefined;
   deadlines: Record<string, number | undefined>;
+  refusals: number;
+  refusalCode: "unavailable" | "not_found";
+  rejected: number;
 }
 
 function Harness({
@@ -53,6 +57,14 @@ function Harness({
       overlay,
       capabilities,
       answerExtensionUi: async (response) => {
+        if (state.refusals > 0) {
+          state.refusals -= 1;
+          throw new AppFailure({
+            code: state.refusalCode,
+            message: "omp did not accept the answer.",
+            retryable: state.refusalCode === "unavailable",
+          });
+        }
         state.answers.push(response);
       },
       render: (dialogRequest, context) => {
@@ -72,7 +84,9 @@ function Harness({
                   dialogRequest.kind === "confirm"
                     ? { kind: "confirm", confirmed: true }
                     : { kind: "select", value: "Approve" };
-                void context.answer(response);
+                void context.answer(response).catch(() => {
+                  state.rejected += 1;
+                });
               }}
             >
               Approve
@@ -103,6 +117,9 @@ function renderHarness(capabilities = ompUiCapabilities) {
     answers: [],
     answer: undefined,
     deadlines: {},
+    refusals: 0,
+    refusalCode: "unavailable",
+    rejected: 0,
   };
   render(
     <OverlayHost>
@@ -157,6 +174,49 @@ describe("DialogHostController", () => {
       outcome: "answered",
       response: { kind: "confirm", confirmed: true },
     });
+  });
+
+  test("a refused answer keeps the question open, and Approve sends the same answer when pressed again", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    state.refusals = 1;
+    const asked = open(controller, request("confirm", "refused-once"));
+    await screen.findByRole("dialog", { name: "refused-once" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(state.rejected).toBe(1));
+    // omp still waits for this answer, so the question stays open and nothing is reported as closed.
+    expect(screen.getByRole("dialog", { name: "refused-once" })).toBeTruthy();
+    expect(screen.getByTestId("body-refused-once")).toBeTruthy();
+    expect(state.answers).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await expect(asked).resolves.toEqual({
+      outcome: "answered",
+      response: { kind: "confirm", confirmed: true },
+    });
+    expect(state.answers).toEqual([
+      { type: "extension_ui_response", id: "refused-once", confirmed: true },
+    ]);
+  });
+
+  test("an answer for a question omp no longer holds closes the dialog, with no retry", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    state.refusals = 1;
+    state.refusalCode = "not_found";
+    const asked = open(controller, request("confirm", "already-gone"));
+    await screen.findByRole("dialog", { name: "already-gone" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "already-gone" })).toBeNull());
+    await expect(asked).resolves.toEqual({
+      outcome: "cancelled",
+      kind: "confirm",
+      timedOut: false,
+    });
+    expect(state.answers).toEqual([]);
+    expect(state.rejected).toBe(0);
   });
 
   test("a timed request gives its dialog the time the host will settle it, and a queued one keeps the time it was received", async () => {

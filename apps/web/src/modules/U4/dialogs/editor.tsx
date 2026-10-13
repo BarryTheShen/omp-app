@@ -1,7 +1,14 @@
 import { useState } from "react";
 import type { EditorDialogRequest } from "../contract";
 import type { DialogRenderContext } from "../host";
-import { CancelButton, DialogFrame, SubmitButton, Textarea } from "./common";
+import {
+  ANSWER_NOT_SENT,
+  CancelButton,
+  DialogFrame,
+  ErrorText,
+  SubmitButton,
+  Textarea,
+} from "./common";
 
 export function EditorDialog({
   request,
@@ -11,10 +18,16 @@ export function EditorDialog({
   readonly context: DialogRenderContext;
 }) {
   const [value, setValue] = useState(request.prefill ?? "");
+  const [error, setError] = useState<string | null>(null);
   const readOnly = request.readOnly === true;
 
   const submit = async () => {
-    await context.answer({ kind: "editor", value });
+    setError(null);
+    try {
+      await context.answer({ kind: "editor", value });
+    } catch {
+      setError(ANSWER_NOT_SENT);
+    }
   };
 
   return (
@@ -64,6 +77,7 @@ export function EditorDialog({
             : "Ctrl/Cmd+Enter saves."}
         </p>
       )}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </DialogFrame>
   );
 }

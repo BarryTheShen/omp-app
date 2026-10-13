@@ -376,3 +376,79 @@ describe("rich Ask dialog and result card", () => {
     expect(screen.getByRole("definition").textContent).toBe("Thorough");
   });
 });
+
+/** A dialog whose answers are refused while `state.refuse` is on: a refused answer never reaches omp. */
+function renderRefusedAnswers(request: DialogRequest) {
+  const answers: DialogResponse[] = [];
+  const state = { refuse: true };
+  const context: DialogRenderContext = {
+    request,
+    threadId,
+    signal: new AbortController().signal,
+    answer: async (response) => {
+      if (state.refuse) throw new Error("omp did not accept the answer.");
+      answers.push(response);
+    },
+    cancel: async () => undefined,
+  };
+  render(renderDialogRequest(request, context));
+  return { answers, state };
+}
+
+describe("a refused answer", () => {
+  test("an input keeps the typed value, says sending failed, and Continue sends the same value again", async () => {
+    const result = renderRefusedAnswers({
+      kind: "input",
+      id: "input-refused" as UiRequestId,
+      title: "Database name",
+    } as DialogRequest);
+    fireEvent.change(screen.getByLabelText("Database name"), { target: { value: "Postgres" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Sending your answer failed. Try again.",
+    );
+    expect((screen.getByLabelText("Database name") as HTMLInputElement).value).toBe("Postgres");
+    expect(result.answers).toEqual([]);
+
+    result.state.refuse = false;
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(result.answers).toEqual([{ kind: "input", value: "Postgres" }]));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("a confirm whose answer is refused says so, and Confirm can be pressed again", async () => {
+    const result = renderRefusedAnswers({
+      kind: "confirm",
+      id: "confirm-refused" as UiRequestId,
+      title: "Delete workspace?",
+      message: "This cannot be undone.",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Sending your answer failed. Try again.",
+    );
+
+    result.state.refuse = false;
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(result.answers).toEqual([{ kind: "confirm", confirmed: true }]));
+  });
+
+  test("a select whose answer is refused keeps the chosen option and says sending failed", async () => {
+    const result = renderRefusedAnswers({
+      kind: "select",
+      id: "select-refused" as UiRequestId,
+      title: "Choose",
+      options: ["Alpha", "Beta"],
+    });
+    fireEvent.click(screen.getByRole("option", { name: "Beta" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Sending your answer failed. Try again.",
+    );
+    expect(screen.getByRole("option", { name: "Beta" }).getAttribute("aria-selected")).toBe("true");
+
+    result.state.refuse = false;
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    await waitFor(() => expect(result.answers).toEqual([{ kind: "select", value: "Beta" }]));
+  });
+});

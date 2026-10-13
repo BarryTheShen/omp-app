@@ -64,6 +64,9 @@ export function SubmitButton({
   );
 }
 
+/** What a dialog says when its answer did not reach omp. The dialog stays open, so the same answer can be sent again. */
+export const ANSWER_NOT_SENT = "Sending your answer failed. Try again.";
+
 export function ErrorText({ children }: { readonly children: ReactNode }) {
   return (
     <p role="alert" className="text-sm text-danger" data-testid="dialog-error">

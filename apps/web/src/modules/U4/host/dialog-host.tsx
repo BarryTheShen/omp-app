@@ -240,11 +240,17 @@ export class DialogHostController implements DialogHost {
     const timeoutMs = entry.request.kind === "editor" ? undefined : entry.request.timeoutMs;
     if (timeoutMs === undefined) return;
     entry.deadlineAt = Date.now() + timeoutMs;
+    this.armTimeout(entry, timeoutMs);
+  }
+
+  /** Settles a question on its timer, unless it has been answered or closed by then. */
+  private armTimeout(entry: DialogEntry, delayMs: number): void {
+    clearTimeout(entry.timer);
     entry.timer = setTimeout(() => {
       if (entry.state === "queued" || entry.state === "active") {
         void this.settleTimeout(entry);
       }
-    }, timeoutMs);
+    }, delayMs);
   }
 
   private startNext(threadId: ThreadId): void {
@@ -293,6 +299,8 @@ export class DialogHostController implements DialogHost {
   }
 
   private async answer(entry: DialogEntry, response: DialogResponse): Promise<void> {
+    // A press while the first answer is still being sent is ignored: that send's outcome decides what the dialog shows.
+    if (entry.state === "settling") return;
     if (entry.state !== "active") throw conflict("The dialog request is no longer pending.");
     const parsed = DialogResponseSchema.safeParse(response);
     if (!parsed.success || parsed.data.kind !== entry.request.kind) {
@@ -306,8 +314,29 @@ export class DialogHostController implements DialogHost {
     try {
       await this.settleAndFinish(entry, result);
     } catch (error) {
-      this.finishRejected(entry, error);
+      if (error instanceof AppFailure && error.appError.code === "not_found") {
+        // omp no longer holds this question (its request or its chat is gone), so there is nothing to send to.
+        this.finishResolved(entry, defaultDialogResult(entry.request, { timedOut: false }));
+        return;
+      }
+      // omp did not receive the answer, so the question stays open with what the person entered. The caller says
+      // the send failed, so the same answer can be sent again.
+      this.reopenAfterFailedSend(entry);
       throw error;
+    }
+  }
+
+  /** Keeps a question open after its answer failed to send: omp still waits for an answer, so the same one can go again. */
+  private reopenAfterFailedSend(entry: DialogEntry): void {
+    entry.state = "active";
+    if (this.disposed || this.active.get(String(entry.options.threadId)) !== entry) {
+      // The chat was left or the host closed while the send was in flight: close the dialog as a chat switch does.
+      void this.settleCancelled(entry, false, false);
+    } else if (entry.options.signal?.aborted) {
+      void this.settleCancelled(entry, false, true);
+    } else if (entry.deadlineAt !== undefined) {
+      // A deadline that passed while the send was in flight settles the question at once.
+      this.armTimeout(entry, Math.max(0, entry.deadlineAt - Date.now()));
     }
   }
 

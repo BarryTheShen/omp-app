@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SelectDialogRequest } from "../contract";
 import type { DialogRenderContext } from "../host";
-import { CancelButton, DialogFrame, ErrorText, SubmitButton } from "./common";
+import { ANSWER_NOT_SENT, CancelButton, DialogFrame, ErrorText, SubmitButton } from "./common";
 
 export function SelectDialog({
   request,
@@ -41,7 +41,12 @@ export function SelectDialog({
       setError("Choose an option before continuing.");
       return;
     }
-    await context.answer({ kind: "select", value: selected });
+    setError(null);
+    try {
+      await context.answer({ kind: "select", value: selected });
+    } catch {
+      setError(ANSWER_NOT_SENT);
+    }
   };
 
   const move = (direction: 1 | -1) => {

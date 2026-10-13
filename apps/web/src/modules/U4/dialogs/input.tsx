@@ -1,7 +1,15 @@
 import { useState } from "react";
 import type { InputDialogRequest } from "../contract";
 import type { DialogRenderContext } from "../host";
-import { CancelButton, DialogFrame, ErrorText, Input, isSecretInput, SubmitButton } from "./common";
+import {
+  ANSWER_NOT_SENT,
+  CancelButton,
+  DialogFrame,
+  ErrorText,
+  Input,
+  isSecretInput,
+  SubmitButton,
+} from "./common";
 
 export function InputDialog({
   request,
@@ -21,7 +29,11 @@ export function InputDialog({
       return;
     }
     setError(null);
-    await context.answer({ kind: "input", value: blank ? "" : value });
+    try {
+      await context.answer({ kind: "input", value: blank ? "" : value });
+    } catch {
+      setError(ANSWER_NOT_SENT);
+    }
   };
 
   return (
