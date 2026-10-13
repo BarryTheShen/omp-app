@@ -127,6 +127,17 @@ describe("D2.4 mention detection and expansion", () => {
       range: { start: 0, end: 1 },
     });
   });
+  test("a # reference ends at its first space: text past it is prose, not a reference (issue 1340)", () => {
+    const text = "see #12 for details";
+    expect(detectMentionTrigger(text)).toBeNull();
+    expect(detectMentionTrigger("see #12\nnext line")).toBeNull();
+    // With the caret right after the reference, the reference is still live.
+    expect(detectMentionTrigger(text, 7)).toEqual({
+      trigger: "#",
+      query: "12",
+      range: { start: 4, end: 7 },
+    });
+  });
   test("resolves local # actions without sending a prompt", () => {
     expect(executePromptAction("copy-current-line", "first\nsecond line", 10)).toEqual({
       text: "first\nsecond line",

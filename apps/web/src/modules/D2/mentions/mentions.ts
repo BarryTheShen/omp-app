@@ -114,9 +114,14 @@ export function detectMentionTrigger(
     const character = text[index];
     if (character !== "@" && character !== "#") continue;
     if (!isBoundary(text, index)) continue;
-    // A # followed by a space is a markdown heading or prose, not a reference. It ends the search with no match,
-    // so no list opens for it and no earlier reference stretches over it (issue 1333).
-    if (character === "#" && /\s/u.test(text.charAt(index + 1))) return null;
+    // A # takes a reference only while no space stands between it and the caret. A space right after the #
+    // makes a heading (issue 1333); a space before the caret ends the reference, so the text past it is prose (issue 1340).
+    if (
+      character === "#" &&
+      (/\s/u.test(text.charAt(index + 1)) || /\s/u.test(text.slice(index + 1, cursor)))
+    ) {
+      return null;
+    }
     const query = queryForTrigger(text, index, cursor);
     if (query === null) continue;
     const githubKind = character === "#" ? githubKindBeforeHash(text, index) : undefined;

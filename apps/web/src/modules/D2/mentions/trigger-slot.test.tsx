@@ -39,6 +39,26 @@ function realGithubProvider(): MentionProvider {
   return createGithubMentionProvider({ client, folder: FolderPath.parse("/workspace") });
 }
 
+/** The GitHub provider the host answers for `#12`: issue #12, inserted as its link. */
+const issueTwelve: MentionProvider = {
+  trigger: "#",
+  kind: "github",
+  source: "a1.github-refs",
+  search: async () => [],
+  searchTyped: async () => ({
+    state: "ready",
+    candidates: [
+      {
+        id: "github:current:issue:12",
+        kind: "github",
+        source: "a1.github-refs",
+        label: "issue #12",
+        insertText: "issue://12 ",
+      },
+    ],
+  }),
+};
+
 describe("D2.4 MentionTriggerSlot", () => {
   test("opens a caret trigger popover and inserts a selected file candidate", async () => {
     const provider: MentionProvider = {
@@ -165,7 +185,7 @@ describe("D2.4 MentionTriggerSlot", () => {
     expect((input as HTMLTextAreaElement).value).toBe("before @src");
   });
 
-  test("a # with a space that finds nothing closes its list: it is prose, not a reference", async () => {
+  test("a # reference ends at its first space: the text past it never searches or opens a list", async () => {
     const empty: TriggerSearchResult = { state: "ready", candidates: [] };
     const searched = vi.fn(async (_query: string) => empty);
     const github: MentionProvider = {
@@ -186,9 +206,49 @@ describe("D2.4 MentionTriggerSlot", () => {
     const typed = "ticket #12 i";
     fireEvent.change(input, { target: { value: typed } });
     (input as HTMLTextAreaElement).setSelectionRange(typed.length, typed.length);
-    await waitFor(() => expect(searched).toHaveBeenCalledWith("12"));
-    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    await pause();
+    expect(searched).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).toBeNull();
     expect((input as HTMLTextAreaElement).value).toBe(typed);
+  });
+
+  test("a # reference followed by more text opens no list, and Enter sends the text (issue 1340)", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot providers={[issueTwelve]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    const typed = "see #12 for details";
+    fireEvent.change(input, { target: { value: typed } });
+    (input as HTMLTextAreaElement).setSelectionRange(typed.length, typed.length);
+    await pause();
+    expect(screen.queryByRole("listbox")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(submitPrompt).toHaveBeenCalledWith({ mode: "prompt", text: typed, delivery: "new" }),
+    );
+  });
+
+  test("Enter on a found # reference inserts its link and sends nothing (issue 1340)", async () => {
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot providers={[issueTwelve]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "see #12" } });
+    (input as HTMLTextAreaElement).setSelectionRange(7, 7);
+    expect(await screen.findByText("issue #12")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("see issue://12 "));
+    expect(submitPrompt).not.toHaveBeenCalled();
   });
 
   test("a # reference without a space keeps its list open, named GitHub suggestions", async () => {
