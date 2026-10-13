@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useId, useMemo, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +49,7 @@ export function HistorySearchDialog({
   const listId = useId();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
   const prompts = useMemo(() => (open ? readPrompts() : []), [open, readPrompts]);
   const results = useMemo(() => searchPrompts(prompts, query).slice(0, MAX_ROWS), [prompts, query]);
 
@@ -58,14 +59,20 @@ export function HistorySearchDialog({
     setActive(0);
   }, [open]);
 
+  /** Moves the highlight to one row and scrolls that row into view, so Enter picks a row the person can see. */
+  const highlight = (position: number): void => {
+    setActive(position);
+    document.getElementById(`${listId}-${position}`)?.scrollIntoView({ block: "nearest" });
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.nativeEvent.isComposing) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActive((position) => Math.min(position + 1, results.length - 1));
+      highlight(Math.min(active + 1, results.length - 1));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActive((position) => Math.max(position - 1, 0));
+      highlight(Math.max(active - 1, 0));
     } else if (event.key === "Enter") {
       const chosen = results[active];
       if (chosen === undefined) return;
@@ -96,6 +103,8 @@ export function HistorySearchDialog({
           onChange={(event) => {
             setQuery(event.target.value);
             setActive(0);
+            // A new search starts at the top of the list, so the row Enter picks is in view.
+            if (listRef.current) listRef.current.scrollTop = 0;
           }}
           onKeyDown={onKeyDown}
         />
@@ -106,6 +115,7 @@ export function HistorySearchDialog({
         ) : (
           <div
             id={listId}
+            ref={listRef}
             role="listbox"
             aria-label={HISTORY_SEARCH_MESSAGES.title}
             className="flex max-h-80 flex-col gap-1 overflow-y-auto"
