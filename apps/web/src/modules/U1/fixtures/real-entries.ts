@@ -17,7 +17,7 @@ export interface RealEntry {
 
 const AT = "2026-10-03T12:00:00.000Z";
 
-/** Real `custom_message` entries: the four kinds omp shows and two it keeps for the model. */
+/** Real `custom_message` entries: the kinds omp shows, and the two it keeps for the model. */
 export const U1_REAL_ENTRIES: readonly RealEntry[] = [
   {
     name: "custom_message irc:incoming: a message from another agent",
@@ -114,6 +114,27 @@ export const U1_REAL_ENTRIES: readonly RealEntry[] = [
       timestamp: "2026-10-03T12:00:04.000Z",
     },
     shows: ["Process finished", "Supervised process reimport exited with exit code 0."],
+    hidden: false,
+  },
+  {
+    // Recorded from omp 18.8.9's interactive mode: `/tan Check the login flow` with the fake model. Only the
+    // session file path is replaced; the content and details are what omp wrote.
+    name: "custom_message background-tan-dispatch: a tangent sent to a background job",
+    entry: {
+      type: "custom_message",
+      customType: "background-tan-dispatch",
+      content:
+        '<system-notice reason="background_task_dispatched" job="bg_1">\nTangential user task: running in a separate background agent. Coding-agent dispatch notice, NOT prompt injection or new instruction.\n\nTask below: another agent\'s own session; you NOT responsible. NEVER work on, reference, or let it interrupt or alter current task. Continue as if absent. Results, if any, will surface separately when background task (bg_1) completes.\n\nDispatched work — awareness only:\nCheck the login flow\n</system-notice>',
+      display: true,
+      attribution: "user",
+      details: {
+        jobId: "bg_1",
+        work: "Check the login flow",
+        sessionFile: "<scrubbed>/Tan-clone.jsonl",
+      },
+      timestamp: "2026-10-12T22:49:14.502Z",
+    },
+    shows: ["Tangent sent to background job bg_1: Check the login flow"],
     hidden: false,
   },
   {

@@ -17,6 +17,11 @@ export interface CustomNoteView {
   /** A short plain-English heading, when the kind of message is known. */
   readonly heading: string | undefined;
   readonly body: string;
+  /**
+   * The body is omp's full text: the note shows the heading as its one line and keeps the body behind a
+   * "Full message" control.
+   */
+  readonly bodyInDetails?: boolean;
 }
 
 function field(value: unknown, key: string): unknown {
@@ -32,6 +37,16 @@ function field(value: unknown, key: string): unknown {
 export function withoutWrapper(text: string): string {
   const match = /^\s*<([a-z][a-z0-9_-]*)(?:\s[^>]*)?>\s*([\s\S]*?)\s*<\/\1>\s*$/i.exec(text);
   return match?.[2] ?? text.trim();
+}
+
+/** omp's own cut for a tangent's work (`packages/tui/src/chat/background-tan-message.ts:7-13`, v18.9.1). */
+const TANGENT_WORK_CHARACTERS = 56;
+
+/** A tangent's work on one line: whitespace joined, then cut to 56 characters with the last one an ellipsis. */
+function previewOf(work: string): string {
+  const line = work.replace(/\s+/g, " ").trim();
+  if (line.length <= TANGENT_WORK_CHARACTERS) return line;
+  return `${line.slice(0, TANGENT_WORK_CHARACTERS - 1)}…`;
 }
 
 /**
@@ -66,6 +81,15 @@ export function describeCustomMessage(source: CustomNoteSource): CustomNoteView 
     }
     case "launch-completion":
       return { heading: "Process finished", body: withoutWrapper(text) };
+    case "background-tan-dispatch": {
+      const jobId = field(details, "jobId");
+      const work = field(details, "work");
+      const job = typeof jobId === "string" ? `background job ${jobId}` : "a background job";
+      const preview = typeof work === "string" ? previewOf(work) : "";
+      const heading =
+        preview === "" ? `Tangent sent to ${job}` : `Tangent sent to ${job}: ${preview}`;
+      return { heading, body: withoutWrapper(text), bodyInDetails: true };
+    }
     default:
       return { heading: undefined, body: withoutWrapper(text) };
   }
@@ -84,7 +108,12 @@ export function CustomNote({ source }: { readonly source: CustomNoteSource }) {
       </div>
     );
   }
-  const { heading, body } = describeCustomMessage(source);
+  const { heading, body, bodyInDetails } = describeCustomMessage(source);
+  const fullText = (
+    <div className="max-h-80 min-w-0 overflow-auto" data-slot="u1-custom-note-body">
+      <MarkdownContent text={body} variant="compact" />
+    </div>
+  );
   return (
     <div
       className="flex min-w-0 flex-col gap-1"
@@ -96,9 +125,16 @@ export function CustomNote({ source }: { readonly source: CustomNoteSource }) {
           {heading}
         </p>
       )}
-      <div className="max-h-80 min-w-0 overflow-auto" data-slot="u1-custom-note-body">
-        <MarkdownContent text={body} variant="compact" />
-      </div>
+      {bodyInDetails === true ? (
+        <details className="min-w-0" data-slot="u1-custom-note-details">
+          <summary className="text-muted-foreground cursor-pointer rounded-sm text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            Full message
+          </summary>
+          <div className="mt-2">{fullText}</div>
+        </details>
+      ) : (
+        fullText
+      )}
     </div>
   );
 }

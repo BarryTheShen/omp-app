@@ -62,12 +62,72 @@ describe("describeCustomMessage", () => {
     });
     expect(view).toEqual({ heading: "Message from another agent", body: "Hello." });
   });
+
+  test("a tangent is one line that names its job and work, with omp's full text kept back", () => {
+    const view = describeCustomMessage(sourceOf("custom_message background-tan-dispatch"));
+    expect(view.heading).toBe("Tangent sent to background job bg_1: Check the login flow");
+    expect(view.bodyInDetails).toBe(true);
+    expect(view.body).toContain("Tangential user task");
+    expect(view.body).not.toContain("<system-notice");
+  });
+
+  test("a tangent's work is one line of at most 56 characters, cut with an ellipsis as omp cuts it", () => {
+    const heading = (work: string) =>
+      describeCustomMessage({
+        customType: "background-tan-dispatch",
+        details: { jobId: "bg_2", work },
+        text: "<system-notice>Done.</system-notice>",
+      }).heading;
+    expect(heading("Find where\tthe\nsession   list is sorted")).toBe(
+      "Tangent sent to background job bg_2: Find where the session list is sorted",
+    );
+    expect(heading("a".repeat(56))).toBe(`Tangent sent to background job bg_2: ${"a".repeat(56)}`);
+    expect(heading("a".repeat(57))).toBe(`Tangent sent to background job bg_2: ${"a".repeat(55)}…`);
+  });
+
+  test("a tangent with no work names only its job, and one with no details names a background job", () => {
+    expect(
+      describeCustomMessage({
+        customType: "background-tan-dispatch",
+        details: { jobId: "bg_3", work: "   " },
+        text: "<system-notice>Done.</system-notice>",
+      }).heading,
+    ).toBe("Tangent sent to background job bg_3");
+    expect(
+      describeCustomMessage({
+        customType: "background-tan-dispatch",
+        details: undefined,
+        text: "<system-notice>Done.</system-notice>",
+      }),
+    ).toEqual({ heading: "Tangent sent to a background job", body: "Done.", bodyInDetails: true });
+  });
 });
 
 describe("CustomNote", () => {
   test("shows the heading and the text of one of omp's messages", () => {
     render(<CustomNote source={sourceOf("custom_message advisor")} />);
     expect(screen.getByText("Advisor note")).toBeTruthy();
+    expect(screen.getByText(/Dedup did not work/)).toBeTruthy();
+  });
+
+  test("a tangent shows its line, and omp's full text stays in a closed details control", () => {
+    const { container } = render(
+      <CustomNote source={sourceOf("custom_message background-tan-dispatch")} />,
+    );
+    expect(
+      screen.getByText("Tangent sent to background job bg_1: Check the login flow"),
+    ).toBeTruthy();
+    const details = container.querySelector<HTMLDetailsElement>(
+      '[data-slot="u1-custom-note-details"]',
+    );
+    expect(details?.open).toBe(false);
+    expect(details?.textContent).toContain("Tangential user task");
+    expect(screen.getByText("Full message")).toBeTruthy();
+  });
+
+  test("the other notes have no details control, so their text is shown", () => {
+    const { container } = render(<CustomNote source={sourceOf("custom_message advisor")} />);
+    expect(container.querySelector("details")).toBeNull();
     expect(screen.getByText(/Dedup did not work/)).toBeTruthy();
   });
 
