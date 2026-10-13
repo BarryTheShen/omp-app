@@ -174,17 +174,9 @@ export class SelectedThreadHistoryController {
    * ten times used to close and reopen the chat ten times (issue 922). A request for another chat in between starts its own
    * open, so the last pick is the one shown. A model picked for a chat omp could not restore opens it as a fresh open, and is
    * remembered: when omp refuses the chat's saved model again, the chat opens with the model remembered for it.
-   * A request for the chat that is already open and loaded returns its store while no other open is pending: the chat is
-   * not closed and opened again, so its scroll position, its open folds and a running turn stay (issue 1359). With another
-   * open pending (a New chat, say), the request queues behind it, so the last pick is the one shown.
    */
   public openExisting(threadId: ThreadId, model?: ModelChoice): Promise<OmpRuntimeStore> {
     if (model !== undefined) return this.openWithModel(threadId, model);
-    // The chat on screen is open and loaded, and no other open is pending: picking it again keeps its store, and omp is
-    // not asked to open it again.
-    const current = this.state.store;
-    if (current !== undefined && this.state.threadId === threadId && this.pendingOpens === 0)
-      return Promise.resolve(current);
     const pending = this.pendingOpen;
     if (pending !== undefined && pending.threadId === threadId) return pending.open;
     const open = this.open({ threadId }).catch((error: unknown) => {

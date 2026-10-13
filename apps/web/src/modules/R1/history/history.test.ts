@@ -282,51 +282,6 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(controller.getSnapshot().threadId).toBe(threadTwo);
   });
 
-  test("picking the chat that is already open and loaded keeps its store, and omp is not asked to open it again", async () => {
-    const subscriptions: SubscriptionRecord[] = [];
-    const opened: OpenThreadArgs[] = [];
-    const rpc = createRpc((args) => {
-      opened.push(args);
-      return { threadId: threadOne, sessionFile: null, capabilities: {} };
-    });
-    const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
-      folder,
-    });
-    const first = await controller.openExisting(threadOne);
-    const again = await controller.openExisting(threadOne);
-    expect(again).toBe(first);
-    expect(opened).toEqual([{ threadId: threadOne }]);
-    expect(subscriptions).toHaveLength(1);
-    expect(subscriptions[0]?.unsubscribed).toBe(false);
-    expect(controller.getSnapshot().threadId).toBe(threadOne);
-  });
-
-  test("a pick of the chat on screen made while a New chat is still opening opens that chat after it: the last pick is shown", async () => {
-    const subscriptions: SubscriptionRecord[] = [];
-    const opened: OpenThreadArgs[] = [];
-    const newChat = Promise.withResolvers<unknown>();
-    const rpc = createRpc((args) => {
-      opened.push(args);
-      if ("start" in args) return newChat.promise;
-      return { threadId: threadOne, sessionFile: null, capabilities: {} };
-    });
-    const controller = createSelectedThreadHistoryController({
-      client: fakeClient(rpc, subscriptions),
-      folder,
-    });
-    await controller.openExisting(threadOne);
-    const creating = controller.openNew();
-    // The pick comes while the New chat is still opening: the chat on screen is still the loaded one.
-    const picked = controller.openExisting(threadOne);
-    await vi.waitFor(() => expect(opened.some((args) => "start" in args)).toBe(true));
-    newChat.resolve({ threadId: threadTwo, sessionFile: null, capabilities: {} });
-    await creating;
-    await picked;
-    expect(opened.at(-1)).toEqual({ threadId: threadOne });
-    expect(controller.getSnapshot().threadId).toBe(threadOne);
-  });
-
   test("opening replays the thread's buffered events and treats a get_state answer as ready", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
