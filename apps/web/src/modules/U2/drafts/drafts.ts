@@ -528,7 +528,8 @@ export class DraftController {
     this.setDraft(text, attachments);
     try {
       await submitPrompt(intent);
-      await this.clearAfterAdmission(intent.text);
+      // The draft holds the line with its mode prefix (`!pwd`): compare against that, not the bare command.
+      await this.clearAfterAdmission(text);
     } catch (error) {
       await this.recordFailedSend(text, attachments, error);
       throw error;

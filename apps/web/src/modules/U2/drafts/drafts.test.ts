@@ -305,6 +305,43 @@ describe("U2.4 DraftController", () => {
     expect(controller.getSnapshot().text).toBe("");
   });
 
+  test("an admitted `!` command clears the draft and its failed sends, as a prompt does", async () => {
+    const timers = new FakeTimers();
+    const store = new FakeDraftStore();
+    const controller = new DraftController({ store, scope, timers });
+    await controller.load();
+    const failure = new AppFailure({ code: "permission", message: "rejected", retryable: false });
+    await expect(
+      controller.submit(prompt("keep"), async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+    expect(controller.getSnapshot().failedSends).toHaveLength(1);
+    await controller.submit({ mode: "bash", text: "pwd", delivery: "new" }, async () => undefined);
+    expect(store.clearCount).toBe(1);
+    expect(controller.getSnapshot()).toMatchObject({ text: "", failedSends: [] });
+  });
+
+  test("an admitted `$` command clears the draft and its failed sends, as a prompt does", async () => {
+    const timers = new FakeTimers();
+    const store = new FakeDraftStore();
+    const controller = new DraftController({ store, scope, timers });
+    await controller.load();
+    const failure = new AppFailure({ code: "permission", message: "rejected", retryable: false });
+    await expect(
+      controller.submit(prompt("keep"), async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+    expect(controller.getSnapshot().failedSends).toHaveLength(1);
+    await controller.submit(
+      { mode: "python", text: "print(1)", delivery: "new" },
+      async () => undefined,
+    );
+    expect(store.clearCount).toBe(1);
+    expect(controller.getSnapshot()).toMatchObject({ text: "", failedSends: [] });
+  });
+
   test("keeps the typed mode prefix of a refused command line in the draft", async () => {
     const timers = new FakeTimers();
     const store = new FakeDraftStore();
