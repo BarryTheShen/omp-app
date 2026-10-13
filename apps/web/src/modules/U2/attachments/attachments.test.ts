@@ -205,6 +205,20 @@ describe("U2.3 AttachmentManager", () => {
     );
   });
 
+  test("follows the Large Paste Menu threshold: 0 turns the choice off, and a changed value moves it", () => {
+    const hundred = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
+    expect(classifyLargePaste(hundred, 0)).toMatchObject({ kind: "inline", threshold: 0 });
+    expect(classifyLargePaste(hundred, 250)).toMatchObject({ kind: "inline", threshold: 250 });
+    expect(classifyLargePaste(hundred, 50)).toMatchObject({ kind: "choose", threshold: 50 });
+  });
+
+  test("offers the choice only to a paste omp collapses: more than 10 lines or more than 1000 characters", () => {
+    const tenLines = Array.from({ length: 10 }, (_, index) => `${index}`).join("\n");
+    expect(classifyLargePaste(tenLines, 10)).toMatchObject({ kind: "inline", lineCount: 10 });
+    const wideLines = Array.from({ length: 5 }, () => "x".repeat(300)).join("\n");
+    expect(classifyLargePaste(wideLines, 5)).toMatchObject({ kind: "choose", lineCount: 5 });
+  });
+
   test("uses omp's 100-line large-paste threshold and supports inline or attachment choices", async () => {
     const blobs = new MemoryBlobStore();
     const manager = new AttachmentManager({ blobStore: blobs });

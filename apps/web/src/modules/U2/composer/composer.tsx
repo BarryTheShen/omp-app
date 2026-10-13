@@ -40,6 +40,7 @@ import {
   textForMode,
 } from "../modes";
 import { type ArrowGesture, arrowGestureStep, NO_ARROW_GESTURE } from "./arrow-gesture";
+import { useLargePasteMenuThreshold } from "./large-paste-menu";
 import { offeredFiles, refusalNotice } from "./refused-files";
 import { useRemeasureOnWidthChange } from "./remeasure";
 
@@ -356,12 +357,13 @@ export function ComposerSurface({
     }
   }, [composer, insertLargePaste, largePaste]);
 
+  const largePasteThreshold = useLargePasteMenuThreshold();
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
       // A pasted file is attached by assistant-ui; only plain text can be a large paste.
       if (event.clipboardData.files.length > 0) return;
       const pasted = event.clipboardData.getData("text/plain");
-      const decision = classifyLargePaste(pasted);
+      const decision = classifyLargePaste(pasted, largePasteThreshold);
       if (decision.kind !== "choose") return;
       event.preventDefault();
       // A second large paste while a choice is open: the first goes inline now, so no text is dropped.
@@ -374,7 +376,7 @@ export function ComposerSurface({
         selectionEnd: input.selectionEnd,
       });
     },
-    [insertLargePaste, largePaste],
+    [insertLargePaste, largePaste, largePasteThreshold],
   );
 
   const handleSubmitCapture = useCallback(

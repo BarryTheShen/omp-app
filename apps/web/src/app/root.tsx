@@ -192,6 +192,7 @@ import {
 } from "./external-editor-dialog";
 import { FolderSwitcher } from "./folder-switcher";
 import { HistorySearchDialog, useHistorySearchShortcut } from "./history-search-dialog";
+import { LargePasteMenuProvider } from "./large-paste-menu";
 import { useChatSessionInfo, useChatTodoStore } from "./owned-stores";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
@@ -305,6 +306,22 @@ function writeSessionValue(key: string, value: string | null): void {
     // Reload persistence is best effort; the visible application remains usable.
   }
 }
+/** Runs `onExit` when its content leaves the screen: the overlay around it has closed, however it was closed. */
+function RunOnExit({
+  onExit,
+  children,
+}: {
+  readonly onExit: () => void;
+  readonly children: ReactNode;
+}) {
+  const latest = useRef(onExit);
+  useEffect(() => {
+    latest.current = onExit;
+  }, [onExit]);
+  useEffect(() => () => latest.current(), []);
+  return <>{children}</>;
+}
+
 function SettingsButton({
   onOpenSettings,
   threadId,
@@ -1973,6 +1990,8 @@ function ConnectedApp({
     await openThread(started);
     return started;
   }, [openThread, remote]);
+  // How many times the Settings screen has closed. The Large Paste Menu is read again each time (see RunOnExit).
+  const [settingsClosed, setSettingsClosed] = useState(0);
   const openSettings = useCallback(
     (threadId: ThreadId | null, restoreFocus?: HTMLElement) => {
       overlay.open({
@@ -1982,19 +2001,21 @@ function ConnectedApp({
         width: "viewport",
         className: SETTINGS_FRAME_CLASS,
         content: ({ close, requestClose, update }) => (
-          <SettingsScreen
-            capabilities={capabilities}
-            client={client}
-            folder={folder}
-            threadId={threadId}
-            onClose={() => requestClose()}
-            onUnsavedChange={(unsavedChanges) => update({ unsavedChanges })}
-            onStartChat={async () => {
-              const started = await startChat();
-              close("programmatic");
-              openProviderSignIn({ overlay, client, threadId: started, capabilities });
-            }}
-          />
+          <RunOnExit onExit={() => setSettingsClosed((count) => count + 1)}>
+            <SettingsScreen
+              capabilities={capabilities}
+              client={client}
+              folder={folder}
+              threadId={threadId}
+              onClose={() => requestClose()}
+              onUnsavedChange={(unsavedChanges) => update({ unsavedChanges })}
+              onStartChat={async () => {
+                const started = await startChat();
+                close("programmatic");
+                openProviderSignIn({ overlay, client, threadId: started, capabilities });
+              }}
+            />
+          </RunOnExit>
         ),
       });
     },
@@ -2086,30 +2107,32 @@ function ConnectedApp({
   };
   if (history.store && history.threadId) {
     return (
-      <ActiveThreadContent
-        capabilities={activeCapabilities}
-        catalog={catalog}
-        client={client}
-        folder={folder}
-        history={history}
-        resumePlace={resumePlace}
-        connectionSurface={connectionSurface}
-        watchSurface={watchSurface}
-        onLoadOlder={controller === null ? undefined : () => controller.loadOlder()}
-        onLoadFullOutput={controller === null ? undefined : (id) => controller.loadFullOutput(id)}
-        onRefreshAfterCommand={
-          controller === null ? undefined : () => controller.refreshAfterCommand()
-        }
-        leftSidebar={leftSidebar}
-        onOpenSettings={openSettings}
-        onPromptSent={onPromptSent}
-        openThread={openThread}
-        deliverToOpenChat={deliverToOpenChat}
-        registerLiveChat={registerLiveChat}
-        remote={remote}
-        title={title}
-        p3Runs={p3Runs}
-      />
+      <LargePasteMenuProvider client={client} folder={folder} settingsClosed={settingsClosed}>
+        <ActiveThreadContent
+          capabilities={activeCapabilities}
+          catalog={catalog}
+          client={client}
+          folder={folder}
+          history={history}
+          resumePlace={resumePlace}
+          connectionSurface={connectionSurface}
+          watchSurface={watchSurface}
+          onLoadOlder={controller === null ? undefined : () => controller.loadOlder()}
+          onLoadFullOutput={controller === null ? undefined : (id) => controller.loadFullOutput(id)}
+          onRefreshAfterCommand={
+            controller === null ? undefined : () => controller.refreshAfterCommand()
+          }
+          leftSidebar={leftSidebar}
+          onOpenSettings={openSettings}
+          onPromptSent={onPromptSent}
+          openThread={openThread}
+          deliverToOpenChat={deliverToOpenChat}
+          registerLiveChat={registerLiveChat}
+          remote={remote}
+          title={title}
+          p3Runs={p3Runs}
+        />
+      </LargePasteMenuProvider>
     );
   }
   const shownFailure = openFailureIn(openFailure, folder);

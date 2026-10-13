@@ -13,6 +13,7 @@ export {
   applyLargePaste,
   attachmentHoldReason,
   classifyLargePaste,
+  DEFAULT_LARGE_PASTE_LINE_THRESHOLD,
   pastedTextName,
   withPastedText,
 } from "./attachments";

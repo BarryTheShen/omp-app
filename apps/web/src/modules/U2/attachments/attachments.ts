@@ -362,13 +362,22 @@ export function attachmentHoldReason(state: AttachmentState): string | undefined
   return undefined;
 }
 
+/** omp collapses only a "marker-sized" paste: more than this many lines, or more than the characters below. */
+const MARKER_LINES = 10;
+const MARKER_CHARACTERS = 1000;
+
+/**
+ * Whether a paste is offered the choice of where it goes, as omp decides it: the paste is marker-sized and reaches the
+ * threshold in lines. A threshold that is not above 0 turns the choice off, so the paste is left to the box.
+ */
 export function classifyLargePaste(
   text: string,
   threshold = DEFAULT_LARGE_PASTE_LINE_THRESHOLD,
 ): LargePasteDecision {
   const lines = lineCount(text);
+  const markerSized = lines > MARKER_LINES || text.length > MARKER_CHARACTERS;
   return {
-    kind: lines >= threshold && threshold > 0 ? "choose" : "inline",
+    kind: threshold > 0 && lines >= threshold && markerSized ? "choose" : "inline",
     text,
     lineCount: lines,
     threshold,

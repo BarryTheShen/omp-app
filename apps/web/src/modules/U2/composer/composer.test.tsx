@@ -11,6 +11,7 @@ import type { PromptIntent } from "../../R0/runtime/runtime";
 import { type AttachmentBlobStore, AttachmentManager } from "../attachments";
 import type { SubmitPolicy } from "../contract";
 import { ComposerSurface } from "./composer";
+import { LargePasteMenuThresholdContext } from "./large-paste-menu";
 
 afterEach(() => cleanup());
 function RuntimeProvider({ running, children }: PropsWithChildren<{ readonly running: boolean }>) {
@@ -676,6 +677,35 @@ describe("a large paste in the composer", () => {
     const input = screen.getByRole("textbox", { name: "Message input" });
     expect(pasteText(input, LARGE.split("\n").slice(0, 99).join("\n"))).toBe(true);
     expect(screen.queryByText(/Where should they go/)).toBeNull();
+  });
+
+  test("with the Large Paste Menu off (0), a paste of 100 lines is left to the box with no choice", () => {
+    render(
+      <RuntimeProvider running={false}>
+        <LargePasteMenuThresholdContext.Provider value={0}>
+          <ComposerSurface submitPrompt={vi.fn(async () => undefined)} cancel={() => undefined} />
+        </LargePasteMenuThresholdContext.Provider>
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    expect(pasteText(input, LARGE)).toBe(true);
+    expect(screen.queryByText(/Where should they go/)).toBeNull();
+  });
+
+  test("a changed threshold moves the choice: 100 lines is left to the box at 250, and 250 lines is offered it", () => {
+    render(
+      <RuntimeProvider running={false}>
+        <LargePasteMenuThresholdContext.Provider value={250}>
+          <ComposerSurface submitPrompt={vi.fn(async () => undefined)} cancel={() => undefined} />
+        </LargePasteMenuThresholdContext.Provider>
+      </RuntimeProvider>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    expect(pasteText(input, LARGE)).toBe(true);
+    expect(screen.queryByText(/Where should they go/)).toBeNull();
+    const longer = Array.from({ length: 250 }, (_, index) => `line ${index + 1}`).join("\n");
+    expect(pasteText(input, longer)).toBe(false);
+    expect(screen.getByText("Pasted 250 lines. Where should they go?")).toBeTruthy();
   });
 
   test("Paste inline puts the full text where it was pasted", async () => {
