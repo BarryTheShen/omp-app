@@ -1573,6 +1573,40 @@ describe("A0.7 RpcSessionPort handlers", () => {
       ),
     ).rejects.toMatchObject({ appError: { code: "cancelled" } });
   });
+
+  test("an open whose connection closed while it waited adds no viewer and starts no omp", async () => {
+    const created: FakeProcess[] = [];
+    const processRegistry = new OmpProcessRegistry({
+      createProcess: (options: OmpProcessOptions) => {
+        const process = new FakeProcess(options, {
+          threadId: authorityThread,
+          sessionFile: authorityFile,
+        });
+        created.push(process);
+        return process;
+      },
+    });
+    // The chat's omp is still stopping, so the open waits for it to be gone.
+    const stop = Promise.withResolvers<void>();
+    processRegistry.whenGone = () => stop.promise;
+    const registration = createA0PortRegistrations({ ...context(created), processRegistry })[0];
+    if (registration === undefined) throw new Error("missing A0 registration");
+    const handlers = registration.handlers as HandlerSet;
+    const controller = new AbortController();
+    const opened = getHandler(handlers, "open")(
+      { threadId: authorityThread },
+      { ...call("tab"), signal: controller.signal },
+    );
+
+    // The tab closes while the open waits: the dispatcher aborts the call, then releases the connection.
+    controller.abort("connection_closed");
+    await registration.onConnectionClosed?.("tab");
+    stop.resolve();
+
+    await expect(opened).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    expect(created).toHaveLength(0);
+    expect(processRegistry.has(authorityThread)).toBe(false);
+  });
 });
 
 describe("A0.7 AppPort handlers", () => {

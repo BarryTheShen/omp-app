@@ -311,6 +311,16 @@ export class RpcSessionPortRuntime {
     const bootstrap = await this.#resolveBootstrap(args, call);
     // A process the registry is stopping for this thread holds the session's lease until it exits.
     await this.#context.processRegistry.whenGone(bootstrap.threadId, "opened");
+    // The connection may have closed while this open waited. Its releaseConnection ran then, before this open had added
+    // a viewer, so a viewer added now would never be released: the chat's omp would run until the app quits. Nothing
+    // awaits between this check and the viewer, so an open that passes it is released by its connection's close.
+    if (call.signal.aborted) {
+      throw new AppFailure({
+        code: "cancelled",
+        message: "Opening the chat was cancelled.",
+        retryable: false,
+      });
+    }
     const existing = this.#entries.get(bootstrap.threadId);
     if (existing !== undefined) {
       if (existing.bootstrap.folderPath !== bootstrap.folderPath) {
