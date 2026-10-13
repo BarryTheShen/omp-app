@@ -439,13 +439,14 @@ export class ConfigStoreService {
   private readonly options: ConfigStoreOptions;
   private readonly runtimeValues: LayerValues;
   private readonly overlayValues: LayerValues;
-  private readonly defaultValues: LayerValues;
+  private defaultValues: LayerValues;
   private readonly fallbackEnvironmentKeys: ReadonlySet<string>;
   private readonly secretKeys: ReadonlySet<string>;
   private readonly subscriptions = new Map<number, Subscription>();
   private readonly scopes = new Map<string, ScopeState>();
   private readonly watchedPaths = new Map<string, WatchedPath>();
   private nextSubscriptionId = 1;
+  private readonly lifetime = new AbortController();
 
   constructor(options: ConfigStoreOptions = {}) {
     this.options = options;
@@ -548,6 +549,54 @@ export class ConfigStoreService {
     };
   }
 
+  /**
+   * Hands the store omp's registered defaults once they are loaded, after the store was created without them.
+   * Each subscriber hears about every setting whose entry changed (its value, its source, or the defaults it overrides),
+   * so an open settings panel shows the default.
+   */
+  async setDefaults(defaults: Readonly<Record<string, unknown>>): Promise<void> {
+    const next = mapValues(defaults);
+    const keys = mapKeys(this.defaultValues, next).filter(
+      (key) => !valuesEqual(this.defaultValues.get(key), next.get(key)),
+    );
+    if (keys.length === 0) return;
+    // What each subscribed scope reads before the swap; only the entries that differ afterwards are published.
+    const previous: { scope: ScopeState; read: ScopeRead; entries: (string | undefined)[] }[] = [];
+    for (const scope of this.scopes.values()) {
+      try {
+        const read = await this.readScope(scope.folder);
+        const entries = keys.map((key) => JSON.stringify(this.settingEntry(key, read)));
+        previous.push({ scope, read, entries });
+      } catch (error) {
+        reportError(this.options.onError, error);
+      }
+    }
+    this.defaultValues = next;
+    for (const { scope, read, entries } of previous) {
+      for (const [index, key] of keys.entries()) {
+        if (entries[index] === JSON.stringify(this.settingEntry(key, read))) continue;
+        const change: ConfigChanged = {
+          key,
+          layer: "default",
+          folder: null,
+          revision: read.revision,
+          entry: this.eventEntry(key, read, "default"),
+        };
+        for (const subscriptionId of scope.subscriptions) {
+          const subscription = this.subscriptions.get(subscriptionId);
+          if (!subscription) continue;
+          try {
+            await subscription.ready;
+            const result = subscription.listener(change);
+            if (result && typeof result === "object" && "then" in result) await result;
+          } catch (error) {
+            reportError(this.options.onError, error);
+          }
+        }
+      }
+    }
+  }
+
   /** Subscribe to effective changes visible from one folder (`null` is global/app only). */
   subscribe(folder: string | null, listener: ConfigChangeListener): () => void {
     const normalizedFolder = this.validateFolder(folder);
@@ -585,7 +634,13 @@ export class ConfigStoreService {
     return this.subscribe(folder, listener);
   }
 
+  /** Aborts when the store is disposed, so work started for it (a retry of omp's defaults) stops with it. */
+  get disposeSignal(): AbortSignal {
+    return this.lifetime.signal;
+  }
+
   dispose(): void {
+    this.lifetime.abort();
     for (const watcher of this.watchedPaths.values()) watcher.watcher.dispose();
     this.watchedPaths.clear();
     this.subscriptions.clear();
@@ -1062,13 +1117,24 @@ export class ConfigStoreService {
     }
   }
 
-  private eventEntry(key: string, scope: ScopeRead, layer: PersistedLayer): ConfigEntry {
+  /** The entry a read returns for the key, or `undefined` when no layer and no default sets it. */
+  private settingEntry(key: string, scope: ScopeRead): ConfigEntry | undefined {
+    try {
+      return this.entryForKey(key, scope);
+    } catch (error) {
+      if (isAppFailure(error) && error.appError.code === "not_found") return undefined;
+      throw error;
+    }
+  }
+
+  private eventEntry(key: string, scope: ScopeRead, layer: ConfigSource): ConfigEntry {
     try {
       return this.entryForKey(key, scope);
     } catch (error) {
       if (!isAppFailure(error) || error.appError.code !== "not_found") throw error;
       const source: ConfigSource = layer;
-      const path = scope.layers.get(layer)?.selectedPath;
+      const persisted = CONFIG_LAYERS.find((candidate) => candidate === layer);
+      const path = persisted === undefined ? undefined : scope.layers.get(persisted)?.selectedPath;
       if (this.isSecretKey(key)) {
         return {
           key,

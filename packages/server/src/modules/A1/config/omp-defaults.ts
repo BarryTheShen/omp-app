@@ -9,6 +9,10 @@ import {
 } from "./config-store";
 
 const DEFAULTS_TIMEOUT_MS = 5_000;
+/** A patient attempt waits this long: a busy computer can need longer than a quiet one (the omp probe waits 20 s). */
+const PATIENT_DEFAULTS_TIMEOUT_MS = 20_000;
+/** Patient attempts stop this long after the first run ran out of time. */
+const PATIENT_DEFAULTS_DEADLINE_MS = 60_000;
 const LEFTOVER_FOLDER_WARNING =
   "omp setting defaults loaded, but their temporary folder could not be removed.";
 
@@ -29,13 +33,21 @@ export interface OmpDefaultsProbeOptions {
   readonly launchDirectory: string;
   readonly pathEnvironment: string;
   readonly timeoutMs?: number;
+  /** Test-only: how long each patient attempt waits, and how long the retries may run, after a timeout. */
+  readonly patientTimeoutMs?: number;
+  readonly patientDeadlineMs?: number;
   /** Test-only parent for the short-lived isolated config root. */
   readonly temporaryDirectoryBase?: string;
   readonly onWarning?: (message: string) => void;
 }
 
-/** The defaults, or the reason they could not be loaded (a few words, no output from omp). */
-type Loaded = { readonly defaults: Readonly<Record<string, unknown>> } | { readonly cause: string };
+/**
+ * The defaults, or the reason they could not be loaded (a few words, no output from omp). `timedOut` means omp
+ * ran out of time, so asking again may get an answer.
+ */
+type Loaded =
+  | { readonly defaults: Readonly<Record<string, unknown>> }
+  | { readonly cause: string; readonly timedOut?: boolean };
 
 interface LoadResult {
   readonly loaded: Loaded;
@@ -52,21 +64,68 @@ export async function createConfigStoreWithOmpDefaults(
   options: Omit<ConfigStoreOptions, "defaultValues">,
   probe: OmpDefaultsProbeOptions,
 ): Promise<ConfigStoreService> {
-  const { loaded, leftover } = await loadOmpDefaults(probe);
-  const messages: string[] = [];
-  if (!("defaults" in loaded)) messages.push(defaultsWarning(loaded.cause));
-  if (leftover) messages.push(LEFTOVER_FOLDER_WARNING);
+  const first = await loadOmpDefaults(probe);
+  const store = createConfigStore({
+    ...options,
+    ...("defaults" in first.loaded ? { defaultValues: first.loaded.defaults } : {}),
+  });
+  const leftover = first.leftover ? [LEFTOVER_FOLDER_WARNING] : [];
+  if ("defaults" in first.loaded) {
+    reportWarnings(probe, leftover);
+  } else if (first.loaded.timedOut) {
+    const waiting = `omp setting defaults could not be loaded (${first.loaded.cause}); trying again in the background.`;
+    reportWarnings(probe, [waiting, ...leftover]);
+    retryPatiently(store, probe, first.loaded.cause).catch((error: unknown) =>
+      reportWarnings(probe, [
+        defaultsWarning(error instanceof Error ? error.message : String(error)),
+      ]),
+    );
+  } else {
+    reportWarnings(probe, [defaultsWarning(first.loaded.cause), ...leftover]);
+  }
+  return store;
+}
+
+/**
+ * Asks omp again, patiently, after a first run ran out of time. The server is already listening: the defaults
+ * reach the store when omp answers, and the store tells open settings panels about them.
+ */
+async function retryPatiently(
+  store: ConfigStoreService,
+  probe: OmpDefaultsProbeOptions,
+  firstCause: string,
+): Promise<void> {
+  const deadline = Date.now() + (probe.patientDeadlineMs ?? PATIENT_DEFAULTS_DEADLINE_MS);
+  let cause = firstCause;
+  while (!store.disposeSignal.aborted && Date.now() < deadline) {
+    const timeoutMs = Math.min(
+      probe.patientTimeoutMs ?? PATIENT_DEFAULTS_TIMEOUT_MS,
+      deadline - Date.now(),
+    );
+    const attempt = await loadOmpDefaults({ ...probe, timeoutMs }, store.disposeSignal);
+    if (store.disposeSignal.aborted) return;
+    if (attempt.leftover) reportWarnings(probe, [LEFTOVER_FOLDER_WARNING]);
+    if ("defaults" in attempt.loaded) {
+      await store.setDefaults(attempt.loaded.defaults);
+      return;
+    }
+    cause = attempt.loaded.cause;
+    if (!attempt.loaded.timedOut) break;
+  }
+  if (!store.disposeSignal.aborted) reportWarnings(probe, [defaultsWarning(cause)]);
+}
+
+function reportWarnings(probe: OmpDefaultsProbeOptions, messages: readonly string[]): void {
   for (const message of messages) {
     if (probe.onWarning) probe.onWarning(message);
     else console.warn(message);
   }
-  return createConfigStore({
-    ...options,
-    ...("defaults" in loaded ? { defaultValues: loaded.defaults } : {}),
-  });
 }
 
-async function loadOmpDefaults(options: OmpDefaultsProbeOptions): Promise<LoadResult> {
+async function loadOmpDefaults(
+  options: OmpDefaultsProbeOptions,
+  signal?: AbortSignal,
+): Promise<LoadResult> {
   let temporaryRoot: string | undefined;
   let loaded: Loaded;
   try {
@@ -81,7 +140,7 @@ async function loadOmpDefaults(options: OmpDefaultsProbeOptions): Promise<LoadRe
       mkdir(agent, { recursive: true }),
       mkdir(temp, { recursive: true }),
     ]);
-    loaded = await runConfigList(options, temporaryRoot, home, agent, temp);
+    loaded = await runConfigList(options, temporaryRoot, home, agent, temp, signal);
   } catch {
     loaded = { cause: "the temporary config folder could not be created" };
   }
@@ -102,6 +161,7 @@ async function runConfigList(
   home: string,
   agent: string,
   temp: string,
+  signal?: AbortSignal,
 ): Promise<Loaded> {
   const binary = resolveBinary(options.binary, options.launchDirectory);
   const env = {
@@ -125,6 +185,11 @@ async function runConfigList(
     return { cause: "omp could not be started" };
   }
 
+  // Disposing the store stops a retry still waiting for omp, and the process group with it.
+  const stop = () => stopProcessGroup(child);
+  signal?.addEventListener("abort", stop, { once: true });
+  if (signal?.aborted) stop();
+
   const timeoutMs = normalizeTimeout(options.timeoutMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<"timeout">((resolve) => {
@@ -142,12 +207,15 @@ async function runConfigList(
   );
   try {
     const outcome = await Promise.race([finished, deadline]);
-    if (outcome === "timeout") return { cause: `omp timed out after ${timeoutMs} ms` };
+    if (outcome === "timeout") {
+      return { cause: `omp timed out after ${timeoutMs} ms`, timedOut: true };
+    }
     if (outcome === undefined) return { cause: "omp's output could not be read" };
     if (outcome.exitCode !== 0) return { cause: `omp exited with code ${outcome.exitCode}` };
     return parseDefaults(outcome.stdout);
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", stop);
     stopProcessGroup(child);
   }
 }

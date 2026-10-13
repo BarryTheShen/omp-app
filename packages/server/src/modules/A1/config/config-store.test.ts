@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { AppFailure } from "@omp-app/contracts";
+import { AppFailure, type ConfigChanged } from "@omp-app/contracts";
 import { ConfigStoreService, createConfigStore } from "./config-store";
 
 const temporaryDirectories: string[] = [];
@@ -360,5 +360,52 @@ describe("credential names and value types", () => {
       secret: true,
       isSet: true,
     });
+  });
+});
+
+describe("ConfigStoreService defaults handed over after creation", () => {
+  test("setDefaults publishes each setting whose entry changed; a user value still wins", async () => {
+    const root = await temporaryDirectory();
+    const agent = join(root, "agent");
+    await writeText(join(agent, "config.yml"), "model: user-value\n");
+    const store = new ConfigStoreService({ agentDir: agent, appDataDir: join(root, "app") });
+    const changes: ConfigChanged[] = [];
+    const unsubscribe = store.subscribe(null, (change) => {
+      changes.push(change);
+    });
+    try {
+      await store.setDefaults({ model: "omp-default", "compaction.enabled": false });
+      expect(changes.map((change) => change.key).sort()).toEqual(["compaction.enabled", "model"]);
+      expect(changes.find((change) => change.key === "compaction.enabled")).toMatchObject({
+        layer: "default",
+        folder: null,
+        entry: { key: "compaction.enabled", value: false, source: "default" },
+      });
+      // The user's value still wins; its entry now lists the omp default it overrides.
+      expect(await store.read({ key: "model", folder: null })).toMatchObject({
+        value: "user-value",
+        source: "global",
+        overrides: ["default"],
+      });
+      expect(changes.find((change) => change.key === "model")).toMatchObject({
+        entry: { value: "user-value", source: "global", overrides: ["default"] },
+      });
+
+      const afterFirst = changes.length;
+      await store.setDefaults({ model: "omp-default", "compaction.enabled": true });
+      expect(changes.slice(afterFirst)).toEqual([
+        expect.objectContaining({
+          key: "compaction.enabled",
+          entry: expect.objectContaining({ value: true, source: "default" }),
+        }),
+      ]);
+
+      const afterSecond = changes.length;
+      await store.setDefaults({ model: "omp-default", "compaction.enabled": true });
+      expect(changes).toHaveLength(afterSecond);
+    } finally {
+      unsubscribe();
+      store.dispose();
+    }
   });
 });

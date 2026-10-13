@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { AppFailure } from "@omp-app/contracts";
+import { AppFailure, type ConfigChanged } from "@omp-app/contracts";
 import type { ConfigStoreService } from "./config-store";
 import { createConfigStoreWithOmpDefaults } from "./omp-defaults";
 
@@ -23,7 +23,18 @@ async function fakeOmp(root: string, body: string): Promise<string> {
   return binary;
 }
 
-async function serverStore(root: string, binary: string, timeoutMs = 500) {
+interface PatientDefaults {
+  readonly patientTimeoutMs?: number;
+  readonly patientDeadlineMs?: number;
+  readonly onWarning?: (message: string) => void;
+}
+
+async function serverStore(
+  root: string,
+  binary: string,
+  timeoutMs = 500,
+  patient: PatientDefaults = {},
+) {
   const warnings: string[] = [];
   const store = await createConfigStoreWithOmpDefaults(
     { agentDir: join(root, "agent"), appDataDir: join(root, "app-data") },
@@ -33,7 +44,11 @@ async function serverStore(root: string, binary: string, timeoutMs = 500) {
       pathEnvironment: Bun.env.PATH ?? "",
       temporaryDirectoryBase: root,
       timeoutMs,
-      onWarning: (message) => warnings.push(message),
+      ...patient,
+      onWarning: (message) => {
+        warnings.push(message);
+        patient.onWarning?.(message);
+      },
     },
   );
   stores.push(store);
@@ -185,7 +200,10 @@ describe("omp ConfigStore defaults: wrappers, isolation, cleanup and causes", ()
       await fakeOmp(root, `${LIST_GUARD}\nprintf '{"model":{"value":"x"}}\\n'`),
     );
     await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nexit 1`));
-    await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 3`), 100);
+    // A deadline of zero leaves no time for a retry, so this checks the folder of the one run.
+    await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 3`), 100, {
+      patientDeadlineMs: 0,
+    });
     expect(await leftoverDefaultsFolders(root)).toEqual([]);
   });
 
@@ -228,5 +246,108 @@ describe("omp ConfigStore defaults: wrappers, isolation, cleanup and causes", ()
         await fakeOmp(root, `${LIST_GUARD}\nprintf '{"model":"omp-default"}\\n'`),
       ),
     ).toContain("unexpected shape");
+  });
+});
+
+async function fileLines(path: string): Promise<string[]> {
+  const text = await readFile(path, "utf8").catch(() => "");
+  return text.split("\n").filter((line) => line !== "");
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Waits for an operating-system event (a child process starting or ending) that no in-process signal reports,
+ * so a bounded poll is the only way to observe it; the child is a real process, so real time is the subject.
+ */
+async function untilOsEvent(condition: () => boolean | Promise<boolean>): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (!(await condition())) {
+    if (Date.now() > deadline) throw new Error("The operating system did not reach the state.");
+    await Bun.sleep(10);
+  }
+}
+
+describe("omp ConfigStore defaults: a slow first run", () => {
+  test("a first run that runs out of time is asked again; the defaults reach the store and subscribers", async () => {
+    const root = await temporaryRoot();
+    const agent = join(root, "agent");
+    await mkdir(agent, { recursive: true });
+    await writeFile(join(agent, "config.yml"), "model: user-value\n", "utf8");
+    const runs = join(root, "runs");
+    // A cold first run is slow; the run after it answers at once.
+    const binary = await fakeOmp(
+      root,
+      [
+        LIST_GUARD,
+        `echo run >> "${runs}"`,
+        `if [ "$(wc -l < "${runs}")" -le 1 ]; then exec /bin/sleep 30; fi`,
+        `printf '%s\\n' '{"model":{"value":"omp-default"},"compaction.enabled":{"value":false}}'`,
+      ].join("\n"),
+    );
+    const { store, warnings } = await serverStore(root, binary, 50, { patientTimeoutMs: 5_000 });
+    const changes: ConfigChanged[] = [];
+    const firstChange = Promise.withResolvers<void>();
+    store.subscribe(null, (change) => {
+      changes.push(change);
+      firstChange.resolve();
+    });
+    await firstChange.promise;
+    expect(changes[0]).toMatchObject({
+      key: "compaction.enabled",
+      layer: "default",
+      folder: null,
+      entry: { key: "compaction.enabled", value: false, source: "default" },
+    });
+    expect(await store.read({ key: "compaction.enabled", folder: null })).toMatchObject({
+      value: false,
+      source: "default",
+    });
+    expect(await probeValue(store, "model")).toBe("user-value");
+    expect(warnings).toEqual([expect.stringContaining("trying again in the background")]);
+    expect(await fileLines(runs)).toHaveLength(2);
+    expect(await leftoverDefaultsFolders(root)).toEqual([]);
+  });
+
+  test("a retry that also runs out of time gives up and says why", async () => {
+    const root = await temporaryRoot();
+    const binary = await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 30`);
+    const gaveUp = Promise.withResolvers<string>();
+    const { store, warnings } = await serverStore(root, binary, 50, {
+      patientTimeoutMs: 100,
+      patientDeadlineMs: 400,
+      onWarning: (message) => {
+        if (message.includes("continuing")) gaveUp.resolve(message);
+      },
+    });
+    const finalWarning = await gaveUp.promise;
+    expect(warnings).toEqual([
+      expect.stringContaining("trying again in the background"),
+      finalWarning,
+    ]);
+    expect(finalWarning).toContain("timed out after");
+    await expectNotFound(store, "model");
+  });
+
+  test("disposing the store stops a retry that is still waiting for omp", async () => {
+    const root = await temporaryRoot();
+    const pids = join(root, "pids");
+    // Every run records its process id, then waits far longer than this test.
+    const binary = await fakeOmp(root, `${LIST_GUARD}\necho $$ >> "${pids}"\nexec /bin/sleep 60`);
+    const { store } = await serverStore(root, binary, 50, {
+      patientTimeoutMs: 60_000,
+      patientDeadlineMs: 120_000,
+    });
+    await untilOsEvent(async () => (await fileLines(pids)).length === 2);
+    const retryPid = Number((await fileLines(pids))[1]);
+    store.dispose();
+    await untilOsEvent(() => !processAlive(retryPid));
   });
 });
