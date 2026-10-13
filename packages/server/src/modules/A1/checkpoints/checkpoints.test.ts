@@ -321,6 +321,142 @@ describe("CheckpointStore", () => {
       await fs.rm(appData, { recursive: true, force: true });
     }
   });
+
+  /** The records file a chat's checkpoints are kept in: the one file under the app data folder. */
+  async function recordsFileUnder(appData: string): Promise<string> {
+    const found: string[] = [];
+    async function walk(directory: string): Promise<void> {
+      for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+        const absolute = join(directory, entry.name);
+        if (entry.isDirectory()) await walk(absolute);
+        else if (entry.name === "records.jsonl") found.push(absolute);
+      }
+    }
+    await walk(appData);
+    const [only] = found;
+    if (found.length !== 1 || only === undefined) {
+      throw new Error(`Expected one records file, found ${found.length}.`);
+    }
+    return only;
+  }
+
+  test("a record that cannot be read is skipped and kept in the file, and history survives", async () => {
+    const workspace = await tempRoot("damaged-record");
+    const appData = await tempRoot("damaged-record-data");
+    const reported: string[] = [];
+    try {
+      const store = new CheckpointStoreService({
+        appDataDir: appData,
+        onError: (error) => reported.push(error.appError.message),
+      });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = () =>
+        store.snapshot({
+          workspace: folder,
+          conversation: conversation(workspace),
+          source: "manual",
+        });
+      await fs.writeFile(join(workspace, "state.txt"), "0\n");
+      const first = await checkpoint();
+      await fs.writeFile(join(workspace, "state.txt"), "1\n");
+      const second = await checkpoint();
+      await fs.writeFile(join(workspace, "state.txt"), "2\n");
+      const third = await checkpoint();
+      // A record another version of the app wrote: one field this version does not know.
+      const recordsPath = await recordsFileUnder(appData);
+      const lines = (await fs.readFile(recordsPath, "utf8")).split("\n").filter(Boolean);
+      const [firstLine] = lines;
+      if (firstLine === undefined) throw new Error("No checkpoint was written.");
+      const damaged = JSON.stringify({ ...JSON.parse(firstLine), renamedField: true });
+      await fs.writeFile(recordsPath, `${[...lines, damaged].join("\n")}\n`);
+
+      const fourth = await checkpoint();
+      const written = (await fs.readFile(recordsPath, "utf8")).split("\n").filter(Boolean);
+      expect(written).toHaveLength(5);
+      expect(written[3]).toBe(damaged);
+      expect(written.at(-1)).toContain(fourth.snapshotId);
+      expect(fourth.parentSnapshotId).toBe(third.snapshotId);
+      const listed = await store.list({
+        workspace: folder,
+        threadId: first.ompSessionId,
+        limit: 100,
+      });
+      expect(listed.snapshots.map((item) => item.snapshotId)).toEqual([
+        first.snapshotId,
+        second.snapshotId,
+        third.snapshotId,
+        fourth.snapshotId,
+      ]);
+      expect(reported.some((text) => text.includes(recordsPath) && text.includes("line 4"))).toBe(
+        true,
+      );
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("a records file that cannot be read is an error, not an empty history, and is left alone", async () => {
+    const workspace = await tempRoot("unreadable-records");
+    const appData = await tempRoot("unreadable-records-data");
+    try {
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = () =>
+        store.snapshot({
+          workspace: folder,
+          conversation: conversation(workspace),
+          source: "manual",
+        });
+      await fs.writeFile(join(workspace, "state.txt"), "0\n");
+      const taken = await checkpoint();
+      // The records file is replaced by a folder, so it cannot be read at all.
+      const recordsPath = await recordsFileUnder(appData);
+      await fs.rm(recordsPath);
+      await fs.mkdir(recordsPath);
+      await expect(
+        store.list({ workspace: folder, threadId: taken.ompSessionId, limit: 100 }),
+      ).rejects.toBeInstanceOf(AppFailure);
+      await expect(checkpoint()).rejects.toBeInstanceOf(AppFailure);
+      expect((await fs.stat(recordsPath)).isDirectory()).toBe(true);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("pruning drops old records that can be read and keeps a line that cannot", async () => {
+    const workspace = await tempRoot("damaged-prune");
+    const appData = await tempRoot("damaged-prune-data");
+    try {
+      const store = new CheckpointStoreService({ appDataDir: appData, maxSnapshots: 2 });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = () =>
+        store.snapshot({
+          workspace: folder,
+          conversation: conversation(workspace),
+          source: "manual",
+        });
+      for (const value of ["0", "1", "2"]) {
+        await fs.writeFile(join(workspace, "state.txt"), `${value}\n`);
+        await checkpoint();
+      }
+      const recordsPath = await recordsFileUnder(appData);
+      const lines = (await fs.readFile(recordsPath, "utf8")).split("\n").filter(Boolean);
+      const damaged = '{"from":"another version"}';
+      await fs.writeFile(recordsPath, `${[...lines, damaged].join("\n")}\n`);
+      await fs.writeFile(join(workspace, "state.txt"), "3\n");
+      const newest = await checkpoint();
+      // Only the newest two readable records remain; the line that cannot be read stays where it was.
+      const kept = (await fs.readFile(recordsPath, "utf8")).split("\n").filter(Boolean);
+      expect(kept).toHaveLength(3);
+      expect(kept[1]).toBe(damaged);
+      expect(kept.at(-1)).toContain(newest.snapshotId);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("CheckpointStore and git-ignored files", () => {

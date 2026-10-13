@@ -24,13 +24,15 @@ import {
   SnapshotRecord as SnapshotRecordSchema,
 } from "@omp-app/contracts";
 import type { z } from "zod";
-import { compareAndSwapFile, ensureAppDataDir, readFileHash, writeFileAtomic } from "../fs";
+import { compareAndSwapFile, ensureAppDataDir, readFileSnapshot } from "../fs";
 
 export interface CheckpointStoreOptions {
   readonly appDataDir?: string;
   readonly maxSnapshots?: number;
   readonly gitBinary?: string;
   readonly planTtlMs?: number;
+  /** Receives a records line or file that cannot be read; the line is skipped and kept in the file. */
+  readonly onError?: (error: AppFailure) => void;
 }
 
 interface ManifestEntry extends SnapshotPath {
@@ -397,43 +399,102 @@ async function captureTree(
   return (await runGit(gitBinary, gitDir, workspace, ["rev-parse", "HEAD^{tree}"])).trim();
 }
 
-async function readRecords(path: string): Promise<SnapshotRecord[]> {
-  try {
-    return (await readFile(path, "utf8"))
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => SnapshotRecordSchema.parse(JSON.parse(line)));
-  } catch {
-    return [];
-  }
+/** A line of a records file: the record it holds, or null for a line that cannot be read. */
+interface RecordLine {
+  readonly raw: string;
+  readonly record: SnapshotRecord | null;
 }
+
+function recordsOf(lines: readonly RecordLine[]): SnapshotRecord[] {
+  return lines.flatMap((line) => (line.record === null ? [] : [line.record]));
+}
+
+/**
+ * The lines of a records file in order, and the hash of the content they came from (null when there is no file). A
+ * line that cannot be read is reported and kept as it is, so the next write keeps it. A file that cannot be read at
+ * all is an error: an empty history would let the next write replace the file.
+ */
+async function readRecordLines(
+  path: string,
+  onError: ((error: AppFailure) => void) | undefined,
+): Promise<{ readonly lines: RecordLine[]; readonly hash: string | null }> {
+  const snapshot = await readFileSnapshot(path).catch(() => {
+    onError?.(failure("internal", `Cannot read checkpoint records file ${path}.`));
+    throw failure("internal", "Cannot read the checkpoints.");
+  });
+  if (!snapshot.exists || snapshot.content === null) return { lines: [], hash: null };
+  const lines: RecordLine[] = [];
+  snapshot.content.split("\n").forEach((raw, index) => {
+    if (raw === "") return;
+    try {
+      lines.push({ raw, record: SnapshotRecordSchema.parse(JSON.parse(raw)) });
+    } catch {
+      onError?.(
+        failure(
+          "invalid_args",
+          `Checkpoint record in ${path} on line ${index + 1} cannot be read. It is skipped and kept in the file.`,
+        ),
+      );
+      lines.push({ raw, record: null });
+    }
+  });
+  return { lines, hash: snapshot.hash };
+}
+
+/**
+ * The lines a records file keeps after a new snapshot: the pinned records, the records of other chats and the newest
+ * `maxSnapshots` records. A line that cannot be read is always kept.
+ */
+function keptLines(lines: readonly RecordLine[], maxSnapshots: number): RecordLine[] {
+  const records = recordsOf(lines);
+  const newest = records.at(-1)?.ompSessionId;
+  return lines.filter(({ record }) => {
+    if (record === null) return true;
+    return (
+      record.pinned ||
+      record.ompSessionId !== newest ||
+      records.indexOf(record) >= records.length - maxSnapshots
+    );
+  });
+}
+
 async function workspaceRecords(
   root: string,
   key: string,
+  onError: ((error: AppFailure) => void) | undefined,
   threadId?: string,
 ): Promise<SnapshotRecord[]> {
   const base = join(root, "checkpoints", key);
-  try {
-    const directories =
-      threadId === undefined
-        ? await readdir(base, { withFileTypes: true })
-        : [{ name: threadId, isDirectory: () => true }];
-    const records: SnapshotRecord[] = [];
-    for (const directory of directories) {
-      if (!directory.isDirectory()) continue;
-      records.push(...(await readRecords(join(base, directory.name, "records.jsonl"))));
+  let threads: string[];
+  if (threadId === undefined) {
+    try {
+      threads = (await readdir(base, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+    } catch (error) {
+      // A workspace with no checkpoints has no folder yet.
+      const code =
+        typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+      if (code === "ENOENT" || code === "ENOTDIR") return [];
+      onError?.(failure("internal", `Cannot read checkpoint folder ${base}.`));
+      throw failure("internal", "Cannot read the checkpoints.");
     }
-    return records;
-  } catch {
-    return [];
+  } else {
+    threads = [threadId];
   }
+  const records: SnapshotRecord[] = [];
+  for (const thread of threads) {
+    const file = await readRecordLines(join(base, thread, "records.jsonl"), onError);
+    records.push(...recordsOf(file.lines));
+  }
+  return records;
 }
 
 export class CheckpointStoreService {
   readonly #options: Required<
     Pick<CheckpointStoreOptions, "maxSnapshots" | "gitBinary" | "planTtlMs">
   > &
-    Pick<CheckpointStoreOptions, "appDataDir">;
+    Pick<CheckpointStoreOptions, "appDataDir" | "onError">;
   readonly #plans = new Map<RestorePlanId, StoredPlan>();
   readonly #listeners = new Set<
     (
@@ -449,6 +510,7 @@ export class CheckpointStoreService {
       gitBinary: options.gitBinary ?? "git",
       planTtlMs: options.planTtlMs ?? DEFAULT_PLAN_TTL_MS,
       appDataDir: options.appDataDir,
+      onError: options.onError,
     };
   }
 
@@ -479,7 +541,8 @@ export class CheckpointStoreService {
       root,
     );
     const shadowTreeId = await captureTree(this.#options.gitBinary, gitDir, workspace, nested);
-    const records = await readRecords(recordsPath);
+    const current = await readRecordLines(recordsPath, this.#options.onError);
+    const records = recordsOf(current.lines);
     const record = SnapshotRecordSchema.parse({
       snapshotId: `snapshot-${randomUUID()}`,
       workspaceKey: key,
@@ -499,10 +562,14 @@ export class CheckpointStoreService {
       guarantee: "boundary",
       pinned: parsed.pinned ?? false,
     });
-    const content = `${[...records, record].map((item) => JSON.stringify(item)).join("\n")}\n`;
-    const previousHash = await readFileHash(recordsPath);
-    await compareAndSwapFile(recordsPath, content, previousHash);
-    await this.#prune(recordsPath, records.concat(record));
+    const lines = keptLines(
+      [...current.lines, { raw: JSON.stringify(record), record }],
+      this.#options.maxSnapshots,
+    );
+    // The hash belongs to the content the new file is built from, so a write that raced this read
+    // fails instead of replacing a record it did not see.
+    const content = `${lines.map((line) => line.raw).join("\n")}\n`;
+    await compareAndSwapFile(recordsPath, content, current.hash);
     for (const listener of [...this.#listeners]) listener(record, "created", parsed.workspace);
     return record;
   }
@@ -513,7 +580,12 @@ export class CheckpointStoreService {
     const parsed = CheckpointListArgs.parse(args);
     const workspace = await realpath(parsed.workspace);
     const root = await ensureAppDataDir(this.#options.appDataDir);
-    const records = await workspaceRecords(root, workspaceKey(workspace), parsed.threadId);
+    const records = await workspaceRecords(
+      root,
+      workspaceKey(workspace),
+      this.#options.onError,
+      parsed.threadId,
+    );
     const start = parsed.cursor === undefined ? 0 : Number.parseInt(parsed.cursor, 10);
     const page = records.slice(
       Number.isFinite(start) ? start : 0,
@@ -756,7 +828,7 @@ export class CheckpointStoreService {
   async #findRecord(workspacePath: FolderPath, snapshotId: SnapshotId): Promise<SnapshotRecord> {
     const workspace = await realpath(workspacePath);
     const root = await ensureAppDataDir(this.#options.appDataDir);
-    const records = await workspaceRecords(root, workspaceKey(workspace));
+    const records = await workspaceRecords(root, workspaceKey(workspace), this.#options.onError);
     const record = records.find((item) => item.snapshotId === snapshotId);
     if (record === undefined) throw failure("not_found", "Snapshot not found");
     return record;
@@ -831,16 +903,5 @@ export class CheckpointStoreService {
       currentWorkspaceHash: manifestHash(current),
       snapshotWorkspaceHash: record.workspaceHash,
     };
-  }
-
-  async #prune(recordsPath: string, records: SnapshotRecord[]): Promise<void> {
-    const keep = records.filter(
-      (record) =>
-        record.pinned ||
-        record.ompSessionId !== records.at(-1)?.ompSessionId ||
-        records.indexOf(record) >= records.length - this.#options.maxSnapshots,
-    );
-    if (keep.length === records.length) return;
-    await writeFileAtomic(recordsPath, `${keep.map((item) => JSON.stringify(item)).join("\n")}\n`);
   }
 }

@@ -324,7 +324,10 @@ export async function createCompositionServer(
     },
   );
   const draftStore = createDraftStore({ env, homeDir, appDataDir, watchRegistry: fileWatch });
-  const checkpointStore = new CheckpointStoreService({ appDataDir });
+  const checkpointStore = new CheckpointStoreService({
+    appDataDir,
+    onError: (error) => logger.warn("checkpoints.error", { detail: error.appError.message }),
+  });
   const attachmentStore = new AttachmentStoreService({
     appDataDir,
     referencedAttachments: () => draftStore.referencedAttachments(),
