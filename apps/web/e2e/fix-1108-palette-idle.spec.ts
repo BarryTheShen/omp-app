@@ -57,9 +57,10 @@ realTest(
     await settle(page);
     await page.screenshot({ path: join(screenshots, "fix-1108-palette-narrow.png") });
 
-    // New chat from the palette starts a chat: the palette closes and the message box opens.
+    // New chat from the palette starts a chat. The palette closes once that chat has started, which waits for omp, so
+    // the palette wait is bounded like the message box wait below (a 5 s default failed under load, before omp started).
     await newChat.click();
-    await expect(palette).toHaveCount(0);
+    await expect(palette).toHaveCount(0, { timeout: 120_000 });
     await expect(page.getByRole("textbox", { name: "Message input" })).toBeVisible({
       timeout: 120_000,
     });
