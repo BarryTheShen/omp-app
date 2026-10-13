@@ -7,6 +7,7 @@ import {
   type ReactNode,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Button } from "@/components/ui/button";
@@ -107,15 +108,29 @@ export function EarlierSteps({
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(EARLIER_STEPS_PAGE);
   const bodyId = useId();
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const restRef = useRef<HTMLButtonElement>(null);
   const total = group.indices.length;
   // Nothing is built while the disclosure is closed.
   const steps = useMemo(() => (open ? stepNodes(children) : []), [children, open]);
   const remaining = Math.max(0, steps.length - shown);
+  // A button that leaves the row takes the keyboard focus with it, and focus then falls to the page body. So a
+  // press that removes its own button moves focus first: "Show 50 more" to the rest button, which stays while any
+  // remain; "Show all" or "Show the last" to the toggle, which stays while the block is open.
+  const showPage = () => {
+    if (steps.length - shown - EARLIER_STEPS_PAGE <= EARLIER_STEPS_PAGE) restRef.current?.focus();
+    setShown((value) => value + EARLIER_STEPS_PAGE);
+  };
+  const showRest = () => {
+    toggleRef.current?.focus();
+    setShown(steps.length);
+  };
   return (
     <div className="mb-3" data-open={open ? "true" : "false"} data-slot="u1-earlier-steps">
       <button
         aria-controls={bodyId}
         aria-expanded={open}
+        ref={toggleRef}
         className="text-muted-foreground hover:text-foreground flex items-center gap-2 py-1.5 text-sm transition-colors"
         onClick={() => setOpen((value) => !value)}
         type="button"
@@ -135,21 +150,11 @@ export function EarlierSteps({
           {remaining > 0 && (
             <div className="flex flex-wrap items-center gap-2 py-2">
               {remaining > EARLIER_STEPS_PAGE && (
-                <Button
-                  onClick={() => setShown((value) => value + EARLIER_STEPS_PAGE)}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
+                <Button onClick={showPage} size="sm" type="button" variant="outline">
                   Show {EARLIER_STEPS_PAGE} more steps
                 </Button>
               )}
-              <Button
-                onClick={() => setShown(steps.length)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
+              <Button ref={restRef} onClick={showRest} size="sm" type="button" variant="outline">
                 {remaining > EARLIER_STEPS_PAGE
                   ? `Show all ${remaining.toLocaleString("en-US")} remaining`
                   : `Show the last ${remaining.toLocaleString("en-US")}`}

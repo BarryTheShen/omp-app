@@ -173,4 +173,35 @@ describe("a very long turn folds its earlier steps", () => {
     },
     HEAVY_TURN_TIMEOUT,
   );
+
+  test(
+    "'Show all' keeps the keyboard focus on the earlier-steps toggle",
+    () => {
+      renderTurn(130);
+      const toggle = screen.getByRole("button", { name: "110 earlier steps" });
+      fireEvent.click(toggle);
+      const showAll = screen.getByRole("button", { name: "Show all 60 remaining" });
+      showAll.focus();
+      fireEvent.click(showAll);
+      expect(mountedSteps(130)).toHaveLength(130);
+      expect(screen.queryByRole("button", { name: /Show/ })).toBeNull();
+      expect(document.activeElement).toBe(toggle);
+    },
+    HEAVY_TURN_TIMEOUT,
+  );
+
+  test(
+    "'Show 50 more' keeps the keyboard focus on the button that stays once its own button leaves",
+    () => {
+      renderTurn(130);
+      fireEvent.click(screen.getByRole("button", { name: "110 earlier steps" }));
+      const more = screen.getByRole("button", { name: `Show ${EARLIER_STEPS_PAGE} more steps` });
+      more.focus();
+      fireEvent.click(more);
+      // Ten are left: the paging button is gone, and "Show the last 10" stays.
+      expect(screen.queryByRole("button", { name: /Show 50 more steps/ })).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show the last 10" }));
+    },
+    HEAVY_TURN_TIMEOUT,
+  );
 });
