@@ -52,7 +52,7 @@ function sameWorker(left: AgentRef, right: AgentRef): boolean {
  * Tails one worker's transcript by byte cursor. Live frames, a timer while the worker runs and one
  * read after it ends all ask for the same thing: the records after the cursor. Reads never overlap,
  * frames that arrive together become one read, and a read that finishes after `stop()` is ignored.
- * A finished worker is read once and then left alone; its file stays readable.
+ * A finished worker is read until it is caught up, then left alone; its file stays readable.
  */
 export class TranscriptTail {
   private feed: TranscriptFeed;
@@ -187,10 +187,14 @@ export class TranscriptTail {
     const feed = this.feed;
     const requestedFrom = requestOffset(this.state, feed.agent.sessionFile);
     this.lastReadAt = this.now();
+    let more = false;
     try {
       const page = await feed.read({ fromByte: requestedFrom });
       if (generation !== this.generation) return;
       const next = applyTranscriptPage(this.state, page, requestedFrom);
+      // A running worker is read again on its next frame or heartbeat. A finished worker has neither, so a page that
+      // left more of its file behind is followed by the next read at once.
+      more = !isLive(feed.agent) && next.cursor > page.fromByte;
       const recovered = this.failure !== undefined;
       this.failure = undefined;
       if (next !== this.state || recovered) {
@@ -204,7 +208,8 @@ export class TranscriptTail {
     } finally {
       if (generation === this.generation) {
         this.reading = false;
-        if (this.wanted) this.request(false);
+        if (more) this.wanted = true;
+        if (this.wanted) this.request(more);
       }
     }
   }

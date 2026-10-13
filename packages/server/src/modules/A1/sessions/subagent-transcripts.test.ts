@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { AppFailure } from "@omp-app/contracts";
 import { collectSubagentTranscripts, SessionFileStore } from "./index";
+import { SUBAGENT_ENTRY_MAX_BYTES, SUBAGENT_PAGE_BYTES } from "./subagent-read";
 
 const WORKTREE_DATA = path.resolve(import.meta.dir, "../../../../../../.data");
 const AT = "2026-10-04T12:00:00.000Z";
@@ -308,6 +310,85 @@ describe("reading a worker transcript from a byte cursor", () => {
       const page = await storeFor(fixture).readSubagent({ sessionFile: file });
       expect(page.entries.map((entry) => entry.type)).toEqual(["session", "session_init"]);
       expect(page.nextByte).toBe(Buffer.byteLength(text));
+    }));
+
+  test("a page holds at most a page of bytes, cut at a complete line, and the next page continues there", () =>
+    withFixture(async (fixture) => {
+      const file = path.join(workerDir(fixture), "Long.jsonl");
+      await mkdir(workerDir(fixture), { recursive: true });
+      const records = Array.from({ length: 200 }, (_, index) =>
+        line({
+          type: "custom",
+          id: `record-${index}`,
+          parentId: null,
+          timestamp: AT,
+          customType: "filler",
+          data: { text: "x".repeat(64 * 1024) },
+        }),
+      );
+      await writeFile(file, `${records.join("\n")}\n`, "utf8");
+      const store = storeFor(fixture);
+      const seen: string[] = [];
+      let cursor = 0;
+      let pages = 0;
+      while (pages < 100) {
+        const page = await store.readSubagent({ sessionFile: file, fromByte: cursor });
+        pages += 1;
+        expect(page.nextByte - page.fromByte).toBeLessThanOrEqual(SUBAGENT_PAGE_BYTES);
+        seen.push(...page.entries.map((entry) => String(entry.id)));
+        if (page.nextByte === cursor) break;
+        cursor = page.nextByte;
+      }
+      expect(pages).toBeGreaterThan(3);
+      expect(seen).toEqual(records.map((_, index) => `record-${index}`));
+    }));
+
+  test("an entry larger than a page comes back whole and alone, and the lines after it come next", () =>
+    withFixture(async (fixture) => {
+      const file = path.join(workerDir(fixture), "Big.jsonl");
+      await mkdir(workerDir(fixture), { recursive: true });
+      const big = line({
+        type: "custom",
+        id: "big",
+        parentId: null,
+        timestamp: AT,
+        customType: "filler",
+        data: { text: "y".repeat(SUBAGENT_PAGE_BYTES + 1024) },
+      });
+      const after = line({
+        type: "custom",
+        id: "after",
+        parentId: null,
+        timestamp: AT,
+        customType: "filler",
+        data: {},
+      });
+      await writeFile(file, `${big}\n${after}\n`, "utf8");
+      const store = storeFor(fixture);
+      const first = await store.readSubagent({ sessionFile: file });
+      expect(first.entries.map((entry) => entry.id)).toEqual(["big"]);
+      expect(first.nextByte).toBe(Buffer.byteLength(`${big}\n`));
+      const second = await store.readSubagent({ sessionFile: file, fromByte: first.nextByte });
+      expect(second.entries.map((entry) => entry.id)).toEqual(["after"]);
+    }));
+
+  test("an entry larger than the entry limit is refused explicitly, and nothing past it is read", () =>
+    withFixture(async (fixture) => {
+      const file = path.join(workerDir(fixture), "Huge.jsonl");
+      await mkdir(workerDir(fixture), { recursive: true });
+      await writeFile(file, `${"z".repeat(SUBAGENT_ENTRY_MAX_BYTES + 1024)}\n`, "utf8");
+      const failure = await storeFor(fixture)
+        .readSubagent({ sessionFile: file })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(failure).toBeInstanceOf(AppFailure);
+      expect((failure as AppFailure).appError).toMatchObject({
+        code: "internal",
+        message: "A transcript entry is larger than 16 MiB, so it cannot be read.",
+        retryable: false,
+      });
     }));
 
   test("reading never changes the transcript or the folder beside it", () =>

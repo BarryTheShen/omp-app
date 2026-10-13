@@ -121,6 +121,28 @@ describe("the transcript tail", () => {
     tail.stop();
   });
 
+  test("a finished worker's transcript is read page after page, with no frame or heartbeat to ask again", async () => {
+    const feed = new FakeFeed(agentRef({ status: "completed" }));
+    const tail = tailFor(feed);
+    tail.start();
+    await settle();
+    feed.answer(transcriptPage({ fromByte: 0, nextByte: 40, messages: [userMessage("one")] }));
+    await settle();
+    expect(feed.requests).toEqual([0, 40]);
+    feed.answer(
+      transcriptPage({ fromByte: 40, nextByte: 90, messages: [assistantMessage("two")] }),
+    );
+    await settle();
+    expect(feed.requests).toEqual([0, 40, 90]);
+    feed.answer(transcriptPage({ fromByte: 90, nextByte: 90 }));
+    await settle();
+    expect(tail.getView().messages).toHaveLength(2);
+    expect(feed.pendingReads).toBe(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(feed.requests).toEqual([0, 40, 90]);
+    tail.stop();
+  });
+
   test("a failed read is shown with its failure, and the next read that succeeds clears it", async () => {
     const feed = new FakeFeed(agentRef());
     const tail = tailFor(feed);

@@ -16,8 +16,17 @@ export interface SubagentPage {
 
 const NOT_FOUND = "No subagent transcript is at that path.";
 const NOT_BELOW_CHAT = "A subagent transcript sits below a chat session.";
+/** Most bytes one page returns. A longer transcript comes in pages: each page's `nextByte` is where the next one starts. */
+export const SUBAGENT_PAGE_BYTES = 4 * 1024 * 1024;
+/**
+ * Most bytes one entry may take. A page holds a whole entry even when the entry is larger than a page, so that entry
+ * comes back alone. An entry larger than this is refused, since no page could hold it.
+ */
+export const SUBAGENT_ENTRY_MAX_BYTES = 16 * 1024 * 1024;
+const ENTRY_TOO_LARGE = "A transcript entry is larger than 16 MiB, so it cannot be read.";
+const READ_CHUNK_BYTES = 1024 * 1024;
 
-function refuse(code: "invalid_args" | "not_found", message: string): AppFailure {
+function refuse(code: "invalid_args" | "not_found" | "internal", message: string): AppFailure {
   return new AppFailure({ code, message, retryable: false });
 }
 
@@ -100,10 +109,44 @@ function parseEntries(text: string): Record<string, unknown>[] {
   return entries;
 }
 
+/** The bytes from `from` up to `to`, as far as the file holds them. */
+async function readRange(handle: fs.FileHandle, from: number, to: number): Promise<Buffer> {
+  const bytes = Buffer.alloc(to - from);
+  let filled = 0;
+  while (filled < bytes.length) {
+    const { bytesRead } = await handle.read(bytes, filled, bytes.length - filled, from + filled);
+    if (bytesRead === 0) break;
+    filled += bytesRead;
+  }
+  return bytes.subarray(0, filled);
+}
+
 /**
- * One page from a byte cursor: the complete lines from `fromByte`, parsed the way omp's reader
- * parses them. A cursor past the end starts again at 0 and says so with `reset`. A last line with no
- * newline yet is left for the next page. The file is only ever read.
+ * The position of the first newline from `from` on, or -1 when the file ends first. An entry with no newline before
+ * `limit` is refused: no page could hold it.
+ */
+async function firstNewline(
+  handle: fs.FileHandle,
+  from: number,
+  size: number,
+  limit: number,
+): Promise<number> {
+  let position = from;
+  while (position < size) {
+    if (position >= limit) throw refuse("internal", ENTRY_TOO_LARGE);
+    const chunk = await readRange(handle, position, Math.min(size, position + READ_CHUNK_BYTES));
+    const index = chunk.indexOf(0x0a);
+    if (index >= 0) return position + index;
+    if (chunk.length === 0) break;
+    position += chunk.length;
+  }
+  return -1;
+}
+
+/**
+ * One page from a byte cursor: the complete lines from `fromByte`, parsed the way omp's reader parses them. A page is
+ * at most `SUBAGENT_PAGE_BYTES`, unless its one entry is larger. A cursor past the end starts again at 0 and says so
+ * with `reset`. A last line with no newline yet is left for the next page. The file is only ever read.
  */
 export async function readSubagentPage(file: string, fromByte: number): Promise<SubagentPage> {
   const handle = await fs.open(file, "r");
@@ -111,14 +154,17 @@ export async function readSubagentPage(file: string, fromByte: number): Promise<
     const { size } = await handle.stat();
     const reset = fromByte > size;
     const start = reset ? 0 : fromByte;
-    const bytes = Buffer.alloc(size - start);
-    let filled = 0;
-    while (filled < bytes.length) {
-      const { bytesRead } = await handle.read(bytes, filled, bytes.length - filled, start + filled);
-      if (bytesRead === 0) break;
-      filled += bytesRead;
+    const windowEnd = Math.min(size, start + SUBAGENT_PAGE_BYTES);
+    let bytes = await readRange(handle, start, windowEnd);
+    let lastNewline = bytes.lastIndexOf(0x0a);
+    if (lastNewline < 0 && windowEnd < size) {
+      // The entry at the cursor is larger than a page: it comes back whole, and alone.
+      const newline = await firstNewline(handle, windowEnd, size, start + SUBAGENT_ENTRY_MAX_BYTES);
+      if (newline >= 0) {
+        bytes = await readRange(handle, start, newline + 1);
+        lastNewline = bytes.length - 1;
+      }
     }
-    const lastNewline = bytes.subarray(0, filled).lastIndexOf(0x0a);
     const complete = lastNewline < 0 ? Buffer.alloc(0) : bytes.subarray(0, lastNewline + 1);
     const entries = parseEntries(complete.toString("utf8"));
     return {
