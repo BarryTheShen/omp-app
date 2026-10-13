@@ -387,6 +387,53 @@ describe("SessionCatalogModel reconciliation", () => {
     expect(model.getSnapshot().sessions[0]).toMatchObject({ id: original.id, title: "Renamed" });
   });
 
+  test("a refusal of a delete while its chat's turn runs ends when that turn does", async () => {
+    const running = { ...session("one", "2026-10-03T00:00:00.000Z"), turn: "running" as const };
+    const settled = { ...running, turn: "idle" as const };
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [running], nextCursor: null }),
+        readSession: async () => settled,
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    model.setActionError("Wait for this chat's turn to finish, then delete it.", running.id);
+
+    await model.reconcile({
+      folder,
+      sessionFile: running.sessionFile,
+      id: running.id,
+      kind: "updated",
+    });
+
+    expect(model.getSnapshot().actionError).toBeUndefined();
+  });
+
+  test("a refusal of a delete stays while its chat's turn still runs", async () => {
+    const running = { ...session("one", "2026-10-03T00:00:00.000Z"), turn: "running" as const };
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [running], nextCursor: null }),
+        readSession: async () => ({ ...running, title: "Renamed while running" }),
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    model.setActionError("Wait for this chat's turn to finish, then delete it.", running.id);
+
+    await model.reconcile({
+      folder,
+      sessionFile: running.sessionFile,
+      id: running.id,
+      kind: "updated",
+    });
+
+    expect(model.getSnapshot().actionError).toBe(
+      "Wait for this chat's turn to finish, then delete it.",
+    );
+  });
+
   test("a changed chat that does not match the search is not added to the results", async () => {
     const match = session("alpha", "2026-10-03T00:00:00.000Z");
     const other = session("beta", "2026-10-04T00:00:00.000Z");

@@ -485,7 +485,7 @@ export function SessionCatalogSidebar({
       // A chat whose turn streams in this view is refused here, with no round trip: the live store
       // knows it, and a turn that was just sent may not be busy on the server yet.
       if (session.id === currentThreadId && currentTurnRunning?.() === true) {
-        catalog.setActionError(TURN_RUNNING_REFUSAL);
+        catalog.setActionError(TURN_RUNNING_REFUSAL, session.id);
         catalog.requestFocus({ kind: "row", id: session.id });
         return;
       }
@@ -503,6 +503,7 @@ export function SessionCatalogSidebar({
     } catch (error) {
       catalog.setActionError(
         error instanceof Error ? error.message : "The chat could not be deleted.",
+        session.turn === "running" ? session.id : undefined,
       );
       // The chat stays, so focus stays on its row rather than falling to the page body.
       catalog.requestFocus({ kind: "row", id: session.id });
@@ -582,7 +583,7 @@ export function SessionCatalogSidebar({
         </p>
       )}
       {snapshot.actionError && (
-        <p className="text-destructive px-3 py-1 text-xs leading-snug" role="alert">
+        <p className="text-destructive px-3 py-1 text-xs leading-snug text-balance" role="alert">
           {snapshot.actionError}
         </p>
       )}

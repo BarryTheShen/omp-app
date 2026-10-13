@@ -54,6 +54,8 @@ export interface CatalogSnapshot extends SessionCatalogState {
   readonly pinsRevision: Revision | null;
   /** The message the last chat action got from the server (a refused delete), until the next action starts. */
   readonly actionError?: string;
+  /** The chat whose running turn refused the action in `actionError`, if one did (see `setActionError`). */
+  readonly actionTurnOf?: ThreadId;
   /** Where keyboard focus should go in the list once it can: a chat's row, or New chat (see requestFocus). */
   readonly focus?: FocusRequest;
 }
@@ -212,10 +214,12 @@ export class SessionCatalogModel {
   /**
    * Holds the message of the last chat action the server refused, until the next action starts. It lives on the list,
    * not on the sidebar that started the action, so it still shows after that sidebar is rebuilt (a chat switch does it).
+   * `turnOf` names the chat whose running turn refused the action: the message ends when that turn does (see
+   * `endTurnRefusal`).
    */
-  public setActionError(message: string | undefined): void {
-    if (this.snapshot.actionError === message) return;
-    this.commit({ actionError: message });
+  public setActionError(message: string | undefined, turnOf?: ThreadId): void {
+    if (this.snapshot.actionError === message && this.snapshot.actionTurnOf === turnOf) return;
+    this.commit({ actionError: message, actionTurnOf: message === undefined ? undefined : turnOf });
   }
 
   /**
@@ -375,6 +379,7 @@ export class SessionCatalogModel {
       const operation = ++this.operation;
       this.rememberRemoval(change.id, operation);
       this.markChanged(change.id);
+      this.endTurnRefusal(change.id, undefined);
       this.commit({
         sessions: this.snapshot.sessions.filter((session) => session.id !== change.id),
       });
@@ -387,6 +392,7 @@ export class SessionCatalogModel {
       const file = await this.options.sessionFiles.readSession({ sessionFile: change.sessionFile });
       if (this.reconcileBegun.get(change.id) !== begun || this.tombstones.has(change.id)) return;
       const metadata = metadataFromFile(file, this.snapshot.scope, this.pins);
+      this.endTurnRefusal(metadata.id, metadata.turn);
       if (
         !changedInScope(this.snapshot.scope, metadata) ||
         !queryMatches(metadata, this.snapshot.filter.query)
@@ -417,6 +423,15 @@ export class SessionCatalogModel {
     } finally {
       if (this.reconcileBegun.get(change.id) === begun) this.reconcileBegun.delete(change.id);
     }
+  }
+
+  /**
+   * A refusal of a delete while its chat's turn ran ends with that turn, or when the chat is gone: the message would
+   * otherwise tell the person to wait for a turn that is over.
+   */
+  private endTurnRefusal(id: ThreadId, turn: SessionMetadata["turn"]): void {
+    if (this.snapshot.actionTurnOf !== id || turn === "running") return;
+    this.commit({ actionError: undefined, actionTurnOf: undefined });
   }
 
   public async reconcilePin(
