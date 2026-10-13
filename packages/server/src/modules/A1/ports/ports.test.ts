@@ -212,6 +212,7 @@ function createContext(
           args.command === "/mcp list" ? "No MCP servers configured." : "",
         ),
       onOutput: () => () => undefined,
+      onCompaction: () => () => undefined,
     },
     sessionPinStore: {
       list: async () => ({ pins: [], revision: "revision-1", readAt: "2026-01-01T00:00:00.000Z" }),
@@ -546,6 +547,7 @@ describe("A1.9 port registrations", () => {
           });
         }),
       onOutput: () => () => undefined,
+      onCompaction: () => () => undefined,
     };
     const { dispatcher } = createDispatcher({
       ...context,

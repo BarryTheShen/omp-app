@@ -492,4 +492,75 @@ describe("OmpCommandGatewayService", () => {
       /Duplicate command parser registration for dump/,
     );
   });
+
+  test("a /compact that finishes in the background reports its saved outcome once, and other output nothing", async () => {
+    const { duplex, gateway } = await createHarness();
+    const outcomes: unknown[] = [];
+    gateway.onCompaction((event) => outcomes.push(event));
+    const future = gateway.run({ threadId, command: "/compact soft" });
+    const afterAvailability = await answerAvailability(duplex, 0, ["compact"]);
+    const promptWrite = writesAfter(duplex, afterAvailability)[0];
+    if (promptWrite?.type !== "prompt") throw new Error("expected a prompt write");
+    // omp answers the prompt without a turn. The compaction runs after that, and omp prints its result then.
+    duplex.emit({
+      type: "response",
+      id: promptWrite.id,
+      command: "prompt",
+      success: true,
+      data: { agentInvoked: false },
+    });
+    await expect(future).resolves.toMatchObject({ command: "/compact soft", agentInvoked: false });
+    duplex.emit({ type: "command_output", text: "Done." });
+    await flush();
+    expect(outcomes).toEqual([]);
+    duplex.emit({
+      type: "command_output",
+      text: "Compaction complete. Tokens: 120000 -> 28000 (saved 92000).",
+    });
+    duplex.emit({ type: "command_output", text: "Compaction complete." });
+    await flush();
+    expect(outcomes).toEqual([{ threadId, outcome: "saved" }]);
+  });
+
+  test("a background /compact that fails reports a failed outcome, without omp's words in the event", async () => {
+    const { duplex, gateway } = await createHarness();
+    const outcomes: unknown[] = [];
+    gateway.onCompaction((event) => outcomes.push(event));
+    const future = gateway.run({ threadId, command: "/compact" });
+    const afterAvailability = await answerAvailability(duplex, 0, ["compact"]);
+    const promptWrite = writesAfter(duplex, afterAvailability)[0];
+    if (promptWrite?.type !== "prompt") throw new Error("expected a prompt write");
+    duplex.emit({
+      type: "response",
+      id: promptWrite.id,
+      command: "prompt",
+      success: true,
+      data: { agentInvoked: false },
+    });
+    await future;
+    duplex.emit({ type: "command_output", text: "Compaction failed: nothing to compact." });
+    await flush();
+    expect(outcomes).toEqual([{ threadId, outcome: "failed" }]);
+  });
+
+  test("only /compact is watched: another background command's compaction-like text reports nothing", async () => {
+    const { duplex, gateway } = await createHarness();
+    const outcomes: unknown[] = [];
+    gateway.onCompaction((event) => outcomes.push(event));
+    const future = gateway.run({ threadId, command: "/fresh" });
+    const afterAvailability = await answerAvailability(duplex, 0, ["fresh"]);
+    const promptWrite = writesAfter(duplex, afterAvailability)[0];
+    if (promptWrite?.type !== "prompt") throw new Error("expected a prompt write");
+    duplex.emit({
+      type: "response",
+      id: promptWrite.id,
+      command: "prompt",
+      success: true,
+      data: { agentInvoked: false },
+    });
+    await future;
+    duplex.emit({ type: "command_output", text: "Compaction complete." });
+    await flush();
+    expect(outcomes).toEqual([]);
+  });
 });

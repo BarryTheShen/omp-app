@@ -178,6 +178,7 @@ import {
 import { setThemePreference, ThemeApplier, ThemeButton } from "@/theme";
 import { type AgentHubOpenResult, useAgentHubShortcut } from "./agents/agent-hub-shortcut";
 import { reportClientError, setClientErrorSink } from "./client-errors";
+import { watchSavedCompactions } from "./compaction-watch";
 import { useComposerClipboardShortcuts } from "./composer-clipboard";
 import { useComposerEditingShortcuts } from "./composer-editing";
 import { ComposerHistory } from "./composer-history";
@@ -577,7 +578,7 @@ interface ActiveThreadProps {
   readonly onLoadOlder?: () => Promise<void>;
   /** Loads the full text of a tool output the thread shows shortened. */
   readonly onLoadFullOutput?: (toolCallId: string) => Promise<void>;
-  /** Brings the open thread up to date after a `!` command; omp saves a command's result without a turn. */
+  /** Brings the open thread up to date after a command omp saved without a turn: a `!` command, or a compaction. */
   readonly onRefreshAfterCommand?: () => Promise<void>;
   readonly capabilities: CapabilityMap;
   readonly folder: FolderPath | null;
@@ -681,6 +682,16 @@ function ActiveThreadReady({
   // when the command palette or any other overlay opens.
   const overlay = useStableOverlayHost();
   const commandGateway = useMemo(() => client.port(OmpCommandGateway), [client]);
+  // omp saves a `/compact` that finishes in the background without a turn. A1 sends the typed outcome, and the transcript
+  // is read again then. The latest refresh is read through a ref, so the subscription is not made again on each render.
+  const refreshAfterCommandRef = useRef(onRefreshAfterCommand);
+  useLayoutEffect(() => {
+    refreshAfterCommandRef.current = onRefreshAfterCommand;
+  });
+  useEffect(
+    () => watchSavedCompactions(client, threadId, () => void refreshAfterCommandRef.current?.()),
+    [client, threadId],
+  );
   // Answers go through R0's queue controller (assigned below), because it forgets the request once
   // omp accepts the answer. Answering through the raw RPC port left the request "pending" in the
   // store, and the router presented the same question a second time.
@@ -1402,7 +1413,14 @@ function ActiveThreadReady({
     contextCard: {
       title: "Context",
       requires: ["omp.cmd.get_state", "omp.cmd.compact", "omp.cmd.set_auto_compaction"],
-      render: () => <SessionContextPanel client={client} store={store} threadId={threadId} />,
+      render: () => (
+        <SessionContextPanel
+          client={client}
+          onCompacted={onRefreshAfterCommand}
+          store={store}
+          threadId={threadId}
+        />
+      ),
     },
     agents: agentsSurface({ agents, reveal: agentsReveal }),
     rewind: useRewindPanel({

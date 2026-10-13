@@ -1,6 +1,7 @@
 import {
   AppFailure,
   CommandOutputEvent,
+  CompactionEvent,
   DumpReport,
   ModeChangeResult,
   modeChangeCommand,
@@ -22,6 +23,12 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
       subscribe: (listener: (payload: unknown) => void) =>
         context.ompCommandGateway.onOutput(listener as (event: CommandOutputEvent) => void),
       scope: (payload: unknown) => CommandOutputEvent.parse(payload).threadId,
+    },
+    {
+      event: "compaction",
+      subscribe: (listener: (payload: unknown) => void) =>
+        context.ompCommandGateway.onCompaction(listener as (event: CompactionEvent) => void),
+      scope: (payload: unknown) => CompactionEvent.parse(payload).threadId,
     },
   ];
   return createA1PortRegistration(

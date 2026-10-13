@@ -7,11 +7,13 @@ import {
   type CommandRunArgs,
   CommandRunArgs as CommandRunArgsSchema,
   type CommandRunResult,
+  type CompactionEvent,
   type ConfigInfoUpdate,
   type SessionInfoUpdate,
   ThreadId,
 } from "@omp-app/contracts";
 import type { CommandFuture, RpcSession } from "@omp-app/omp-rpc";
+import { compactionOutcome } from "./compaction-parser";
 import { registerOmpCommandParsers } from "./parsers";
 
 /** Resolves the already-connected RpcSession backing one thread's omp process. */
@@ -46,6 +48,11 @@ export interface OmpCommandGatewayOptions {
 }
 
 type OutputListener = (event: CommandOutputEvent) => void;
+
+type CompactionListener = (event: CompactionEvent) => void;
+
+/** How long a background `/compact` is watched for omp's result. A compaction that never reports is then dropped. */
+const COMPACTION_WATCH_MS = 30 * 60 * 1000;
 
 function failure(
   code: "invalid_args" | "unavailable" | "not_found" | "cancelled" | "internal",
@@ -232,6 +239,7 @@ export class OmpCommandGatewayService {
   readonly #queue = new ThreadCommandQueue();
   readonly #parsers = new Map<string, CommandParser<unknown>>();
   readonly #outputListeners = new Set<OutputListener>();
+  readonly #compactionListeners = new Set<CompactionListener>();
 
   constructor(options: OmpCommandGatewayOptions) {
     this.#resolveSession = options.resolveSession;
@@ -251,6 +259,14 @@ export class OmpCommandGatewayService {
     this.#outputListeners.add(listener);
     return () => {
       this.#outputListeners.delete(listener);
+    };
+  }
+
+  /** Listens for the typed outcome of a `/compact` that finished in the background (see `#watchCompaction`). */
+  onCompaction(listener: CompactionListener): () => void {
+    this.#compactionListeners.add(listener);
+    return () => {
+      this.#compactionListeners.delete(listener);
     };
   }
 
@@ -428,6 +444,11 @@ export class OmpCommandGatewayService {
       throw cause;
     }
     unsubscribe();
+    // `/compact` finishes in the background: omp answers the prompt without a turn, then writes the compaction and
+    // prints its result later (builtin-lifecycle.ts:259, :250, :252). That result is watched after the run has settled.
+    if (ack?.agentInvoked === false && commandName(args.command) === "compact") {
+      this.#watchCompaction(session, args.threadId);
+    }
 
     const agentInvoked = ack?.agentInvoked ?? true;
     const status: CommandRunResult["status"] =
@@ -452,6 +473,39 @@ export class OmpCommandGatewayService {
         listener(event);
       } catch (cause) {
         reportError(this.#onError, toFailure(cause, "deliver command output"));
+      }
+    }
+  }
+
+  /**
+   * Watches for the result of a background `/compact` until omp prints it, or until COMPACTION_WATCH_MS passes. The
+   * result goes to the compaction listeners as a typed outcome. Nothing waits on the watch: the run has settled, so the
+   * thread's command queue is free.
+   */
+  #watchCompaction(session: RpcSession, threadId: CompactionEvent["threadId"]): void {
+    let unsubscribe: (() => void) | undefined;
+    const timer = setTimeout(() => finish(), COMPACTION_WATCH_MS);
+    const finish = (): void => {
+      clearTimeout(timer);
+      unsubscribe?.();
+      unsubscribe = undefined;
+    };
+    unsubscribe = session.onEvent((event: RpcSessionEvent) => {
+      if (event.kind !== "notification" || event.frame.type !== "command_output") return;
+      const outcome = compactionOutcome(event.frame.text);
+      if (outcome === undefined) return;
+      finish();
+      this.#emitCompaction({ threadId, outcome });
+    });
+    timer.unref?.();
+  }
+
+  #emitCompaction(event: CompactionEvent): void {
+    for (const listener of [...this.#compactionListeners]) {
+      try {
+        listener(event);
+      } catch (cause) {
+        reportError(this.#onError, toFailure(cause, "deliver compaction"));
       }
     }
   }

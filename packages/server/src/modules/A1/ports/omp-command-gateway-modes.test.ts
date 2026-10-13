@@ -16,6 +16,7 @@ function handlersAnswering(data: (command: string) => unknown): {
   const commands: string[] = [];
   const gateway = {
     onOutput: () => () => undefined,
+    onCompaction: () => () => undefined,
     runWithParser: async (args: { readonly command: string }) => {
       commands.push(args.command);
       return { result: undefined, data: data(args.command) };
@@ -30,6 +31,7 @@ function handlersRejecting(error: unknown): {
 } {
   const gateway = {
     onOutput: () => () => undefined,
+    onCompaction: () => () => undefined,
     runWithParser: async () => {
       throw error;
     },

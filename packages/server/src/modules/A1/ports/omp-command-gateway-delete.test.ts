@@ -28,6 +28,7 @@ function deleteHandler(store: SessionFileStore, published: Published[], omp: () 
     sessionFileStore: store,
     ompCommandGateway: {
       onOutput: () => () => undefined,
+      onCompaction: () => () => undefined,
       runWithParser: async () => {
         await omp();
         return { data: { outcome: "deleted" } };

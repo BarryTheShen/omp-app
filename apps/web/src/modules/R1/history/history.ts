@@ -295,8 +295,8 @@ export class SelectedThreadHistoryController {
   }
 
   /**
-   * Brings the open thread up to date after a `!` command. omp saves a command's result to the
-   * session without a turn, so no `session_settled` arrives to refresh the transcript. The refresh
+   * Brings the open thread up to date after a command omp saved without a turn: a `!` command, or a
+   * compaction. No `session_settled` arrives for those to refresh the transcript. The refresh
    * waits for a chat that is still loading its history: a refresh started during that load
    * superseded the load, and the open then closed the chat with a "superseded" error.
    */

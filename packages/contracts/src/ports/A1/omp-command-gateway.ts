@@ -122,6 +122,16 @@ export const CommandOutputEvent = z.strictObject({
 });
 export type CommandOutputEvent = z.infer<typeof CommandOutputEvent>;
 
+/**
+ * A compaction a `/compact` command finished in the background: omp saved its entry (`saved`), or the compaction
+ * failed (`failed`). A1 reads omp's words for it, so the browser gets the outcome and never the text.
+ */
+export const CompactionEvent = z.strictObject({
+  threadId: ThreadId,
+  outcome: z.enum(["saved", "failed"]),
+});
+export type CompactionEvent = z.infer<typeof CompactionEvent>;
+
 /** The browser window `/browser` switches to (builtin-collaboration.ts:496-531). */
 export const BrowserVisibility = z.enum(["headless", "visible"]);
 export type BrowserVisibility = z.infer<typeof BrowserVisibility>;
@@ -268,6 +278,10 @@ export const OmpCommandGateway = definePort({
   events: {
     output: {
       payload: CommandOutputEvent,
+      capability: "host.command-gateway",
+    },
+    compaction: {
+      payload: CompactionEvent,
       capability: "host.command-gateway",
     },
   },

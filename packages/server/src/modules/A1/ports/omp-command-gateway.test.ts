@@ -19,6 +19,7 @@ function handlersAnswering(reply: (command: string) => unknown): {
   const commands: string[] = [];
   const gateway = {
     onOutput: () => () => undefined,
+    onCompaction: () => () => undefined,
     runWithParser: async (args: { readonly command: string }) => {
       commands.push(args.command);
       return { result: undefined, data: reply(args.command) };

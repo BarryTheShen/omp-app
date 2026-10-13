@@ -1,7 +1,7 @@
 import type { AppClient } from "@omp-app/client";
 import { ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { compactionStateOf, SessionContextPanel } from "./context-panel";
 
@@ -82,5 +82,25 @@ describe("the Context panel", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Compact now" }));
     expect(await screen.findByText(`Compacted ${(120_000).toLocaleString()} tokens.`)).toBeTruthy();
+  });
+
+  test("after a compaction the transcript is read again, because the compaction writes an entry the transcript does not show yet", async () => {
+    const compactingClient = {
+      port: () => ({
+        send: async () => ({ summary: "done", firstKeptEntryId: "entry-1", tokensBefore: 120_000 }),
+      }),
+    } as unknown as AppClient;
+    const onCompacted = vi.fn();
+    render(
+      <SessionContextPanel
+        client={compactingClient}
+        onCompacted={onCompacted}
+        store={fakeStore({ autoCompactionEnabled: false })}
+        threadId={threadId}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Compact now" }));
+    expect(await screen.findByText(`Compacted ${(120_000).toLocaleString()} tokens.`)).toBeTruthy();
+    expect(onCompacted).toHaveBeenCalledTimes(1);
   });
 });

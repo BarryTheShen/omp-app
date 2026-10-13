@@ -584,6 +584,31 @@ function reply(request: Request): Reply {
 const agentDir = process.argv[2];
 if (agentDir === undefined) throw new Error("usage: fake-openai-server.ts <agentDir>");
 const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
+/**
+ * The usage a reply reports. A latest user message holding `cache_warm` reads 800 tokens back from the prompt cache,
+ * and one holding `cache_cold` writes 800 into it again. Both prompts are 1,100 tokens, so a cold turn reprocesses
+ * 1,100: 300 new tokens and the 800 written (#1390).
+ */
+function usageOf(request: Request) {
+  const messages = request.messages ?? [];
+  const lastUser = messages.findLastIndex((message) => message.role === "user");
+  const prompt = lastUser < 0 ? "" : text(messages[lastUser]?.content);
+  if (prompt.includes("cache_cold"))
+    return {
+      prompt_tokens: 1_100,
+      completion_tokens: 5,
+      total_tokens: 1_105,
+      prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 800 },
+    };
+  if (prompt.includes("cache_warm"))
+    return {
+      prompt_tokens: 1_100,
+      completion_tokens: 5,
+      total_tokens: 1_105,
+      prompt_tokens_details: { cached_tokens: 800 },
+    };
+  return usage;
+}
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -627,7 +652,7 @@ const server = Bun.serve({
             finish_reason: "text" in value ? "stop" : "tool_calls",
           },
         ],
-        usage,
+        usage: usageOf(body),
       });
     const base = {
       id: "chatcmpl-fake",
@@ -674,7 +699,7 @@ const server = Bun.serve({
         ...base,
         choices: [{ index: 0, delta: {}, finish_reason: "text" in value ? "stop" : "tool_calls" }],
       },
-      { ...base, choices: [], usage },
+      { ...base, choices: [], usage: usageOf(body) },
     ];
     // A reply that fails after its text ends its stream with an error event, in place of the finish and the usage.
     const lines =

@@ -5,7 +5,7 @@ import {
   RpcSessionPort,
   type ThreadId,
 } from "@omp-app/contracts";
-import { useMemo, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { CompactionControls, ContextMeter } from "@/modules/P7/context";
 import {
   type CompactionPort,
@@ -98,12 +98,16 @@ async function refreshSession(
     .then((state) => store.applySessionState(state, { asOfSeq }));
 }
 
-/** The compaction port: the result of an accepted compaction is recorded, and the session read again. */
+/**
+ * The compaction port: the result of an accepted compaction is recorded, then the transcript and the session are read
+ * again. The compaction writes an entry that the transcript shows only once it is read.
+ */
 function compactionPortFor(
   compaction: CompactionSource,
   store: OmpRuntimeStore,
   client: AppClient,
   threadId: ThreadId,
+  onCompacted: () => void,
 ): CompactionPort {
   const base = createCompactionPort(compaction.source, client, threadId);
   return {
@@ -112,6 +116,7 @@ function compactionPortFor(
     compact: async (request, options) => {
       const result = await base.compact(request, options);
       compaction.recordResult(result);
+      onCompacted();
       await refreshSession(client, store, threadId);
       return result;
     },
@@ -140,30 +145,38 @@ function contextProjection(store: OmpRuntimeStore, threadId: ThreadId) {
  * The right-hand Context panel for the open chat. Its surface requires the get_state, compact and
  * set_auto_compaction capabilities, so a host without them does not list it. The compaction controls
  * wait until omp reports the auto-compaction setting, so the panel never shows a setting it does not
- * know.
+ * know. `onCompacted` runs once a compaction the panel ran is saved, so the transcript is read again.
  */
 export function SessionContextPanel({
   client,
   store,
   threadId,
+  onCompacted,
 }: {
   readonly client: AppClient;
   readonly store: OmpRuntimeStore;
   readonly threadId: ThreadId;
+  readonly onCompacted?: () => void;
 }) {
   const autoCompactionKnown = useSyncExternalStore(
     (listener) => store.subscribe(listener),
     () => store.getSnapshot().session.autoCompactionEnabled !== null,
     () => store.getSnapshot().session.autoCompactionEnabled !== null,
   );
+  // The newest `onCompacted`: the compaction port is built once per chat and reads it through this ref.
+  const onCompactedRef = useRef(onCompacted);
+  useLayoutEffect(() => {
+    onCompactedRef.current = onCompacted;
+  });
   const ports = useMemo(() => {
     const contextSource: SessionContextSource = {
       getSnapshot: () => contextProjection(store, threadId),
       subscribe: (listener) => store.subscribe(() => listener(contextProjection(store, threadId))),
     };
+    const compacted = () => onCompactedRef.current?.();
     return {
       context: createContextUsagePort(contextSource),
-      compaction: compactionPortFor(compactionSourceFor(store), store, client, threadId),
+      compaction: compactionPortFor(compactionSourceFor(store), store, client, threadId, compacted),
     };
   }, [client, store, threadId]);
   return (
