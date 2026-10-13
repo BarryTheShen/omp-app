@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import type { SlashCommandProvider, SlashRoute } from "@/modules/D2/slash";
 import { completedRun } from "@/modules/D2/slash/test-support";
 import type { PromptIntent } from "@/modules/U2/contract";
+import type { CommandReport } from "./command-report/command-report";
 import { runSlashRoute } from "./slash-commands";
 
 const prompt: PromptIntent = { mode: "prompt", text: "/slow on", delivery: "new" };
@@ -40,6 +41,7 @@ describe("a mode command typed in the composer runs through the typed gateway", 
       intent: prompt,
       provider,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
       runMode,
     });
 
@@ -62,6 +64,7 @@ describe("a mode command typed in the composer runs through the typed gateway", 
       intent: prompt,
       provider,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
       runMode,
     });
 
@@ -83,10 +86,34 @@ describe("a mode command typed in the composer runs through the typed gateway", 
       intent: prompt,
       provider,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
       runMode,
     });
 
     expect(shown).toEqual([null, "omp: Computer use is on, I think."]);
+  });
+
+  test("a reply the app does not recognise with several lines shows them in the report panel", async () => {
+    const shown: Array<string | null> = [];
+    const reports: CommandReport[] = [];
+    const { provider } = providerThatRuns("/computer on");
+    const { runMode } = typedGateway(() => ({
+      outcome: "unknown",
+      mode: "computer",
+      outputs: ["Computer use is on,", "I think."],
+    }));
+
+    await runSlashRoute({
+      route: { kind: "omp", command: "/computer on" },
+      intent: prompt,
+      provider,
+      showStatus: (text) => shown.push(text),
+      showReport: (report) => reports.push(report),
+      runMode,
+    });
+
+    expect(shown).toEqual([null]);
+    expect(reports).toEqual([{ command: "/computer on", text: "Computer use is on,\nI think." }]);
   });
 
   test("a browser window that did not restart says so in plain words, with the window it asked for left out", async () => {
@@ -103,6 +130,7 @@ describe("a mode command typed in the composer runs through the typed gateway", 
       intent: prompt,
       provider,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
       runMode,
     });
 
@@ -126,6 +154,7 @@ describe("a mode command typed in the composer runs through the typed gateway", 
         intent: prompt,
         provider,
         showStatus: () => undefined,
+        showReport: () => undefined,
         runMode,
       }),
     ).rejects.toMatchObject({ appError: { code: "cancelled" } });
@@ -141,6 +170,7 @@ describe("a mode command typed in the composer runs through the typed gateway", 
       intent: prompt,
       provider,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
       runMode,
     });
 
@@ -158,6 +188,7 @@ describe("a mode command typed in the composer runs through the typed gateway", 
       intent: prompt,
       provider,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
     });
 
     expect(execute).toHaveBeenCalledTimes(1);

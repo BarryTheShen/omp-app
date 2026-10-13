@@ -36,6 +36,7 @@ import {
 import { AccessibilityProvider } from "@/a11y";
 import { agentsSurface, RevealAgentHub } from "@/app/agents/agents-tab";
 import { TaskSubagentsScope, useThreadAgents } from "@/app/agents/thread-agents-scope";
+import { RevealCommandOutput, useCommandReport } from "@/app/command-report/command-report";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { ToolRunScope } from "@/app/tool-run-scope";
 import { Button } from "@/components/ui/button";
@@ -1116,6 +1117,12 @@ function ActiveThreadReady({
     notificationProjector?.getBus().retireQuietFrom(threadId, FAST_REFUSAL_NOTICE_SOURCE);
   }, [notificationProjector, threadId]);
   const shortcutRegistry = useShortcutRegistry();
+  // The output of the last command that printed several lines, in the chat it ran in, until the person closes it.
+  const {
+    reveal: commandOutputReveal,
+    show: showCommandOutput,
+    surface: commandOutputSurface,
+  } = useCommandReport({ threadId });
   // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
   const appSlashCommands = useMemo(
     () => [
@@ -1137,6 +1144,7 @@ function ActiveThreadReady({
         fallbackTitle: title,
         overlay,
         gateway: commandGateway,
+        showReport: showCommandOutput,
       }),
       agentHubSlashCommand({ openAgentHub }),
       goalCommand,
@@ -1153,6 +1161,7 @@ function ActiveThreadReady({
       overlay,
       shareController,
       shortcutRegistry,
+      showCommandOutput,
       threadId,
       title,
     ],
@@ -1194,6 +1203,7 @@ function ActiveThreadReady({
         intent,
         provider: slashProvider,
         showStatus: setCommandStatus,
+        showReport: showCommandOutput,
         runMode: (request, options) => commandGateway.modeChange({ threadId, request }, options),
       });
     },
@@ -1202,6 +1212,7 @@ function ActiveThreadReady({
       appSlashCommands,
       commandGateway,
       runtimeController,
+      showCommandOutput,
       slashProvider,
       threadId,
     ],
@@ -1325,6 +1336,7 @@ function ActiveThreadReady({
       submitPrompt: runtimeController.submitPrompt,
       switchThread: openThread,
     }),
+    commandOutput: commandOutputSurface,
     executionModes: useExecutionModesSurface({
       client,
       threadId,
@@ -1466,6 +1478,7 @@ function ActiveThreadReady({
                 <>
                   {area("panels")}
                   <RevealAgentHub reveal={agentsReveal} />
+                  <RevealCommandOutput reveal={commandOutputReveal} />
                 </>
               }
               transcript={

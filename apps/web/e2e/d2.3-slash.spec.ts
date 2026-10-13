@@ -20,9 +20,9 @@ function commandSurface(page: Page): Locator {
   return commandList(page).locator("div.bg-popover").first();
 }
 
-/** The header line that says what a command printed. */
+/** The command output panel: every line of what a command printed, kept until the person closes it. */
 function commandResult(page: Page): Locator {
-  return page.getByRole("status").filter({ hasText: "omp: Usage" });
+  return page.getByRole("region", { name: "Command output" });
 }
 
 realTest(

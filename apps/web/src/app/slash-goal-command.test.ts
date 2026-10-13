@@ -84,6 +84,7 @@ describe("#1261 a routed /goal passes its typed text to the command", () => {
       intent: prompt,
       provider: null,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
     });
     expect(sendGoal).toHaveBeenCalledWith({ op: "pause" });
     expect(shown).toEqual([null, "Goal paused: Ship the release notes. Status: Paused."]);
@@ -97,6 +98,7 @@ describe("#1261 a routed /goal passes its typed text to the command", () => {
       intent: prompt,
       provider: null,
       showStatus: () => undefined,
+      showReport: () => undefined,
     });
     expect(run).toHaveBeenCalledWith({});
   });

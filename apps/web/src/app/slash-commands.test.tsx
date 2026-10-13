@@ -21,6 +21,7 @@ import type { SessionMetadata } from "@/modules/R1/contract";
 import { ComposerSurface } from "@/modules/U2/composer/composer";
 import type { PromptIntent } from "@/modules/U2/contract";
 import type { OverlayOpenOptions } from "@/overlay/overlay-host";
+import type { CommandReport } from "./command-report/command-report";
 import { ComposerTriggers } from "./composer-triggers";
 import {
   askFirstSlashCommand,
@@ -195,8 +196,9 @@ describe("D2.3 /fresh", () => {
 });
 
 describe("D2.3 reporting a routed command", () => {
-  test("a finished omp command shows omp's words in the header, after the old note is cleared", async () => {
+  test("several lines of omp's words go to the report panel, every line kept, and the old header is cleared", async () => {
     const shown: Array<string | null> = [];
+    const reports: CommandReport[] = [];
     const provider = {
       execute: vi.fn(async () => completedRun("/usage", "Usage\nTotal tokens: 0")),
     } as unknown as SlashCommandProvider;
@@ -207,9 +209,52 @@ describe("D2.3 reporting a routed command", () => {
       intent: prompt,
       provider,
       showStatus: (text) => shown.push(text),
+      showReport: (report) => reports.push(report),
     });
 
-    expect(shown).toEqual([null, "omp: Usage Total tokens: 0"]);
+    expect(shown).toEqual([null]);
+    expect(reports).toEqual([{ command: "/usage", text: "Usage\nTotal tokens: 0" }]);
+  });
+
+  test("every reply omp printed for one command is one report, one line each, in order", async () => {
+    const reports: CommandReport[] = [];
+    const provider = {
+      execute: async () => ({
+        ...completedRun("/compact"),
+        outputs: [{ text: "Compacting…" }, { text: "Done." }],
+      }),
+    } as unknown as SlashCommandProvider;
+    const route: SlashRoute = { kind: "omp", command: "/compact" };
+
+    await runSlashRoute({
+      route,
+      intent: prompt,
+      provider,
+      showStatus: () => undefined,
+      showReport: (report) => reports.push(report),
+    });
+
+    expect(reports).toEqual([{ command: "/compact", text: "Compacting…\nDone." }]);
+  });
+
+  test("one line of omp's words stays in the header, and no report opens", async () => {
+    const shown: Array<string | null> = [];
+    const reports: CommandReport[] = [];
+    const provider = {
+      execute: vi.fn(async () => completedRun("/usage", "Total tokens: 0")),
+    } as unknown as SlashCommandProvider;
+    const route: SlashRoute = { kind: "omp", command: "/usage" };
+
+    await runSlashRoute({
+      route,
+      intent: prompt,
+      provider,
+      showStatus: (text) => shown.push(text),
+      showReport: (report) => reports.push(report),
+    });
+
+    expect(shown).toEqual([null, "omp: Total tokens: 0"]);
+    expect(reports).toEqual([]);
   });
 
   test("an aborted marker on a finished command still shows its words, since omp sets it on an idle command that finished", async () => {
@@ -227,9 +272,28 @@ describe("D2.3 reporting a routed command", () => {
       intent: prompt,
       provider,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
     });
 
     expect(shown).toEqual([null, "omp: Total tokens: 0"]);
+  });
+
+  test("a command that printed nothing says that it ran", async () => {
+    const shown: Array<string | null> = [];
+    const provider = {
+      execute: vi.fn(async () => completedRun("/jobs", "")),
+    } as unknown as SlashCommandProvider;
+    const route: SlashRoute = { kind: "omp", command: "/jobs" };
+
+    await runSlashRoute({
+      route,
+      intent: prompt,
+      provider,
+      showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
+    });
+
+    expect(shown).toEqual([null, "Ran /jobs."]);
   });
 
   test("the person's own cancellation fails the send, so the composer keeps the typed text", async () => {
@@ -245,7 +309,13 @@ describe("D2.3 reporting a routed command", () => {
     const route: SlashRoute = { kind: "omp", command: "/usage" };
 
     await expect(
-      runSlashRoute({ route, intent: prompt, provider, showStatus: () => undefined }),
+      runSlashRoute({
+        route,
+        intent: prompt,
+        provider,
+        showStatus: () => undefined,
+        showReport: () => undefined,
+      }),
     ).rejects.toMatchObject({
       appError: { code: "cancelled", message: "The command was cancelled." },
     });
@@ -267,6 +337,7 @@ describe("D2.3 reporting a routed command", () => {
       intent: { ...prompt, text: "/new" },
       provider: null,
       showStatus: (text) => shown.push(text),
+      showReport: () => undefined,
     });
 
     expect(shown).toEqual([null, "Started a new chat."]);
@@ -410,6 +481,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       confirm: async () => false,
       gateway,
       threadId,
+      showReport: () => undefined,
     });
     await expect(command.run({})).resolves.toEqual({});
     expect(gateway.run).not.toHaveBeenCalled();
@@ -424,6 +496,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       confirm,
       gateway,
       threadId,
+      showReport: () => undefined,
     });
     await expect(command.run({})).resolves.toEqual({
       message: "omp: Session deleted: /sessions/one.jsonl.",
@@ -431,6 +504,23 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(gateway.run).toHaveBeenCalledTimes(1);
     expect(gateway.run).toHaveBeenCalledWith({ threadId, command: "/session delete" }, {});
+  });
+
+  test("a reply with several lines goes to the report, and the header shows no note", async () => {
+    const reports: CommandReport[] = [];
+    const command = askFirstSlashCommand({
+      name: "usage reset",
+      description: "Spend a saved rate-limit reset, after you confirm",
+      takesArguments: true,
+      confirm: async () => true,
+      gateway: gatewayAnswering("Usage\nTotal tokens: 0"),
+      threadId,
+      showReport: (report) => reports.push(report),
+    });
+    await expect(command.run({ args: "codex/active" })).resolves.toEqual({});
+    expect(reports).toEqual([
+      { command: "/usage reset codex/active", text: "Usage\nTotal tokens: 0" },
+    ]);
   });
 
   test("/usage reset hands its target to the question, and sends that target to omp", async () => {
@@ -443,6 +533,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       confirm,
       gateway,
       threadId,
+      showReport: () => undefined,
     });
     await expect(command.run({ args: "codex/active" })).resolves.toEqual({
       message: "omp: No provider accounts found. Use /login to add one.",
@@ -463,6 +554,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       confirm: async () => false,
       gateway,
       threadId,
+      showReport: () => undefined,
     });
     await expect(command.run({ args: "anthropic/2" })).resolves.toEqual({});
     expect(gateway.run).not.toHaveBeenCalled();
@@ -485,6 +577,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       confirm: async () => true,
       gateway,
       threadId,
+      showReport: () => undefined,
     });
     await expect(command.run({})).rejects.toBe(failure);
   });
@@ -496,6 +589,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       overlay: { open: () => undefined },
       gateway: gatewayAnswering("unused"),
       threadId,
+      showReport: () => undefined,
     });
     expect(commands.map((command) => [command.name, command.takesArguments])).toEqual([
       ["session delete", undefined],
@@ -518,6 +612,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       },
       gateway,
       threadId,
+      showReport: () => undefined,
     });
     void sessionDelete?.run({});
     const content = opened[0]?.content;
@@ -563,6 +658,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       intent: { ...prompt, text: "/usage reset codex/active" },
       provider: null,
       showStatus: vi.fn(),
+      showReport: () => undefined,
     });
     expect(run).toHaveBeenCalledWith({ args: "codex/active" });
   });

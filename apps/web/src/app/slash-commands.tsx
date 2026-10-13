@@ -12,9 +12,8 @@ import {
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  commandOutputView,
   createSlashCommandProvider,
-  describeCommandResult,
-  describeOutputs,
   guardedCommandName,
   guardedRoute,
   plainOutputText,
@@ -35,6 +34,7 @@ import {
 } from "@/modules/U4/dialogs/confirm-chat-delete";
 import { openSpendResetConfirm } from "@/modules/U4/dialogs/confirm-spend-reset";
 import type { AgentHubOpenResult } from "./agents/agent-hub-shortcut";
+import type { CommandReport } from "./command-report/command-report";
 import { describeGoalResult, parseGoalCommand } from "./goal-command";
 
 /**
@@ -289,6 +289,7 @@ export function askFirstSlashCommand({
   confirm,
   gateway,
   threadId,
+  showReport,
 }: {
   readonly name: string;
   readonly description: string;
@@ -297,6 +298,8 @@ export function askFirstSlashCommand({
   readonly confirm: (args: string) => Promise<boolean>;
   readonly gateway: CommandRunGateway;
   readonly threadId: ThreadId;
+  /** Shows omp's words for a reply with several lines, in the command output panel. */
+  readonly showReport: (report: CommandReport) => void;
 }): SlashAppCommand {
   return {
     name,
@@ -310,7 +313,12 @@ export function askFirstSlashCommand({
         { threadId, command },
         signal === undefined ? {} : { signal },
       );
-      return { message: describeCommandResult(result, command) };
+      const note = commandNote(
+        result.outputs.map((output) => output.text),
+        command,
+        showReport,
+      );
+      return note === undefined ? {} : { message: note };
     },
   };
 }
@@ -338,6 +346,7 @@ export function askFirstSlashCommands({
   overlay,
   gateway,
   threadId,
+  showReport,
 }: {
   readonly catalog: SessionCatalogModel | null;
   /** The header's title for the chat, used until the sidebar's list holds the chat. */
@@ -345,6 +354,8 @@ export function askFirstSlashCommands({
   readonly overlay: OverlayOpener;
   readonly gateway: CommandRunGateway;
   readonly threadId: ThreadId;
+  /** Shows omp's words for a reply with several lines, in the command output panel. */
+  readonly showReport: (report: CommandReport) => void;
 }): readonly SlashAppCommand[] {
   return [
     askFirstSlashCommand({
@@ -354,6 +365,7 @@ export function askFirstSlashCommands({
         openChatDeleteConfirm(overlay, sidebarChatName(catalog, threadId, fallbackTitle)),
       gateway,
       threadId,
+      showReport,
     }),
     askFirstSlashCommand({
       name: "usage reset",
@@ -362,6 +374,7 @@ export function askFirstSlashCommands({
       confirm: (target) => openSpendResetConfirm(overlay, describeResetTarget(target)),
       gateway,
       threadId,
+      showReport,
     }),
   ];
 }
@@ -465,22 +478,43 @@ function refusedSend(name: string): AppFailure {
 }
 
 /**
+ * The note the header shows for a command omp finished: omp's words as one line, or none when they have several lines.
+ * Those go to the command output panel instead, which stays until the person closes it (`commandOutputView`).
+ */
+function commandNote(
+  texts: readonly string[],
+  command: string,
+  showReport: (report: CommandReport) => void,
+): string | undefined {
+  const view = commandOutputView(texts, command);
+  if (view.kind === "report") {
+    showReport({ command, text: view.text });
+    return undefined;
+  }
+  return view.text;
+}
+
+/**
  * Runs a routed command. The four mode commands run through the typed gateway, and their status says what omp did in
  * plain words; omp's own words show only for a reply the app does not recognise. Any other finished omp command shows
- * omp's words in the header. A command that fails throws its message, and the composer shows it and keeps the typed
- * text, as it does for any send.
+ * omp's words: several lines go to the command output panel, which stays until the person closes it, and one line
+ * goes to the header. A command that fails throws its message, and the composer shows it and keeps the typed text,
+ * as it does for any send.
  */
 export async function runSlashRoute({
   route,
   intent,
   provider,
   showStatus,
+  showReport,
   runMode,
 }: {
   readonly route: SlashRoute;
   readonly intent: PromptIntent;
   readonly provider: SlashCommandProvider | null;
   readonly showStatus: (text: string | null) => void;
+  /** Shows omp's words for a command that printed several lines, in the command output panel. */
+  readonly showReport: (report: CommandReport) => void;
   /** The typed gateway for the four mode commands; without it they run as any other command. */
   readonly runMode?: (
     request: ModeChangeRequest,
@@ -489,6 +523,10 @@ export async function runSlashRoute({
 }): Promise<void> {
   showStatus(null);
   const signal = intent.signal === undefined ? {} : { signal: intent.signal };
+  const showOutput = (texts: readonly string[], command: string) => {
+    const note = commandNote(texts, command, showReport);
+    if (note !== undefined) showStatus(note);
+  };
   if (route.kind === "app") {
     const outcome = await route.command.run(
       route.args === undefined ? signal : { ...signal, args: route.args },
@@ -499,11 +537,8 @@ export async function runSlashRoute({
   const request = runMode === undefined ? null : modeChangeFromCommand(route.command);
   if (runMode !== undefined && request !== null) {
     const outcome = await runMode(request, signal);
-    showStatus(
-      outcome.outcome === "unknown"
-        ? describeOutputs(outcome.outputs, route.command)
-        : modeOutcomeText(outcome),
-    );
+    if (outcome.outcome === "unknown") showOutput(outcome.outputs, route.command);
+    else showStatus(modeOutcomeText(outcome));
     return;
   }
   if (provider === null) {
@@ -516,5 +551,8 @@ export async function runSlashRoute({
   // omp ends an idle command with an "aborted" marker after printing its own words, so the marker is not a
   // failure here. The person's own cancellation arrives as a thrown AppFailure from the call itself.
   const result = await provider.execute(route.command, signal);
-  showStatus(describeCommandResult(result, route.command));
+  showOutput(
+    result.outputs.map((output) => output.text),
+    route.command,
+  );
 }

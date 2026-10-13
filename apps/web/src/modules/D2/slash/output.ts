@@ -1,5 +1,3 @@
-import type { CommandRunResult } from "@omp-app/contracts";
-
 const ESCAPE = 27;
 const TAB = 9;
 const NEWLINE = 10;
@@ -33,21 +31,28 @@ function isFinalByte(code: number): boolean {
 }
 
 /**
- * The one line the header shows after a command finishes. omp's own words come through as text;
- * a command that printed nothing says that it ran.
+ * What the app shows for a finished command, from the texts omp printed for it. A report (text with a line break)
+ * keeps every line, in order, for the report panel, which stays until the person closes it. Anything else is one
+ * line for the header. The app looks only at line breaks here, never at what the words mean.
  */
-export function describeCommandResult(result: CommandRunResult, command: string): string {
-  return describeOutputs(
-    result.outputs.map((output) => output.text),
-    command,
-  );
+export type CommandOutputView =
+  | { readonly kind: "report"; readonly text: string }
+  | { readonly kind: "header"; readonly text: string };
+
+export function commandOutputView(texts: readonly string[], command: string): CommandOutputView {
+  const report = texts
+    .map((text) => plainOutputText(text))
+    .filter((text) => text !== "")
+    .join("\n");
+  if (report.includes("\n")) return { kind: "report", text: report };
+  return { kind: "header", text: describeOutputs(texts, command) };
 }
 
 /**
  * The one line the header shows for the texts omp printed for a command; a command that printed nothing says that it
  * ran. omp's words come through as text, and the app never reads what they mean.
  */
-export function describeOutputs(texts: readonly string[], command: string): string {
+function describeOutputs(texts: readonly string[], command: string): string {
   // The header is one line: every run of spaces and line breaks becomes a single space.
   const oneLine = texts
     .map((text) => plainOutputText(text))

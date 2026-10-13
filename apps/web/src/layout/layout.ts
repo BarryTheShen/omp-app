@@ -40,6 +40,7 @@ export type SurfaceId =
   | "watchNotice"
   | "theme"
   | "rewind"
+  | "commandOutput"
   | "agents"
   | "executionModes";
 
@@ -54,7 +55,7 @@ export const LAYOUT: AppLayout = {
    * Right sidebar; with more than one panel they become tabs, in this order. An on-demand panel
    * (`Surface.open`) is listed only while it is open.
    */
-  panels: ["todo", "contextCard", "agents", "rewind"],
+  panels: ["todo", "contextCard", "agents", "rewind", "commandOutput"],
   /** The inline control row inside the composer, left to right. */
   composerToolbar: ["mode", "executionModes", "queue"],
   /** Under that row. */
