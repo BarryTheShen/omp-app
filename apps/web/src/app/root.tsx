@@ -1724,9 +1724,10 @@ function ConnectedApp({
             close: rpc.close,
             rename: rpc.rename,
             deleteThread: (threadId) => deleteChatFile({ threadId, catalog, sessionFiles }),
+            loadedThreadId: () => controller?.getSnapshot().threadId,
           })
         : null,
-    [catalog, rpc.open, rpc.close, rpc.rename, sessionFiles],
+    [catalog, controller, rpc.open, rpc.close, rpc.rename, sessionFiles],
   );
   useEffect(() => {
     let active = true;

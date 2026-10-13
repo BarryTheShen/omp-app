@@ -39,6 +39,11 @@ export interface RemoteThreadListOptions {
   /** A1.8's typed native `/delete` gateway; absent means the action is visibly unavailable. */
   readonly deleteThread?: (threadId: ThreadId) => Promise<void>;
   readonly onThreadIdChange?: (threadId: ThreadId | undefined) => void;
+  /**
+   * The chat the page has open and loaded, as the selected-chat controller holds it. A pick of that chat sends nothing
+   * while the newest open has finished: the controller then keeps the chat as it is (issue 1359).
+   */
+  readonly loadedThreadId?: () => ThreadId | undefined;
   readonly generateTitle?: RemoteThreadListAdapter["generateTitle"];
 }
 
@@ -130,8 +135,15 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
    * Initializes before the first append. Existing ids open by ThreadId; `new`/`new:*`/`local:*`
    * requests create through A0's folder-scoped `open({ start: "new" })`. A second call for an id whose open is still
    * in flight shares that open, but not once a later open has started: the newest pick is the one to open.
+   * The chat already loaded returns with no request while the newest open has finished: picking it sends nothing to
+   * omp (issue 1359).
    */
   public initialize(threadId: string): Promise<RemoteThreadInitializeResponse> {
+    const loaded = this.options.loadedThreadId?.();
+    if (loaded !== undefined && loaded === threadId && this.requests === this.finishedRequest) {
+      this.currentThreadId = loaded;
+      return Promise.resolve({ remoteId: loaded });
+    }
     const existing = this.initializations.get(threadId);
     if (existing && existing.request === this.requests) return existing.task;
     const task = this.open(threadId);

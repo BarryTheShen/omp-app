@@ -174,6 +174,57 @@ describe("SessionCatalogSidebar", () => {
     await waitFor(() => expect(opened).toEqual(["new"]));
   });
 
+  test("picking the chat that is already open is handed on, and the remote and the chat keep it open", async () => {
+    const calls: string[] = [];
+    const opened: string[] = [];
+    const remote = {
+      ...fakeRemote(calls),
+      initialize: async (id: string) => {
+        calls.push(`initialize:${id}`);
+        return { remoteId: id };
+      },
+    };
+    renderSidebar({
+      remote,
+      currentThreadId: ThreadIdSchema.parse("old"),
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Old chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    await waitFor(() => expect(opened).toEqual(["old"]));
+    expect(calls).toEqual(["initialize:old"]);
+    expect(screen.getByRole("option", { name: /Old chat/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
+  test("a pick of the chat on screen is handed on while a New chat is still opening, so the pick is the newest", async () => {
+    const calls: string[] = [];
+    const opened: string[] = [];
+    const remote = {
+      ...fakeRemote(calls),
+      initialize: (id: string) => {
+        calls.push(`initialize:${id}`);
+        if (id === "new") return Promise.withResolvers<{ remoteId: string }>().promise;
+        return Promise.resolve({ remoteId: id });
+      },
+    };
+    renderSidebar({
+      remote,
+      currentThreadId: ThreadIdSchema.parse("old"),
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Old chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    await waitFor(() => expect(opened).toEqual(["old"]));
+    expect(calls).toEqual(["initialize:new", "initialize:old"]);
+  });
+
   test("a pick the chat refuses hands the selection back to the chat that is open", async () => {
     const refused: string[] = [];
     const remote = {
