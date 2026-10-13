@@ -49,8 +49,10 @@ realTest(
     await expect(save).toBeDisabled({ timeout: 20_000 });
     await expect(dialog.getByRole("alert")).toHaveCount(0);
 
-    const config = await readFile(join(realApp.agentDir, "config.yml"), "utf8");
-    expect(config).toMatch(/^\s+fallbackOn:\s*["']?usage-limit["']?\s*$/m);
+    // Save disables as the write starts, before omp has written the file: wait for the line rather than read it once.
+    await expect
+      .poll(() => readFile(join(realApp.agentDir, "config.yml"), "utf8"), { timeout: 20_000 })
+      .toMatch(/^\s+fallbackOn:\s*["']?usage-limit["']?\s*$/m);
 
     await page.reload();
     dialog = await openRetryAndFallback(page);
