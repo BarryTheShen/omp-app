@@ -168,6 +168,7 @@ export class SettingsRuntime {
   private unsubscribeChanged: (() => void) | undefined;
   private operation = 0;
   private writing = false;
+  private inFlightSave: Promise<CommitResult> | undefined;
   private disposed = false;
 
   public constructor(
@@ -238,6 +239,10 @@ export class SettingsRuntime {
   public stage(key: string, value: StagedSettings["edits"][string]): StageResult {
     const staged = this.snapshot.staged;
     if (!staged) return emptyValidation("Settings are still loading.");
+    // A value staged while a save writes would be dropped when the save ends, which resets the staged edits.
+    if (this.snapshot.phase === "saving") {
+      return emptyValidation("Settings are saving. Try again in a moment.");
+    }
     // While a save has left keys unsaved, the reason for it stays on screen until the next save.
     const error = this.snapshot.unsavedKeys.length > 0 ? this.snapshot.error : null;
     const result = stageEdit(this.descriptor, staged, key, value);
@@ -250,12 +255,14 @@ export class SettingsRuntime {
     }
     const validation = { ...this.snapshot.validation };
     delete validation[key];
+    // A value staged over an outside change keeps the conflict until the person chooses, so a save stays refused.
+    const inConflict = this.snapshot.phase === "conflict";
     this.commit({
       staged: result.state,
       validation,
-      phase: "editing",
+      phase: inConflict ? "conflict" : "editing",
       error,
-      conflict: null,
+      conflict: inConflict ? this.snapshot.conflict : null,
     });
     return result;
   }
@@ -279,8 +286,17 @@ export class SettingsRuntime {
     });
   }
 
-  public async save(): Promise<CommitResult> {
-    return this.saveEdits(false, []);
+  public save(): Promise<CommitResult> {
+    // A Save pressed while one runs gets that save's result: a second write with the same expectedRevision would be
+    // refused by omp as a conflict with this section's own write.
+    if (this.inFlightSave) return this.inFlightSave;
+    const pending = this.saveEdits(false, []);
+    this.inFlightSave = pending;
+    const forget = () => {
+      if (this.inFlightSave === pending) this.inFlightSave = undefined;
+    };
+    void pending.then(forget, forget);
+    return pending;
   }
 
   /**

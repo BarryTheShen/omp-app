@@ -85,6 +85,10 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
     for (const [key, value] of changedEdits(staged, next)) runtime.stage(key, value);
   };
 
+  // Fields and Save wait while a save writes and while a conflict waits for the person's choice.
+  const disabled =
+    snapshot.phase === "loading" || snapshot.phase === "saving" || snapshot.phase === "conflict";
+
   // A save omp refused, or only part-wrote, is named below with its reason. An environment variable that still
   // overrides a written setting is said in a sentence, and the status pill then does not say Applied.
   const unsavedLabels = settingLabels(descriptor, snapshot.unsavedKeys);
@@ -109,6 +113,7 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
         descriptor={descriptor}
         snapshot={config}
         staged={staged}
+        disabled={disabled}
         validation={snapshot.validation}
         applyStatus={status}
         notice={notice}
@@ -123,7 +128,8 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
         >
           <span className="text-warning-foreground">
-            Another change arrived for {snapshot.conflict.changedKeys.join(", ")}. Reload it or keep
+            Another change arrived for{" "}
+            {settingLabels(descriptor, snapshot.conflict.changedKeys).join(", ")}. Reload it or keep
             your edits and save again.
           </span>
           <span className="flex gap-2">

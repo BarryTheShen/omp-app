@@ -1,7 +1,12 @@
 import { AppFailure } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
-import type { ConfigSnapshot, SettingValue, StageResult } from "@/modules/S1/settings-kit";
+import type {
+  ConfigSnapshot,
+  SettingValue,
+  StagedSettings,
+  StageResult,
+} from "@/modules/S1/settings-kit";
 import type { SettingsRuntime, SettingsRuntimeSnapshot } from "../../../S1/runtime";
 import { modelSettingsSections } from "../../settings/descriptors";
 import { ModelSettingsSection } from "../../settings/model-settings";
@@ -9,10 +14,16 @@ import { ModelSettingsSection } from "../../settings/model-settings";
 const REFUSAL =
   "This setting could not be written to the settings file. Check the settings file for an entry that conflicts with it.";
 
+/** One staged Thinking Level change: Save is enabled unless something holds it. */
+const thinkingEdit: StagedSettings["edits"] = {
+  defaultThinkingLevel: { secret: false, value: "high" },
+};
+
 function runtime(
   descriptor: (typeof modelSettingsSections)[number],
   phase: SettingsRuntimeSnapshot["phase"] = "ready",
   patch: Partial<SettingsRuntimeSnapshot> = {},
+  edits: StagedSettings["edits"] = {},
 ): SettingsRuntime {
   const config: ConfigSnapshot = {
     folder: null,
@@ -30,12 +41,16 @@ function runtime(
     descriptor,
     layer: "global",
     config,
-    staged: { snapshot: config, edits: {} },
+    staged: { snapshot: config, edits },
     validation: {},
     phase,
     conflict:
       phase === "conflict"
-        ? { local: { snapshot: config, edits: {} }, remote: config, changedKeys: ["modelRoles"] }
+        ? {
+            local: { snapshot: config, edits },
+            remote: config,
+            changedKeys: ["defaultThinkingLevel"],
+          }
         : null,
     error: null,
     applyStatus: null,
@@ -195,5 +210,60 @@ describe("D1 model settings sections", () => {
     );
     expect(screen.getByText(REFUSAL)).toBeTruthy();
     expect(screen.queryByText(/^Not saved/)).toBeNull();
+  });
+
+  test("the fields and Save stay enabled for a staged edit while nothing is saving", () => {
+    const descriptor = modelSettingsSections[0];
+    if (!descriptor) throw new Error("missing thinking section");
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "editing", {}, thinkingEdit)}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "Thinking Level" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+    expect(screen.getByRole("button", { name: "Save changes" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
+  test("the fields, Save and Cancel are disabled while a save writes", () => {
+    const descriptor = modelSettingsSections[0];
+    if (!descriptor) throw new Error("missing thinking section");
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "saving", {}, thinkingEdit)}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "Thinking Level" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Save changes" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  test("the fields and Save are disabled in a conflict, which names the setting and keeps its choices", () => {
+    const descriptor = modelSettingsSections[0];
+    if (!descriptor) throw new Error("missing thinking section");
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "conflict", {}, thinkingEdit)}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "Thinking Level" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Save changes" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Reload" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Keep mine" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByText(/Another change arrived for Thinking Level/)).toBeTruthy();
   });
 });

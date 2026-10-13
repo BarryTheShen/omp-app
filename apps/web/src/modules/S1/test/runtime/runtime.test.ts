@@ -498,4 +498,75 @@ describe("S1.2 ConfigStore runtime", () => {
       vi.useRealTimers();
     }
   });
+
+  test("a Save pressed again while one runs joins it, so the section is written once", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    const first = runtime.save();
+    const second = runtime.save();
+    expect(second).toBe(first);
+    await first;
+    expect(state.writes).toHaveLength(1);
+    expect(runtime.getSnapshot()).toMatchObject({ phase: "ready", conflict: null });
+  });
+
+  test("a value staged while a save writes is refused, so the save cannot drop it", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    const saving = runtime.save();
+    expect(runtime.stage("appearance.mode", { secret: false, value: "system" })).toMatchObject({
+      ok: false,
+      validation: { code: "not-ready", message: "Settings are saving. Try again in a moment." },
+    });
+    await saving;
+    expect(state.writes.map((write) => write.value)).toEqual([{ secret: false, value: "dark" }]);
+    expect(runtime.getSnapshot().staged?.edits).toEqual({});
+  });
+
+  test("a value staged over an outside change keeps the conflict until the person chooses", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    // Someone else set the same setting, so the value omp holds now differs from the one read.
+    const external: ConfigEntry = {
+      key: "appearance.mode",
+      secret: false,
+      value: "light",
+      source: "global",
+      overrides: [],
+    };
+    state.entries[0] = external;
+    state.revision = "revision-external";
+    emit(state, change("appearance.mode", "revision-external", external));
+    await settle();
+    expect(runtime.getSnapshot().phase).toBe("conflict");
+    expect(runtime.stage("appearance.mode", { secret: false, value: "system" }).ok).toBe(true);
+    expect(runtime.getSnapshot()).toMatchObject({
+      phase: "conflict",
+      conflict: { changedKeys: ["appearance.mode"] },
+    });
+    await expect(runtime.save()).rejects.toMatchObject({
+      appError: { code: "invalid_args", message: "Resolve the settings conflict before saving." },
+    });
+  });
 });
