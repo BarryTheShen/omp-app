@@ -70,4 +70,11 @@ describe("CustomNote", () => {
     expect(screen.getByText("Advisor note")).toBeTruthy();
     expect(screen.getByText(/Dedup did not work/)).toBeTruthy();
   });
+
+  test("the other kinds of omp's messages keep their note and never get a skill card", () => {
+    const { container } = render(<CustomNote source={sourceOf("custom_message irc:incoming")} />);
+    expect(screen.getByText("Message from Reviewer")).toBeTruthy();
+    expect(container.querySelector('[data-slot="u1-custom-note-body"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="u1-skill-card"]')).toBeNull();
+  });
 });

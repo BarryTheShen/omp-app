@@ -1,4 +1,9 @@
 import { MarkdownContent } from "../markdown";
+import {
+  describeSkillPrompt,
+  SKILL_PROMPT_CUSTOM_TYPE,
+  SkillPromptCard,
+} from "./skill-prompt-card";
 
 /** What `metadata.custom` carries for a custom message (set by R0's conversion). */
 export interface CustomNoteSource {
@@ -68,6 +73,17 @@ export function describeCustomMessage(source: CustomNoteSource): CustomNoteView 
 
 /** One of omp's own messages in the transcript: a muted note, its heading, and its text. */
 export function CustomNote({ source }: { readonly source: CustomNoteSource }) {
+  if (source.customType === SKILL_PROMPT_CUSTOM_TYPE) {
+    return (
+      <div
+        className="flex min-w-0 flex-col"
+        data-custom-type={source.customType}
+        data-slot="u1-custom-note"
+      >
+        <SkillPromptCard view={describeSkillPrompt(source.details, source.text)} />
+      </div>
+    );
+  }
   const { heading, body } = describeCustomMessage(source);
   return (
     <div
