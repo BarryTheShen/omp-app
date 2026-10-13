@@ -344,6 +344,93 @@ describe("S1 settings section", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(count().value).toBe("1");
   });
+
+  test("a list setting keeps the comma a person types, so a second item can be typed", () => {
+    const exempt: SettingControl = {
+      key: "model.exemptTools",
+      label: "Exempt Tools",
+      kind: "list",
+      secret: false,
+      validate: (value) =>
+        !value.secret && Array.isArray(value.value)
+          ? { valid: true }
+          : { valid: false, code: "list", message: "Enter a comma-separated list." },
+      apply: "restart",
+    };
+    const listSnapshot: ConfigSnapshot = {
+      folder: null,
+      revision: "rev-1",
+      entries: [
+        {
+          key: "model.exemptTools",
+          secret: false,
+          value: ["bash"],
+          source: "global",
+          overrides: [],
+        },
+      ],
+    };
+    const listDescriptor: SettingsSectionDescriptor = { ...descriptor, controls: [exempt] };
+    const listInitial: StagedSettings = { snapshot: listSnapshot, edits: {} };
+    function Harness() {
+      const [staged, setStaged] = useState<StagedSettings>(listInitial);
+      const edit = staged.edits["model.exemptTools"];
+      return (
+        <>
+          <SettingsSection
+            descriptor={listDescriptor}
+            snapshot={listSnapshot}
+            staged={staged}
+            onStage={setStaged}
+            onCancel={() => setStaged(listInitial)}
+          />
+          <output data-testid="staged">
+            {JSON.stringify(edit && !edit.secret ? edit.value : null)}
+          </output>
+          <button
+            type="button"
+            onClick={() =>
+              setStaged({
+                snapshot: listSnapshot,
+                edits: { "model.exemptTools": { secret: false, value: ["write"] } },
+              })
+            }
+          >
+            Outside change
+          </button>
+        </>
+      );
+    }
+    render(<Harness />);
+    const field = screen.getByLabelText("Exempt Tools") as HTMLInputElement;
+    const stagedOutput = screen.getByTestId("staged");
+
+    // Typed one key at a time: the comma and the space after it stay in the field, and the list follows the text.
+    fireEvent.change(field, { target: { value: "read" } });
+    fireEvent.change(field, { target: { value: "read," } });
+    expect(field.value).toBe("read,");
+    fireEvent.change(field, { target: { value: "read, " } });
+    expect(field.value).toBe("read, ");
+    fireEvent.change(field, { target: { value: "read, w" } });
+    fireEvent.change(field, { target: { value: "read, write" } });
+    expect(field.value).toBe("read, write");
+    expect(stagedOutput.textContent).toBe('["read","write"]');
+
+    // Backspace from the second item back to the comma keeps the comma.
+    fireEvent.change(field, { target: { value: "read," } });
+    expect(field.value).toBe("read,");
+    expect(stagedOutput.textContent).toBe('["read"]');
+
+    // A list that is not the typed text (here, one set from elsewhere) replaces it in the field.
+    fireEvent.change(field, { target: { value: "read, x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Outside change" }));
+    expect(field.value).toBe("write");
+
+    // Cancel drops the typed text and shows the saved list.
+    fireEvent.change(field, { target: { value: "read," } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(field.value).toBe("bash");
+  });
 });
 
 describe("S1 structured settings", () => {

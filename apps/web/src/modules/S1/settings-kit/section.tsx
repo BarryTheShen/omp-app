@@ -223,9 +223,16 @@ function SettingControlRow({
   const [typed, setTyped] = useState<{ readonly token: number; readonly text: string } | undefined>(
     undefined,
   );
+  const typedText = typed !== undefined && typed.token === resetToken ? typed.text : undefined;
+  // A list is drawn from its array, which has no comma after the last item: a comma just typed would vanish, so a
+  // second item could only be pasted. The typed text stays while it still says the list the setting holds.
+  const keepsTypedList =
+    control.kind === "list" &&
+    typedText !== undefined &&
+    JSON.stringify(parseControlValue(control, typedText)) === JSON.stringify(effectiveValue);
   const fieldText =
-    invalid && typed !== undefined && typed.token === resetToken
-      ? typed.text
+    typedText !== undefined && (invalid || keepsTypedList)
+      ? typedText
       : effectiveValue === undefined
         ? ""
         : String(effectiveValue);
