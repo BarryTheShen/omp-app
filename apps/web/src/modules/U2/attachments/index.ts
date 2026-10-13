@@ -17,4 +17,5 @@ export {
   pastedTextName,
   withPastedText,
 } from "./attachments";
-export { AttachmentChips } from "./chips";
+export { ATTACHMENT_CHIP_CLASS, AttachmentChips } from "./chips";
+export { splitPastedBlocks } from "./pasted-block";

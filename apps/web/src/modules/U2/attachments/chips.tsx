@@ -8,6 +8,9 @@ import { type FC, useMemo, useSyncExternalStore } from "react";
 import { Button } from "../../../components/ui/button";
 import type { AttachmentAdapter } from "../contract";
 
+/** The look of an attachment chip: the composer's chips and the transcript's pasted-text chips share it. */
+export const ATTACHMENT_CHIP_CLASS =
+  "border-border bg-card shadow-xs flex min-w-0 items-center gap-(--space-xs) rounded-(--radius) border px-(--space-sm) py-(--space-2xs)";
 const EMPTY_ATTACHMENT_STATE = Object.freeze({
   pending: [],
   complete: [],
@@ -27,10 +30,7 @@ function ManagerAttachmentChip({
 }) {
   const image = attachment.content.find((part) => part.type === "image");
   return (
-    <div
-      data-slot="attachment-root"
-      className="border-border bg-card shadow-xs flex min-w-0 items-center gap-(--space-xs) rounded-(--radius) border px-(--space-sm) py-(--space-2xs)"
-    >
+    <div data-slot="attachment-root" className={ATTACHMENT_CHIP_CLASS}>
       {image?.type === "image" && (
         <img src={image.image} alt="" className="size-6 rounded-sm object-cover" />
       )}
@@ -71,7 +71,7 @@ export const AttachmentChips: FC<AttachmentChipsProps> = ({ manager }) => {
             <div
               key={attachment.id}
               data-slot="attachment-root"
-              className="border-border bg-card shadow-xs flex min-w-0 items-center gap-(--space-xs) rounded-(--radius) border px-(--space-sm) py-(--space-2xs) opacity-70"
+              className={`${ATTACHMENT_CHIP_CLASS} opacity-70`}
             >
               <span className="min-w-0 max-w-48 truncate text-xs">{attachment.name}</span>
               {attachment.status.type === "incomplete" && (
@@ -95,7 +95,7 @@ export const AttachmentChips: FC<AttachmentChipsProps> = ({ manager }) => {
       ) : (
         <ComposerPrimitive.Attachments>
           {() => (
-            <AttachmentPrimitive.Root className="border-border bg-card shadow-xs flex min-w-0 items-center gap-(--space-xs) rounded-(--radius) border px-(--space-sm) py-(--space-2xs)">
+            <AttachmentPrimitive.Root className={ATTACHMENT_CHIP_CLASS}>
               <AttachmentPrimitive.unstable_Thumb />
               <span className="min-w-0 max-w-48 truncate text-xs">
                 <AttachmentPrimitive.Name />

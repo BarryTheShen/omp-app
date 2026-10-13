@@ -14,6 +14,7 @@ import { EarlierSteps, isTurnGroup, useTurnGroupBy } from "./earlier-steps";
 import { ExecutionRow } from "./execution-row";
 import { fileMentionFilesOf } from "./file-mention";
 import { endingOf, MessageEndingNote } from "./message-ending";
+import { hasPastedBlock, PastedBlockText } from "./pasted-text";
 import { storeKeyOf } from "./store-key";
 export interface MessagePartsProps {
   readonly message: MessageState;
@@ -109,7 +110,12 @@ function renderPart(
 ): ReactNode {
   switch (part.type) {
     case "text":
-      return <MarkdownText lineBreaks={lineBreaks} />;
+      // A person's own text shows its pasted blocks as chips; any other text is Markdown, as before.
+      return lineBreaks && hasPastedBlock(part.text) ? (
+        <PastedBlockText text={part.text} />
+      ) : (
+        <MarkdownText lineBreaks={lineBreaks} />
+      );
     case "reasoning":
       return <Reasoning {...part} />;
     case "image":

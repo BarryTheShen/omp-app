@@ -284,4 +284,13 @@ describe("TranscriptContentReader", () => {
     expect(malformed.parts[0]?.source).toEqual({ nope: true });
     expect(readTranscriptPart(malformed, -1, reader)).toBeUndefined();
   });
+
+  test("a person's message with a pasted block copies as the whole text it stores", () => {
+    const stored = "Summarize this\n\n<attachment>\nline one\nline two\n</attachment>";
+    const message = { role: "user", content: stored, timestamp: 1 } as unknown as OmpMessage;
+    const raw = new TranscriptContentReader().read(
+      runtimeMessage("user-1", message, { entryId: entryId("user-1") }),
+    );
+    expect(copyText(raw)).toBe(stored);
+  });
 });

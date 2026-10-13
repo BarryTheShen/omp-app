@@ -70,7 +70,13 @@ realTest(
     await expect(page.getByRole("button", { name: "Send message" })).toBeEnabled();
     await composer.press("Enter");
     await expect(page.getByText("pong", { exact: true }).first()).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByText(CHIP)).toHaveCount(0);
+    // The composer's chip is gone; the sent message shows the same chip in the transcript, and not the lines (#1290).
+    await expect(page.locator('[data-slot="u2-composer-attachments"]').getByText(CHIP)).toHaveCount(
+      0,
+    );
+    await expect(
+      page.locator('[data-message-surface="user-bubble"]').getByText(CHIP),
+    ).toBeVisible();
     // omp stored the message with the whole pasted text inside its wrapper, in its session file.
     await expect.poll(() => storedSessionText(realApp.agentDir)).toContain("<attachment>");
     expect(await storedSessionText(realApp.agentDir)).toContain("pasted line 150");

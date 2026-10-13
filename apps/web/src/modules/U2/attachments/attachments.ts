@@ -7,6 +7,7 @@ import type {
 import type { AttachmentRef } from "@omp-app/contracts";
 import { AppFailure, MAX_ATTACHMENT_BYTES } from "@omp-app/contracts";
 import type { AttachmentAdapter, AttachmentState } from "../contract";
+import { lineCount, MESSAGE_PART_SEPARATOR, wrapPastedBlock } from "./pasted-block";
 
 export const DEFAULT_LARGE_PASTE_LINE_THRESHOLD = 100;
 
@@ -105,10 +106,6 @@ function matchesMime(type: string, patterns: readonly string[]): boolean {
     if (pattern.endsWith("/*")) return type.startsWith(pattern.slice(0, -1));
     return type === pattern;
   });
-}
-
-function lineCount(text: string): number {
-  return text.length === 0 ? 0 : text.split(/\r\n|\r|\n/).length;
 }
 
 function attachmentFromStored(stored: StoredAttachment, file: File): CompleteAttachment {
@@ -401,11 +398,6 @@ export function pastedTextName(sequence: number, lineCount: number): string {
 /** The name `pastedTextName` gives. Any other attachment is a file the person chose, and is sent as it always was. */
 const PASTED_TEXT_NAME = /^Pasted text \d+ \(\d+ lines\)\.txt$/;
 
-/** Wraps pasted text as omp does (omp v18.9.1 input-controller.ts:216-218): one quoted block for the model. */
-function wrappedBlock(text: string): string {
-  return `<attachment>\n${text}\n</attachment>`;
-}
-
 function unreadablePaste(): AppFailure {
   return new AppFailure({
     code: "internal",
@@ -442,7 +434,7 @@ export function withPastedText(text: string, attachments: readonly CompleteAttac
   const blocks: string[] = [];
   for (const attachment of attachments) {
     const pasted = pastedText(attachment);
-    if (pasted !== undefined) blocks.push(wrappedBlock(pasted));
+    if (pasted !== undefined) blocks.push(wrapPastedBlock(pasted));
   }
-  return [text, ...blocks].filter((part) => part.length > 0).join("\n\n");
+  return [text, ...blocks].filter((part) => part.length > 0).join(MESSAGE_PART_SEPARATOR);
 }
