@@ -237,6 +237,7 @@ export function ToolCard({
                 kind="result"
                 onCopy={copy}
                 raw={output.text}
+                copyText={resultRaw}
                 title="Output so far"
               />
             )}
@@ -256,6 +257,7 @@ export function ToolCard({
                     kind="result"
                     onCopy={copy}
                     raw={output.text}
+                    copyText={resultRaw}
                     title="Result"
                   />
                 )}
@@ -312,12 +314,15 @@ export function copyStatusText(status: "copied" | "copiedShown" | "failed"): str
 
 function ToolRawBlock({
   raw,
+  copyText = raw,
   title,
   kind,
   copySlot,
   onCopy,
 }: {
   readonly raw: string;
+  /** What the copy control copies. The block may show only the first lines of it. Defaults to raw. */
+  readonly copyText?: string;
   readonly title: string;
   readonly kind: CopyKind;
   readonly copySlot?: CopySlot;
@@ -328,7 +333,7 @@ function ToolRawBlock({
       <div className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
         {copySlot !== undefined ? (
-          copySlot({ raw, kind, onCopy: () => onCopy(raw, kind) })
+          copySlot({ raw: copyText, kind, onCopy: () => onCopy(copyText, kind) })
         ) : (
           <Button
             aria-label={`Copy raw ${kind}`}
@@ -336,7 +341,7 @@ function ToolRawBlock({
             size="icon-xs"
             type="button"
             variant="ghost"
-            onClick={() => void onCopy(raw, kind)}
+            onClick={() => void onCopy(copyText, kind)}
           >
             <Icons.copy aria-hidden="true" />
           </Button>

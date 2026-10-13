@@ -169,6 +169,33 @@ describe("ToolCard state grammar", () => {
       expect(screen.getByText("Copied raw output", { exact: true })).toBeTruthy(),
     );
   });
+
+  test("copies the whole result, not the first lines the card shows", () => {
+    const onCopy = vi.fn();
+    const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
+    render(
+      <ToolCard onCopy={onCopy} state={{ ...state("success", "long-copy"), result: lines }} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
+    const shown = document.querySelector('[data-slot="u3-tool-card-result"] pre');
+    expect(shown?.textContent).not.toContain("line 30");
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw result" }));
+    expect(onCopy).toHaveBeenCalledWith(lines, "result");
+  });
+
+  test("copies the whole output so far while a call streams, not its first lines", () => {
+    const onCopy = vi.fn();
+    const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
+    render(
+      <ToolCard
+        onCopy={onCopy}
+        state={{ ...state("partial", "streaming-copy"), partialResult: lines }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run bash: Streaming" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw result" }));
+    expect(onCopy).toHaveBeenCalledWith(lines, "result");
+  });
   test("does not echo raw JSON arguments when no renderer summary is supplied", () => {
     render(<ToolCard state={state("success", "summary")} />);
     const trigger = screen.getByRole("button", { name: "Run bash: Complete" });
