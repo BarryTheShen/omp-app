@@ -18,18 +18,37 @@ const folder = "/workspace/project" as FolderPath;
 const threadOne = ThreadIdSchema.parse("thread-one");
 const threadTwo = ThreadIdSchema.parse("thread-two");
 
+/** Resolves when `gate` opens. Like a request on the app's client, it rejects if the request's signal aborts first. */
+function untilAborted(gate: Promise<void>, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) reject(signal.reason);
+    signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+    gate.then(resolve, reject);
+  });
+}
+
 function createRpc(
   open: (args: OpenThreadArgs) => unknown,
   calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [],
   questions: readonly OpenQuestionRecord[] = [],
+  holdFirstStateRead?: Promise<void>,
 ): RpcSessionClient {
-  const send = async (args: {
-    threadId: ThreadId;
-    command: { type: string };
-  }): Promise<unknown> => {
+  let stateReads = 0;
+  const send = async (
+    args: {
+      threadId: ThreadId;
+      command: { type: string };
+    },
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<unknown> => {
     calls.push({ type: args.command.type, threadId: args.threadId });
     switch (args.command.type) {
       case "get_state":
+        stateReads += 1;
+        // The first state read can be held: a request made meanwhile then runs while the chat is still loading.
+        if (stateReads === 1 && holdFirstStateRead) {
+          await untilAborted(holdFirstStateRead, options?.signal);
+        }
         return { sessionId: args.threadId };
       case "get_entries":
         return { entries: [], leafId: null };
@@ -618,6 +637,42 @@ describe("SelectedThreadHistoryController open and paging", () => {
     await controller.refreshAfterCommand();
     // omp saves a `!` result without a turn: get_state, then the entries after the newest one.
     expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
+  });
+
+  test("a bash command that finishes while a new chat is still loading its history waits for that load, and the chat stays open", async () => {
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const subscriptions: SubscriptionRecord[] = [];
+    let releaseFirstRead: () => void = () => undefined;
+    const firstRead = new Promise<void>((resolve) => {
+      releaseFirstRead = () => resolve();
+    });
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      calls,
+      [],
+      firstRead,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    // The new chat is on screen, and its first history read is still in flight when the command finishes.
+    const opening = controller.openNew();
+    await vi.waitFor(() => expect(calls.map((call) => call.type)).toEqual(["get_state"]));
+    const refreshed = controller.refreshAfterCommand();
+    releaseFirstRead();
+    await opening;
+    await refreshed;
+    const state = controller.getSnapshot();
+    expect(state.error).toBeNull();
+    expect(state.threadId).toBe(threadOne);
+    // The refresh runs after the load: its state and entries come after the load's.
+    expect(calls.map((call) => call.type)).toEqual([
+      "get_state",
+      "get_entries",
+      "get_state",
+      "get_entries",
+    ]);
   });
 
   test("lets go of the chat on the server when it closes or switches away, and a failed release never blocks the next chat", async () => {

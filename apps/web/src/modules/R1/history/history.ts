@@ -296,17 +296,21 @@ export class SelectedThreadHistoryController {
 
   /**
    * Brings the open thread up to date after a `!` command. omp saves a command's result to the
-   * session without a turn, so no `session_settled` arrives to refresh the transcript.
+   * session without a turn, so no `session_settled` arrives to refresh the transcript. The refresh
+   * waits for a chat that is still loading its history: a refresh started during that load
+   * superseded the load, and the open then closed the chat with a "superseded" error.
    */
   public async refreshAfterCommand(): Promise<void> {
-    const loader = this.loader;
-    if (!this.state.threadId || !this.state.store || !loader) return;
-    try {
-      await loader.refreshAfterTurn();
-    } catch (error) {
-      const failure = asFailure(error, "Refreshing the session after the command failed");
-      if (failure.appError.code !== "cancelled") this.commit({ error: failure.appError });
-    }
+    await this.serialize(async () => {
+      const loader = this.loader;
+      if (!this.state.threadId || !this.state.store || !loader) return;
+      try {
+        await loader.refreshAfterTurn();
+      } catch (error) {
+        const failure = asFailure(error, "Refreshing the session after the command failed");
+        if (failure.appError.code !== "cancelled") this.commit({ error: failure.appError });
+      }
+    });
   }
 
   public close(): Promise<void> {
