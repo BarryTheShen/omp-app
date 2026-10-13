@@ -160,7 +160,12 @@ function createContext(
   const context = {
     checkpointStore: new CheckpointStoreService({ appDataDir: options.checkpointAppData }),
     sessionFileStore: {
-      listSessions: async () => ({ sessions: [session], nextCursor: null, parseWarnings: [] }),
+      listSessions: async () => ({
+        sessions: [session],
+        nextCursor: null,
+        parseWarnings: [],
+        running: [],
+      }),
       listFolders: async () => ({ folders: ["/workspace"], nextCursor: null }),
       readSession: async () => session,
       listSubagents: async () => ({ sessionFile: session.sessionFile, transcripts: [] }),

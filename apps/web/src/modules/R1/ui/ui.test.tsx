@@ -58,6 +58,25 @@ function modelWithSessions(
   });
 }
 
+/** A catalog whose first page holds these chats, and names the chats running with no session file yet. */
+function modelWithRunning(
+  running: readonly string[],
+  files: SessionFile[] = [],
+): SessionCatalogModel {
+  return new SessionCatalogModel({
+    scope,
+    sessionFiles: {
+      listSessions: async ({ folder: listed }) => ({
+        sessions: files,
+        nextCursor: null,
+        running: running.map((id) => ({ id: ThreadIdSchema.parse(id), folder: listed })),
+      }),
+      readSession: async ({ sessionFile }) =>
+        files.find((file) => file.sessionFile === sessionFile) as SessionFile,
+    },
+  });
+}
+
 /** Omp's rename command is available, so the Rename menu item is enabled. */
 const RENAME_AVAILABLE: CapabilityMap = {
   "omp.cmd.set_session_name": { state: "available", via: "rpc" },
@@ -1394,5 +1413,55 @@ describe("SessionCatalogSidebar rename box", () => {
       expect(screen.queryByRole("textbox", { name: "Rename Parser notes" })).toBeNull(),
     );
     expect(calls).toEqual([]);
+  });
+});
+
+describe("SessionCatalogSidebar running chats", () => {
+  test("a chat whose turn runs with no session file yet has a Running row, selected while it is open", async () => {
+    renderSidebar({
+      catalog: modelWithRunning(["first-reply"]),
+      currentThreadId: ThreadIdSchema.parse("first-reply"),
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    const row = screen.getByRole("option", { name: /New chat/ });
+    expect(within(row).getByText("Running")).toBeTruthy();
+    expect(row.getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("button", { name: /More actions for New chat/ })).toBeNull();
+    expect(screen.queryByText("No sessions in this folder")).toBeNull();
+  });
+
+  test("a running chat that the list holds shows once, as its listed row", async () => {
+    renderSidebar({
+      catalog: modelWithRunning(
+        ["second"],
+        [session("second", "2026-10-03T00:00:00.000Z", "Second chat")],
+      ),
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /Second chat/ })).toBeTruthy());
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.queryByRole("option", { name: /New chat/ })).toBeNull();
+  });
+
+  test("the arrow keys reach a running chat's row, and Enter opens it", async () => {
+    const opened: string[] = [];
+    renderSidebar({
+      catalog: modelWithRunning(
+        ["first-reply"],
+        [session("old", "2026-10-01T00:00:00.000Z", "Old chat")],
+      ),
+      onOpenThread: async (threadId) => {
+        opened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const [running, old] = screen.getAllByRole("option");
+    if (!running || !old) throw new Error("Expected a running row and a listed row.");
+    running.focus();
+    fireEvent.keyDown(running, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(old);
+    fireEvent.keyDown(old, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(running);
+    fireEvent.keyDown(running, { key: "Enter" });
+    await waitFor(() => expect(opened).toEqual(["first-reply"]));
   });
 });

@@ -241,6 +241,13 @@ export class OmpProcessRegistry {
     return this.#entries.get(threadId)?.busy;
   }
 
+  /** The threads whose turn runs now in a folder, in the order their processes were started. */
+  busyIn(folder: string): readonly ThreadId[] {
+    return [...this.#entries.values()]
+      .filter((entry) => entry.busy && entry.folder === folder)
+      .map((entry) => entry.key);
+  }
+
   /** Calls `listener` each time a thread's busy mark changes; the returned function stops it. */
   onBusyChange(listener: (threadId: ThreadId, busy: boolean) => void): () => void {
     this.#busyListeners.add(listener);

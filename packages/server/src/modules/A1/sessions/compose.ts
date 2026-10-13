@@ -3,13 +3,14 @@ import { SessionFileStore } from "./store";
 import type { SessionLeaseProbe } from "./types";
 
 /**
- * What the server knows about the chats it runs: whether it holds a chat open, whether the chat's turn is running, and
- * how to stop its omp when nobody watches it. The process registry is this in production.
+ * What the server knows about the chats it runs: whether it holds a chat open, whether the chat's turn is running (and in
+ * which folder), and how to stop its omp when nobody watches it. The process registry is this in production.
  */
 export interface ServerChats {
   has(threadId: ThreadId): boolean;
   watched(threadId: ThreadId): boolean;
   busyOf(threadId: ThreadId): boolean | undefined;
+  busyIn(folder: string): readonly ThreadId[];
   stopIfUnwatched(threadId: ThreadId, purpose: "deleted"): Promise<void>;
 }
 
@@ -41,5 +42,6 @@ export function createServerSessionFileStore(options: {
       if (busy === undefined) return undefined;
       return busy ? "running" : "idle";
     },
+    runningIn: (folder) => options.chats.busyIn(folder),
   });
 }

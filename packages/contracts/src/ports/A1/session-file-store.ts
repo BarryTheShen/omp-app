@@ -85,9 +85,15 @@ export const SessionListArgs = z.strictObject({
 });
 export type SessionListArgs = z.infer<typeof SessionListArgs>;
 
+/** A chat whose turn runs and that omp has not yet written a session file for. */
+export const RunningSession = z.strictObject({ id: ThreadId, folder: FolderPath });
+export type RunningSession = z.infer<typeof RunningSession>;
+
 export const SessionListResult = z.strictObject({
   sessions: z.array(SessionFile),
   nextCursor: Cursor.nullable(),
+  /** The chats running now that have no session file yet; only a folder's first page names them (later pages hold none). */
+  running: z.array(RunningSession).optional(),
 });
 export type SessionListResult = z.infer<typeof SessionListResult>;
 

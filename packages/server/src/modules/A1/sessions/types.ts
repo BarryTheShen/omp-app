@@ -140,6 +140,8 @@ export interface SessionListResult {
   readonly sessions: readonly SessionFile[];
   readonly nextCursor: string | null;
   readonly parseWarnings: readonly ParseWarning[];
+  /** On a folder's first page: the chats this server runs a turn for that have no session file yet (their ids). */
+  readonly running: readonly string[];
 }
 
 export interface ListFoldersArgs {
@@ -197,4 +199,6 @@ export interface SessionFileStoreOptions {
   readonly stopUnwatched?: (sessionId: string) => Promise<void>;
   /** The turn state of the chat's omp on this server; `undefined` when this server runs no omp for the chat. */
   readonly turnOf?: (sessionId: string) => SessionTurn | undefined;
+  /** The chats this server runs a turn for in a folder. A chat with no session file yet is listed from these. */
+  readonly runningIn?: (folder: string) => readonly string[];
 }

@@ -6,6 +6,7 @@ import {
   SessionFileChanged,
   SessionFilePath,
   SessionFileStore,
+  ThreadId,
 } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
 import type {
@@ -140,7 +141,11 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
         if (skipped > 0) {
           context.logger?.warn("sessions.skipped", { count: skipped, first_problem: firstProblem });
         }
-        return { sessions, nextCursor: result.nextCursor };
+        return {
+          sessions,
+          nextCursor: result.nextCursor,
+          running: result.running.map((id) => ({ id: ThreadId.parse(id), folder: args.folder })),
+        };
       },
       listFolders: async (args, handlerContext) => {
         assertNotAborted(handlerContext);

@@ -426,7 +426,21 @@ export class SessionFileStore {
       sessions,
       nextCursor: end < candidates.length && last !== undefined ? encodeListingCursor(last) : null,
       parseWarnings,
+      running:
+        after === undefined && args.folder !== undefined
+          ? this.#runningWithoutFile(args.folder, candidates)
+          : [],
     };
+  }
+
+  /**
+   * The chats this server runs a turn for in the folder that have no session file yet. omp names a file after its
+   * session id, so a chat has a file when some file's name holds its id.
+   */
+  #runningWithoutFile(folder: string, candidates: readonly SessionCandidate[]): string[] {
+    return (this.#options.runningIn?.(folder) ?? []).filter(
+      (id) => !candidates.some((candidate) => path.basename(candidate.file).includes(id)),
+    );
   }
 
   /**

@@ -1,4 +1,4 @@
-import type { AppError, Cursor, ThreadId } from "@omp-app/contracts";
+import type { AppError, Cursor, RunningSession, ThreadId } from "@omp-app/contracts";
 import { z } from "zod";
 import type { SessionCatalogPage, SessionMetadata } from "./metadata";
 import type { SessionCatalogFilter, SessionCatalogPageArgs } from "./scope";
@@ -6,6 +6,8 @@ import type { SessionCatalogFilter, SessionCatalogPageArgs } from "./scope";
 export interface SessionCatalogState {
   readonly filter: SessionCatalogFilter;
   readonly sessions: readonly SessionMetadata[];
+  /** The chats running now that omp has not yet written a session file for. A search lists none. */
+  readonly running: readonly RunningSession[];
   readonly nextCursor: Cursor | null;
   readonly selectedThreadId: ThreadId | null;
   readonly selectionRevision: number;

@@ -3,6 +3,7 @@ import type {
   FolderPath,
   GitState,
   Revision,
+  RunningSession,
   SessionFile,
   SessionFileChanged,
   SessionFilePath,
@@ -130,6 +131,7 @@ const MAX_PAGES = 20;
 interface FetchedSessions {
   readonly sessions: readonly SessionMetadata[];
   readonly nextCursor: Cursor | null;
+  readonly running: readonly RunningSession[];
 }
 
 function folderRoots(scope: SessionScope, git: GitState | null): readonly FolderPath[] {
@@ -175,6 +177,7 @@ export class SessionCatalogModel {
       scope: options.scope,
       sessions: Object.freeze([]),
       nextCursor: null,
+      running: Object.freeze([]),
       selectedThreadId: null,
       selectionRevision: 0,
       isLoaded: false,
@@ -264,6 +267,8 @@ export class SessionCatalogModel {
       this.commit({
         filter,
         sessions,
+        // A search matches the chats' titles and prompts, which a chat with no file does not have yet: none are listed.
+        running: filter.query.trim().length > 0 ? [] : first.running,
         nextCursor,
         isLoaded: true,
         isLoading: false,
@@ -467,6 +472,7 @@ export class SessionCatalogModel {
     return {
       sessions,
       nextCursor: pages.find((page) => page.nextCursor !== null)?.nextCursor ?? null,
+      running: pages.flatMap((page) => page.running ?? []),
     };
   }
 

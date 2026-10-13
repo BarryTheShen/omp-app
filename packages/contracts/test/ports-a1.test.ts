@@ -35,6 +35,7 @@ import {
   SessionFile,
   SessionFileChanged,
   SessionFileStore,
+  SessionListResult,
   SessionPinChanged,
   SessionPinListResult,
   SessionPinSetArgs,
@@ -262,6 +263,17 @@ describe("A1 SessionFileStore and session pins", () => {
     expect(
       SessionPinChanged.safeParse({ sessionId: threadId, pinned: true, revision }).success,
     ).toBe(true);
+  });
+
+  test("a list result may name the chats running without a session file, each with its folder", () => {
+    const listed = { sessions: [session], nextCursor: null };
+    expect(SessionListResult.safeParse(listed).success).toBe(true);
+    expect(
+      SessionListResult.safeParse({ ...listed, running: [{ id: threadId, folder }] }).success,
+    ).toBe(true);
+    expect(SessionListResult.safeParse({ ...listed, running: [{ id: "", folder }] }).success).toBe(
+      false,
+    );
   });
 });
 

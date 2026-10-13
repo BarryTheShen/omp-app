@@ -1686,19 +1686,24 @@ function ConnectedApp({
   // end of the answer is read from the messages, not from the prompt flags: a page that attaches
   // just after the turn began never sees the flags change, but the answer is there at the end.
   // Opening a chat, which loads its old answers, fetches nothing: only a sent message arms this.
-  const turnWatch = useRef<{ armed: boolean; before: number | undefined }>({
+  const turnWatch = useRef<{ armed: boolean; before: number | undefined; started: boolean }>({
     armed: false,
     before: undefined,
+    started: false,
   });
   const onPromptSent = useCallback(() => {
-    turnWatch.current = { armed: true, before: finishedAnswerAt(history.store?.getSnapshot()) };
+    turnWatch.current = {
+      armed: true,
+      before: finishedAnswerAt(history.store?.getSnapshot()),
+      started: false,
+    };
   }, [history.store]);
   // Edit and regenerate run state outlives the chat that started a run, because a branch switches chats.
   const p3Runs = useMemo(
     () =>
       createP3Runs({
         onAdmitted: () => {
-          turnWatch.current = { armed: true, before: undefined };
+          turnWatch.current = { armed: true, before: undefined, started: false };
         },
       }),
     [],
@@ -1713,11 +1718,25 @@ function ConnectedApp({
       const answer = finishedAnswerAt(snapshot);
       // A turn also ends when omp stops under it: its chat's file is on disk by then, so the list has it.
       const answered = answer !== undefined && answer !== watch.before;
-      if (!answered && snapshot.process.status !== "exited") return;
-      turnWatch.current = { armed: false, before: undefined };
-      void catalog
-        .list({ filter: catalog.getSnapshot().filter, limit: 100 })
-        .catch(() => undefined);
+      const stopped = snapshot.process.status === "exited";
+      const ended = watch.started && !snapshot.prompt.streaming;
+      // A turn that has started: a chat with no row yet is listed at once, marked as running, because omp marks the chat
+      // running on the server before the page sees its first event. A chat already listed takes its running mark from the
+      // server's change events, so it needs no read here.
+      const started = !watch.started && snapshot.prompt.streaming;
+      if (!answered && !stopped && !ended && !started) return;
+      const finished = answered || stopped || ended;
+      turnWatch.current = finished
+        ? { armed: false, before: undefined, started: false }
+        : { ...watch, started: true };
+      const listed = catalog
+        .getSnapshot()
+        .sessions.some((session) => session.id === snapshot.threadId);
+      if (finished || !listed) {
+        void catalog
+          .list({ filter: catalog.getSnapshot().filter, limit: 100 })
+          .catch(() => undefined);
+      }
     };
     look();
     return store.subscribe(look);

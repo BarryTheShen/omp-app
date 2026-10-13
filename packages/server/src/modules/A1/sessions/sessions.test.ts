@@ -399,4 +399,55 @@ describe("SessionFileStore", () => {
       await removeRoot(root);
     }
   });
+
+  test("lists the chats this server runs a turn for that have no session file yet, on a folder's first page", async () => {
+    const root = await makeTempRoot();
+    try {
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(root, "workspace");
+      const other = path.join(root, "other");
+      await writeSession(
+        path.join(sessionsRoot, "-workspace", "2026-10-04T12-00-00.000Z_saved.jsonl"),
+        {
+          id: "saved",
+          cwd,
+          timestamp: "2026-10-04T12:00:00.000Z",
+        },
+      );
+      await writeSession(
+        path.join(sessionsRoot, "-workspace", "2026-10-04T11-00-00.000Z_older.jsonl"),
+        {
+          id: "older",
+          cwd,
+          timestamp: "2026-10-04T11:00:00.000Z",
+        },
+      );
+      const store = new SessionFileStore({
+        sessionsRoot,
+        home: root,
+        tempRoot: path.join(root, "tmp"),
+        turnOf: (sessionId) => (sessionId === "saved" ? "running" : undefined),
+        runningIn: (folder) =>
+          folder === cwd ? ["saved", "first-reply"] : folder === other ? ["elsewhere"] : [],
+      });
+      const first = await store.listSessions({ folder: cwd, limit: 1 });
+      expect(first.running).toEqual(["first-reply"]);
+      expect(first.nextCursor).not.toBeNull();
+      // A later page does not repeat the running chats. Both pages together list the two files, the chat with a file
+      // with its turn: only the chat with no file is reported as running.
+      const second = await store.listSessions({
+        folder: cwd,
+        limit: 1,
+        cursor: first.nextCursor ?? undefined,
+      });
+      expect(second.running).toEqual([]);
+      const listed = [...first.sessions, ...second.sessions];
+      expect(listed.map((session) => session.id).sort()).toEqual(["older", "saved"]);
+      expect(listed.find((session) => session.id === "saved")?.turn).toBe("running");
+      // Another folder reports its own running chats.
+      expect((await store.listSessions({ folder: other })).running).toEqual(["elsewhere"]);
+    } finally {
+      await removeRoot(root);
+    }
+  });
 });

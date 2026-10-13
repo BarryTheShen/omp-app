@@ -35,7 +35,7 @@ interface Warning {
 function lister(sessions: readonly unknown[]) {
   const warnings: Warning[] = [];
   const context = {
-    sessionFileStore: { listSessions: async () => ({ sessions, nextCursor: null }) },
+    sessionFileStore: { listSessions: async () => ({ sessions, nextCursor: null, running: [] }) },
     publish: () => undefined,
     watchStreamActivity: () => () => undefined,
     logger: {

@@ -210,6 +210,32 @@ describe("OmpProcessRegistry", () => {
     expect(heard).toEqual([true, false]);
   });
 
+  test("lists the busy threads of one folder, and no idle thread or thread of another folder", () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 10,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const busy = ThreadId.parse("thread-busy");
+    const idle = ThreadId.parse("thread-idle");
+    const elsewhere = ThreadId.parse("thread-elsewhere");
+    registry.acquire(options(busy, "/workspace/one"));
+    registry.acquire(options(idle, "/workspace/one"));
+    registry.acquire(options(elsewhere, "/workspace/two"));
+    registry.setBusy(busy, true);
+    registry.setBusy(elsewhere, true);
+
+    expect(registry.busyIn("/workspace/one")).toEqual([busy]);
+    expect(registry.busyIn("/workspace/two")).toEqual([elsewhere]);
+    expect(registry.busyIn("/workspace/three")).toEqual([]);
+  });
+
   test("forgets an intentionally stopped process but retains a crashed one for restart", async () => {
     const timer = new ManualTimer();
     const created: StubProcess[] = [];

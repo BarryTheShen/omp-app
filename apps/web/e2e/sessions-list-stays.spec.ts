@@ -163,13 +163,14 @@ realTest(
     const rowsBefore = await rows();
     expect(rowsBefore).toBeGreaterThan(10);
 
-    // A turn ends: the list is fetched once more, in the background. Its result is held for 3 s;
-    // meanwhile the rows stay and no placeholder appears.
+    // A new chat's turn fetches the list twice, both in the background: when it starts, so its row shows as running
+    // (its file does not exist until its reply), and when it ends. The first result is held for 3 s; meanwhile the rows
+    // stay and no placeholder appears.
     let calls = wire.calls();
     wire.delayNext();
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
-    await expect.poll(() => wire?.calls()).toBe(calls + 1);
+    await expect.poll(() => wire?.calls()).toBe(calls + 2);
     expect(await rows()).toBeGreaterThanOrEqual(rowsBefore);
     await expect(page.getByRole("status", { name: "Loading sessions" })).toHaveCount(0);
     // The held result arrives; the list is still there.

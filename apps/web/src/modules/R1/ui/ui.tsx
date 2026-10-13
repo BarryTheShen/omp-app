@@ -1,5 +1,5 @@
 import type { RemoteThreadListAdapter } from "@assistant-ui/react";
-import { type AppError, AppFailure, type ThreadId } from "@omp-app/contracts";
+import { type AppError, AppFailure, type RunningSession, type ThreadId } from "@omp-app/contracts";
 import { Loader2Icon, MoreHorizontalIcon, PinIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
@@ -229,21 +229,40 @@ export function SessionCatalogSidebar({
     return () => document.removeEventListener("pointerdown", closeFromOutside);
   }, [menuSessionId]);
 
+  // A chat whose turn runs with no session file yet has a row in its folder until the list holds its file.
+  const runningChats = useMemo(
+    () =>
+      snapshot.running.filter(
+        (chat) => !snapshot.sessions.some((session) => session.id === chat.id),
+      ),
+    [snapshot.running, snapshot.sessions],
+  );
   const grouped = useMemo(() => {
-    const groups = new Map<string, SessionMetadata[]>();
-    for (const session of snapshot.sessions) {
-      const list = groups.get(session.cwd) ?? [];
-      list.push(session);
-      groups.set(session.cwd, list);
-    }
+    const groups = new Map<string, { running: RunningSession[]; sessions: SessionMetadata[] }>();
+    const groupOf = (cwd: string) => {
+      const group = groups.get(cwd) ?? { running: [], sessions: [] };
+      groups.set(cwd, group);
+      return group;
+    };
+    for (const chat of runningChats) groupOf(chat.folder).running.push(chat);
+    for (const session of snapshot.sessions) groupOf(session.cwd).sessions.push(session);
     return [...groups.entries()];
-  }, [snapshot.sessions]);
+  }, [runningChats, snapshot.sessions]);
   const sessions = snapshot.sessions;
   const activeSearch = snapshot.filter.query.trim();
+  // Every row, in the order it is drawn: each folder's running chats, then its listed chats (see `grouped`).
+  const rowIds = useMemo(
+    () =>
+      grouped.flatMap(([, group]) => [
+        ...group.running.map((chat) => chat.id),
+        ...group.sessions.map((session) => session.id),
+      ]),
+    [grouped],
+  );
   // The focused row is a chat, not a position: when the list reorders under it, the row and Enter still mean that
   // chat. A chat that has left the list, or none yet, puts the tab stop on the first row.
   // The tab stop starts on the open chat, so Tab back into the list lands on it (issue 973). A chat the person focused wins.
-  const focusedRow = sessions.findIndex((session) => session.id === (focusedId ?? shownThreadId));
+  const focusedRow = rowIds.findIndex((id) => id === (focusedId ?? shownThreadId));
   const activeIndex = focusedRow >= 0 ? focusedRow : 0;
 
   // After a rename (or Escape) the chat's own row takes focus and becomes the focused row. The focus is kept by
@@ -266,7 +285,7 @@ export function SessionCatalogSidebar({
       return;
     }
     // The row takes the request once the list holds it; until then the request waits for the next change of the list.
-    if (!sessions.some((session) => session.id === focusRequest.id)) return;
+    if (!rowIds.includes(focusRequest.id)) return;
     const option = rowElements.current
       .get(focusRequest.id)
       ?.querySelector<HTMLElement>('[role="option"]');
@@ -274,7 +293,7 @@ export function SessionCatalogSidebar({
     option.focus();
     setFocusedId(focusRequest.id);
     catalog.requestFocus(undefined);
-  }, [catalog, focusRequest, sessions]);
+  }, [catalog, focusRequest, rowIds]);
 
   /**
    * Opens a chat through the page. The page reports a refusal of the chat's model where the chat opens (the picker over
@@ -289,7 +308,7 @@ export function SessionCatalogSidebar({
     }
   };
 
-  const openSession = async (session: SessionMetadata): Promise<void> => {
+  const openSession = async (session: Pick<SessionMetadata, "id">): Promise<void> => {
     catalog.setActionError(undefined);
     const threadId = session.id as ThreadId;
     // The picked row is selected at once; the pick stands until its chat has opened, or was refused.
@@ -385,10 +404,11 @@ export function SessionCatalogSidebar({
 
   /** Moves focus to the chat's row: its ring shows, and Enter opens the row that has focus. */
   const focusRow = (index: number): boolean => {
-    const session = sessions[index];
-    const option = session
-      ? rowElements.current.get(session.id)?.querySelector<HTMLElement>('[role="option"]')
-      : undefined;
+    const id = rowIds[index];
+    const option =
+      id === undefined
+        ? undefined
+        : rowElements.current.get(id)?.querySelector<HTMLElement>('[role="option"]');
     if (!option) return false;
     option.focus();
     return true;
@@ -396,21 +416,20 @@ export function SessionCatalogSidebar({
 
   /** The index of the chat whose row (its option) this element is; -1 when it is no row. */
   const rowIndexOf = (element: HTMLElement): number =>
-    sessions.findIndex(
-      (session) =>
-        rowElements.current.get(session.id)?.querySelector<HTMLElement>('[role="option"]') ===
-        element,
+    rowIds.findIndex(
+      (id) =>
+        rowElements.current.get(id)?.querySelector<HTMLElement>('[role="option"]') === element,
     );
 
   const onListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
-    if (sessions.length === 0) return;
+    if (rowIds.length === 0) return;
     // A key pressed in a row's rename box or on its More actions button belongs to that control.
     const target = event.target as HTMLElement;
     if (target !== event.currentTarget && target.getAttribute("role") !== "option") return;
     // The key acts on the row it came from, so a list that reordered under the focus is read as it is now.
     const fromRow = rowIndexOf(target);
     const current = fromRow >= 0 ? fromRow : activeIndex;
-    const last = sessions.length - 1;
+    const last = rowIds.length - 1;
     let next: number | undefined;
     if (event.key === "ArrowDown") next = Math.min(current + 1, last);
     else if (event.key === "ArrowUp") next = Math.max(current - 1, 0);
@@ -421,14 +440,14 @@ export function SessionCatalogSidebar({
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       // The focus itself moves, so the row the arrow keys reach is the row Enter opens.
       event.preventDefault();
-      const row = sessions[next];
-      if (row && focusRow(next)) setFocusedId(row.id);
+      const row = rowIds[next];
+      if (row !== undefined && focusRow(next)) setFocusedId(row);
       return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      const focused = sessions[current];
-      if (focused) void openSession(focused);
+      const focused = rowIds[current];
+      if (focused !== undefined) void openSession({ id: focused });
     }
   };
 
@@ -483,7 +502,7 @@ export function SessionCatalogSidebar({
           {snapshot.actionError}
         </p>
       )}
-      {snapshot.isLoaded && sessions.length === 0 && activeSearch.length === 0 && (
+      {snapshot.isLoaded && rowIds.length === 0 && activeSearch.length === 0 && (
         <EmptyState
           title="No sessions in this folder"
           hint="Start a new chat to create an omp session."
@@ -495,13 +514,13 @@ export function SessionCatalogSidebar({
         />
       )}
       {/* A search with no match is not an empty folder: its chats are still there. */}
-      {snapshot.isLoaded && sessions.length === 0 && activeSearch.length > 0 && (
+      {snapshot.isLoaded && rowIds.length === 0 && activeSearch.length > 0 && (
         <EmptyState
           title={`No chats match "${activeSearch}"`}
           hint="Clear the search to see every chat in this folder."
         />
       )}
-      {sessions.length > 0 && (
+      {rowIds.length > 0 && (
         <div
           ref={attachList}
           aria-label="Session list"
@@ -510,7 +529,7 @@ export function SessionCatalogSidebar({
           onKeyDown={onListKeyDown}
           onScroll={(event) => scrollPositions.set(catalog, event.currentTarget.scrollTop)}
         >
-          {grouped.map(([cwd, groupedSessions]) => (
+          {grouped.map(([cwd, group]) => (
             <Section
               key={cwd}
               ariaLabel={cwd}
@@ -519,8 +538,33 @@ export function SessionCatalogSidebar({
               headingLevel={3}
               variant="plain"
             >
-              {groupedSessions.map((session) => {
-                const index = sessions.findIndex((item) => item.id === session.id);
+              {group.running.map((chat) => (
+                <div
+                  key={`running-${chat.id}`}
+                  className="group relative mb-1"
+                  ref={(element) => rememberRow(chat.id, element)}
+                >
+                  <ListRow
+                    title="New chat"
+                    detail={
+                      <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 text-xs">
+                        <Loader2Icon
+                          aria-hidden="true"
+                          className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
+                          data-slot="r1-session-running"
+                        />
+                        Running
+                      </span>
+                    }
+                    selected={shownThreadId === chat.id}
+                    tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
+                    onSelect={() => void openSession({ id: chat.id })}
+                    onFocus={() => setFocusedId(chat.id)}
+                  />
+                </div>
+              ))}
+              {group.sessions.map((session) => {
+                const index = rowIds.indexOf(session.id);
                 const selected = shownThreadId === session.id;
                 const isEditing = editingId === session.id;
                 const title = sessionTitle(session);
@@ -732,9 +776,9 @@ export function SessionCatalogSidebar({
                             if (!canDelete || !(await confirmDelete?.(session, title))) return;
                             catalog.setActionError(undefined);
                             // Focus moves to the neighbouring row once the chat is gone: the next row, else the one above.
-                            const index = sessions.findIndex((item) => item.id === session.id);
+                            const index = rowIds.indexOf(session.id);
                             const neighbour =
-                              index < 0 ? undefined : (sessions[index + 1] ?? sessions[index - 1]);
+                              index < 0 ? undefined : (rowIds[index + 1] ?? rowIds[index - 1]);
                             try {
                               // An open chat whose turn runs is not left: the sentence says why it cannot be deleted, in
                               // the chat the person is in. Leaving first would put the person in a new, empty chat.
@@ -752,7 +796,7 @@ export function SessionCatalogSidebar({
                               if (session.id === currentThreadId) await createNewChat();
                               await remote.delete(session.id);
                               catalog.requestFocus(
-                                neighbour ? { kind: "row", id: neighbour.id } : { kind: "newChat" },
+                                neighbour ? { kind: "row", id: neighbour } : { kind: "newChat" },
                               );
                             } catch (error) {
                               catalog.setActionError(

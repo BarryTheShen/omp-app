@@ -710,3 +710,53 @@ describe("SessionCatalogModel: a list or an update that overlaps another", () =>
     expect(model.getSnapshot().sessions).toHaveLength(1);
   });
 });
+
+describe("SessionCatalogModel running chats", () => {
+  test("keeps the chats running with no session file, and lists none while a search is typed", async () => {
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({
+          sessions: [],
+          nextCursor: null,
+          running: [{ id: ThreadIdSchema.parse("first-reply"), folder }],
+        }),
+        readSession: async () => {
+          throw new Error("No chat has a session file to read yet.");
+        },
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    expect(model.getSnapshot().running.map((chat) => chat.id)).toEqual(["first-reply"]);
+
+    await model.list({ filter: { scope, query: "first" }, limit: 50 });
+    expect(model.getSnapshot().running).toEqual([]);
+  });
+
+  test("only the first page names the running chats: a page loaded later leaves them as they are", async () => {
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async ({ cursor }) =>
+          cursor === undefined
+            ? {
+                sessions: [session("one", "2026-10-03T00:00:00.000Z")],
+                nextCursor: "page-2",
+                running: [{ id: ThreadIdSchema.parse("first-reply"), folder }],
+              }
+            : {
+                sessions: [session("two", "2026-10-02T00:00:00.000Z")],
+                nextCursor: null,
+                running: [{ id: ThreadIdSchema.parse("later"), folder }],
+              },
+        readSession: async () => {
+          throw new Error("No chat has a session file to read in this test.");
+        },
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 1 });
+    await model.loadMore(1);
+    expect(model.getSnapshot().sessions.map((chat) => chat.id)).toEqual(["one", "two"]);
+    expect(model.getSnapshot().running.map((chat) => chat.id)).toEqual(["first-reply"]);
+  });
+});
