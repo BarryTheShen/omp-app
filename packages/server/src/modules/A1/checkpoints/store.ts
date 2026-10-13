@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { Stats } from "node:fs";
 import { lstat, mkdir, readdir, readFile, readlink, realpath, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import {
@@ -74,16 +75,27 @@ async function output(
   if (stream === null || stream === undefined || typeof stream === "number") return "";
   return new TextDecoder().decode(await new Response(stream).arrayBuffer());
 }
+/** Extra git environment for one call: another index file, or other shadows' object stores. */
+interface GitOptions {
+  readonly indexFile?: string;
+  readonly alternateObjectDirs?: readonly string[];
+}
 async function runGit(
   binary: string,
   gitDir: string,
   workspace: string,
   args: readonly string[],
+  options: GitOptions = {},
 ): Promise<string> {
-  const env = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_DIR: gitDir } as Record<
-    string,
-    string | undefined
-  >;
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_DIR: gitDir,
+    GIT_INDEX_FILE: options.indexFile ?? join(gitDir, "index"),
+  };
+  if (options.alternateObjectDirs?.length)
+    env.GIT_ALTERNATE_OBJECT_DIRECTORIES = options.alternateObjectDirs.join(":");
+  else delete env.GIT_ALTERNATE_OBJECT_DIRECTORIES;
   if (args[0] !== "init") env.GIT_WORK_TREE = workspace;
   let child: ReturnType<typeof Bun.spawn>;
   try {
@@ -110,12 +122,94 @@ async function runGit(
   return stdout;
 }
 
+/** Why a path is left out because git ignores it; shown to the person in excludedPaths. */
+const GIT_IGNORED_REASON = "ignored by git; checkpoints and restores leave it alone";
+
+/** Why a nested git repository is left out: checkpoints store only a reference to it. */
+const NESTED_REPO_REASON = "inside another git repository; checkpoints and restores leave it alone";
+
+/** Workspace paths no checkpoint holds: folders and files git ignores, and nested repositories. */
+interface UncapturedPaths {
+  readonly files: ReadonlySet<string>;
+  readonly directories: ReadonlySet<string>;
+  /** Folders with an uncaptured file or folder somewhere below them. */
+  readonly holding: ReadonlySet<string>;
+}
+
+/** The folders above a workspace path, outermost first: `a/b/c.ts` gives `a` and `a/b`. */
+function ancestorsOf(path: string): string[] {
+  const found: string[] = [];
+  for (let index = path.indexOf("/"); index !== -1; index = path.indexOf("/", index + 1))
+    found.push(path.slice(0, index));
+  return found;
+}
+
+function isUncaptured(paths: UncapturedPaths, relativePath: string): boolean {
+  if (paths.files.has(relativePath) || paths.directories.has(relativePath)) return true;
+  return ancestorsOf(relativePath).some((ancestor) => paths.directories.has(ancestor));
+}
+
+/**
+ * Asks git which workspace paths its ignore rules exclude, under the rules `add -A` uses when it
+ * builds a checkpoint tree. The probe index is empty, so an ignored file is judged by the rules
+ * alone, never by what an earlier checkpoint tracked.
+ */
+async function gitIgnoredPaths(
+  gitBinary: string,
+  root: string,
+  workspace: string,
+): Promise<UncapturedPaths> {
+  const probe = join(root, "ignore-probes", workspaceKey(workspace));
+  await ensureShadow(gitBinary, probe, workspace);
+  const listing = await runGit(
+    gitBinary,
+    probe,
+    workspace,
+    ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
+    { indexFile: join(probe, "no-index") },
+  );
+  const files = new Set<string>();
+  const directories = new Set<string>();
+  for (const entry of listing.split("\0")) {
+    if (entry === "") continue;
+    if (entry.endsWith("/")) directories.add(entry.slice(0, -1));
+    else files.add(entry);
+  }
+  const holding = new Set<string>();
+  for (const entry of [...files, ...directories]) {
+    for (const ancestor of ancestorsOf(entry)) holding.add(ancestor);
+  }
+  return { files, directories, holding };
+}
+
+/** Adds nested git repositories to the uncaptured paths: a checkpoint cannot hold their files. */
+function withNestedRepos(paths: UncapturedPaths, nested: readonly string[]): UncapturedPaths {
+  const directories = new Set([...paths.directories, ...nested]);
+  const holding = new Set(paths.holding);
+  for (const repo of nested) {
+    for (const ancestor of ancestorsOf(repo)) holding.add(ancestor);
+  }
+  return { files: paths.files, directories, holding };
+}
+
+/**
+ * What a checkpoint can hold, and what it must leave alone: entries git ignores, and nested git
+ * repositories (a checkpoint stores one reference to each, never its files).
+ */
 async function scanWorkspace(
+  gitBinary: string,
   workspace: string,
   excludedRoot: string,
-): Promise<{ manifest: ManifestEntry[]; excluded: ExcludedPath[] }> {
+): Promise<{
+  manifest: ManifestEntry[];
+  excluded: ExcludedPath[];
+  uncaptured: UncapturedPaths;
+  nested: string[];
+}> {
   const manifest: ManifestEntry[] = [];
   const excluded: ExcludedPath[] = [];
+  const nested: string[] = [];
+  const gitIgnored = await gitIgnoredPaths(gitBinary, excludedRoot, workspace);
   const skip = new Set([".git", "node_modules", ".omp", "dist", "build"]);
   async function walk(directory: string): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -134,6 +228,15 @@ async function scanWorkspace(
         entry.name.endsWith(".key")
       ) {
         excluded.push({ path: rel, reason: "secret-looking path" });
+        continue;
+      }
+      if (isUncaptured(gitIgnored, rel)) {
+        excluded.push({ path: rel, reason: GIT_IGNORED_REASON });
+        continue;
+      }
+      if (entry.isDirectory() && (await entryAt(workspace, `${rel}/.git`)) !== null) {
+        nested.push(rel);
+        excluded.push({ path: rel, reason: NESTED_REPO_REASON });
         continue;
       }
       const stat = await lstat(absolute);
@@ -164,7 +267,90 @@ async function scanWorkspace(
   }
   await walk(workspace);
   manifest.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-  return { manifest, excluded };
+  return { manifest, excluded, uncaptured: withNestedRepos(gitIgnored, nested), nested };
+}
+
+function shadowGitDir(root: string, key: string, threadId: string): string {
+  return join(root, "checkpoints", key, threadId, "shadow-git");
+}
+
+/** Paths a shadow tree holds. A restore may only write or remove what the tree holds. */
+async function treePaths(
+  gitBinary: string,
+  gitDir: string,
+  workspace: string,
+  treeId: string,
+): Promise<Set<string>> {
+  const listing = await runGit(gitBinary, gitDir, workspace, [
+    "ls-tree",
+    "-r",
+    "-z",
+    "--name-only",
+    treeId,
+  ]);
+  return new Set(listing.split("\0").filter((entry) => entry !== ""));
+}
+
+function uniqueExcluded(items: readonly ExcludedPath[]): ExcludedPath[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.path)) return false;
+    seen.add(item.path);
+    return true;
+  });
+}
+
+/** What is at a workspace path, or null. A symbolic link is reported as itself, not followed. */
+async function entryAt(workspace: string, relativePath: string): Promise<Stats | null> {
+  try {
+    return await lstat(join(workspace, relativePath));
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return null;
+    throw error;
+  }
+}
+
+/**
+ * Uncaptured paths that restoring the target tree would replace or remove. No checkpoint holds
+ * their content, so Undo could not bring one back. A path conflicts when the target holds a file
+ * there and an uncaptured file or folder is in the way, or when the target holds a file where a
+ * folder holds uncaptured content. Returns the paths at stake, sorted.
+ */
+async function uncapturedConflicts(
+  workspace: string,
+  held: ReadonlySet<string>,
+  uncaptured: UncapturedPaths,
+): Promise<string[]> {
+  const conflicts = new Set<string>();
+  for (const path of held) {
+    if (isUncaptured(uncaptured, path) && (await entryAt(workspace, path)) !== null)
+      conflicts.add(path);
+    for (const ancestor of ancestorsOf(path)) {
+      if (!isUncaptured(uncaptured, ancestor)) continue;
+      const found = await entryAt(workspace, ancestor);
+      if (found !== null && !found.isDirectory()) {
+        conflicts.add(ancestor);
+        break;
+      }
+    }
+    if (uncaptured.holding.has(path)) conflicts.add(path);
+  }
+  return [...conflicts].sort();
+}
+
+function uncapturedConflictFailure(paths: readonly string[]): AppFailure {
+  const shown = paths.slice(0, 5).join(", ");
+  const more = paths.length > 5 ? ` and ${paths.length - 5} more` : "";
+  const what = paths.length === 1 ? "a file or folder" : `${paths.length} files or folders`;
+  return failure(
+    "conflict",
+    `Restoring would replace ${what} that checkpoints leave alone (${shown}${more}). Undo cannot bring those back, so move or delete them, then plan the restore again.`,
+  );
 }
 
 async function ensureShadow(gitBinary: string, gitDir: string, workspace: string): Promise<void> {
@@ -176,8 +362,15 @@ async function ensureShadow(gitBinary: string, gitDir: string, workspace: string
   }
 }
 
-async function captureTree(gitBinary: string, gitDir: string, workspace: string): Promise<string> {
-  await runGit(gitBinary, gitDir, workspace, ["reset", "--mixed"]);
+async function captureTree(
+  gitBinary: string,
+  gitDir: string,
+  workspace: string,
+  nested: readonly string[],
+): Promise<string> {
+  // Start from an empty index: a checkpoint holds what git would add now, not files that an
+  // earlier checkpoint tracked and a later ignore rule covers.
+  await runGit(gitBinary, gitDir, workspace, ["read-tree", "--empty"]);
   await runGit(gitBinary, gitDir, workspace, [
     "add",
     "-A",
@@ -188,6 +381,8 @@ async function captureTree(gitBinary: string, gitDir: string, workspace: string)
     ":!.omp",
     ":!dist",
     ":!build",
+    // Git would store a nested repository as one commit reference: leave its contents out.
+    ...nested.map((path) => `:(exclude,literal)${path}`),
   ]);
   await runGit(gitBinary, gitDir, workspace, [
     "-c",
@@ -278,8 +473,12 @@ export class CheckpointStoreService {
     const recordsPath = join(sessionRoot, "records.jsonl");
     await mkdir(sessionRoot, { recursive: true, mode: 0o700 });
     await ensureShadow(this.#options.gitBinary, gitDir, workspace);
-    const { manifest, excluded } = await scanWorkspace(workspace, root);
-    const shadowTreeId = await captureTree(this.#options.gitBinary, gitDir, workspace);
+    const { manifest, excluded, nested } = await scanWorkspace(
+      this.#options.gitBinary,
+      workspace,
+      root,
+    );
+    const shadowTreeId = await captureTree(this.#options.gitBinary, gitDir, workspace, nested);
     const records = await readRecords(recordsPath);
     const record = SnapshotRecordSchema.parse({
       snapshotId: `snapshot-${randomUUID()}`,
@@ -335,8 +534,15 @@ export class CheckpointStoreService {
     const record = await this.#findRecord(args.workspace, args.snapshotId);
     const workspace = await realpath(args.workspace);
     const root = await ensureAppDataDir(this.#options.appDataDir);
-    const current = await scanWorkspace(workspace, root);
-    return this.#diff(record, args.workspace, current.manifest, current.excluded);
+    const current = await scanWorkspace(this.#options.gitBinary, workspace, root);
+    const held = await this.#heldPaths(record, root, workspace);
+    return this.#diff(
+      record,
+      args.workspace,
+      current.manifest,
+      current.excluded,
+      record.includedPaths.filter((item) => held.has(item.path)),
+    );
   }
 
   async planRestore(args: {
@@ -351,11 +557,20 @@ export class CheckpointStoreService {
     const root = await ensureAppDataDir(this.#options.appDataDir);
     const record =
       args.snapshotId === null ? null : await this.#findRecord(args.workspace, args.snapshotId);
-    const current = await scanWorkspace(workspace, root);
+    const current = await scanWorkspace(this.#options.gitBinary, workspace, root);
+    let included: SnapshotPath[] = [];
+    if (record !== null) {
+      const held = await this.#heldPaths(record, root, workspace);
+      if (args.operation !== "conversation-only") {
+        const conflicts = await uncapturedConflicts(workspace, held, current.uncaptured);
+        if (conflicts.length > 0) throw uncapturedConflictFailure(conflicts);
+      }
+      included = record.includedPaths.filter((item) => held.has(item.path));
+    }
     const diff =
       record === null
         ? null
-        : this.#diff(record, args.workspace, current.manifest, current.excluded);
+        : this.#diff(record, args.workspace, current.manifest, current.excluded, included);
     const plan = RestorePlanSchema.parse({
       planId: `restore-${randomUUID()}`,
       workspace: args.workspace,
@@ -365,8 +580,8 @@ export class CheckpointStoreService {
       targetConversation: args.targetConversation,
       currentWorkspaceHash: manifestHash(current.manifest),
       targetWorkspaceHash: record?.workspaceHash ?? null,
-      includedPaths: record?.includedPaths ?? [],
-      excludedPaths: record?.excludedPaths ?? current.excluded,
+      includedPaths: included,
+      excludedPaths: uniqueExcluded([...(record?.excludedPaths ?? []), ...current.excluded]),
       externalChanges: diff?.externalChanges ?? [],
       capturedPathCount: diff?.entries.length ?? 0,
       snapshotGuarantee: record?.guarantee ?? "boundary",
@@ -389,7 +604,7 @@ export class CheckpointStoreService {
     const previousConversation = plan.currentConversation;
     const workspace = await realpath(plan.workspace);
     const root = await ensureAppDataDir(this.#options.appDataDir);
-    const current = await scanWorkspace(workspace, root);
+    const current = await scanWorkspace(this.#options.gitBinary, workspace, root);
     if (manifestHash(current.manifest) !== plan.currentWorkspaceHash)
       throw failure("conflict", "Workspace changed since the restore plan was created.", true);
     if (snapshot !== null && snapshot.workspaceKey !== workspaceKey(workspace))
@@ -413,6 +628,17 @@ export class CheckpointStoreService {
         redoAvailable: false,
       };
 
+    const targetGitDir = shadowGitDir(root, snapshot.workspaceKey, snapshot.ompSessionId);
+    const held = await treePaths(
+      this.#options.gitBinary,
+      targetGitDir,
+      workspace,
+      snapshot.shadowTreeId,
+    );
+    const conflicts = await uncapturedConflicts(workspace, held, current.uncaptured);
+    if (conflicts.length > 0) throw uncapturedConflictFailure(conflicts);
+    const included = snapshot.includedPaths.filter((item) => held.has(item.path));
+
     let undoSnapshot: SnapshotRecord | null = null;
     const changedPaths: string[] = [];
     try {
@@ -422,15 +648,15 @@ export class CheckpointStoreService {
         source: "pre-restore",
         pinned: false,
       });
-      const afterUndoSnapshot = await scanWorkspace(workspace, root);
+      const afterUndoSnapshot = await scanWorkspace(this.#options.gitBinary, workspace, root);
       if (manifestHash(afterUndoSnapshot.manifest) !== plan.currentWorkspaceHash)
         throw failure("conflict", "Workspace changed since the restore plan was created.", true);
-      const wanted = new Set(snapshot.includedPaths.map((item) => item.path));
+      const wanted = new Set(included.map((item) => item.path));
       const before = new Map(current.manifest.map((item) => [item.relativePath, item]));
       for (const item of current.manifest) {
         if (!wanted.has(item.relativePath)) changedPaths.push(item.relativePath);
       }
-      for (const item of snapshot.includedPaths) {
+      for (const item of included) {
         const now = before.get(item.path);
         if (
           now === undefined ||
@@ -440,31 +666,37 @@ export class CheckpointStoreService {
         )
           changedPaths.push(item.path);
       }
+      // Each path removed here is in the undo snapshot captured above, so Undo can bring it back.
       for (const item of current.manifest) {
         if (!wanted.has(item.relativePath))
           await rm(join(workspace, item.relativePath), { recursive: true, force: true });
       }
-      const gitDir = join(
+      // Read the change from the index of the session that took the undo snapshot: it describes
+      // this workspace now. The target session's index can list files that are ignored now, and
+      // read-tree would delete them. The target's trees are read through its object store.
+      const undoGitDir = shadowGitDir(
         root,
-        "checkpoints",
-        snapshot.workspaceKey,
-        snapshot.ompSessionId,
-        "shadow-git",
+        workspaceKey(workspace),
+        plan.currentConversation.threadId,
       );
-      await runGit(this.#options.gitBinary, gitDir, workspace, [
-        "read-tree",
-        "--reset",
-        "-u",
-        snapshot.shadowTreeId,
-      ]);
+      await runGit(
+        this.#options.gitBinary,
+        undoGitDir,
+        workspace,
+        ["read-tree", "--reset", "-u", snapshot.shadowTreeId],
+        {
+          alternateObjectDirs:
+            resolve(undoGitDir) === resolve(targetGitDir) ? [] : [join(targetGitDir, "objects")],
+        },
+      );
       for (const listener of [...this.#listeners]) listener(snapshot, "restored", plan.workspace);
       return {
         planId: plan.planId,
         operation: plan.operation,
         filesRestored: true,
         conversationRestored: false,
-        capturedPathCount: snapshot.includedPaths.length,
-        excludedPaths: snapshot.excludedPaths.map((item) => item.path),
+        capturedPathCount: included.length,
+        excludedPaths: plan.excludedPaths.map((item) => item.path),
         snapshotGuarantee: snapshot.guarantee,
         externalChanges: plan.externalChanges,
         partialFailure: null,
@@ -530,13 +762,24 @@ export class CheckpointStoreService {
     return record;
   }
 
+  /** Paths the snapshot's own tree holds; older records also listed ignored files their tree lacks. */
+  async #heldPaths(record: SnapshotRecord, root: string, workspace: string): Promise<Set<string>> {
+    return treePaths(
+      this.#options.gitBinary,
+      shadowGitDir(root, record.workspaceKey, record.ompSessionId),
+      workspace,
+      record.shadowTreeId,
+    );
+  }
+
   #diff(
     record: SnapshotRecord,
     workspace: FolderPath,
     current: readonly ManifestEntry[],
     excludedPaths: readonly ExcludedPath[],
+    included: readonly SnapshotPath[],
   ): CheckpointDiff {
-    const before = new Map(record.includedPaths.map((item) => [item.path, item]));
+    const before = new Map(included.map((item) => [item.path, item]));
     const after = new Map(current.map((item) => [item.relativePath, item]));
     const entries: DiffEntry[] = [];
     for (const [path, item] of before) {
@@ -583,7 +826,7 @@ export class CheckpointStoreService {
       snapshotId: record.snapshotId,
       workspace,
       entries,
-      excludedPaths: [...record.excludedPaths, ...excludedPaths],
+      excludedPaths: uniqueExcluded([...record.excludedPaths, ...excludedPaths]),
       externalChanges: [],
       currentWorkspaceHash: manifestHash(current),
       snapshotWorkspaceHash: record.workspaceHash,

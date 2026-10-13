@@ -322,3 +322,639 @@ describe("CheckpointStore", () => {
     }
   });
 });
+
+describe("CheckpointStore and git-ignored files", () => {
+  async function shadowTreeNames(
+    appData: string,
+    record: { workspaceKey: string; ompSessionId: string; shadowTreeId: string },
+  ): Promise<string[]> {
+    const gitDir = join(
+      appData,
+      "checkpoints",
+      record.workspaceKey,
+      record.ompSessionId,
+      "shadow-git",
+    );
+    const child = Bun.spawn({
+      cmd: ["git", "--git-dir", gitDir, "ls-tree", "-r", "-z", "--name-only", record.shadowTreeId],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+    if (code !== 0) throw new Error("git ls-tree failed");
+    return stdout
+      .split("\0")
+      .filter((entry) => entry !== "")
+      .sort();
+  }
+
+  test("never captures, deletes or overwrites ignored files, and undo keeps them", async () => {
+    const workspace = await tempRoot("ignored");
+    const appData = await tempRoot("ignored-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "data/\n.venv/\ntarget/\n*.log\n");
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      await fs.mkdir(join(workspace, "src"));
+      await fs.writeFile(join(workspace, "src", "keep.ts"), "keep\n");
+      await fs.writeFile(join(workspace, "src", "gen.log"), "generated\n");
+      await fs.mkdir(join(workspace, ".venv", "lib"), { recursive: true });
+      await fs.writeFile(join(workspace, ".venv", "lib", "x.py"), "venv\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      const included = checkpoint.includedPaths.map((item) => item.path);
+      expect(included).toEqual([".gitignore", "a.txt", "src/keep.ts"]);
+      expect(checkpoint.excludedPaths.map((item) => item.path).sort()).toEqual([
+        ".venv",
+        "src/gen.log",
+      ]);
+      expect(await shadowTreeNames(appData, checkpoint)).toEqual(included);
+
+      await fs.mkdir(join(workspace, "data"));
+      await fs.writeFile(join(workspace, "data", "app.db"), "database\n");
+      await fs.writeFile(join(workspace, ".venv", "lib", "y.py"), "new venv\n");
+      await fs.mkdir(join(workspace, "target", "debug"), { recursive: true });
+      await fs.writeFile(join(workspace, "target", "debug", "app"), "build\n");
+      await fs.writeFile(join(workspace, "src", "new.log"), "new log\n");
+      await fs.writeFile(join(workspace, "a.txt"), "two\n");
+
+      const plan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: checkpoint.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: checkpoint.workspaceHash,
+      });
+      expect(plan.includedPaths.map((item) => item.path)).toEqual(included);
+      expect(plan.capturedPathCount).toBe(1);
+      expect(plan.requiresConfirmation).toBe(true);
+      expect(plan.excludedPaths.map((item) => item.path)).toContain("data");
+
+      const restored = await store.restore({ planId: plan.planId, confirmed: true });
+      expect(restored.filesRestored).toBe(true);
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("one\n");
+      expect(await fs.readFile(join(workspace, "data", "app.db"), "utf8")).toBe("database\n");
+      expect(await fs.readFile(join(workspace, ".venv", "lib", "x.py"), "utf8")).toBe("venv\n");
+      expect(await fs.readFile(join(workspace, "target", "debug", "app"), "utf8")).toBe("build\n");
+      expect(await fs.readFile(join(workspace, "src", "new.log"), "utf8")).toBe("new log\n");
+      expect(await fs.readFile(join(workspace, ".venv", "lib", "y.py"), "utf8")).toBe("new venv\n");
+      if (restored.undoSnapshotId === null)
+        throw new Error("Restore did not create an undo snapshot");
+
+      const undoPlan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: restored.undoSnapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: checkpoint.workspaceHash,
+      });
+      const undone = await store.restore({ planId: undoPlan.planId, confirmed: true });
+      expect(undone.filesRestored).toBe(true);
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("two\n");
+      expect(await fs.readFile(join(workspace, "data", "app.db"), "utf8")).toBe("database\n");
+      expect(await fs.readFile(join(workspace, ".venv", "lib", "x.py"), "utf8")).toBe("venv\n");
+      expect(await fs.readFile(join(workspace, "target", "debug", "app"), "utf8")).toBe("build\n");
+      expect(await fs.readFile(join(workspace, "src", "new.log"), "utf8")).toBe("new log\n");
+      expect(await fs.readFile(join(workspace, ".venv", "lib", "y.py"), "utf8")).toBe("new venv\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("a restore never deletes a file that a later ignore rule now covers", async () => {
+    const workspace = await tempRoot("tracked-ignored");
+    const appData = await tempRoot("tracked-ignored-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "\n");
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const older = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.writeFile(join(workspace, "cache.bin"), "cache\n");
+      await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.writeFile(join(workspace, ".gitignore"), "cache.bin\n");
+
+      const plan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: older.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: older.workspaceHash,
+      });
+      expect(plan.capturedPathCount).toBe(1);
+      const restored = await store.restore({ planId: plan.planId, confirmed: true });
+      expect(restored.filesRestored).toBe(true);
+      expect(await fs.readFile(join(workspace, ".gitignore"), "utf8")).toBe("\n");
+      expect(await fs.readFile(join(workspace, "cache.bin"), "utf8")).toBe("cache\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("restoring a checkpoint from another conversation never deletes a file the workspace now ignores", async () => {
+    const workspace = await tempRoot("other-conversation");
+    const appData = await tempRoot("other-conversation-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "\n");
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const older = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.writeFile(join(workspace, "cache.bin"), "cache\n");
+      await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.writeFile(join(workspace, ".gitignore"), "cache.bin\n");
+
+      const otherConversation = {
+        ...conversation(workspace),
+        threadId: ThreadId.parse("thread-other"),
+      };
+      const plan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: older.snapshotId,
+        currentConversation: otherConversation,
+        targetConversation: null,
+        expectedWorkspaceHash: older.workspaceHash,
+      });
+      await store.restore({ planId: plan.planId, confirmed: true });
+      expect(await fs.readFile(join(workspace, ".gitignore"), "utf8")).toBe("\n");
+      expect(await fs.readFile(join(workspace, "cache.bin"), "utf8")).toBe("cache\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses a restore that would overwrite an ignored file, and changes nothing", async () => {
+    const workspace = await tempRoot("overwrite");
+    const appData = await tempRoot("overwrite-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "\n");
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      await fs.writeFile(join(workspace, "keep.bin"), "kept\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.writeFile(join(workspace, ".gitignore"), "keep.bin\n");
+      await fs.writeFile(join(workspace, "keep.bin"), "edited\n");
+      await fs.writeFile(join(workspace, "a.txt"), "two\n");
+      const planArgs = {
+        workspace: folder,
+        operation: "files-only" as const,
+        snapshotId: checkpoint.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: checkpoint.workspaceHash,
+      };
+
+      let rejection: unknown;
+      try {
+        await store.planRestore(planArgs);
+      } catch (error) {
+        rejection = error;
+      }
+      expect(rejection).toBeInstanceOf(AppFailure);
+      expect((rejection as AppFailure).appError.code).toBe("conflict");
+      expect((rejection as AppFailure).appError.message).toContain("keep.bin");
+      expect(await fs.readFile(join(workspace, "keep.bin"), "utf8")).toBe("edited\n");
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("two\n");
+
+      await fs.rm(join(workspace, "keep.bin"));
+      const plan = await store.planRestore(planArgs);
+      await store.restore({ planId: plan.planId, confirmed: true });
+      expect(await fs.readFile(join(workspace, "keep.bin"), "utf8")).toBe("kept\n");
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("one\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("honours the person's global git ignore file", async () => {
+    const workspace = await tempRoot("global-ignore");
+    const appData = await tempRoot("global-ignore-data");
+    const globalConfig = await tempRoot("global-config");
+    const previous = process.env.GIT_CONFIG_GLOBAL;
+    try {
+      await fs.writeFile(join(globalConfig, "ignore"), "*.local\n");
+      await fs.writeFile(
+        join(globalConfig, "gitconfig"),
+        `[core]\n\texcludesFile = ${join(globalConfig, "ignore")}\n`,
+      );
+      process.env.GIT_CONFIG_GLOBAL = join(globalConfig, "gitconfig");
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      await fs.writeFile(join(workspace, "notes.local"), "notes\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      expect(checkpoint.includedPaths.map((item) => item.path)).toEqual(["a.txt"]);
+      expect(checkpoint.excludedPaths.map((item) => item.path)).toEqual(["notes.local"]);
+
+      await fs.writeFile(join(workspace, "scratch.local"), "scratch\n");
+      await fs.writeFile(join(workspace, "a.txt"), "two\n");
+      const plan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: checkpoint.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: checkpoint.workspaceHash,
+      });
+      expect(plan.capturedPathCount).toBe(1);
+      await store.restore({ planId: plan.planId, confirmed: true });
+      expect(await fs.readFile(join(workspace, "scratch.local"), "utf8")).toBe("scratch\n");
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("one\n");
+    } finally {
+      if (previous === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = previous;
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+      await fs.rm(globalConfig, { recursive: true, force: true });
+    }
+  });
+
+  test("a checkpoint recorded with ignored files lists only what its tree holds", async () => {
+    const workspace = await tempRoot("legacy-record");
+    const appData = await tempRoot("legacy-record-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "data/\n");
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      // Earlier builds listed every file in the record, ignored or not. Rewrite this record that way.
+      const recordsPath = join(
+        appData,
+        "checkpoints",
+        checkpoint.workspaceKey,
+        checkpoint.ompSessionId,
+        "records.jsonl",
+      );
+      const [record] = (await fs.readFile(recordsPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { includedPaths: unknown[] });
+      if (record === undefined) throw new Error("No checkpoint record was written");
+      record.includedPaths.push({
+        path: "data/app.db",
+        kind: "file",
+        mode: 420,
+        hash: "a".repeat(64),
+        sizeBytes: 9,
+      });
+      await fs.writeFile(recordsPath, `${JSON.stringify(record)}\n`);
+      await fs.mkdir(join(workspace, "data"));
+      await fs.writeFile(join(workspace, "data", "app.db"), "database\n");
+
+      const diff = await store.diff({ workspace: folder, snapshotId: checkpoint.snapshotId });
+      expect(diff.entries).toEqual([]);
+      const plan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: checkpoint.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: checkpoint.workspaceHash,
+      });
+      expect(plan.includedPaths.map((item) => item.path)).toEqual([".gitignore", "a.txt"]);
+      expect(plan.capturedPathCount).toBe(0);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses a restore when an ignored file stands where the checkpoint holds a folder", async () => {
+    const workspace = await tempRoot("ignored-file-in-the-way");
+    const appData = await tempRoot("ignored-file-in-the-way-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "\n");
+      await fs.mkdir(join(workspace, "dir"));
+      await fs.writeFile(join(workspace, "dir", "x.txt"), "x\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.rm(join(workspace, "dir"), { recursive: true });
+      await fs.writeFile(join(workspace, "dir"), "ignored file\n");
+      await fs.writeFile(join(workspace, ".gitignore"), "dir\n");
+      const planArgs = {
+        workspace: folder,
+        operation: "files-only" as const,
+        snapshotId: checkpoint.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: checkpoint.workspaceHash,
+      };
+
+      let rejection: unknown;
+      try {
+        await store.planRestore(planArgs);
+      } catch (error) {
+        rejection = error;
+      }
+      expect(rejection).toBeInstanceOf(AppFailure);
+      expect((rejection as AppFailure).appError.code).toBe("conflict");
+      expect((rejection as AppFailure).appError.message).toContain("dir");
+      expect(await fs.readFile(join(workspace, "dir"), "utf8")).toBe("ignored file\n");
+
+      await fs.rm(join(workspace, "dir"));
+      const plan = await store.planRestore(planArgs);
+      await store.restore({ planId: plan.planId, confirmed: true });
+      expect(await fs.readFile(join(workspace, "dir", "x.txt"), "utf8")).toBe("x\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses a restore when a folder holding ignored files stands where the checkpoint holds a file", async () => {
+    const workspace = await tempRoot("ignored-folder-in-the-way");
+    const appData = await tempRoot("ignored-folder-in-the-way-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "\n");
+      await fs.writeFile(join(workspace, "pkg"), "old\n");
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.rm(join(workspace, "pkg"));
+      await fs.mkdir(join(workspace, "pkg"));
+      await fs.writeFile(join(workspace, "pkg", "cache.log"), "cache\n");
+      await fs.writeFile(join(workspace, "pkg", "keep.ts"), "keep\n");
+      await fs.writeFile(join(workspace, ".gitignore"), "*.log\n");
+
+      let rejection: unknown;
+      try {
+        await store.planRestore({
+          workspace: folder,
+          operation: "files-only",
+          snapshotId: checkpoint.snapshotId,
+          currentConversation: conversation(workspace),
+          targetConversation: null,
+          expectedWorkspaceHash: checkpoint.workspaceHash,
+        });
+      } catch (error) {
+        rejection = error;
+      }
+      expect(rejection).toBeInstanceOf(AppFailure);
+      expect((rejection as AppFailure).appError.code).toBe("conflict");
+      expect((rejection as AppFailure).appError.message).toContain("pkg");
+      expect(await fs.readFile(join(workspace, "pkg", "cache.log"), "utf8")).toBe("cache\n");
+      expect(await fs.readFile(join(workspace, "pkg", "keep.ts"), "utf8")).toBe("keep\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses a restore that would overwrite an ignored file inside an ignored folder", async () => {
+    const workspace = await tempRoot("ignored-in-folder");
+    const appData = await tempRoot("ignored-in-folder-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "\n");
+      await fs.mkdir(join(workspace, "data"));
+      await fs.writeFile(join(workspace, "data", "app.db"), "v1\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.writeFile(join(workspace, ".gitignore"), "data/\n");
+      await fs.writeFile(join(workspace, "data", "app.db"), "v2\n");
+
+      let rejection: unknown;
+      try {
+        await store.planRestore({
+          workspace: folder,
+          operation: "files-only",
+          snapshotId: checkpoint.snapshotId,
+          currentConversation: conversation(workspace),
+          targetConversation: null,
+          expectedWorkspaceHash: checkpoint.workspaceHash,
+        });
+      } catch (error) {
+        rejection = error;
+      }
+      expect(rejection).toBeInstanceOf(AppFailure);
+      expect((rejection as AppFailure).appError.code).toBe("conflict");
+      expect((rejection as AppFailure).appError.message).toContain("data/app.db");
+      expect(await fs.readFile(join(workspace, "data", "app.db"), "utf8")).toBe("v2\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses a restore when an ignored file sits where the checkpoint holds a path inside an ignored folder", async () => {
+    const workspace = await tempRoot("ignored-file-blocks-path");
+    const appData = await tempRoot("ignored-file-blocks-path-data");
+    try {
+      await fs.writeFile(join(workspace, ".gitignore"), "\n");
+      await fs.mkdir(join(workspace, "data", "sub"), { recursive: true });
+      await fs.writeFile(join(workspace, "data", "sub", "file.txt"), "x\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.rm(join(workspace, "data"), { recursive: true });
+      await fs.mkdir(join(workspace, "data"));
+      await fs.writeFile(join(workspace, "data", "sub"), "blocker\n");
+      await fs.writeFile(join(workspace, ".gitignore"), "data/\n");
+
+      let rejection: unknown;
+      try {
+        await store.planRestore({
+          workspace: folder,
+          operation: "files-only",
+          snapshotId: checkpoint.snapshotId,
+          currentConversation: conversation(workspace),
+          targetConversation: null,
+          expectedWorkspaceHash: checkpoint.workspaceHash,
+        });
+      } catch (error) {
+        rejection = error;
+      }
+      expect(rejection).toBeInstanceOf(AppFailure);
+      expect((rejection as AppFailure).appError.code).toBe("conflict");
+      expect((rejection as AppFailure).appError.message).toContain("data/sub");
+      expect(await fs.readFile(join(workspace, "data", "sub"), "utf8")).toBe("blocker\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  function runGitIn(directory: string, args: string[]): void {
+    const result = Bun.spawnSync({
+      cmd: ["git", "-C", directory, ...args],
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    if (result.exitCode !== 0)
+      throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString()}`);
+  }
+
+  function initNestedRepo(directory: string): void {
+    runGitIn(directory, ["init", "-q"]);
+    runGitIn(directory, [
+      "-c",
+      "user.name=test",
+      "-c",
+      "user.email=test@localhost",
+      "commit",
+      "-q",
+      "--allow-empty",
+      "-m",
+      "init",
+    ]);
+  }
+
+  test("leaves a nested git repository out of checkpoints, plans and restores", async () => {
+    const workspace = await tempRoot("nested-repo");
+    const appData = await tempRoot("nested-repo-data");
+    try {
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const before = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.mkdir(join(workspace, "nested"));
+      initNestedRepo(join(workspace, "nested"));
+      await fs.writeFile(join(workspace, "nested", "x.txt"), "precious\n");
+
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      expect(checkpoint.includedPaths.map((item) => item.path)).toEqual(["a.txt"]);
+      expect(checkpoint.excludedPaths.map((item) => item.path)).toContain("nested");
+      expect(await shadowTreeNames(appData, checkpoint)).toEqual(["a.txt"]);
+
+      await fs.writeFile(join(workspace, "a.txt"), "two\n");
+      const plan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: before.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: before.workspaceHash,
+      });
+      expect(plan.excludedPaths.map((item) => item.path)).toContain("nested");
+      const restored = await store.restore({ planId: plan.planId, confirmed: true });
+      expect(restored.filesRestored).toBe(true);
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("one\n");
+      expect(await fs.readFile(join(workspace, "nested", "x.txt"), "utf8")).toBe("precious\n");
+      if (restored.undoSnapshotId === null)
+        throw new Error("Restore did not create an undo snapshot");
+
+      const undoPlan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: restored.undoSnapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: before.workspaceHash,
+      });
+      await store.restore({ planId: undoPlan.planId, confirmed: true });
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("two\n");
+      expect(await fs.readFile(join(workspace, "nested", "x.txt"), "utf8")).toBe("precious\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses a restore that would replace a nested git repository with a file", async () => {
+    const workspace = await tempRoot("nested-repo-in-the-way");
+    const appData = await tempRoot("nested-repo-in-the-way-data");
+    try {
+      await fs.writeFile(join(workspace, "nested"), "old\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.rm(join(workspace, "nested"));
+      await fs.mkdir(join(workspace, "nested"));
+      initNestedRepo(join(workspace, "nested"));
+      await fs.writeFile(join(workspace, "nested", "x.txt"), "precious\n");
+
+      let rejection: unknown;
+      try {
+        await store.planRestore({
+          workspace: folder,
+          operation: "files-only",
+          snapshotId: checkpoint.snapshotId,
+          currentConversation: conversation(workspace),
+          targetConversation: null,
+          expectedWorkspaceHash: checkpoint.workspaceHash,
+        });
+      } catch (error) {
+        rejection = error;
+      }
+      expect(rejection).toBeInstanceOf(AppFailure);
+      expect((rejection as AppFailure).appError.code).toBe("conflict");
+      expect((rejection as AppFailure).appError.message).toContain("nested");
+      expect(await fs.readFile(join(workspace, "nested", "x.txt"), "utf8")).toBe("precious\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+});
