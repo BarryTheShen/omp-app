@@ -222,6 +222,8 @@ const BashCommandResultSchema = z.looseObject({
 
 /** omp appends "Wall time: N seconds" to the text it sends the model; the card shows wall time apart. */
 const WALL_TIME_SUFFIX = /\n*Wall time: [\d.]+ seconds?\s*$/;
+/** omp adds "Command exited with code N" after the wall time, for a failed command; the card shows the exit code apart. */
+const EXIT_CODE_SUFFIX = /\n*Command exited with code -?\d+\s*$/;
 
 /** Reads bash output from either the agent's bash tool or the RPC bash command. */
 export function decodeBashResult(value: unknown): BashResult | undefined {
@@ -274,8 +276,16 @@ function decodeBashToolResult(result: z.infer<typeof BashToolResultSchema>): Bas
       ...(details.wallTimeMs === undefined ? {} : { wallTimeMs: Math.round(details.wallTimeMs) }),
     };
   }
+  // omp writes its notes after the output: the wall time, then the exit code of a failed command. The card shows both
+  // as facts of its own (the meta row and the banner), so neither is part of what the command printed.
+  const withoutExitCode =
+    details.exitCode === undefined || details.exitCode === 0
+      ? text
+      : text.replace(EXIT_CODE_SUFFIX, "");
   const withoutWallTime =
-    details.wallTimeMs === undefined ? text : text.replace(WALL_TIME_SUFFIX, "");
+    details.wallTimeMs === undefined
+      ? withoutExitCode
+      : withoutExitCode.replace(WALL_TIME_SUFFIX, "");
   const output = withoutWallTime.replace(/\n+$/, "");
   const lines = output.length === 0 ? 0 : output.split("\n").length;
   // omp records a cut in `details.meta.truncation`, and only when it cut the output.

@@ -377,6 +377,13 @@ function reply(request: Request): Reply {
       ],
       thinking: "I should start one slow worker and wait for it.",
     };
+  // A bash call that exits non-zero (issue #1324): omp's result ends with its wall-time and exit-code notes.
+  if (prompt.includes("run_failing_bash"))
+    return {
+      tool: "bash",
+      args: { command: "ls /nonexistent-omp-fixture" },
+      thinking: "I should run a command that fails.",
+    };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
   if (prompt.includes("read_image"))

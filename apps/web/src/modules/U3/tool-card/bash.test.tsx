@@ -48,6 +48,43 @@ function toolResult(output: string, details: Record<string, unknown> = {}) {
   };
 }
 
+describe("BashCard notes omp adds to a failed command", () => {
+  test("the output shows only what the command printed, not omp's wall-time and exit-code notes", () => {
+    const onCopy = vi.fn(async () => {});
+    const failed = {
+      content: [
+        {
+          type: "text",
+          text: "ls: /nonexistent: No such file or directory\n\nWall time: 0.05 seconds\n\nCommand exited with code 2",
+        },
+      ],
+      details: { wallTimeMs: 50, exitCode: 2 },
+    };
+    render(<BashCard onCopy={onCopy} rendererProps={props(failed)} />);
+    expandToolCards();
+    const shown = screen.getByTestId("u3-bash-stdout").querySelector("pre")?.textContent;
+    expect(shown).toBe("ls: /nonexistent: No such file or directory");
+    expect(screen.getByText("Exit code: 2")).toBeTruthy();
+    expect(screen.getByText("Wall time: 50ms")).toBeTruthy();
+    expect(screen.getByText("Command exited with code 2.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Copy raw output" }));
+    expect(onCopy).toHaveBeenCalledWith("ls: /nonexistent: No such file or directory", "result");
+  });
+
+  test("a failed command that printed nothing shows no output, not omp's notes", () => {
+    const failed = {
+      content: [
+        { type: "text", text: "\n\nWall time: 0.05 seconds\n\nCommand exited with code 1" },
+      ],
+      details: { wallTimeMs: 50, exitCode: 1 },
+    };
+    render(<BashCard rendererProps={props(failed)} />);
+    expandToolCards();
+    expect(screen.getByText("No output")).toBeTruthy();
+    expect(screen.queryByTestId("u3-bash-stdout")).toBeNull();
+  });
+});
+
 describe("BashCard", () => {
   test("uses the command as a single-line header summary", () => {
     render(<BashCard rendererProps={props(result(), { type: "running" })} />);
