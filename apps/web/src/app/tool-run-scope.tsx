@@ -9,13 +9,19 @@ import {
   type BackgroundJobsScope,
   type StopOutcome,
 } from "@/modules/U3/tool-card/background-job";
+import {
+  rememberStopped,
+  resolveStopOutcome,
+  stopRememberedFor,
+} from "@/modules/U3/tool-card/stopped-jobs";
 
 /**
  * The chat's run state for its tool calls. While the chat's run is active, a call with no result is queued,
  * not finished: omp starts an exclusive call only when its turn comes. Once the run has ended, a call with no
  * result is unrecorded. The run state is R0's own prompt flag, read live, not a timer. The chat's command gateway
  * is passed down too, so a background job's card can stop its own job. Each background job's view comes from the
- * chat's transcript and omp's process, and the stop a card last got is kept for the chat's page.
+ * chat's transcript and omp's process, and the stop a card last got is kept for the chat's page, and remembered in this
+ * browser (stopped-jobs.ts), so a reload keeps it for a job the transcript still shows as running.
  */
 export function ToolRunScope({
   store,
@@ -35,15 +41,21 @@ export function ToolRunScope({
     () => ({
       viewOf: (toolCallId): BackgroundJobView | undefined => views.get(toolCallId),
       outcomeOf: (toolCallId) =>
-        stops.store === store ? stops.outcomes.get(toolCallId) : undefined,
-      recordOutcome: (toolCallId, outcome) =>
+        resolveStopOutcome(
+          stops.store === store ? stops.outcomes.get(toolCallId) : undefined,
+          views.get(toolCallId)?.kind === "running",
+          () => stopRememberedFor(store.getSnapshot().threadId, toolCallId),
+        ),
+      recordOutcome: (toolCallId, outcome) => {
+        rememberStopped(store.getSnapshot().threadId, toolCallId, outcome);
         setStops((current) => {
           const outcomes = new Map<string, StopOutcome>(
             current.store === store ? current.outcomes : [],
           );
           outcomes.set(toolCallId, outcome);
           return { store, outcomes };
-        }),
+        });
+      },
     }),
     [views, stops, store],
   );
