@@ -66,6 +66,8 @@ realTest(
 
     await addFile(page, composer, "sent-once.txt");
     await composer.fill("First message with an attachment");
+    // The chip is still uploading for a moment: the composer holds the send until it is attached, and Send enables then.
+    await expect(page.getByRole("button", { name: "Send message" })).toBeEnabled();
     await composer.press("Enter");
     await expect(page.getByText("pong", { exact: true }).first()).toBeVisible({ timeout: 45_000 });
     await expectNoAttachments(page);
