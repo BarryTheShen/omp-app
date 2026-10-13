@@ -298,6 +298,25 @@ describe("rich Ask dialog and result card", () => {
     expect(markOf(read)).toBe("true");
   });
 
+  test("a long word in the question wraps inside the dialog: its group can shrink and its text wraps anywhere", () => {
+    const longWord =
+      "some_very_long_snake_case_identifier_name_that_goes_on_and_on_and_on_for_quite_a_while_longer_or_not";
+    renderRequest({
+      kind: "ask",
+      id: "ask-4" as UiRequestId,
+      questions: [
+        {
+          id: "db",
+          question: `Which ${longWord} should omp use?`,
+          options: [{ label: "Postgres", description: longWord }, { label: `SQLite ${longWord}` }],
+        },
+      ],
+    });
+    const group = screen.getByRole("radiogroup");
+    expect(group.className).toContain("min-w-0");
+    expect(group.className).toContain("[overflow-wrap:anywhere]");
+  });
+
   test("text typed under Other stays when a checkbox is ticked, and both reach the answer", () => {
     const result = renderRequest(checkboxRequest);
     fireEvent.click(screen.getByRole("button", { name: "Other" }));

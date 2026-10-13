@@ -340,6 +340,28 @@ function reply(request: Request): Reply {
       },
       thinking: "I need to ask, and SQLite is the one I recommend.",
     };
+  // Issue #1327: one question whose text, one option label and one option description each hold a 100-character
+  // word with no spaces. The ask dialog must wrap that word inside the dialog.
+  if (prompt.includes("ask_long_word")) {
+    const longWord =
+      "some_very_long_snake_case_identifier_name_that_goes_on_and_on_and_on_for_quite_a_while_longer_or_not";
+    return {
+      tool: "ask",
+      args: {
+        questions: [
+          {
+            id: "db",
+            question: `Which ${longWord} should omp use?`,
+            options: [
+              { label: "Postgres", description: longWord },
+              { label: `SQLite ${longWord}` },
+            ],
+          },
+        ],
+      },
+      thinking: "I need to ask, and the long word is in the question, a label and a description.",
+    };
+  }
   if (prompt.includes("make_todos"))
     return {
       tool: "todo",

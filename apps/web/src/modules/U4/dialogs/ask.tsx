@@ -212,7 +212,7 @@ export function AskDialog({
       }
     >
       {review ? (
-        <div className="flex flex-col gap-3" data-testid="ask-review">
+        <div className="flex flex-col gap-3 [overflow-wrap:anywhere]" data-testid="ask-review">
           {request.questions.map((item, index) => {
             const answer = answers[index] ?? { selectedOptions: [], customInput: undefined };
             return (
@@ -247,7 +247,7 @@ export function AskDialog({
             </div>
           ) : null}
           <fieldset
-            className="flex flex-col gap-1"
+            className="flex min-w-0 flex-col gap-1 [overflow-wrap:anywhere]"
             role={question.multi ? "group" : "radiogroup"}
             onKeyDown={moveAmongOptions}
           >
