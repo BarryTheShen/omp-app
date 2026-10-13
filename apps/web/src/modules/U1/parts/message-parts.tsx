@@ -1,7 +1,8 @@
 import { type EnrichedPartState, MessagePrimitive, type MessageState } from "@assistant-ui/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { File } from "@/components/assistant-ui/elements/file";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
+import { ENTER_FADE, isRecent } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { executionRecordOf } from "@/modules/U2/execution";
 import { MarkdownText } from "../markdown";
@@ -142,6 +143,14 @@ function renderPart(
   }
 }
 
+/**
+ * Whether a message has something to show. A turn's placeholder row is empty until its message replaces it: only the
+ * message that arrives with content fades in, so the reader sees one fade, not a placeholder's and then the message's.
+ */
+function hasContent(message: MessageState): boolean {
+  return message.content.some((part) => part.type !== "text" || part.text.trim() !== "");
+}
+
 /** One of omp's own messages (R0 marks it with its kind and details), or undefined for an ordinary one. */
 function customNoteOf(message: MessageState): CustomNoteSource | undefined {
   const { ompCustomType, ompCustomDetails } = message.metadata.custom;
@@ -177,6 +186,8 @@ export function MessageParts({
   const role = message.role;
   const isUser = role === "user";
   const isSystem = role === "system";
+  // A message that arrived just now fades in once. The state is read on the first render only, so a history that loads, or a reload, never fades.
+  const [fresh] = useState(() => isRecent(message.createdAt?.getTime()) && hasContent(message));
   const note = isSystem ? customNoteOf(message) : undefined;
   const execution = isSystem ? executionOf(message) : undefined;
   const files = isSystem ? fileMentionOf(message) : undefined;
@@ -196,7 +207,12 @@ export function MessageParts({
 
   return (
     <MessagePrimitive.Root
-      className={cn(rowClassName, isUser && "flex justify-end", isSystem && "py-2")}
+      className={cn(
+        rowClassName,
+        isUser && "flex justify-end",
+        isSystem && "py-2",
+        fresh && ENTER_FADE,
+      )}
       data-store-key={storeKeyOf(message)}
       data-role={role}
       data-slot="u1-message-row"

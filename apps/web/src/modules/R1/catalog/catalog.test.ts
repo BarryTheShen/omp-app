@@ -8,7 +8,7 @@ import type {
   WorkspaceState,
 } from "@omp-app/contracts";
 import { AppFailure, SessionFilePath, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { SessionScope } from "../contract";
 import { SessionCatalogModel } from ".";
 
@@ -828,5 +828,33 @@ describe("SessionCatalogModel running chats", () => {
     await model.loadMore(1);
     expect(model.getSnapshot().sessions.map((chat) => chat.id)).toEqual(["one", "two"]);
     expect(model.getSnapshot().running.map((chat) => chat.id)).toEqual(["first-reply"]);
+  });
+});
+
+describe("SessionCatalogModel first load", () => {
+  test("remembers the moment its list first loaded, and keeps that moment through later lists", async () => {
+    const clock = vi.spyOn(Date, "now");
+    try {
+      const model = new SessionCatalogModel({
+        scope,
+        sessionFiles: {
+          listSessions: async () => ({ sessions: [], nextCursor: null, running: [] }),
+          readSession: async () => {
+            throw new Error("No chat has a session file to read in this test.");
+          },
+        },
+      });
+      expect(model.firstLoadedAt).toBeNull();
+
+      clock.mockReturnValue(1_000);
+      await model.list({ filter: { scope, query: "" }, limit: 50 });
+      expect(model.firstLoadedAt).toBe(1_000);
+
+      clock.mockReturnValue(9_000);
+      await model.list({ filter: { scope, query: "" }, limit: 50 });
+      expect(model.firstLoadedAt).toBe(1_000);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

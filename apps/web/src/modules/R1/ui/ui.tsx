@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { createdSince, ENTER_FADE, LEAVE_FADE, LEAVE_MS } from "@/lib/motion";
+import { type Presence, useEnteringItems, usePresentItems } from "@/lib/presence";
 import { useCapabilityStatus } from "@/registry-core";
 import type { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
@@ -231,6 +233,14 @@ export function SessionCatalogSidebar({
     return () => document.removeEventListener("pointerdown", closeFromOutside);
   }, [menuSessionId]);
 
+  // A session created after the list first loaded is new: it fades in once. The rows the load lists are history. The
+  // catalog keeps the moment its list first loaded, so a sidebar drawn again still judges by it.
+  const loadedAt = catalog.firstLoadedAt;
+  const presentSessions = usePresentItems(
+    snapshot.sessions,
+    (session: SessionMetadata) => session.id,
+    LEAVE_MS,
+  );
   // A chat whose turn runs with no session file yet has a row in its folder until the list holds its file.
   const runningChats = useMemo(
     () =>
@@ -239,25 +249,35 @@ export function SessionCatalogSidebar({
       ),
     [snapshot.running, snapshot.sessions],
   );
+  // A running chat has no creation time to judge by: it fades in once, when it appears after the list has loaded.
+  const enteringRunning = useEnteringItems(
+    runningChats,
+    (chat: RunningSession) => chat.id,
+    snapshot.isLoaded,
+  );
   const grouped = useMemo(() => {
-    const groups = new Map<string, { running: RunningSession[]; sessions: SessionMetadata[] }>();
+    const groups = new Map<
+      string,
+      { running: Presence<RunningSession>[]; sessions: Presence<SessionMetadata>[] }
+    >();
     const groupOf = (cwd: string) => {
       const group = groups.get(cwd) ?? { running: [], sessions: [] };
       groups.set(cwd, group);
       return group;
     };
-    for (const chat of runningChats) groupOf(chat.folder).running.push(chat);
-    for (const session of snapshot.sessions) groupOf(session.cwd).sessions.push(session);
+    for (const entry of enteringRunning) groupOf(entry.item.folder).running.push(entry);
+    for (const entry of presentSessions) groupOf(entry.item.cwd).sessions.push(entry);
     return [...groups.entries()];
-  }, [runningChats, snapshot.sessions]);
+  }, [enteringRunning, presentSessions]);
   const sessions = snapshot.sessions;
   const activeSearch = snapshot.filter.query.trim();
   // Every row, in the order it is drawn: each folder's running chats, then its listed chats (see `grouped`).
   const rowIds = useMemo(
     () =>
       grouped.flatMap(([, group]) => [
-        ...group.running.map((chat) => chat.id),
-        ...group.sessions.map((session) => session.id),
+        ...group.running.map((entry) => entry.item.id),
+        // A session that is leaving is inert and fading out: the keys never reach it.
+        ...group.sessions.filter((entry) => !entry.leaving).map((entry) => entry.item.id),
       ]),
     [grouped],
   );
@@ -603,32 +623,42 @@ export function SessionCatalogSidebar({
               headingLevel={3}
               variant="plain"
             >
-              {group.running.map((chat) => (
-                <div
-                  key={`running-${chat.id}`}
-                  className="group relative mb-1"
-                  ref={(element) => rememberRow(chat.id, element)}
-                >
-                  <ListRow
-                    title="New chat"
-                    detail={
-                      <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 text-xs">
-                        <Loader2Icon
-                          aria-hidden="true"
-                          className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
-                          data-slot="r1-session-running"
-                        />
-                        Running
-                      </span>
+              {group.running.map((presence) => {
+                const chat = presence.item;
+                return (
+                  <div
+                    className={
+                      presence.entering
+                        ? `group relative mb-1 ${ENTER_FADE}`
+                        : "group relative mb-1"
                     }
-                    selected={shownThreadId === chat.id}
-                    tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
-                    onSelect={() => void openSession({ id: chat.id })}
-                    onFocus={() => setFocusedId(chat.id)}
-                  />
-                </div>
-              ))}
-              {group.sessions.map((session) => {
+                    data-slot="r1-running-row"
+                    key={`running-${chat.id}`}
+                    ref={(element) => rememberRow(chat.id, element)}
+                  >
+                    <ListRow
+                      title="New chat"
+                      detail={
+                        <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 text-xs">
+                          <Loader2Icon
+                            aria-hidden="true"
+                            className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
+                            data-slot="r1-session-running"
+                          />
+                          Running
+                        </span>
+                      }
+                      selected={shownThreadId === chat.id}
+                      tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
+                      onSelect={() => void openSession({ id: chat.id })}
+                      onFocus={() => setFocusedId(chat.id)}
+                    />
+                  </div>
+                );
+              })}
+              {group.sessions.map((presence) => {
+                const session = presence.item;
+                const leaving = presence.leaving;
                 const index = rowIds.indexOf(session.id);
                 const selected = shownThreadId === session.id;
                 const isEditing = editingId === session.id;
@@ -650,8 +680,17 @@ export function SessionCatalogSidebar({
                   : capabilityReason(pinStatus, "Pinning is unavailable");
                 return (
                   <div
+                    aria-hidden={leaving || undefined}
+                    className={
+                      leaving
+                        ? `group relative mb-1 ${LEAVE_FADE}`
+                        : createdSince(Date.parse(session.createdAt), loadedAt)
+                          ? `group relative mb-1 ${ENTER_FADE}`
+                          : "group relative mb-1"
+                    }
+                    data-slot="r1-session-row"
+                    inert={leaving || undefined}
                     key={session.id}
-                    className="group relative mb-1"
                     ref={(element) => rememberRow(session.id, element)}
                   >
                     <ListRow

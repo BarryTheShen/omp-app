@@ -1,10 +1,18 @@
 import { ThreadId as ThreadIdSchema } from "@omp-app/contracts";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { LEAVE_MS } from "@/lib/motion";
 import { OmpRuntimeStore } from "../../../R0/store";
 import { NotificationFeedback, NotificationNotices } from "../../feedback";
 import { TOAST_LIFETIME_MS } from "../../feedback/notices";
 import { NotificationProjector } from "../../notifications";
+
+/** The fade a removed notice plays before it leaves the page: advance past it (fake timers only). */
+function leave(): void {
+  act(() => {
+    vi.advanceTimersByTime(LEAVE_MS);
+  });
+}
 
 const threadId = ThreadIdSchema.parse("thread-n1-feedback");
 
@@ -101,7 +109,7 @@ describe("NotificationFeedback", () => {
     projector.dispose();
   });
 
-  test("shows the newest three toasts, counts the rest, and dismisses one on request", () => {
+  test("shows the newest three toasts, counts the rest, and dismisses one on request", async () => {
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
 
@@ -116,7 +124,7 @@ describe("NotificationFeedback", () => {
     act(() => {
       dismissButtons()[2]?.click();
     });
-    expect(strip().queryByText("Update 5")).toBeNull();
+    await waitFor(() => expect(strip().queryByText("Update 5")).toBeNull());
     expect(strip().getByText("Update 2")).toBeTruthy();
     expect(screen.getByTestId("n1-feedback-more").textContent).toContain("+1 more");
     projector.dispose();
@@ -155,7 +163,7 @@ describe("NotificationFeedback", () => {
     projector.dispose();
   });
 
-  test("dismissing a focused notice moves focus to the next one, not to the page", () => {
+  test("dismissing a focused notice moves focus to the next one, not to the page", async () => {
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
     for (let index = 1; index <= 3; index += 1) notify(projector, `Update ${index}`);
@@ -164,12 +172,12 @@ describe("NotificationFeedback", () => {
     first?.focus();
     if (first) fireEvent.click(first, { detail: 0 });
 
-    expect(strip().queryByText("Update 1")).toBeNull();
+    await waitFor(() => expect(strip().queryByText("Update 1")).toBeNull());
     expect(document.activeElement?.closest("article")?.textContent).toContain("Update 2");
     projector.dispose();
   });
 
-  test("Escape dismisses the focused notice and keeps focus among the others", () => {
+  test("Escape dismisses the focused notice and keeps focus among the others", async () => {
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
     for (let index = 1; index <= 3; index += 1) notify(projector, `Update ${index}`);
@@ -180,12 +188,12 @@ describe("NotificationFeedback", () => {
       if (middle) fireEvent.keyDown(middle, { key: "Escape" });
     });
 
-    expect(strip().queryByText("Update 2")).toBeNull();
+    await waitFor(() => expect(strip().queryByText("Update 2")).toBeNull());
     expect(document.activeElement?.closest("article")?.textContent).toContain("Update 3");
     projector.dispose();
   });
 
-  test("the last notice dismissed from the keyboard returns focus to the composer, not to a control before the notices", () => {
+  test("the last notice dismissed from the keyboard returns focus to the composer, not to a control before the notices", async () => {
     const projector = makeProjector();
     render(
       <>
@@ -200,7 +208,7 @@ describe("NotificationFeedback", () => {
     dismiss?.focus();
     if (dismiss) fireEvent.click(dismiss, { detail: 0 });
 
-    expect(strip().queryByText("Only one")).toBeNull();
+    await waitFor(() => expect(strip().queryByText("Only one")).toBeNull());
     expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Message input" }));
     projector.dispose();
   });
@@ -245,6 +253,7 @@ describe("NotificationFeedback", () => {
     act(() => {
       vi.advanceTimersByTime(TOAST_LIFETIME_MS + 2000);
     });
+    leave();
 
     expect(strip().queryByText("Tests passed")).toBeNull();
     expect(strip().getByText("Retrying in 2 seconds")).toBeTruthy();
@@ -314,6 +323,7 @@ describe("NotificationFeedback", () => {
       act(() => {
         vi.advanceTimersByTime(TOAST_LIFETIME_MS + 1000);
       });
+      leave();
 
       expect(strip().queryByText("Saved")).toBeNull();
       expect(strip().getByText("Disk nearly full")).toBeTruthy();
@@ -336,11 +346,13 @@ describe("a pointer dismissal does not hold the next notice", () => {
     second?.focus();
     if (second) fireEvent.click(second, { detail: 1 });
 
+    leave();
     expect(strip().queryByText("Update 2")).toBeNull();
     expect(document.activeElement).toBe(document.body);
     act(() => {
       vi.advanceTimersByTime(TOAST_LIFETIME_MS + 1000);
     });
+    leave();
     expect(strip().queryByText("Update 1")).toBeNull();
     projector.dispose();
   });
@@ -373,6 +385,7 @@ describe("notice stacks keep focus and pause on their own terms", () => {
       act(() => {
         vi.advanceTimersByTime(TOAST_LIFETIME_MS + 1000);
       });
+      leave();
       expect(strip().queryByText("Hovered and focused")).toBeNull();
       projector.dispose();
     } finally {
@@ -380,7 +393,7 @@ describe("notice stacks keep focus and pause on their own terms", () => {
     }
   });
 
-  test("when the stack empties with focus in it, focus returns to the composer and the list closes", () => {
+  test("when the stack empties with focus in it, focus returns to the composer and the list closes", async () => {
     const projector = makeProjector();
     render(
       <>
@@ -402,7 +415,7 @@ describe("notice stacks keep focus and pause on their own terms", () => {
       }
     });
 
-    expect(screen.getByTestId("n1-feedback").hidden).toBe(true);
+    await waitFor(() => expect(screen.getByTestId("n1-feedback").hidden).toBe(true));
     expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Message input" }));
     for (let index = 1; index <= 5; index += 1) notify(projector, `Later ${index}`);
     expect(screen.getByTestId("n1-feedback-more").textContent).toBe("+2 more");

@@ -8,6 +8,7 @@ import {
   NotificationBanners,
   NotificationQuiet,
   NotificationToasts,
+  usePanelLeaving,
 } from "./notices";
 import { ExtensionWidgets, ProjectionStatus, type WidgetPlacement } from "./status";
 
@@ -39,12 +40,13 @@ export function NotificationFeedback({
 }: NotificationFeedbackProps) {
   const projection = useProjectionSnapshot(projector);
   const notifications = useNotificationSnapshot(projector);
+  const leaving = usePanelLeaving(notifications.notifications);
   const showsNotices = notices === "all";
   const hasContent =
     projection.error !== null ||
     projection.statuses.length > 0 ||
     projection.widgets.some((widget) => widgets === "all" || widgets === widget.placement) ||
-    (showsNotices && hasPanelNotice(notifications.notifications));
+    (showsNotices && (hasPanelNotice(notifications.notifications) || leaving));
 
   return (
     <>
@@ -81,12 +83,13 @@ export function NotificationFeedback({
  */
 export function NotificationNotices({ projector }: { readonly projector: NotificationProjector }) {
   const notifications = useNotificationSnapshot(projector);
+  const leaving = usePanelLeaving(notifications.notifications);
   return (
     <section
       aria-label="Notices"
       className="pointer-events-auto mb-2 flex min-w-0 flex-col gap-1 bg-background"
       data-testid="n1-notices"
-      hidden={!hasPanelNotice(notifications.notifications)}
+      hidden={!(hasPanelNotice(notifications.notifications) || leaving)}
     >
       <NotificationBanners projector={projector} />
       <NotificationToasts projector={projector} />
