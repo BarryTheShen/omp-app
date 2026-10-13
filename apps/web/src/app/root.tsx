@@ -38,6 +38,7 @@ import { AccessibilityProvider } from "@/a11y";
 import { agentsSurface, RevealAgentHub } from "@/app/agents/agents-tab";
 import { TaskSubagentsScope, useThreadAgents } from "@/app/agents/thread-agents-scope";
 import { RevealCommandOutput, useCommandReport } from "@/app/command-report/command-report";
+import { type OpenFailure, openFailureIn } from "@/app/open-failure";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { ToolRunScope } from "@/app/tool-run-scope";
 import { Button } from "@/components/ui/button";
@@ -316,12 +317,6 @@ function SettingsButton({
       Settings
     </Button>
   );
-}
-
-/** A chat that did not open because its saved model is gone: the empty screen offers the picker for it. */
-interface OpenFailure {
-  readonly threadId: ThreadId;
-  readonly error: AppError;
 }
 
 function EmptyTranscript({
@@ -1691,9 +1686,9 @@ function ConnectedApp({
         return;
       }
       writeSessionValue(THREAD_KEY, String(threadId));
-      setOpenFailure({ threadId, error });
+      setOpenFailure({ folder, threadId, error });
     },
-    [client, controller, overlay],
+    [client, controller, folder, overlay],
   );
   const remote = useMemo(
     () =>
@@ -1844,6 +1839,7 @@ function ConnectedApp({
     if (nextFolder === folder) return;
     void controller?.close();
     setFolderError(null);
+    setOpenFailure(null);
     setFolderText(nextFolder);
     writeSessionValue(FOLDER_KEY, nextFolder);
     writeSessionValue(THREAD_KEY, null);
@@ -2110,10 +2106,11 @@ function ConnectedApp({
       />
     );
   }
+  const shownFailure = openFailureIn(openFailure, folder);
   const emptyError =
     history.error ??
     (newChat.state === "failed" ? newChat.error : null) ??
-    openFailure?.error ??
+    shownFailure?.error ??
     null;
   const emptyCopy = emptyStateCopy({
     opening: history.isLoading || newChat.state === "opening",
@@ -2121,7 +2118,7 @@ function ConnectedApp({
   });
   // A saved chat whose model omp cannot restore gets the picker; picking a model opens that chat with it.
   const savedModelThreadId =
-    controller && emptyError?.code === "model_unavailable" ? openFailure?.threadId : undefined;
+    controller && emptyError?.code === "model_unavailable" ? shownFailure?.threadId : undefined;
   const savedModelAction =
     savedModelThreadId === undefined ? undefined : (
       <Button
