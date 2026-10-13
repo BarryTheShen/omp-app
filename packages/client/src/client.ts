@@ -261,6 +261,8 @@ class AppClientImpl implements AppClient {
   private welcomeReceived = false;
   private disposed = false;
   private terminal = false;
+  /** The failure that closed the connection for good: a refused token, or the reconnect budget used up. */
+  private closedFailure: AppFailure | undefined;
   private requestCounter = 0;
   private readonly timers: TimerScheduler;
   private reconnectAttempt = 0;
@@ -329,6 +331,7 @@ class AppClientImpl implements AppClient {
     ) {
       throw appFailure("invalid_args", "afterSeq must be a non-negative integer", false);
     }
+    if (this.closedFailure) throw this.closedFailure;
     const stream = streamKey(port.name, eventName, options.scope);
     // Records dispatch only payloads their event's schema accepted, so the listener's payload type holds.
     const listener = options.onEvent as ((payload: unknown, seq: number) => void) | undefined;
@@ -450,6 +453,7 @@ class AppClientImpl implements AppClient {
           message = expired ? "Launch link has expired" : "Launch token is not valid";
         }
         const error = appFailure("permission", message, false);
+        this.closedFailure = error;
         this.rejectPending(error);
         this.rejectOpenWaiters(error);
         this.setConnectionState("closed", error.appError, tokenRefusal);
@@ -752,6 +756,7 @@ class AppClientImpl implements AppClient {
     if (this.disposed) return Promise.reject(appFailure("cancelled", "Client disposed", false));
     if (this._connectionState === "open" && this.socket && this.welcomeReceived)
       return Promise.resolve();
+    if (this.closedFailure) return Promise.reject(this.closedFailure);
     if (signal?.aborted) return Promise.reject(appFailure("cancelled", "Call cancelled", false));
     const waiter: OpenWaiter = { deferred: createDeferred(), signal };
     this.openWaiters.add(waiter);
@@ -843,10 +848,10 @@ class AppClientImpl implements AppClient {
     if (this.disposed || this.terminal || this.reconnectTimer !== undefined) return;
     const nextAttempt = this.reconnectAttempt + 1;
     if (this.reconnect.maxAttempts !== undefined && nextAttempt > this.reconnect.maxAttempts) {
+      const error = appFailure("unavailable", "Could not reconnect to the app server", false);
+      this.closedFailure = error;
       this.setConnectionState("closed");
-      this.rejectOpenWaiters(
-        appFailure("unavailable", "Could not reconnect to the app server", false),
-      );
+      this.rejectOpenWaiters(error);
       return;
     }
     this.reconnectAttempt = nextAttempt;

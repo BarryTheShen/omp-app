@@ -244,6 +244,27 @@ async function eventually(check: () => boolean): Promise<void> {
   throw new Error("condition did not become true");
 }
 
+/** How a call ends: `settled` once it has, with the error it rejected with (undefined when it resolved). */
+interface Settlement {
+  settled: boolean;
+  error?: unknown;
+}
+
+/** Follows a call to its end. Read it after `eventually`, which gives a call that fails at once a few turns to settle. */
+function settle(call: Promise<unknown>): Settlement {
+  const outcome: Settlement = { settled: false };
+  call.then(
+    () => {
+      outcome.settled = true;
+    },
+    (error: unknown) => {
+      outcome.settled = true;
+      outcome.error = error;
+    },
+  );
+  return outcome;
+}
+
 async function openClient(server: FakeServer, url = "ws://127.0.0.1:4317/ws"): Promise<AppClient> {
   const client = createAppClient({
     url,
@@ -586,6 +607,60 @@ describe("createAppClient", () => {
       state: "closed",
       error: { code: "permission", message: "Launch link has expired" },
       tokenRefusal: "expired",
+    });
+    client.dispose();
+  });
+
+  test("a call made after the server refused the token fails with that refusal instead of waiting", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    server.current().socket.onclose?.({ code: 4401, reason: "invalid token" });
+    await eventually(() => client.connectionState === "closed");
+    const app = client.port(AppPort);
+    const call = settle(app.capabilities({}));
+    await eventually(() => call.settled);
+    expect(call.error).toMatchObject({
+      appError: { code: "permission", message: "Launch token is not valid" },
+    });
+    client.dispose();
+  });
+
+  test("a subscribe made after the connection ended fails, even for a stream already subscribed", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    await client.subscribe(EventPort, "updated", { scope: "thread-1" });
+    server.current().socket.onclose?.({ code: 4403 });
+    await eventually(() => client.connectionState === "closed");
+    const sameStream = settle(client.subscribe(EventPort, "updated", { scope: "thread-1" }));
+    await eventually(() => sameStream.settled);
+    expect(sameStream.error).toMatchObject({
+      appError: { code: "permission", message: "WebSocket origin is not allowed" },
+    });
+    const otherStream = settle(client.subscribe(EventPort, "updated", { scope: "thread-2" }));
+    await eventually(() => otherStream.settled);
+    expect(otherStream.error).toMatchObject({ appError: { code: "permission" } });
+    client.dispose();
+  });
+
+  test("after the reconnect budget is used up, a call fails at once instead of waiting", async () => {
+    // Every connection closes before the server's welcome, so each attempt fails.
+    const refusing: WebSocketFactory = () => {
+      const socket = new FakeSocket(() => {});
+      queueMicrotask(() => socket.close());
+      return socket;
+    };
+    const client = createAppClient({
+      url: "ws://127.0.0.1:4317/ws",
+      token: "test-token",
+      webSocketFactory: refusing,
+      timers: immediateTimers,
+      reconnect: { baseDelayMs: 0, maxDelayMs: 0, maxAttempts: 1 },
+    });
+    await eventually(() => client.connectionState === "closed");
+    const call = settle(client.port(AppPort).capabilities({}));
+    await eventually(() => call.settled);
+    expect(call.error).toMatchObject({
+      appError: { code: "unavailable", retryable: false },
     });
     client.dispose();
   });
