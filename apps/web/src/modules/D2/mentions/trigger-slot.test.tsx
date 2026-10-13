@@ -280,6 +280,65 @@ describe("D2.4 MentionTriggerSlot", () => {
     expect(submitPrompt).not.toHaveBeenCalled();
   });
 
+  test("Enter on a found pr or issue reference replaces the typed word too: 'see pr #12' becomes 'see pr://12 ' (issue 1381)", async () => {
+    const github: MentionProvider = {
+      trigger: "#",
+      kind: "github",
+      source: "a1.github-refs",
+      search: async () => [],
+      searchTyped: async (query) => {
+        if (query === "pr 12") {
+          return {
+            state: "ready",
+            candidates: [
+              {
+                id: "github:current:pr:12",
+                kind: "github",
+                source: "a1.github-refs",
+                label: "pr #12",
+                insertText: "pr://12 ",
+              },
+            ],
+          };
+        }
+        if (query === "issue 5") {
+          return {
+            state: "ready",
+            candidates: [
+              {
+                id: "github:current:issue:5",
+                kind: "github",
+                source: "a1.github-refs",
+                label: "issue #5",
+                insertText: "issue://5 ",
+              },
+            ],
+          };
+        }
+        return { state: "ready", candidates: [] };
+      },
+    };
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot {...quiet} providers={[github]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "see pr #12" } });
+    input.setSelectionRange(10, 10);
+    expect(await screen.findByText("pr #12")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("see pr://12 "));
+
+    fireEvent.change(input, { target: { value: "see pr://12 and issue #5" } });
+    input.setSelectionRange(input.value.length, input.value.length);
+    expect(await screen.findByText("issue #5")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("see pr://12 and issue://5 "));
+  });
+
   test("a # reference without a space keeps its list open, named GitHub suggestions", async () => {
     const empty: TriggerSearchResult = { state: "ready", candidates: [] };
     const searched = vi.fn(async (_query: string) => empty);

@@ -47,6 +47,7 @@ describe("D2.4 mention detection and expansion", () => {
       query: "123",
       githubKind: "pull-request",
       range: { start: 7, end: githubCursor },
+      referenceRange: { start: 4, end: githubCursor },
     });
   });
 
@@ -137,6 +138,65 @@ describe("D2.4 mention detection and expansion", () => {
       query: "12",
       range: { start: 4, end: 7 },
     });
+  });
+  test("a pr or issue word typed before a # reference is part of it, so a chosen row replaces it (issue 1381)", () => {
+    expect(detectMentionTrigger("see pr #12")).toEqual({
+      trigger: "#",
+      query: "12",
+      githubKind: "pull-request",
+      range: { start: 7, end: 10 },
+      referenceRange: { start: 4, end: 10 },
+    });
+    expect(detectMentionTrigger("see issue #5")).toEqual({
+      trigger: "#",
+      query: "5",
+      githubKind: "issue",
+      range: { start: 10, end: 12 },
+      referenceRange: { start: 4, end: 12 },
+    });
+    // The word can start the text, and a word that only ends in pr is not the kind of a reference.
+    expect(detectMentionTrigger("pr #12")).toMatchObject({ referenceRange: { start: 0, end: 6 } });
+    expect(detectMentionTrigger("see repr #12")).toEqual({
+      trigger: "#",
+      query: "12",
+      range: { start: 9, end: 12 },
+    });
+  });
+  test("a chosen pr or issue row replaces the typed word with its link, and an action row leaves the word (issue 1381)", () => {
+    const pr = "see pr #12";
+    const prMatch = detectMentionTrigger(pr);
+    if (prMatch === null) throw new Error("expected a GitHub reference");
+    expect(
+      expandMention(pr, prMatch, {
+        id: "github:current:pr:12",
+        kind: "github",
+        source: "a1.github-refs",
+        label: "pr #12",
+        insertText: "pr://12 ",
+      }),
+    ).toMatchObject({ kind: "expanded", text: "see pr://12 " });
+    const issue = "see issue #5";
+    const issueMatch = detectMentionTrigger(issue);
+    if (issueMatch === null) throw new Error("expected a GitHub reference");
+    expect(
+      expandMention(issue, issueMatch, {
+        id: "github:current:issue:5",
+        kind: "github",
+        source: "a1.github-refs",
+        label: "issue #5",
+        insertText: "issue://5 ",
+      }),
+    ).toMatchObject({ kind: "expanded", text: "see issue://5 " });
+    // An action row removes only the # it was typed at, as it did before: the word is not part of an action.
+    expect(
+      expandMention(pr, prMatch, {
+        id: "action:copy-prompt",
+        kind: "prompt-action",
+        source: "client",
+        label: "Copy whole prompt",
+        metadata: { action: "copy-prompt" },
+      }),
+    ).toMatchObject({ kind: "expanded", text: "see pr " });
   });
   test("resolves local # actions without sending a prompt", () => {
     expect(executePromptAction("copy-current-line", "first\nsecond line", 10)).toEqual({

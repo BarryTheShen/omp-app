@@ -25,6 +25,8 @@ export interface MentionTriggerMatch {
   readonly query: string;
   readonly range: TextRange;
   readonly githubKind?: GithubReferenceKind;
+  /** For a GitHub reference, the typed `pr` or `issue` word through the caret: the text a chosen row replaces. */
+  readonly referenceRange?: TextRange;
 }
 
 export interface FileMentionProviderOptions {
@@ -117,11 +119,18 @@ function isBoundary(text: string, index: number): boolean {
   return previous === undefined || /[\s([{"'`]/u.test(previous);
 }
 
-function githubKindBeforeHash(text: string, hashIndex: number): GithubReferenceKind | undefined {
-  const prefix = text.slice(0, hashIndex);
-  if (/(?:^|\s)pr\s*$/iu.test(prefix)) return "pull-request";
-  if (/(?:^|\s)issue\s*$/iu.test(prefix)) return "issue";
-  return undefined;
+/** The word a GitHub reference is typed with, `pr` or `issue`, just before its `#`, and where that word starts. */
+function githubWordBeforeHash(
+  text: string,
+  hashIndex: number,
+): { readonly kind: GithubReferenceKind; readonly start: number } | undefined {
+  const word = /(?:^|\s)(pr|issue)\s*$/iu.exec(text.slice(0, hashIndex));
+  if (word === null) return undefined;
+  const typed = word[1] ?? "";
+  return {
+    kind: typed.toLocaleLowerCase() === "pr" ? "pull-request" : "issue",
+    start: word.index + word[0].indexOf(typed),
+  };
 }
 
 function queryForTrigger(text: string, triggerIndex: number, cursor: number): string | null {
@@ -154,12 +163,17 @@ export function detectMentionTrigger(
     }
     const query = queryForTrigger(text, index, cursor);
     if (query === null) continue;
-    const githubKind = character === "#" ? githubKindBeforeHash(text, index) : undefined;
+    const reference = character === "#" ? githubWordBeforeHash(text, index) : undefined;
     return {
       trigger: character,
       query,
       range: { start: index, end: cursor },
-      ...(githubKind ? { githubKind } : {}),
+      ...(reference
+        ? {
+            githubKind: reference.kind,
+            referenceRange: { start: reference.start, end: cursor },
+          }
+        : {}),
     };
   }
   return null;
@@ -570,10 +584,12 @@ export function expandMention(
     };
   }
   const replacement = candidate.insertText ?? "";
+  // A GitHub reference covers the word typed before its #, so the replacement starts at that word.
+  const target = match.referenceRange ?? match.range;
   const range =
-    replacement.endsWith(" ") && text[match.range.end] === " "
-      ? { start: match.range.start, end: match.range.end + 1 }
-      : match.range;
+    replacement.endsWith(" ") && text[target.end] === " "
+      ? { start: target.start, end: target.end + 1 }
+      : target;
   const replaced = replaceRange(text, range, replacement);
   const lineRange = metadataLineRange(candidate.metadata?.lineRange);
   const attachmentRefs =

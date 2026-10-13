@@ -19,7 +19,12 @@ import {
   useComposerTextarea,
   useTriggerListLoading,
 } from "../shared/trigger-keys";
-import { detectMentionTrigger, executePromptAction, isPromptAction } from "./mentions";
+import {
+  detectMentionTrigger,
+  executePromptAction,
+  expandMention,
+  isPromptAction,
+} from "./mentions";
 import { type EditKind, kindOfTypedText, removePromptToken, TypingHistory } from "./prompt-actions";
 
 interface TriggerItemsResult {
@@ -204,11 +209,30 @@ function TriggerPopoverView({
     document.addEventListener("beforeinput", onBeforeInput, true);
     return () => document.removeEventListener("beforeinput", onBeforeInput, true);
   }, [composerTextarea, history, trigger]);
-  // A `#` action row runs on the token at the caret and inserts nothing. A GitHub row is left to the directive, so
-  // the handler answers false for it.
+  // A GitHub row replaces the reference at the caret with its link, the typed `pr` or `issue` word included: the
+  // directive would leave that word in front of the link. The row is done here only while the caret is on its #.
+  const insertReference = useCallback(
+    (candidate: TriggerCandidate): boolean => {
+      const textarea = composerTextarea();
+      if (textarea === null) return true;
+      const token = detectMentionTrigger(textarea.value, textarea.selectionStart);
+      if (token?.trigger !== "#") return true;
+      const expanded = expandMention(textarea.value, token, candidate);
+      if (expanded.kind !== "expanded") return true;
+      flushSync(() => aui.composer.setText(expanded.text));
+      textarea.setSelectionRange(expanded.cursor, expanded.cursor);
+      textarea.focus();
+      onSelect(candidate);
+      return true;
+    },
+    [aui, composerTextarea, onSelect],
+  );
+  // A `#` action row runs on the token at the caret and inserts nothing. A GitHub row goes to insertReference.
   const runAction = useCallback(
     (item: Unstable_TriggerItem): boolean => {
-      const action = candidateMap.current.get(item.id)?.metadata?.action;
+      const candidate = candidateMap.current.get(item.id);
+      if (candidate?.kind === "github") return insertReference(candidate);
+      const action = candidate?.metadata?.action;
       if (!isPromptAction(action)) return false;
       const textarea = composerTextarea();
       if (textarea === null) return true;
@@ -234,7 +258,7 @@ function TriggerPopoverView({
       textarea.focus();
       return true;
     },
-    [aui, composerTextarea, fail, history, notify],
+    [aui, composerTextarea, fail, history, insertReference, notify],
   );
   if (!provider) return null;
   return (
