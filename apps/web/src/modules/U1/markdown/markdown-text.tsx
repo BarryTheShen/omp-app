@@ -87,6 +87,9 @@ function showsAddressNextToText(text: string, href: string): boolean {
   return actual === undefined || normalizeHost(named) !== normalizeHost(actual);
 }
 
+/** A link reads as a link: the primary colour and an underline, a shade darker on hover. Its focus uses the shared ring (a11y.css). */
+const LINK_CLASS = "aui-md-a text-primary hover:text-primary/80 underline underline-offset-2";
+
 function Link({
   href,
   children,
@@ -102,14 +105,21 @@ function Link({
     // A bare URL's text is its address, so it shows once and needs no tooltip.
     const title = text.trim() === href ? undefined : href;
     return (
-      <a {...props} href={href} rel="noopener noreferrer" target="_blank" title={title}>
+      <a
+        {...props}
+        className={LINK_CLASS}
+        href={href}
+        rel="noopener noreferrer"
+        target="_blank"
+        title={title}
+      >
         {children}
       </a>
     );
   }
   return (
     <span className="inline">
-      <a {...props} href={href} rel="noopener noreferrer" target="_blank">
+      <a {...props} className={LINK_CLASS} href={href} rel="noopener noreferrer" target="_blank">
         {children}
       </a>
       {/* The line may break here, before the address, so the address is not split inside its scheme (issue 944). */}
