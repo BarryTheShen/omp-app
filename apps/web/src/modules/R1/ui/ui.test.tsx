@@ -1438,6 +1438,17 @@ describe("SessionCatalogSidebar", () => {
     );
   });
 
+  test("a branch row shows one time line, the time it was made, and its source row keeps its own time", async () => {
+    const source = session("source", "2026-10-05T10:00:00.000Z", "Count reply");
+    const branch = branchOf("branch", "source", "2026-10-05T11:00:01.000Z", "Count reply");
+    renderSidebar({ catalog: modelWithSessions([source, branch]) });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const [branchRow, sourceRow] = screen.getAllByRole("option");
+    expect(branchRow?.textContent).toContain("Branch made");
+    expect(branchRow?.querySelectorAll("time")).toHaveLength(0);
+    expect(sourceRow?.querySelectorAll("time")).toHaveLength(1);
+  });
+
   test("three branches of one chat each show their own marker, so no two rows read alike", async () => {
     const source = session("source", "2026-10-05T10:00:00.000Z", "Count reply");
     const branches = [

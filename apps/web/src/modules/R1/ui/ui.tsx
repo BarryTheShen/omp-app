@@ -754,9 +754,12 @@ export function SessionCatalogSidebar({
                                   <span className="sr-only">Running</span>
                                 </span>
                               )}
-                              <time dateTime={session.updatedAt} title={activity.title}>
-                                {activity.label}
-                              </time>
+                              {/* A branch's line above gives the time it was made, so its update time is left out (issue 1314). */}
+                              {marker === undefined && (
+                                <time dateTime={session.updatedAt} title={activity.title}>
+                                  {activity.label}
+                                </time>
+                              )}
                               {snapshot.git?.branch && (
                                 <>
                                   <span aria-hidden="true">·</span>
