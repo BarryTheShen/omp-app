@@ -113,11 +113,13 @@ export function createSlashCommandProvider(
   };
 
   const appEntries = (): readonly SlashListEntry[] =>
-    (options.appCommands?.() ?? []).map((app) => ({
-      name: app.name,
-      source: "client",
-      description: app.description,
-    }));
+    (options.appCommands?.() ?? [])
+      .filter((app) => app.unlisted !== true)
+      .map((app) => ({
+        name: app.name,
+        source: "client",
+        description: app.description,
+      }));
 
   const searchTyped = async (
     query: string,

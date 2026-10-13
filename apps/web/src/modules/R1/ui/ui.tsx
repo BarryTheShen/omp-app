@@ -60,7 +60,7 @@ function highlight(text: string, query: string): React.ReactNode {
 }
 
 /** The title's own words, without omp's card icon and code; else the first thing the user asked (omp titles a session after its first turn). */
-function sessionTitle(session: SessionMetadata): string {
+export function sessionTitle(session: SessionMetadata): string {
   return session.displayTitle ?? session.firstPrompt ?? "New session";
 }
 

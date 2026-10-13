@@ -11,6 +11,8 @@ export interface SlashAppCommand {
   readonly description: string;
   /** Set for a command that reads the text after its name (`/goal ship the release`). Without it, `/name text` is not the app's. */
   readonly takesArguments?: true;
+  /** Set for a command the `/` list leaves out: a guarded form, whose words omp's own list already covers. It still runs when typed. */
+  readonly unlisted?: true;
   /** Resolves with an optional plain-English note for the header. Rejects with an AppFailure whose message the person sees. */
   readonly run: (options: {
     readonly signal?: AbortSignalLike;
@@ -24,17 +26,87 @@ export type SlashRoute =
   | { readonly kind: "app"; readonly command: SlashAppCommand; readonly args?: string };
 
 /**
- * omp commands the app answers itself in every form, because omp runs them the moment they are sent, whatever
- * follows the name: `/share` uploads the whole chat to omp's share server with no question asked
- * (builtin-collaboration.ts:284-309, export/share.ts:492-517). So `/share`, `/share <anything>`, `/share:<anything>`,
- * any letter case and leading spaces are the app's, and none of them reaches omp unanswered.
+ * When a guarded subcommand word runs omp's action, judged on the text after the word (trimmed):
+ * `any` always; `bare` only with nothing after it (`/session delete x` prints omp's usage, builtin-session.ts:270, :293);
+ * `target` with any text after it, since a bare word lists or prints usage; `name` with a first word that is not a flag
+ * (helpers/parse.ts, `parseNamedScopeArgs`).
  */
-const GUARDED_OMP_COMMANDS: Record<string, true> = { share: true };
+type Trigger = "any" | "bare" | "target" | "name";
 
-/** The guarded command a message names, in lower case, or null. omp reads the name up to a space or a colon. */
+function triggerRuns(trigger: Trigger, rest: string): boolean {
+  switch (trigger) {
+    case "any":
+      return true;
+    case "bare":
+      return rest === "";
+    case "target":
+      return rest !== "";
+    case "name":
+      return rest !== "" && !rest.startsWith("-");
+  }
+}
+
+/**
+ * omp subcommands that run at once with no question, so the app answers them itself (`guardedRoute`). Every row was
+ * checked against omp v18.9.1; a form that only prints usage or lists stays text. `/share` is guarded in every form (issue 957,
+ * builtin-collaboration.ts:293-296).
+ *
+ * The app's RPC runs a command's `handle`, the path rpc-mode.ts:1799 takes (acp-builtins.ts:59-69). The guard matches the
+ * command name and the subcommand word in any letter case, as it does for `/share`.
+ * - `session delete` deletes the chat's session file (builtin-session.ts:270-280, `dropSession` at :280).
+ * - `usage reset <target>` spends a saved rate-limit reset (builtin-session.ts:411-414; `handleUsageResetCommand` at
+ *   :41-70, `redeemResetCredit` at :68). A bare `usage reset` lists the accounts (:57-62).
+ * - `memory clear` and `memory reset` delete the persisted memory (builtin-lifecycle.ts:571-573).
+ * - `ssh remove|rm` and `mcp remove|rm` delete a named host or server (helpers/ssh.ts:139-152, :188-190; helpers/mcp.ts:456-468,
+ *   :527-528). Without a name they print usage.
+ * - `marketplace remove|rm` delete a marketplace source, and `uninstall` deletes a plugin's installed files
+ *   (builtin-marketplace.ts:124-130 and :181-187; marketplace/manager.ts:578-638, the removal at :636).
+ * - `modelpreset delete <name>` deletes a saved preset (builtin-modes.ts:847-849, :981-983).
+ */
+const GUARDED_OMP_COMMANDS: Record<string, true | Record<string, Trigger>> = {
+  share: true,
+  session: { delete: "bare" },
+  usage: { reset: "target" },
+  memory: { clear: "any", reset: "any" },
+  ssh: { remove: "name", rm: "name" },
+  mcp: { remove: "name", rm: "name" },
+  marketplace: { remove: "target", rm: "target", uninstall: "target" },
+  modelpreset: { delete: "target" },
+};
+
+/** omp's `parseSubcommand`: the first word of the arguments in lower case, and the text after it. */
+function subcommandOf(args: string): { readonly verb: string; readonly rest: string } {
+  const trimmed = args.trim();
+  const space = trimmed.search(/\s/u);
+  if (space === -1) return { verb: trimmed.toLowerCase(), rest: "" };
+  return { verb: trimmed.slice(0, space).toLowerCase(), rest: trimmed.slice(space + 1).trim() };
+}
+
+/** A guarded form a message names: its name in lower case (`share`, `session delete`), and the text after its words. */
+interface GuardedForm {
+  readonly name: string;
+  readonly args: string;
+}
+
+/** The guarded form a message names, or null. omp reads the name up to a space or a colon, then the subcommand word. */
+export function guardedForm(text: string): GuardedForm | null {
+  const match = /^\s*\/([^\s:]+)[\s:]?([\s\S]*)$/u.exec(text);
+  const name = match?.[1]?.toLowerCase();
+  // Own keys only: a name such as `constructor` is not a guarded form.
+  if (name === undefined || !Object.hasOwn(GUARDED_OMP_COMMANDS, name)) return null;
+  const guard = GUARDED_OMP_COMMANDS[name];
+  const words = match?.[2] ?? "";
+  if (guard === true) return { name, args: words.trim() };
+  const { verb, rest } = subcommandOf(words);
+  const trigger: Trigger | undefined =
+    guard !== undefined && Object.hasOwn(guard, verb) ? guard[verb] : undefined;
+  if (trigger === undefined || !triggerRuns(trigger, rest)) return null;
+  return { name: `${name} ${verb}`, args: rest };
+}
+
+/** The guarded form a message names, in lower case (`share`, `session delete`), or null. */
 export function guardedCommandName(text: string): string | null {
-  const name = /^\s*\/([^\s:]+)/u.exec(text)?.[1]?.toLowerCase();
-  return name !== undefined && GUARDED_OMP_COMMANDS[name] === true ? name : null;
+  return guardedForm(text)?.name ?? null;
 }
 
 /** The refusal for a guarded form the app has no handler for. Nothing is sent to omp. */
@@ -47,23 +119,28 @@ export function guardedRefusal(name: string): AppFailure {
 }
 
 /**
- * The app's route for a guarded form, or null when the text is not one. The app's own command of that name
- * answers it; with none, the form is refused, so omp still never sees it.
+ * The app's route for a guarded form, or null when the text is not one. The app's own command of that name answers
+ * it, and a command that takes arguments gets the text after its words. With no command of that name, the form is
+ * refused, so omp still never sees it.
  */
 export function guardedRoute(
   text: string,
   appCommands: readonly SlashAppCommand[],
 ): SlashRoute | null {
-  const name = guardedCommandName(text);
-  if (name === null) return null;
-  const own = appCommands.find((command) => command.name.toLowerCase() === name);
-  if (own !== undefined) return { kind: "app", command: own };
+  const form = guardedForm(text);
+  if (form === null) return null;
+  const own = appCommands.find((command) => command.name.toLowerCase() === form.name);
+  if (own !== undefined) {
+    return own.takesArguments === true
+      ? { kind: "app", command: own, args: form.args }
+      : { kind: "app", command: own };
+  }
   return {
     kind: "app",
     command: {
-      name,
+      name: form.name,
       description: "Not available in this app",
-      run: () => Promise.reject(guardedRefusal(name)),
+      run: () => Promise.reject(guardedRefusal(form.name)),
     },
   };
 }
@@ -72,7 +149,7 @@ export function guardedRoute(
  * Decides where a submitted message goes. Only text that starts with the slash, whose first word is a
  * command omp or the app lists, is a command. Anything else, including `/etc/hosts`, an unknown `/word`
  * and text that starts with a space, is a normal prompt and returns null. A guarded form (see
- * GUARDED_OMP_COMMANDS) is a command whatever follows it, and leading spaces do not hide it.
+ * GUARDED_OMP_COMMANDS) is a command, and leading spaces do not hide it.
  */
 export function routeSlashText(
   text: string,
@@ -84,7 +161,9 @@ export function routeSlashText(
   if (!text.startsWith("/")) return null;
   const trimmed = text.trimEnd();
   for (const app of appCommands) {
-    if (trimmed === `/${app.name}`) return { kind: "app", command: app };
+    // A name with a space is a guarded form (`usage reset`): only guardedRoute answers it, so its bare words stay omp's.
+    if (app.name.includes(" ") || trimmed !== `/${app.name}`) continue;
+    return { kind: "app", command: app };
   }
   const head = /^\S+/u.exec(trimmed)?.[0] ?? "";
   // A command that takes arguments is the app's when text follows its name. The bare name is matched above, unchanged.

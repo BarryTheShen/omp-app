@@ -2,6 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   type CapabilityMap,
+  type CommandRunResult,
   type ModeChangeRequest,
   type ModeChangeResult,
   modeChangeFromCommand,
@@ -25,7 +26,14 @@ import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { modeOutcomeText } from "@/modules/D7/modes";
 import type { GoalRpcArgs, GoalRpcResult } from "@/modules/D8/contract";
 import { createMcpProtocolCatalogs } from "@/modules/I1/protocol";
+import type { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
+import { sessionTitle } from "@/modules/R1/ui";
 import type { PromptIntent } from "@/modules/U2/contract";
+import {
+  type OverlayOpener,
+  openChatDeleteConfirm,
+} from "@/modules/U4/dialogs/confirm-chat-delete";
+import { openSpendResetConfirm } from "@/modules/U4/dialogs/confirm-spend-reset";
 import type { AgentHubOpenResult } from "./agents/agent-hub-shortcut";
 import { describeGoalResult, parseGoalCommand } from "./goal-command";
 
@@ -259,6 +267,135 @@ export function shareSlashCommand({
   readonly run: SlashAppCommand["run"];
 }): SlashAppCommand {
   return { name: "share", description: "Share this chat as a link", run };
+}
+
+/** The part of the chat's command gateway a guarded form uses: running one omp command. */
+interface CommandRunGateway {
+  readonly run: (
+    args: { readonly threadId: ThreadId; readonly command: string },
+    options?: PortCallOptions,
+  ) => Promise<CommandRunResult>;
+}
+
+/**
+ * A guarded form that omp runs at once: `/session delete` or `/usage reset <target>`. The app asks first, the way its own
+ * controls do. Confirm sends the command to omp once, through the chat's gateway, and shows omp's words; Cancel sends
+ * nothing. `args` is the text after the words, for a command that takes arguments.
+ */
+export function askFirstSlashCommand({
+  name,
+  description,
+  takesArguments,
+  confirm,
+  gateway,
+  threadId,
+}: {
+  readonly name: string;
+  readonly description: string;
+  readonly takesArguments?: true;
+  /** Asks the person before omp runs anything. Resolves true only for the button that runs it. */
+  readonly confirm: (args: string) => Promise<boolean>;
+  readonly gateway: CommandRunGateway;
+  readonly threadId: ThreadId;
+}): SlashAppCommand {
+  return {
+    name,
+    description,
+    unlisted: true,
+    ...(takesArguments === undefined ? {} : { takesArguments }),
+    run: async ({ signal, args = "" }) => {
+      if (!(await confirm(args))) return {};
+      const command = args === "" ? `/${name}` : `/${name} ${args}`;
+      const result = await gateway.run(
+        { threadId, command },
+        signal === undefined ? {} : { signal },
+      );
+      return { message: describeCommandResult(result, command) };
+    },
+  };
+}
+
+/**
+ * The name the sidebar shows for a chat, which its own delete question uses. Until the sidebar's list holds the chat, the
+ * header's title stands in for it.
+ */
+function sidebarChatName(
+  catalog: SessionCatalogModel | null,
+  threadId: ThreadId,
+  fallback: string,
+): string {
+  const session = catalog?.getSnapshot().sessions.find((item) => item.id === threadId);
+  return session === undefined ? fallback : sessionTitle(session);
+}
+
+/**
+ * The two guarded forms that run an omp command at once. `/session delete` asks with the chat's own delete question,
+ * naming the chat the way the sidebar does; `/usage reset <target>` names the account and says that one reset is spent.
+ */
+export function askFirstSlashCommands({
+  catalog,
+  fallbackTitle,
+  overlay,
+  gateway,
+  threadId,
+}: {
+  readonly catalog: SessionCatalogModel | null;
+  /** The header's title for the chat, used until the sidebar's list holds the chat. */
+  readonly fallbackTitle: string;
+  readonly overlay: OverlayOpener;
+  readonly gateway: CommandRunGateway;
+  readonly threadId: ThreadId;
+}): readonly SlashAppCommand[] {
+  return [
+    askFirstSlashCommand({
+      name: "session delete",
+      description: "Delete this chat, after you confirm",
+      confirm: () =>
+        openChatDeleteConfirm(overlay, sidebarChatName(catalog, threadId, fallbackTitle)),
+      gateway,
+      threadId,
+    }),
+    askFirstSlashCommand({
+      name: "usage reset",
+      description: "Spend a saved rate-limit reset, after you confirm",
+      takesArguments: true,
+      confirm: (target) => openSpendResetConfirm(overlay, describeResetTarget(target)),
+      gateway,
+      threadId,
+    }),
+  ];
+}
+
+/**
+ * The account a typed `/usage reset` target names, in the words the confirmation uses: `codex/active` is "Codex, the
+ * active account" and `claude/2` is "Claude account 2". A target that does not read that way is shown as typed, and omp
+ * then says what it does with it.
+ */
+export function describeResetTarget(target: string): string {
+  const text = target.trim();
+  const slash = text.indexOf("/");
+  const provider = slash > 0 ? resetProviderName(text.slice(0, slash)) : undefined;
+  const account = text
+    .slice(slash + 1)
+    .trim()
+    .toLowerCase();
+  if (provider !== undefined && account === "active") return `${provider}, the active account`;
+  if (provider !== undefined && /^\d+$/u.test(account)) return `${provider} account ${account}`;
+  return `the account "${text}"`;
+}
+
+/** The provider a typed reset target names, in omp's words for it (helpers/reset-usage.ts:28-39), or undefined. */
+function resetProviderName(provider: string): string | undefined {
+  switch (provider.trim().toLowerCase()) {
+    case "anthropic":
+    case "claude":
+      return "Claude";
+    case "openai-codex":
+    case "codex":
+      return "Codex";
+    default:
+      return undefined;
+  }
 }
 
 /**

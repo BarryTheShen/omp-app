@@ -24,11 +24,11 @@ describe("#1261 bare command names keep their routes", () => {
   });
 
   test("a command that takes no arguments is not the app's when text follows its name", () => {
-    expect(routeSlashText("/usage reset x", entries, [noArguments])).toEqual({
+    expect(routeSlashText("/usage show x", entries, [noArguments])).toEqual({
       kind: "omp",
-      command: "/usage reset x",
+      command: "/usage show x",
     });
-    expect(routeSlashText("/usage reset x", [], [noArguments])).toBeNull();
+    expect(routeSlashText("/usage show x", [], [noArguments])).toBeNull();
   });
 });
 

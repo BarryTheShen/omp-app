@@ -59,6 +59,33 @@ describe("D2.3 slash provider", () => {
     provider.dispose();
   });
 
+  test("a guarded form stays out of the `/` list, which keeps omp's own commands, and still routes when typed", async () => {
+    const fake = fakeSlashClient();
+    const guarded: SlashAppCommand = {
+      name: "usage reset",
+      description: "Spend a saved rate-limit reset, after you confirm",
+      takesArguments: true,
+      unlisted: true,
+      run: async () => ({}),
+    };
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [guarded],
+    });
+
+    const listed = (await provider.search("usage")).map((entry) => entry.label);
+    expect(listed).toContain("/usage");
+    expect(listed).not.toContain("/usage reset");
+    await expect(provider.route("/usage reset codex/active")).resolves.toEqual({
+      kind: "app",
+      command: guarded,
+      args: "codex/active",
+    });
+    provider.dispose();
+  });
+
   test("execute runs a slash command through the gateway, and refuses text that is not one before any run", async () => {
     const fake = fakeSlashClient({
       run: async (command) => completedRun(command, "Usage: 0 tokens"),

@@ -198,6 +198,7 @@ import { SettingsScreen } from "./settings-screen";
 import { useShareFromChat } from "./share/use-share-from-chat";
 import {
   agentHubSlashCommand,
+  askFirstSlashCommands,
   freshSlashCommand,
   guardOmpSend,
   hotkeysSlashCommand,
@@ -1121,19 +1122,30 @@ function ActiveThreadReady({
           void shortcutRegistry.commandFor(U0_SHORTCUT_SHEET_COMMAND.id)?.run();
         },
       }),
+      ...askFirstSlashCommands({
+        catalog,
+        threadId,
+        fallbackTitle: title,
+        overlay,
+        gateway: commandGateway,
+      }),
       agentHubSlashCommand({ openAgentHub }),
       goalCommand,
     ],
     [
+      catalog,
+      commandGateway,
       goalCommand,
       lifecycle,
       onOpenSettings,
       openAgentHub,
       openLogin,
       openThread,
+      overlay,
       shareController,
       shortcutRegistry,
       threadId,
+      title,
     ],
   );
   const slashProvider = useSlashCommands({

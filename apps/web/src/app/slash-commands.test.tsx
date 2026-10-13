@@ -10,15 +10,22 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createSlashCommandProvider,
   routeSlashText,
+  type SlashAppCommand,
   type SlashCommandProvider,
   type SlashRoute,
 } from "@/modules/D2/slash";
 import { completedRun, fakeSlashClient } from "@/modules/D2/slash/test-support";
 import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
+import type { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
+import type { SessionMetadata } from "@/modules/R1/contract";
 import { ComposerSurface } from "@/modules/U2/composer/composer";
 import type { PromptIntent } from "@/modules/U2/contract";
+import type { OverlayOpenOptions } from "@/overlay/overlay-host";
 import { ComposerTriggers } from "./composer-triggers";
 import {
+  askFirstSlashCommand,
+  askFirstSlashCommands,
+  describeResetTarget,
   freshSlashCommand,
   guardOmpSend,
   hotkeysSlashCommand,
@@ -384,5 +391,195 @@ describe("#957 /share never reaches omp unconfirmed", () => {
     expect(send).not.toHaveBeenCalled();
     await sent("prompt", "pong");
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#1272 /session delete and /usage reset ask first, and only Confirm sends omp the command", () => {
+  /** A gateway that answers each command with omp's words for it, and records what it was sent. */
+  function gatewayAnswering(text: string) {
+    return {
+      run: vi.fn(async ({ command }: { readonly command: string }) => completedRun(command, text)),
+    };
+  }
+
+  test("Cancel sends nothing to omp, and the command shows nothing", async () => {
+    const gateway = gatewayAnswering("Session deleted.");
+    const command = askFirstSlashCommand({
+      name: "session delete",
+      description: "Delete this chat, after you confirm",
+      confirm: async () => false,
+      gateway,
+      threadId,
+    });
+    await expect(command.run({})).resolves.toEqual({});
+    expect(gateway.run).not.toHaveBeenCalled();
+  });
+
+  test("Confirm sends the command to omp once, and the command shows omp's words", async () => {
+    const confirm = vi.fn(async () => true);
+    const gateway = gatewayAnswering("Session deleted: /sessions/one.jsonl.");
+    const command = askFirstSlashCommand({
+      name: "session delete",
+      description: "Delete this chat, after you confirm",
+      confirm,
+      gateway,
+      threadId,
+    });
+    await expect(command.run({})).resolves.toEqual({
+      message: "omp: Session deleted: /sessions/one.jsonl.",
+    });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(gateway.run).toHaveBeenCalledTimes(1);
+    expect(gateway.run).toHaveBeenCalledWith({ threadId, command: "/session delete" }, {});
+  });
+
+  test("/usage reset hands its target to the question, and sends that target to omp", async () => {
+    const confirm = vi.fn(async () => true);
+    const gateway = gatewayAnswering("No provider accounts found. Use /login to add one.");
+    const command = askFirstSlashCommand({
+      name: "usage reset",
+      description: "Spend a saved rate-limit reset, after you confirm",
+      takesArguments: true,
+      confirm,
+      gateway,
+      threadId,
+    });
+    await expect(command.run({ args: "codex/active" })).resolves.toEqual({
+      message: "omp: No provider accounts found. Use /login to add one.",
+    });
+    expect(confirm).toHaveBeenCalledWith("codex/active");
+    expect(gateway.run).toHaveBeenCalledWith(
+      { threadId, command: "/usage reset codex/active" },
+      {},
+    );
+  });
+
+  test("a cancelled usage reset sends nothing to omp", async () => {
+    const gateway = gatewayAnswering("unused");
+    const command = askFirstSlashCommand({
+      name: "usage reset",
+      description: "Spend a saved rate-limit reset, after you confirm",
+      takesArguments: true,
+      confirm: async () => false,
+      gateway,
+      threadId,
+    });
+    await expect(command.run({ args: "anthropic/2" })).resolves.toEqual({});
+    expect(gateway.run).not.toHaveBeenCalled();
+  });
+
+  test("a send that fails rejects with the same error, so the composer keeps the typed text", async () => {
+    const failure = new AppFailure({
+      code: "unavailable",
+      message: "The connection dropped.",
+      retryable: true,
+    });
+    const gateway = {
+      run: vi.fn(async () => {
+        throw failure;
+      }),
+    };
+    const command = askFirstSlashCommand({
+      name: "session delete",
+      description: "Delete this chat, after you confirm",
+      confirm: async () => true,
+      gateway,
+      threadId,
+    });
+    await expect(command.run({})).rejects.toBe(failure);
+  });
+
+  test("the app answers exactly /session delete and /usage reset, and only usage reset takes a target", () => {
+    const commands = askFirstSlashCommands({
+      catalog: null,
+      fallbackTitle: "Seeded chat 2",
+      overlay: { open: () => undefined },
+      gateway: gatewayAnswering("unused"),
+      threadId,
+    });
+    expect(commands.map((command) => [command.name, command.takesArguments])).toEqual([
+      ["session delete", undefined],
+      ["usage reset", true],
+    ]);
+  });
+
+  /** Sends `/session delete` and renders the question it opens, the way the overlay would. */
+  function askedDeleteQuestion(catalog: SessionCatalogModel | null, fallbackTitle: string) {
+    const opened: OverlayOpenOptions[] = [];
+    const gateway = gatewayAnswering("Session deleted.");
+    const [sessionDelete] = askFirstSlashCommands({
+      catalog,
+      fallbackTitle,
+      overlay: {
+        open: (options) => {
+          opened.push(options);
+          return undefined;
+        },
+      },
+      gateway,
+      threadId,
+    });
+    void sessionDelete?.run({});
+    const content = opened[0]?.content;
+    if (typeof content !== "function") throw new Error("The question has no render function.");
+    render(
+      content({
+        id: "delete-chat",
+        close: () => undefined,
+        requestClose: () => undefined,
+        update: () => undefined,
+      }),
+    );
+    return { opened, gateway };
+  }
+
+  test("/session delete asks with the chat's name as the sidebar shows it, and sends nothing until Delete", () => {
+    const listed = { id: threadId, firstPrompt: "ping" } as unknown as SessionMetadata;
+    const catalog = {
+      getSnapshot: () => ({ sessions: [listed] }),
+    } as unknown as SessionCatalogModel;
+    const { opened, gateway } = askedDeleteQuestion(catalog, "Conversation");
+    expect(opened.map((options) => options.label)).toEqual(["Delete chat"]);
+    expect(screen.getByText('Delete "ping"?')).toBeTruthy();
+    expect(gateway.run).not.toHaveBeenCalled();
+  });
+
+  test("until the sidebar's list holds the chat, the header's title names it", () => {
+    const catalog = { getSnapshot: () => ({ sessions: [] }) } as unknown as SessionCatalogModel;
+    askedDeleteQuestion(catalog, "Conversation");
+    expect(screen.getByText('Delete "Conversation"?')).toBeTruthy();
+  });
+
+  test("a routed command that takes arguments gets the text after its words", async () => {
+    const run = vi.fn(async () => ({}));
+    const command: SlashAppCommand = {
+      name: "usage reset",
+      description: "",
+      takesArguments: true,
+      run,
+    };
+    await runSlashRoute({
+      route: { kind: "app", command, args: "codex/active" },
+      intent: { ...prompt, text: "/usage reset codex/active" },
+      provider: null,
+      showStatus: vi.fn(),
+    });
+    expect(run).toHaveBeenCalledWith({ args: "codex/active" });
+  });
+});
+
+describe("#1272 the account a reset names, in plain words", () => {
+  test("the active account and a numbered account are named by their provider", () => {
+    expect(describeResetTarget("codex/active")).toBe("Codex, the active account");
+    expect(describeResetTarget("openai-codex/active")).toBe("Codex, the active account");
+    expect(describeResetTarget("Claude/2")).toBe("Claude account 2");
+    expect(describeResetTarget("anthropic/ 3 ")).toBe("Claude account 3");
+  });
+
+  test("a target it cannot read is shown as typed, and omp then says what it does", () => {
+    expect(describeResetTarget("nope/active")).toBe('the account "nope/active"');
+    expect(describeResetTarget("codex/")).toBe('the account "codex/"');
+    expect(describeResetTarget("codex/work")).toBe('the account "codex/work"');
+    expect(describeResetTarget("active")).toBe('the account "active"');
   });
 });
