@@ -394,7 +394,7 @@ realTest(
 );
 
 realTest(
-  "a finished worker's yield reads as finished with no result, and a live worker's pending call reads as running",
+  "a finished worker's yield reads as finished with its result, and a live worker's pending call reads as running",
   async ({ realApp }) => {
     const page = await realApp.open();
     const composer = await startChat(page);
@@ -402,7 +402,8 @@ realTest(
     const hub = page.getByRole("region", { name: "Agent Hub" });
     await expect(hub).toHaveAttribute("data-panel-lifecycle", "empty", { timeout: 90_000 });
 
-    // The steerable worker takes a steer and then yields. omp ends a worker with yield, so the yield has no result.
+    // The steerable worker takes a steer and then yields. The number of yields depends on whether its bash step was
+    // still running, so the checks below do not count them.
     await sendPrompt(composer, "spawn_steerable_subagent start the worker and wait for it");
     await expect(hub.getByRole("option", { name: /Running/ })).toHaveCount(1, { timeout: 120_000 });
     await hub.getByRole("option", { name: /Running/ }).click();
@@ -415,11 +416,12 @@ realTest(
     await editor.press("Enter");
     await expect(page.getByText("Finished · read-only")).toBeVisible({ timeout: 180_000 });
 
-    // Finished: its yield calls read as finished with no result recorded, and none reads as Streaming.
-    await expect(transcript.locator('[data-phase="unrecorded"]').first()).toBeVisible({
-      timeout: 60_000,
-    });
-    await expect(transcript.getByText("No result recorded").first()).toBeVisible();
+    // Finished: each yield's result is recorded, so its yield reads as finished, and none reads as unrecorded,
+    // partial or Streaming.
+    const yieldCard = transcript.locator('[data-testid^="tool-card-call_yield"]').first();
+    await expect(yieldCard).toHaveAttribute("data-phase", "success", { timeout: 60_000 });
+    await expect(transcript.locator('[data-phase="unrecorded"]')).toHaveCount(0);
+    await expect(transcript.getByText("No result recorded")).toHaveCount(0);
     await expect(transcript.locator('[data-phase="partial"]')).toHaveCount(0);
     await expect(transcript.getByText("Streaming", { exact: true })).toHaveCount(0);
     await settle(page);
@@ -455,7 +457,10 @@ realTest(
     await hub.getByRole("option", { name: /SteerProbe/ }).click();
     await hub.getByRole("button", { name: "Open transcript" }).click();
     await expect(transcript).toBeVisible();
-    await expect(transcript.locator('[data-phase="unrecorded"]').first()).toBeVisible();
+    await expect(transcript.locator('[data-phase="unrecorded"]')).toHaveCount(0);
+    await expect(
+      transcript.locator('[data-testid^="tool-card-call_yield"]').first(),
+    ).toHaveAttribute("data-phase", "success");
     await expect(transcript.locator('[data-phase="partial"]')).toHaveCount(0);
     await settle(page);
     await page.screenshot({ path: join(screenshots, "yield-finished-narrow.png"), fullPage: true });

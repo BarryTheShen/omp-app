@@ -19,6 +19,7 @@ import {
   StatusChip,
   statusLabel,
 } from "./coordination";
+import { type JobStops, useJobStops } from "./job-stops";
 import { decodeHubDetails, type HubDetails } from "./models";
 
 /** Terminal colour and cursor codes that a log line carries; they are not shown as text. */
@@ -34,15 +35,16 @@ export function HubCard({ rendererProps }: { readonly rendererProps: ToolRendere
   const details = decoded?.ok === true ? decoded.value : undefined;
   const state =
     decoded?.ok === false ? malformedState(normalized, decoded.error.appError.message) : normalized;
+  const stops = useJobStops();
   return (
     <div className="min-w-0" data-slot="t5-hub-card" data-testid="t5-hub-card">
       <ToolCard
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, result: undefined, partialResult: undefined }}
-        summary={hubSummary(details, state.isError)}
+        summary={hubSummary(details, state.isError, stops)}
       >
         <RawDetails state={state} />
-        <HubBody details={details} isError={state.isError} text={text} />
+        <HubBody details={details} isError={state.isError} stops={stops} text={text} />
       </ToolCard>
     </div>
   );
@@ -53,10 +55,12 @@ export const HubToolRenderer: ToolRenderer = (props) => <HubCard rendererProps={
 function HubBody({
   details,
   isError,
+  stops,
   text,
 }: {
   readonly details: HubDetails | undefined;
   readonly isError: boolean;
+  readonly stops: JobStops;
   readonly text: string;
 }) {
   const receipts = details?.receipts ?? [];
@@ -81,7 +85,7 @@ function HubBody({
         >
           {details?.waited ? <MessageBlock message={details.waited} /> : null}
           {receipts.length > 0 && <RecipientRows receipts={receipts} />}
-          {jobs.length > 0 && <JobRows jobs={jobs} />}
+          {jobs.length > 0 && <JobRows jobs={jobs} stops={stops} />}
           {cancelled.length > 0 && <CancelRows outcomes={cancelled} />}
           {agents.length > 0 && <AgentRows agents={agents} />}
           {details?.peers !== undefined && details.peers.length > 0 && (
@@ -118,7 +122,7 @@ function HubBody({
   );
 }
 
-function hubSummary(details: HubDetails | undefined, isError: boolean): string {
+function hubSummary(details: HubDetails | undefined, isError: boolean, stops: JobStops): string {
   if (isError) return "";
   if (details === undefined) return "Waiting for the result";
   if (details.waited) return `Message from ${details.waited.from}`;
@@ -137,7 +141,7 @@ function hubSummary(details: HubDetails | undefined, isError: boolean): string {
   if (details.peers !== undefined)
     return peerTotals(details.counts) || countOf(details.peers.length, "agent");
   const jobs = details.jobs ?? [];
-  if (jobs.length > 0) return jobCounts(jobs);
+  if (jobs.length > 0) return jobCounts(jobs.map((job) => stops.statusOf(job)));
   const agents = details.agents ?? [];
   if (agents.length > 0) return `${countOf(agents.length, "agent")} without a job`;
   return "No details reported";

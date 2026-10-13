@@ -12,6 +12,7 @@ import {
   malformedState,
   RawDetails,
 } from "./coordination";
+import { type JobStops, useJobStops } from "./job-stops";
 import { type CoordinationDetails, decodeWaitDetails } from "./models";
 
 /** Read-only wait card: the message or the job snapshot omp returned. It never polls, cancels or steals focus. */
@@ -23,15 +24,16 @@ export function WaitCard({ rendererProps }: { readonly rendererProps: ToolRender
   const details = decoded?.ok === true ? decoded.value : undefined;
   const state =
     decoded?.ok === false ? malformedState(normalized, decoded.error.appError.message) : normalized;
+  const stops = useJobStops();
   return (
     <div className="min-w-0" data-slot="t5-wait-card" data-testid="t5-wait-card">
       <ToolCard
         className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         state={{ ...state, result: undefined, partialResult: undefined }}
-        summary={waitSummary(details, state.isError)}
+        summary={waitSummary(details, state.isError, stops)}
       >
         <RawDetails state={state} />
-        <WaitBody details={details} isError={state.isError} text={text} />
+        <WaitBody details={details} isError={state.isError} stops={stops} text={text} />
       </ToolCard>
     </div>
   );
@@ -42,10 +44,12 @@ export const WaitToolRenderer: ToolRenderer = (props) => <WaitCard rendererProps
 function WaitBody({
   details,
   isError,
+  stops,
   text,
 }: {
   readonly details: CoordinationDetails | undefined;
   readonly isError: boolean;
+  readonly stops: JobStops;
   readonly text: string;
 }) {
   const waited = details?.waited ?? undefined;
@@ -61,18 +65,22 @@ function WaitBody({
       data-slot="t5-wait-details"
     >
       {waited !== undefined && <MessageBlock message={waited} />}
-      {jobs.length > 0 && <JobRows jobs={jobs} />}
+      {jobs.length > 0 && <JobRows jobs={jobs} stops={stops} />}
       {agents.length > 0 && <AgentRows agents={agents} />}
     </section>
   );
 }
 
-function waitSummary(details: CoordinationDetails | undefined, isError: boolean): string {
+function waitSummary(
+  details: CoordinationDetails | undefined,
+  isError: boolean,
+  stops: JobStops,
+): string {
   if (isError) return "";
   if (details === undefined) return "Waiting for jobs or a message";
   if (details.waited) return `Message from ${details.waited.from}`;
   const jobs = details.jobs ?? [];
-  if (jobs.length > 0) return jobCounts(jobs);
+  if (jobs.length > 0) return jobCounts(jobs.map((job) => stops.statusOf(job)));
   const agents = details.agents ?? [];
   if (agents.length > 0) return `${countOf(agents.length, "agent")} without a job`;
   if (details.interrupted === true) return "Interrupted by a message";

@@ -1,5 +1,9 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  type BackgroundJobCommand,
+  BackgroundJobCommandContext,
+} from "@/modules/U3/tool-card/background-job";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import { HubCard } from "./hub";
 import { decodeWaitDetails } from "./models";
@@ -32,6 +36,20 @@ describe("T5.3 wait card on recorded results", () => {
     expect(screen.getByText("60% done")).toBeTruthy();
     expect(screen.getByText("Command")).toBeTruthy();
     expect(screen.getByText("Check finished with no open items.")).toBeTruthy();
+  });
+
+  test("the header counts jobs that a Stop all ended as cancelled", async () => {
+    const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled 2 background jobs."]);
+    render(
+      <BackgroundJobCommandContext.Provider value={gateway}>
+        <WaitCard rendererProps={recorded("wait: two running tasks and a finished command")} />
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    expect(screen.getByText("2 running · 1 completed")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Stop all background jobs" }));
+    await waitFor(() => expect(screen.getByText("1 completed · 2 cancelled")).toBeTruthy());
+    expect(screen.getAllByText("Cancelled")).toHaveLength(2);
   });
 
   test("a failed task shows omp's error, and a long one says how much is shown", () => {
@@ -151,5 +169,24 @@ describe("T5.3 hub card on recorded results", () => {
     render(<HubCard rendererProps={props} />);
     expandToolCards();
     expect(screen.getByRole("alert").textContent).toContain("Malformed hub");
+  });
+
+  test("the Agent Hub's header counts a job its own Stop ended as cancelled", async () => {
+    const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled background job AuditOne."]);
+    const props = alteredResult(
+      "hub: a background job cancelled",
+      ["details", "jobs", 0, "status"],
+      "running",
+    );
+    render(
+      <BackgroundJobCommandContext.Provider value={gateway}>
+        <HubCard rendererProps={props} />
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    expect(screen.getByText("1 running")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job AuditOne" }));
+    await waitFor(() => expect(screen.getByText("1 cancelled")).toBeTruthy());
+    expect(gateway).toHaveBeenCalledWith("/jobs kill AuditOne");
   });
 });

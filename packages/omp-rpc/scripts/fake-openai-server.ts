@@ -49,10 +49,13 @@ function steerChildReply(messages: readonly Message[]): Reply | undefined {
   const steered = after.some(
     (message) => message.role === "user" && text(message.content).includes("steer_probe:"),
   );
+  // Every yield gets an id of its own, as omp gives each call one. The default (`call_yield`) repeats, and a
+  // transcript pairs a result with its call by id, so the later yields would read as unrecorded.
   if (steered)
     return {
       tool: "yield",
       args: { data: { summary: "Steer received." } },
+      id: `call_yield_${messages.length}`,
       thinking: "The steer arrived, so I will submit.",
     };
   const steps = after.filter((message) => message.role === "tool").length;
@@ -60,6 +63,7 @@ function steerChildReply(messages: readonly Message[]): Reply | undefined {
     return {
       tool: "yield",
       args: { data: { summary: "No steer arrived." } },
+      id: `call_yield_${messages.length}`,
       thinking: "No steer came in time.",
     };
   return {
@@ -377,6 +381,9 @@ function reply(request: Request): Reply {
       ],
       thinking: "I should start one slow worker and wait for it.",
     };
+  // The wait tool blocks on the chat's running background jobs, so its card lists them with their Stop controls (#1262).
+  if (prompt.includes("wait_for_jobs"))
+    return { tool: "wait", args: {}, thinking: "I should wait for the background jobs to end." };
   // A bash call that exits non-zero (issue #1324): omp's result ends with its wall-time and exit-code notes.
   if (prompt.includes("run_failing_bash"))
     return {

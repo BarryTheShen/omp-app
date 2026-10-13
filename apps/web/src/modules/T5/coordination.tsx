@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import type { ToolCardState } from "../U3/tool-card/contract";
+import type { JobStops } from "./job-stops";
 import type {
   AgentActivity,
   CancelOutcome,
@@ -80,10 +82,10 @@ export function countOf(count: number, singular: string, plural = `${singular}s`
 }
 
 /** Job counts in a fixed order, e.g. "2 running · 1 completed"; "" when there are no jobs. */
-export function jobCounts(jobs: readonly JobSnapshot[]): string {
-  const order = ["running", "completed", "failed", "cancelled"] as const;
+export function jobCounts(statuses: readonly string[]): string {
+  const order = ["running", "completed", "failed", "cancelled", "already_completed"] as const;
   return order
-    .map((status) => ({ status, count: jobs.filter((job) => job.status === status).length }))
+    .map((status) => ({ status, count: statuses.filter((value) => value === status).length }))
     .filter((entry) => entry.count > 0)
     .map((entry) => `${entry.count} ${statusLabel(entry.status).toLowerCase()}`)
     .join(" · ");
@@ -194,11 +196,67 @@ export function RecipientRows({ receipts }: { readonly receipts: readonly IrcRec
   );
 }
 
-export function JobRows({ jobs }: { readonly jobs: readonly JobSnapshot[] }) {
+/** The Stop control of one job row, and omp's answer to the stop asked for it. */
+function JobStopLine({ job, stops }: { readonly job: JobSnapshot; readonly stops: JobStops }) {
+  const outcome = stops.outcomeOf(job.id);
+  const stoppable = stops.canStop(job);
+  if (!stoppable && outcome === undefined) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {stoppable && (
+        <Button
+          aria-label={`Stop background job ${job.id}`}
+          disabled={stops.pending}
+          onClick={() => void stops.stop(job.id)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Stop
+        </Button>
+      )}
+      {outcome !== undefined && (
+        <p className="text-xs text-muted-foreground" role="status">
+          {outcome.sentence}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function JobRows({
+  jobs,
+  stops,
+}: {
+  readonly jobs: readonly JobSnapshot[];
+  readonly stops: JobStops;
+}) {
   const note = showingNote(jobs.length);
+  const stoppable = jobs.some((job) => stops.canStop(job));
+  // Every job omp still runs, as the card lists them: omp's count for Stop all is checked against these.
+  const running = jobs.filter((job) => stops.statusOf(job) === "running").map((job) => job.id);
   return (
     <section className="flex min-w-0 flex-col gap-1" data-slot="t5-jobs">
-      <h3 className="text-xs font-medium text-muted-foreground">Jobs</h3>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <h3 className="text-xs font-medium text-muted-foreground">Jobs</h3>
+        {stoppable && (
+          <Button
+            aria-label="Stop all background jobs"
+            disabled={stops.pending}
+            onClick={() => void stops.stopAll(running)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Stop all
+          </Button>
+        )}
+      </div>
+      {stops.allOutcome !== undefined && (
+        <p className="text-xs text-muted-foreground" role="status">
+          {stops.allOutcome.sentence}
+        </p>
+      )}
       {note !== undefined && <p className="text-xs text-muted-foreground">{note}</p>}
       <ul className="grid gap-2 text-xs">
         {jobs.slice(0, MAX_ITEMS).map((job) => (
@@ -210,17 +268,18 @@ export function JobRows({ jobs }: { readonly jobs: readonly JobSnapshot[] }) {
               <span className="text-muted-foreground" title={job.type}>
                 {TYPE_LABELS[job.type] ?? job.type}
               </span>
-              <StatusChip value={job.status} />
+              <StatusChip value={stops.statusOf(job)} />
               <span className="text-muted-foreground">{formatDuration(job.durationMs)}</span>
               {job.exitCode !== undefined && (
                 <span className="text-muted-foreground">Exit code {job.exitCode}</span>
               )}
-              {job.status === "running" && job.completionPercent !== undefined && (
+              {stops.statusOf(job) === "running" && job.completionPercent !== undefined && (
                 <span className="text-muted-foreground">
                   {Math.round(job.completionPercent)}% done
                 </span>
               )}
             </div>
+            <JobStopLine job={job} stops={stops} />
             {job.resultText !== undefined && job.resultText.length > 0 && (
               <Preview text={job.resultText} />
             )}

@@ -8,8 +8,8 @@ import type { AppError, ToolCallId, ToolDescriptor } from "@omp-app/contracts";
 import type { ToolCallState } from "@/modules/R0/store/store";
 
 /**
- * `unrecorded`: the call's message is finished and no result was recorded (an omp `yield` ends its
- * worker, so it has none). It is settled, not in flight. A call whose message is still being written is `running`.
+ * `unrecorded`: the call's message is finished and no result was recorded. It is settled, not in flight. A call whose
+ * message is still being written is `running`.
  */
 export type ToolCardPhase =
   | "running"
