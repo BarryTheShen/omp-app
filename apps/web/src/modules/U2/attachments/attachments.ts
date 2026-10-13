@@ -277,23 +277,28 @@ export class AttachmentManager implements AttachmentAdapter {
 
   /**
    * Replaces the draft's attachments with `refs`, each loaded from its blob. A picture still being attached, or one
-   * that failed, is not on the draft yet: it stays in the list, so loading a draft never drops it.
+   * that failed, is not on the draft yet: it stays in the list, so loading a draft never drops it. A restore whose
+   * `signal` is aborted has been replaced by a newer one (the chat moved on): it adds nothing and reports nothing,
+   * even when its picture arrives after the newer restore has started.
    */
   public async restore(
     refs: readonly AttachmentRef[],
     options?: { readonly signal?: AbortSignal },
   ): Promise<void> {
+    if (isAbort(options?.signal)) return;
     this.complete.clear();
     this.error = null;
     this.refs.clear();
+    this.notify();
     for (const ref of refs) {
-      if (isAbort(options?.signal)) throw appFailure("cancelled", "Attachment restore cancelled");
       try {
         const stored = await this.blobStore.get(ref, options);
+        if (isAbort(options?.signal)) return;
         const file = new File([], ref.name, { type: ref.mediaType });
         this.complete.set(ref.id, attachmentFromStored(stored, file));
         this.refs.set(ref.id, ref);
       } catch (error) {
+        if (isAbort(options?.signal)) return;
         const failure =
           error instanceof AppFailure
             ? error
@@ -303,6 +308,7 @@ export class AttachmentManager implements AttachmentAdapter {
         throw failure;
       }
     }
+    if (isAbort(options?.signal)) return;
     this.notify();
   }
 

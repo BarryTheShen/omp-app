@@ -79,6 +79,8 @@ export function useComposerDraft({
   const restoring = useRef(0);
   // What the last restore could not bring back (its blob is gone or unreachable). The saved draft keeps these too.
   const lostAttachments = useRef<readonly AttachmentRef[]>([]);
+  // The restore still loading, if any: a newer restore or a chat change replaces it (see `restoreAttachments`).
+  const restoreAbort = useRef<AbortController | null>(null);
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
@@ -111,20 +113,27 @@ export function useComposerDraft({
 
   const restoreAttachments = useCallback(
     (owner: DraftController, refs: readonly AttachmentRef[]) => {
+      // A newer restore replaces the one still loading: its pictures must not reach the list the newer one holds.
+      restoreAbort.current?.abort();
+      const abort = new AbortController();
+      restoreAbort.current = abort;
       agreedAttachments.current = refs;
       restoring.current += 1;
-      void attachments.restore(refs).then(
+      void attachments.restore(refs, { signal: abort.signal }).then(
         () => {
-          lostAttachments.current = [];
           restoring.current -= 1;
+          // A replaced restore changes nothing and saves nothing: the newer restore does both.
+          if (abort.signal.aborted) return;
+          lostAttachments.current = [];
           if (restoring.current === 0) saveAttachments(owner);
         },
         () => {
+          restoring.current -= 1;
+          if (abort.signal.aborted) return;
           // A restore that stops at a blob it cannot read keeps the ones before it. The draft keeps the rest
           // too, until a later restore completes.
           const heldIds = new Set(attachments.toDraftRefs().map((ref) => ref.id));
           lostAttachments.current = refs.filter((ref) => !heldIds.has(ref.id));
-          restoring.current -= 1;
         },
       );
     },
@@ -206,5 +215,12 @@ export function useComposerDraft({
   // chat's identity ends (the person switched to another chat), or the composer goes with it. A move of the same chat's
   // draft keeps the identity, so the cleanup does not run.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the cleanup runs when the chat changes.
-  useEffect(() => () => attachments.dropPending(), [attachments, chat]);
+  useEffect(
+    () => () => {
+      // A restore still loading for that chat is replaced with the chat, so its pictures do not reach the next chat.
+      restoreAbort.current?.abort();
+      attachments.dropPending();
+    },
+    [attachments, chat],
+  );
 }

@@ -69,6 +69,23 @@ class HeldUploadStore extends MemoryBlobStore {
   }
 }
 
+/** Reads that wait until `release()`: a picture that is still loading from its blob when the test acts. */
+class HeldReadStore extends MemoryBlobStore {
+  private resume: (() => void) | undefined;
+  private readonly gate = new Promise<void>((resolve) => {
+    this.resume = resolve;
+  });
+
+  override async get(ref: AttachmentRef): Promise<StoredAttachment> {
+    await this.gate;
+    return super.get(ref);
+  }
+
+  release(): void {
+    this.resume?.();
+  }
+}
+
 describe("U2.3 AttachmentManager", () => {
   test("adds, sends, projects refs, and removes an image attachment", async () => {
     const blobs = new MemoryBlobStore();
@@ -142,6 +159,27 @@ describe("U2.3 AttachmentManager", () => {
     expect(manager.getState().pending).toHaveLength(0);
   });
 
+  test("a restore that has been replaced adds nothing when its picture arrives later", async () => {
+    const blobs = new HeldReadStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const pending = await manager.add({
+      file: new File(["png"], "photo.png", { type: "image/png" }),
+    });
+    await manager.send(pending);
+    const refs = manager.toDraftRefs();
+    expect(refs).toHaveLength(1);
+
+    const replaced = new AbortController();
+    const restoring = manager.restore(refs, { signal: replaced.signal });
+    // The chat moves on: the newer restore replaces this one before its picture has loaded.
+    replaced.abort();
+    blobs.release();
+    await restoring;
+
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
+    expect(manager.toDraftRefs()).toEqual([]);
+  });
+
   test("a picture the upload would refuse is refused when it is added, by default", async () => {
     const blobs = new MemoryBlobStore();
     const manager = new AttachmentManager({ blobStore: blobs });
@@ -160,6 +198,7 @@ describe("U2.3 AttachmentManager", () => {
     expect(blobs.putIds).toEqual([]);
     expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
   });
+
   test("says in plain words which kinds of file the composer takes", () => {
     expect(acceptedKindsText("image/*,text/plain,text/markdown")).toBe(
       "Only images, plain text and Markdown files can be attached.",

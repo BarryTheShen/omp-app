@@ -801,3 +801,61 @@ describe("useComposerDraft: a picture still being attached, and the chat it was 
     expect(manager.getState().pending).toEqual([]);
   });
 });
+
+/** Reads of a blob that wait until `release()`: a picture that is still loading from its blob when the person moves on. */
+class HeldReadBlobStore extends MemoryBlobStore {
+  private resume: (() => void) | undefined;
+  private readonly gate = new Promise<void>((resolve) => {
+    this.resume = resolve;
+  });
+
+  override async get(ref: AttachmentRef): Promise<StoredAttachment> {
+    await this.gate;
+    return super.get(ref);
+  }
+
+  release(): void {
+    this.resume?.();
+  }
+}
+
+describe("useComposerDraft: a picture still loading when the person moves to another chat", () => {
+  test("it does not come into the chat opened next, nor into that chat's draft", async () => {
+    const store = new ScopedDraftStore();
+    const blobs = new HeldReadBlobStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const first = new DraftController({ store, scope: chatScope("chat-r1"), timers: noTimers });
+    const { shown, switchTo } = renderComposer(first, manager);
+    await act(async () => {
+      await first.load();
+      await drop(manager, "photo.png");
+    });
+
+    // The chat is left, then opened again: its saved picture is still loading when the person moves on.
+    const reopened = new DraftController({ store, scope: chatScope("chat-r1"), timers: noTimers });
+    await act(async () => {
+      await first.dispose();
+      switchTo(reopened);
+      await reopened.load();
+    });
+    const next = new DraftController({ store, scope: chatScope("chat-r2"), timers: noTimers });
+    await act(async () => {
+      await reopened.dispose();
+      switchTo(next);
+      await next.load();
+    });
+    await act(async () => {
+      blobs.release();
+    });
+
+    // The picture belongs to chat r1: it does not reach the composer now that chat r2 is open.
+    expect(manager.getState()).toMatchObject({ pending: [], complete: [] });
+    // Typing in chat r2 saves its own draft, without the picture.
+    act(() => shown.type("hi"));
+    await act(async () => {
+      await next.flush();
+    });
+    const saved = await store.get({ scope: chatScope("chat-r2") });
+    expect(saved.draft?.attachments ?? []).toEqual([]);
+  });
+});
