@@ -535,10 +535,25 @@ function removeMessage(next: MutableSnapshot, key: MessageKey): void {
   if (index >= 0) order.splice(index, 1);
 }
 
-/** The row id of the newest message, or null when the transcript is empty: where a reminder that arrives now belongs. */
-function lastRowId(next: MutableSnapshot): MessageKey | null {
-  const last = next.messageOrder.at(-1);
+/**
+ * The row a reminder that arrives now follows, or null when the transcript is empty. A tool result is not a row of its
+ * own: assistant-ui joins it into the answer that called the tool, and a row closes only at an assistant output
+ * (`convertExternalMessage`). So a reminder after tool results names that answer, and the answer after the reminder
+ * starts a row of its own (issue 1522).
+ */
+function reminderRowId(next: MutableSnapshot): MessageKey | null {
+  const order = next.messageOrder;
+  const last = order.at(-1);
   if (last === undefined) return null;
+  let answer: RuntimeMessage | undefined;
+  for (let index = order.length - 1; index >= 0; index -= 1) {
+    const record = next.messages[order[index] as MessageKey];
+    if (record?.message.role !== "toolResult") {
+      answer = record;
+      break;
+    }
+  }
+  if (answer?.message.role === "assistant") return rowIdOf(answer);
   const record = next.messages[last];
   return record === undefined ? last : rowIdOf(record);
 }
@@ -1685,7 +1700,7 @@ export class OmpRuntimeStore {
           todos: cloneValue(event.todos) as TodoItem[],
           attempt: typeof event.attempt === "number" ? event.attempt : 1,
           maxAttempts: typeof event.maxAttempts === "number" ? event.maxAttempts : 1,
-          afterMessage: lastRowId(next),
+          afterMessage: reminderRowId(next),
         };
         next.todoReminders = [...next.todoReminders, reminder].slice(-MAX_TODO_REMINDERS);
         return;
@@ -1720,29 +1735,33 @@ export class OmpRuntimeStore {
     const messageId = messageIdForEvent(event, seq, this.generatedMessageNumber++);
     const key = provisionalMessageKey(this.snapshot.processId, messageId);
     this.streamKeys.set(messageId, key);
+    const order = next.messageOrder as MessageKey[];
+    // A message the history already shows (the stream was replayed, or lagged behind a history load) takes that
+    // message's place instead of showing twice. The copy keeps that row's id, so a notice that follows the row still
+    // follows it (issue 1522).
+    const copyKey = order.includes(key) ? undefined : streamedCopyKey(message);
+    const shownIndex =
+      copyKey === undefined
+        ? -1
+        : order.findIndex((shownKey) => {
+            const shown = next.messages[shownKey];
+            return (
+              shown !== undefined &&
+              shown.streamMessageId === undefined &&
+              streamedCopyKey(shown.message) === copyKey
+            );
+          });
+    const shownKey = shownIndex >= 0 ? order[shownIndex] : undefined;
+    const shown = shownKey === undefined ? undefined : next.messages[shownKey];
     const record: RuntimeMessage = {
       key,
       message,
       status: "streaming",
       streamMessageId: messageId,
+      ...(shown === undefined ? {} : { rowKey: rowIdOf(shown) }),
     };
     addOrReplaceMessage(next, key, record);
-    const order = next.messageOrder as MessageKey[];
     if (!order.includes(key)) {
-      // A message the history already shows (the stream was replayed, or lagged behind a history
-      // load) takes that message's place instead of showing twice.
-      const copyKey = streamedCopyKey(message);
-      const shownIndex =
-        copyKey === undefined
-          ? -1
-          : order.findIndex((shownKey) => {
-              const shown = next.messages[shownKey];
-              return (
-                shown !== undefined &&
-                shown.streamMessageId === undefined &&
-                streamedCopyKey(shown.message) === copyKey
-              );
-            });
       if (shownIndex >= 0) order.splice(shownIndex, 1, key);
       else order.push(key);
     }

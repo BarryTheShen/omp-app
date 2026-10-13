@@ -289,6 +289,44 @@ describe("R0.3 assistant-ui runtime", () => {
     ]);
   });
 
+  test("a reminder after a tool result closes the answer that called the tool, so the answer after the reminder starts a row", () => {
+    const turn = (closesCalling: boolean): RuntimeMessageView[] => [
+      {
+        record: runtimeMessage(
+          assistantMessage([{ type: "text", text: "calling the tool" }]),
+          "entry:runtime-test-thread:entry-call",
+        ),
+        toolStates: [],
+        joinedAssistantEntryIds: [],
+        closesRow: closesCalling,
+      },
+      {
+        record: runtimeMessage(
+          toolResultMessage("call-1"),
+          "entry:runtime-test-thread:entry-result",
+        ),
+        toolStates: [],
+        joinedAssistantEntryIds: [],
+        toolResultMatched: true,
+      },
+      {
+        record: runtimeMessage(
+          assistantMessage([{ type: "text", text: "pong" }]),
+          "entry:runtime-test-thread:entry-answer",
+        ),
+        toolStates: [],
+        joinedAssistantEntryIds: [],
+      },
+    ];
+    const joined = unstable_convertExternalMessages(turn(false), convertExternalMessage, false, {});
+    expect(joined.map((row) => row.id)).toEqual(["entry:runtime-test-thread:entry-call"]);
+    const split = unstable_convertExternalMessages(turn(true), convertExternalMessage, false, {});
+    expect(split.map((row) => row.id)).toEqual([
+      "entry:runtime-test-thread:entry-call",
+      "entry:runtime-test-thread:entry-answer",
+    ]);
+  });
+
   test("keeps an orphaned tool result visible instead of dropping it", () => {
     const orphan: RuntimeMessageView = {
       record: runtimeMessage(toolResultMessage("orphan-tool"), "entry:runtime-test-thread:orphan"),

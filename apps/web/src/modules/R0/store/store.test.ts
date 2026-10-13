@@ -9,7 +9,7 @@ import type {
 } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { OmpRuntimeStore } from "./store";
+import { OmpRuntimeStore, rowIdOf } from "./store";
 
 const threadId = "thread-r0" as ThreadId;
 const at = 1_759_600_000_000;
@@ -620,6 +620,70 @@ describe("OmpRuntimeStore", () => {
     ]);
     expect(store.getSnapshot().messageOrder).toEqual(["entry:thread-r0:entry-first"]);
     expect(store.getSnapshot().todoReminders.at(-1)?.afterMessage).toBe(row);
+  });
+
+  test("a todo reminder after a tool result names the answer that called the tool, so that answer's row is the one that closes", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    omp(store, { type: "agent_start" }, 1);
+    const calling = assistant("I will check the todos.", { stopReason: "toolUse" });
+    omp(store, { type: "message_start", messageId: "m1", message: calling }, 2);
+    omp(store, { type: "message_end", messageId: "m1", message: calling }, 3);
+    const result = {
+      role: "toolResult" as const,
+      toolCallId: "call-1",
+      toolName: "todo",
+      content: [{ type: "text" as const, text: "Updated todos" }],
+      isError: false,
+      timestamp: at,
+    };
+    omp(store, { type: "message_start", messageId: "m2", message: result }, 4);
+    omp(store, { type: "message_end", messageId: "m2", message: result }, 5);
+    omp(
+      store,
+      {
+        type: "todo_reminder",
+        todos: [{ content: "b", status: "pending" }],
+        attempt: 1,
+        maxAttempts: 3,
+      },
+      6,
+    );
+    expect(store.getSnapshot().todoReminders.at(-1)?.afterMessage).toBe("stream:thread-r0:0:m1");
+  });
+
+  test("a streamed copy that takes the place of a message the history shows keeps that message's row, so a reminder on it still follows it", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages([
+      {
+        type: "message",
+        id: "entry-shown",
+        parentId: null,
+        timestamp: new Date(at).toISOString(),
+        message: assistant("hello"),
+      },
+    ]);
+    const shownRow = "entry:thread-r0:entry-shown";
+    omp(store, { type: "agent_start" }, 1);
+    omp(
+      store,
+      {
+        type: "todo_reminder",
+        todos: [{ content: "b", status: "pending" }],
+        attempt: 1,
+        maxAttempts: 3,
+      },
+      2,
+    );
+    expect(store.getSnapshot().todoReminders.at(-1)?.afterMessage).toBe(shownRow);
+    // The stream replays the same message: it takes the shown message's place in the transcript.
+    omp(store, { type: "message_start", messageId: "m1", message: assistant("hello") }, 3);
+    const snapshot = store.getSnapshot();
+    const rows = snapshot.messageOrder.flatMap((key) => {
+      const record = snapshot.messages[key];
+      return record === undefined ? [] : [rowIdOf(record)];
+    });
+    expect(rows).toEqual([shownRow]);
+    expect(rows).toContain(snapshot.todoReminders.at(-1)?.afterMessage);
   });
 
   test("shares unchanged state between snapshots and freezes what changed", () => {
