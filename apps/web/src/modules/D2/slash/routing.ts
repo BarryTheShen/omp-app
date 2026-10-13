@@ -47,7 +47,7 @@ function triggerRuns(trigger: Trigger, rest: string): boolean {
 }
 
 /**
- * omp subcommands that run at once with no question, so the app answers them itself (`guardedRoute`). Every row was
+ * omp subcommands that run at once when typed, so the app answers them itself (`guardedRoute`). A form that deletes data asks first (`destructive.ts`). Every row was
  * checked against omp v18.9.1; a form that only prints usage or lists stays text. `/share` is guarded in every form (issue 957,
  * builtin-collaboration.ts:293-296).
  *

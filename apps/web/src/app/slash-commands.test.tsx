@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createSlashCommandProvider,
+  DESTRUCTIVE_FORMS,
   routeSlashText,
   type SlashAppCommand,
   type SlashCommandProvider,
@@ -720,7 +721,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     await expect(command.run({})).rejects.toBe(failure);
   });
 
-  test("the app answers exactly /session delete and /usage reset, and only usage reset takes a target", () => {
+  test("the app answers /session delete, /usage reset and each form that deletes data, and only the ones with arguments take a target", () => {
     const commands = askFirstSlashCommands({
       catalog: null,
       fallbackTitle: "Seeded chat 2",
@@ -734,6 +735,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     expect(commands.map((command) => [command.name, command.takesArguments])).toEqual([
       ["session delete", undefined],
       ["usage reset", true],
+      ...DESTRUCTIVE_FORMS.map((form) => [form, true]),
     ]);
   });
 
@@ -844,5 +846,65 @@ describe("#1271 a typed terminal-only command is refused in the composer, and om
     });
     expect(fake.runs).toEqual([]);
     provider.dispose();
+  });
+});
+
+describe("#1348 the typed forms that delete data each ask first, with their own question", () => {
+  /** The chat's commands, an overlay that records the question each one opens, and a gateway that records what omp is sent. */
+  function askingCommands() {
+    const opened: OverlayOpenOptions[] = [];
+    const gateway = {
+      run: vi.fn(async ({ command }: { readonly command: string }) =>
+        completedRun(command, "Done."),
+      ),
+      sessionDelete: vi.fn(async () => ({ outcome: "unknown" as const })),
+    };
+    const commands = askFirstSlashCommands({
+      catalog: null,
+      fallbackTitle: "Seeded chat",
+      overlay: {
+        open: (options) => {
+          opened.push(options);
+          return undefined;
+        },
+      },
+      gateway,
+      threadId,
+      lifecycle: null,
+      openThread: async () => undefined,
+      showReport: () => undefined,
+    });
+    return { commands, opened, gateway };
+  }
+
+  test("each form is an unlisted command that takes its arguments", () => {
+    const { commands } = askingCommands();
+    for (const form of DESTRUCTIVE_FORMS) {
+      expect(
+        commands.find((command) => command.name === form),
+        form,
+      ).toMatchObject({ unlisted: true, takesArguments: true });
+    }
+  });
+
+  test("a typed form opens its own question, and omp is sent nothing until the question is answered", () => {
+    const { commands, opened, gateway } = askingCommands();
+    const command = commands.find((item) => item.name === "ssh rm");
+    if (command === undefined) throw new Error("the app has no ssh rm command");
+    void command.run({ args: "dev --scope user" });
+    expect(opened[0]?.label).toBe("Remove SSH host");
+    expect(gateway.run).not.toHaveBeenCalled();
+  });
+
+  test("a form with no target has no question: omp is sent the text, and only prints its usage", async () => {
+    const { commands, gateway } = askingCommands();
+    const command = commands.find((item) => item.name === "marketplace uninstall");
+    if (command === undefined) throw new Error("the app has no marketplace uninstall command");
+    await command.run({ args: "--scope user" });
+    expect(gateway.run).toHaveBeenCalledTimes(1);
+    expect(gateway.run).toHaveBeenCalledWith(
+      { threadId, command: "/marketplace uninstall --scope user" },
+      {},
+    );
   });
 });

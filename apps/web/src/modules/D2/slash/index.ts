@@ -3,6 +3,11 @@ export {
   type SlashCommandCatalogController,
   type SlashCommandCatalogOptions,
 } from "./catalog";
+export {
+  DESTRUCTIVE_FORMS,
+  type DestructiveQuestion,
+  destructiveQuestion,
+} from "./destructive";
 export { type CommandOutputView, commandOutputView, plainOutputText } from "./output";
 export {
   createSlashCommandProvider,

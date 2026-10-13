@@ -17,6 +17,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   commandOutputView,
   createSlashCommandProvider,
+  DESTRUCTIVE_FORMS,
+  destructiveQuestion,
   guardedCommandName,
   guardedRoute,
   plainOutputText,
@@ -35,6 +37,7 @@ import {
   type OverlayOpener,
   openChatDeleteConfirm,
 } from "@/modules/U4/dialogs/confirm-chat-delete";
+import { openDestructiveCommandConfirm } from "@/modules/U4/dialogs/confirm-destructive-command";
 import { openSpendResetConfirm } from "@/modules/U4/dialogs/confirm-spend-reset";
 import type { AgentHubOpenResult } from "./agents/agent-hub-shortcut";
 import type { CommandReport } from "./command-report/command-report";
@@ -446,9 +449,10 @@ function removeListedChat(catalog: SessionCatalogModel | null, threadId: ThreadI
 }
 
 /**
- * The two guarded forms that run at once. `/session delete` asks with the chat's own delete question, naming the chat the
- * way the sidebar does, and changes the view only once omp says it deleted the chat's file; `/usage reset <target>` names
- * the account and says that one reset is spent.
+ * The guarded forms that run at once, each after its own question. `/session delete` asks with the chat's own delete
+ * question, naming the chat the way the sidebar does, and changes the view only once omp says it deleted the chat's file;
+ * `/usage reset <target>` names the account and says that one reset is spent. Each form that deletes data
+ * (`DESTRUCTIVE_FORMS`) names its target and says what omp deletes; Cancel sends nothing, and Confirm sends the command once.
  */
 export function askFirstSlashCommands({
   catalog,
@@ -491,6 +495,21 @@ export function askFirstSlashCommands({
       threadId,
       showReport,
     }),
+    ...DESTRUCTIVE_FORMS.map((form) =>
+      askFirstSlashCommand({
+        name: form,
+        description: "Asks first, then runs it in omp",
+        takesArguments: true,
+        confirm: async (args) => {
+          const question = destructiveQuestion(form, args);
+          // A form with no target, or a scope omp refuses, deletes nothing: omp only prints its usage for it.
+          return question === null ? true : openDestructiveCommandConfirm(overlay, question);
+        },
+        gateway,
+        threadId,
+        showReport,
+      }),
+    ),
   ];
 }
 
