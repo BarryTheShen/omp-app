@@ -356,7 +356,13 @@ export async function createCompositionServer(
     watchRegistry: fileWatch,
   });
   const memoryStore = createMemoryStore({ gateway: ompCommandGateway });
-  const ruleStore = createRuleStore({ env, homeDir, agentDir, watchRegistry: fileWatch });
+  const ruleStore = createRuleStore({
+    env,
+    homeDir,
+    agentDir,
+    watchRegistry: fileWatch,
+    onError: (error) => logger.warn("rules.error", { detail: error.appError.message }),
+  });
   const githubRefs = createGithubRefs({ env });
   const planDocumentStore = createPlanDocumentStore({ appDataDir });
   const urlCatalog = createUrlCatalog({

@@ -67,6 +67,7 @@ interface RuleFile {
 interface ScopeSnapshot {
   readonly location: RuleLocation;
   readonly files: readonly RuleFile[];
+  readonly skipped: readonly string[];
   readonly revision: string;
 }
 
@@ -118,6 +119,15 @@ function reportError(callback: RuleStoreOptions["onError"], error: unknown): voi
   } catch {
     // An error observer must never become an uncaught watcher exception.
   }
+}
+
+/** The failure reported for a rule file left out of its scope, named so the report says which file. */
+function leftOut(entry: string, error: unknown): AppFailure {
+  const cause = toFailure(error, "read rule files").appError;
+  return new AppFailure({
+    ...cause,
+    message: `Rule file "${entry}" is left out: ${cause.message}`,
+  });
 }
 
 function expandHome(value: string, homeDirectory: string): string {
@@ -406,14 +416,31 @@ export class RuleStoreService {
     if (await this.exists(location.stickyPath)) entries.push(STICKY_RULE_NAME);
     const unique = [...new Set(entries)].sort();
     const files: RuleFile[] = [];
+    const skipped: string[] = [];
     for (const entry of unique) {
-      const path = entry === STICKY_RULE_NAME ? location.stickyPath : pathForRule(location, entry);
-      const snapshot = await this.readSnapshot(path);
-      if (!snapshot.exists) continue;
-      const parsed = parseRuleContent(snapshot.content ?? "");
-      files.push({ id: ruleIdFromPath(path), path, snapshot, parsed });
+      const path =
+        entry === STICKY_RULE_NAME ? location.stickyPath : resolve(location.directory, entry);
+      try {
+        const file = await this.readRuleFile(path);
+        if (file) files.push(file);
+      } catch (error) {
+        // A file the app cannot manage (a name the rule contract rejects, or frontmatter it cannot read) is left out
+        // and reported, so the rest of the scope still lists, reads, writes and deletes. It stays on disk and is
+        // watched, so that its repair is published.
+        skipped.push(path);
+        reportError(this.#options.onError, leftOut(entry, error));
+      }
     }
-    return { location, files, revision: scopeRevision(files) };
+    return { location, files, skipped, revision: scopeRevision(files) };
+  }
+
+  /** One rule file, or null when it is gone. Throws for a file the app cannot manage. */
+  private async readRuleFile(path: string): Promise<RuleFile | null> {
+    const id = ruleIdFromPath(path);
+    const snapshot = await this.readSnapshot(path);
+    if (!snapshot.exists) return null;
+    const parsed = parseRuleContent(snapshot.content ?? "");
+    return { id, path, snapshot, parsed };
   }
 
   private async readSnapshot(path: string): Promise<FileSnapshot> {
@@ -483,10 +510,11 @@ export class RuleStoreService {
     scope.files = new Map(snapshot.files.map((file) => [file.path, file.snapshot.hash]));
     for (const watcher of scope.watchers.values()) watcher.dispose();
     scope.watchers.clear();
-    for (const file of snapshot.files) {
+    // A file left out of the list is watched too, so that its repair is published.
+    for (const path of [...snapshot.files.map((file) => file.path), ...snapshot.skipped]) {
       scope.watchers.set(
-        file.path,
-        watchFile(file.path, () => this.handleFileChange(scope), {
+        path,
+        watchFile(path, () => this.handleFileChange(scope), {
           debounceMs: this.#options.watchDebounceMs,
           onError: (error) => reportError(this.#options.onError, error),
           registry: this.#options.watchRegistry,

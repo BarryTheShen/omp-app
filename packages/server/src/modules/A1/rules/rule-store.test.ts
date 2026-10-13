@@ -169,18 +169,96 @@ describe("RuleStoreService", () => {
     expect(traversal.appError.code).toBe("invalid_args");
   });
 
-  test("surfaces malformed frontmatter without overwriting it", async () => {
+  test("a rule file with malformed frontmatter is left out and reported, and the rest of its scope still works", async () => {
     const home = await temporaryDirectory();
     const rules = join(home, ".omp", "agent", "rules");
     await mkdir(rules, { recursive: true });
+    await writeFile(join(rules, "good.md"), "good body", "utf8");
     const malformed = "---\nenabled: [\n---\nbody";
     const path = join(rules, "broken.md");
     await writeFile(path, malformed, "utf8");
-    const store = new RuleStoreService({ homeDir: home, env: {} });
+    const reported: AppFailure[] = [];
+    const store = new RuleStoreService({
+      homeDir: home,
+      env: {},
+      onError: (error) => reported.push(error),
+    });
 
-    const error = await expectAppFailure(store.list({ scope: "global", folder: null }));
-    expect(error.appError.code).toBe("invalid_args");
+    const listed = await store.list({ scope: "global", folder: null });
+    expect(listed.rules.map((rule) => rule.id)).toEqual(["good.md"]);
+    expect(reported.map((error) => error.appError.code)).toEqual(["invalid_args"]);
+    expect(reported[0]?.appError.message).toContain("broken.md");
+
+    const overwrite = await expectAppFailure(
+      store.write({
+        scope: "global",
+        folder: null,
+        id: RuleName.parse("broken.md"),
+        content: "replaced",
+        enabled: true,
+        expectedRevision: listed.revision,
+      }),
+    );
+    expect(overwrite.appError.code).toBe("conflict");
     expect(await readFile(path, "utf8")).toBe(malformed);
+
+    await store.delete({
+      scope: "global",
+      folder: null,
+      id: RuleName.parse("good.md"),
+      expectedRevision: listed.revision,
+    });
+    expect((await store.list({ scope: "global", folder: null })).rules).toEqual([]);
+  });
+
+  test("a rule file whose name the app cannot manage is left out and reported by name, and the rest of its scope still lists", async () => {
+    const home = await temporaryDirectory();
+    const rules = join(home, ".omp", "agent", "rules");
+    await mkdir(rules, { recursive: true });
+    await writeFile(join(rules, "my notes.md"), "spaced", "utf8");
+    await writeFile(join(rules, "good.md"), "good body", "utf8");
+    const reported: AppFailure[] = [];
+    const store = new RuleStoreService({
+      homeDir: home,
+      env: {},
+      onError: (error) => reported.push(error),
+    });
+
+    const listed = await store.list({ scope: "global", folder: null });
+    expect(listed.rules.map((rule) => rule.id)).toEqual(["good.md"]);
+    expect(reported.map((error) => error.appError.code)).toEqual(["invalid_args"]);
+    expect(reported[0]?.appError.message).toContain("my notes.md");
+    expect(await readFile(join(rules, "my notes.md"), "utf8")).toBe("spaced");
+    expect(
+      await store.read({ scope: "global", folder: null, id: RuleName.parse("good.md") }),
+    ).toMatchObject({ content: "good body" });
+  });
+
+  test("a left-out rule file that is repaired is published, so its subscriber hears of it", async () => {
+    const home = await temporaryDirectory();
+    const rules = join(home, ".omp", "agent", "rules");
+    const path = join(rules, "repair.md");
+    await mkdir(rules, { recursive: true });
+    await writeFile(path, "---\nenabled: [\n---\nbody", "utf8");
+    const store = new RuleStoreService({
+      homeDir: home,
+      env: {},
+      watchDebounceMs: 20,
+      onError: () => undefined,
+    });
+    const changes: unknown[] = [];
+    const unsubscribe = store.subscribe({ scope: "global", folder: null }, (change) => {
+      changes.push(change);
+    });
+    await waitForWatchers();
+    await writeFile(path, "---\nenabled: false\n---\nbody", "utf8");
+    await waitForWatchers();
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ id: "repair.md", scope: "global", reason: "filesystem" });
+    const listed = await store.list({ scope: "global", folder: null });
+    expect(listed.rules.map((rule) => rule.id)).toEqual(["repair.md"]);
+    unsubscribe();
+    store.dispose();
   });
 
   test("publishes external changes and stops after unsubscribe", async () => {
