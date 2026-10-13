@@ -13,9 +13,16 @@ import { createSlashCommandProvider, type SlashCommandProvider } from "./provide
 import { fakeSlashClient } from "./test-support";
 import { SlashTriggerSlot } from "./trigger-slot";
 
-function RuntimeHarness({ children }: { readonly children: ReactNode }) {
+function RuntimeHarness({
+  children,
+  running = false,
+}: {
+  readonly children: ReactNode;
+  readonly running?: boolean;
+}) {
   const runtime = useExternalStoreRuntime({
     messages: [] as readonly ThreadMessage[],
+    isRunning: running,
     onNew: async () => undefined,
     onCancel: async () => undefined,
   });
@@ -107,6 +114,31 @@ describe("D2.3 SlashTriggerSlot", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
     expect((input as HTMLTextAreaElement).value).toBe("/usa");
+    provider.dispose();
+  });
+
+  test("while a turn runs, Escape dismisses the command list and the turn keeps running", async () => {
+    const provider = providerWith(available);
+    const cancel = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness running>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={cancel} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "/usa" } });
+    (input as HTMLTextAreaElement).setSelectionRange(4, 4);
+    await waitFor(() => expect(screen.getByRole("listbox")).toBeTruthy());
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(cancel).not.toHaveBeenCalled();
+    expect((input as HTMLTextAreaElement).value).toBe("/usa");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
     provider.dispose();
   });
 

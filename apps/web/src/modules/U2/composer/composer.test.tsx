@@ -322,6 +322,27 @@ describe("U2.2 ComposerSurface", () => {
     expect(input.value).toBe("some text");
   });
 
+  test("a running turn is not stopped by the Escape that dismisses a trigger list; the next Escape stops it", async () => {
+    const cancel = vi.fn(async () => undefined);
+    renderComposer(
+      true,
+      vi.fn(async () => undefined),
+      cancel,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "/us" } });
+    // A trigger list takes Escape on the document, in the capture phase, before the composer sees it.
+    const takesEscape = (event: KeyboardEvent) => event.preventDefault();
+    document.addEventListener("keydown", takesEscape, { capture: true });
+    fireEvent.keyDown(input, { key: "Escape" });
+    document.removeEventListener("keydown", takesEscape, { capture: true });
+    expect(cancel).not.toHaveBeenCalled();
+    expect(input.value).toBe("/us");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+  });
+
   test("a composer that cannot send yet keeps the text, disables Send, and says why", () => {
     const submitPrompt = vi.fn(async () => undefined);
     render(

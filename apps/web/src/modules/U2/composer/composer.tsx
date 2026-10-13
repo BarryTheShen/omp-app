@@ -373,8 +373,13 @@ export function ComposerSurface({
       // A running turn takes Escape first, in bash and Python mode too: one press stops the turn
       // and the mode stays. With no turn running, Escape or an empty Backspace leaves bash and
       // Python mode for Prompt and keeps the text. A key a trigger list already handled
-      // (defaultPrevented) is not the composer's to act on.
-      if (event.key === "Escape" && !event.nativeEvent.isComposing && canCancel) {
+      // (defaultPrevented) is not the composer's to act on: Escape then only closes the list.
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !event.nativeEvent.isComposing &&
+        canCancel
+      ) {
         event.preventDefault();
         void handleCancel();
         return;
