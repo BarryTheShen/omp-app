@@ -340,19 +340,19 @@ describe("ThreadShell states", () => {
         event: {
           type: "message_update",
           messageId: "m-stream",
-          message: assistant("second"),
+          message: assistant("firstsecond"),
           assistantMessageEvent: {
             type: "text_delta",
             contentIndex: 0,
             delta: "second",
-            partial: assistant("second"),
+            partial: assistant("firstsecond"),
           },
         },
       },
       3,
     );
     expect(document.querySelectorAll('[data-slot="u1-thread-message"]')).toHaveLength(1);
-    expect(await screen.findByText("second")).toBeTruthy();
+    expect(await screen.findByText("firstsecond")).toBeTruthy();
     view.unmount();
   });
 });

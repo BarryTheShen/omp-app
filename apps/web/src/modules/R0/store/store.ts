@@ -385,68 +385,61 @@ function isAssistantMessage(message: OmpMessage): message is OmpWire.AssistantMe
   return message.role === "assistant";
 }
 
+/** The part field and part type that a streamed block's `_start` and `_delta` events build, or undefined for other events. */
+function streamedBlockOf(type: string): { field: string; partType: string } | undefined {
+  switch (type) {
+    case "text_start":
+    case "text_delta":
+      return { field: "text", partType: "text" };
+    case "thinking_start":
+    case "thinking_delta":
+      return { field: "thinking", partType: "thinking" };
+    case "toolcall_start":
+    case "toolcall_delta":
+      return { field: "rawBlock", partType: "toolCall" };
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The assistant message after one streamed update. A block's text (a tool call's raw text) is built from the deltas the
+ * store receives, and a block's start empties it. omp's snapshot can run ahead of its delta, because updates can reach
+ * the store together, each carrying the message as it stood when its batch was sent: taking the snapshot's text would
+ * repeat the deltas it already holds. The snapshot's text is used only where the store has no delta-built text yet.
+ */
 function copyAssistantWithDelta(
   previous: OmpWire.AssistantMessage | undefined,
   candidate: OmpWire.AssistantMessage,
   update: OmpWire.AssistantMessageEvent,
 ): OmpWire.AssistantMessage {
-  const deltaEvent = update as { type: string; contentIndex?: number; delta?: unknown };
-  if (
-    (deltaEvent.type !== "text_delta" &&
-      deltaEvent.type !== "thinking_delta" &&
-      deltaEvent.type !== "toolcall_delta") ||
-    typeof deltaEvent.delta !== "string" ||
-    typeof deltaEvent.contentIndex !== "number"
-  ) {
+  const event = update as { type: string; contentIndex?: unknown; delta?: unknown };
+  const block = streamedBlockOf(event.type);
+  const index = event.contentIndex;
+  if (block === undefined || typeof index !== "number") return cloneValue(candidate);
+  const content = candidate.content.map((part) => cloneValue(part));
+  const candidatePart = content[index];
+  if (!isRecord(candidatePart) || candidatePart.type !== block.partType) {
     return cloneValue(candidate);
   }
-
-  const index = deltaEvent.contentIndex;
-  const delta = deltaEvent.delta;
-  const content = candidate.content.map((part) => cloneValue(part));
-  const previousContent = previous?.content ?? [];
-  const previousPart = previousContent[index];
-  const candidatePart = content[index];
-  if (!candidatePart) return cloneValue(candidate);
-
-  if (deltaEvent.type === "text_delta" || deltaEvent.type === "thinking_delta") {
-    const field = deltaEvent.type === "text_delta" ? "text" : "thinking";
-    if (
-      !isRecord(candidatePart) ||
-      candidatePart.type !== field ||
-      typeof candidatePart[field] !== "string"
-    ) {
-      return cloneValue(candidate);
-    }
-    const candidateText = candidatePart[field] as string;
-    const previousText =
+  const delta = typeof event.delta === "string" ? event.delta : undefined;
+  if (event.type.endsWith("_start")) {
+    candidatePart[block.field] = "";
+  } else if (delta !== undefined) {
+    const previousPart = previous?.content[index];
+    const built =
       isRecord(previousPart) &&
-      previousPart.type === field &&
-      typeof previousPart[field] === "string"
-        ? (previousPart[field] as string)
-        : "";
-    if (candidateText === previousText || candidateText.length < previousText.length) {
-      candidatePart[field] = `${previousText}${delta}`;
-    } else if (
-      !candidateText.endsWith(delta) &&
-      !candidateText.startsWith(`${previousText}${delta}`)
-    ) {
-      candidatePart[field] = `${candidateText}${delta}`;
-    }
-  } else if (isRecord(candidatePart) && candidatePart.type === "toolCall") {
-    const rawBlock = typeof candidatePart.rawBlock === "string" ? candidatePart.rawBlock : "";
-    const previousRaw =
-      isRecord(previousPart) &&
-      previousPart.type === "toolCall" &&
-      typeof previousPart.rawBlock === "string"
-        ? previousPart.rawBlock
-        : "";
-    if (
-      rawBlock === previousRaw ||
-      (!rawBlock.endsWith(delta) && rawBlock.length <= previousRaw.length)
-    ) {
-      candidatePart.rawBlock = `${previousRaw}${delta}`;
-    }
+      previousPart.type === block.partType &&
+      typeof previousPart[block.field] === "string"
+        ? (previousPart[block.field] as string)
+        : undefined;
+    const shown =
+      typeof candidatePart[block.field] === "string" ? (candidatePart[block.field] as string) : "";
+    const base =
+      built ?? (shown.endsWith(delta) ? shown.slice(0, shown.length - delta.length) : shown);
+    candidatePart[block.field] = `${base}${delta}`;
+  } else {
+    return cloneValue(candidate);
   }
   return { ...cloneValue(candidate), content };
 }

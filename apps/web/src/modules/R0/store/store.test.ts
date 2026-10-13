@@ -128,6 +128,42 @@ describe("OmpRuntimeStore", () => {
     }).toThrow();
   });
 
+  test("a streamed text block keeps each delta once when an update's snapshot runs ahead of it", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    // Updates can reach the store together, so a snapshot can hold the text of deltas that come after its own.
+    const ahead = assistant("alpha beta gamma");
+    omp(store, { type: "agent_start" }, 1);
+    omp(store, { type: "message_start", messageId: "m1", message: assistant("") }, 2);
+    omp(
+      store,
+      {
+        type: "message_update",
+        messageId: "m1",
+        message: ahead,
+        assistantMessageEvent: { type: "text_start", contentIndex: 0, partial: ahead },
+      },
+      3,
+    );
+    ["alpha ", "beta ", "gamma"].forEach((delta, index) => {
+      omp(
+        store,
+        {
+          type: "message_update",
+          messageId: "m1",
+          message: ahead,
+          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta, partial: ahead },
+        },
+        4 + index,
+      );
+    });
+    const snapshot = store.getSnapshot();
+    expect(
+      snapshot.messages["stream:thread-r0:0:m1" as keyof typeof snapshot.messages]?.message,
+    ).toMatchObject({
+      content: [{ type: "text", text: "alpha beta gamma" }],
+    });
+  });
+
   test("a streamed message keeps its row key when history returns its entry, so the row is not replaced", () => {
     const store = new OmpRuntimeStore({ threadId });
     omp(store, { type: "agent_start" }, 1);
