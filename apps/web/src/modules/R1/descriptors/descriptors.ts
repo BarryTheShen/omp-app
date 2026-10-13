@@ -1,8 +1,17 @@
-import type { Descriptor } from "@omp-app/contracts";
+import type { Descriptor, ShortcutDescriptor } from "@omp-app/contracts";
+
+/** The scope of the session list's chords, and the focus scope of the list element that carries them. */
+export const R1_SESSION_LIST_SCOPE = "session-list";
+
+type SessionListShortcutDescriptor = ShortcutDescriptor & {
+  readonly focus: typeof R1_SESSION_LIST_SCOPE;
+};
 
 /**
- * R1's first descriptor set covers only F3.open-session and the thirteen D2 session-browser rows.
- * D5/C2 command surfaces, P3/P4 tree rows, U4 dialogs and N1 notices remain owned elsewhere.
+ * R1's descriptor set covers F3.open-session and the D2 session-browser rows that a command, a dialog or a
+ * session-list chord realises. The other D2 rows have no descriptor: New chat and Enter in the list are
+ * native controls, and fork, observe and the path and sort toggles are not offered. `fixtures/native-catalog.ts`
+ * records each of them. D5/C2 command surfaces, P3/P4 tree rows, U4 dialogs and N1 notices remain owned elsewhere.
  */
 export const R1_DESCRIPTORS = [
   {
@@ -54,7 +63,8 @@ export const R1_DESCRIPTORS = [
     covers: ["D2.app-session-delete"],
     requires: ["host.session-files", "host.command-gateway"],
     chord: "Mod+Shift+Backspace",
-    scope: "session-selector",
+    scope: R1_SESSION_LIST_SCOPE,
+    focus: R1_SESSION_LIST_SCOPE,
   },
   {
     kind: "shortcut",
@@ -64,37 +74,8 @@ export const R1_DESCRIPTORS = [
     covers: ["D2.app-session-deletenoninvasive"],
     requires: ["host.session-files", "host.command-gateway"],
     chord: "Mod+Backspace",
-    scope: "session-selector",
-  },
-  {
-    kind: "shortcut",
-    id: "R1.sessionFork",
-    owner: "R1",
-    title: "Fork session",
-    covers: ["D2.app-session-fork"],
-    requires: ["omp.cmd.fork"],
-    chord: "Mod+Shift+F",
-    scope: "session-selector",
-  },
-  {
-    kind: "shortcut",
-    id: "R1.sessionNew",
-    owner: "R1",
-    title: "New session",
-    covers: ["D2.app-session-new"],
-    requires: ["omp.cmd.new_session"],
-    chord: "Mod+N",
-    scope: "session-selector",
-  },
-  {
-    kind: "shortcut",
-    id: "R1.sessionObserve",
-    owner: "R1",
-    title: "Observe session",
-    covers: ["D2.app-session-observe"],
-    requires: ["host.session-files"],
-    chord: "Mod+O",
-    scope: "session-selector",
+    scope: R1_SESSION_LIST_SCOPE,
+    focus: R1_SESSION_LIST_SCOPE,
   },
   {
     kind: "shortcut",
@@ -104,36 +85,7 @@ export const R1_DESCRIPTORS = [
     covers: ["D2.app-session-rename"],
     requires: ["omp.cmd.set_session_name"],
     chord: "F2",
-    scope: "session-selector",
+    scope: R1_SESSION_LIST_SCOPE,
+    focus: R1_SESSION_LIST_SCOPE,
   },
-  {
-    kind: "shortcut",
-    id: "R1.sessionResume",
-    owner: "R1",
-    title: "Resume selected session",
-    covers: ["D2.app-session-resume"],
-    requires: ["omp.cmd.open_session"],
-    chord: "Enter",
-    scope: "session-selector",
-  },
-  {
-    kind: "shortcut",
-    id: "R1.sessionTogglePath",
-    owner: "R1",
-    title: "Toggle session path",
-    covers: ["D2.app-session-togglepath"],
-    requires: [],
-    chord: "Mod+P",
-    scope: "session-selector",
-  },
-  {
-    kind: "shortcut",
-    id: "R1.sessionToggleSort",
-    owner: "R1",
-    title: "Toggle session sort",
-    covers: ["D2.app-session-togglesort"],
-    requires: [],
-    chord: "Mod+S",
-    scope: "session-selector",
-  },
-] as const satisfies readonly Descriptor[];
+] as const satisfies readonly (Descriptor | SessionListShortcutDescriptor)[];

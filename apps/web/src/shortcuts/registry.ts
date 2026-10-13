@@ -208,13 +208,18 @@ export interface CommandAction {
   readonly shortcut?: DescriptorId;
 }
 
+/** One mounted registration of a shortcut action; see `registerAction`. */
+interface ActionEntry {
+  readonly action: ShortcutAction;
+}
+
 /** C0 shortcut descriptors plus app-owned overrides, actions, dispatch, and conflict checks. */
 export class ShortcutRegistry {
   private readonly descriptors: ReadonlyMap<DescriptorId, RegisteredShortcutDescriptor>;
   private readonly store: PreferenceStore;
   private readonly preferenceKey: string;
   private readonly overrides: Map<string, string>;
-  private readonly actions = new Map<DescriptorId, ShortcutAction>();
+  private readonly actions = new Map<DescriptorId, ActionEntry[]>();
   private readonly commands = new Map<DescriptorId, CommandAction>();
   private readonly listeners = new Set<() => void>();
   private errorSnapshot: ShortcutError | undefined;
@@ -302,10 +307,18 @@ export class ShortcutRegistry {
     return conflicts;
   }
 
+  /**
+   * Registers the action for a chord. The newest registration of an id runs; when it is disposed the one
+   * under it runs again, so two mounted views of one chord (the open-session dialog and the sidebar) do not
+   * cancel each other.
+   */
   public registerAction(id: DescriptorId, action: ShortcutAction): () => void {
-    this.actions.set(id, action);
+    const entry: ActionEntry = { action };
+    this.actions.set(id, [...(this.actions.get(id) ?? []), entry]);
     return () => {
-      if (this.actions.get(id) === action) this.actions.delete(id);
+      const rest = (this.actions.get(id) ?? []).filter((item) => item !== entry);
+      if (rest.length === 0) this.actions.delete(id);
+      else this.actions.set(id, rest);
     };
   }
 
@@ -346,7 +359,7 @@ export class ShortcutRegistry {
     const focusScope = this.descriptors.get(binding.id)?.focus;
     if (focusScope !== undefined && !inFocusScope(event.target, focusScope))
       return { handled: false };
-    const action = this.actions.get(binding.id);
+    const action = this.actions.get(binding.id)?.at(-1)?.action;
     if (action === undefined) return { handled: false, binding };
     event.preventDefault();
     this.clearError();

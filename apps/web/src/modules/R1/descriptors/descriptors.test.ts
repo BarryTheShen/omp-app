@@ -1,6 +1,7 @@
-import { validateRegistry } from "@omp-app/contracts";
+import { normalizeChord, validateRegistry } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { R1_DESCRIPTORS } from ".";
+import { ShortcutRegistry } from "@/shortcuts/registry";
+import { R1_DESCRIPTORS, R1_SESSION_LIST_SCOPE } from ".";
 
 const EXPECTED_COVERS = [
   "F3.open-session",
@@ -10,18 +11,12 @@ const EXPECTED_COVERS = [
   "D2.session-selector",
   "D2.app-session-delete",
   "D2.app-session-deletenoninvasive",
-  "D2.app-session-fork",
-  "D2.app-session-new",
-  "D2.app-session-observe",
   "D2.app-session-rename",
-  "D2.app-session-resume",
-  "D2.app-session-togglepath",
-  "D2.app-session-togglesort",
 ] as const;
 
 describe("R1 descriptor coverage", () => {
-  test("covers exactly F3.open-session and the thirteen D2 rows", () => {
-    expect(R1_DESCRIPTORS).toHaveLength(14);
+  test("declares the command, dialog and session-list rows; the rest are native or not offered", () => {
+    expect(R1_DESCRIPTORS).toHaveLength(8);
     const covers = R1_DESCRIPTORS.flatMap((descriptor) => descriptor.covers).sort();
     expect(covers).toEqual([...EXPECTED_COVERS].sort());
     expect(new Set(covers).size).toBe(covers.length);
@@ -40,5 +35,31 @@ describe("R1 descriptor coverage", () => {
     ]);
     expect(byId.get("R1.sessionPinAccountSelector")?.requires).toEqual(["host.session-pins"]);
     expect(byId.get("R1.sessionRename")?.requires).toEqual(["omp.cmd.set_session_name"]);
+  });
+
+  test("declares only the three session-list chords, each on the list's own scope and focus", () => {
+    const chords = R1_DESCRIPTORS.flatMap((descriptor) =>
+      descriptor.kind === "shortcut" ? [descriptor] : [],
+    );
+    expect(chords.map((descriptor) => [descriptor.id, descriptor.chord])).toEqual([
+      ["R1.sessionDelete", "Mod+Shift+Backspace"],
+      ["R1.sessionDeleteNoninvasive", "Mod+Backspace"],
+      ["R1.sessionRename", "F2"],
+    ]);
+    for (const descriptor of chords) {
+      expect(descriptor.scope).toBe(R1_SESSION_LIST_SCOPE);
+      expect(descriptor).toHaveProperty("focus", R1_SESSION_LIST_SCOPE);
+    }
+  });
+
+  test("none of the chords is browser-reserved, and no chord collides with another in its scope", () => {
+    const registry = new ShortcutRegistry(R1_DESCRIPTORS);
+    expect(registry.problems()).toEqual([]);
+    expect(registry.conflicts()).toEqual([]);
+    for (const descriptor of R1_DESCRIPTORS) {
+      if (descriptor.kind !== "shortcut") continue;
+      expect(registry.isBrowserReserved(descriptor.chord, descriptor.scope)).toBe(false);
+      expect(normalizeChord(descriptor.chord)).not.toBe("");
+    }
   });
 });

@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { useCapabilityStatus } from "@/registry-core";
 import type { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
+import { R1_SESSION_LIST_SCOPE } from "../descriptors/descriptors";
 import { pickedModelFor } from "../history/picked-model";
+import { useSessionListShortcuts } from "./session-list-shortcuts";
 
 /** Where a New chat click stands: opening (omp is starting the chat), idle (nothing to say), or failed, with the reason. */
 export type NewChatStatus =
@@ -451,6 +453,68 @@ export function SessionCatalogSidebar({
     }
   };
 
+  /** Deletes a chat. `confirm` asks first (the More actions item and Mod+Shift+Backspace); Mod+Backspace deletes at once. */
+  const deleteSession = async (session: SessionMetadata, confirm: boolean): Promise<void> => {
+    if (!canDelete) return;
+    if (confirm && !(await confirmDelete?.(session, sessionTitle(session)))) return;
+    catalog.setActionError(undefined);
+    // Focus moves to the neighbouring row once the chat is gone: the next row, else the one above.
+    const index = rowIds.indexOf(session.id);
+    const neighbour = index < 0 ? undefined : (rowIds[index + 1] ?? rowIds[index - 1]);
+    try {
+      // A chat whose turn streams in this view is refused here, with no round trip: the live store
+      // knows it, and a turn that was just sent may not be busy on the server yet.
+      if (session.id === currentThreadId && currentTurnRunning?.() === true) {
+        catalog.setActionError(TURN_RUNNING_REFUSAL);
+        catalog.requestFocus({ kind: "row", id: session.id });
+        return;
+      }
+      // The server decides first. It refuses a chat whose turn runs (a background job keeps it
+      // busy) or that another tab or window holds, and the refusal shows here while the chat stays
+      // on screen. The view leaves an open chat only once the server has deleted it.
+      const selectionBefore = catalog.getSnapshot().selectionRevision;
+      await remote.delete(session.id);
+      // A chat the person picks while the server answers, or is still opening, is the one they want:
+      // a new chat must not take its place, because it would be the later pick.
+      const after = catalog.getSnapshot();
+      const picked = after.selectionRevision !== selectionBefore || after.selectedThreadId !== null;
+      if (session.id === currentThreadId && !picked) await createNewChat();
+      catalog.requestFocus(neighbour ? { kind: "row", id: neighbour } : { kind: "newChat" });
+    } catch (error) {
+      catalog.setActionError(
+        error instanceof Error ? error.message : "The chat could not be deleted.",
+      );
+      // The chat stays, so focus stays on its row rather than falling to the page body.
+      catalog.requestFocus({ kind: "row", id: session.id });
+    }
+  };
+
+  /**
+   * The chat the keyboard is on: the row that has focus (or its More actions button), else the tab stop row.
+   * A running row (a chat with no session file yet) has no actions, so the keys do nothing on it.
+   */
+  const keyboardSession = (): SessionMetadata | undefined => {
+    const active = document.activeElement;
+    const id =
+      rowIds.find((rowId) => rowElements.current.get(rowId)?.contains(active) === true) ??
+      rowIds[activeIndex];
+    return sessions.find((session) => session.id === id);
+  };
+  useSessionListShortcuts({
+    rename: () => {
+      const session = keyboardSession();
+      if (session && canRename) beginRename(session);
+    },
+    deleteAfterConfirmation: () => {
+      const session = keyboardSession();
+      return session ? deleteSession(session, true) : Promise.resolve();
+    },
+    deleteWithoutConfirmation: () => {
+      const session = keyboardSession();
+      return session ? deleteSession(session, false) : Promise.resolve();
+    },
+  });
+
   return (
     <aside
       aria-label="Sessions"
@@ -525,6 +589,7 @@ export function SessionCatalogSidebar({
           ref={attachList}
           aria-label="Session list"
           className="min-h-0 flex-1 overflow-y-auto p-2"
+          data-focus-scope={R1_SESSION_LIST_SCOPE}
           role="listbox"
           onKeyDown={onListKeyDown}
           onScroll={(event) => scrollPositions.set(catalog, event.currentTarget.scrollTop)}
@@ -770,50 +835,10 @@ export function SessionCatalogSidebar({
                           }
                           type="button"
                           variant="ghost"
-                          onClick={async (event) => {
+                          onClick={(event) => {
                             event.stopPropagation();
                             setMenuSessionId(undefined);
-                            if (!canDelete || !(await confirmDelete?.(session, title))) return;
-                            catalog.setActionError(undefined);
-                            // Focus moves to the neighbouring row once the chat is gone: the next row, else the one above.
-                            const index = rowIds.indexOf(session.id);
-                            const neighbour =
-                              index < 0 ? undefined : (rowIds[index + 1] ?? rowIds[index - 1]);
-                            try {
-                              // A chat whose turn streams in this view is refused here, with no round trip: the live store
-                              // knows it, and a turn that was just sent may not be busy on the server yet.
-                              if (
-                                session.id === currentThreadId &&
-                                currentTurnRunning?.() === true
-                              ) {
-                                catalog.setActionError(TURN_RUNNING_REFUSAL);
-                                catalog.requestFocus({ kind: "row", id: session.id });
-                                return;
-                              }
-                              // The server decides first. It refuses a chat whose turn runs (a background job keeps it
-                              // busy) or that another tab or window holds, and the refusal shows here while the chat stays
-                              // on screen. The view leaves an open chat only once the server has deleted it.
-                              const selectionBefore = catalog.getSnapshot().selectionRevision;
-                              await remote.delete(session.id);
-                              // A chat the person picks while the server answers, or is still opening, is the one they want:
-                              // a new chat must not take its place, because it would be the later pick.
-                              const after = catalog.getSnapshot();
-                              const picked =
-                                after.selectionRevision !== selectionBefore ||
-                                after.selectedThreadId !== null;
-                              if (session.id === currentThreadId && !picked) await createNewChat();
-                              catalog.requestFocus(
-                                neighbour ? { kind: "row", id: neighbour } : { kind: "newChat" },
-                              );
-                            } catch (error) {
-                              catalog.setActionError(
-                                error instanceof Error
-                                  ? error.message
-                                  : "The chat could not be deleted.",
-                              );
-                              // The chat stays, so focus stays on its row rather than falling to the page body.
-                              catalog.requestFocus({ kind: "row", id: session.id });
-                            }
+                            void deleteSession(session, true);
                           }}
                         >
                           Delete

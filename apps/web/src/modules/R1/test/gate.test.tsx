@@ -18,6 +18,7 @@ import { AppFailure, parseFixture, ThreadId as ThreadIdSchema } from "@omp-app/c
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { ShortcutRegistryProvider } from "@/shortcuts";
 import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures";
 import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
 import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
@@ -25,6 +26,7 @@ import type { DialogHost } from "../../U4/contract/dialog-host";
 import { SessionActionsController } from "../actions";
 import { SessionCatalogModel } from "../catalog";
 import type { SessionScope } from "../contract";
+import { R1_DESCRIPTORS } from "../descriptors";
 import {
   R1_FIXTURE_FOLDER,
   R1_FIXTURE_REPOSITORY,
@@ -502,16 +504,18 @@ describe("R1 W3 sidebar to history handoff", () => {
     });
 
     const element: ReactElement = (
-      <SessionCatalogSidebar
-        catalog={catalog}
-        remote={remote}
-        onOpenThread={async (threadId) => {
-          await controller.openExisting(threadId);
-        }}
-        onNewChat={async () => {
-          await controller.openNew();
-        }}
-      />
+      <ShortcutRegistryProvider descriptors={R1_DESCRIPTORS}>
+        <SessionCatalogSidebar
+          catalog={catalog}
+          remote={remote}
+          onOpenThread={async (threadId) => {
+            await controller.openExisting(threadId);
+          }}
+          onNewChat={async () => {
+            await controller.openNew();
+          }}
+        />
+      </ShortcutRegistryProvider>
     );
     render(element);
     await waitFor(() => expect(screen.getByText("Catalog stream")).toBeTruthy());

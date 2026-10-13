@@ -26,8 +26,16 @@ export interface ShortcutSheetProps {
   readonly onOpenChange: (open: boolean) => void;
 }
 
+/** Plain names for the scopes whose ids are not words a person knows. */
+const SCOPE_NAMES: Partial<Record<string, string>> = {
+  "session-list": "Session list",
+};
+
 function formatScope(scope: string): string {
-  return scope.replace(/^panel:/, "Panel: ").replace(/^./, (char) => char.toUpperCase());
+  return (
+    SCOPE_NAMES[scope] ??
+    scope.replace(/^panel:/, "Panel: ").replace(/^./, (char) => char.toUpperCase())
+  );
 }
 
 /** Searchable grouped shortcut sheet with conflict-safe rebinding and reset. */

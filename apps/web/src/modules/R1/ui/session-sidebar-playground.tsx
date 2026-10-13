@@ -16,7 +16,9 @@ import { Panel } from "@/components/blocks";
 import { LayoutArea, type SurfaceMap } from "@/layout";
 import { createRegistry, RegistryProvider } from "@/registry-core";
 import { AppShell } from "@/shell";
+import { ShortcutRegistryProvider } from "@/shortcuts";
 import { SessionCatalogModel } from "../catalog";
+import { R1_DESCRIPTORS } from "../descriptors";
 import { SessionCatalogSidebar } from "./ui";
 
 const ROOT = "/workspace/project" as SessionFile["cwd"];
@@ -229,28 +231,30 @@ function SessionSidebarPlayground() {
 
   return (
     <RegistryProvider capabilities={capabilities} registry={createRegistry([])} renderers={{}}>
-      <AppShell
-        leftSidebar={<LayoutArea area="sidebar" surfaces={sidebarSurfaces} />}
-        rightSidebar={
-          notes.length > 0 ? (
-            <LayoutArea area="panels" surfaces={panelSurfaces} />
-          ) : (
-            <div className="p-4 text-sm">Panels are empty in this fixture.</div>
-          )
-        }
-        threadHeader={<h1 className="truncate text-sm font-semibold">R1 session catalog</h1>}
-        transcript={
-          <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-            Choose a session from the catalog.
-          </div>
-        }
-        composer={<div className="p-3 text-sm text-muted-foreground">Composer fixture</div>}
-        statusBar={
-          <div className="px-3 py-2 text-xs text-muted-foreground" data-testid="last-action">
-            {lastAction}
-          </div>
-        }
-      />
+      <ShortcutRegistryProvider descriptors={R1_DESCRIPTORS}>
+        <AppShell
+          leftSidebar={<LayoutArea area="sidebar" surfaces={sidebarSurfaces} />}
+          rightSidebar={
+            notes.length > 0 ? (
+              <LayoutArea area="panels" surfaces={panelSurfaces} />
+            ) : (
+              <div className="p-4 text-sm">Panels are empty in this fixture.</div>
+            )
+          }
+          threadHeader={<h1 className="truncate text-sm font-semibold">R1 session catalog</h1>}
+          transcript={
+            <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+              Choose a session from the catalog.
+            </div>
+          }
+          composer={<div className="p-3 text-sm text-muted-foreground">Composer fixture</div>}
+          statusBar={
+            <div className="px-3 py-2 text-xs text-muted-foreground" data-testid="last-action">
+              {lastAction}
+            </div>
+          }
+        />
+      </ShortcutRegistryProvider>
     </RegistryProvider>
   );
 }

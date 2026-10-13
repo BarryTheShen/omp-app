@@ -17,7 +17,13 @@ describe("D1 CC4/CC10/CC12 descriptor gate", () => {
 
     expect(sorted(D1_INVENTORY_ROWS)).toEqual(sorted(liveD1Rows));
     expect(sorted(D1_SETTINGS_INVENTORY_ROWS)).toEqual(sorted(liveD1SettingsRows));
-    expect(sorted(descriptorRows)).toEqual(sorted(ownedInventoryRows));
+    // A row is declared by a descriptor or recorded as not offered (its fixture scenario), never both.
+    const notOffered: string[] = D1_FIXTURE_COVERAGE.filter(
+      (coverage) => coverage.scenario === "not-offered",
+    ).map((coverage) => coverage.inventoryId);
+    expect(notOffered).toEqual(["D1.app-model-cyclebackward"]);
+    expect(sorted([...descriptorRows, ...notOffered])).toEqual(sorted(ownedInventoryRows));
+    expect(descriptorRows.some((row) => notOffered.includes(row))).toBe(false);
     expect(new Set(descriptorRows).size).toBe(descriptorRows.length);
     expect(D1_DESCRIPTORS.every((descriptor) => descriptor.owner === "D1")).toBe(true);
     expect(D1_DESCRIPTORS.every((descriptor) => descriptor.id.startsWith("D1."))).toBe(true);

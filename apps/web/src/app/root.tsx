@@ -208,6 +208,7 @@ import {
 import { saveTextFile } from "./save-file";
 import { openSavedChatModelPicker } from "./saved-chat-model-picker";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
+import { useSessionModelShortcuts } from "./session-model-shortcuts";
 import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
 import { useShareFromChat } from "./share/use-share-from-chat";
@@ -947,6 +948,23 @@ function ActiveThreadReady({
   useRetryShortcut({ threadId, status: p3Runs.status, retry: p3Handlers.retry });
   useAgentHubShortcut(openAgentHub);
   useComposerClipboardShortcuts({ notify: setCommandStatus, fail: setCommandError });
+  useSessionModelShortcuts({
+    client,
+    store,
+    threadId,
+    capabilities,
+    openDialog: (restoreFocus) =>
+      openSessionModelDialog({
+        overlay,
+        client,
+        store,
+        threadId,
+        capabilities,
+        folder,
+        restoreFocus,
+      }),
+    fail: setCommandError,
+  });
   // Stop hands back what omp withdrew. The chat on screen takes it through its draft; any other chat keeps it in its
   // saved draft by its thread id, so it waits there whether or not that chat is still on screen.
   const restoreStoppedRef = useRef<

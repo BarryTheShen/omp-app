@@ -39,7 +39,7 @@ export const R1_INVENTORY_ROWS = [
 
 export type R1InventoryId = (typeof R1_INVENTORY_ROWS)[number];
 
-/** Every inventory row points at a concrete fixture or the descriptor-only keyboard proof. */
+/** Every inventory row points at a concrete fixture, a chord proof, or is recorded as not offered. */
 export const R1_FIXTURE_COVERAGE = [
   { inventoryId: "F3.open-session", scenario: "native-catalog-w3", proof: "open-handoff" },
   { inventoryId: "D2.resume", scenario: "native-catalog-w3", proof: "sidebar-resume" },
@@ -66,8 +66,8 @@ export const R1_FIXTURE_COVERAGE = [
   },
   {
     inventoryId: "D2.app-session-fork",
-    scenario: "descriptor-audit",
-    proof: "shortcut-descriptor",
+    scenario: "not-offered",
+    proof: "the session list has no fork action",
   },
   {
     inventoryId: "D2.app-session-new",
@@ -76,8 +76,8 @@ export const R1_FIXTURE_COVERAGE = [
   },
   {
     inventoryId: "D2.app-session-observe",
-    scenario: "descriptor-audit",
-    proof: "shortcut-descriptor",
+    scenario: "not-offered",
+    proof: "the app has no observe view",
   },
   {
     inventoryId: "D2.app-session-rename",
@@ -91,17 +91,17 @@ export const R1_FIXTURE_COVERAGE = [
   },
   {
     inventoryId: "D2.app-session-togglepath",
-    scenario: "descriptor-audit",
-    proof: "shortcut-descriptor",
+    scenario: "not-offered",
+    proof: "the session list shows no path to toggle",
   },
   {
     inventoryId: "D2.app-session-togglesort",
-    scenario: "descriptor-audit",
-    proof: "shortcut-descriptor",
+    scenario: "not-offered",
+    proof: "the session list has no sort order to toggle",
   },
 ] as const satisfies ReadonlyArray<{
   readonly inventoryId: R1InventoryId;
-  readonly scenario: "native-catalog-w3" | "descriptor-audit";
+  readonly scenario: "native-catalog-w3" | "descriptor-audit" | "not-offered";
   readonly proof: string;
 }>;
 

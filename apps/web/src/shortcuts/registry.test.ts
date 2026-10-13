@@ -324,4 +324,27 @@ describe("ShortcutRegistry commands and capability-gated shortcuts", () => {
     cleanup();
     composer.remove();
   });
+
+  test("a view that unmounts hands its chord back to the view mounted under it", () => {
+    const registry = new ShortcutRegistry([globalShortcut], {
+      preferenceStore: new MemoryPreferenceStore(),
+    });
+    const underneath = vi.fn();
+    const above = vi.fn();
+    const restoreUnderneath = registry.registerAction("U0.globalSearch", underneath);
+    expect(registry.dispatch(keyEvent("p", { ctrlKey: true }), "global").handled).toBe(true);
+    expect(underneath).toHaveBeenCalledTimes(1);
+
+    const removeAbove = registry.registerAction("U0.globalSearch", above);
+    expect(registry.dispatch(keyEvent("p", { ctrlKey: true }), "global").handled).toBe(true);
+    expect(above).toHaveBeenCalledTimes(1);
+    expect(underneath).toHaveBeenCalledTimes(1);
+
+    removeAbove();
+    expect(registry.dispatch(keyEvent("p", { ctrlKey: true }), "global").handled).toBe(true);
+    expect(underneath).toHaveBeenCalledTimes(2);
+
+    restoreUnderneath();
+    expect(registry.dispatch(keyEvent("p", { ctrlKey: true }), "global").handled).toBe(false);
+  });
 });

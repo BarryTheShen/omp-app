@@ -5,12 +5,23 @@ import type { ComponentProps } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { createRegistry } from "@/registry-core";
 import { withRegistry } from "@/registry-core/test-support";
+import { ShortcutRegistryProvider } from "@/shortcuts";
 import { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
+import { R1_DESCRIPTORS } from "../descriptors";
 import { createNativeRemoteThreadListAdapter } from "../remote";
-import { SessionCatalogSidebar } from ".";
+import { SessionCatalogSidebar as Sidebar } from ".";
 
 afterEach(cleanup);
+
+/** The sidebar as the app mounts it: inside the shortcut registry its chords are registered in. */
+function SessionCatalogSidebar(props: ComponentProps<typeof Sidebar>) {
+  return (
+    <ShortcutRegistryProvider descriptors={R1_DESCRIPTORS}>
+      <Sidebar {...props} />
+    </ShortcutRegistryProvider>
+  );
+}
 
 const folder = "/workspace/project" as SessionMetadata["cwd"];
 const scope = { kind: "folder" as const, folder };
@@ -1537,6 +1548,83 @@ describe("SessionCatalogSidebar rename box", () => {
       expect(screen.queryByRole("textbox", { name: "Rename Parser notes" })).toBeNull(),
     );
     expect(calls).toEqual([]);
+  });
+});
+
+describe("SessionCatalogSidebar chords", () => {
+  test("F2 opens the rename box of the chat whose row has focus", async () => {
+    renderSidebar({ renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    const row = screen.getByRole("option", { name: /Newest chat/ });
+    row.focus();
+    fireEvent.keyDown(row, { key: "F2" });
+    expect(await screen.findByRole("textbox", { name: "Rename Newest chat" })).toBeTruthy();
+  });
+
+  test("a chord acts on the chat that has focus, wherever its row sits in the list", async () => {
+    renderSidebar({ renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Old chat")).toBeTruthy());
+    const row = screen.getByRole("option", { name: /Old chat/ });
+    row.focus();
+    fireEvent.keyDown(row, { key: "F2" });
+    expect(await screen.findByRole("textbox", { name: "Rename Old chat" })).toBeTruthy();
+  });
+
+  test("F2 does nothing while focus is outside the list", async () => {
+    renderSidebar({ renameAvailable: true });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.keyDown(screen.getByRole("button", { name: "New chat" }), { key: "F2" });
+    expect(screen.queryByRole("textbox", { name: "Rename Newest chat" })).toBeNull();
+  });
+
+  test("Mod+Shift+Backspace asks first, and a chat stays when the question is answered no", async () => {
+    const calls: string[] = [];
+    const asked: string[] = [];
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={(_session, title) => {
+            asked.push(title);
+            return false;
+          }}
+          remote={fakeRemote(calls)}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    const row = screen.getByRole("option", { name: /Newest chat/ });
+    row.focus();
+    fireEvent.keyDown(row, { key: "Backspace", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(asked).toEqual(["Newest chat"]));
+    expect(calls).toEqual([]);
+  });
+
+  test("Mod+Backspace deletes the chat that has focus without asking", async () => {
+    const calls: string[] = [];
+    const asked: string[] = [];
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={modelWithSessions()}
+          confirmDelete={(_session, title) => {
+            asked.push(title);
+            return true;
+          }}
+          remote={fakeRemote(calls)}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    const row = screen.getByRole("option", { name: /Newest chat/ });
+    row.focus();
+    fireEvent.keyDown(row, { key: "Backspace", ctrlKey: true });
+    await waitFor(() => expect(calls).toEqual(["delete:new"]));
+    expect(asked).toEqual([]);
   });
 });
 

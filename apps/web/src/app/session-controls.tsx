@@ -51,7 +51,7 @@ function useSessionInfo(store: OmpRuntimeStore): SessionInfoState {
 }
 
 /** D1 reads the live model and thinking level from R0's copy of `get_state`. */
-function liveThinking(store: OmpRuntimeStore): LiveThinkingState {
+export function liveThinking(store: OmpRuntimeStore): LiveThinkingState {
   const read = () => {
     const session = store.getSnapshot().session;
     const level = ThinkingLevel.safeParse(session.thinkingLevel);
@@ -62,6 +62,30 @@ function liveThinking(store: OmpRuntimeStore): LiveThinkingState {
     };
   };
   return { getSnapshot: read, subscribe: (listener) => store.subscribe(() => listener(read())) };
+}
+
+/**
+ * Reads omp's state again after a model or thinking change, so the header shows what omp uses. The answer
+ * describes omp as of this request: a run that starts after it is newer than the answer.
+ */
+export function refreshSessionState(
+  client: AppClient,
+  store: OmpRuntimeStore,
+  threadId: ThreadId,
+): void {
+  const rpc = client.port(RpcSessionPort) as RpcSessionClient;
+  const asOfSeq = store.getSnapshot().lastSeq;
+  void rpc
+    .send({ threadId, command: { type: "get_state" } })
+    .then((state) => store.applySessionState(state, { asOfSeq }))
+    .catch((error: unknown) => {
+      reportClientError({
+        kind: "error",
+        message: `The session state could not be read after a change: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      });
+    });
 }
 
 /** What opening the session's model dialog needs: the host to open it in, and the session it changes. */
@@ -105,31 +129,13 @@ export function openSessionModelDialog({
     capabilities,
     live: liveThinking(store),
   });
-  const rpc = client.port(RpcSessionPort) as RpcSessionClient;
-  /**
-   * The header reads R0's copy of omp's state, which is read again at a turn's end. After the person
-   * changes the model or the thinking level, read it now so the header shows what omp uses.
-   */
-  const refreshSession = () => {
-    // The answer describes omp as of this request: a run that starts after it is newer than the answer.
-    const asOfSeq = store.getSnapshot().lastSeq;
-    void rpc
-      .send({ threadId, command: { type: "get_state" } })
-      .then((state) => store.applySessionState(state, { asOfSeq }))
-      .catch((error: unknown) => {
-        reportClientError({
-          kind: "error",
-          message: `The session state could not be read after a change: ${
-            error instanceof Error ? error.message : "unknown error"
-          }`,
-        });
-      });
-  };
+  // The header reads R0's copy of omp's state, which is read again at a turn's end. After the person
+  // changes the model or the thinking level, the dialog reads it now so the header shows what omp uses.
   const hub = new ModelHubController({
     catalog,
     recents,
     capabilities: () => capabilities,
-    onSessionChanged: refreshSession,
+    onSessionChanged: () => refreshSessionState(client, store, threadId),
     // The thinking controller loads the levels of the session's current model first, so the new model's levels are accepted.
     setSessionThinking: async (level) => {
       await thinking.refresh();
@@ -148,7 +154,10 @@ export function openSessionModelDialog({
     content: ({ close }) => (
       <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
         <ModelHubPanel controller={hub} />
-        <ThinkingSelector controller={thinking} onApplied={refreshSession} />
+        <ThinkingSelector
+          controller={thinking}
+          onApplied={() => refreshSessionState(client, store, threadId)}
+        />
         <Button className="self-end" onClick={() => close()} type="button" variant="outline">
           Done
         </Button>

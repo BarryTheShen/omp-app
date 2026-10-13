@@ -41,7 +41,8 @@ export type D1FixtureScenario =
   | "scope-default"
   | "thinking-rpc"
   | "settings-provenance"
-  | "shortcut-descriptor";
+  | "shortcut-descriptor"
+  | "not-offered";
 
 /** Each owned inventory row has one named fixture or descriptor-gate proof. */
 export const D1_FIXTURE_COVERAGE = [
@@ -66,8 +67,8 @@ export const D1_FIXTURE_COVERAGE = [
   },
   {
     inventoryId: "D1.app-model-cyclebackward",
-    scenario: "shortcut-descriptor",
-    proof: "shortcut-registry",
+    scenario: "not-offered",
+    proof: "omp's cycle_model RPC takes no backward direction",
   },
   {
     inventoryId: "D1.app-model-cycleforward",
