@@ -55,11 +55,15 @@ const IME_KEYS: Readonly<Record<string, true>> = {
   ArrowDown: true,
 };
 
-/** The option the composer's textarea points at, when a list is open with one highlighted. */
-function highlightedOption(textarea: HTMLTextAreaElement): HTMLElement | null {
+/**
+ * The option the composer's textarea points at, when a list is open with one highlighted. Only an option inside this
+ * scope's own wrapper counts: a list in a nested composer slot is that slot's to choose, and an outer slot passes it on.
+ */
+function highlightedOption(textarea: HTMLTextAreaElement, scope: HTMLElement): HTMLElement | null {
   const activeId = textarea.getAttribute("aria-activedescendant");
   const item = activeId ? document.getElementById(activeId) : null;
-  return item instanceof HTMLElement ? item : null;
+  if (!(item instanceof HTMLElement)) return null;
+  return item.closest("[data-trigger-scope]") === scope ? item : null;
 }
 
 /** Presses Enter in the composer again, as the person did: the composer sends the text. */
@@ -93,18 +97,31 @@ function settleKeptEnter(
  * scope, so the key handling is written once. On Enter or Tab it chooses the option the composer's textarea
  * points at (`aria-activedescendant`), so the textarea must share a trigger root with the list. An Enter
  * pressed while a list in the scope is still loading is kept until the list answers (see `settleKeptEnter`);
- * Escape cancels it. Shift+Enter and Shift+Tab are left to the composer.
+ * Escape cancels it. Shift+Enter and Shift+Tab are left to the composer. A highlighted row that `isCurrentRow`
+ * rejects is not chosen either.
  */
 export function TriggerKeyScope({
   className,
   children,
+  isCurrentRow,
 }: {
   readonly className?: string;
   readonly children: ReactNode;
+  /**
+   * Whether a highlighted row answers the text at the caret now. A row still on screen from earlier text is not
+   * chosen, since choosing it would replace what was typed after it. An Enter on it is kept until the list answers,
+   * as an Enter pressed while the list loads is; a Tab is left to the page.
+   */
+  readonly isCurrentRow?: (textarea: HTMLTextAreaElement, row: HTMLElement) => boolean;
 }) {
   const element = useRef<HTMLDivElement>(null);
   const pending = useRef(0);
   const kept = useRef<KeptEnter | null>(null);
+  // The newest row check, read by the key handler, which is created once for the scope.
+  const rowIsCurrent = useRef(isCurrentRow);
+  useLayoutEffect(() => {
+    rowIsCurrent.current = isCurrentRow;
+  });
   const value = useMemo<TriggerKeyScopeValue>(
     () => ({
       loading: (delta, answer) => {
@@ -139,7 +156,16 @@ export function TriggerKeyScope({
     if (event.key !== "Enter" && event.key !== "Tab") return;
     if (event.shiftKey) return;
     if (!(event.target instanceof HTMLTextAreaElement)) return;
-    const option = highlightedOption(event.target);
+    const option = highlightedOption(event.target, event.currentTarget);
+    const isCurrent = rowIsCurrent.current;
+    if (option && isCurrent && !isCurrent(event.target, option)) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        kept.current = { scope: event.currentTarget, textarea: event.target };
+      }
+      return;
+    }
     if (option) {
       event.preventDefault();
       event.stopPropagation();
@@ -155,7 +181,12 @@ export function TriggerKeyScope({
   }, []);
   return (
     <TriggerKeyScopeContext.Provider value={value}>
-      <div ref={element} className={className} onKeyDownCapture={onKeyDownCapture}>
+      <div
+        ref={element}
+        className={className}
+        data-trigger-scope=""
+        onKeyDownCapture={onKeyDownCapture}
+      >
         {children}
       </div>
     </TriggerKeyScopeContext.Provider>

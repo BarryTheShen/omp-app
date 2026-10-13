@@ -1,5 +1,6 @@
 import {
   AssistantRuntimeProvider,
+  ComposerPrimitive,
   type ThreadMessage,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
@@ -9,9 +10,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ComposerSurface } from "../../U2/composer/composer";
+import { LocalComposerSlot } from "../local/trigger-slot";
+import { MentionComposerSlot } from "../mentions/trigger-slot";
 import { createSlashCommandProvider, type SlashCommandProvider } from "./provider";
 import { fakeSlashClient } from "./test-support";
-import { SlashTriggerSlot } from "./trigger-slot";
+import { SlashComposerSlot, SlashTriggerSlot } from "./trigger-slot";
 
 function RuntimeHarness({
   children,
@@ -296,6 +299,92 @@ describe("D2.3 SlashTriggerSlot", () => {
     expect(submitPrompt).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    base.dispose();
+  });
+
+  test("a row fetched for earlier text is not chosen: Enter waits for the list's answer, then sends the whole command", async () => {
+    // The arguments' answer is held, so the list still shows the row it fetched for `/us` when the command is typed on.
+    const releaseArguments = Promise.withResolvers<void>();
+    const base = providerWith(available);
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: (query) =>
+        query.includes(" ")
+          ? releaseArguments.promise.then(() => base.searchTyped(query))
+          : base.searchTyped(query),
+    };
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/us" } });
+    input.setSelectionRange(3, 3);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+
+    fireEvent.change(input, { target: { value: "/usage fix the typo" } });
+    input.setSelectionRange(19, 19);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("/usage fix the typo");
+    expect(submitPrompt).not.toHaveBeenCalled();
+
+    releaseArguments.resolve();
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "/usage fix the typo" }),
+    );
+    base.dispose();
+  });
+
+  test("the app's stack of composer slots: an outer slot does not choose the slash list's stale row either", async () => {
+    const releaseArguments = Promise.withResolvers<void>();
+    const base = providerWith(available);
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: (query) =>
+        query.includes(" ")
+          ? releaseArguments.promise.then(() => base.searchTyped(query))
+          : base.searchTyped(query),
+    };
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+          <LocalComposerSlot providers={[]} onSelect={() => undefined}>
+            <MentionComposerSlot
+              providers={[]}
+              onSelect={() => undefined}
+              notify={() => undefined}
+              fail={() => undefined}
+            >
+              <SlashComposerSlot providers={[provider]} onSelect={() => undefined}>
+                <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+              </SlashComposerSlot>
+            </MentionComposerSlot>
+          </LocalComposerSlot>
+        </ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/us" } });
+    input.setSelectionRange(3, 3);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+
+    fireEvent.change(input, { target: { value: "/usage fix the typo" } });
+    input.setSelectionRange(19, 19);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("/usage fix the typo");
+    expect(submitPrompt).not.toHaveBeenCalled();
+
+    releaseArguments.resolve();
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "/usage fix the typo" }),
+    );
     base.dispose();
   });
 });

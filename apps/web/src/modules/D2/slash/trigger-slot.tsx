@@ -27,6 +27,9 @@ interface TriggerItemsResult {
   readonly candidates: ReadonlyMap<string, TriggerCandidate>;
 }
 
+/** The text each list answer was fetched for, keyed by the answer's items: a row on screen answers that text. */
+type AnswerQueries = WeakMap<readonly Unstable_TriggerItem[], string>;
+
 function resultItems(result: TriggerSearchResult): TriggerItemsResult {
   const candidates = new Map<string, TriggerCandidate>();
   const items: Unstable_TriggerItem[] = result.candidates.map((candidate) => {
@@ -66,7 +69,11 @@ function directiveFormatter(): Unstable_DirectiveFormatter {
   };
 }
 
-function renderItems(items: readonly Unstable_TriggerItem[], status: string | null): ReactNode {
+function renderItems(
+  items: readonly Unstable_TriggerItem[],
+  status: string | null,
+  answersQuery: string | undefined,
+): ReactNode {
   return (
     <div className="border-border bg-popover text-popover-foreground shadow-overlay max-h-72 min-w-64 max-w-[min(28rem,90vw)] overflow-y-auto rounded-lg border p-1">
       {items.length === 0 ? (
@@ -83,6 +90,7 @@ function renderItems(items: readonly Unstable_TriggerItem[], status: string | nu
               key={item.id}
               item={item}
               index={index}
+              data-answers={answersQuery}
               className="data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex w-full flex-col items-start rounded-md px-3 py-2 text-start text-sm outline-none"
             >
               <span className="flex w-full min-w-0 items-center justify-between gap-2">
@@ -133,9 +141,11 @@ function isSlashProvider(provider: ComposerTriggerProvider): provider is SlashCo
 function SlashPopover({
   provider,
   onSelect,
+  answers,
 }: {
   readonly provider: SlashCommandProvider | undefined;
   readonly onSelect: (candidate: ComposerTriggerCandidate) => void;
+  readonly answers: AnswerQueries;
 }) {
   const candidateMap = useRef<ReadonlyMap<string, TriggerCandidate>>(new Map());
   const status = useRef<string | null>(null);
@@ -149,13 +159,14 @@ function SlashPopover({
       if (!provider) return [];
       const result = await provider.searchTyped(query);
       const next = resultItems(result);
+      answers.set(next.items, query);
       candidateMap.current = next.candidates;
       status.current = statusLine(result);
       quiet.current = /\s/u.test(query) && next.items.length === 0 && status.current === null;
       typedIsFirst.current = next.items[0]?.label === query;
       return next.items;
     },
-    [provider],
+    [provider, answers],
   );
   const completion = unstable_useLiveCompletionAdapter({
     fetcher,
@@ -203,7 +214,7 @@ function SlashPopover({
         onInserted={handleInserted}
       />
       <ComposerPrimitive.Unstable_TriggerPopoverItems>
-        {(items) => (quiet.current ? null : renderItems(items, status.current))}
+        {(items) => (quiet.current ? null : renderItems(items, status.current, answers.get(items)))}
       </ComposerPrimitive.Unstable_TriggerPopoverItems>
     </ComposerPrimitive.Unstable_TriggerPopover>
   );
@@ -215,10 +226,16 @@ function SlashPopover({
  */
 export function SlashComposerSlot({ providers, onSelect, children }: ComposerTriggerSlotProps) {
   const provider = providers.find(isSlashProvider);
+  const [answers] = useState<AnswerQueries>(() => new WeakMap());
+  // A row answers the text it was fetched for. One that is not the text at the caret is not chosen (see TriggerKeyScope).
+  const rowAnswersText = useCallback((textarea: HTMLTextAreaElement, row: HTMLElement): boolean => {
+    const typed = slashMatcher(textarea.value, textarea.selectionStart ?? textarea.value.length);
+    return typed === null || row.getAttribute("data-answers") === typed.query;
+  }, []);
   return (
-    <TriggerKeyScope className="relative">
+    <TriggerKeyScope className="relative" isCurrentRow={rowAnswersText}>
       {children}
-      <SlashPopover provider={provider} onSelect={onSelect} />
+      <SlashPopover provider={provider} onSelect={onSelect} answers={answers} />
     </TriggerKeyScope>
   );
 }
