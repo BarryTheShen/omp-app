@@ -5,7 +5,6 @@ export type {
 } from "./policy";
 export {
   MemoryThinkingVisibilityStore,
-  shouldRenderReasoning,
   TranscriptDisplayPolicyProvider,
   useTranscriptDisplayPolicy,
 } from "./policy";

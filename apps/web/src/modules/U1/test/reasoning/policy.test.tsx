@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   MemoryThinkingVisibilityStore,
-  shouldRenderReasoning,
   TranscriptDisplayPolicyProvider,
   useTranscriptDisplayPolicy,
 } from "../../policy";
@@ -49,24 +48,5 @@ describe("TranscriptDisplayPolicy", () => {
       </TranscriptDisplayPolicyProvider>,
     );
     expect(screen.getByTestId("thinking-state").textContent).toBe("visible");
-  });
-
-  test("keeps only an active hidden pulse renderable", () => {
-    const policy = {
-      threadId: "thread-a",
-      thinking: "hidden" as const,
-      tools: "visible" as const,
-      expandTools: false,
-      setThinking: () => undefined,
-      toggleThinking: () => undefined,
-      toggleTools: () => undefined,
-      toggleExpandTools: () => undefined,
-    };
-
-    expect(shouldRenderReasoning({ active: true, policy })).toBe(true);
-    expect(shouldRenderReasoning({ active: false, policy })).toBe(false);
-    expect(
-      shouldRenderReasoning({ active: false, policy: { ...policy, thinking: "visible" } }),
-    ).toBe(true);
   });
 });

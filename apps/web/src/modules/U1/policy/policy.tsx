@@ -45,16 +45,6 @@ export interface TranscriptDisplayPolicyProviderProps {
   readonly children: ReactNode;
 }
 
-export function shouldRenderReasoning({
-  active,
-  policy,
-}: {
-  readonly active: boolean;
-  readonly policy: TranscriptDisplayPolicy;
-}): boolean {
-  return policy.thinking === "visible" || active;
-}
-
 const STORAGE_PREFIX = "omp.u1.thinking.visibility.";
 const DEFAULT_POLICY: TranscriptDisplayPolicy = {
   threadId: "unbound",

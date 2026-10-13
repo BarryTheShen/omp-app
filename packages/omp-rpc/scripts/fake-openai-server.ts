@@ -311,6 +311,21 @@ function reply(request: Request): Reply {
   if (prompt.includes("stream_code")) return { text: STREAMED_CODE_REPLY, streamed: true };
   if (prompt.includes("stream_long_code"))
     return { text: STREAMED_LONG_CODE_REPLY, streamed: true };
+  // Reasoning that streams for about fourteen seconds before its answer (issue #1330). Each sentence has its own
+  // number: omp takes a stream that repeats one cycle again and again for a stall, and retries it. The reasoning
+  // comes in pieces too, so the group stays running while the spec checks what the transcript shows.
+  if (prompt.includes("stream_reasoning")) {
+    const topics = ["latency", "cost", "memory", "risk", "clarity", "scope", "timing"];
+    const sentences = Array.from(
+      { length: 140 },
+      (_, index) => `Weighing option ${index + 1} on ${topics[index % topics.length]}. `,
+    );
+    return {
+      text: "The answer after the reasoning.",
+      thinking: `reasoning-marker-7f3a ${sentences.join("")}`,
+      streamed: true,
+    };
+  }
   if (prompt.includes("stream_steady")) return { text: STREAMED_STEADY_REPLY, streamed: true };
   // Multi-select questions (issue #1157): one checkbox question, and a single plus a checkbox question in one ask.
   if (prompt.includes("checkbox_ask_two"))
@@ -537,19 +552,16 @@ const server = Bun.serve({
       created: 0,
       model: "fake-model",
     };
-    // A reply flagged `streamed` (the `stream_code` keyword) is sent in pieces, a little apart.
+    // A reply flagged `streamed` (the `stream_code` and `stream_reasoning` keywords) is sent in pieces, its reasoning
+    // too, a little apart.
     const inPieces = "text" in value && value.streamed === true;
     const chunks = [
       ...(value.thinking === undefined
         ? []
-        : [
-            {
-              ...base,
-              choices: [
-                { index: 0, delta: { reasoning_content: value.thinking }, finish_reason: null },
-              ],
-            },
-          ]),
+        : contentDeltas(value.thinking, inPieces).map((reasoning) => ({
+            ...base,
+            choices: [{ index: 0, delta: { reasoning_content: reasoning }, finish_reason: null }],
+          }))),
       ...("text" in value
         ? contentDeltas(value.text, inPieces).map((content) => ({
             ...base,

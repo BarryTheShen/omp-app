@@ -215,16 +215,6 @@ export function isHiddenSessionEntryType(type: string): type is HiddenSessionEnt
   return (HIDDEN_SESSION_ENTRY_TYPES as readonly string[]).includes(type);
 }
 
-export function shouldRenderReasoning({
-  active,
-  policy,
-}: {
-  readonly active: boolean;
-  readonly policy: TranscriptDisplayPolicy;
-}): boolean {
-  return policy.thinking === "visible" || active;
-}
-
 /** A stable key helper for rows derived from non-message metadata. */
 export function derivedRowKey(
   messageKey: MessageKey | string,

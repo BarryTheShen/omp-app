@@ -9,7 +9,7 @@ import {
 } from "@/components/assistant-ui/elements/reasoning.aui";
 import { CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { shouldRenderReasoning, useTranscriptDisplayPolicy } from "../policy";
+import { useTranscriptDisplayPolicy } from "../policy";
 
 export type ReasoningGroupPart = MessagePrimitive.GroupedParts.GroupPart<"group-reasoning">;
 
@@ -117,7 +117,7 @@ export function ReasoningGroup({
   const policy = useTranscriptDisplayPolicy();
   const streaming = group.status.type === "running";
   const durationSeconds = useThoughtDuration(streaming);
-  const hidden = !shouldRenderReasoning({ active: streaming, policy });
+  const hidden = policy.thinking === "hidden";
   return (
     <ReasoningDisclosure durationSeconds={durationSeconds} hidden={hidden} streaming={streaming}>
       {children}

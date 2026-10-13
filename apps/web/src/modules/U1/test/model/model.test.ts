@@ -6,7 +6,6 @@ import {
   isHiddenSessionEntryType,
   isTranscriptRowVisible,
   resolveMessageKey,
-  shouldRenderReasoning,
   type TranscriptRow,
   upsertTranscriptRow,
 } from "../../model";
@@ -57,13 +56,5 @@ describe("U1 transcript model", () => {
     expect(isHiddenSessionEntryType("model_change")).toBe(true);
     expect(isHiddenSessionEntryType("message")).toBe(false);
     expect(derivedRowKey("entry:thread:one", "status")).toBe("row:status:entry:thread:one");
-  });
-
-  test("renders one hidden-thinking pulse but not finished hidden reasoning", () => {
-    const hidden = { thinking: "hidden" as const, tools: "visible" as const, expandTools: false };
-    const visible = { thinking: "visible" as const, tools: "visible" as const, expandTools: false };
-    expect(shouldRenderReasoning({ active: true, policy: hidden })).toBe(true);
-    expect(shouldRenderReasoning({ active: false, policy: hidden })).toBe(false);
-    expect(shouldRenderReasoning({ active: false, policy: visible })).toBe(true);
   });
 });
