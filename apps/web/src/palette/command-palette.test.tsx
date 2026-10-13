@@ -230,6 +230,30 @@ describe("U0 command palette", () => {
     await expectPaletteClosed();
   });
 
+  test("an Enter or arrow key an IME uses to commit or pick a word leaves the list and the palette alone", async () => {
+    const first = vi.fn<CommandPaletteHandler>();
+    const second = vi.fn<CommandPaletteHandler>();
+    renderPalette(
+      capabilitiesFor([NEW_CHAT, FRESH], "available"),
+      handlersFor([NEW_CHAT, first], [FRESH, second]),
+    );
+    await openPalette();
+
+    const search = screen.getByRole("combobox", { name: "Search commands" });
+    fireEvent.keyDown(search, { key: "ArrowDown", isComposing: true });
+    fireEvent.keyDown(search, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(search, { key: "Enter", keyCode: 229 });
+    expect(search.getAttribute("aria-activedescendant")).toBe(optionFor(NEW_CHAT).id);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeTruthy();
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    await waitFor(() => expect(second).toHaveBeenCalledTimes(1));
+    expect(first).not.toHaveBeenCalled();
+  });
+
   test("keeps an unavailable command visible but disabled, with a plain reason and no internal names", async () => {
     const handler = vi.fn<CommandPaletteHandler>();
     const capabilities = capabilitiesFor([NEW_CHAT], "unavailable", "the new_session probe failed");

@@ -45,6 +45,14 @@ const TEXT_UNCHANGING_KEYS: Readonly<Record<string, true>> = {
   Meta: true,
 };
 
+/** The keys a list answers to and an input method uses while it composes a word instead (issue 1334). */
+const IME_KEYS: Readonly<Record<string, true>> = {
+  Enter: true,
+  Tab: true,
+  ArrowUp: true,
+  ArrowDown: true,
+};
+
 /** The option the composer's textarea points at, when a list is open with one highlighted. */
 function highlightedOption(textarea: HTMLTextAreaElement): HTMLElement | null {
   const activeId = textarea.getAttribute("aria-activedescendant");
@@ -119,6 +127,12 @@ export function TriggerKeyScope({
     if (replayed.has(event.nativeEvent)) return;
     // Any key that can change the text drops a held Enter, so only the text the person confirmed with Enter is ever sent (issue 866).
     if (!Object.hasOwn(TEXT_UNCHANGING_KEYS, event.key)) kept.current = null;
+    // While an input method composes a word, its keys belong to the IME (issue 1334): no list moves or chooses for one,
+    // and the composer does not send one. Safari sends the Enter that commits a word after compositionend, with keyCode 229.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) {
+      if (Object.hasOwn(IME_KEYS, event.key)) event.stopPropagation();
+      return;
+    }
     if (event.key !== "Enter" && event.key !== "Tab") return;
     if (event.shiftKey) return;
     if (!(event.target instanceof HTMLTextAreaElement)) return;

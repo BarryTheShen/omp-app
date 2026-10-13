@@ -249,3 +249,130 @@ describe("#818: Enter waits for a list that is still loading", () => {
     await waitFor(() => expect(submitted).toHaveBeenCalledTimes(1));
   });
 });
+
+describe("#1334: an Enter that commits an IME word does not choose the highlighted row", () => {
+  test("an emoji list stays open and inserts nothing for an IME's Enter; a real Enter inserts the emoji", async () => {
+    const held = heldSearch({
+      id: "emoji:smile",
+      kind: "emoji",
+      source: "client",
+      label: ":smile:",
+      insertText: "😄",
+    });
+    const provider = {
+      trigger: ":",
+      kind: "emoji",
+      source: "client",
+      search: async () => [],
+      searchTyped: held.search,
+    } as unknown as LocalProvider;
+    const submitted = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <LocalTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitted} cancel={() => undefined} />
+        </LocalTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ":smi" } });
+    input.setSelectionRange(4, 4);
+    held.release();
+    await waitForHighlight(input);
+
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(input.value).toBe(":smi");
+    expect(screen.getByRole("listbox", { name: "Emoji suggestions" })).toBeTruthy();
+    expect(submitted).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toContain("😄"));
+    expect(submitted).not.toHaveBeenCalled();
+  });
+
+  test("a file list stays open and inserts nothing for an Enter with keyCode 229; a real Enter inserts the file", async () => {
+    const held = heldSearch({
+      id: "file:README.md",
+      kind: "file",
+      source: "a1.file-search",
+      label: "README.md",
+      insertText: "@README.md",
+    });
+    const provider = {
+      trigger: "@",
+      kind: "file",
+      source: "a1.file-search",
+      search: async () => [],
+      searchTyped: held.search,
+    } as unknown as MentionProvider;
+    const submitted = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitted} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "@RE" } });
+    input.setSelectionRange(3, 3);
+    held.release();
+    await waitForHighlight(input);
+
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(input.value).toBe("@RE");
+    expect(screen.getByRole("listbox", { name: "File suggestions" })).toBeTruthy();
+    expect(submitted).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toContain("README.md"));
+    expect(submitted).not.toHaveBeenCalled();
+  });
+
+  test("an arrow key an IME uses leaves the list highlight where it is; a real arrow key moves it", async () => {
+    const held = heldSearch(
+      {
+        id: "emoji:smile",
+        kind: "emoji",
+        source: "client",
+        label: ":smile:",
+        insertText: "😄",
+      },
+      {
+        id: "emoji:smile_cat",
+        kind: "emoji",
+        source: "client",
+        label: ":smile_cat:",
+        insertText: "😸",
+      },
+    );
+    const provider = {
+      trigger: ":",
+      kind: "emoji",
+      source: "client",
+      search: async () => [],
+      searchTyped: held.search,
+    } as unknown as LocalProvider;
+    render(
+      <RuntimeHarness>
+        <LocalTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </LocalTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ":smi" } });
+    input.setSelectionRange(4, 4);
+    held.release();
+    await waitForHighlight(input);
+    const first = input.getAttribute("aria-activedescendant");
+
+    fireEvent.keyDown(input, { key: "ArrowDown", isComposing: true });
+    fireEvent.keyDown(input, { key: "ArrowDown", keyCode: 229 });
+    expect(input.getAttribute("aria-activedescendant")).toBe(first);
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-activedescendant")).not.toBe(first);
+  });
+});

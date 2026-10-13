@@ -202,6 +202,8 @@ function CommandPaletteDialog({
           setError(null);
         }}
         onKeyDown={(event) => {
+          // An Enter or arrow an IME uses to commit or pick a word belongs to the IME, not to the palette (issue 1334).
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
           if (visibleEntries.length === 0) return;
           if (event.key === "ArrowDown") {
             event.preventDefault();
