@@ -203,7 +203,7 @@ realTest(
     const composer = await startChat(page);
     await composer.focus();
     await page.keyboard.press("Control+k");
-    await page.getByRole("option", { name: /Fresh connection to the model/ }).click();
+    await page.getByRole("option", { name: /Refresh model connection/ }).click();
     const question = page.getByRole("dialog");
     await expect(question).toContainText("Start a fresh connection to the model?");
     await question.getByRole("button", { name: "Confirm" }).click();

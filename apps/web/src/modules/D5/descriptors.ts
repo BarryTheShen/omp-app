@@ -22,7 +22,7 @@ export const D5_LIFECYCLE_COMMAND_DESCRIPTORS = [
     kind: "command",
     id: "D5.fresh",
     owner: "D5",
-    title: "Fresh connection to the model",
+    title: "Refresh model connection",
     covers: ["C2.fresh"],
     requires: [SESSION_LIFECYCLE_CAPABILITIES.fresh],
     slash: { name: "fresh", source: "builtin" },

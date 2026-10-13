@@ -48,7 +48,7 @@ function PalettePlayground() {
     () =>
       new Map<DescriptorId, CommandPaletteHandler>([
         ["D5.new", () => setSelectedCommand("New chat")],
-        ["D5.fresh", () => setSelectedCommand("Fresh connection to the model")],
+        ["D5.fresh", () => setSelectedCommand("Refresh model connection")],
         ["D5.clear", () => setSelectedCommand("Clear conversation")],
       ]),
     [],

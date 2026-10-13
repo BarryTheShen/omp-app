@@ -118,7 +118,7 @@ export function newChatSlashCommand({
 }
 
 /**
- * `/fresh`: the command palette's Fresh connection action, so typing it asks the same confirmation before
+ * `/fresh`: the command palette's Refresh model connection action, so typing it asks the same confirmation before
  * omp runs `/fresh`. Without this, a typed `/fresh` would reach omp's builtin directly and skip that step.
  */
 export function freshSlashCommand({

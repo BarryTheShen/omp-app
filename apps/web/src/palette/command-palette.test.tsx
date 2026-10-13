@@ -212,6 +212,20 @@ describe("U0 command palette", () => {
     await expectPaletteClosed();
   });
 
+  test("a person who types refresh finds the reconnect command, whose title uses that word", async () => {
+    renderPalette(
+      capabilitiesFor([NEW_CHAT, FRESH], "available"),
+      handlersFor([NEW_CHAT, () => undefined], [FRESH, () => undefined]),
+    );
+    await openPalette();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Search commands" }), {
+      target: { value: "refresh" },
+    });
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(optionFor(FRESH).textContent).toContain("Refresh model connection");
+  });
+
   test("moves the highlight with the arrow keys and runs that command", async () => {
     const first = vi.fn<CommandPaletteHandler>();
     const second = vi.fn<CommandPaletteHandler>();
