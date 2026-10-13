@@ -228,3 +228,62 @@ describe("the generic settings panel after a save the environment overrides", ()
     expect(screen.queryByText("Applied")).toBeNull();
   });
 });
+
+describe("the generic settings panel after a save omp refuses because the setting changed elsewhere", () => {
+  /** Stages a change to Completion Notification, then has another writer change it, so omp refuses the save. */
+  async function refusedSave(): Promise<FakeConfig> {
+    const state = notificationsConfig([]);
+    render(
+      <SettingsScreen
+        client={fakeAppClient(state)}
+        capabilities={CAPABILITIES}
+        folder={null}
+        onClose={() => undefined}
+        threadId={null}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Interaction" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Notifications" }));
+    await screen.findByRole("combobox", { name: "Error Notification" });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Completion Notification" }), {
+      target: { value: "off" },
+    });
+    state.revision = "revision-elsewhere";
+    state.entries = state.entries.map((entry) =>
+      entry.key === "completion.notify" ? { ...entry, value: "off" } : entry,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("button", { name: "Keep my edits" })).toBeTruthy();
+    return state;
+  }
+
+  test("offers only Reload latest and Keep my edits, with no Retry and no second refusal", async () => {
+    const state = await refusedSave();
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("The settings changed elsewhere.")).toBeNull();
+    expect(state.writes).toEqual([]);
+  });
+
+  test("Keep my edits clears the refusal, and the next save writes the edit", async () => {
+    const state = await refusedSave();
+    fireEvent.click(screen.getByRole("button", { name: "Keep my edits" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await vi.waitFor(() => expect(state.writes).toEqual(["completion.notify"]));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("Reload latest drops the edit and clears the refusal", async () => {
+    const state = await refusedSave();
+    fireEvent.click(screen.getByRole("button", { name: "Reload latest" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Keep my edits" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Save changes" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(state.writes).toEqual([]);
+  });
+});

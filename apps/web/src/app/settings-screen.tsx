@@ -425,7 +425,10 @@ function SettingsRuntimeEditor({
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => runtime.resolveConflict("reload")}
+              onClick={() => {
+                setActionError(null);
+                runtime.resolveConflict("reload");
+              }}
             >
               Reload latest
             </Button>
@@ -433,22 +436,27 @@ function SettingsRuntimeEditor({
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => runtime.resolveConflict("keep-mine")}
+              onClick={() => {
+                setActionError(null);
+                runtime.resolveConflict("keep-mine");
+              }}
             >
               Keep my edits
             </Button>
           </Toolbar>
         </Section>
       ) : null}
+      {/* In a conflict the choice above is the only action, so the refusal is not repeated here. Retry re-reads omp's
+          values and would drop staged edits, so it is offered only when nothing is staged. */}
       {unsavedLabels.length > 0 ? (
         <UnsavedSettingsNotice
           labels={unsavedLabels}
           reason={actionError ?? snapshot.error?.message ?? ""}
         />
-      ) : actionError || (snapshot.error && snapshot.phase !== "conflict") ? (
+      ) : snapshot.phase !== "conflict" && (actionError || snapshot.error) ? (
         <InlineError
           message={actionError ?? snapshot.error?.message ?? "Settings could not be saved."}
-          onRetry={retry}
+          onRetry={dirty ? undefined : retry}
         />
       ) : null}
     </div>
