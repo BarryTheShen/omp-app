@@ -139,6 +139,9 @@ export function ToolCard({
         await onCopy(raw, kind);
       } else if (typeof navigator !== "undefined" && navigator.clipboard !== undefined) {
         await navigator.clipboard.writeText(raw);
+      } else {
+        // No Clipboard API (a page served over plain http from another machine): the copy did not happen.
+        throw new Error("Clipboard unavailable");
       }
       setCopyStatus(kind === "result" && cut !== undefined ? "copiedShown" : "copied");
     } catch {

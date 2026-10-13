@@ -170,6 +170,23 @@ describe("ToolCard state grammar", () => {
     );
   });
 
+  test("says the copy is unavailable, never copied, on a page with no clipboard", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    try {
+      render(<ToolCard state={{ ...state("success", "no-clipboard"), result: "raw result" }} />);
+      fireEvent.click(screen.getByRole("button", { name: "Run bash: Complete" }));
+      fireEvent.click(screen.getByRole("button", { name: "Copy raw result" }));
+      await waitFor(() =>
+        expect(screen.getByText("Copy unavailable", { exact: true })).toBeTruthy(),
+      );
+      expect(screen.queryByText("Copied raw output", { exact: true })).toBeNull();
+    } finally {
+      if (descriptor === undefined) Reflect.deleteProperty(navigator, "clipboard");
+      else Object.defineProperty(navigator, "clipboard", descriptor);
+    }
+  });
+
   test("copies the whole result, not the first lines the card shows", () => {
     const onCopy = vi.fn();
     const lines = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
