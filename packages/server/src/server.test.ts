@@ -12,6 +12,7 @@ import {
 import { z } from "zod";
 
 import { Dispatcher, type DispatcherSocket } from "./dispatcher";
+import { launchTokenDigest } from "./launch-history";
 import {
   createPortRegistry,
   type PortHandlerContext,
@@ -365,6 +366,28 @@ describe("A0.6 upgrade and static serving", () => {
         port: 4317,
       }),
     ).toBeUndefined();
+  });
+
+  test("says a token an earlier start printed is expired, and a token never printed is invalid", () => {
+    const request = (token: string) =>
+      new Request(`http://127.0.0.1:4317/ws?token=${token}`, {
+        headers: { origin: "http://allowed.test", host: "127.0.0.1:4317" },
+      });
+    const policy = {
+      token: "right",
+      origins: ["http://allowed.test"],
+      port: 4317,
+      earlierLaunchTokens: new Set([launchTokenDigest("printed-by-an-earlier-start")]),
+    };
+    expect(authorizeWebSocketUpgrade(request("printed-by-an-earlier-start"), policy)).toEqual({
+      closeCode: 4401,
+      reason: "expired token",
+    });
+    expect(authorizeWebSocketUpgrade(request("never-printed"), policy)).toEqual({
+      closeCode: 4401,
+      reason: "invalid token",
+    });
+    expect(authorizeWebSocketUpgrade(request("right"), policy)).toBeUndefined();
   });
 
   test("binds loopback, serves the static root and exposes a random token", async () => {

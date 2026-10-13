@@ -21,6 +21,7 @@ import {
   probeOmpPatiently,
   unhealthyAfterFailedChecks,
 } from "../src/capabilities/omp-version";
+import { openLaunchHistory } from "../src/launch-history";
 import {
   buildDebugReport,
   createNullLogger,
@@ -420,6 +421,7 @@ export async function createCompositionServer(
     ...createA1PortRegistrations(a1Context),
   ]);
   const staticRoot = options.staticRoot ?? resolve(import.meta.dir, "../../..", "apps/web/dist");
+  const launchHistory = openLaunchHistory(appDataDir, logger);
   const server = createAppServer({
     port: options.port,
     instanceId,
@@ -430,7 +432,9 @@ export async function createCompositionServer(
     staticRoot,
     registry,
     logger,
+    earlierLaunchTokens: launchHistory.earlier,
   });
+  await launchHistory.remember(server.token);
   launchToken = server.token;
   logger.addSecret(server.token);
   logger.info("listening", { port: server.port, health: health.status, detail: health.detail });

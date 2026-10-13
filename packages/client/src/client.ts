@@ -43,6 +43,8 @@ export interface ConnectionStateEvent {
   readonly state: ConnectionState;
   readonly attempt: number;
   readonly error?: AppError;
+  /** Why the server refused the launch token: "expired" for a link an earlier start printed, "invalid" for one it never printed. */
+  readonly tokenRefusal?: "expired" | "invalid";
 }
 
 export type ResyncReason =
@@ -230,6 +232,13 @@ function defaultWebSocketFactory(url: string): WebSocketLike {
 function isConflict(error: unknown): error is AppFailure {
   return error instanceof AppFailure && error.appError.code === "conflict";
 }
+
+function closeReason(event: unknown): string | undefined {
+  if (typeof event !== "object" || event === null || !("reason" in event)) return undefined;
+  const value = event.reason;
+  return typeof value === "string" ? value : undefined;
+}
+
 function closeCode(event: unknown): number | undefined {
   if (typeof event !== "object" || event === null || !("code" in event)) return undefined;
   const value = event.code;
@@ -433,14 +442,17 @@ class AppClientImpl implements AppClient {
       const code = closeCode(event);
       if (code === 4401 || code === 4403) {
         this.terminal = true;
-        const error = appFailure(
-          "permission",
-          code === 4401 ? "Launch token is invalid or expired" : "WebSocket origin is not allowed",
-          false,
-        );
+        let tokenRefusal: "expired" | "invalid" | undefined;
+        let message = "WebSocket origin is not allowed";
+        if (code === 4401) {
+          const expired = closeReason(event) === "expired token";
+          tokenRefusal = expired ? "expired" : "invalid";
+          message = expired ? "Launch link has expired" : "Launch token is not valid";
+        }
+        const error = appFailure("permission", message, false);
         this.rejectPending(error);
         this.rejectOpenWaiters(error);
-        this.setConnectionState("closed", error.appError);
+        this.setConnectionState("closed", error.appError, tokenRefusal);
         return;
       }
       this.rejectPending(appFailure("unavailable", "Connection to the app server closed", true));
@@ -781,10 +793,19 @@ class AppClientImpl implements AppClient {
     }
   }
 
-  private setConnectionState(state: ConnectionState, error?: AppError): void {
+  private setConnectionState(
+    state: ConnectionState,
+    error?: AppError,
+    tokenRefusal?: "expired" | "invalid",
+  ): void {
     if (this._connectionState === state && error === undefined && state !== "connecting") return;
     this._connectionState = state;
-    const event = { state, attempt: this.reconnectAttempt, ...(error ? { error } : {}) };
+    const event = {
+      state,
+      attempt: this.reconnectAttempt,
+      ...(error ? { error } : {}),
+      ...(tokenRefusal ? { tokenRefusal } : {}),
+    };
     for (const listener of this.stateListeners) this.notifyListener(listener, event);
   }
 

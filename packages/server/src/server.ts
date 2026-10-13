@@ -7,6 +7,7 @@ import {
 } from "@omp-app/contracts";
 
 import { Dispatcher, type DispatcherSession } from "./dispatcher";
+import { launchTokenDigest } from "./launch-history";
 import type { Logger } from "./logging";
 import type { PortRegistry } from "./registry/ports";
 import { PORT_REGISTRY } from "./registry/ports";
@@ -32,6 +33,8 @@ export interface AppServerOptions {
   readonly registry?: PortRegistry;
   /** Where connections and failed calls are recorded; nothing is logged without one. */
   readonly logger?: Logger;
+  /** Digests (`launchTokenDigest`) of the launch tokens earlier starts printed: a link with one of them reads as expired, not as never printed. */
+  readonly earlierLaunchTokens?: ReadonlySet<string>;
 }
 
 export interface AppServer {
@@ -46,13 +49,14 @@ export interface AppServer {
 
 export interface UpgradeClose {
   readonly closeCode: 4401 | 4403;
-  readonly reason: "invalid token" | "invalid origin";
+  readonly reason: "invalid token" | "expired token" | "invalid origin";
 }
 
 export interface UpgradePolicy {
   readonly token: string;
   readonly origins?: readonly string[];
   readonly port: number;
+  readonly earlierLaunchTokens?: ReadonlySet<string>;
 }
 
 function requestedPort(options: AppServerOptions): number {
@@ -102,7 +106,8 @@ export function authorizeWebSocketUpgrade(
     return { closeCode: 4403, reason: "invalid origin" };
   }
   if (!constantTimeEqual(policy.token, candidate)) {
-    return { closeCode: 4401, reason: "invalid token" };
+    const expired = policy.earlierLaunchTokens?.has(launchTokenDigest(candidate)) === true;
+    return { closeCode: 4401, reason: expired ? "expired token" : "invalid token" };
   }
   return undefined;
 }
@@ -192,6 +197,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           token,
           origins,
           port: bunServer.port ?? port,
+          earlierLaunchTokens: options.earlierLaunchTokens,
         });
         if (authorization instanceof Response) {
           options.logger?.warn("connection.rejected", {

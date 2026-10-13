@@ -67,7 +67,7 @@ async function installStubWebSocket(page: Page): Promise<void> {
           const mode = browser.__stubSocketMode ?? "accept";
           if (mode === "expired") {
             this.readyState = StubWebSocket.CLOSED;
-            this.onclose?.({ code: 4401, reason: "invalid token" });
+            this.onclose?.({ code: 4401, reason: "expired token" });
             return;
           }
           if (mode === "down") {

@@ -570,7 +570,22 @@ describe("createAppClient", () => {
     expect(server.connections).toHaveLength(1);
     expect(states.at(-1)).toMatchObject({
       state: "closed",
-      error: { code: "permission", message: "Launch token is invalid or expired" },
+      error: { code: "permission", message: "Launch token is not valid" },
+      tokenRefusal: "invalid",
+    });
+    client.dispose();
+  });
+  test("says a launch link an earlier start printed has expired, not that it is not valid", async () => {
+    const server = new FakeServer();
+    const client = await openClient(server);
+    const states: ConnectionStateEvent[] = [];
+    client.onConnectionState((event) => states.push(event));
+    server.current().socket.onclose?.({ code: 4401, reason: "expired token" });
+    await eventually(() => client.connectionState === "closed");
+    expect(states.at(-1)).toMatchObject({
+      state: "closed",
+      error: { code: "permission", message: "Launch link has expired" },
+      tokenRefusal: "expired",
     });
     client.dispose();
   });

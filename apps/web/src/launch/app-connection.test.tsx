@@ -215,14 +215,76 @@ describe("app connection launch gate", () => {
         attempt: 1,
         error: {
           code: "permission",
-          message: "Launch token is invalid or expired",
+          message: "Launch link has expired",
           retryable: false,
         },
+        tokenRefusal: "expired",
       }),
     );
     expect(
       await screen.findByRole("heading", { name: "This launch link has expired" }),
     ).toBeTruthy();
+  });
+
+  test("a launch link the app never printed says it is not valid, and never that it expired", async () => {
+    const client = makeClient("connecting");
+    render(
+      <AppConnectionProvider
+        createClient={() => client}
+        history={{ replaceState: vi.fn() }}
+        location={pageLocation}
+        storage={{ getItem: () => null, setItem: vi.fn() }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+    act(() =>
+      client.emit({
+        state: "closed",
+        attempt: 0,
+        error: { code: "permission", message: "Launch token is not valid", retryable: false },
+        tokenRefusal: "invalid",
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "This launch link is not valid" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Open the full URL the app printed when it last started/)).toBeTruthy();
+    expect(screen.queryByText(/expired/i)).toBeNull();
+  });
+
+  test("a launch link an earlier start printed says it has expired and how to get a new one", async () => {
+    const client = makeClient("connecting");
+    render(
+      <AppConnectionProvider
+        createClient={() => client}
+        history={{ replaceState: vi.fn() }}
+        location={pageLocation}
+        storage={{ getItem: () => null, setItem: vi.fn() }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+    act(() =>
+      client.emit({
+        state: "closed",
+        attempt: 0,
+        error: { code: "permission", message: "Launch link has expired", retryable: false },
+        tokenRefusal: "expired",
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "This launch link has expired" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Open the URL the app printed when it last started.")).toBeTruthy();
+    expect(
+      screen.getByText("Start the app again to receive a fresh launch URL, then reload this page."),
+    ).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "This launch link is not valid" })).toBeNull();
   });
 
   test("the can't-connect screens say where the app's log is: its default first, then the path the server last reported", async () => {
