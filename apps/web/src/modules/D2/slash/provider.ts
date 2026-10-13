@@ -146,6 +146,10 @@ export function createSlashCommandProvider(
     if (guarded !== null) return guarded;
     if (!text.startsWith("/")) return null;
     await ensureCatalog();
+    const snapshot = catalog.getSnapshot();
+    if (snapshot.state !== "ready" && snapshot.commands.length === 0) {
+      return routeWithoutList(text, appCommands, snapshot.error?.error.message);
+    }
     return routeSlashText(text, await listEntries(), appCommands);
   };
 
@@ -188,4 +192,25 @@ function promptToEntry(prompt: McpPromptSummary): SlashListEntry {
     source: "mcp_prompt",
     ...(prompt.description === undefined ? {} : { description: prompt.description }),
   };
+}
+
+/**
+ * Routes a message while omp's list cannot be read, so the app cannot tell a command from text. The app's own answers
+ * need no list and still route. Any other `/word` fails with the reason, so the composer keeps it and omp never sees it:
+ * a submit never routes on an empty list. A bare slash, or a space after it, is plain text.
+ */
+function routeWithoutList(
+  text: string,
+  appCommands: readonly SlashAppCommand[],
+  reason: string | undefined,
+): SlashRoute | null {
+  const answered = routeSlashText(text, [], appCommands);
+  if (answered !== null) return answered;
+  const word = /^\/(\S+)/u.exec(text)?.[1];
+  if (word === undefined) return null;
+  throw new AppFailure({
+    code: "unavailable",
+    message: `/${word} wasn't sent because omp's command list could not be read. ${reason ?? "Slash commands could not be loaded."}`,
+    retryable: true,
+  });
 }

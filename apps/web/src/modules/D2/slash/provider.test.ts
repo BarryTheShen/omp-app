@@ -242,3 +242,89 @@ describe("D2.3 slash provider", () => {
     provider.dispose();
   });
 });
+
+describe("#1371 a typed command is held, not sent to the model, when omp's command list could not be read", () => {
+  /** A list read that fails the way omp's own error reply does. */
+  const unreadable = () =>
+    fakeSlashClient({
+      commands: async () => {
+        throw new AppFailure({
+          code: "omp_error",
+          message: "omp could not list its commands.",
+          retryable: true,
+        });
+      },
+    });
+
+  test("a typed command fails with the reason, and omp runs nothing", async () => {
+    const fake = unreadable();
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+    await expect(provider.route("/compact")).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message:
+          "/compact wasn't sent because omp's command list could not be read. omp could not list its commands.",
+      },
+    });
+    expect(fake.runs).toEqual([]);
+    provider.dispose();
+  });
+
+  test("the app's own command still routes, and text that is not a command is still a prompt", async () => {
+    const fake = unreadable();
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [newChat],
+    });
+    await expect(provider.route("/new")).resolves.toEqual({ kind: "app", command: newChat });
+    for (const text of ["pong", " /compact", "/", "/ compact"]) {
+      await expect(provider.route(text), JSON.stringify(text)).resolves.toBeNull();
+    }
+    provider.dispose();
+  });
+
+  test("a list that read fine but holds no commands is not unreadable, so text is a prompt", async () => {
+    const fake = fakeSlashClient({ commands: async () => ({ commands: [] }) });
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+    await expect(provider.route("/compact")).resolves.toBeNull();
+    provider.dispose();
+  });
+
+  test("a failed re-read keeps omp's last good list, so a known command still routes", async () => {
+    let calls = 0;
+    const fake = fakeSlashClient({
+      commands: async () => {
+        calls += 1;
+        if (calls === 1) return { commands: REAL_COMMAND_LIST };
+        throw new AppFailure({
+          code: "omp_error",
+          message: "omp could not list its commands.",
+          retryable: true,
+        });
+      },
+    });
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+    });
+    await expect(provider.route("/usage")).resolves.toEqual({ kind: "omp", command: "/usage" });
+    await provider.catalog.refresh().catch(() => undefined);
+    expect(provider.catalog.getSnapshot().state).toBe("stale");
+    await expect(provider.route("/compact")).resolves.toEqual({
+      kind: "omp",
+      command: "/compact",
+    });
+    provider.dispose();
+  });
+});
