@@ -26,6 +26,12 @@ export const P1_AGENT_HUB_COMMAND = {
   requires: [],
 } as const satisfies CommandDescriptor;
 
+/** The typed form of the Agent Hub: the app's `/hub` command. The shortcut sheet lists it under Typed commands. */
+export const P1_AGENT_HUB_TYPED_COMMAND = {
+  text: "/hub",
+  title: "Open the Agent Hub",
+} as const;
+
 export const P1_AGENT_HUB_DESCRIPTORS = [
   P1_AGENT_HUB_SHORTCUT,
   P1_AGENT_HUB_COMMAND,

@@ -25,6 +25,7 @@ import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { modeOutcomeText } from "@/modules/D7/modes";
 import { createMcpProtocolCatalogs } from "@/modules/I1/protocol";
 import type { PromptIntent } from "@/modules/U2/contract";
+import type { AgentHubOpenResult } from "./agents/agent-hub-shortcut";
 
 /**
  * The slash provider for the open chat. It is built once per chat and disposed when the chat changes.
@@ -192,6 +193,31 @@ export function hotkeysSlashCommand({
     run: async () => {
       openShortcuts();
       return {};
+    },
+  };
+}
+
+/**
+ * `/hub`: omp's Agent Hub is a terminal panel, so the app opens its own, the one Alt+A and the palette open. A chat
+ * with no agent yet has nothing to show, and the header says so.
+ */
+export function agentHubSlashCommand({
+  openAgentHub,
+}: {
+  readonly openAgentHub: () => Promise<AgentHubOpenResult>;
+}): SlashAppCommand {
+  return {
+    name: "hub",
+    description: "Open the Agent Hub",
+    run: async () => {
+      const result = await openAgentHub();
+      if (result === "opened") return {};
+      if (result === "empty") return { message: "No agents to show yet." };
+      throw new AppFailure({
+        code: "unavailable",
+        message: "The Agent Hub cannot open for this chat right now.",
+        retryable: true,
+      });
     },
   };
 }

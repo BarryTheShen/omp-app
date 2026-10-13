@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { P1_AGENT_HUB_TYPED_COMMAND } from "@/modules/P1/hub/descriptors";
 import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { capabilityStatus, useCapabilities } from "@/registry-core";
 import { chordHasKey, chordLabel, isApplePlatform, storedChord } from "./chord-label";
@@ -16,6 +17,9 @@ import {
   useShortcutPreferenceError,
   useShortcutRegistry,
 } from "./context";
+
+/** The app's typed commands that open a surface; the sheet lists them under Typed commands. */
+const TYPED_COMMANDS = [P1_AGENT_HUB_TYPED_COMMAND];
 
 export interface ShortcutSheetProps {
   readonly open: boolean;
@@ -58,6 +62,11 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
   const groups = new Map<string, typeof visible>();
   for (const binding of visible)
     groups.set(binding.scope, [...(groups.get(binding.scope) ?? []), binding]);
+  const typedCommands = TYPED_COMMANDS.filter(
+    (command) =>
+      normalizedQuery.length === 0 ||
+      `${command.title} ${command.text}`.toLowerCase().includes(normalizedQuery),
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -182,7 +191,25 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
               </div>
             </section>
           ))}
-          {visible.length === 0 && (
+          {typedCommands.length > 0 && (
+            <section className="border-border mt-4 border-t pt-3 first:mt-0 first:border-t-0">
+              <h3 className="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-wide">
+                Typed commands
+              </h3>
+              <div className="space-y-1">
+                {typedCommands.map((command) => (
+                  <div
+                    className="flex items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-muted"
+                    key={command.text}
+                  >
+                    <span className="min-w-0 truncate text-sm">{command.title}</span>
+                    <code className="shrink-0 font-mono text-xs">{command.text}</code>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {visible.length === 0 && typedCommands.length === 0 && (
             <p className="text-muted-foreground py-6 text-center text-sm">No shortcuts found.</p>
           )}
         </div>

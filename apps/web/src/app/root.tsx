@@ -155,7 +155,7 @@ import {
   useShortcutRegistry,
 } from "@/shortcuts";
 import { setThemePreference, ThemeApplier, ThemeButton } from "@/theme";
-import { useAgentHubShortcut } from "./agents/agent-hub-shortcut";
+import { type AgentHubOpenResult, useAgentHubShortcut } from "./agents/agent-hub-shortcut";
 import { reportClientError, setClientErrorSink } from "./client-errors";
 import { useComposerClipboardShortcuts } from "./composer-clipboard";
 import { useComposerEditingShortcuts } from "./composer-editing";
@@ -196,6 +196,7 @@ import { useSessionTitle } from "./session-title";
 import { SettingsScreen } from "./settings-screen";
 import { useShareFromChat } from "./share/use-share-from-chat";
 import {
+  agentHubSlashCommand,
   freshSlashCommand,
   guardOmpSend,
   hotkeysSlashCommand,
@@ -741,17 +742,23 @@ function ActiveThreadReady({
       ),
     });
   }, [catalog, openThread, overlay, remote, store, threadId]);
-  // The Agent Hub, opened by a double-tap of ← in the empty composer (omp's gesture). The Agents tab comes to the
-  // front and its sidebar opens if it is closed; only a session with an agent to show opens it.
+  // The Agent Hub, opened by a double-tap of ← in the empty composer (omp's gesture), by Alt+A and by `/hub`. The Agents
+  // tab comes to the front and its sidebar opens if it is closed; only a session with an agent to show opens it.
   const [agentsReveal, setAgentsReveal] = useState(0);
-  const openAgentHub = useCallback(() => {
-    if (agents === null) return;
-    void agents.start().then(
-      () => {
-        if (agents.roster.getSnapshot().order.length > 0) setAgentsReveal((count) => count + 1);
-      },
-      () => undefined,
-    );
+  const openAgentHub = useCallback(async (): Promise<AgentHubOpenResult> => {
+    if (agents === null) return "unavailable";
+    try {
+      await agents.start();
+    } catch (error) {
+      reportClientError({
+        kind: "error",
+        message: `The Agent Hub could not start: ${error instanceof Error ? error.message : "unknown error"}`,
+      });
+      return "unavailable";
+    }
+    if (agents.roster.getSnapshot().order.length === 0) return "empty";
+    setAgentsReveal((count) => count + 1);
+    return "opened";
   }, [agents]);
   const openLogin = useCallback(() => {
     requireProviderLogin(capabilities);
@@ -1097,8 +1104,18 @@ function ActiveThreadReady({
           void shortcutRegistry.commandFor(U0_SHORTCUT_SHEET_COMMAND.id)?.run();
         },
       }),
+      agentHubSlashCommand({ openAgentHub }),
     ],
-    [lifecycle, onOpenSettings, openLogin, openThread, shareController, shortcutRegistry, threadId],
+    [
+      lifecycle,
+      onOpenSettings,
+      openAgentHub,
+      openLogin,
+      openThread,
+      shareController,
+      shortcutRegistry,
+      threadId,
+    ],
   );
   const slashProvider = useSlashCommands({
     client,
