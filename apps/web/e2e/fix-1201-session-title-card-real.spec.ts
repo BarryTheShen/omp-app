@@ -114,7 +114,10 @@ realTest(
     // At 390 px the list still shows the words.
     await page.setViewportSize({ width: 390, height: 844 });
     const showSidebar = page.getByRole("button", { name: "Show sessions sidebar" });
-    if (await showSidebar.isVisible()) await showSidebar.click();
+    // The layout changes after the resize: wait for the button before deciding to open the drawer, so a check made
+    // before the wide layout has gone is not taken for a drawer that is already open (issue 1450).
+    await expect(showSidebar).toBeVisible();
+    await showSidebar.click();
     await expect(rowFor(page, WORDS)).toBeVisible();
     await waitForFiniteAnimations(page);
     await page.screenshot({
