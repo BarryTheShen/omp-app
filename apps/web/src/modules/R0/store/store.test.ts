@@ -1504,6 +1504,48 @@ describe("OmpRuntimeStore", () => {
     });
   });
 
+  test("shows a compaction entry as a compaction summary message with its counts", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "u1",
+          parentId: null,
+          timestamp: "2026-10-05T00:00:00.000Z",
+          message: { role: "user", content: "start", timestamp: 1 },
+        },
+        {
+          type: "compaction",
+          id: "c1",
+          parentId: "u1",
+          timestamp: "2026-10-05T00:00:01.000Z",
+          summary: "## Kept context\n\n- Keep the current goal",
+          firstKeptEntryId: "u1",
+          tokensBefore: 120_000,
+          tokensAfter: 28_000,
+          method: "remote",
+        },
+        { type: "model_change", id: "m1", parentId: "c1", timestamp: "2026-10-05T00:00:01.000Z" },
+      ],
+      "m1" as EntryId,
+    );
+    const snapshot = store.getSnapshot();
+    expect(snapshot.messageOrder).toEqual([`entry:${threadId}:u1`, `entry:${threadId}:c1`]);
+    expect(snapshot.messages[`entry:${threadId}:c1` as MessageKey]).toMatchObject({
+      status: "persisted",
+      entryId: "c1",
+      message: {
+        role: "compactionSummary",
+        summary: "## Kept context\n\n- Keep the current goal",
+        tokensBefore: 120_000,
+        tokensAfter: 28_000,
+        method: "remote",
+        timestamp: Date.parse("2026-10-05T00:00:01.000Z"),
+      },
+    });
+  });
+
   test("a branch_summary entry with an empty summary (omp's discard marker) is not a message", () => {
     const store = new OmpRuntimeStore({ threadId });
     store.pairEndedMessages(

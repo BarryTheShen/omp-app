@@ -12,6 +12,7 @@ import type {
   AttachmentRef,
   CapabilityKey,
   CapabilityMap,
+  MessageKey,
   OmpCommand,
   OmpMessage,
   OmpWire,
@@ -79,6 +80,8 @@ export interface RuntimeMessageView {
   readonly toolResultMatched?: boolean;
   /** Tool calls the person stopped (see `stoppedToolCallIds`): they read cancelled, not as failures. */
   readonly stoppedToolCallIds?: readonly string[];
+  /** The usage of the assistant turn before this one (null when none): a cache miss is measured from it. */
+  readonly previousAssistantUsage?: OmpWire.Usage | null;
 }
 
 export interface RuntimeToolStateReference {
@@ -450,7 +453,11 @@ function convertRecord(
       ompMessageKey: storeKey,
       ompRole: message.role,
       ...(message.role === "assistant"
-        ? { ompEntryIds: [...(view?.joinedAssistantEntryIds ?? [storeKey])] }
+        ? {
+            ompEntryIds: [...(view?.joinedAssistantEntryIds ?? [storeKey])],
+            ompUsage: message.usage,
+            ompPreviousUsage: view?.previousAssistantUsage ?? null,
+          }
         : {}),
     },
   };
@@ -515,6 +522,15 @@ function convertRecord(
         ...(createdAt ? { createdAt } : {}),
         content: [textPart("")],
         metadata: { custom: { ...metadata.custom, ompBranchSummary: message } },
+      } as unknown as ThreadMessageLike;
+    case "compactionSummary":
+      // omp's compaction summary: a divider row. P7 draws it from the summary kept in the metadata.
+      return {
+        role: "system",
+        id,
+        ...(createdAt ? { createdAt } : {}),
+        content: [textPart("")],
+        metadata: { custom: { ...metadata.custom, ompCompactionSummary: message } },
       } as unknown as ThreadMessageLike;
     case "bashExecution":
     case "pythonExecution":
@@ -588,6 +604,24 @@ export function createMemoizedMessageConverter(): (
  */
 function isHiddenMessage(message: OmpMessage): boolean {
   return (message.role === "custom" || message.role === "hookMessage") && message.display === false;
+}
+
+/**
+ * The usage of the assistant turn before each assistant message: the figures a cache miss is measured from. An
+ * assistant message without a usage record is not a turn to measure from.
+ */
+function previousAssistantUsages(
+  snapshot: RuntimeSnapshot,
+): ReadonlyMap<MessageKey, OmpWire.Usage> {
+  const usages = new Map<MessageKey, OmpWire.Usage>();
+  let previous: OmpWire.Usage | undefined;
+  for (const key of snapshot.messageOrder) {
+    const record = snapshot.messages[key];
+    if (!record || isHiddenMessage(record.message) || record.message.role !== "assistant") continue;
+    if (previous !== undefined) usages.set(key, previous);
+    if (record.message.usage !== undefined) previous = record.message.usage;
+  }
+  return usages;
 }
 
 type ProjectedMessageMetadata = {
@@ -689,6 +723,7 @@ class RuntimeMessageProjector {
   public project(snapshot: RuntimeSnapshot): readonly RuntimeMessageView[] {
     const views: RuntimeMessageView[] = [];
     const metadata = projectedMessageMetadata(snapshot);
+    const previousUsages = previousAssistantUsages(snapshot);
     const stopped = stoppedToolCallIds(snapshot);
     for (const key of snapshot.messageOrder) {
       const record = snapshot.messages[key];
@@ -697,10 +732,12 @@ class RuntimeMessageProjector {
         joinedAssistantEntryIds: [],
         toolResultMatched: undefined,
       };
+      const previousUsage = previousUsages.get(key) ?? null;
       const previous = this.entries.get(record);
       if (previous) {
         let unchanged =
           sameIds(previous.view.joinedAssistantEntryIds, projected.joinedAssistantEntryIds) &&
+          (previous.view.previousAssistantUsage ?? null) === previousUsage &&
           previous.view.toolResultMatched === projected.toolResultMatched &&
           sameIds(previous.view.stoppedToolCallIds, stopped);
         for (const reference of previous.references) {
@@ -729,6 +766,7 @@ class RuntimeMessageProjector {
         joinedAssistantEntryIds: projected.joinedAssistantEntryIds,
         toolResultMatched: projected.toolResultMatched,
         stoppedToolCallIds: stopped,
+        previousAssistantUsage: previousUsage,
       };
       this.entries.set(record, { references, view });
       views.push(view);

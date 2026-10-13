@@ -717,6 +717,70 @@ describe("R0.3 assistant-ui runtime", () => {
     ).not.toThrow();
   });
 
+  test("converts omp's compaction summary into a system row with its counts for the divider", () => {
+    const message = {
+      role: "compactionSummary",
+      summary: "## Kept context\n\n- Keep the current goal",
+      tokensBefore: 120_000,
+      tokensAfter: 28_000,
+      timestamp: 1_759_600_000_000,
+      method: "remote",
+    } as unknown as OmpMessage;
+    const converted = convertMessage(
+      runtimeMessage(
+        message,
+        "entry:runtime-test-thread:compaction",
+      ) as RuntimeMessageView["record"],
+    );
+    expect(converted.role).toBe("system");
+    expect(converted.metadata?.custom).toMatchObject({
+      ompRole: "compactionSummary",
+      ompCompactionSummary: message,
+    });
+    expect(() =>
+      fromThreadMessageLike(converted, "compaction", { type: "complete", reason: "unknown" }),
+    ).not.toThrow();
+  });
+
+  test("a turn carries the usage of the turn before it, so a cold cache is measured from the warm one", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const warm = { ...baseUsage, input: 300, cacheRead: 4_000, totalTokens: 4_300 };
+    const cold = { ...baseUsage, input: 300, cacheRead: 0, cacheWrite: 800, totalTokens: 1_100 };
+    const turns = [
+      { role: "user", content: [{ type: "text", text: "First question." }], timestamp: 1 },
+      { ...assistantMessage([{ type: "text", text: "First answer." }]), usage: warm, timestamp: 2 },
+      { role: "user", content: [{ type: "text", text: "Second question." }], timestamp: 3 },
+      {
+        ...assistantMessage([{ type: "text", text: "Second answer." }]),
+        usage: cold,
+        timestamp: 4,
+      },
+    ] as unknown as OmpMessage[];
+    turns.forEach((message, index) => {
+      ompEvent(store, { type: "message_start", messageId: `m${index}`, message }, index * 2 + 1);
+      ompEvent(store, { type: "message_end", messageId: `m${index}`, message }, index * 2 + 2);
+    });
+    const views = createOmpRuntime({
+      store,
+      send: (() => Promise.resolve()) as unknown as RpcSessionSend,
+    }).messages();
+    expect(views.map((view) => view.record.message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    // The first answer has no turn before it; the second is measured from the first one's usage.
+    expect(views[1]?.previousAssistantUsage).toBeNull();
+    expect(views[3]?.previousAssistantUsage).toEqual(warm);
+    const second = views[3];
+    if (!second) throw new Error("expected the second answer");
+    expect(convertMessage(second).metadata?.custom).toMatchObject({
+      ompUsage: cold,
+      ompPreviousUsage: warm,
+    });
+  });
+
   test("shows a user's bash run as a system row that keeps omp's record for U1's card", () => {
     const run = {
       role: "bashExecution",

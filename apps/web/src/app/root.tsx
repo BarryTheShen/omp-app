@@ -83,6 +83,11 @@ import { BranchSummaryRow, branchSummaryOfRow } from "@/modules/P3/summary";
 import { QueueLaneBar } from "@/modules/P6/bar/bar";
 import { resolveQueueSubmitPolicy } from "@/modules/P6/composer/composer";
 import { createQueueAdapter } from "@/modules/P6/contract";
+import {
+  CacheMissRow,
+  CompactionSummaryRow,
+  compactionSummaryOfRow,
+} from "@/modules/P7/compaction";
 import { createQueueController, type QueueController } from "@/modules/R0/actions";
 import { type StoppedQueue, useOmpRuntime } from "@/modules/R0/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
@@ -1498,21 +1503,32 @@ function ActiveThreadReady({
                                 return (
                                   <BranchSummaryRow message={message} summary={branchSummary} />
                                 );
+                              const compactionSummary = compactionSummaryOfRow(message);
+                              if (compactionSummary !== undefined)
+                                return (
+                                  <CompactionSummaryRow
+                                    message={message}
+                                    summary={compactionSummary}
+                                  />
+                                );
                               return (
-                                <MessageParts
-                                  message={message}
-                                  actions={rowActions(message)}
-                                  renderNested={(part) =>
-                                    part.messages === undefined
-                                      ? undefined
-                                      : renderNested?.(
-                                          part.messages,
-                                          part.toolCallId,
-                                          part.toolName,
-                                        )
-                                  }
-                                  toolRenderers={toolRenderers}
-                                />
+                                <>
+                                  <CacheMissRow message={message} />
+                                  <MessageParts
+                                    message={message}
+                                    actions={rowActions(message)}
+                                    renderNested={(part) =>
+                                      part.messages === undefined
+                                        ? undefined
+                                        : renderNested?.(
+                                            part.messages,
+                                            part.toolCallId,
+                                            part.toolName,
+                                          )
+                                    }
+                                    toolRenderers={toolRenderers}
+                                  />
+                                </>
                               );
                             },
                             renderNested: (messages, taskId, toolName) => {

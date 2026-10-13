@@ -659,6 +659,7 @@ function messageFromEntry(entry: TranscriptEntry): OmpMessage | undefined {
   if (!isRecord(entry.raw)) return undefined;
   if (entry.type === "custom_message") return customMessageFromEntry(entry.raw);
   if (entry.type === "branch_summary") return branchSummaryFromEntry(entry.raw);
+  if (entry.type === "compaction") return compactionFromEntry(entry.raw);
   if (entry.type !== "message") return undefined;
   const message = entry.raw.message;
   if (!isRecord(message) || typeof message.role !== "string") return undefined;
@@ -697,6 +698,27 @@ function branchSummaryFromEntry(raw: Record<string, unknown>): OmpMessage | unde
     summary,
     fromId,
     timestamp: time,
+  }) as unknown as OmpMessage;
+}
+
+/**
+ * omp's compaction: the summary that replaced the older conversation, with the token counts and the method omp used.
+ * Its fields are `CompactionEntry` (omp v18.6.1 session/session-entries.ts:121-130).
+ */
+function compactionFromEntry(raw: Record<string, unknown>): OmpMessage | undefined {
+  const { summary, shortSummary, tokensBefore, tokensAfter, method, timestamp } = raw;
+  if (typeof summary !== "string" || typeof tokensBefore !== "number") return undefined;
+  if (typeof timestamp !== "string") return undefined;
+  const time = Date.parse(timestamp);
+  if (Number.isNaN(time)) return undefined;
+  return cloneValue({
+    role: "compactionSummary",
+    summary,
+    tokensBefore,
+    timestamp: time,
+    ...(typeof shortSummary === "string" ? { shortSummary } : {}),
+    ...(typeof tokensAfter === "number" ? { tokensAfter } : {}),
+    ...(typeof method === "string" ? { method } : {}),
   }) as unknown as OmpMessage;
 }
 

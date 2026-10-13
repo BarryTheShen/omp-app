@@ -245,11 +245,18 @@ realTest(
     const thread = page.locator('[data-slot="u1-thread-viewport"]');
     const earlier = page.getByRole("button", { name: "Show earlier messages" });
     await expect(earlier).toBeVisible({ timeout: 60_000 });
+    // Counted in message rows only: a compaction row keeps the same words in its collapsed summary.
+    const rowsOf = thread.locator(
+      '[data-message-id][data-role="user"], [data-message-id][data-role="assistant"]',
+    );
+    const answer = thread
+      .locator('[data-message-id][data-role="assistant"]')
+      .getByText("pong", { exact: true });
 
     await sendPrompt(page.getByRole("textbox", { name: "Message input" }), "ping");
-    await expect(thread.getByText("pong", { exact: true })).toHaveCount(1, { timeout: 60_000 });
+    await expect(answer).toHaveCount(1, { timeout: 60_000 });
     // The answer comes after the prompt, and appears in one row only.
-    const rows = await thread.locator("[data-message-id]").allInnerTexts();
+    const rows = await rowsOf.allInnerTexts();
     const promptRow = rows.findIndex((text) => text.includes("ping"));
     const answerRow = rows.findIndex((text) => text.includes("pong"));
     expect(promptRow).toBeGreaterThanOrEqual(0);
@@ -262,8 +269,8 @@ realTest(
     });
     await expect(thread.getByText("OLDEST-MARK")).toBeVisible({ timeout: 60_000 });
     await expect(earlier).toBeHidden();
-    await expect(thread.getByText("pong", { exact: true })).toHaveCount(1);
-    const after = await thread.locator("[data-message-id]").allInnerTexts();
+    await expect(answer).toHaveCount(1);
+    const after = await rowsOf.allInnerTexts();
     expect(after.filter((text) => text.includes("pong"))).toHaveLength(1);
   },
 );
