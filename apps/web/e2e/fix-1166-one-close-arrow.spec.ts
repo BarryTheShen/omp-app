@@ -80,6 +80,8 @@ realTest(
     await expectOpen(page, "panels");
     if ((await openers(page, "sessions").count()) === 1) await openers(page, "sessions").click();
     await expectOpen(page, "sessions");
+    // Both panels slide in (motion-4, #1208); read their position once they are at rest.
+    await settle(page);
     const panelsRegion = page.getByRole("complementary", { name: "Panels" });
     const panelsBefore = await panelsRegion.boundingBox();
     await closers(page, "sessions").click();
