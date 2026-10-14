@@ -69,6 +69,10 @@ async function framesSince(page: Page, from: number): Promise<FrameCount> {
 realTest("the command palette fades and scales in and out", async ({ realApp }, testInfo) => {
   testInfo.setTimeout(240_000);
   const page = await realApp.open({ beforeLoad: (target) => target.addInitScript(recordOverlay) });
+  // The page samples the fade once per frame, and a busy page can skip frames for longer than the 180 ms fade. The fade
+  // plays at a quarter speed here, so the samples see it whatever the load; the declared duration is still checked below.
+  const timing = await page.context().newCDPSession(page);
+  await timing.send("Animation.setPlaybackRate", { playbackRate: 0.25 });
   const composer = await startChat(page);
   await composer.focus();
 
