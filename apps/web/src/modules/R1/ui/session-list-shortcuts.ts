@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useShortcutRegistry, useShortcutScope } from "@/shortcuts";
 import { R1_SESSION_LIST_SCOPE } from "../descriptors/descriptors";
 
@@ -18,9 +18,11 @@ export interface SessionListShortcutActions {
 export function useSessionListShortcuts(actions: SessionListShortcutActions): void {
   const registry = useShortcutRegistry();
   useShortcutScope(R1_SESSION_LIST_SCOPE);
-  // The chords act on the list as it is when a key is pressed, so the registration is made once per registry.
+  // The chords act on the list as it is when a key is pressed, so the registration is made once per registry. The list
+  // is read in a layout effect: a passive effect can run after the rows are already on screen, and a key pressed in
+  // that gap would act on the list before them (issue 1538, seen under load).
   const latest = useRef(actions);
-  useEffect(() => {
+  useLayoutEffect(() => {
     latest.current = actions;
   });
   useEffect(() => {

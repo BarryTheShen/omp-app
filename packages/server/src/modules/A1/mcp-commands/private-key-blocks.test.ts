@@ -28,14 +28,19 @@ function unclosedHeaders(length: number): string {
   return header.repeat(Math.ceil(length / header.length)).slice(0, length);
 }
 
-/** The fastest of `GROWTH_RUNS` timed calls, after one untimed call that compiles the regex and warms the JIT. */
+/**
+ * The fastest of `GROWTH_RUNS` calls, after one untimed call that compiles the regex and warms the JIT. The time is the
+ * CPU time the calls use, not the wall-clock time: a busy machine makes a pass wait for the processor, and that wait is
+ * not work the pass does (issue #1538).
+ */
 function fastestMs(run: () => unknown): number {
   run();
   let fastest = Number.POSITIVE_INFINITY;
   for (let index = 0; index < GROWTH_RUNS; index += 1) {
-    const started = performance.now();
+    const before = process.cpuUsage();
     run();
-    fastest = Math.min(fastest, performance.now() - started);
+    const used = process.cpuUsage(before);
+    fastest = Math.min(fastest, (used.user + used.system) / 1000);
   }
   return fastest;
 }

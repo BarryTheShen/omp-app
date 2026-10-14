@@ -316,6 +316,8 @@ describe("omp ConfigStore defaults: a slow first run", () => {
     expect(await leftoverDefaultsFolders(root)).toEqual([]);
   });
 
+  // The test waits for the give-up warning itself. The budget is a hang guard, not a wait: the retry runs on real timers,
+  // and in a loaded full run this test once took 5.5 s, past bun's 5 s default for every test (issue #1538).
   test("a retry that also runs out of time gives up and says why", async () => {
     const root = await temporaryRoot();
     const binary = await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 30`);
@@ -334,7 +336,7 @@ describe("omp ConfigStore defaults: a slow first run", () => {
     ]);
     expect(finalWarning).toContain("timed out after");
     await expectNotFound(store, "model");
-  });
+  }, 30_000);
 
   test("disposing the store stops a retry that is still waiting for omp", async () => {
     const root = await temporaryRoot();
