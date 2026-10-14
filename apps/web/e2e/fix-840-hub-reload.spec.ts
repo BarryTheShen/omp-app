@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, realTest, screenshots, sendPrompt, startChat } from "./real-omp";
+import { expect, openToolCard, realTest, screenshots, sendPrompt, startChat } from "./real-omp";
 
 /**
  * Issue #840. The Agent Hub listed a finished worker until the page reloaded, then showed "Nothing here yet":
@@ -15,6 +15,14 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_subagent");
+    // The task card starts as one line (#1162), and its body holds the worker's result: open it before reading that.
+    await expect(page.getByTestId("t5-task-card").first()).toBeVisible({ timeout: 120_000 });
+    await openToolCard(page.getByTestId("t5-task-card").first());
+    // The worker's submission is one more collapsed card inside the task card: open it to read the worker's result.
+    await expect(page.locator('[data-testid^="tool-card-call_yield"]').first()).toBeVisible({
+      timeout: 120_000,
+    });
+    await openToolCard(page.locator('[data-testid^="tool-card-call_yield"]').first());
     await expect(page.getByText("Nested probe completed.").first()).toBeVisible({
       timeout: 120_000,
     });
@@ -26,7 +34,14 @@ realTest(
     });
 
     await page.reload();
-    // The chat reopens by itself; the hub is read once its answer is on screen.
+    // The chat reopens by itself. The card starts as one line again, so it is opened before the hub is read.
+    await expect(page.getByTestId("t5-task-card").first()).toBeVisible({ timeout: 120_000 });
+    await openToolCard(page.getByTestId("t5-task-card").first());
+    // The worker's submission is one more collapsed card inside the task card: open it to read the worker's result.
+    await expect(page.locator('[data-testid^="tool-card-call_yield"]').first()).toBeVisible({
+      timeout: 120_000,
+    });
+    await openToolCard(page.locator('[data-testid^="tool-card-call_yield"]').first());
     await expect(page.getByText("Nested probe completed.").first()).toBeVisible({
       timeout: 120_000,
     });

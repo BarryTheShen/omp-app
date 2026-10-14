@@ -36,20 +36,35 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_subagent");
+    // The task card starts as one line (#1162), and its body holds the worker's result: open it before reading that.
+    const before = page.getByTestId("t5-task-card");
+    await expect(before.first()).toBeVisible({ timeout: 120_000 });
+    await openToolCard(before);
+    // The worker's submission is one more collapsed card inside the task card: open it to read the worker's result.
+    await expect(page.locator('[data-testid^="tool-card-call_yield"]').first()).toBeVisible({
+      timeout: 120_000,
+    });
+    await openToolCard(page.locator('[data-testid^="tool-card-call_yield"]').first());
     await expect(page.getByText("Nested probe completed.").first()).toBeVisible({
       timeout: 120_000,
     });
     await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
 
-    const before = page.getByTestId("t5-task-card");
     await expect(before.locator(TRIGGER).first()).toHaveAttribute("aria-label", "task: Complete", {
       timeout: 60_000,
     });
-    await openToolCard(before);
     await expect(before.locator(JOB)).toContainText("Completed");
 
     await page.reload();
-    // The chat reopens by itself: its answer is on screen again before the card is read.
+    // The chat reopens by itself. The card starts as one line again, so it is opened before its result is read.
+    const reopened = page.getByTestId("t5-task-card");
+    await expect(reopened.first()).toBeVisible({ timeout: 120_000 });
+    await openToolCard(reopened);
+    // The worker's submission is one more collapsed card inside the task card: open it to read the worker's result.
+    await expect(page.locator('[data-testid^="tool-card-call_yield"]').first()).toBeVisible({
+      timeout: 120_000,
+    });
+    await openToolCard(page.locator('[data-testid^="tool-card-call_yield"]').first());
     await expect(page.getByText("Nested probe completed.").first()).toBeVisible({
       timeout: 120_000,
     });
