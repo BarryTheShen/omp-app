@@ -14,6 +14,7 @@ const threadId = "dialog-test-thread" as ThreadId;
 function renderRequest(request: DialogRequest, deadlineAt?: number) {
   const answers: DialogResponse[] = [];
   let cancellations = 0;
+  const drafts: string[] = [];
   const context: DialogRenderContext = {
     request,
     threadId,
@@ -25,10 +26,14 @@ function renderRequest(request: DialogRequest, deadlineAt?: number) {
     cancel: async () => {
       cancellations += 1;
     },
+    keepDraft: (text) => {
+      drafts.push(text);
+    },
   };
   render(renderDialogRequest(request, context));
   return {
     answers,
+    drafts,
     get cancellations() {
       return cancellations;
     },
@@ -455,6 +460,7 @@ function renderRefusedAnswers(request: DialogRequest) {
       answers.push(response);
     },
     cancel: async () => undefined,
+    keepDraft: () => undefined,
   };
   render(renderDialogRequest(request, context));
   return { answers, state };
@@ -515,5 +521,28 @@ describe("a refused answer", () => {
     result.state.refuse = false;
     fireEvent.click(screen.getByRole("button", { name: "Choose" }));
     await waitFor(() => expect(result.answers).toEqual([{ kind: "select", value: "Beta" }]));
+  });
+});
+
+describe("an editor and an input report the text they hold", () => {
+  test("every change of an editor is reported, so a cancel can hand it back", () => {
+    const result = renderRequest({
+      kind: "editor",
+      id: "editor-draft" as UiRequestId,
+      title: "Goal text",
+      prefill: "Start",
+    } as DialogRequest);
+    fireEvent.change(screen.getByLabelText("Goal text"), { target: { value: "Start, then more" } });
+    expect(result.drafts).toEqual(["Start, then more"]);
+  });
+
+  test("every change of an input is reported, so a cancel can hand it back", () => {
+    const result = renderRequest({
+      kind: "input",
+      id: "input-draft" as UiRequestId,
+      title: "Token budget",
+    } as DialogRequest);
+    fireEvent.change(screen.getByLabelText("Token budget"), { target: { value: "50" } });
+    expect(result.drafts).toEqual(["50"]);
   });
 });

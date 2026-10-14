@@ -28,6 +28,11 @@ export interface DialogRenderContext {
   readonly answer: (response: DialogResponse) => Promise<void>;
   readonly cancel: () => Promise<void>;
   /**
+   * Keeps the text an editor or input holds now. A close that is not an answer (Cancel, Escape, a press outside, a chat
+   * switch, a host close) hands the last text back as the result's `draft`, so typed text is not dropped.
+   */
+  readonly keepDraft: (text: string) => void;
+  /**
    * When (epoch ms) the host settles this request on its own timer, because no answer came. Undefined when the request
    * has no timeout. A request queued behind another dialog keeps the time it was received, as its timer does.
    */
@@ -64,6 +69,8 @@ interface DialogEntry {
   abortListener: (() => void) | null;
   internalClose: boolean;
   restoreCalled: boolean;
+  /** The text an editor or input holds now: its prefill until the person types. Undefined for other kinds. */
+  draft: string | undefined;
 }
 
 function failure(code: AppError["code"], message: string): AppFailure {
@@ -95,6 +102,20 @@ function asFailure(error: unknown, message: string): AppFailure {
 
 function isUiAvailable(capabilities: CapabilityMap | undefined): boolean {
   return capabilities?.[DIALOG_CAPABILITY]?.state === "available";
+}
+
+/** The text an editor or input holds before anyone types: its prefill, or nothing. An input has no prefill. */
+function initialDraft(request: DialogRequest): string | undefined {
+  if (request.kind === "editor") return request.prefill ?? "";
+  if (request.kind === "input") return "";
+  return undefined;
+}
+
+/** What a cancelled request settles with. An editor or an input also hands back the text it held when it closed. */
+function cancelledResult(entry: DialogEntry, timedOut: boolean): DialogResult {
+  const result = defaultDialogResult(entry.request, { timedOut });
+  if (result.outcome !== "cancelled" || entry.draft === undefined) return result;
+  return { ...result, draft: entry.draft };
 }
 
 /** U4.2's one-modal-per-thread host. OMP-origin answers use the injected R0 action; app-origin
@@ -163,6 +184,7 @@ export class DialogHostController implements DialogHost {
         internalClose: false,
         restoreCalled: false,
         deadlineAt: undefined,
+        draft: initialDraft(parsed.data),
       };
       this.entries.set(parsed.data.id, entry);
       const key = String(entryOptions.threadId);
@@ -275,6 +297,9 @@ export class DialogHostController implements DialogHost {
       signal: entry.abortController.signal,
       answer: (response) => this.answer(entry, response),
       cancel: () => this.settleCancelled(entry, false, true),
+      keepDraft: (text) => {
+        entry.draft = text;
+      },
       deadlineAt: entry.deadlineAt,
     };
     try {
@@ -353,7 +378,7 @@ export class DialogHostController implements DialogHost {
     sendAnswer: boolean,
   ): Promise<void> {
     if (entry.state === "settled" || entry.state === "settling") return Promise.resolve();
-    const result = defaultDialogResult(entry.request, { timedOut });
+    const result = cancelledResult(entry, timedOut);
     if (!sendAnswer) {
       this.finishResolved(entry, result);
       return Promise.resolve();

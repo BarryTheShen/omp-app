@@ -52,7 +52,10 @@ export function EditorDialog({
         value={value}
         aria-label={request.title}
         className="min-h-40 resize-y [contain:inline-size]"
-        onChange={(event) => setValue(event.currentTarget.value)}
+        onChange={(event) => {
+          setValue(event.currentTarget.value);
+          context.keepDraft(event.currentTarget.value);
+        }}
         onKeyDown={(event) => {
           if (readOnly) return;
           if (

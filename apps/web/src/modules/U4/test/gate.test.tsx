@@ -251,6 +251,7 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
               signal: new AbortController().signal,
               answer: async () => {},
               cancel: async () => {},
+              keepDraft: () => undefined,
             },
           )}
         </div>
@@ -273,6 +274,7 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
         answers.push({ optional, response });
       },
       cancel: async () => {},
+      keepDraft: () => undefined,
     });
     const { unmount } = render(
       <OverlayHost>

@@ -43,6 +43,8 @@ export const DialogResultSchema = z.discriminatedUnion("outcome", [
     outcome: z.literal("cancelled"),
     kind: z.enum(DIALOG_REQUEST_KINDS),
     timedOut: z.boolean(),
+    // An editor or an input hands back the text in its box when it closes without an answer. No other kind sends it.
+    draft: z.string().optional(),
   }),
 ]);
 export type DialogResult = z.infer<typeof DialogResultSchema>;
@@ -53,7 +55,13 @@ export type DialogResultFor<R extends DialogRequest> =
       readonly outcome: "answered";
       readonly response: Extract<DialogResponse, { kind: R["kind"] }>;
     }
-  | { readonly outcome: "cancelled"; readonly kind: R["kind"]; readonly timedOut: boolean };
+  | {
+      readonly outcome: "cancelled";
+      readonly kind: R["kind"];
+      readonly timedOut: boolean;
+      /** The text an editor or input held when it closed without an answer: Cancel, Escape, a press outside, or a host close. */
+      readonly draft?: string;
+    };
 
 /**
  * omp resolves `select`/`input`/`editor` to no value and `ask` to its recommended-or-first

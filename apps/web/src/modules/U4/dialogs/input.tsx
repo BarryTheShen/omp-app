@@ -56,6 +56,7 @@ export function InputDialog({
           aria-invalid={error ? "true" : undefined}
           onChange={(event) => {
             setValue(event.currentTarget.value);
+            context.keepDraft(event.currentTarget.value);
             if (error) setError(null);
           }}
           onKeyDown={(event) => {
