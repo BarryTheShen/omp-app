@@ -563,6 +563,24 @@ describe("McpCommandsService", () => {
     expect(error.appError.message).toContain("or is enabled");
   });
 
+  test("classifies omp's TUI-only answer as unavailable and points to the omp terminal", async () => {
+    const { service } = serviceFor(
+      "/mcp reconnect requires OAuth or browser flows only available in the TUI client.",
+    );
+    const error = await appFailure(
+      service.action(
+        mcpAction({
+          operation: "test",
+          operationId: "test-tui-only",
+          name: "remote",
+          scope: "user",
+        }),
+      ),
+    );
+    expect(error.appError).toMatchObject({ code: "unavailable", retryable: false });
+    expect(error.appError.message).toContain("omp terminal");
+  });
+
   test("accepts remote URL paths and refuses credentials, query strings and fragments", async () => {
     const accepted = serviceFor('Added MCP server "remote" (user).');
     await accepted.service.action(

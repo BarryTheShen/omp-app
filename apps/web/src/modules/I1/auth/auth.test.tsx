@@ -418,6 +418,35 @@ describe("I1 MCP add wizard", () => {
     expect(deniedServer.state.testArgs).toHaveLength(0);
   });
 
+  test("surfaces a save that may already have applied and runs no connection test", async () => {
+    const dialog = dialogHarness([
+      { kind: "select", value: "Remote web server" },
+      { kind: "input", value: "remote" },
+      { kind: "select", value: "User" },
+      { kind: "input", value: "https://mcp.example.test/api/mcp" },
+    ]);
+    const server = serverHarness();
+    const servers: Pick<McpServerLifecyclePort, "add" | "test"> = {
+      ...server.servers,
+      async add() {
+        throw new AppFailure({
+          code: "cancelled",
+          message:
+            "This change may already have been applied. Refresh the server list before trying again.",
+          retryable: false,
+        });
+      },
+    };
+
+    await expect(runMcpAddWizard(wizardOptions(dialog.dialogs, servers))).rejects.toMatchObject({
+      appError: {
+        code: "cancelled",
+        message: expect.stringContaining("Refresh the server list"),
+      },
+    });
+    expect(server.state.testArgs).toHaveLength(0);
+  });
+
   test("keeps a saved server visible when its typed connection test fails", async () => {
     const dialog = dialogHarness([
       { kind: "select", value: "Remote web server" },
