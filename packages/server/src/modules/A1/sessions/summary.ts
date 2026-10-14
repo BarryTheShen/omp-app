@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import { StringDecoder } from "node:string_decoder";
+import { firstPromptTextOf, MESSAGE_PART_SEPARATOR } from "@omp-app/contracts";
 import { isJsonObject, normalizeHeader, parseTitleSlotLine } from "./parser";
 import type { ParseWarning, SessionHeader, SessionStatus, SessionTitleSlot } from "./types";
 
@@ -23,8 +24,12 @@ const FIRST_PROMPT_MAX = 120;
 /** The header sits in the first lines; this is far more than they need (the title slot is 256 bytes). */
 const HEADER_SCAN_BYTES = 256 * 1024;
 
-/** A user message's text as one line of at most FIRST_PROMPT_MAX characters; null when empty. */
-function promptLine(content: unknown): string | null {
+/**
+ * A user message's first prompt as one line of at most FIRST_PROMPT_MAX characters; null when empty. The typed text is
+ * listed. A message that is only a pasted text lists that text's first line. omp's wrapper is never listed
+ * (`firstPromptTextOf`).
+ */
+export function promptLine(content: unknown): string | null {
   const text =
     typeof content === "string"
       ? content
@@ -35,9 +40,9 @@ function promptLine(content: unknown): string | null {
                 ? part.text
                 : "",
             )
-            .join(" ")
+            .join(MESSAGE_PART_SEPARATOR)
         : "";
-  const line = text.replace(/\s+/g, " ").trim();
+  const line = firstPromptTextOf(text).replace(/\s+/g, " ").trim();
   if (line.length === 0) return null;
   return line.length > FIRST_PROMPT_MAX ? `${line.slice(0, FIRST_PROMPT_MAX - 1)}…` : line;
 }

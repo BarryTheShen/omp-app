@@ -1,6 +1,7 @@
 import { TextMessagePartProvider } from "@assistant-ui/react";
+import { splitPastedBlocks } from "@omp-app/contracts";
 import { useMemo } from "react";
-import { ATTACHMENT_CHIP_CLASS, pastedTextName, splitPastedBlocks } from "@/modules/U2/attachments";
+import { ATTACHMENT_CHIP_CLASS, pastedTextName } from "@/modules/U2/attachments";
 import { MarkdownText } from "../markdown";
 
 /** A pasted block in a sent message: one chip, named as the composer's chip is. It is display only. */

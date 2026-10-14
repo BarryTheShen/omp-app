@@ -1,7 +1,7 @@
 import type { CompleteAttachment } from "@assistant-ui/react";
+import { lineCount, splitPastedBlocks, wrapPastedBlock } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { withPastedText } from "./attachments";
-import { lineCount, splitPastedBlocks, wrapPastedBlock } from "./pasted-block";
 
 const SEPARATOR = "\n\n";
 

@@ -18,4 +18,3 @@ export {
   withPastedText,
 } from "./attachments";
 export { ATTACHMENT_CHIP_CLASS, AttachmentChips } from "./chips";
-export { splitPastedBlocks } from "./pasted-block";

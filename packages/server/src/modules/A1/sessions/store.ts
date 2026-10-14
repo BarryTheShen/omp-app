@@ -21,7 +21,12 @@ import {
 } from "./paths";
 import { readSubagentPage, type SubagentPage, subagentTranscriptPath } from "./subagent-read";
 import { collectSubagentTranscripts, type WorkerLeaseProbe } from "./subagents";
-import { readSessionHeader, type SessionSummary, summarizeSessionFile } from "./summary";
+import {
+  promptLine,
+  readSessionHeader,
+  type SessionSummary,
+  summarizeSessionFile,
+} from "./summary";
 import type {
   ListFoldersArgs,
   ListSessionsArgs,
@@ -205,8 +210,6 @@ function statusFromEntries(entries: readonly unknown[]): SessionStatus {
   return "unknown";
 }
 
-const FIRST_PROMPT_MAX = 120;
-
 function messageCounts(entries: readonly unknown[]): {
   messageCount: number;
   assistantTurns: number;
@@ -225,25 +228,6 @@ function messageCounts(entries: readonly unknown[]): {
     }
   }
   return { messageCount, assistantTurns, firstPrompt };
-}
-
-/** A user message's text as one line of at most FIRST_PROMPT_MAX characters; null when empty. */
-function promptLine(content: unknown): string | null {
-  const text =
-    typeof content === "string"
-      ? content
-      : Array.isArray(content)
-        ? content
-            .map((part) =>
-              isJsonObject(part) && part.type === "text" && typeof part.text === "string"
-                ? part.text
-                : "",
-            )
-            .join(" ")
-        : "";
-  const line = text.replace(/\s+/g, " ").trim();
-  if (line.length === 0) return null;
-  return line.length > FIRST_PROMPT_MAX ? `${line.slice(0, FIRST_PROMPT_MAX - 1)}…` : line;
 }
 
 /** What the list cache remembers about a file: valid while the file's size and time are unchanged. */

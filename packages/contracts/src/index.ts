@@ -7,6 +7,7 @@ export * from "./core/ids";
 export * from "./core/inventory";
 export * from "./core/modules";
 export * from "./core/omp";
+export * from "./core/pasted-block";
 export * from "./core/provenance";
 export * from "./ports/A0";
 export * from "./ports/A1";

@@ -5,9 +5,14 @@ import type {
   ThreadUserMessagePart,
 } from "@assistant-ui/react";
 import type { AttachmentRef } from "@omp-app/contracts";
-import { AppFailure, MAX_ATTACHMENT_BYTES } from "@omp-app/contracts";
+import {
+  AppFailure,
+  lineCount,
+  MAX_ATTACHMENT_BYTES,
+  MESSAGE_PART_SEPARATOR,
+  wrapPastedBlock,
+} from "@omp-app/contracts";
 import type { AttachmentAdapter, AttachmentState } from "../contract";
-import { lineCount, MESSAGE_PART_SEPARATOR, wrapPastedBlock } from "./pasted-block";
 
 export const DEFAULT_LARGE_PASTE_LINE_THRESHOLD = 100;
 

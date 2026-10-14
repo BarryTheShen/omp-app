@@ -1,7 +1,8 @@
 /**
  * The block a pasted text travels in, inside a person's message: omp's `<attachment>` wrapper (omp v18.9.1
- * `modes/controllers/input-controller.ts:216-218`). The composer writes it (`withPastedText`), and the transcript splits
- * it back out for display (`splitPastedBlocks`). Both read the constants below, so they cannot drift apart.
+ * `modes/controllers/input-controller.ts:216-218`). The composer writes it (`withPastedText`), the transcript splits it
+ * back out for display (`splitPastedBlocks`), and the server reads a chat's first prompt from it (`firstPromptTextOf`). All
+ * read the constants below, so they cannot drift apart.
  */
 const BLOCK_TAG = { open: "<attachment>", close: "</attachment>" } as const;
 /** How a block opens and closes: each tag on a line of its own, around the text. */
@@ -155,4 +156,27 @@ export function splitPastedBlocks(message: string): readonly MessageSegment[] {
   if (textStart < message.length)
     segments.push({ kind: "text", text: message.slice(textStart), start: textStart });
   return segments;
+}
+
+/**
+ * The words a chat lists as its first prompt: the typed text, its parts joined by a space, when there is some. Otherwise
+ * the first line with words in the message's pasted texts, so a message that is only a pasted text lists that text and
+ * never omp's wrapper. A block that is not in exact form is typed text, as the transcript shows it. Empty when there is
+ * neither.
+ */
+export function firstPromptTextOf(message: string): string {
+  const segments = splitPastedBlocks(message);
+  const typed = segments
+    .flatMap((segment) => (segment.kind === "text" ? [segment.text] : []))
+    .join(" ");
+  if (typed.trim().length > 0) return typed;
+  for (const segment of segments) {
+    if (segment.kind !== "pasted") continue;
+    const line = segment.text
+      .split(/\r\n|\r|\n/)
+      .map((text) => text.trim())
+      .find((text) => text.length > 0);
+    if (line !== undefined) return line;
+  }
+  return "";
 }

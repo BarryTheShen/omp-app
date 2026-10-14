@@ -526,3 +526,70 @@ describe("streaming session summary", () => {
     expect(await store.findSession("no-such-id")).toBeUndefined();
   });
 });
+
+describe("a chat's first prompt is its typed text, or a pasted text's first line", () => {
+  /** omp's wrapper around a pasted text, in the exact layout the composer writes. */
+  const WRAPPED = "<attachment>\npasted line 1\npasted line 2\n</attachment>";
+
+  test("a wrapped paste in the first message is left out of the prompt", async () => {
+    const root = await tempRoot();
+    const file = path.join(root, "wrapped.jsonl");
+    const lines = [
+      header("wrapped", "/w"),
+      message("user", `Summarize this\n\n${WRAPPED}`),
+      message("assistant", "pong"),
+    ];
+    await writeFile(file, `${lines.join("\n")}\n`);
+    expect((await summarizeSessionFile(file)).firstPrompt).toBe("Summarize this");
+  });
+
+  test("a wrapped paste in one of the message's text parts is left out too", async () => {
+    const root = await tempRoot();
+    const file = path.join(root, "parts.jsonl");
+    const content = [
+      { type: "text", text: "Summarize this" },
+      { type: "text", text: WRAPPED },
+    ];
+    await writeFile(file, `${[header("parts", "/w"), message("user", content)].join("\n")}\n`);
+    expect((await summarizeSessionFile(file)).firstPrompt).toBe("Summarize this");
+  });
+
+  test("a wrapper that is not in exact form stays in the prompt, as typed", async () => {
+    const root = await tempRoot();
+    const file = path.join(root, "inline.jsonl");
+    const typed = "Look at <attachment>x</attachment> here";
+    await writeFile(file, `${[header("inline", "/w"), message("user", typed)].join("\n")}\n`);
+    expect((await summarizeSessionFile(file)).firstPrompt).toBe(typed);
+  });
+
+  test("a pasted text's first line is listed within the same length limit as typed text", async () => {
+    const root = await tempRoot();
+    const file = path.join(root, "long-paste.jsonl");
+    const longLine = "x".repeat(150);
+    const pasted = `<attachment>\n${longLine}\nsecond line\n</attachment>`;
+    await writeFile(file, `${[header("long-paste", "/w"), message("user", pasted)].join("\n")}\n`);
+    expect((await summarizeSessionFile(file)).firstPrompt).toBe(`${"x".repeat(119)}…`);
+  });
+
+  test("the list reads each first prompt from the store, and a message of only a pasted text lists its first line", async () => {
+    const root = await tempRoot();
+    const sessionsRoot = path.join(root, "sessions");
+    const bucket = path.join(sessionsRoot, "-w");
+    await mkdir(bucket, { recursive: true });
+    const onlyPaste = [header("only-paste", "/w"), message("user", WRAPPED)];
+    const wrapped = [header("wrapped", "/w"), message("user", `Summarize this\n\n${WRAPPED}`)];
+    await writeFile(path.join(bucket, "only-paste.jsonl"), `${onlyPaste.join("\n")}\n`);
+    await writeFile(path.join(bucket, "wrapped.jsonl"), `${wrapped.join("\n")}\n`);
+    const store = new SessionFileStore({
+      sessionsRoot,
+      home: root,
+      tempRoot: path.join(root, "tmp"),
+    });
+
+    const listed = await store.listSessions({ limit: 10 });
+    expect(Object.fromEntries(listed.sessions.map((s) => [s.id, s.firstPrompt]))).toEqual({
+      "only-paste": "pasted line 1",
+      wrapped: "Summarize this",
+    });
+  });
+});
