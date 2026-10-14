@@ -35,6 +35,7 @@ export type SurfaceId =
   | "editHandoff"
   | "context"
   | "contextCard"
+  | "statusSegments"
   | "notifications"
   | "notices"
   | "connection"
@@ -81,5 +82,5 @@ export const LAYOUT: AppLayout = {
    */
   threadOverlay: ["notices"],
   /** The bottom bar, left to right. */
-  statusBar: ["notifications", "context"],
+  statusBar: ["notifications", "statusSegments", "context"],
 };

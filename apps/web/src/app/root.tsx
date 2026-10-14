@@ -75,6 +75,7 @@ import {
   transcriptNoticeSource,
 } from "@/modules/N1/feedback";
 import { NotificationProjector, sessionRetiredNotices } from "@/modules/N1/notifications";
+import { StatusSegments } from "@/modules/N1/status";
 import {
   createP3Runs,
   P3EditSurface,
@@ -607,6 +608,14 @@ const NO_CHAT_MESSAGES: ChatMessagesSource = {
   subscribe: () => () => undefined,
   getSnapshot: () => NO_MESSAGE_ORDER,
 };
+
+/** The status bar's unexpected read failures go to the debug log; the bar itself shows nothing for them. */
+function reportStatusFailure(error: unknown): void {
+  reportClientError({
+    kind: "error",
+    message: `The status bar could not read the workspace: ${error instanceof Error ? error.message : "unknown error"}`,
+  });
+}
 
 function ActiveThreadContent(props: ActiveThreadProps) {
   if (!props.history.store || !props.history.threadId) return null;
@@ -1467,6 +1476,20 @@ function ActiveThreadReady({
       title: "Context",
       grow: true,
       render: () => <SessionStatusBar client={client} store={store} threadId={threadId} />,
+    },
+    statusSegments: {
+      title: "Status",
+      render: () => (
+        <StatusSegments
+          capabilities={capabilities}
+          client={client}
+          folder={folder}
+          reportFailure={reportStatusFailure}
+          roster={agents?.roster ?? null}
+          runtime={store}
+          threadId={threadId}
+        />
+      ),
     },
     editHandoff: {
       title: "Edit message",
