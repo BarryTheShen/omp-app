@@ -7,7 +7,8 @@ import { expect, realTest, screenshots } from "./real-omp";
  * omp puts its own messages into a chat: a finished subagent with its result, a message from another
  * agent, the advisor, a finished process. Some are for the model alone (`display: false`). This opens
  * a chat made of real entries of each kind (`modules/U1/fixtures/real-entries.ts`) in the real app on
- * real omp: every shown one is a note with its heading and text, in order and once; none of the
+ * real omp: every shown one is a note that shows the words its sample lists (for a worker, its name, how it ended
+ * and whether its transcript is here), in order and once; none of the
  * hidden ones is on the page; and nothing says 'Unable to render'. The same after a reload.
  */
 

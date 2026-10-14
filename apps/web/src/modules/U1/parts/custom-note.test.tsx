@@ -243,3 +243,18 @@ describe("a background worker's notice", () => {
     expect(container.querySelector('[data-slot="u1-custom-note-worker"]')).toBeNull();
   });
 });
+
+describe("the real entries show the words their samples list", () => {
+  // The spec `custom-messages-real-entries.spec.ts` checks the same words in the real app on real omp. This is that
+  // check without omp: each shown sample's note, with no worker lookup (the chat does not know the workers), shows
+  // what its `shows` list says.
+  test.each(
+    U1_REAL_ENTRIES.filter((sample) => !sample.hidden).map(
+      (sample) => [sample.name, sample] as const,
+    ),
+  )("%s", (_name, sample) => {
+    const { container } = render(<CustomNote source={sourceOf(sample.name)} />);
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+    for (const wanted of sample.shows) expect(text).toContain(wanted.replace(/\s+/g, " "));
+  });
+});

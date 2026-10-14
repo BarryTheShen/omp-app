@@ -58,7 +58,11 @@ export const U1_REAL_ENTRIES: readonly RealEntry[] = [
       },
       timestamp: "2026-10-03T12:00:01.000Z",
     },
-    shows: ["Background job finished", "No blockers found; two minor notes."],
+    // A task worker's notice is a worker note (`parts/custom-note.tsx`, `WorkerNotes`): its name, how it ended and
+    // the transcript control. For a worker the chat knows, the result sits behind that control, not in the note
+    // (issue 1289, merged as PR 1491). This worker is unknown to the chat, so the note shows no result: it says its
+    // transcript is not available here.
+    shows: ["Reviewer has ended.", "Its transcript is not available here."],
     hidden: false,
   },
   {
