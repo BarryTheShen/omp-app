@@ -73,6 +73,10 @@ realTest(
 
     const transcript = page.getByRole("region", { name: "Conversation transcript" });
     const composer = await startChat(page);
+    // The chat has finished opening (the thread shows its empty state, not "Loading conversation…") before the prompt
+    // goes out: the drop must land on an open chat. A drop during its history load fails the open and closes the chat
+    // (#1617).
+    await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 30_000 });
     await sendPrompt(composer, "ping");
     await expect(transcript.getByText("pong", { exact: true })).toHaveCount(1, { timeout: 60_000 });
 
