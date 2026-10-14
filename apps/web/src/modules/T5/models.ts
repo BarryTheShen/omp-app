@@ -240,51 +240,95 @@ export const TaskDetailsSchema = z.looseObject({
 });
 export type TaskDetails = z.infer<typeof TaskDetailsSchema>;
 
+// omp v18.8.9: the argument schemas are `vibeSpawnSchema` … `vibeListSchema` in `tools/vibe.ts:32-54`; the result
+// types are `VibeToolDetails`, `VibeScreenSnapshot`, `VibeSendOutcome`, `VibeKillOutcome` and `VibeWaitOutcome` in
+// `packages/tui/src/tools/vibe.ts:28-110`. A worker's `spawned` outcome is `tools/vibe.ts:102`.
+const VibeCliSchema = z.enum(["fast", "good"]);
 export const VibeSpawnArgsSchema = z.looseObject({
-  cli: z.enum(["fast", "good"]),
-  name: OptionalText,
-  prompt: z.string(),
+  cli: VibeCliSchema,
+  name: z.string().min(1).max(48).optional(),
+  prompt: z.string().min(1),
 });
 export type VibeSpawnArgs = z.infer<typeof VibeSpawnArgsSchema>;
 
-export const VibeSendArgsSchema = z.looseObject({ session: z.string(), message: z.string() });
+export const VibeSendArgsSchema = z.looseObject({
+  session: z.string().min(1),
+  message: z.string().min(1),
+});
 export type VibeSendArgs = z.infer<typeof VibeSendArgsSchema>;
 
 export const VibeWaitArgsSchema = z.looseObject({
   sessions: z.array(z.string()).optional(),
-  timeout: z.number().nonnegative().optional(),
+  timeout: z.number().positive().optional(),
 });
 export type VibeWaitArgs = z.infer<typeof VibeWaitArgsSchema>;
 
-export const VibeKillArgsSchema = z.looseObject({ session: z.string() });
+export const VibeKillArgsSchema = z.looseObject({ session: z.string().min(1) });
 export type VibeKillArgs = z.infer<typeof VibeKillArgsSchema>;
 
 export const VibeListArgsSchema = z.looseObject({});
 export type VibeListArgs = z.infer<typeof VibeListArgsSchema>;
 
-export const VibeScreenSchema = z.looseObject({
-  name: OptionalText,
-  lines: z.array(z.string()).optional(),
-  updatedAt: z.number().optional(),
+/** One worker's screen: its state, what it does now, and the tails of its tool trace and streamed text. */
+const VibeScreenSchema = z.looseObject({
+  id: z.string().min(1),
+  cli: VibeCliSchema,
+  state: z.enum(["starting", "running", "idle", "dead"]),
+  killed: z.boolean().optional(),
+  model: z.string().optional(),
+  turns: z.number().int().nonnegative(),
+  queued: z.number().int().nonnegative(),
+  turnStartedAt: z.number().optional(),
+  turnMessage: z.string().optional(),
+  currentTool: z.string().optional(),
+  currentToolArgs: z.string().optional(),
+  lastIntent: z.string().optional(),
+  trace: z.array(z.string()),
+  outputTail: z.array(z.string()),
+  lastActivity: z.string().optional(),
+  lastActivityAt: z.number(),
 });
 export type VibeScreen = z.infer<typeof VibeScreenSchema>;
+
+/** The worker a message reached, and how omp delivered it: a new turn, a steer, or the next queued turn. */
+const VibeSendOutcomeSchema = z.looseObject({
+  id: z.string().min(1),
+  mode: z.enum(["turn", "steered", "queued"]),
+  jobId: z.string().min(1).optional(),
+});
+const VibeKillOutcomeSchema = z.looseObject({
+  id: z.string().min(1),
+  cancelledTurn: z.boolean(),
+});
+const VibeSpawnedSchema = z.looseObject({
+  id: z.string().min(1),
+  cli: VibeCliSchema,
+  jobId: z.string().min(1),
+});
+/** A watched turn that settled: its worker, its turn job, and how the turn ended. The text is in the result text. */
+const VibeWaitSettledSchema = z.looseObject({
+  id: z.string().min(1),
+  jobId: z.string().min(1),
+  status: z.enum(["completed", "failed", "cancelled"]),
+});
 
 export const VibeDetailsSchema = z.looseObject({
   ...ToolIdentitySchema.shape,
   op: z.enum(["spawn", "send", "list", "wait", "kill"]).optional(),
-  cli: z.enum(["fast", "good"]).optional(),
   screens: z.array(VibeScreenSchema).optional(),
-  hiddenKilled: z.boolean().optional(),
-  spawned: z.unknown().optional(),
-  send: z.unknown().optional(),
+  /** Ids of workers the director killed, left off the wall; `vibe_list` reports them by id. */
+  hiddenKilled: z.array(z.string().min(1)).optional(),
+  spawned: VibeSpawnedSchema.optional(),
+  send: VibeSendOutcomeSchema.optional(),
   wait: z
     .looseObject({
-      settled: z.array(z.string()).optional(),
+      settled: z.array(VibeWaitSettledSchema).optional(),
       stillRunning: z.array(z.string()).optional(),
       timedOut: z.boolean().optional(),
+      waiting: z.boolean().optional(),
     })
     .optional(),
-  killed: z.unknown().optional(),
+  killed: VibeKillOutcomeSchema.optional(),
   error: z.unknown().optional(),
 });
 export type VibeDetails = z.infer<typeof VibeDetailsSchema>;
@@ -329,14 +373,19 @@ export type T5DetailDecode<T> =
   | { readonly ok: true; readonly value: T; readonly raw: unknown }
   | { readonly ok: false; readonly error: AppFailure; readonly raw: unknown };
 
-function decode<T>(schema: z.ZodType<T>, raw: unknown, label: string): T5DetailDecode<T> {
+function decode<T>(
+  schema: z.ZodType<T>,
+  raw: unknown,
+  label: string,
+  failure = `Malformed ${label}; showing the raw tool result.`,
+): T5DetailDecode<T> {
   const parsed = schema.safeParse(raw);
   if (parsed.success) return { ok: true, value: parsed.data, raw };
   return {
     ok: false,
     error: new AppFailure({
       code: "invalid_args",
-      message: `Malformed ${label}; showing the raw tool result.`,
+      message: failure,
       retryable: false,
     }),
     raw,
@@ -353,7 +402,12 @@ export function decodeWaitDetails(raw: unknown): T5DetailDecode<CoordinationDeta
   return decode(CoordinationDetailsSchema, raw, "wait");
 }
 export function decodeVibeDetails(raw: unknown): T5DetailDecode<VibeDetails> {
-  return decode(VibeDetailsSchema, raw, "vibe");
+  return decode(
+    VibeDetailsSchema,
+    raw,
+    "vibe",
+    "Worker details were malformed; raw output is retained.",
+  );
 }
 export function decodeYieldDetails(raw: unknown): T5DetailDecode<YieldDetails> {
   return decode(YieldDetailsSchema, raw, "yield");

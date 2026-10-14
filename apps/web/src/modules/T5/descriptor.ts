@@ -1,7 +1,7 @@
 import type { ToolRegistryDescriptor } from "../U3/tool-card/contract";
-import { ToolFallback } from "../U3/tool-card/fallback";
 import { HubToolRenderer } from "./hub";
 import { TaskToolRenderer } from "./task";
+import { VibeKillRenderer, VibeListRenderer, VibeSendRenderer, VibeWaitRenderer } from "./vibe";
 import { VIBE_SPAWN_DESCRIPTOR } from "./vibe-spawn";
 import { WaitToolRenderer } from "./wait";
 import { YieldToolRenderer } from "./yield";
@@ -35,7 +35,7 @@ export const T5_TOOL_DESCRIPTORS = [
     covers: ["T5.vibe-kill"],
     requires: [],
     match: { by: "name", name: "vibe_kill" },
-    renderer: ToolFallback,
+    renderer: VibeKillRenderer,
   },
   {
     kind: "tool",
@@ -45,7 +45,7 @@ export const T5_TOOL_DESCRIPTORS = [
     covers: ["T5.vibe-list"],
     requires: [],
     match: { by: "name", name: "vibe_list" },
-    renderer: ToolFallback,
+    renderer: VibeListRenderer,
   },
   {
     kind: "tool",
@@ -55,7 +55,7 @@ export const T5_TOOL_DESCRIPTORS = [
     covers: ["T5.vibe-send"],
     requires: [],
     match: { by: "name", name: "vibe_send" },
-    renderer: ToolFallback,
+    renderer: VibeSendRenderer,
   },
   VIBE_SPAWN_DESCRIPTOR,
   {
@@ -66,7 +66,7 @@ export const T5_TOOL_DESCRIPTORS = [
     covers: ["T5.vibe-wait"],
     requires: [],
     match: { by: "name", name: "vibe_wait" },
-    renderer: ToolFallback,
+    renderer: VibeWaitRenderer,
   },
   {
     kind: "tool",

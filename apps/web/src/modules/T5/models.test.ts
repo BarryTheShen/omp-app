@@ -99,11 +99,15 @@ describe("T5 coordination and task details", () => {
 });
 
 describe("T5 vibe and yield models", () => {
-  test("accepts vibe and yield details and keeps unknown fields", () => {
+  test("accepts vibe and yield details at omp's shapes and keeps unknown fields", () => {
     expect(
       decodeVibeDetails({
         op: "wait",
-        wait: { settled: ["session-a"], stillRunning: ["session-b"], timedOut: true },
+        wait: {
+          settled: [{ id: "session-a", jobId: "job-a", status: "completed" }],
+          stillRunning: ["session-b"],
+          timedOut: true,
+        },
         futureVibeField: ["raw"],
       }),
     ).toMatchObject({ ok: true, value: { futureVibeField: ["raw"] } });
@@ -113,6 +117,33 @@ describe("T5 vibe and yield models", () => {
       ok: true,
       value: { futureYieldField: 7 },
     });
+  });
+
+  test("keeps every field of omp's worker screen and the list of killed workers", () => {
+    const screen = {
+      id: "fast-1",
+      cli: "fast",
+      state: "running",
+      turns: 2,
+      queued: 1,
+      currentTool: "bash",
+      trace: ["read: src/a.ts"],
+      outputTail: ["checking"],
+      lastActivityAt: 1_759_600_000_000,
+      futureScreenField: true,
+    };
+    expect(
+      decodeVibeDetails({ op: "list", screens: [screen], hiddenKilled: ["fast-2"] }),
+    ).toMatchObject({ ok: true, value: { screens: [screen], hiddenKilled: ["fast-2"] } });
+  });
+
+  test("rejects the shapes an earlier schema assumed, so the card shows a visible error", () => {
+    // A boolean for the killed list, ids for settled turns, and screen fields omp never sends.
+    expect(decodeVibeDetails({ op: "list", hiddenKilled: true }).ok).toBe(false);
+    expect(decodeVibeDetails({ op: "wait", wait: { settled: ["session-a"] } }).ok).toBe(false);
+    expect(
+      decodeVibeDetails({ op: "list", screens: [{ name: "fast-1", lines: [], updatedAt: 1 }] }).ok,
+    ).toBe(false);
   });
 
   test("decodes the yield details omp really writes: success, last turn, aborted, and a skipped call", () => {
@@ -162,6 +193,9 @@ describe("T5 vibe and yield models", () => {
     expect(VibeSpawnArgsSchema.safeParse({ cli: "unknown", prompt: "inspect" }).success).toBe(
       false,
     );
+    // omp's vibe_wait takes a positive number of seconds (tools/vibe.ts:47), and a worker needs a session id.
+    expect(VibeWaitArgsSchema.safeParse({ timeout: 0 }).success).toBe(false);
+    expect(VibeSendArgsSchema.safeParse({ session: "", message: "status?" }).success).toBe(false);
   });
 
   test("turns malformed details into typed fallback failures and maps timeout/cancel", () => {

@@ -38,6 +38,8 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   stopping: "Stopping",
   exited: "Exited",
   stopped: "Stopped",
+  dead: "Ended",
+  killed: "Killed",
 };
 
 const TYPE_LABELS: Readonly<Record<string, string>> = {
@@ -68,6 +70,8 @@ const TONE_BY_VALUE: Readonly<Record<string, Tone>> = {
   parked: "muted",
   exited: "muted",
   stopped: "muted",
+  dead: "muted",
+  killed: "muted",
 };
 
 export function statusLabel(value: string): string {
