@@ -117,7 +117,10 @@ describe("AttachmentStoreService", () => {
       mediaType: "text/plain",
       bytes: base64("abcd"),
     });
-    expect((await store.list()).refs).toEqual([second.ref, third.ref]);
+    // list() returns refs in directory order, which differs from one filesystem to the next (the test machine's disk lists these two the
+    // other way round); the contract has no order, so compare by id.
+    const byId = (left: AttachmentRef, right: AttachmentRef) => left.id.localeCompare(right.id);
+    expect([...(await store.list()).refs].sort(byId)).toEqual([second.ref, third.ref].sort(byId));
     await expectAppFailure(store.get({ ref: first.ref })).then((error) =>
       expect(error.appError.code).toBe("not_found"),
     );
