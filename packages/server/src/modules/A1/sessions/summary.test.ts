@@ -31,6 +31,15 @@ const message = (role: string, content: unknown, extra: Record<string, unknown> 
     id: `m-${Math.random()}`,
     message: { role, content, ...extra },
   });
+
+/** A message written at `at`, as omp writes one: a chat is listed by the time of its last message. */
+const messageAt = (at: Date, role: string, content: unknown): string =>
+  JSON.stringify({
+    type: "message",
+    id: `m-${Math.random()}`,
+    timestamp: at.toISOString(),
+    message: { role, content },
+  });
 function titleSlot(title: string): string {
   const line = JSON.stringify({
     type: "title",
@@ -151,7 +160,7 @@ describe("streaming session summary", () => {
     expect(summary.status).toBe("complete");
   });
 
-  test("lists by modified time without reading the other files, then remembers what it read", async () => {
+  test("lists by update time and summarizes only its page, then remembers what it read", async () => {
     const root = await tempRoot();
     const sessionsRoot = path.join(root, "sessions");
     const bucket = path.join(sessionsRoot, "-w");
@@ -160,7 +169,7 @@ describe("streaming session summary", () => {
       const file = path.join(bucket, `s${index}.jsonl`);
       await writeFile(
         file,
-        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+        `${[header(`s${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `prompt ${index}`)].join("\n")}\n`,
       );
       await utimes(
         file,
@@ -208,7 +217,7 @@ describe("streaming session summary", () => {
       const file = path.join(bucket, `s${index}.jsonl`);
       await writeFile(
         file,
-        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+        `${[header(`s${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `prompt ${index}`)].join("\n")}\n`,
       );
       await utimes(
         file,
@@ -242,7 +251,7 @@ describe("streaming session summary", () => {
       const file = path.join(bucket, `s${index}.jsonl`);
       await writeFile(
         file,
-        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+        `${[header(`s${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `prompt ${index}`)].join("\n")}\n`,
       );
       await utimes(
         file,
@@ -260,7 +269,10 @@ describe("streaming session summary", () => {
     expect(first.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 4", "prompt 3"]);
     // A new chat, newer than all the others, appears above the place the first page ended at.
     const added = path.join(bucket, "s5.jsonl");
-    await writeFile(added, `${[header("s5", "/w"), message("user", "prompt 5")].join("\n")}\n`);
+    await writeFile(
+      added,
+      `${[header("s5", "/w"), messageAt(new Date(Date.UTC(2026, 9, 10)), "user", "prompt 5")].join("\n")}\n`,
+    );
     await utimes(added, new Date(Date.UTC(2026, 9, 10)), new Date(Date.UTC(2026, 9, 10)));
     const second = await store.listSessions({ limit: 2, cursor: first.nextCursor ?? undefined });
     expect(second.sessions.map((s) => s.firstPrompt)).toEqual(["prompt 2", "prompt 1"]);
@@ -291,7 +303,7 @@ describe("streaming session summary", () => {
       const file = path.join(bucket, `s${index}-${"x".repeat(60)}.jsonl`);
       await writeFile(
         file,
-        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+        `${[header(`s${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `prompt ${index}`)].join("\n")}\n`,
       );
       await utimes(
         file,
@@ -326,7 +338,7 @@ describe("streaming session summary", () => {
       const file = path.join(bucket, `s${index}.jsonl`);
       await writeFile(
         file,
-        `${[header(`s${index}`, "/w"), message("user", `prompt ${index}`)].join("\n")}\n`,
+        `${[header(`s${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `prompt ${index}`)].join("\n")}\n`,
       );
       await utimes(
         file,
@@ -422,7 +434,7 @@ describe("streaming session summary", () => {
       const file = path.join(bucket, quoted(index));
       await writeFile(
         file,
-        `${[header(`q${index}`, "/w"), message("user", `quoted ${index}`)].join("\n")}\n`,
+        `${[header(`q${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `quoted ${index}`)].join("\n")}\n`,
       );
       await utimes(
         file,

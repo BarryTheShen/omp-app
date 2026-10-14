@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import {
   parseSessionContent,
@@ -446,6 +446,152 @@ describe("SessionFileStore", () => {
       expect(listed.find((session) => session.id === "saved")?.turn).toBe("running");
       // Another folder reports its own running chats.
       expect((await store.listSessions({ folder: other })).running).toEqual(["elsewhere"]);
+    } finally {
+      await removeRoot(root);
+    }
+  });
+
+  /** A conversation message written at `timestamp`, as omp writes one. */
+  function messageRecord(id: string, timestamp: string, text: string): Record<string, unknown> {
+    return {
+      type: "message",
+      id,
+      parentId: null,
+      timestamp,
+      message: { role: "user", content: [{ type: "text", text }] },
+    };
+  }
+
+  test("a rename keeps a chat's place in the list, and a new message moves the chat to the top", async () => {
+    const root = await makeTempRoot();
+    try {
+      const home = path.join(root, "home");
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(home, "project");
+      const bucket = path.join(sessionsRoot, "-project");
+      await mkdir(cwd, { recursive: true });
+      const chats = [
+        { id: "a", at: "2026-10-01T10:00:00.000Z" },
+        { id: "b", at: "2026-10-02T10:00:00.000Z" },
+        { id: "c", at: "2026-10-03T10:00:00.000Z" },
+      ];
+      const fileOf = (id: string) => path.join(bucket, `2026-10-01_${id}.jsonl`);
+      for (const chat of chats) {
+        await writeSession(fileOf(chat.id), {
+          id: chat.id,
+          cwd,
+          timestamp: chat.at,
+          records: [messageRecord(`m-${chat.id}`, chat.at, `hello ${chat.id}`)],
+        });
+        await utimes(fileOf(chat.id), new Date(chat.at), new Date(chat.at));
+      }
+      const store = new SessionFileStore({ sessionsRoot, home, tempRoot: path.join(root, "tmp") });
+      const order = async (): Promise<string[]> =>
+        (await store.listSessions({ folder: cwd })).sessions.map((session) => session.id);
+      expect(await order()).toEqual(["c", "b", "a"]);
+
+      // A rename writes a record that is not a message: the chat keeps its place and its update time.
+      await appendFile(
+        fileOf("a"),
+        `${JSON.stringify({ type: "session_info", id: "rename", parentId: null, timestamp: "2026-10-05T09:00:00.000Z", name: "Renamed" })}\n`,
+      );
+      const renamed = await store.listSessions({ folder: cwd });
+      expect(renamed.sessions.map((session) => session.id)).toEqual(["c", "b", "a"]);
+      expect(renamed.sessions.at(-1)?.updatedAt).toBe(chats[0]?.at);
+
+      // A new message is activity: the chat moves to the top.
+      await appendFile(
+        fileOf("a"),
+        `${JSON.stringify(messageRecord("m-a-2", "2026-10-06T10:00:00.000Z", "again"))}\n`,
+      );
+      expect(await order()).toEqual(["a", "c", "b"]);
+    } finally {
+      await removeRoot(root);
+    }
+  });
+
+  test("a chat with no message is listed at its header time, not at its file time", async () => {
+    const root = await makeTempRoot();
+    try {
+      const home = path.join(root, "home");
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(home, "project");
+      await mkdir(cwd, { recursive: true });
+      await writeSession(path.join(sessionsRoot, "-project", "2026-10-01_empty.jsonl"), {
+        id: "empty",
+        cwd,
+        timestamp: "2026-10-01T08:00:00.000Z",
+      });
+      const store = new SessionFileStore({ sessionsRoot, home, tempRoot: path.join(root, "tmp") });
+      const listed = await store.listSessions({ folder: cwd });
+      expect(listed.sessions[0]?.updatedAt).toBe("2026-10-01T08:00:00.000Z");
+    } finally {
+      await removeRoot(root);
+    }
+  });
+
+  test("a listing cursor in the old form starts the list again, from its top", async () => {
+    const root = await makeTempRoot();
+    try {
+      const home = path.join(root, "home");
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(home, "project");
+      const bucket = path.join(sessionsRoot, "-project");
+      await mkdir(cwd, { recursive: true });
+      for (const [id, at] of [
+        ["a", "2026-10-01T10:00:00.000Z"],
+        ["b", "2026-10-02T10:00:00.000Z"],
+        ["c", "2026-10-03T10:00:00.000Z"],
+      ] as const) {
+        await writeSession(path.join(bucket, `2026-10-01_${id}.jsonl`), {
+          id,
+          cwd,
+          timestamp: at,
+          records: [messageRecord(`m-${id}`, at, `hello ${id}`)],
+        });
+      }
+      const store = new SessionFileStore({ sessionsRoot, home, tempRoot: path.join(root, "tmp") });
+      // `<time>.<tag>.<base64url name>`: the form every listing cursor had before the order changed.
+      const oldForm = `${Date.parse("2026-10-02T10:00:00.000Z")}.0123456789abcdef.${Buffer.from("2026-10-01_b.jsonl").toString("base64url")}`;
+      const listed = await store.listSessions({ folder: cwd, cursor: oldForm });
+      expect(listed.sessions.map((session) => session.id)).toEqual(["c", "b", "a"]);
+    } finally {
+      await removeRoot(root);
+    }
+  });
+
+  test("a chat's update time is remembered while its file's size and time are unchanged", async () => {
+    const root = await makeTempRoot();
+    try {
+      const home = path.join(root, "home");
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(home, "project");
+      const file = path.join(sessionsRoot, "-project", "2026-10-01_cached.jsonl");
+      await mkdir(cwd, { recursive: true });
+      const at = new Date("2026-10-01T10:00:00.000Z");
+      await writeSession(file, {
+        id: "cached",
+        cwd,
+        timestamp: "2026-10-01T08:00:00.000Z",
+        records: [messageRecord("m-cached", at.toISOString(), "hello")],
+      });
+      await utimes(file, at, at);
+      const store = new SessionFileStore({ sessionsRoot, home, tempRoot: path.join(root, "tmp") });
+      expect((await store.listSessions({ folder: cwd })).sessions[0]?.updatedAt).toBe(
+        at.toISOString(),
+      );
+
+      // Same size and modified time, a later message time: the remembered time is kept, as the file is not read again.
+      await writeSession(file, {
+        id: "cached",
+        cwd,
+        timestamp: "2026-10-01T08:00:00.000Z",
+        records: [messageRecord("m-cached", "2026-10-01T11:00:00.000Z", "hello")],
+      });
+      await utimes(file, at, at);
+      expect((await store.listSessions({ folder: cwd })).sessions[0]?.updatedAt).toBe(
+        at.toISOString(),
+      );
     } finally {
       await removeRoot(root);
     }

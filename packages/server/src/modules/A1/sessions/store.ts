@@ -10,6 +10,7 @@ import {
   type SessionEntryWindow,
   type SessionEntryWindowArgs,
 } from "@omp-app/contracts";
+import { headerTimestamp, lastMessageTimestamp } from "./activity";
 import { detectSessionLiveness } from "./liveness";
 import { isJsonObject, parseSessionContent } from "./parser";
 import {
@@ -252,20 +253,32 @@ interface CachedSummary {
   readonly summary: SessionSummary;
 }
 
+/** A file's update time, valid while its size and modified time are unchanged. */
+interface CachedActivity {
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly updatedAt: string;
+}
+
 /**
- * A place in a listing's order: the modified time, the base name and a tag (a short hash of the full path). The
- * base name orders files modified at the same time, and the tag orders files that also share a base name.
+ * A place in a listing's order: the time the chat last had a message (in whole milliseconds), the base name and a tag
+ * (a short hash of the full path). The base name orders chats with the same time, and the tag orders files that also
+ * share a base name.
  */
 interface ListingPlace {
-  readonly mtimeMs: number;
+  readonly activityMs: number;
   readonly name: string;
   readonly tag: string;
 }
 
-/** A file a listing may show: found by its name and its size and time, never by reading it. */
+/** A file a listing may show: found by its name, size and times; its update time is read by `#activityIso`. */
 interface SessionCandidate extends ListingPlace {
   readonly file: string;
   readonly size: number;
+  /** The file's modified time: the summary cache is valid while it is unchanged. */
+  readonly mtimeMs: number;
+  /** When the chat last had a message, as an ISO time: the time a listing shows. */
+  readonly updatedAt: string;
 }
 
 /** A short hash of a file's full path, the last part of its place in a listing. */
@@ -273,10 +286,10 @@ function placeTag(file: string): string {
   return createHash("sha256").update(file).digest("hex").slice(0, 16);
 }
 
-/** The listing's order: newest first by the whole milliseconds an ISO timestamp holds, then by base name, then tag. */
+/** The listing's order: newest first by the whole milliseconds of the update time, then by base name, then tag. */
 function newestFirst(left: ListingPlace, right: ListingPlace): number {
-  const leftTime = Math.trunc(left.mtimeMs);
-  const rightTime = Math.trunc(right.mtimeMs);
+  const leftTime = Math.trunc(left.activityMs);
+  const rightTime = Math.trunc(right.activityMs);
   if (leftTime !== rightTime) return rightTime - leftTime;
   if (left.name !== right.name) return left.name < right.name ? -1 : 1;
   if (left.tag === right.tag) return 0;
@@ -284,31 +297,44 @@ function newestFirst(left: ListingPlace, right: ListingPlace): number {
 }
 
 /**
- * A listing cursor is the place of the last file of a page, in the listing's order: `<modified time>.<tag>.<base name>`,
- * the name in base64url. It never carries the path, so it stays short whatever the folder, and a name is at most 255
- * bytes, so the cursor is at most about 375 characters. A place rather than a count: a file deleted or added before it
- * does not move the files after it. Clients pass it back unread.
+ * A listing cursor is the place of the last file of a page, in the listing's order: `a.<update time>.<tag>.<base name>`,
+ * the time in whole milliseconds and the name in base64url. It never carries the path, so it stays short whatever the
+ * folder, and a name is at most 255 bytes, so the cursor is at most about 375 characters. A place rather than a count: a
+ * file deleted or added before it does not move the files after it. Clients pass it back unread.
  */
 function encodeListingCursor(place: ListingPlace): string {
   const name = Buffer.from(place.name, "utf8").toString("base64url");
-  return `${Math.trunc(place.mtimeMs)}.${place.tag}.${name}`;
+  return `a.${Math.trunc(place.activityMs)}.${place.tag}.${name}`;
 }
 
-function decodeListingCursor(cursor: string): ListingPlace {
+/**
+ * The place a cursor names. A cursor in the form listings used before their order was the update time names no place:
+ * it is stale, so the list starts again from its top (undefined). Any other text is an invalid cursor.
+ */
+function decodeListingCursor(cursor: string): ListingPlace | undefined {
   const invalid = () => appFailure("invalid_args", "Invalid session-list cursor", false);
   const parts = cursor.split(".");
-  if (parts.length !== 3) throw invalid();
-  const [time, tag, encodedName] = parts as [string, string, string];
-  const mtimeMs = Number(time);
-  if (!/^-?\d{1,16}$/.test(time) || !Number.isSafeInteger(mtimeMs)) throw invalid();
+  if (
+    parts.length === 3 &&
+    /^-?\d{1,16}$/.test(parts[0] ?? "") &&
+    /^[0-9a-f]{16}$/.test(parts[1] ?? "")
+  ) {
+    return undefined;
+  }
+  if (parts.length !== 4 || parts[0] !== "a") throw invalid();
+  const [, time, tag, encodedName] = parts as [string, string, string, string];
+  const activityMs = Number(time);
+  if (!/^-?\d{1,16}$/.test(time) || !Number.isSafeInteger(activityMs)) throw invalid();
   if (!/^[0-9a-f]{16}$/.test(tag)) throw invalid();
   const name = Buffer.from(encodedName, "base64url").toString("utf8");
   if (name.length === 0) throw invalid();
-  return { mtimeMs, name, tag };
+  return { activityMs, name, tag };
 }
 
 /** Files whose summaries are remembered; the oldest are forgotten first. */
 const SUMMARY_CACHE_LIMIT = 2_000;
+/** Files whose update times are remembered; the oldest are forgotten first. */
+const ACTIVITY_CACHE_LIMIT = 20_000;
 /** Files stat-ed or read at the same moment, so a folder with many sessions can't exhaust file handles. */
 const FILE_BATCH = 24;
 
@@ -333,6 +359,34 @@ export class SessionFileStore {
   readonly #options: SessionFileStoreOptions;
   readonly #summaries = new Map<string, CachedSummary>();
   readonly #cwds = new Map<string, { size: number; mtimeMs: number; cwd: string | undefined }>();
+  readonly #activity = new Map<string, CachedActivity>();
+  /**
+   * When the chat last had a conversation message, as an ISO time: the newest message's time, else the header's, else
+   * the file's modified time. Read from the file's end and remembered while the file's size and time are unchanged, so
+   * a listing reads each file once. A file that cannot be read is listed at its modified time; the listing reports the
+   * read failure itself.
+   */
+  async #activityIso(file: string, size: number, mtimeMs: number): Promise<string> {
+    const cached = this.#activity.get(file);
+    if (cached && cached.size === size && cached.mtimeMs === mtimeMs) return cached.updatedAt;
+    let updatedAt: string;
+    try {
+      updatedAt =
+        (await lastMessageTimestamp(file)) ??
+        (await headerTimestamp(file)) ??
+        new Date(mtimeMs).toISOString();
+    } catch {
+      return new Date(mtimeMs).toISOString();
+    }
+    this.#activity.delete(file);
+    this.#activity.set(file, { size, mtimeMs, updatedAt });
+    for (const oldest of this.#activity.keys()) {
+      if (this.#activity.size <= ACTIVITY_CACHE_LIMIT) break;
+      this.#activity.delete(oldest);
+    }
+    return updatedAt;
+  }
+
   /** A worker's own session lease, read by `collectSubagentTranscripts`: `free` once no live omp holds that session. */
   readonly #workerLease: WorkerLeaseProbe = async (sessionId, sessionFile) =>
     (await detectSessionLiveness(sessionId, sessionFile, this.#options.leaseProbe)).lease;
@@ -407,10 +461,12 @@ export class SessionFileStore {
   }
 
   /**
-   * Port-friendly listing. The order depends only on each file's modified time, so files are found and ordered by
-   * their size and time alone; only the files of the requested page are summarized (in one streaming pass,
-   * remembered until the file changes). A page is the files after the cursor's place in that order, so a file deleted
-   * or added before the place does not move the rest of the list. A page counts files without a valid header too,
+   * Port-friendly listing. The order is each chat's update time, the time of its newest conversation message, then its
+   * base name (see `activity.ts`): each file's end is read for that time, remembered while the file's size and time are
+   * unchanged. Only the files of the requested page are summarized (in one streaming pass, remembered until the file
+   * changes). A page is the files after the cursor's place in that order, so a file deleted
+   * or added before the place does not move the rest of the list; a rename does not move a chat, since it is not a
+   * message. A page counts files without a valid header too,
    * and silently skips them. A file modified after its page was read is listed where its new time puts it. A listing
    * doesn't walk nested subagent transcripts (`readSession` and `listSubagents` do) and carries no entries.
    */
@@ -745,7 +801,10 @@ export class SessionFileStore {
       .map((entry) => path.join(this.sessionsRoot, entry.name));
   }
 
-  /** Every session file a listing may show, found and ordered by name, size and time alone. */
+  /**
+   * Every session file a listing may show: found by its name and size, and ordered by its update time (see
+   * `#activityIso`), then by base name and tag.
+   */
   async #candidates(
     folder: string | undefined,
     warnings: ParseWarning[],
@@ -769,10 +828,14 @@ export class SessionFileStore {
     const found = await inBatches(names, async (file): Promise<SessionCandidate | undefined> => {
       try {
         const stat = await fs.stat(file);
+        const updatedAt = await this.#activityIso(file, stat.size, stat.mtimeMs);
+        const activityMs = Date.parse(updatedAt);
         return {
           file,
           size: stat.size,
           mtimeMs: stat.mtimeMs,
+          updatedAt,
+          activityMs: Number.isNaN(activityMs) ? stat.mtimeMs : activityMs,
           name: path.basename(file),
           tag: placeTag(file),
         };
@@ -859,7 +922,7 @@ export class SessionFileStore {
       title: header.title,
       cwd: header.cwd,
       createdAt: header.timestamp ?? mtimeIso,
-      updatedAt: mtimeIso,
+      updatedAt: candidate.updatedAt,
       parentSession: header.parentSession,
       messageCount: summary.messageCount,
       assistantTurns: summary.assistantTurns,
@@ -877,9 +940,11 @@ export class SessionFileStore {
 
   async #readSessionFile(sessionFile: string): Promise<SessionReadOutcome> {
     let stat: SessionFileStat;
+    let mtimeMs: number;
     let content: string;
     try {
       const fileStat = await fs.stat(sessionFile);
+      mtimeMs = fileStat.mtimeMs;
       stat = {
         size: fileStat.size,
         mtimeIso: new Date(fileStat.mtimeMs).toISOString(),
@@ -900,6 +965,7 @@ export class SessionFileStore {
       ? ({ lease: "held" } satisfies { lease: SessionLeaseState })
       : await detectSessionLiveness(header.id, sessionFile, this.#options.leaseProbe);
     const counts = messageCounts(parsed.entries);
+    const updatedAt = await this.#activityIso(sessionFile, stat.size, mtimeMs);
     const file: SessionFile = {
       id: header.id,
       sessionFile,
@@ -907,7 +973,7 @@ export class SessionFileStore {
       title: header.title,
       cwd: header.cwd,
       createdAt: header.timestamp ?? stat.mtimeIso,
-      updatedAt: stat.mtimeIso,
+      updatedAt,
       parentSession: header.parentSession,
       messageCount: counts.messageCount,
       assistantTurns: counts.assistantTurns,
