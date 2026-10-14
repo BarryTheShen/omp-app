@@ -1,0 +1,12 @@
+{
+  "format": "omp-app.d6-3.report-texts",
+  "formatVersion": 1,
+  "provenance": {
+    "copiedFrom": "apps/web/src/modules/D2/slash/fixtures/real-command-outputs.json",
+    "recordedBy": "D2 slash-command recording: real omp output for a prompt of /usage and /context, with the fake model",
+    "versionNote": "That recorder stamps the app floor (18.6.1) into its fixture whatever binary ran, so the binary version is not recorded here.",
+    "note": "The /context text contains terminal colour codes on purpose: the report must show the words only."
+  },
+  "usage": "Usage\nInput tokens: 0\nOutput tokens: 0\nCache read tokens: 0\nCache write tokens: 0\nTotal tokens: 0\nPremium requests: 0\nCost: $0.000000",
+  "context": "Context window: 128000 tokens (5% used)\n  System prompt    [\u001b[38;2;107;114;128m░░░░░░░░░░░░░░░░░░░░░░░░\u001b[39m] 2%  2514 tokens\n  System tools     [\u001b[38;2;107;114;128m█░░░░░░░░░░░░░░░░░░░░░░░\u001b[39m] 3%  4073 tokens\n  System context   [\u001b[38;2;107;114;128m░░░░░░░░░░░░░░░░░░░░░░░░\u001b[39m] 0%  115 tokens\n  Auto-compact buf [\u001b[38;2;107;114;128m████░░░░░░░░░░░░░░░░░░░░\u001b[39m] 15%  19200 tokens\n  Free             [\u001b[38;2;107;114;128m███████████████████░░░░░\u001b[39m] 80%  102098 tokens"
+}
