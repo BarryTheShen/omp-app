@@ -46,6 +46,16 @@ class MemoryBlobStore implements AttachmentBlobStore {
   }
 }
 
+/** A blob store that refuses to delete while `refuseDeletes` is set, as when the server cannot be reached. */
+class RefusingDeleteStore extends MemoryBlobStore {
+  refuseDeletes = false;
+
+  override async delete(ref: AttachmentRef): Promise<void> {
+    if (this.refuseDeletes) throw new Error("The server is unreachable.");
+    return super.delete(ref);
+  }
+}
+
 /** Uploads that wait while `held`: a picture that is still being attached when the test acts. */
 class HeldUploadStore extends MemoryBlobStore {
   held = false;
@@ -303,6 +313,24 @@ describe("U2.3 AttachmentManager", () => {
     const complete = await manager.send(pending);
     await manager.remove(complete);
     expect(manager.toDraftRefs()).toEqual([]);
+  });
+
+  test("a removal the blob store refuses keeps the image, and says so until the next try", async () => {
+    const blobs = new RefusingDeleteStore();
+    const manager = new AttachmentManager({ blobStore: blobs });
+    const pending = await manager.add({
+      file: new File(["png"], "photo.png", { type: "image/png" }),
+    });
+    const complete = await manager.send(pending);
+    blobs.refuseDeletes = true;
+    await expect(manager.remove(complete)).rejects.toThrow();
+    expect(manager.getState().complete).toHaveLength(1);
+    expect(manager.getState().removeFailure).toBe("photo.png could not be removed. Try again.");
+
+    blobs.refuseDeletes = false;
+    await manager.remove(complete);
+    expect(manager.getState().complete).toHaveLength(0);
+    expect(manager.getState().removeFailure).toBeNull();
   });
 });
 

@@ -138,8 +138,10 @@ export class AttachmentManager implements AttachmentAdapter {
     pending: [],
     complete: [],
     error: null,
+    removeFailure: null,
   };
   private error: AppFailure | null = null;
+  private failedRemoval: { readonly id: string; readonly message: string } | null = null;
 
   public constructor(options: AttachmentManagerOptions) {
     this.blobStore = options.blobStore;
@@ -230,6 +232,7 @@ export class AttachmentManager implements AttachmentAdapter {
   }
 
   public async remove(attachment: Attachment): Promise<void> {
+    this.failedRemoval = null;
     this.pending.delete(attachment.id);
     const complete = this.complete.get(attachment.id);
     if (complete) {
@@ -241,6 +244,10 @@ export class AttachmentManager implements AttachmentAdapter {
         });
       } catch {
         this.error = appFailure("internal", "Attachment cleanup failed");
+        this.failedRemoval = {
+          id: attachment.id,
+          message: `${attachment.name} could not be removed. Try again.`,
+        };
         this.notify();
         throw this.error;
       }
@@ -341,6 +348,10 @@ export class AttachmentManager implements AttachmentAdapter {
       pending: [...this.pending.values()],
       complete: [...this.complete.values()],
       error: this.error,
+      removeFailure:
+        this.failedRemoval !== null && this.complete.has(this.failedRemoval.id)
+          ? this.failedRemoval.message
+          : null,
     };
     for (const listener of this.listeners) listener(this.snapshot);
   }

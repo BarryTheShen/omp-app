@@ -160,6 +160,8 @@ export interface AttachmentState {
   readonly pending: readonly PendingAttachment[];
   readonly complete: readonly CompleteAttachment[];
   readonly error: AppFailure | null;
+  /** The plain-English reason the last removal of a picture the server kept failed, while that picture is still shown. */
+  readonly removeFailure: string | null;
 }
 
 /** U2's stateful wrapper around assistant-ui's browser attachment adapter. */
