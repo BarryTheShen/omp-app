@@ -105,6 +105,7 @@ import {
 } from "@/modules/R1/history";
 import { createNativeRemoteThreadListAdapter, deleteChatFile } from "@/modules/R1/remote";
 import { type NewChatStatus, SessionCatalogSidebar } from "@/modules/R1/ui";
+import { LateDiagnosticsCard } from "@/modules/T2/late-diagnostics";
 import { MessageParts } from "@/modules/U1/parts";
 import { TranscriptDisplayPolicyProvider } from "@/modules/U1/policy";
 import { ToolCallsControl } from "@/modules/U1/policy/tool-calls-control";
@@ -1617,6 +1618,19 @@ function ActiveThreadReady({
                                     message={message}
                                     summary={compactionSummary}
                                   />
+                                );
+                              const { ompCustomType, ompCustomDetails } = message.metadata.custom;
+                              if (ompCustomType === "lsp-late-diagnostic")
+                                return (
+                                  <div data-message-id={message.id}>
+                                    <LateDiagnosticsCard
+                                      identity={message.id}
+                                      snapshot={{
+                                        customType: ompCustomType,
+                                        details: ompCustomDetails,
+                                      }}
+                                    />
+                                  </div>
                                 );
                               return (
                                 <>

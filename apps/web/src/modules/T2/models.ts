@@ -248,12 +248,16 @@ export const LspToolDetailsSchema = z.looseObject({
 });
 export type LspToolDetails = z.infer<typeof LspToolDetailsSchema>;
 
+/**
+ * One file in omp's late diagnostics message (`details.files[]`, packages/coding-agent/src/sdk.ts:414-446 at
+ * v18.8.9): its path, omp's summary (for example "1 error(s)"), whether it errored, and omp's diagnostic lines as text.
+ * The lines are omp's human text, so the browser shows them as written and never splits them (AP4).
+ */
 export const LateDiagnosticFileSchema = z.looseObject({
-  path: OptionalText,
-  diagnostics: z.array(LspDiagnosticSchema).optional(),
-  messages: z.array(LspDiagnosticSchema).optional(),
-  summary: OptionalText,
-  formatter: FileFormatResultSchema.optional(),
+  path: z.string(),
+  summary: z.string(),
+  errored: z.boolean(),
+  messages: z.array(z.string()),
 });
 export type LateDiagnosticFile = z.infer<typeof LateDiagnosticFileSchema>;
 

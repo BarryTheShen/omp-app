@@ -146,7 +146,16 @@ describe("T2 search and code-intelligence models", () => {
     const attached = decodeLateDiagnostic({
       customType: "lsp-late-diagnostic",
       relatedToolCallId: "call-lsp-1",
-      details: { files: [{ path: "src/a.ts", diagnostics: [{ severity: 1, message: "bad" }] }] },
+      details: {
+        files: [
+          {
+            path: "src/a.ts",
+            summary: "1 error(s)",
+            errored: true,
+            messages: ["src/a.ts:1:1 [error] [typescript] bad (2322)"],
+          },
+        ],
+      },
     });
     expect(attached.ok).toBe(true);
     expect(attached.ok && attached.value.attachmentToolCallId).toBe("call-lsp-1");
