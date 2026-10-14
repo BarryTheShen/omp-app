@@ -909,6 +909,28 @@ function setError(next: MutableSnapshot, error: ChatFailure): void {
 const EXTENSION_ERROR_HEADING = "An extension reported an error";
 const NOTICE_ERROR_HEADING = "omp reported a problem";
 
+/**
+ * omp announces every change to a session's goal with `goal_updated`: `goal` is the goal (null once it is dropped) and
+ * `state` the goal mode, when the mode changed (omp's `rpc-types.ts` event). `session.goal` follows it, so a reader of
+ * the goal (the status bar, the guided goal) sees a goal that was created, paused, resumed, dropped or completed without
+ * a `get_state`. An update with no mode keeps the mode the store holds and replaces the goal in it (a usage update); with
+ * no mode held, nothing is known to keep, and the next `get_state` supplies it.
+ */
+function reduceGoalUpdated(next: MutableSnapshot, frame: Record<string, unknown>): void {
+  const { goal, state } = frame;
+  let updated: SessionState["goal"];
+  if (isRecord(state) && isRecord(state.goal)) {
+    updated = cloneValue(state) as unknown as OmpWire.GoalModeState;
+  } else if (goal === null) {
+    updated = null;
+  } else if (isRecord(goal) && next.session.goal) {
+    updated = { ...next.session.goal, goal: cloneValue(goal) as unknown as OmpWire.Goal };
+  } else {
+    return;
+  }
+  next.session = { ...next.session, goal: updated, revision: next.session.revision + 1 };
+}
+
 /** The name a person knows an extension by: its file's name, or its folder's when the file is `index`. */
 function extensionNameOf(path: unknown): string | undefined {
   if (typeof path !== "string") return undefined;
@@ -1632,6 +1654,9 @@ export class OmpRuntimeStore {
         if (typeof frame.error === "string") {
           setError(next, { code: "omp_error", message: frame.error, retryable: true });
         }
+        return;
+      case "goal_updated":
+        reduceGoalUpdated(next, frame);
         return;
       default:
         // Notifications are open to newer omp types. Unknown types are not state errors.

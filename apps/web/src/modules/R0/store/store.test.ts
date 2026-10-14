@@ -812,6 +812,94 @@ describe("OmpRuntimeStore", () => {
     expect(other).toEqual(["command_output"]);
   });
 
+  describe("goal_updated", () => {
+    const goal = (status: string, tokensUsed = 0) => ({
+      id: "g1",
+      objective: "Ship the release",
+      status,
+      tokensUsed,
+      timeUsedSeconds: 0,
+      createdAt: at,
+      updatedAt: at,
+    });
+
+    test("session.goal follows the goal omp announces, with the mode when omp sends one", () => {
+      const store = new OmpRuntimeStore({ threadId });
+      expect(store.getSnapshot().session.goal).toBeNull();
+      const created = { enabled: true, mode: "active", goal: goal("active") };
+      ingest(
+        store,
+        {
+          kind: "notification",
+          frame: { type: "goal_updated", goal: goal("active"), state: created },
+        },
+        1,
+      );
+      expect(store.getSnapshot().session.goal).toEqual(created);
+      // omp pauses a goal by setting enabled to false: the store keeps that, it does not guess.
+      const paused = { enabled: false, mode: "active", goal: goal("paused") };
+      ingest(
+        store,
+        {
+          kind: "notification",
+          frame: { type: "goal_updated", goal: goal("paused"), state: paused },
+        },
+        2,
+      );
+      expect(store.getSnapshot().session.goal).toEqual(paused);
+    });
+
+    test("an update with no mode keeps the mode and replaces the goal; a dropped goal clears it", () => {
+      const store = new OmpRuntimeStore({ threadId });
+      const created = { enabled: true, mode: "active", goal: goal("active") };
+      ingest(
+        store,
+        {
+          kind: "notification",
+          frame: { type: "goal_updated", goal: goal("active"), state: created },
+        },
+        1,
+      );
+      ingest(
+        store,
+        { kind: "notification", frame: { type: "goal_updated", goal: goal("active", 1200) } },
+        2,
+      );
+      expect(store.getSnapshot().session.goal).toEqual({ ...created, goal: goal("active", 1200) });
+      ingest(store, { kind: "notification", frame: { type: "goal_updated", goal: null } }, 3);
+      expect(store.getSnapshot().session.goal).toBeNull();
+    });
+
+    test("an update with no mode and no mode held leaves the goal unset, and a replayed sequence is applied once", () => {
+      const store = new OmpRuntimeStore({ threadId });
+      ingest(
+        store,
+        { kind: "notification", frame: { type: "goal_updated", goal: goal("active") } },
+        1,
+      );
+      expect(store.getSnapshot().session.goal).toBeNull();
+      const created = { enabled: true, mode: "active", goal: goal("active") };
+      ingest(
+        store,
+        {
+          kind: "notification",
+          frame: { type: "goal_updated", goal: goal("active"), state: created },
+        },
+        2,
+      );
+      const revision = store.getSnapshot().session.revision;
+      ingest(
+        store,
+        {
+          kind: "notification",
+          frame: { type: "goal_updated", goal: goal("active"), state: created },
+        },
+        2,
+      );
+      expect(store.getSnapshot().session.revision).toBe(revision);
+    });
+  });
+
   test("forwards only applied Omp events with their sequence after commit", () => {
     const store = new OmpRuntimeStore({ threadId });
     const received: Array<{ type: string; seq: number; committedSeq: number }> = [];
