@@ -17,6 +17,8 @@ async function pressTimes(composer: Locator, key: string, times: number): Promis
 realTest("Ctrl+U deletes from the line start to the caret", async ({ realApp }) => {
   const page = await realApp.open();
   const composer = await startChat(page);
+  // The chat has loaded (the empty state, not "Loading conversation…") before the text is typed: its draft binds then.
+  await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 30_000 });
   await composer.fill("hello world");
   await composer.press("End");
   await pressTimes(composer, "ArrowLeft", 5);
@@ -27,6 +29,8 @@ realTest("Ctrl+U deletes from the line start to the caret", async ({ realApp }) 
 realTest("Ctrl+Y puts back the text that Ctrl+U deleted", async ({ realApp }) => {
   const page = await realApp.open();
   const composer = await startChat(page);
+  // The chat has loaded (the empty state, not "Loading conversation…") before the text is typed: its draft binds then.
+  await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 30_000 });
   await composer.fill("hello world");
   await composer.press("End");
   await pressTimes(composer, "ArrowLeft", 5);
