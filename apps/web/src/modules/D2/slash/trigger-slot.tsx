@@ -69,6 +69,11 @@ function directiveFormatter(): Unstable_DirectiveFormatter {
   };
 }
 
+/** An empty list that no search has answered shows nothing: "No matching commands." is said only after a search has answered with none. */
+function awaitsAnswer(items: readonly Unstable_TriggerItem[], answers: AnswerQueries): boolean {
+  return items.length === 0 && answers.get(items) === undefined;
+}
+
 function renderItems(
   items: readonly Unstable_TriggerItem[],
   status: string | null,
@@ -214,7 +219,11 @@ function SlashPopover({
         onInserted={handleInserted}
       />
       <ComposerPrimitive.Unstable_TriggerPopoverItems>
-        {(items) => (quiet.current ? null : renderItems(items, status.current, answers.get(items)))}
+        {(items) =>
+          quiet.current || awaitsAnswer(items, answers)
+            ? null
+            : renderItems(items, status.current, answers.get(items))
+        }
       </ComposerPrimitive.Unstable_TriggerPopoverItems>
     </ComposerPrimitive.Unstable_TriggerPopover>
   );
