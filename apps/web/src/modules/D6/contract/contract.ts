@@ -198,6 +198,8 @@ const REDACTION_PATTERNS: readonly [RegExp, string][] = [
   [/(?:Bearer\s+)(?!<REDACTED:)[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer <REDACTED:TOKEN>"],
   [/\bsk-(?:ant-|proj-|or-)?[A-Za-z0-9_-]{16,}/g, "<REDACTED:KEY>"],
   [/(?:\/home|\/Users|\/root|\/tmp|\/var\/tmp|\/private\/tmp)(?:\/[^\s"'`]+)*/g, "<REDACTED:PATH>"],
+  // omp's /trace prints its session path inside a link, percent-encoded (encodeURIComponent turns "/" into "%2F").
+  [/%2F(?:home|Users|root|tmp|var%2Ftmp|private%2Ftmp)[^\s"'`&]*/gi, "<REDACTED:PATH>"],
   [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "<REDACTED:EMAIL>"],
 ];
 

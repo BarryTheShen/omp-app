@@ -122,4 +122,23 @@ describe("D6 redaction", () => {
     expect(result.truncated).toBe(true);
     expect(result.lines[1]?.level).toBe("warning");
   });
+
+  test.each([
+    "/home/user/notes.txt",
+    "/Users/user/notes.txt",
+    "/root/notes.txt",
+    "/tmp/notes.txt",
+    "/var/tmp/notes.txt",
+    "/private/tmp/notes.txt",
+  ])("hides %s when a link carries it percent-encoded, as omp's /trace prints it", (path) => {
+    const link = `http://127.0.0.1:3847/#/traces?s=${encodeURIComponent(path)}`;
+    const safe = redactDiagnosticText(link);
+    expect(safe.redacted).toBe(true);
+    expect(safe.text).toBe("http://127.0.0.1:3847/#/traces?s=<REDACTED:PATH>");
+  });
+
+  test("leaves other percent-encoded text alone", () => {
+    const text = "http://127.0.0.1:3847/#/api?q=%2Fapi%2Fstatus";
+    expect(redactDiagnosticText(text)).toMatchObject({ text, redacted: false });
+  });
 });
