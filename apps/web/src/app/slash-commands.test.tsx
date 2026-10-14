@@ -382,7 +382,13 @@ describe("D2.3 the list inside the composer's trigger root", () => {
     await waitFor(() =>
       expect(screen.getByRole("listbox", { name: "Slash commands" })).toBeTruthy(),
     );
-    await waitFor(() => expect(screen.getByText("/usage")).toBeTruthy());
+    // Enter chooses the highlighted row only once that row answers the text typed. A row still on screen from earlier
+    // text, or not yet highlighted, is not the list this Enter is for, so wait for that state, not for the text alone.
+    await waitFor(() => {
+      const row = screen.getByRole("option", { name: /^\/usage/ });
+      expect(row.getAttribute("aria-selected")).toBe("true");
+      expect(row.getAttribute("data-answers")).toBe("/us");
+    });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(input.value).toBe("/usage "));
     provider.dispose();

@@ -20,6 +20,21 @@ function commandSurface(page: Page): Locator {
   return commandList(page).locator("div.bg-popover").first();
 }
 
+/** The surface's box, read in the same poll that finds one: a box read after a separate wait can be gone by then. */
+async function drawnSurfaceBox(
+  page: Page,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const drawn = Promise.withResolvers<{ x: number; y: number; width: number; height: number }>();
+  await expect
+    .poll(async () => {
+      const box = await commandSurface(page).boundingBox();
+      if (box !== null) drawn.resolve(box);
+      return box !== null;
+    })
+    .toBe(true);
+  return drawn.promise;
+}
+
 /** The command output panel: every line of what a command printed, kept until the person closes it. */
 function commandResult(page: Page): Locator {
   return page.getByRole("region", { name: "Command output" });
@@ -137,12 +152,12 @@ realTest(
     await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
     for (const width of [640, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      const box = await commandSurface(page).boundingBox();
-      expect(box, `${width} px`).not.toBeNull();
-      expect(box?.x ?? -1, `${width} px left edge`).toBeGreaterThanOrEqual(0);
-      expect((box?.x ?? 0) + (box?.width ?? 0), `${width} px right edge`).toBeLessThanOrEqual(
-        width,
-      );
+      // The surface is shown first, then its box is read in the poll that finds one: boundingBox() does not wait, and the
+      // surface can be drawn again a moment after a resize.
+      await expect(commandSurface(page)).toBeVisible();
+      const box = await drawnSurfaceBox(page);
+      expect(box.x, `${width} px left edge`).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, `${width} px right edge`).toBeLessThanOrEqual(width);
       await waitForFiniteAnimations(page);
     }
     await page.screenshot({ path: join(screenshots, "d2.3-slash-narrow.png"), fullPage: true });

@@ -55,15 +55,34 @@ const IME_KEYS: Readonly<Record<string, true>> = {
   ArrowDown: true,
 };
 
+/** The options of a scope's own list that match `selector`: a nested composer slot's list is that slot's to choose. */
+function ownOption(scope: HTMLElement, selector: string): HTMLElement | null {
+  for (const option of scope.querySelectorAll<HTMLElement>(selector)) {
+    if (option.closest("[data-trigger-scope]") === scope) return option;
+  }
+  return null;
+}
+
 /**
- * The option the composer's textarea points at, when a list is open with one highlighted. Only an option inside this
- * scope's own wrapper counts: a list in a nested composer slot is that slot's to choose, and an outer slot passes it on.
+ * The option an Enter or Tab chooses: the one the composer's textarea points at, when a list is open with one
+ * highlighted. The popover publishes that pointer in an effect, after it has rendered the rows, so until then the
+ * textarea names no row, or the row a re-render has replaced. An Enter on an answered list therefore reads the rows:
+ * the one marked `aria-selected` renders with them, and a list that marks none starts on its first row.
  */
-function highlightedOption(textarea: HTMLTextAreaElement, scope: HTMLElement): HTMLElement | null {
+function highlightedOption(
+  textarea: HTMLTextAreaElement,
+  scope: HTMLElement,
+  answered: boolean,
+): HTMLElement | null {
   const activeId = textarea.getAttribute("aria-activedescendant");
-  const item = activeId ? document.getElementById(activeId) : null;
-  if (!(item instanceof HTMLElement)) return null;
-  return item.closest("[data-trigger-scope]") === scope ? item : null;
+  const pointed = activeId ? document.getElementById(activeId) : null;
+  if (pointed !== null && pointed.closest("[data-trigger-scope]") !== scope) return null;
+  if (!answered) return pointed;
+  return (
+    ownOption(scope, '[role="option"][aria-selected="true"]') ??
+    pointed ??
+    ownOption(scope, '[role="option"]')
+  );
 }
 
 /** Presses Enter in the composer again, as the person did: the composer sends the text. */
@@ -156,7 +175,11 @@ export function TriggerKeyScope({
     if (event.key !== "Enter" && event.key !== "Tab") return;
     if (event.shiftKey) return;
     if (!(event.target instanceof HTMLTextAreaElement)) return;
-    const option = highlightedOption(event.target, event.currentTarget);
+    const option = highlightedOption(
+      event.target,
+      event.currentTarget,
+      event.key === "Enter" && pending.current === 0,
+    );
     const isCurrent = rowIsCurrent.current;
     if (option && isCurrent && !isCurrent(event.target, option)) {
       if (event.key === "Enter") {

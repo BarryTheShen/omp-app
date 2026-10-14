@@ -11,6 +11,7 @@ import { ComposerSurface } from "@/modules/U2/composer";
 import type { MentionProvider, TriggerCandidate, TriggerSearchResult } from "../contract";
 import { type LocalProvider, LocalTriggerSlot } from "../local";
 import { MentionComposerSlot } from "../mentions";
+import { TriggerKeyScope } from "./trigger-keys";
 
 /** The mention lists under a trigger root of their own, as a test mounts them on their own. */
 function MentionTriggerSlot(props: ComponentProps<typeof MentionComposerSlot>) {
@@ -404,5 +405,99 @@ describe("#1334: an Enter that commits an IME word does not choose the highlight
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(input.getAttribute("aria-activedescendant")).not.toBe(first);
+  });
+});
+
+describe("#1566: an Enter with an open, answered list chooses a row and never sends the text", () => {
+  test("the row the list marks highlighted is chosen while the composer points at no row yet", () => {
+    const chosen = vi.fn();
+    const sent = vi.fn();
+    render(
+      <TriggerKeyScope isCurrentRow={() => true}>
+        <textarea aria-label="Message input" onKeyDown={sent} />
+        <div role="listbox">
+          <button type="button" role="option" id="usage" aria-selected="true" onClick={chosen}>
+            /usage
+          </button>
+          <button type="button" role="option" id="model" aria-selected="false">
+            /model
+          </button>
+        </div>
+      </TriggerKeyScope>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Enter" });
+    expect(chosen).toHaveBeenCalledTimes(1);
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  test("after a re-render replaced the row the composer names, Enter chooses the row the list marks", () => {
+    const chosen = vi.fn();
+    const sent = vi.fn();
+    render(
+      <TriggerKeyScope isCurrentRow={() => true}>
+        <textarea aria-label="Message input" aria-activedescendant="gone" onKeyDown={sent} />
+        <div role="listbox">
+          <button type="button" role="option" id="usage" aria-selected="true" onClick={chosen}>
+            /usage
+          </button>
+        </div>
+      </TriggerKeyScope>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Enter" });
+    expect(chosen).toHaveBeenCalledTimes(1);
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  test("a list that marks no row chooses its first row when Enter comes", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const sent = vi.fn();
+    render(
+      <TriggerKeyScope isCurrentRow={() => true}>
+        <textarea aria-label="Message input" onKeyDown={sent} />
+        <div role="listbox">
+          <button type="button" role="option" id="usage" aria-selected="false" onClick={first}>
+            /usage
+          </button>
+          <button type="button" role="option" id="model" aria-selected="false" onClick={second}>
+            /model
+          </button>
+        </div>
+      </TriggerKeyScope>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Enter" });
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  test("an open list with no rows still lets Enter send the text", () => {
+    const sent = vi.fn();
+    render(
+      <TriggerKeyScope>
+        <textarea aria-label="Message input" onKeyDown={sent} />
+        <div role="listbox" />
+      </TriggerKeyScope>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Enter" });
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  test("Tab keeps to the composer's pointer: with none, the page takes the key", () => {
+    const chosen = vi.fn();
+    const sent = vi.fn();
+    render(
+      <TriggerKeyScope isCurrentRow={() => true}>
+        <textarea aria-label="Message input" onKeyDown={sent} />
+        <div role="listbox">
+          <button type="button" role="option" id="usage" aria-selected="true" onClick={chosen}>
+            /usage
+          </button>
+        </div>
+      </TriggerKeyScope>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Tab" });
+    expect(chosen).not.toHaveBeenCalled();
+    expect(sent).toHaveBeenCalledTimes(1);
   });
 });
