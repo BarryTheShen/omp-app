@@ -289,16 +289,28 @@ export const VibeDetailsSchema = z.looseObject({
 });
 export type VibeDetails = z.infer<typeof VibeDetailsSchema>;
 
+/**
+ * omp v18.8.9 yield details (`YieldDetails`, yield.ts:65-84; the result object at yield.ts:657-667). The output
+ * wrapper adds `meta` (output-meta.ts:661). Synthetic results are not yields: omp writes them when a call was
+ * skipped by a steering message or cut off by the provider (sessions: `__synthetic`, `source`, `executed`).
+ */
 export const YieldDetailsSchema = z.looseObject({
   ...ToolIdentitySchema.shape,
   data: z.unknown().optional(),
   status: z.enum(["success", "aborted"]).optional(),
-  error: z.unknown().optional(),
+  error: z.string().optional(),
+  isError: z.boolean().optional(),
   type: z.union([z.string(), z.array(z.string())]).optional(),
   useLastTurn: z.boolean().optional(),
   complete: z.boolean().optional(),
   schemaOverridden: z.boolean().optional(),
-  outputMeta: OutputMetaSchema.optional(),
+  __synthetic: z.boolean().optional(),
+  source: z.string().optional(),
+  executed: z.boolean().optional(),
+  upstreamError: z.string().optional(),
+  __interrupted: z.boolean().optional(),
+  execution: z.string().optional(),
+  meta: OutputMetaSchema.optional(),
 });
 export type YieldDetails = z.infer<typeof YieldDetailsSchema>;
 

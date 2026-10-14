@@ -115,6 +115,38 @@ describe("T5 vibe and yield models", () => {
     });
   });
 
+  test("decodes the yield details omp really writes: success, last turn, aborted, and a skipped call", () => {
+    expect(decodeYieldDetails({ data: { answer: "ready" }, status: "success" })).toMatchObject({
+      ok: true,
+      value: { status: "success", data: { answer: "ready" } },
+    });
+    expect(
+      decodeYieldDetails({ status: "success", type: "result", useLastTurn: true }),
+    ).toMatchObject({ ok: true, value: { useLastTurn: true, type: "result" } });
+    expect(
+      decodeYieldDetails({ status: "aborted", error: "The shard is missing a row." }),
+    ).toMatchObject({
+      ok: true,
+      value: { status: "aborted", error: "The shard is missing a row." },
+    });
+    expect(
+      decodeYieldDetails({ __synthetic: true, source: "interrupt_skipped", executed: false }),
+    ).toMatchObject({ ok: true, value: { source: "interrupt_skipped", executed: false } });
+  });
+
+  test("reads the output wrapper's meta on yield details, and rejects an error that is not text", () => {
+    expect(
+      decodeYieldDetails({
+        status: "success",
+        data: "x",
+        meta: { truncation: { direction: "tail", reason: "lines" } },
+      }),
+    ).toMatchObject({ ok: true, value: { meta: { truncation: { direction: "tail" } } } });
+    expect(decodeYieldDetails({ status: "aborted", error: { message: "not text" } }).ok).toBe(
+      false,
+    );
+  });
+
   test("validates vibe argument shapes without client execution", () => {
     expect(
       VibeSpawnArgsSchema.safeParse({ cli: "fast", prompt: "inspect", name: "worker-a" }).success,

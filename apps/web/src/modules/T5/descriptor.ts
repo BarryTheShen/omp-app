@@ -4,6 +4,7 @@ import { HubToolRenderer } from "./hub";
 import { TaskToolRenderer } from "./task";
 import { VIBE_SPAWN_DESCRIPTOR } from "./vibe-spawn";
 import { WaitToolRenderer } from "./wait";
+import { YieldToolRenderer } from "./yield";
 /** T5 claims nine exact tool names; task also owns P1's compact read-only task row. */
 export const T5_TOOL_DESCRIPTORS = [
   {
@@ -75,7 +76,7 @@ export const T5_TOOL_DESCRIPTORS = [
     covers: ["T5.yield"],
     requires: [],
     match: { by: "name", name: "yield" },
-    renderer: ToolFallback,
+    renderer: YieldToolRenderer,
   },
   {
     kind: "tool",
