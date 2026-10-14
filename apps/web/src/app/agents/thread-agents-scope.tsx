@@ -79,6 +79,7 @@ export function TaskSubagentsScope({
             ? undefined
             : {
                 status: worker.agent.status,
+                reason: worker.agent.reason,
                 transcript: <NestedAgentTranscript source={worker.source} taskName={jobId} />,
               };
         };

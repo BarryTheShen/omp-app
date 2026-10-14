@@ -195,6 +195,20 @@ describe("a background worker's notice", () => {
     for (const text of ompText) expect(container.textContent).not.toContain(text);
   });
 
+  test("a failed worker's line says why it failed, in the reason the roster gives", () => {
+    renderNote(() => ({
+      status: "failed",
+      reason: "400 fake provider failure for the failing subagent (type=invalid_request_error)",
+      transcript: null,
+    }));
+    expect(
+      screen.getByText(
+        "FailProbe failed: 400 fake provider failure for the failing subagent (type=invalid_request_error)",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View transcript" })).toBeTruthy();
+  });
+
   test.each([
     ["completed", "FailProbe finished."],
     ["failed", "FailProbe failed."],

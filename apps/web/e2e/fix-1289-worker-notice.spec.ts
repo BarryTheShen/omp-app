@@ -13,18 +13,17 @@ import {
 /**
  * Issue 1289. A background worker's notice showed omp's words for the model in the chat: "Resume your work using the
  * result below", a `write agent://` and a `history://` address, and a raw log path. The notice now names the worker
- * and how it ended, from the agents roster, and offers the worker's transcript; none of omp's words are in the notice.
+ * and how it ended, from the agents roster, and offers the worker's transcript. Issue 1489: a failed worker's line also
+ * says why it failed, with the reason the server gives (omp's saved-request path is not in it).
  * (The task card above the notice shows its launch result, which is a separate surface, not this notice.)
  */
 
 /** Words omp writes for the model, and a raw log path: none of them may be in the notice. */
-const OMP_WORDS = [
-  "Resume your work",
-  "write agent://",
-  "history://",
-  "raw-http-request",
-  "400 fake provider",
-];
+const OMP_WORDS = ["Resume your work", "write agent://", "history://", "raw-http-request"];
+
+/** omp's reason for the failing subagent, as the server gives it: the provider's words, once, with its type. */
+const FAILED_LINE =
+  "FailProbe failed: 400 fake provider failure for the failing subagent (type=invalid_request_error)";
 
 realTest.setTimeout(300_000);
 
@@ -50,7 +49,7 @@ realTest(
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_failing_subagent");
 
-    const notice = noticeFor(page, "FailProbe failed.");
+    const notice = noticeFor(page, FAILED_LINE);
     await expect(notice).toBeVisible({ timeout: 120_000 });
     // Checked while the transcript is closed: an open transcript is the worker's own conversation.
     for (const words of OMP_WORDS) await expect(notice).not.toContainText(words);

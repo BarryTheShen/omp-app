@@ -29,6 +29,7 @@ function mapSubagent(transcript: InternalSubagentTranscript): ContractSubagentTr
     status: transcript.status,
     endedAt: transcript.endedAt,
     agent: transcript.agent,
+    ...(transcript.reason === undefined ? {} : { reason: transcript.reason }),
   };
 }
 

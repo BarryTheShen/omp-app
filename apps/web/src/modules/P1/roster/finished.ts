@@ -46,6 +46,7 @@ function finishedWorker(threadId: ThreadId, transcript: SubagentTranscript): Fin
         status,
         lastUpdate: endedMs,
         sessionFile: transcript.sessionFile,
+        ...(transcript.reason === undefined ? {} : { reason: transcript.reason }),
         threadId,
       },
     },

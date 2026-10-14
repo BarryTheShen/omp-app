@@ -138,6 +138,31 @@ describe("a worker's final status, end time and agent come from its own records"
       expect(Date.parse(worker.endedAt ?? "")).toBeGreaterThan(0);
     }));
 
+  test("a failed worker's reason is the failure its last assistant message keeps, without the saved request", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Refused.jsonl"), [
+        init("task"),
+        {
+          type: "message",
+          id: "refused",
+          parentId: null,
+          timestamp: AT,
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            errorMessage:
+              "400 fake provider failure (type=invalid_request_error)\nraw-http-request=/logs/x.json",
+          },
+        },
+      ]);
+      const worker = await workerNamed(fixture, "Refused");
+      expect(worker).toMatchObject({
+        status: "failed",
+        reason: "400 fake provider failure (type=invalid_request_error)",
+      });
+    }));
+
   test("a cancelled worker, with its tombstone, is aborted", () =>
     withFixture(async (fixture) => {
       await writeWorker(path.join(workerDir(fixture), "Cancelled.jsonl"), [

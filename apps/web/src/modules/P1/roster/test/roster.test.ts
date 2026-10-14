@@ -1,5 +1,5 @@
 import { SessionFilePath, SubagentId, ThreadId } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { SubagentClient } from "@/modules/P1/client";
 import { type AgentRef, AgentRefSchema, type P1SubagentEvent } from "@/modules/P1/contract";
 import { AgentRosterStore } from "../store";
@@ -121,6 +121,35 @@ describe("P1 AgentRosterStore", () => {
     store.mergeSnapshot([agent("a", 0)]);
     expect(store.getSnapshot().agents[activeKey]?.status).toBe("completed");
     expect(store.getSnapshot().agents[activeKey]).not.toBe(before);
+  });
+
+  test("a worker that fails is read again from the chat's transcripts, so the roster learns why it failed", async () => {
+    const reason = "400 fake provider failure (type=invalid_request_error)";
+    let listed = 0;
+    const finished = {
+      list: async () => {
+        listed += 1;
+        return [{ agent: { ...agent("a", 0), status: "failed" as const, reason }, endedAt: 1_000 }];
+      },
+      read: async () => {
+        throw new Error("unused");
+      },
+    };
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      finished,
+      clock: { now: () => 1_000 },
+    });
+    store.mergeSnapshot([agent("a", 0)]);
+    const failed = lifecycle("a", "failed", 0, 1);
+    store.ingestNotification(failed.event, failed.seq);
+    await vi.waitFor(() => expect(listed).toBe(1));
+    await vi.waitFor(() =>
+      expect(Object.values(store.getSnapshot().agents).map((item) => item.reason)).toContain(
+        reason,
+      ),
+    );
   });
 
   test("a reused id creates a new incarnation instead of resurrecting the old tombstone", () => {

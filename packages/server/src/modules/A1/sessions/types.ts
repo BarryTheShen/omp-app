@@ -92,6 +92,8 @@ export interface SubagentTranscript {
   readonly endedAt: string | null;
   /** The agent type from the worker's `session_init` record; null when the file records none. */
   readonly agent: string | null;
+  /** Why a failed worker failed: the failure its last assistant message keeps, without omp's saved-request path. */
+  readonly reason?: string;
   readonly parseWarnings: readonly ParseWarning[];
 }
 

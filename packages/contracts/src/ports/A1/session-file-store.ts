@@ -49,6 +49,8 @@ export const SubagentTranscript = z.strictObject({
   endedAt: Timestamp.nullable(),
   /** The agent type omp recorded when the worker started; null when the file does not record one. */
   agent: z.string().min(1).nullable(),
+  /** Why a failed worker failed, from the failure its transcript keeps; never omp's saved-request path. */
+  reason: z.string().min(1).optional(),
 });
 export type SubagentTranscript = z.infer<typeof SubagentTranscript>;
 

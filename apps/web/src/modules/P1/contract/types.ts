@@ -36,6 +36,7 @@ export const AgentRefSchema = z
     sessionFile: SessionFilePath.optional(),
     parentToolCallId: ToolCallId.optional(),
     detached: z.boolean().optional(),
+    reason: z.string().min(1).optional(),
     threadId: ThreadId,
   })
   .strict();

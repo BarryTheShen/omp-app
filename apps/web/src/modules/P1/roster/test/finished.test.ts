@@ -117,6 +117,17 @@ describe("finished workers read from the chat's transcripts", () => {
     ]);
   });
 
+  test("a finished worker that failed keeps the reason its transcript records", async () => {
+    const reason = "400 fake provider failure (type=invalid_request_error)";
+    const source = createFinishedWorkerSource({
+      threadId,
+      sessionFile: async () => chat,
+      files: files([worker("Broken", { status: "failed", reason })]),
+    });
+    const [finished] = await source.list();
+    expect(finished?.agent).toMatchObject({ id: "Broken", status: "failed", reason });
+  });
+
   test("reads a page of a finished worker's transcript through the page schema", async () => {
     const source = createFinishedWorkerSource({
       threadId,

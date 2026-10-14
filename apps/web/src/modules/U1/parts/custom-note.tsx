@@ -29,6 +29,8 @@ export interface CustomNoteView {
 /** A worker a background-job notice names, as the chat's roster knows it: how it ended, and its transcript. */
 export interface WorkerNote {
   readonly status: "pending" | "running" | "completed" | "failed" | "aborted" | "stopped";
+  /** Why the worker failed, in the words the server gave; the notice shows it after "failed:". */
+  readonly reason?: string;
   /** The worker's transcript, shown on request. */
   readonly transcript: ReactNode;
 }
@@ -67,6 +69,13 @@ const WORKER_ENDINGS: Record<WorkerNote["status"], string> = {
   aborted: "was aborted",
   stopped: "was stopped",
 };
+
+/** A worker's line in its notice: how it ended, and for a failure, why, when the server gave the reason. */
+function workerHeading(jobId: string, worker: WorkerNote): string {
+  if (worker.status === "failed" && worker.reason !== undefined)
+    return `${jobId} failed: ${worker.reason}`;
+  return `${jobId} ${WORKER_ENDINGS[worker.status]}.`;
+}
 
 /**
  * omp wraps the text it sends the model in a tag of its own (`<system-notice>...</system-notice>`).
@@ -175,7 +184,7 @@ function WorkerLine({
   return (
     <div className="flex min-w-0 flex-col gap-1" data-slot="u1-custom-note-worker">
       <p className="text-foreground text-xs font-medium" data-slot="u1-custom-note-heading">
-        {`${jobId} ${WORKER_ENDINGS[worker.status]}.`}
+        {workerHeading(jobId, worker)}
       </p>
       <Button
         type="button"

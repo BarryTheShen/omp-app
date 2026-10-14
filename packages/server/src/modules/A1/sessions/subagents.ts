@@ -8,6 +8,7 @@ import type {
   SubagentFinalStatus,
   SubagentTranscript,
 } from "./types";
+import { workerFailureReason } from "./worker-reason";
 
 function isAdvisorTranscriptName(name: string): boolean {
   return name === "__advisor.jsonl" || (name.startsWith("__advisor.") && name.endsWith(".jsonl"));
@@ -65,16 +66,28 @@ function lastMessageOf(entries: readonly unknown[]): Record<string, unknown> | u
  */
 function finalStatusOf(entries: readonly unknown[], aborted: boolean): SubagentFinalStatus {
   if (entries.some(isSuccessfulYield)) return "completed";
-  let lastAssistant: Record<string, unknown> | undefined;
-  for (const entry of entries) {
-    const message = messageOf(entry);
-    if (message?.role === "assistant") lastAssistant = message;
-  }
+  const lastAssistant = lastAssistantOf(entries);
   if (lastAssistant?.stopReason === "error") return "failed";
   if (aborted || lastAssistant?.stopReason === "aborted") return "aborted";
   const last = lastMessageOf(entries);
   if (last?.role === "assistant" && last.stopReason === "stop") return "stopped";
   return "unknown";
+}
+
+/** The last assistant message in a worker's transcript: the turn that decided how the worker ended. */
+function lastAssistantOf(entries: readonly unknown[]): Record<string, unknown> | undefined {
+  let lastAssistant: Record<string, unknown> | undefined;
+  for (const entry of entries) {
+    const message = messageOf(entry);
+    if (message?.role === "assistant") lastAssistant = message;
+  }
+  return lastAssistant;
+}
+
+/** The reason a worker failed: the `errorMessage` its last assistant message keeps, without omp's diagnostics. */
+function failureReasonOf(entries: readonly unknown[]): string | undefined {
+  const errorMessage = lastAssistantOf(entries)?.errorMessage;
+  return typeof errorMessage === "string" ? workerFailureReason(errorMessage) : undefined;
 }
 
 /** Whether a live omp holds one worker's own session. `free` means none does, so the worker cannot still be running. */
@@ -179,6 +192,7 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
         sessionFile,
         context.leaseOf,
       );
+      const reason = status === "failed" ? failureReasonOf(entriesWithoutHeader) : undefined;
       const transcript: SubagentTranscript = {
         key,
         agentId,
@@ -199,6 +213,7 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
             ? null
             : await lastWrittenAt([sessionFile, path.join(context.root, tombstoneName(name))]),
         agent: agentOf(entriesWithoutHeader),
+        ...(reason === undefined ? {} : { reason }),
         parseWarnings: parsed.parseWarnings,
       };
       context.output.push(transcript);

@@ -172,7 +172,8 @@ export class AgentRosterStore {
    * Adds finished workers read from the chat's transcripts. Each keeps the moment it ended, so the
    * same 24-hour and 100-entry retention as a live tombstone applies. A worker the roster already
    * holds keeps its live record, except one it only saw as pending: its end may have come while the
-   * roster was not subscribed, so the transcript's end corrects it.
+   * roster was not subscribed, so the transcript's end corrects it. Either way, the reason a worker
+   * failed joins its record, since omp's live roster does not carry it.
    */
   public adoptFinished(workers: readonly FinishedWorker[]): void {
     if (this.disposed) return;
@@ -190,6 +191,7 @@ export class AgentRosterStore {
               status: worker.agent.status,
               lastUpdate: worker.agent.lastUpdate,
               sessionFile: known.sessionFile ?? worker.agent.sessionFile,
+              ...(worker.agent.reason === undefined ? {} : { reason: worker.agent.reason }),
             },
             known.key,
             known.incarnation,
@@ -199,6 +201,13 @@ export class AgentRosterStore {
             known.metrics,
           );
           changed = this.replaceAgent(known.key, ended) || changed;
+        } else if (worker.agent.reason !== undefined && known.reason !== worker.agent.reason) {
+          // omp's live roster does not carry why a worker failed; its transcript does, so the reason joins it here.
+          changed =
+            this.replaceAgent(
+              known.key,
+              Object.freeze({ ...known, reason: worker.agent.reason }),
+            ) || changed;
         }
         continue;
       }
@@ -247,6 +256,11 @@ export class AgentRosterStore {
     else if (event.type === "subagent_event") changed = false;
     changed = this.prune() || changed;
     this.snapshot = changed ? this.commit(seq) : this.withLastSeq(seq);
+    // omp's live roster drops a worker once it has failed, so its reason comes from the chat's transcripts, which list
+    // each finished worker with the reason its last assistant message keeps. A failed read leaves the worker with its
+    // status and no reason; the notice still says it failed.
+    if (event.type === "subagent_lifecycle" && event.payload.status === "failed")
+      void this.adoptFinishedWorkers().catch(() => undefined);
   }
 
   public async dispose(): Promise<void> {
