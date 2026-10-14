@@ -11,6 +11,7 @@ import { modelSettingsSections } from "../modules/D1/settings/descriptors";
 import { D2_DESCRIPTORS } from "../modules/D2";
 import { D3_LOGIN_DESCRIPTORS } from "../modules/D3/descriptors";
 import { D4_COPY_DESCRIPTORS } from "../modules/D4/copy/descriptors";
+import { D4_FORK_DESCRIPTORS } from "../modules/D4/fork/descriptors";
 import { D4_SHARE_DESCRIPTORS } from "../modules/D4/share/descriptors";
 import { D5_LIFECYCLE_COMMAND_DESCRIPTORS } from "../modules/D5/descriptors";
 import { D7_EXECUTION_MODES_COMMAND } from "../modules/D7/modes/descriptors";
@@ -115,6 +116,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...S1_DESCRIPTORS.filter((descriptor) => descriptor.kind === "command"),
   ...D4_COPY_DESCRIPTORS,
   ...D4_SHARE_DESCRIPTORS,
+  ...D4_FORK_DESCRIPTORS,
   ...R1_DESCRIPTORS,
   ...D5_LIFECYCLE_COMMAND_DESCRIPTORS,
   ...N1_DESCRIPTORS,

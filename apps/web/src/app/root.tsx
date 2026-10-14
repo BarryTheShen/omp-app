@@ -60,6 +60,7 @@ import { LayoutArea, type LayoutAreaName, type Surface, type SurfaceMap } from "
 import type { CredentialActions } from "@/modules/D3/auth/credential-actions";
 import { readProviderSignIns } from "@/modules/D3/auth/sign-in";
 import { D3_LOGIN_COMMAND } from "@/modules/D3/descriptors";
+import { SHARE_IMPORT_UNAVAILABLE_REASON, useImportFromShare } from "@/modules/D4/fork";
 import { runShareCommand } from "@/modules/D4/share";
 import type {
   SessionCapabilitiesSource,
@@ -743,6 +744,15 @@ function ActiveThreadReady({
     showStatus: setCommandStatus,
     showError: setCommandError,
   });
+  useImportFromShare({
+    client,
+    threadId,
+    folder,
+    dialogs: dialogHost,
+    openChat: openThread,
+    showStatus: setCommandStatus,
+    showError: setCommandError,
+  });
   const runtimeSource = useMemo<SessionInfoRuntimeSource>(
     () => ({
       getSnapshot: () => ({ threadId, session: store.getSnapshot().session }),
@@ -966,7 +976,11 @@ function ActiveThreadReady({
     lifecycle?.getAvailability("clear").reason ??
     "Clearing the conversation only works in the omp terminal for now.";
   const commandUnavailableReasons = useMemo(
-    () => new Map<DescriptorId, string>([["D5.clear", clearReason]]),
+    () =>
+      new Map<DescriptorId, string>([
+        ["D5.clear", clearReason],
+        ["D4.importShare", SHARE_IMPORT_UNAVAILABLE_REASON],
+      ]),
     [clearReason],
   );
   const attachmentManager = useMemo(
