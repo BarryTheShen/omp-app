@@ -46,4 +46,10 @@ describe("inventory", () => {
     expect(tally(INVENTORY.map((item) => item.rpc))).toEqual(statedCounts("- By rpc:"));
     expect(tally(INVENTORY.map((item) => item.kind))).toEqual(statedCounts("- By kind:"));
   });
+
+  test("/agents and its dashboard are terminal-only, since omp registers /agents with handleTui alone", () => {
+    const rpcById = new Map(INVENTORY.map((item) => [item.id, item.rpc] as const));
+    expect(rpcById.get("P1.agents")).toBe("terminal-only");
+    expect(rpcById.get("P1.agents-dashboard")).toBe("terminal-only");
+  });
 });

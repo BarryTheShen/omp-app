@@ -1372,7 +1372,7 @@
     "group": "P1",
     "name": "agents",
     "kind": "command",
-    "rpc": "RPC",
+    "rpc": "terminal-only",
     "ui": "side panel",
     "source": "src/slash-commands/builtin-session.ts:443-450; src/modes/components/agents-hub.ts:204-1083"
   },
@@ -1417,7 +1417,7 @@
     "group": "P1",
     "name": "Agents dashboard",
     "kind": "dialog",
-    "rpc": "RPC",
+    "rpc": "terminal-only",
     "ui": "side panel",
     "source": "src/modes/components/agents-hub.ts:204-1083"
   },
