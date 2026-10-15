@@ -176,8 +176,10 @@ import { RegistryProvider } from "@/registry-core";
 import { AppShell, ComposerNote } from "@/shell";
 import {
   type PreferenceStore,
+  ShortcutPreferenceNotice,
   ShortcutRegistryProvider,
   ShortcutSheetHost,
+  useShortcutPreferenceError,
   useShortcutRegistry,
 } from "@/shortcuts";
 import { setThemePreference, ThemeApplier, ThemeButton } from "@/theme";
@@ -680,6 +682,7 @@ function ActiveThreadReady({
   });
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
+  const shortcutPreferenceError = useShortcutPreferenceError();
   // The message being edited, and the row button that opened the editor (focus returns to it on cancel).
   const [editing, setEditing] = useState<P3EditTarget | null>(null);
   // Edit and Regenerate need omp's branch command, and a row omp has saved: a streaming row has no entry yet.
@@ -1396,9 +1399,12 @@ function ActiveThreadReady({
         <div className="relative min-w-0">
           <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
           <p className="text-muted-foreground truncate text-xs">{title}</p>
-          {/* A message about a command floats over the top of the chat, so the header keeps its height. */}
-          {(commandStatus !== null || commandError !== null) && (
+          {/* Messages about the shortcuts and about a command float over the top of the chat, so the header keeps its height. */}
+          {(shortcutPreferenceError !== undefined ||
+            commandStatus !== null ||
+            commandError !== null) && (
             <div className="absolute start-0 top-full z-10 flex w-max max-w-[min(26rem,calc(100vw-4.5rem))] flex-col gap-1 pt-1">
+              <ShortcutPreferenceNotice />
               {commandStatus && (
                 <p
                   className="border-border bg-popover text-popover-foreground shadow-overlay rounded-md border px-3 py-2 text-xs"
@@ -2219,14 +2225,20 @@ function ConnectedApp({
   const leftSidebar = (
     <LayoutArea area="sidebar" capabilities={capabilities} surfaces={sidebarSurfaces} />
   );
+  const shortcutPreferenceError = useShortcutPreferenceError();
   const emptyHeaderSurfaces: SurfaceMap = {
     title: {
       title: "Conversation",
       grow: true,
       render: () => (
-        <div className="min-w-0">
+        <div className="relative min-w-0">
           <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
           <p className="text-muted-foreground truncate text-xs">New conversation</p>
+          {shortcutPreferenceError !== undefined && (
+            <div className="absolute start-0 top-full z-10 flex w-max max-w-[min(26rem,calc(100vw-4.5rem))] flex-col pt-1">
+              <ShortcutPreferenceNotice />
+            </div>
+          )}
         </div>
       ),
     },

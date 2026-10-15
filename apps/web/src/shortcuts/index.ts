@@ -9,6 +9,7 @@ export {
   useShortcutRegistry,
   useShortcutScope,
 } from "./context";
+export { ShortcutPreferenceNotice } from "./preference-notice";
 export type {
   DispatchResult,
   PreferenceStore,
