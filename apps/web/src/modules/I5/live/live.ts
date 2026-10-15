@@ -44,6 +44,15 @@ const EMPTY_STATE: LiveState = {
   connected: false,
 };
 
+/** The phases in which omp holds a live session that only live_stop ends (issue 1280). */
+const OMP_SESSION_PHASES: ReadonlySet<LiveState["phase"]> = new Set([
+  "connecting",
+  "listening",
+  "working",
+  "speaking",
+  "muted",
+]);
+
 function isLiveFrame(value: unknown): value is Record<string, unknown> {
   return (
     typeof value === "object" && value !== null && "type" in value && typeof value.type === "string"
@@ -168,6 +177,11 @@ export function createLiveVoiceAdapter(options: LiveVoiceAdapterOptions): LiveVo
   };
   const start = async (args: LiveStartArgs = {}, callOptions?: PortCallOptions) => {
     requireLive();
+    // omp keeps a session until live_stop ends it, and a page that reloaded or was left leaves one behind: end it first.
+    // With no session omp does nothing, and a failure here is left for the start itself to report.
+    await rpcSend({ threadId: options.threadId, command: { type: "live_stop" } }).catch(
+      () => undefined,
+    );
     if (unsubscribeEvents === undefined) await subscribe();
     const sessionId = state.sessionId ?? sessionIdFactory();
     state = LiveStateSchema.parse({
@@ -224,6 +238,12 @@ export function createLiveVoiceAdapter(options: LiveVoiceAdapterOptions): LiveVo
     }
   };
   const dispose = async (): Promise<void> => {
+    // Leaving the chat ends the session omp holds, and its microphone with it. The page is going, so a failed stop is not shown.
+    if (OMP_SESSION_PHASES.has(state.phase)) {
+      await rpcSend({ threadId: options.threadId, command: { type: "live_stop" } }).catch(
+        () => undefined,
+      );
+    }
     if (levelTimer !== undefined) clearTimeout(levelTimer);
     levelTimer = undefined;
     pendingLevels = undefined;

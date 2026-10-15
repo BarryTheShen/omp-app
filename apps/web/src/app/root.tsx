@@ -69,6 +69,7 @@ import type {
 } from "@/modules/D5/contract";
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { FAST_REFUSAL_NOTICE_SOURCE } from "@/modules/D7/modes";
+import { useLiveVoiceSurfaces } from "@/modules/I5/live";
 import {
   NotificationFeedback,
   NotificationNotices,
@@ -1470,6 +1471,12 @@ function ActiveThreadReady({
       threadId,
       capabilities,
       onFastRefused: retireFastRefusalNotice,
+    }),
+    ...useLiveVoiceSurfaces({
+      client,
+      threadId,
+      capabilities,
+      admitTurn: (turn) => store?.admitVoiceTurn(turn),
     }),
     mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
     queue: {

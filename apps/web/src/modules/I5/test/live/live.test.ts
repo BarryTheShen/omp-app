@@ -56,7 +56,7 @@ describe("I5 live RPC adapter", () => {
     await adapter.stop();
     expect(
       fake.sends.map((entry) => (entry as { command: { type: string } }).command.type),
-    ).toEqual(["live_start", "live_mute", "live_stop"]);
+    ).toEqual(["live_stop", "live_start", "live_mute", "live_stop"]);
     await adapter.dispose();
 
     const unavailable = adapterFixture(new FakeClient(), {});

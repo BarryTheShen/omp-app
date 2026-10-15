@@ -40,6 +40,14 @@ type MutableSnapshot = {
 /** The lifecycle of a message received from omp's event stream. */
 export type RuntimeMessageStatus = "streaming" | "ended" | "persisted";
 
+/** A finished live-voice turn: its session, speaker and turn number, and the final text. */
+export interface VoiceTurn {
+  readonly sessionId: string;
+  readonly role: "user" | "assistant";
+  readonly turn: number;
+  readonly text: string;
+}
+
 export interface RuntimeMessage {
   readonly key: MessageKey;
   readonly message: OmpMessage;
@@ -790,7 +798,8 @@ function settleStreamedCopy(next: MutableSnapshot, key: MessageKey, message: Omp
  * Where the live messages that history does not return go. A message still waiting for its entry is the newest and
  * goes last. An answer cut off by the process exiting is different: omp never saved it, so history never returns it,
  * and moving it behind the answers that came after would glue its text onto the next turn's answer. It keeps its
- * place, right after the message it followed.
+ * place, right after the message it followed. A live voice line is the same case: omp never keeps it, so it keeps its
+ * place too (see `isVoiceLine`).
  */
 function placeLiveMessages(
   previousOrder: readonly MessageKey[],
@@ -816,6 +825,14 @@ function placeLiveMessages(
     else placed.splice(after + 1, 0, key);
   }
   return [...placed, ...last];
+}
+
+/**
+ * A live voice line (`admitVoiceTurn`): omp keeps no message for it, so a settled turn's history never returns it.
+ * It stays where it was admitted (see `placeLiveMessages`), not behind the history that settles after it.
+ */
+function isVoiceLine(record: RuntimeMessage | undefined): boolean {
+  return record?.streamMessageId?.startsWith("voice:") === true;
 }
 
 /**
@@ -879,7 +896,7 @@ function hydratePersistedMessages(next: MutableSnapshot): void {
     next.messageOrder,
     viewOrder,
     live,
-    (key) => next.messages[key]?.interrupted === true,
+    (key) => next.messages[key]?.interrupted === true || isVoiceLine(next.messages[key]),
   );
 }
 
@@ -1429,6 +1446,26 @@ export class OmpRuntimeStore {
     if (this.snapshot.error === null) return;
     const next = mutableSnapshot(this.snapshot);
     next.error = null;
+    this.commit(next);
+  }
+
+  /**
+   * Admits a finished live-voice turn into the transcript as an ordinary message. omp keeps a voice turn only as live
+   * frames, so the text is recorded here under a stable id: the same session, role and turn replaces its earlier
+   * admission (a later final frame for that turn), and nothing else in the transcript is touched.
+   */
+  public admitVoiceTurn(turn: VoiceTurn): void {
+    const id = `voice:${turn.sessionId}:${turn.role}:${turn.turn}` as OmpStreamMessageId;
+    const key = provisionalMessageKey(this.snapshot.processId, id);
+    const message = {
+      role: turn.role,
+      content: [{ type: "text", text: turn.text }],
+      timestamp: Date.now(),
+    } as unknown as OmpMessage;
+    const next = mutableSnapshot(this.snapshot);
+    addOrReplaceMessage(next, key, { key, message, status: "ended", streamMessageId: id });
+    const order = next.messageOrder as MessageKey[];
+    if (!order.includes(key)) order.push(key);
     this.commit(next);
   }
 

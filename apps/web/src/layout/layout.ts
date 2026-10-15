@@ -44,7 +44,8 @@ export type SurfaceId =
   | "rewind"
   | "commandOutput"
   | "agents"
-  | "executionModes";
+  | "executionModes"
+  | "liveVoice";
 
 export type AppLayout = Readonly<Record<LayoutAreaName, readonly SurfaceId[]>>;
 
@@ -75,6 +76,7 @@ export const LAYOUT: AppLayout = {
     "editRun",
     "toolCalls",
     "scrollFollow",
+    "liveVoice",
   ],
   /**
    * Over the end of the transcript, just above its footer: the notices float here and never cover the
