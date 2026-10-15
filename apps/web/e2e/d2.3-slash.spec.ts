@@ -100,13 +100,18 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
 
-    // A path, an unknown word and a message that starts with a space are plain prompts.
-    for (const text of ["/etc/hosts", "/nosuchcommand", " /usage"]) {
+    // A path, an unknown word and a message that starts with a space are plain prompts. Each is sent once the box is empty
+    // again, and answered before the next one is typed. A line that starts with "/" waits for the command search before Enter
+    // sends it, so under a slow page the box can take well past the default 5 s: each wait gets 60 s. "Conversation settled"
+    // from the previous answer is still on screen, so it cannot tell the turns apart; the count of answers can.
+    for (const [index, text] of ["/etc/hosts", "/nosuchcommand", " /usage"].entries()) {
       await sendPrompt(composer, text);
-      await expect(composer).toHaveValue("");
-      await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 60_000 });
+      await expect(composer).toHaveValue("", { timeout: 60_000 });
+      await expect(page.getByText("pong", { exact: true })).toHaveCount(index + 1, {
+        timeout: 60_000,
+      });
+      await expect(composer).toBeEnabled({ timeout: 60_000 });
     }
-    await expect(page.getByText("pong").first()).toBeVisible({ timeout: 60_000 });
     await expect(commandResult(page)).toHaveCount(0);
   },
 );
