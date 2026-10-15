@@ -213,7 +213,7 @@ export function SessionModelControl({
   return (
     <Button
       aria-label={modelName ? `Model: ${modelName}. Change model or thinking` : "Choose a model"}
-      className="max-w-64 min-w-0"
+      className="min-w-0 max-w-[min(16rem,100%)]"
       onClick={open}
       size="sm"
       type="button"
