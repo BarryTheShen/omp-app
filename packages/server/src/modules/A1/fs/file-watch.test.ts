@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { FSWatcher } from "node:fs";
-import { watch } from "node:fs";
+import { mkdirSync, watch } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -179,5 +179,40 @@ describe("the watch registry", () => {
     expect(fileWatchMessage({ state: "limited", reason: "watcher-limit", failing: 1 })).toBe(
       "omp app can't watch some of its files for changes, because this computer has no file watchers left. It checks them every second instead, so changes still show, a little later.",
     );
+  });
+});
+
+describe("watchFile when a folder on its path is made while the watch opens", () => {
+  test("watches the folder once it exists, so a change in it is reported", async () => {
+    const root = await makeTemporaryDirectory();
+    const folder = join(root, "made", "later");
+    const path = join(folder, "config.yml");
+    let made = false;
+    const watchDirectory: WatchDirectory = (directory, listener) => {
+      // The first watch opens on the nearest folder that exists, here `root`. The folder below it is made after that
+      // choice and before the watch opens, so the watch raises no event for it.
+      if (!made) {
+        made = true;
+        mkdirSync(folder, { recursive: true });
+      }
+      return watch(directory, { persistent: false }, listener);
+    };
+    const registry = new FileWatchRegistry({ watchDirectory });
+    const changes: (string | null)[] = [];
+    const watcher = watchFile(
+      path,
+      (event) => {
+        changes.push(event.hash);
+      },
+      { debounceMs: 10, pollMs: 60_000, onError: () => undefined, registry },
+    );
+    try {
+      await writeFile(path, "model: new\n");
+      await waitUntil(() => changes.length > 0);
+      expect(changes).toHaveLength(1);
+      expect(changes[0]).not.toBeNull();
+    } finally {
+      watcher.dispose();
+    }
   });
 });

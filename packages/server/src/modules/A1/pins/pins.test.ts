@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -18,9 +19,13 @@ async function writePins(path: string, ids: readonly string[]): Promise<void> {
   await writeFile(path, JSON.stringify(ids, null, "\t"), "utf8");
 }
 
-async function waitForWatchers(): Promise<void> {
-  // Exercise real fs.watch delivery and the atomic-rename debounce path.
-  await Bun.sleep(180);
+/** Polls until a real watcher event has made the condition true, so each wait ends with the event, not a duration. */
+async function waitUntil(condition: () => boolean, timeoutMs = 4_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("timed out waiting for the watcher's event");
+    await Bun.sleep(10);
+  }
 }
 
 async function expectAppFailure(promise: Promise<unknown>): Promise<AppFailure> {
@@ -192,12 +197,9 @@ describe("SessionPinStoreService", () => {
     const unsubscribe = store.subscribe((change) => {
       events.push({ sessionId: change.sessionId, pinned: change.pinned });
     });
-    await waitForWatchers();
 
     const absent = await store.list();
     await store.set({ sessionId: sessionA, pinned: true, expectedRevision: absent.revision });
-    await waitForWatchers();
-    expect(events).toEqual([]);
 
     const errorStore = new SessionPinStoreService({
       agentDir: store.agentDir,
@@ -205,18 +207,17 @@ describe("SessionPinStoreService", () => {
       onError: (error) => errors.push(error),
     });
     const errorUnsubscribe = errorStore.subscribe(() => undefined);
-    await waitForWatchers();
     await writeFile(store.filePath, "not json", "utf8");
-    await waitForWatchers();
-    expect(errors.some((error) => error.appError.code === "invalid_args")).toBe(true);
+    await waitUntil(() => errors.some((error) => error.appError.code === "invalid_args"));
+    // Neither our own set nor the malformed external edit is a pin change.
     expect(events).toEqual([]);
 
     await writePins(store.filePath, [sessionA, sessionB]);
-    await waitForWatchers();
+    await waitUntil(() => events.length === 1);
     expect(events).toEqual([{ sessionId: sessionB, pinned: true }]);
 
     await writePins(store.filePath, ["session-c"]);
-    await waitForWatchers();
+    await waitUntil(() => events.length === 4);
     expect(events).toEqual([
       { sessionId: sessionB, pinned: true },
       { sessionId: "session-c", pinned: true },
@@ -238,22 +239,40 @@ describe("SessionPinStoreService", () => {
     const unsubscribe = store.subscribe((change) => {
       events.push({ sessionId: change.sessionId, pinned: change.pinned });
     });
-    await waitForWatchers();
     unsubscribe();
 
     await writePins(store.filePath, ["session-b"]);
     const resubscribe = store.subscribe((change) => {
       events.push({ sessionId: change.sessionId, pinned: change.pinned });
     });
-    await waitForWatchers();
     await writePins(store.filePath, ["session-c"]);
-    await waitForWatchers();
+    await waitUntil(() => events.length === 2);
 
     expect(events).toEqual([
       { sessionId: "session-c", pinned: true },
       { sessionId: "session-b", pinned: false },
     ]);
     resubscribe();
+    store.dispose();
+  });
+
+  test("a change made right after subscribing is reported, not taken for the starting state", async () => {
+    const home = await temporaryDirectory();
+    const store = new SessionPinStoreService({ homeDir: home, env: {}, watchDebounceMs: 20 });
+    await writePins(store.filePath, ["session-a"]);
+    const events: { sessionId: string; pinned: boolean }[] = [];
+    const unsubscribe = store.subscribe((change) => {
+      events.push({ sessionId: change.sessionId, pinned: change.pinned });
+    });
+    // Synchronous, so it is written before any read that the subscription starts can run.
+    writeFileSync(store.filePath, JSON.stringify(["session-b"]), "utf8");
+    await waitUntil(() => events.length === 2);
+
+    expect(events).toEqual([
+      { sessionId: "session-b", pinned: true },
+      { sessionId: "session-a", pinned: false },
+    ]);
+    unsubscribe();
     store.dispose();
   });
 });

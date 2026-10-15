@@ -19,6 +19,15 @@ function base64(value: string): string {
   return Buffer.from(value, "utf8").toString("base64");
 }
 
+/**
+ * Blobs are stamped in whole milliseconds, and eviction takes the oldest first. Two uploads in one millisecond tie, and the
+ * tie goes to directory order, which can evict the new blob itself. This waits until the clock has moved on.
+ */
+async function waitForNewMillisecond(): Promise<void> {
+  const start = Date.now();
+  while (Date.now() === start) await Bun.sleep(1);
+}
+
 async function expectAppFailure(promise: Promise<unknown>): Promise<AppFailure> {
   try {
     await promise;
@@ -111,6 +120,7 @@ describe("AttachmentStoreService", () => {
     });
     referenced = [second.ref];
     await store.cleanup();
+    await waitForNewMillisecond();
     const third = await store.put({
       id: "third",
       name: "c.txt",

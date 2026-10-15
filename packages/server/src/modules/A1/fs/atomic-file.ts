@@ -266,6 +266,25 @@ export async function readFileSnapshot(filePath: string): Promise<FileSnapshot> 
   }
 }
 
+/** The file as it is at this moment, read synchronously: the same snapshot as readFileSnapshot, for a baseline taken in the same step as a watch. */
+export function readFileSnapshotSync(filePath: string): FileSnapshot {
+  const path = resolve(filePath);
+  try {
+    const bytes = readFileSync(path);
+    return {
+      path,
+      exists: true,
+      content: bytes.toString("utf8"),
+      hash: hashBytes(bytes),
+    };
+  } catch (error) {
+    if (hasErrorCode(error, "ENOENT")) {
+      return { path, exists: false, content: null, hash: null };
+    }
+    throw error;
+  }
+}
+
 interface TemporaryFile {
   readonly path: string;
   readonly handle: FileHandle;

@@ -18,6 +18,7 @@ import {
   type FileWatchRegistry,
   hashContent,
   readFileSnapshot,
+  readFileSnapshotSync,
   watchFile,
 } from "../fs";
 
@@ -169,10 +170,7 @@ export class SessionPinStoreService {
   readonly #options: SessionPinStoreOptions;
   readonly #listeners = new Set<SessionPinChangeListener>();
   #watcher: FileWatcher | undefined;
-  #ready: Promise<void> | undefined;
   #knownIds: readonly ThreadId[] = [];
-  #watchGeneration = 0;
-  #knownIdsInitialized = false;
 
   constructor(options: SessionPinStoreOptions = {}) {
     this.#options = options;
@@ -255,14 +253,11 @@ export class SessionPinStoreService {
 
   private adoptKnownIds(ids: readonly ThreadId[]): void {
     this.#knownIds = ids;
-    this.#knownIdsInitialized = true;
   }
 
   private ensureWatcher(): void {
     if (this.#watcher) return;
-    const generation = ++this.#watchGeneration;
-    this.#knownIdsInitialized = false;
-    this.#ready = this.seedKnownIds(generation);
+    this.seedKnownIds();
     try {
       this.#watcher = watchFile(this.filePath, () => this.handleFileChange(), {
         debounceMs: this.#options.watchDebounceMs,
@@ -275,31 +270,22 @@ export class SessionPinStoreService {
   }
 
   private releaseWatcher(): void {
-    this.#watchGeneration += 1;
     this.#watcher?.dispose();
     this.#watcher = undefined;
-    this.#ready = undefined;
     this.#knownIds = [];
-    this.#knownIdsInitialized = false;
   }
 
-  /** Seeds the diff baseline before any real change can be observed, so the first external edit
-   * after a fresh subscribe never misreports pre-existing pins as newly added. A concurrent
-   * `list()`/`set()` that wins the race first is not overwritten (`#knownIdsInitialized`). */
-  private async seedKnownIds(generation: number): Promise<void> {
+  /** Seeds the diff baseline from the file as it is now. It is read synchronously, as the watch reads its own baseline, so a
+   * change made after subscribing is always a change from this baseline, never part of it. */
+  private seedKnownIds(): void {
     try {
-      const snapshot = await this.readSnapshot();
-      const ids = parsePinnedIds(snapshot);
-      if (generation === this.#watchGeneration && !this.#knownIdsInitialized) {
-        this.adoptKnownIds(ids);
-      }
+      this.adoptKnownIds(parsePinnedIds(readFileSnapshotSync(this.filePath)));
     } catch (error) {
       reportError(this.#options.onError, error);
     }
   }
 
   private async handleFileChange(): Promise<void> {
-    await this.#ready;
     let snapshot: FileSnapshot;
     try {
       snapshot = await this.readSnapshot();

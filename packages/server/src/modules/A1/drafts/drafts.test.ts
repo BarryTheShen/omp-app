@@ -14,9 +14,13 @@ async function temporaryDirectory(): Promise<string> {
   return directory;
 }
 
-async function waitForWatchers(): Promise<void> {
-  // Real fs.watch delivery and debounce are the integration under test.
-  await Bun.sleep(260);
+/** Polls until a real watcher event has made the condition true, so each wait ends with the event, not a duration. */
+async function waitUntil(condition: () => boolean, timeoutMs = 4_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("timed out waiting for the watcher's event");
+    await Bun.sleep(10);
+  }
 }
 
 function attachment() {
@@ -271,35 +275,36 @@ describe("DraftStoreService", () => {
     const unsubscribe = store.subscribe(scope, (change) => {
       events.push(change);
     });
-    await waitForWatchers();
     const saved = await store.save({ scope, draft: draftInput("own"), expectedRevision: null });
-    await waitForWatchers();
-    expect(events).toHaveLength(0);
 
+    // Each external write is waited for by the event it makes. An event for our own save or clear would arrive before
+    // that event, so it would show up as an extra event, or as a first event that holds our text instead of the write's.
     const path = join(store.draftsDir, "threads", `${hashContent("events")}.json`);
-    await writeFile(
-      path,
-      `${JSON.stringify({
-        version: 1,
-        kind: "draft",
-        scope,
-        text: "external",
-        attachments: [attachment()],
-        failedSends: [],
-        updatedAt: "2026-10-04T00:00:00.000Z",
-      })}\n`,
-      "utf8",
-    );
-    await waitForWatchers();
-    expect(events).toHaveLength(1);
+    const writeExternal = (text: string) =>
+      writeFile(
+        path,
+        `${JSON.stringify({
+          version: 1,
+          kind: "draft",
+          scope,
+          text,
+          attachments: [attachment()],
+          failedSends: [],
+          updatedAt: "2026-10-04T00:00:00.000Z",
+        })}\n`,
+        "utf8",
+      );
+    await writeExternal("external");
+    await waitUntil(() => events.length === 1);
     expect(JSON.stringify(events[0])).toContain("external");
 
     await store.clear({
       scope,
       expectedRevision: (await store.get({ scope })).draft?.revision ?? saved.revision,
     });
-    await waitForWatchers();
-    expect(events).toHaveLength(1);
+    await writeExternal("after clear");
+    await waitUntil(() => events.length === 2);
+    expect(JSON.stringify(events[1])).toContain("after clear");
     unsubscribe();
     store.dispose();
   });

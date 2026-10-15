@@ -188,6 +188,13 @@ export function watchFile(
         options.registry?.fail(token, path, error);
         startPolling();
       });
+      // A folder made after the nearest existing one was chosen, and before this watch opened, raised no event for this
+      // watch. The watch is open now, so look again, and watch the deeper folder if it exists.
+      if (nearestExistingDirectory(directory) !== nextDirectory) {
+        closeWatcher();
+        armWatcher();
+        return;
+      }
       armFailureReported = false;
       options.registry?.clear(token);
       if (poll !== undefined) {
