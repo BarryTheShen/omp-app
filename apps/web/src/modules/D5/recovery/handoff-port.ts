@@ -20,8 +20,9 @@ export function handoffResultOf(payload: OmpWire.HandoffResult | null): HandoffR
       retryable: false,
     });
   }
-  // The contract accepts only absolute `.jsonl` session files. omp writes an automatic handoff as
-  // `handoff-<ts>.md`, so a path the contract rejects is not reported; the summary is in the transcript.
+  // omp answers the `handoff` command without a saved path. omp writes an automatic handoff to `handoff-<ts>.md`
+  // only when it is auto-triggered (auto-compaction), and the command the app sends never sets that flag. The
+  // contract takes only absolute `.jsonl` session files, so a path it rejects is not reported.
   const savedPath = SessionFilePath.safeParse(payload.savedPath ?? null);
   return HandoffResult.parse({
     savedPath: savedPath.success ? savedPath.data : null,
