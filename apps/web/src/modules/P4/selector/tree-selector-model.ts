@@ -517,11 +517,13 @@ export function createP4TreeSelectorViewModel(
   const hasTree = activeSnapshot !== null && activeSnapshot.tree.length > 0;
   const hasLabels = activeSnapshot !== null && activeSnapshot.labels.length > 0;
   const noun = showAllEntries ? "entries" : "messages";
+  // Only a marked entry on screen can be chosen. A search, a fold or the show-all switch that hides it leaves
+  // the button disabled, so Rewind here never acts on a row the person cannot see.
   const canSelect =
     selectedEntryId !== null &&
     activeSnapshot !== null &&
     status === null &&
-    entryById.has(selectedEntryId);
+    listedIds.has(selectedEntryId);
 
   return {
     threadId: state.threadId,

@@ -863,3 +863,67 @@ describe("P4 tree selector model and views", () => {
     expect(document.activeElement).toBe(opener);
   });
 });
+
+describe("a marked entry the list hides cannot be chosen", () => {
+  test("a search that hides the marked message disables Rewind here, and clearing it enables it", () => {
+    const snapshot = treeSnapshot();
+    const hidden = createP4TreeSelectorViewModel(
+      snapshot,
+      selectorState({
+        selectedEntryId: rootId,
+        filter: { query: "saved entry", showLabels: true },
+      }),
+    );
+    expect(hidden.rows.map((row) => row.entryId)).not.toContain(rootId);
+    expect(hidden.canSelect).toBe(false);
+
+    const shown = createP4TreeSelectorViewModel(
+      snapshot,
+      selectorState({ selectedEntryId: rootId }),
+    );
+    expect(shown.canSelect).toBe(true);
+  });
+
+  test("a fold that hides the marked message disables Rewind here", () => {
+    const folded = createP4TreeSelectorViewModel(
+      treeSnapshot(),
+      selectorState({ selectedEntryId: leafId }),
+      undefined,
+      new Set([rootId]),
+    );
+    expect(folded.rows.map((row) => row.entryId)).not.toContain(leafId);
+    expect(folded.canSelect).toBe(false);
+  });
+
+  test("showing messages only hides a marked entry that is not one, and showing all brings it back", () => {
+    const noteId = "entry-note" as EntryId;
+    // A model change is bookkeeping, which omp's messages-only view does not list.
+    const modelChange = {
+      type: "model_change",
+      id: noteId,
+      parentId: rootId,
+      timestamp: "2026-10-06T00:00:02.000Z",
+    } as unknown as SessionEntryHead;
+    const nodes: readonly TreeNode[] = [
+      {
+        entry: entry(rootId, null, "user", "Please inspect the conversation history.", 1),
+        children: [{ entry: modelChange, children: [] }],
+      },
+    ];
+    const snapshot = treeSnapshot(nodes, noteId);
+    const messagesOnly = createP4TreeSelectorViewModel(
+      snapshot,
+      selectorState({ selectedEntryId: noteId }),
+    );
+    expect(messagesOnly.canSelect).toBe(false);
+
+    const everything = createP4TreeSelectorViewModel(
+      snapshot,
+      selectorState({ selectedEntryId: noteId }),
+      undefined,
+      new Set(),
+      true,
+    );
+    expect(everything.canSelect).toBe(true);
+  });
+});
