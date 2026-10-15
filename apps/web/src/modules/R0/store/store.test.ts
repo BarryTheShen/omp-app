@@ -1091,6 +1091,55 @@ describe("OmpRuntimeStore", () => {
     });
   });
 
+  test("a refused answer is thrown to the dialog and leaves the thread's banner clear, also after a retry (issue 1386)", async () => {
+    let attempts = 0;
+    const store = new OmpRuntimeStore({
+      threadId,
+      transport: {
+        answerExtensionUi: async () => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new AppFailure({
+              code: "unavailable",
+              message: "omp did not accept the answer.",
+              retryable: true,
+            });
+          }
+          return null;
+        },
+      },
+    });
+    ingest(store, { kind: "process", status: "ready" }, 1);
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "ui-refused",
+          method: "confirm",
+          title: "Continue?",
+          message: "yes",
+        },
+      },
+      2,
+    );
+    const response = {
+      type: "extension_ui_response" as const,
+      id: "ui-refused" as UiRequestId,
+      confirmed: true,
+    };
+    await expect(store.answerExtensionUi(response)).rejects.toMatchObject({
+      appError: { code: "unavailable", message: "omp did not accept the answer." },
+    });
+    expect(store.getSnapshot().error).toBeNull();
+    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-refused"]);
+
+    await store.answerExtensionUi(response);
+    expect(store.getSnapshot().error).toBeNull();
+    expect(store.getSnapshot().pending.extensionUi).toEqual({});
+  });
+
   test("ignores unknown notifications, replays, and events after a sequence gap", () => {
     const store = new OmpRuntimeStore({ threadId });
     let notifications = 0;

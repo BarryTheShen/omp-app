@@ -1369,7 +1369,11 @@ export class OmpRuntimeStore {
     }
   }
 
-  /** Answer a pending extension UI request and remove it only after A0 accepts the answer. */
+  /**
+   * Answer a pending extension UI request and remove it only after A0 accepts the answer. A refused answer is thrown to
+   * the caller, which says the answer was not sent and keeps the question open. It is not written to the thread's
+   * banner, which is for the conversation (issue 1386).
+   */
   public async answerExtensionUi(
     response: ExtensionUiResponse,
     options?: PortCallOptions,
@@ -1379,24 +1383,12 @@ export class OmpRuntimeStore {
       this.fail(error);
       throw new AppFailure(error);
     }
-    try {
-      await this.transport.answerExtensionUi(
-        { threadId: this.snapshot.threadId, response },
-        options,
-      );
-      const next = mutableSnapshot(this.snapshot);
-      const pending = copyPending(next);
-      delete pending.extensionUi[response.id];
-      setPending(next, pending);
-      this.commit(next);
-    } catch (error) {
-      // An answer that reaches an omp which has already exited fails because omp is gone. The exit is the reason the
-      // banner shows, so that failure is not shown in its place.
-      if (this.snapshot.process.status !== "exited") {
-        this.fail(appErrorFromUnknown(error, "Answering the extension UI request failed"));
-      }
-      throw error;
-    }
+    await this.transport.answerExtensionUi({ threadId: this.snapshot.threadId, response }, options);
+    const next = mutableSnapshot(this.snapshot);
+    const pending = copyPending(next);
+    delete pending.extensionUi[response.id];
+    setPending(next, pending);
+    this.commit(next);
   }
 
   public async answerHostTool(
@@ -1440,13 +1432,6 @@ export class OmpRuntimeStore {
       this.fail(appError);
       throw error;
     }
-  }
-
-  public clearError(): void {
-    if (this.snapshot.error === null) return;
-    const next = mutableSnapshot(this.snapshot);
-    next.error = null;
-    this.commit(next);
   }
 
   /**
