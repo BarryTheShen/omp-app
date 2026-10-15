@@ -1,4 +1,4 @@
-import type { Descriptor } from "@omp-app/contracts";
+import type { Descriptor, ShortcutDescriptor } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
@@ -164,6 +164,35 @@ describe("ShortcutSheet", () => {
     fireEvent.blur(input);
     expect(screen.getByRole("alert").textContent).toBe(
       "Ctrl+Shift+Enter is already used by “Other composer shortcut”.",
+    );
+  });
+  test("refuses a rebind of Delete session onto Alt+T, and the sheet names Toggle thinking", () => {
+    // Delete session lives on the session list, which runs outside text boxes, as Toggle thinking does.
+    const sessionDelete = {
+      id: "R1.sessionDelete",
+      owner: "R1",
+      title: "Delete session",
+      kind: "shortcut",
+      chord: "Mod+Shift+Backspace",
+      scope: "session-list",
+      focus: "session-list",
+      covers: [],
+      requires: [],
+    } as const satisfies ShortcutDescriptor & { readonly focus: "session-list" };
+    render(
+      <ShortcutRegistryProvider
+        descriptors={[...descriptors, sessionDelete]}
+        preferenceStore={new MemoryPreferenceStore()}
+      >
+        <ShortcutSheet open onOpenChange={() => undefined} />
+      </ShortcutRegistryProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl+Shift+Backspace" }));
+    const input = screen.getByRole("textbox", { name: "Rebind Delete session" });
+    fireEvent.change(input, { target: { value: "Alt+T" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Alt+T is already used by “Toggle thinking”.",
     );
   });
   test("resets an overridden shortcut row to its default", () => {

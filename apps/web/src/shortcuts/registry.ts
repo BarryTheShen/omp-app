@@ -198,8 +198,10 @@ function runsOnlyInTextBox(reach: ShortcutReach): boolean {
 /**
  * Whether one keypress could run both shortcuts, which are in different scopes. A global shortcut runs outside text
  * boxes beside any shortcut that also runs there (a shortcut that runs only in a text box does not), and in a text box
- * only beside a shortcut that works there too. Any other scope is an area of the app: two areas meet only in a text
- * box, where both must work (`allowInEditable`). Shortcuts limited to two different elements never meet.
+ * only beside a shortcut that works there too. Any other scope is an area of the app whose listener stays on window
+ * while the area is mounted, so two areas run together outside text boxes unless a shortcut that runs only in a text
+ * box keeps them apart; they also run together in a text box where both work (`allowInEditable`). Shortcuts limited
+ * to two different elements never meet.
  */
 function canRunTogether(first: ShortcutReach, second: ShortcutReach): boolean {
   if (first.focus !== undefined && second.focus !== undefined && first.focus !== second.focus)
@@ -209,7 +211,7 @@ function canRunTogether(first: ShortcutReach, second: ShortcutReach): boolean {
     const other = first.scope === "global" ? second : first;
     return !runsOnlyInTextBox(other) || (global.text && other.text);
   }
-  return first.text && second.text;
+  return (!runsOnlyInTextBox(first) && !runsOnlyInTextBox(second)) || (first.text && second.text);
 }
 
 function isReservedChord(chord: string, scope: string): boolean {

@@ -56,7 +56,7 @@ const transcriptToggle = {
   scope: "transcript",
 } as const satisfies ShortcutDescriptor;
 
-// Two areas of the app that both take the arrow keys, each in its own place.
+// The composer's arrow, declared as the app declares U2.cursorLeft: it runs only in the message box.
 const composerLeft = {
   kind: "shortcut",
   id: "U2.cursorLeft",
@@ -66,7 +66,12 @@ const composerLeft = {
   requires: [],
   chord: "ArrowLeft",
   scope: "composer",
-} as const satisfies ShortcutDescriptor;
+  allowInEditable: true,
+  focus: "composer-input",
+} as const satisfies ShortcutDescriptor & {
+  readonly allowInEditable: true;
+  readonly focus: "composer-input";
+};
 
 const treeFold = {
   kind: "shortcut",
@@ -126,7 +131,7 @@ describe("a chord shared across scopes is refused only when one keypress could r
     expect(registry.rebind("U2.externalEditor", "Alt+T").ok).toBe(true);
   });
 
-  test("two areas of the app can use one chord, since they meet only in a text box where neither takes it", () => {
+  test("the message box's arrow and a tree's arrow can share a chord, since the message box's arrow runs only there", () => {
     expect(registryOf([composerLeft, treeFold]).conflicts()).toEqual([]);
   });
 
@@ -221,5 +226,36 @@ describe("a shortcut that runs only in the message box does not clash with a glo
 
   test("two shortcuts limited to two different elements never meet, even on one chord", () => {
     expect(registryOf([sessionRename, boxOnly]).conflicts()).toEqual([]);
+  });
+});
+
+// A transcript shortcut on the arrow key that the tree uses, both working outside text boxes.
+const transcriptLeft = {
+  kind: "shortcut",
+  id: "U1.transcriptLeft",
+  owner: "U1",
+  title: "Move left in the transcript",
+  covers: [],
+  requires: [],
+  chord: "ArrowLeft",
+  scope: "transcript",
+} as const satisfies ShortcutDescriptor;
+
+describe("two areas that both run outside text boxes cannot share a chord", () => {
+  test("Delete session cannot be rebound onto Alt+T, and the refusal names Toggle thinking", () => {
+    const result = registryOf(DESCRIPTORS).rebind("R1.sessionDelete", "Alt+T");
+
+    expect(result.ok).toBe(false);
+    const [clash] = result.conflicts;
+    // The registry lists the pair in list order, so the check does not depend on which side comes first.
+    expect([clash?.first.id, clash?.second.id].sort()).toEqual([
+      "R1.sessionDelete",
+      "U1.thinking.toggle",
+    ]);
+    expect([clash?.first.title, clash?.second.title]).toContain("Toggle thinking");
+  });
+
+  test("a tree shortcut and a transcript shortcut on one chord conflict, since each runs outside text boxes", () => {
+    expect(registryOf([treeFold, transcriptLeft]).conflicts()).toHaveLength(1);
   });
 });

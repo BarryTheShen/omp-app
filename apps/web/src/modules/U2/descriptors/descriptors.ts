@@ -148,6 +148,8 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "ArrowDown",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -158,6 +160,8 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "ArrowLeft",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -168,6 +172,8 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "End",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -178,6 +184,8 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "Home",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -188,6 +196,8 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "ArrowRight",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -198,6 +208,8 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "ArrowUp",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -270,6 +282,8 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "Mod+Backspace",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -280,6 +294,8 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "Mod+Delete",
     scope: "composer",
+    allowInEditable: true,
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
