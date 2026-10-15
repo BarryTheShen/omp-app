@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { U1_REAL_ENTRIES } from "../fixtures/real-entries";
 import {
   CustomNote,
@@ -241,6 +241,27 @@ describe("a background worker's notice", () => {
     });
     expect(screen.getByText("Background job finished")).toBeTruthy();
     expect(container.querySelector('[data-slot="u1-custom-note-worker"]')).toBeNull();
+  });
+
+  test("looks the worker up by the agent id omp sends, and the line keeps the job id", () => {
+    const lookup = vi.fn((_workerId: string) => ({
+      status: "completed" as const,
+      transcript: null,
+    }));
+    renderNote(lookup, {
+      customType: "async-result",
+      details: { jobs: [{ jobId: "Reviewer-2", type: "task", agentId: "Reviewer" }] },
+      text: "<system-notice>\nBackground job Reviewer-2 has completed.\n</system-notice>",
+    });
+    expect(lookup).toHaveBeenCalledWith("Reviewer");
+    expect(lookup).not.toHaveBeenCalledWith("Reviewer-2");
+    expect(screen.getByText("Reviewer-2 finished.")).toBeTruthy();
+  });
+
+  test("without an agent id, the job id is the worker's id, as before", () => {
+    const lookup = vi.fn((_workerId: string) => ({ status: "failed" as const, transcript: null }));
+    renderNote(lookup);
+    expect(lookup).toHaveBeenCalledWith("FailProbe");
   });
 });
 

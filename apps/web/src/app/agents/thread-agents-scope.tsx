@@ -72,15 +72,15 @@ export function TaskSubagentsScope({
   const workerNote: WorkerNoteLookup | undefined =
     agents === null
       ? undefined
-      : (jobId) => {
+      : (workerId) => {
           void agents.start().catch(() => undefined);
-          const worker = agents.workerFor(jobId);
+          const worker = agents.workerFor(workerId);
           return worker === undefined
             ? undefined
             : {
                 status: worker.agent.status,
                 reason: worker.agent.reason,
-                transcript: <NestedAgentTranscript source={worker.source} taskName={jobId} />,
+                transcript: <NestedAgentTranscript source={worker.source} taskName={workerId} />,
               };
         };
   return (

@@ -35,8 +35,8 @@ export interface WorkerNote {
   readonly transcript: ReactNode;
 }
 
-/** The worker a notice names, by its id; undefined when the chat does not know it. The app provides it. */
-export type WorkerNoteLookup = (jobId: string) => WorkerNote | undefined;
+/** The worker a notice names, by the id omp gave its agent (or its job id, from an omp that sends no agent id). */
+export type WorkerNoteLookup = (workerId: string) => WorkerNote | undefined;
 
 export const WorkerNoteContext = createContext<WorkerNoteLookup | undefined>(undefined);
 
@@ -46,18 +46,30 @@ function field(value: unknown, key: string): unknown {
     : undefined;
 }
 
-/** The task jobs a notice names, when every job it names is a task. A notice that also names a command keeps its text. */
-function workerJobIds(source: CustomNoteSource): readonly string[] | undefined {
+/** A task a notice names: the job id the notice shows, and the id the roster knows its worker by. */
+interface NamedWorker {
+  readonly jobId: string;
+  readonly workerId: string;
+}
+
+/**
+ * The task jobs a notice names, when every job it names is a task. A notice that also names a command keeps its
+ * text. The worker's id is omp's agent id when omp sends one, because omp may suffix a job id but not an agent id;
+ * otherwise it is the job id.
+ */
+function namedWorkersOf(source: CustomNoteSource): readonly NamedWorker[] | undefined {
   if (source.customType !== "async-result") return undefined;
   const jobs = field(source.details, "jobs");
   if (!Array.isArray(jobs) || jobs.length === 0) return undefined;
-  const ids: string[] = [];
+  const workers: NamedWorker[] = [];
   for (const job of jobs) {
-    const id = field(job, "jobId");
-    if (typeof id !== "string" || field(job, "type") !== "task") return undefined;
-    ids.push(id);
+    const jobId = field(job, "jobId");
+    if (typeof jobId !== "string" || field(job, "type") !== "task") return undefined;
+    const agentId = field(job, "agentId");
+    const workerId = typeof agentId === "string" && agentId !== "" ? agentId : jobId;
+    workers.push({ jobId, workerId });
   }
-  return ids;
+  return workers;
 }
 
 /** How a worker ended, in plain words, from the roster's typed status. omp's own text is not read here. */
@@ -144,11 +156,11 @@ export function describeCustomMessage(source: CustomNoteSource): CustomNoteView 
 
 /** The workers a notice names: one line each, how it ended, and its transcript on request. */
 function WorkerNotes({
-  jobIds,
   lookup,
+  workers,
 }: {
-  readonly jobIds: readonly string[];
   readonly lookup: WorkerNoteLookup | undefined;
+  readonly workers: readonly NamedWorker[];
 }) {
   return (
     <div
@@ -156,8 +168,8 @@ function WorkerNotes({
       data-custom-type="async-result"
       data-slot="u1-custom-note"
     >
-      {jobIds.map((jobId) => (
-        <WorkerLine key={jobId} jobId={jobId} worker={lookup?.(jobId)} />
+      {workers.map((worker) => (
+        <WorkerLine key={worker.jobId} jobId={worker.jobId} worker={lookup?.(worker.workerId)} />
       ))}
     </div>
   );
@@ -208,8 +220,8 @@ function WorkerLine({
 /** One of omp's own messages in the transcript: a muted note, its heading, and its text. */
 export function CustomNote({ source }: { readonly source: CustomNoteSource }) {
   const lookup = useContext(WorkerNoteContext);
-  const jobIds = workerJobIds(source);
-  if (jobIds !== undefined) return <WorkerNotes jobIds={jobIds} lookup={lookup} />;
+  const workers = namedWorkersOf(source);
+  if (workers !== undefined) return <WorkerNotes lookup={lookup} workers={workers} />;
   if (source.customType === SKILL_PROMPT_CUSTOM_TYPE) {
     return (
       <div
