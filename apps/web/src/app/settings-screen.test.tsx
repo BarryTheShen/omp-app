@@ -267,6 +267,11 @@ describe("the generic settings panel after a save omp refuses because the settin
     expect(state.writes).toEqual([]);
   });
 
+  test("names the conflict once: the card's heading, with no status pill above it", async () => {
+    await refusedSave();
+    expect(screen.getAllByText("Settings changed elsewhere")).toHaveLength(1);
+  });
+
   test("Keep my edits clears the refusal, and the next save writes the edit", async () => {
     const state = await refusedSave();
     fireEvent.click(screen.getByRole("button", { name: "Keep my edits" }));

@@ -379,12 +379,15 @@ function SettingsRuntimeEditor({
   // own, which wraps on a narrow screen (the status pill does not), and the pill keeps only a status other than applied.
   const override = snapshot.environmentOverride;
   const notice = override === null ? undefined : environmentOverrideText(override);
+  // In a conflict the conflict card below says what happened, so the section header shows no status pill.
   const status =
-    notice === undefined
-      ? applied
-      : snapshot.applyStatus && snapshot.applyStatus !== "applied"
-        ? applyStatusLabel(snapshot.applyStatus)
-        : undefined;
+    snapshot.phase === "conflict"
+      ? undefined
+      : notice === undefined
+        ? applied
+        : snapshot.applyStatus && snapshot.applyStatus !== "applied"
+          ? applyStatusLabel(snapshot.applyStatus)
+          : undefined;
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <SettingsSection
