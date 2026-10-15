@@ -32,6 +32,7 @@ function createRpc(
   calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [],
   questions: readonly OpenQuestionRecord[] = [],
   holdFirstStateRead?: Promise<void>,
+  historyFailure?: AppFailure,
 ): RpcSessionClient {
   let stateReads = 0;
   const send = async (
@@ -51,6 +52,7 @@ function createRpc(
         }
         return { sessionId: args.threadId };
       case "get_entries":
+        if (historyFailure) throw historyFailure;
         return { entries: [], leafId: null };
       default:
         return undefined;
@@ -897,6 +899,51 @@ describe("SelectedThreadHistoryController reopening a saved chat", () => {
     });
     expect(opens).toEqual([{ threadId: threadOne }]);
     expect(controller.getSnapshot().threadId).toBeUndefined();
+  });
+});
+
+describe("SelectedThreadHistoryController when omp stops while a chat opens", () => {
+  test("omp's exit while the chat's history loads keeps the chat on screen, and the exit reaches the chat's banner", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      new AppFailure({
+        code: "omp_exited",
+        message: "omp exited (signal SIGKILL)",
+        retryable: true,
+      }),
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+
+    const store = await controller.openExisting(threadOne);
+
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      isLoading: false,
+      error: null,
+    });
+    expect(controller.getSnapshot().store).toBe(store);
+    const subscription = subscriptions[0];
+    expect(subscription?.unsubscribed).toBe(false);
+    // omp's exit arrives on the chat's subscription, which is still open: the store takes it, and the banner shows it.
+    subscription?.listeners[0]?.(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    expect(store.getSnapshot().error).toMatchObject({
+      code: "omp_exited",
+      message: "omp exited (signal SIGKILL)",
+    });
   });
 });
 

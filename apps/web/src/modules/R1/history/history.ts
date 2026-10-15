@@ -440,6 +440,8 @@ export class SelectedThreadHistoryController {
     this.commit({ isLoading: true, error: null });
     // The subscription a watch held on this chat, if the open took the chat over. Let go only after the open subscribes.
     let watchHold: EventSubscription | undefined;
+    // The chat's store once it is committed on screen: a failure after that point keeps the chat (see the catch).
+    let shownStore: OmpRuntimeStore | undefined;
     try {
       const result = await this.rpc.open(args);
       const threadId = result.threadId;
@@ -459,6 +461,7 @@ export class SelectedThreadHistoryController {
         error: null,
         openedNew,
       });
+      shownStore = store;
       // The chat is on screen: a send that waited for it may go now, though its history still loads below.
       settle();
       // From here the composer takes text, so a reload or a restart must already find this chat: its id is saved now,
@@ -485,6 +488,17 @@ export class SelectedThreadHistoryController {
       return store;
     } catch (error) {
       const failure = asFailure(error, "Opening the selected thread failed");
+      // omp stopped while the chat was on screen, its history still loading: the chat stays, and its subscription carries
+      // omp's exit to the chat's banner. Closing it here dropped that exit and the chat with it (issue 1707).
+      if (
+        shownStore !== undefined &&
+        failure.appError.code === "omp_exited" &&
+        this.state.store === shownStore &&
+        this.subscription !== undefined
+      ) {
+        this.commit({ isLoading: false });
+        return shownStore;
+      }
       await this.closeNow();
       this.commit({ isLoading: false, error: failure.appError });
       throw failure;
