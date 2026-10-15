@@ -1,9 +1,11 @@
 import type { ConfigEntry } from "@omp-app/contracts";
+import { cn } from "cn";
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { InlineError, Section, SettingRow, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { checkboxRowLook, SELECT_DISABLED_LOOK } from "./control-look";
 import type {
   ConfigSnapshot,
   PreviewResult,
@@ -449,7 +451,7 @@ function ControlInput({
 }) {
   if (control.kind === "boolean") {
     return (
-      <label className="border-input bg-background has-focus-visible:ring-ring/50 flex min-h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-sm has-focus-visible:ring-2">
+      <label className={checkboxRowLook(disabled)}>
         <input
           aria-label={control.label}
           type="checkbox"
@@ -465,7 +467,10 @@ function ControlInput({
     return (
       <select
         aria-label={control.label}
-        className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2"
+        className={cn(
+          "border-input bg-background text-foreground transition-colors focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2",
+          SELECT_DISABLED_LOOK,
+        )}
         style={{ color: "var(--foreground)", WebkitTextFillColor: "var(--foreground)" }}
         value={value}
         onChange={(event) => onValue(event.target.value)}

@@ -2,6 +2,7 @@ import type { JsonValue } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { RowsSettingControl } from "../../settings-kit";
+import { SELECT_DISABLED_LOOK } from "../../settings-kit/control-look";
 import { StructuredEditor } from "../../settings-kit/structured";
 
 afterEach(cleanup);
@@ -109,5 +110,43 @@ describe("structured editor edits", () => {
     fireEvent.change(screen.getByLabelText("Command pattern 1"), { target: { value: "git *" } });
 
     expect(onValue).toHaveBeenLastCalledWith([{ match: "git *", approval: "prompt" }]);
+  });
+});
+
+describe("structured editor draws a disabled row the way the kit draws its other disabled controls", () => {
+  const withSwitch: RowsSettingControl = {
+    ...rules,
+    fields: { ...rules.fields, enabled: { label: "Enabled", kind: "boolean" } },
+  };
+  const switched: JsonValue = [{ match: "ls *", approval: "prompt", enabled: true }];
+
+  function renderSwitched(disabled: boolean) {
+    return (
+      <StructuredEditor
+        committed={switched}
+        control={withSwitch}
+        disabled={disabled}
+        onInvalid={() => undefined}
+        onValue={() => undefined}
+        resetToken={0}
+        value={switched}
+      />
+    );
+  }
+
+  test("a disabled dropdown and checkbox row carry the disabled look, and an enabled one does not", () => {
+    const { rerender } = render(renderSwitched(true));
+
+    expect(screen.getByRole("combobox", { name: "Approval 1" }).className).toContain(
+      SELECT_DISABLED_LOOK,
+    );
+    const disabledRow = screen.getByRole("checkbox", { name: "Enabled 1" }).closest("label");
+    expect(disabledRow?.className).toContain("cursor-not-allowed");
+    expect(disabledRow?.className).toContain("opacity-50");
+
+    rerender(renderSwitched(false));
+    const enabledRow = screen.getByRole("checkbox", { name: "Enabled 1" }).closest("label");
+    expect(enabledRow?.className).toContain("cursor-pointer");
+    expect(enabledRow?.className).not.toContain("opacity-50");
   });
 });

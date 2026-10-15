@@ -3,6 +3,8 @@ import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { checkboxRowLook, SELECT_DISABLED_LOOK } from "./control-look";
 import {
   emptyStructuredDraft,
   type MapSettingControl,
@@ -63,7 +65,7 @@ function FieldInput({
 }) {
   if (field.kind === "boolean") {
     return (
-      <label className="border-input bg-background has-focus-visible:ring-ring/50 flex min-h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-sm has-focus-visible:ring-2">
+      <label className={checkboxRowLook(disabled)}>
         <input
           aria-label={label}
           checked={value === "true"}
@@ -79,7 +81,10 @@ function FieldInput({
     return (
       <select
         aria-label={label}
-        className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-36 shrink-0 rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2"
+        className={cn(
+          "border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-36 shrink-0 rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2",
+          SELECT_DISABLED_LOOK,
+        )}
         disabled={disabled}
         style={FIELD_TEXT_STYLE}
         value={value}
