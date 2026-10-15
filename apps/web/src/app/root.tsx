@@ -1546,11 +1546,11 @@ function ActiveThreadReady({
     },
     context: {
       title: "Context",
-      grow: true,
       render: () => <SessionStatusBar client={client} store={store} threadId={threadId} />,
     },
     statusSegments: {
       title: "Status",
+      grow: true,
       render: () => (
         <StatusSegments
           capabilities={capabilities}

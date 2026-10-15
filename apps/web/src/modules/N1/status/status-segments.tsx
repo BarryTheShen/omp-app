@@ -110,7 +110,7 @@ export function StatusSegments(props: StatusBarInputs) {
   return (
     <section
       aria-label="Session and workspace status"
-      className="text-muted-foreground flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+      className="text-muted-foreground -m-1 flex min-w-0 flex-nowrap items-center gap-x-3 overflow-hidden p-1 text-xs"
       data-n1-status="true"
     >
       {shown.map(({ chip, text }) => (

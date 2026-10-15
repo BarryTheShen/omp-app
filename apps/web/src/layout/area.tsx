@@ -46,7 +46,8 @@ const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   // Above the transcript's sticky footer, so it follows that footer. It takes no pointer events itself:
   // only what is drawn in it (the notices) catches them, so the footer and the transcript stay usable.
   threadOverlay: "pointer-events-none absolute inset-x-0 bottom-full flex min-w-0 flex-col px-6",
-  statusBar: "flex min-w-0 flex-1 flex-wrap items-center gap-3",
+  // A size container: the context meter asks how wide the status bar is (a container query), not the viewport (issue 1607).
+  statusBar: "@container flex min-w-0 flex-1 flex-nowrap items-center gap-3",
 };
 
 /** Areas that lay pieces out left to right; the rest stack top to bottom. */
@@ -79,12 +80,12 @@ export function areaSurfaces(
 }
 
 function surfaceClass(area: LayoutAreaName, surface: Surface): string {
+  // The status bar is one line that never wraps (issue 1607). Its growing surface, the segments, takes the room that is left and
+  // truncates inside itself; every other surface keeps its natural width, so none is clipped and no segment that arrives changes
+  // the line count, so the composer does not move.
+  if (area === "statusBar") return cn("min-w-0", surface.grow ? "flex-1" : "flex-none");
   const row = ROW_AREAS[area] === true;
-  // In the status bar a growing surface keeps its content width as its basis (`flex-auto`), so `flex-wrap` moves it to its own
-  // line when it does not fit beside the status segments. With `flex-1` (basis 0) it never wrapped: it was squeezed to what the
-  // segments left, and its text was clipped (issue 1607).
-  const grows = area === "statusBar" ? "flex-auto" : "flex-1";
-  return cn("min-w-0", surface.grow && (row ? grows : "flex min-h-0 flex-1 flex-col"));
+  return cn("min-w-0", surface.grow && (row ? "flex-1" : "flex min-h-0 flex-1 flex-col"));
 }
 
 type ListedPanels = readonly (readonly [SurfaceId, Surface])[];

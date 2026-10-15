@@ -44,26 +44,31 @@ realTest(
 );
 
 /**
- * Issue 1607: with the status segments beside it, the context group (Context, its bar, the tokens, Usage) was squeezed to what the
- * segments left and its text was clipped when the main column was about 700 px wide. It now keeps its width and wraps under the
- * segments when it does not fit. The check reads the group's own box: nothing in it may be wider than it is.
+ * Issue 1607, under the one-line rule: the status row is one line at every width. The segments take the room that is left and
+ * cut a segment short when it does not fit, and the full text stays in its title and accessible name. The context group keeps its
+ * own width and is never clipped, so Usage stays inside the row. The checks read the boxes: the segments section is one text line
+ * tall (16 px of text plus 4 px of padding each side, 24 px), and nothing in the context group may be wider than it is.
  */
 realTest(
-  "the context group beside the status segments is never clipped, at any width",
+  "the status row stays one line at every width, and the context group is never clipped",
   async ({ realApp }) => {
     const page = await realApp.open();
     await startChat(page);
     const status = page.getByRole("contentinfo", { name: "Status" });
+    const segments = status.getByRole("region", { name: "Session and workspace status" });
     const context = page.getByRole("region", { name: "Context status" });
     const usage = context.getByRole("button", { name: "Usage" });
-    await expect(status.getByRole("region", { name: "Session and workspace status" })).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(segments).toBeVisible({ timeout: 30_000 });
     for (const width of [1920, 1280, 1024, 834, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(usage).toBeVisible();
       // The sidebars slide when the width changes; what a person sees is the layout at rest.
       await waitForFiniteAnimations(page);
+      await expect
+        .poll(() => segments.evaluate((section) => section.getBoundingClientRect().height), {
+          message: `${width} px: the segments take more than one line`,
+        })
+        .toBeLessThanOrEqual(24);
       await expect
         .poll(() => context.evaluate((group) => group.scrollWidth > group.clientWidth + 1), {
           message: `${width} px: the context group is clipped`,
@@ -79,7 +84,36 @@ realTest(
           { message: `${width} px: Usage is not inside the status row` },
         )
         .toBe(true);
+      // The context meter shows only when the status bar is at least 28 rem (448 px) wide (a named container size); its words and Usage stay.
+      const statusBar = page.locator('[data-layout-area="statusBar"]');
+      const meter = context.getByRole("progressbar");
+      await expect
+        .poll(
+          async () => {
+            const barWidth = (await statusBar.boundingBox())?.width ?? 0;
+            return (await meter.isVisible()) === barWidth >= 448;
+          },
+          { message: `${width} px: the context meter does not follow the 448 px rule` },
+        )
+        .toBe(true);
       await status.screenshot({ path: join(screenshots, `n1-4-status-row-${width}.png`) });
     }
+    // At 390 px a segment does not fit: its value is cut short, and its full text is still in its title.
+    await expect
+      .poll(() =>
+        segments.evaluate((section) =>
+          [...section.querySelectorAll("[data-segment-value]")].some(
+            (value) => value.scrollWidth > value.clientWidth + 1,
+          ),
+        ),
+      )
+      .toBe(true);
+    await expect(segments.locator('[data-segment="N2.path"]')).toHaveAttribute(
+      "title",
+      /Workspace folder: /,
+    );
+    // Below 480 px the folder and the model still show, not only their icons.
+    await expect(segments.locator('[data-segment="N2.path"]')).toBeVisible();
+    await expect(segments.locator('[data-segment="N2.model"]')).toBeVisible({ timeout: 30_000 });
   },
 );

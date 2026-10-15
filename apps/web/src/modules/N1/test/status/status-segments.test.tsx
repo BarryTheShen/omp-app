@@ -151,6 +151,18 @@ describe("StatusSegments", () => {
     expect(within(region).getByText("Session ID: 01903e7a")).toBeTruthy();
   });
 
+  test("the segments stay on one line, and the folder keeps its full text in its title", async () => {
+    renderBar({ pr: null });
+    const region = await bar();
+    await waitFor(() => {
+      expect(within(region).getByText("Host name: devbox")).toBeTruthy();
+    });
+    expect(region.className).toContain("flex-nowrap");
+    expect(region.className).not.toContain("flex-wrap");
+    const path = region.querySelector('[data-segment="N2.path"]');
+    expect(path?.getAttribute("title")).toBe("Workspace folder: ~/code/app");
+  });
+
   test("leaves out a segment that has no value", async () => {
     const { container } = renderBar({ pr: null });
     await bar();

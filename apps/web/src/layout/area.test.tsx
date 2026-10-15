@@ -96,6 +96,30 @@ describe("LayoutArea", () => {
     ]);
   });
 
+  test("the status bar stays one line: segments take the room left, context keeps its width", () => {
+    const capabilities: CapabilityMap = {
+      "omp.cmd.get_session_stats": { state: "available", via: "rpc" },
+    };
+    const { container } = render(
+      <LayoutArea
+        area="statusBar"
+        capabilities={capabilities}
+        layout={layoutWith({ statusBar: ["statusSegments", "context"] })}
+        surfaces={{
+          ...surfaces,
+          statusSegments: { title: "Status", grow: true, render: () => <span>Status</span> },
+        }}
+      />,
+    );
+    const bar = container.querySelector('[data-layout-area="statusBar"]');
+    expect(bar?.className).toContain("flex-nowrap");
+    expect(bar?.className).not.toContain("flex-wrap");
+    const segments = container.querySelector('[data-surface="statusSegments"]');
+    expect(segments?.className).toContain("flex-1");
+    const context = container.querySelector('[data-surface="context"]');
+    expect(context?.className).toContain("flex-none");
+  });
+
   test("turns several panels into tabs", () => {
     render(
       <LayoutArea

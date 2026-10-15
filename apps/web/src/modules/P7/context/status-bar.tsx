@@ -34,13 +34,14 @@ export function ContextStatusBar({
     >
       {window ? (
         <span className="flex min-w-0 items-center gap-2">
+          {/* The meter is dropped below 28 rem (448 px) of status bar, so the words and Usage keep their room (issue 1607). */}
           <span className="shrink-0">Context {percentLabel(window.percent)}</span>
           <span
             aria-label={`Context used ${percentLabel(window.percent)}`}
             aria-valuemax={100}
             aria-valuemin={0}
             aria-valuenow={Math.min(100, window.percent)}
-            className="bg-muted h-1.5 w-20 shrink-0 overflow-hidden rounded-full"
+            className="bg-muted hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full @md:block"
             role="progressbar"
           >
             <span
