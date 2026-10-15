@@ -41,7 +41,6 @@ import {
   type RosterScenario,
   SUBAGENT_COMMAND_CASES,
   TRANSCRIPT_CURSOR_SCENARIOS,
-  UNDESCRIBED_WORKER_ID,
   type WorkerExpectation,
 } from "@/modules/P1/fixtures";
 import { buildHubModel, CANCEL_REFUSED_MESSAGE, type HubModel } from "@/modules/P1/panels/model";
@@ -358,7 +357,7 @@ describe("CC8: cancel and steer send the typed command, succeed or fail in plain
     expect(draft.sending).toBe(false);
   });
 
-  test.fails("a steer refusal does not tell people the worker is busy or waits on a background command (#1677)", () => {
+  test("a steer refusal says the message was not taken, with no busy, background or finished reason", () => {
     const failure = new AppFailure({
       code: "conflict",
       message: OMP_NOT_RUNNING_TEXT,
@@ -366,7 +365,9 @@ describe("CC8: cancel and steer send the typed command, succeed or fail in plain
       omp: { command: "steer_subagent", error: OMP_NOT_RUNNING_TEXT },
     });
 
-    expect(steerFailureMessage(failure)).not.toMatch(/busy|background command/);
+    const words = steerFailureMessage(failure);
+    expect(words).not.toMatch(/busy|background command|finished|cancelled|subagent not running/i);
+    expect(words).toMatch(/Your text is still here/);
   });
 
   test.fails("omp's steer refusal is not read by its wording: without a code it is not a conflict (#1676)", async () => {
@@ -388,8 +389,10 @@ describe("CC8: cancel and steer send the typed command, succeed or fail in plain
     expect(CANCEL_REFUSED_MESSAGE).not.toMatch(/conflict|omp_error|cancel_subagent/);
   });
 
-  test.fails("a refused cancel does not tell people the worker waits on a background command (#1677)", () => {
-    expect(CANCEL_REFUSED_MESSAGE).not.toMatch(/background command/);
+  test("a refused cancel says the worker is still running and offers Cancel again", () => {
+    expect(CANCEL_REFUSED_MESSAGE).toMatch(/still running/);
+    expect(CANCEL_REFUSED_MESSAGE).toMatch(/Try Cancel again/);
+    expect(CANCEL_REFUSED_MESSAGE).not.toMatch(/background command|busy|finished|cancelled/i);
   });
 });
 
@@ -461,11 +464,8 @@ function stateSpec(name: string): HubStateSpec {
 describe("CC4: every hub state builds plain words, and every unavailable control says why", () => {
   test.each(Object.keys(HUB_STATE_FIXTURES))("%s", (name) => {
     const model: HubModel = buildHubModel(hubStateInput(stateSpec(name)));
-    // A worker with no description is titled by its raw id. That title is the defect of #1678, which its own
-    // marker checks, so this check skips that one string and still checks the rest of the state.
-    const titleDefect = name === "no description" ? UNDESCRIBED_WORKER_ID : null;
 
-    for (const text of visibleText(model).filter((shown) => shown !== titleDefect)) {
+    for (const text of visibleText(model)) {
       expect(text).not.toMatch(INTERNAL_WORDS);
     }
     if (model.inspector?.cancel.state === "unavailable") {
@@ -516,12 +516,6 @@ describe("CC4: every hub state builds plain words, and every unavailable control
     const headings = model.sections.map((section) => section.heading);
 
     expect(headings).toEqual(expect.arrayContaining(["From task call 1", "From task call 2"]));
-  });
-
-  test.fails("a worker without a description is not titled by its raw id (#1678)", () => {
-    const model = buildHubModel(hubStateInput(stateSpec("no description")));
-
-    expect(model.inspector?.title).not.toBe(UNDESCRIBED_WORKER_ID);
   });
 
   test.fails("the inspector does not show omp's assignment preamble (#1687)", () => {

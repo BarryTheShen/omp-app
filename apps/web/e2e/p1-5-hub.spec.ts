@@ -249,7 +249,7 @@ test.describe("P1.5 Agent Hub playground", () => {
     await open("cancel-failed");
     await expect(
       page.getByText(
-        "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.",
+        "omp could not stop this worker now, because it is still running. Try Cancel again.",
       ),
     ).toBeVisible();
     await expect(page.getByRole("option", { name: /Running.*Scan the repository/ })).toHaveCount(1);

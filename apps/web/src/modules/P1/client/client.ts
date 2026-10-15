@@ -214,8 +214,9 @@ class SubagentClientImpl implements SubagentClient {
         options,
       );
       const parsed = CancelAgentResultSchema.parse(result);
-      // omp answers false for a worker it cannot reach right now, for example while it waits on a background command.
-      // The worker may still run, so the caller reads it again before the row changes.
+      // omp answers false when the id is not a running subagent of this session (docs/rpc.md, "Cancelling subagents").
+      // Issue 1156 records the same answer for a worker that get_subagents still lists as running.
+      // The caller re-reads the roster before the row changes.
       if (!parsed.cancelled) throw failure("conflict", "omp did not stop the worker", true);
       return { cancelled: true };
     } catch (error) {
@@ -238,7 +239,8 @@ class SubagentClientImpl implements SubagentClient {
       );
     } catch (error) {
       const cause = asP1Failure(error, failure("omp_error", "Subagent steer request failed", true));
-      // omp refuses a message to a worker it does not run right now, for example while it waits on a background command.
+      // omp refuses a message to a worker it does not list as running (docs/rpc.md, "Steering subagents").
+      // Issue 1156 records the same refusal for a worker that get_subagents still lists as running.
       if (isNotRunningRefusal(cause))
         throw failure("conflict", "omp did not take the message", true);
       throw cause;

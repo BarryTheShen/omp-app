@@ -263,7 +263,7 @@ describe("AgentHub live roster", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel Scan the repo" }));
     expect(
       await screen.findByText(
-        "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.",
+        "omp could not stop this worker now, because it is still running. Try Cancel again.",
       ),
     ).toBeTruthy();
     expect(screen.getByRole("option", { name: /Scan the repo/ }).textContent).toContain("Running");

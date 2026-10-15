@@ -17,9 +17,8 @@ import {
  * it says in plain words what happened, keeps the worker Running, and offers Cancel again.
  */
 const REFUSED_CANCEL =
-  "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.";
-const REFUSED_STEER =
-  "omp did not take the message: the worker is busy, for example while it waits on a background command. Your text is still here; send it again once the command finishes.";
+  "omp could not stop this worker now, because it is still running. Try Cancel again.";
+const REFUSED_STEER = "omp did not take the message. Your text is still here.";
 const FINISHED_BY_OMP =
   "omp is no longer running this worker; it finished when its last turn ended.";
 const TRANSCRIPT = /^Transcript of /;

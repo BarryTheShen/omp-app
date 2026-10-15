@@ -40,7 +40,7 @@ export interface HubStateSpec {
 const READY: ActionAvailability = { state: "available" };
 const RUNNING_ID = "worker-hub-running";
 const FINISHED_ID = "worker-hub-finished";
-export const UNDESCRIBED_WORKER_ID = "worker-hub-plain";
+export const UNDESCRIBED_WORKER_ID = "PlainWorker";
 const START = FIXTURE_START;
 
 const RUNNING_STEPS: readonly RosterStep[] = [

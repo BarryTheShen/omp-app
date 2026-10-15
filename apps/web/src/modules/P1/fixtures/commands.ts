@@ -40,7 +40,7 @@ export interface SubagentCommandCase {
  * omp answers `cancelled: false` for an id that is not a running subagent of this session: unknown, another
  * session's, finished, or already cancelled, so hosts can treat it as idempotent (docs/rpc.md, "Cancelling
  * subagents", v18.8.9 lines 1030-1035). The client reports that answer as a retryable conflict (client.ts:217-219).
- * The mapping is issue 1686, and the sentence that explains it to people is issue 1677.
+ * The mapping is issue 1686.
  */
 export const SUBAGENT_COMMAND_CASES: readonly SubagentCommandCase[] = [
   {

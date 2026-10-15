@@ -19,7 +19,7 @@ import {
  */
 const TRANSCRIPT = /^Transcript of /;
 const REFUSED_CANCEL =
-  "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.";
+  "omp could not stop this worker now, because it is still running. Try Cancel again.";
 
 /** Lets finite transitions settle before a screenshot. Bounded: a transition a headless page never finishes must not hang the case. */
 async function settle(page: Page): Promise<void> {

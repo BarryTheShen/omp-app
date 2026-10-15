@@ -106,9 +106,7 @@ describe("the steer editor", () => {
       ),
     );
     expect(failed.text).toBe("keep me");
-    expect(failed.failure).toBe(
-      "omp did not take the message: the worker is busy, for example while it waits on a background command. Your text is still here; send it again once the command finishes.",
-    );
+    expect(failed.failure).toBe("omp did not take the message. Your text is still here.");
   });
 
   test("text typed while a send is in flight survives the send's success", () => {

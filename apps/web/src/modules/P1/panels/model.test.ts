@@ -277,8 +277,7 @@ describe("buildHubModel inspector", () => {
     });
     expect(phase({ [key]: { state: "refused" } })).toEqual({
       state: "refused",
-      message:
-        "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.",
+      message: "omp could not stop this worker now, because it is still running. Try Cancel again.",
     });
   });
 

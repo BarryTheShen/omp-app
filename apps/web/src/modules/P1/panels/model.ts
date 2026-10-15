@@ -279,7 +279,7 @@ function toRow(agent: RosterAgent, selectedKey: string | null, now: number): Wor
 
 /** What a person reads when omp refused a cancel and its re-read still lists the worker as running. */
 export const CANCEL_REFUSED_MESSAGE =
-  "omp could not stop this worker now, because it is still running (for example, it waits on a background command). Try Cancel again.";
+  "omp could not stop this worker now, because it is still running. Try Cancel again.";
 
 /** Plain words for a failed cancel: omp's own wording never reaches the page. */
 export function cancelFailureMessage(error: AppError): string {
