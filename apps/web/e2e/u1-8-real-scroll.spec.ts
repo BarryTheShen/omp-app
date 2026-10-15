@@ -6,6 +6,7 @@ import {
   realTest,
   screenshots,
   sendPrompt,
+  waitForFiniteAnimations,
 } from "./real-omp";
 
 realTest.use({ seedLongTurn: 60 });
@@ -101,6 +102,65 @@ realTest(
     await expect(viewport).toBeFocused();
     await expect.poll(remainingScroll).toBeLessThan(80);
     await expect(jump).toBeHidden();
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+/**
+ * A long chat in the real app on real omp: a Home press takes the reader from the newest message to the top, and the view
+ * stays there. Rows far away are drawn as the view reaches them. A layout change then used to pull the reader back to the
+ * place they had left, so the view snapped back (issue 1602).
+ */
+realTest(
+  "a Home press in a long real chat takes the reader to the top, and the view stays there",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(240_000);
+    const page = await realApp.open();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page
+      .getByRole("listbox", { name: "Session list" })
+      .getByRole("option", { name: /Run the long job/ })
+      .click();
+
+    const viewport = page.getByRole("region", { name: "Messages" });
+    const remainingScroll = () =>
+      viewport.evaluate(
+        (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+      );
+    const scrollTop = () => viewport.evaluate((element) => element.scrollTop);
+    await expect(page.getByText("All 60 steps are done.")).toBeAttached({ timeout: 60_000 });
+    // Open the steps, so the turn is as tall as a person scrolls through it.
+    await openAllToolCards(page);
+    await expect.poll(remainingScroll).toBeLessThan(80);
+
+    await viewport.press("Home");
+    // The view is at the top once its position has held still for three reads, 300 ms apart.
+    let previous = -1;
+    let same = 0;
+    await expect
+      .poll(
+        async () => {
+          const now = await scrollTop();
+          same = now === previous ? same + 1 : 0;
+          previous = now;
+          return same;
+        },
+        { intervals: [300], timeout: 20_000 },
+      )
+      .toBeGreaterThanOrEqual(3);
+    expect(await scrollTop()).toBe(0);
+    await waitForFiniteAnimations(page);
+    await page.screenshot({ path: join(screenshots, "u1-8-real-scroll", "home-top-light.png") });
+
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await waitForFiniteAnimations(page);
+    await page.screenshot({ path: join(screenshots, "u1-8-real-scroll", "home-top-dark.png") });
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForFiniteAnimations(page);
+    await page.screenshot({ path: join(screenshots, "u1-8-real-scroll", "home-top-narrow.png") });
+    expect(await scrollTop()).toBe(0);
     expect(realApp.problems).toEqual([]);
   },
 );

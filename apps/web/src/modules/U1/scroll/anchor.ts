@@ -36,6 +36,13 @@ function isInViewport(viewport: HTMLElement, row: HTMLElement): boolean {
   return row.isConnected && viewport.contains(row);
 }
 
+/** The row is drawn at least partly inside the viewport's visible box. */
+function isOnScreen(viewport: HTMLElement, row: HTMLElement): boolean {
+  const view = viewport.getBoundingClientRect();
+  const bounds = row.getBoundingClientRect();
+  return bounds.bottom > view.top && bounds.top < view.bottom;
+}
+
 export function captureVisibleMessageAnchor(viewport: HTMLElement): MessageScrollAnchor | null {
   const viewportBounds = viewport.getBoundingClientRect();
   if (viewportBounds.width === 0 || typeof document.elementFromPoint !== "function") return null;
@@ -97,10 +104,20 @@ export function retainVisibleMessageAnchor(
 /**
  * Keeps the reader's place where it is after a layout change. When the row of the place has left the transcript, the row
  * now at the reader's place becomes the place (issue 1165).
+ *
+ * A jump the reader made (the Home key, a drag of the scroll bar) can move the view off the place before the browser's
+ * scroll event for it is handled. The layout change that follows would then be retained against a place the reader is no
+ * longer on, and the view would snap back to it. Once the view has moved off the place, the place is taken again where the
+ * reader is. A held place is left alone: the app keeps it wherever the browser scrolls.
  */
 export function keepReaderPlace(viewport: HTMLElement): void {
   const place = readerPlaces.get(viewport);
-  if (place === undefined || !isInViewport(viewport, place.row)) {
+  const readerLeftPlace =
+    place !== undefined &&
+    !isHoldingPlace(viewport) &&
+    viewport.scrollTop !== place.scrollTop &&
+    !isOnScreen(viewport, place.row);
+  if (place === undefined || readerLeftPlace || !isInViewport(viewport, place.row)) {
     rememberReaderPlace(viewport, captureVisibleMessageAnchor(viewport));
     return;
   }

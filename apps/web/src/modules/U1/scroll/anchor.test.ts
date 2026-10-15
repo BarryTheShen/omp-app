@@ -6,6 +6,7 @@ import {
   holdReaderPlace,
   isHoldingPlace,
   keepReaderPlace,
+  readerPlaceOf,
   rememberReaderPlace,
   retainVisibleMessageAnchor,
   takeRetainedScroll,
@@ -186,6 +187,38 @@ describe("keepReaderPlace", () => {
     state.rowTop += 50;
     keepReaderPlace(viewport);
     expect(state.rowTop).toBe(30);
+  });
+});
+
+describe("keepReaderPlace after the reader jumps away", () => {
+  /** A place 355 px below the view's top, in a view that spans 100 to 600 on screen. */
+  function jumpFixture() {
+    const fixed = fixture({ scrollTop: 7_305, rowTop: 355 });
+    fixed.viewport.getBoundingClientRect = () => ({ top: 100, bottom: 600 }) as DOMRect;
+    fixed.row.getBoundingClientRect = () =>
+      ({ top: 100 + fixed.state.rowTop, bottom: 172 + fixed.state.rowTop }) as DOMRect;
+    return fixed;
+  }
+
+  test("a Home jump not yet reported does not pull the reader back to the old place", () => {
+    const { viewport, row, state } = jumpFixture();
+    rememberReaderPlace(viewport, { row, offset: 355, scrollTop: 7_305 });
+    // The view moves to the top, and the rows drawn there grow by 676 px above the old place, which is now far below.
+    viewport.scrollTop = 173;
+    state.rowTop += 676;
+    keepReaderPlace(viewport);
+    expect(state.scrollTop).toBe(173);
+    expect(readerPlaceOf(viewport)?.row).not.toBe(row);
+  });
+
+  test("a small scroll that keeps the place on screen still has a layout change above it undone", () => {
+    const { viewport, row, state } = jumpFixture();
+    rememberReaderPlace(viewport, { row, offset: 355, scrollTop: 7_305 });
+    viewport.scrollTop = 7_405;
+    state.rowTop += 80;
+    keepReaderPlace(viewport);
+    expect(state.scrollTop).toBe(7_485);
+    expect(state.rowTop).toBe(255);
   });
 });
 
