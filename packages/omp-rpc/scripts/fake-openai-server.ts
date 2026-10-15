@@ -378,6 +378,27 @@ function reply(request: Request): Reply {
       args: { command: "sleep 60; echo long-probe-done" },
       thinking: "I should run the slow step.",
     };
+  // The held version of the slow worker, for the specs that steer it: its command runs until the spec writes
+  // release-long-probe into the agent folder (at most four minutes), so the spec's steps, not a clock, end it.
+  if (prompt.includes("spawn_held_subagent"))
+    return {
+      tool: "task",
+      args: {
+        name: "LongProbe",
+        agent: "task",
+        task: "held_probe_child: run one slow step.",
+        solutionSpace: "one slow step",
+      },
+      thinking: "I should start one held child task.",
+    };
+  if (prompt.includes("held_probe_child"))
+    return {
+      tool: "bash",
+      args: {
+        command: `for i in $(seq 1 480); do [ -f "${agentDir}/release-long-probe" ] && break; sleep 0.5; done; echo long-probe-done`,
+      },
+      thinking: "I should run the held slow step.",
+    };
   if (prompt.includes("make_it_big")) return { text: "a".repeat(1_100_000) };
   // Forty paragraphs: the chat runs well past one screen, so the reader sits at its bottom (issue 1295).
   if (prompt.includes("long_reply_probe")) {
@@ -392,6 +413,8 @@ function reply(request: Request): Reply {
     return { text: `Token: token-${"a1b2c3d4e5".repeat(30)} end of the token.` };
   if (prompt.includes("abort_slow")) return { text: "slow-stream", thinking: "working" };
   if (prompt.includes("stream_code")) return { text: STREAMED_CODE_REPLY, streamed: true };
+  // A reply the spec holds open: it streams only after the spec writes release-held-reply into the agent folder.
+  if (prompt.includes("stream_held")) return { text: STREAMED_LONG_CODE_REPLY, streamed: true };
   if (prompt.includes("stream_long_code"))
     return { text: STREAMED_LONG_CODE_REPLY, streamed: true };
   // Reasoning that streams for about fourteen seconds before its answer (issue #1330). Each sentence has its own
@@ -609,6 +632,25 @@ function usageOf(request: Request) {
     };
   return usage;
 }
+/** A held reply streams this many lines before it waits for the spec's release (see holdForRelease). */
+const HELD_AFTER_LINES = 8;
+/** The text of the latest user message, so a keyword in an earlier message cannot hold or steer a later reply. */
+function lastUserText(messages: readonly { role: string; content: unknown }[] | undefined): string {
+  const user = messages?.filter((message) => message.role === "user").at(-1);
+  return user === undefined ? "" : text(user.content);
+}
+
+/** Keeps a held reply open with SSE comments until `file` exists, for at most four minutes. */
+async function holdForRelease(
+  controller: ReadableStreamDefaultController<string>,
+  file: string,
+): Promise<void> {
+  for (let waited = 0; waited < 240_000 && !(await Bun.file(file).exists()); waited += 1000) {
+    controller.enqueue(": held\n\n");
+    await Bun.sleep(1000);
+  }
+}
+
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -715,9 +757,14 @@ const server = Bun.serve({
         (message) => message.role === "user" && text(message.content).includes("abort_slow"),
       ) === true;
     if (stream) {
+      const holdUntilReleased = lastUserText(body.messages).includes("stream_held");
       const bodyStream = new ReadableStream({
         async start(controller) {
-          for (const line of lines) {
+          for (const [index, line] of lines.entries()) {
+            // A held reply streams its first lines, then waits for the spec's release before the rest.
+            if (holdUntilReleased && index === HELD_AFTER_LINES) {
+              await holdForRelease(controller, path.join(agentDir, "release-held-reply"));
+            }
             controller.enqueue(line);
             await Bun.sleep(inPieces ? STREAMED_PIECE_DELAY_MS : 100);
           }

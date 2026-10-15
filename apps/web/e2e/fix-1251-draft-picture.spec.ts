@@ -255,7 +255,9 @@ realTest(
     await dropImage(first);
     await expect(page.locator(ATTACHMENTS)).toContainText(IMAGE, CHIP);
     const second = await startChat(page);
-    await expect(page.getByText("No messages yet.")).toBeVisible();
+    // The empty state shows once omp has started the new chat (thread.tsx: "Loading conversation…" until then). A busy
+    // machine takes longer than the 5 s default to start it, so this waits for that state, bounded by a real omp start.
+    await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText(IMAGE, { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: `Remove ${IMAGE}` })).toHaveCount(0);
 

@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
@@ -11,10 +12,10 @@ import {
 } from "./real-omp";
 
 /**
- * Issue #923. The fake model starts a long worker whose command runs 60 s. A message to it while that command runs
- * gets its answer ("pong") at once, and the command moves to the background. omp still lists the worker as running
- * until the command ends, about a minute later, but it refuses Cancel meanwhile (issue #1156): the Agent Hub keeps the
- * worker Running and says why, rather than reading the refusal as Finished.
+ * Issue #923. The fake model starts a long worker whose command runs until the spec releases it. A message to it while
+ * that command runs gets its answer ("pong") at once, and the command moves to the background. omp still lists the worker
+ * as running until the command ends, but it refuses Cancel meanwhile (issue #1156): the Agent Hub keeps the worker
+ * Running and says why, rather than reading the refusal as Finished.
  */
 const TRANSCRIPT = /^Transcript of /;
 const REFUSED_CANCEL =
@@ -50,13 +51,13 @@ function workingSeconds(text: string): number {
 }
 
 /** Starts a long worker, messages it while its command runs, and returns once its answer is back in the Agent Hub. */
-async function steerLongWorker(page: Page): Promise<{ hub: Locator; answeredAt: number }> {
+async function steerLongWorker(page: Page): Promise<Locator> {
   const composer = await startChat(page);
   await page.getByRole("tab", { name: "Agents" }).click();
   const hub = page.getByRole("region", { name: "Agent Hub" });
   await expect(hub).toHaveAttribute("data-panel-lifecycle", "empty", { timeout: 90_000 });
 
-  await sendPrompt(composer, "spawn_long_subagent");
+  await sendPrompt(composer, "spawn_held_subagent");
   const running = hub.getByRole("option", { name: /Running.*LongProbe/ });
   await expect(running).toHaveCount(1, { timeout: 120_000 });
   await running.click();
@@ -68,13 +69,16 @@ async function steerLongWorker(page: Page): Promise<{ hub: Locator; answeredAt: 
   await expect(editor).toBeEnabled({ timeout: 60_000 });
   await editor.fill("steer_probe: please stop now");
   await editor.press("Enter");
-  await expect(transcript.getByText("pong", { exact: true })).toBeVisible({ timeout: 180_000 });
-  const answeredAt = Date.now();
+  // The worker's answer to this message is the first "pong": omp sends the worker more messages while it runs, and each
+  // one gets a "pong" too, so an exact count would fail on a longer run (the strict locator resolved to four).
+  await expect(transcript.getByText("pong", { exact: true }).first()).toBeVisible({
+    timeout: 180_000,
+  });
 
   await page.getByRole("region", { name: "Worker messages" }).focus();
   await page.keyboard.press("Escape");
   await expect(hub).toBeVisible();
-  return { hub, answeredAt };
+  return hub;
 }
 
 /** Cancel on the still-running row while omp waits on the background command: omp refuses, and the row stays Running. */
@@ -96,7 +100,7 @@ realTest(
       beforeLoad: (target) =>
         target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
     });
-    const { hub, answeredAt } = await steerLongWorker(page);
+    const hub = await steerLongWorker(page);
 
     // The command still runs, so omp still lists the worker as running: its time moves on rather than freezing.
     const row = hub.getByRole("option", { name: /Running.*LongProbe/ });
@@ -108,9 +112,11 @@ realTest(
 
     await cancelAndExpectRefused(hub);
 
-    // omp reports the end once the command finishes, about a minute after the answer; the row then reads Finished.
-    await page.waitForTimeout(Math.max(0, answeredAt + 75_000 - Date.now()));
-    await expect(hub.getByRole("option", { name: /Finished.*LongProbe/ })).toHaveCount(1);
+    // The command ends when the spec releases it, not on a clock: the row then reads Finished.
+    await writeFile(join(realApp.agentDir, "release-long-probe"), "");
+    await expect(hub.getByRole("option", { name: /Finished.*LongProbe/ })).toHaveCount(1, {
+      timeout: 60_000,
+    });
     await expect(hub.getByRole("option", { name: /Running.*LongProbe/ })).toHaveCount(0);
 
     await settle(page);
@@ -135,7 +141,7 @@ realTest(
       beforeLoad: (target) =>
         target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
     });
-    const { hub } = await steerLongWorker(page);
+    const hub = await steerLongWorker(page);
     await cancelAndExpectRefused(hub);
 
     expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(

@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
@@ -11,8 +12,8 @@ import {
 
 realTest.setTimeout(420_000);
 
-/** The prompt the fake model answers with a long streamed reply (about twenty seconds). */
-const PROMPT = "stream_long_code please";
+/** The prompt the fake model answers with a long streamed reply, which stays open until the spec releases it. */
+const PROMPT = "stream_held please";
 
 function sessionList(page: Page): Locator {
   return page.getByRole("listbox", { name: "Session list" });
@@ -88,6 +89,8 @@ realTest(
     await expect(runningRow(page)).toHaveCount(1, { timeout: 60_000 });
     await expect(page.getByText("No sessions in this folder")).toHaveCount(0);
 
+    // Releases the held reply: it streams to its end now, as a reply the person is waiting for would.
+    await writeFile(join(realApp.agentDir, "release-held-reply"), "");
     // The reply ends: the chat's own row, named by its first prompt, takes the running row's place.
     await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0, {
       timeout: 120_000,
@@ -127,11 +130,12 @@ realTest(
       .click();
     await expect(transcript(page).getByText("No messages yet.")).toBeVisible({ timeout: 120_000 });
     const leftRow = sessionList(page).getByRole("option", {
-      name: /New chat|stream_long_code please/,
+      name: new RegExp(`New chat|${PROMPT}`),
     });
     await expect(leftRow).toHaveCount(1);
     await expect(leftRow).toHaveAttribute("aria-selected", "false");
 
+    await writeFile(join(realApp.agentDir, "release-held-reply"), "");
     // The reply ends: the chat's own row, named by its first prompt, replaces the running row.
     await expect(sessionList(page).getByRole("option", { name: new RegExp(PROMPT) })).toHaveCount(
       1,
