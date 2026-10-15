@@ -62,7 +62,7 @@ import {
   type TranscriptTailState,
 } from "@/modules/P1/transcript/tail";
 import { OmpRuntimeStore, type OmpRuntimeTransport } from "@/modules/R0/store";
-import { isDescriptorAvailable } from "@/registry-core/hooks";
+import { isDescriptorAvailable, isUsable } from "@/registry-core/hooks";
 
 /**
  * The P1.6 gate: the Done-when evidence for the P1 module (modules/P1/README.md), run on the real P1 code and
@@ -142,13 +142,13 @@ describe("W5: registry and keyboard claims", () => {
   });
 });
 
-describe("W5: P1's gate enables a control only when each capability it needs is available (the P1 client's rule; the shared gate also counts a fallback, #1675)", () => {
+describe("W5: P1's gate enables a control when each capability it needs is usable, available or a fallback (the shared gate's rule, #1675)", () => {
   test.each(P1_CAPABILITY_CASES)("$name", (item) => {
     const enabled: string[] = [];
     const disabled: string[] = [];
     for (const descriptor of P1_DESCRIPTORS) {
       const required: readonly CapabilityKey[] = descriptor.requires;
-      const ready = required.every((key) => item.map[key]?.state === "available");
+      const ready = required.every((key) => isUsable(item.map, key));
       (ready ? enabled : disabled).push(descriptor.id);
     }
 
@@ -167,7 +167,7 @@ describe("W5: P1's gate enables a control only when each capability it needs is 
     ).toEqual([]);
   });
 
-  test.fails("the shared gate and P1's client agree on a fallback transcript (#1675)", () => {
+  test("a fallback transcript enables P1's focused agent in the shared gate, as in P1's client (#1675)", () => {
     const fallback = P1_CAPABILITY_CASES.find(
       (item) => item.map[P1CapabilityKeys.transcript]?.state === "fallback",
     );
@@ -175,10 +175,8 @@ describe("W5: P1's gate enables a control only when each capability it needs is 
     if (fallback === undefined || focused === undefined) {
       throw new Error("The fallback transcript case or the focused descriptor is missing.");
     }
-    // The client refuses a fallback transcript (requiredCapability accepts only available); the shared gate counts it.
-    const required: readonly CapabilityKey[] = focused.requires;
-    const clientRule = required.every((key) => fallback.map[key]?.state === "available");
-    expect(isDescriptorAvailable(focused, fallback.map)).toBe(clientRule);
+
+    expect(isDescriptorAvailable(focused, fallback.map)).toBe(true);
   });
 });
 

@@ -126,6 +126,52 @@ describe("P1 subagent client commands", () => {
     await client.dispose();
   });
 
+  test("a transcript omp publishes only as a fallback is still read, as the shared gate counts it", async () => {
+    const sent: Array<{ type: string; args: unknown }> = [];
+    const capabilities = availableCapabilities();
+    capabilities[P1CapabilityKeys.transcript] = {
+      state: "fallback",
+      via: "rpc",
+      detail: "Transcripts are read from the saved session file.",
+    };
+    const { client } = fakeClient({ capabilities, sent });
+    const page = await client.readTranscript(subagentId, { fromByte: 10 });
+    expect(page).toMatchObject({ sessionFile, fromByte: 10, nextByte: 20, reset: false });
+    expect(sent.map((item) => item.type)).toEqual(["get_subagent_messages"]);
+    await client.dispose();
+  });
+
+  test("a transcript omp publishes as unavailable is refused before sending", async () => {
+    const sent: Array<{ type: string; args: unknown }> = [];
+    const capabilities = availableCapabilities();
+    capabilities[P1CapabilityKeys.transcript] = {
+      state: "unavailable",
+      via: "rpc",
+      detail: "not released",
+    };
+    const { client } = fakeClient({ capabilities, sent });
+    await expect(client.readTranscript(subagentId, { fromByte: 0 })).rejects.toMatchObject({
+      appError: { code: "unavailable", capability: P1CapabilityKeys.transcript },
+    });
+    expect(sent).toEqual([]);
+    await client.dispose();
+  });
+
+  test("a transcript omp does not publish at all is refused before sending", async () => {
+    const sent: Array<{ type: string; args: unknown }> = [];
+    const capabilities = Object.fromEntries(
+      Object.entries(availableCapabilities()).filter(
+        ([key]) => key !== P1CapabilityKeys.transcript,
+      ),
+    ) as CapabilityMap;
+    const { client } = fakeClient({ capabilities, sent });
+    await expect(client.readTranscript(subagentId, { fromByte: 0 })).rejects.toMatchObject({
+      appError: { code: "unavailable", capability: P1CapabilityKeys.transcript },
+    });
+    expect(sent).toEqual([]);
+    await client.dispose();
+  });
+
   test("turns cancelled false into a retryable conflict, so the caller re-reads the worker before the row changes", async () => {
     const { client } = fakeClient({ cancelled: false });
     await expect(client.cancel(subagentId)).rejects.toMatchObject({

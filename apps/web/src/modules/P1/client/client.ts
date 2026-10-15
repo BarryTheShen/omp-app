@@ -22,6 +22,7 @@ import {
   SubagentTranscriptPageSchema,
 } from "@/modules/P1/contract";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
+import { isUsable } from "@/registry-core/hooks";
 
 export type SubagentSession = Pick<RpcSessionClient, "send" | "setSubagentSubscription">;
 
@@ -84,7 +85,7 @@ function isNotRunningRefusal(error: AppFailure): boolean {
 
 function requiredCapability(capabilities: CapabilityMap, key: keyof typeof P1CapabilityKeys): void {
   const capability = P1CapabilityKeys[key];
-  if (capabilities[capability]?.state === "available") return;
+  if (isUsable(capabilities, capability)) return;
   throw failure("unavailable", `Capability ${capability} is unavailable`, false, capability);
 }
 

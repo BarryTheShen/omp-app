@@ -2,9 +2,8 @@ import { CapabilityMap, type CapabilityStatus } from "@omp-app/contracts";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
 
 /**
- * Capability maps for gating. A key that is absent is unknown and counts as unavailable. The P1 client
- * enables a control only when the capability is `available` (client.ts, `requiredCapability`); the app's
- * shared gate also counts `fallback` (issue 1675), so the two can disagree on a fallback capability.
+ * Capability maps for gating. A key that is absent is unknown and counts as unavailable. A fallback counts as
+ * usable: the app's shared gate and P1's client (client.ts, `requiredCapability`) agree on that (issue 1675).
  */
 const RPC_AVAILABLE: CapabilityStatus = { state: "available", via: "rpc" };
 const HOST_AVAILABLE: CapabilityStatus = { state: "available", via: "host" };
@@ -64,7 +63,7 @@ export const P1_CAPABILITY_CASES: readonly CapabilityCase[] = [
     disabled: ["P1.agentFeed", "P1.agentProgress", ...DASHBOARD],
   },
   {
-    name: "transcripts are only a fallback (the client refuses it; the shared gate counts it, issue 1675)",
+    name: "transcripts are only a fallback, which the shared gate and P1's client both count as usable (issue 1675)",
     map: mapWith({
       "omp.cmd.get_subagent_messages": {
         state: "fallback",
@@ -72,7 +71,7 @@ export const P1_CAPABILITY_CASES: readonly CapabilityCase[] = [
         detail: "Transcripts are read from the saved session file.",
       },
     }),
-    disabled: ["P1.focusedAgent", "P1.agentTranscriptViewer", "P1.agentTranscript", ...DASHBOARD],
+    disabled: DASHBOARD,
   },
   {
     name: "the roster is unavailable",
