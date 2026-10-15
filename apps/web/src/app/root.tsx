@@ -41,6 +41,11 @@ import { agentsSurface, RevealAgentHub } from "@/app/agents/agents-tab";
 import { TaskSubagentsScope, useThreadAgents } from "@/app/agents/thread-agents-scope";
 import { RevealCommandOutput, useCommandReport } from "@/app/command-report/command-report";
 import { type OpenFailure, openFailureIn } from "@/app/open-failure";
+import {
+  deliverNoteWhenOpen,
+  type NoSwitchNote,
+  showNoSwitchNote,
+} from "@/app/rewind/no-switch-notice";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { ToolRunScope } from "@/app/tool-run-scope";
 import { Button } from "@/components/ui/button";
@@ -582,7 +587,10 @@ interface ActiveThreadProps {
   readonly registerLiveChat: (
     threadId: ThreadId,
     deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>,
+    notice?: (note: NoSwitchNote) => void,
   ) => () => void;
+  /** Writes a rewind's or fork's note into the chat on screen, when it finished without switching the view. */
+  readonly deliverNote: (note: NoSwitchNote) => void;
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly history: SelectedThreadHistoryState;
   /** A New chat started from the chat on screen has not replaced it yet: the composer's draft is the folder's new-chat draft. */
@@ -644,6 +652,7 @@ function ActiveThreadReady({
   onPromptSent,
   openThread,
   pickCount,
+  deliverNote,
   deliverToOpenChat,
   registerLiveChat,
   onOpenSettings,
@@ -1347,8 +1356,15 @@ function ActiveThreadReady({
       threadId,
     ],
   );
-  // The view for the chat on screen registers how a send reaches it (see `deliverToOpenChat` in the root).
-  useLayoutEffect(() => registerLiveChat(threadId, deliver), [deliver, registerLiveChat, threadId]);
+  // The view for the chat on screen registers how a send reaches it, and how a rewind's note reaches it (see `deliverToOpenChat`).
+  const showNote = useCallback(
+    (note: NoSwitchNote): void => showNoSwitchNote(notificationProjector, threadId, note),
+    [notificationProjector, threadId],
+  );
+  useLayoutEffect(
+    () => registerLiveChat(threadId, deliver, showNote),
+    [deliver, registerLiveChat, showNote, threadId],
+  );
   const submit = async (intent: PromptIntent): Promise<void> => {
     onPromptSent();
     // Sending shows the newest message, wherever the reader had scrolled to; the transcript then
@@ -1481,6 +1497,7 @@ function ActiveThreadReady({
       submitPrompt: runtimeController.submitPrompt,
       switchThread: openThread,
       pickCount,
+      deliverNote,
     }),
     commandOutput: commandOutputSurface,
     executionModes: useExecutionModesSurface({
@@ -2079,14 +2096,16 @@ function ConnectedApp({
   const liveChat = useRef<{
     readonly threadId: ThreadId;
     readonly deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>;
+    readonly notice?: (note: NoSwitchNote) => void;
   } | null>(null);
   const liveChatChanged = useRef<Array<() => void>>([]);
   const registerLiveChat = useCallback(
     (
       threadId: ThreadId,
       deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>,
+      notice?: (note: NoSwitchNote) => void,
     ): (() => void) => {
-      const live = { threadId, deliver };
+      const live = { threadId, deliver, notice };
       liveChat.current = live;
       const waiters = liveChatChanged.current;
       liveChatChanged.current = [];
@@ -2096,6 +2115,26 @@ function ConnectedApp({
       };
     },
     [],
+  );
+  // A rewind's note goes to the chat the person has open, through the view that shows it, once that chat has opened
+  // (see `deliverNoteWhenOpen`). The rewind's result does not wait for the note.
+  const deliverNoteToOpenChat = useCallback(
+    (note: NoSwitchNote): Promise<void> => {
+      if (controller === null) return Promise.resolve();
+      return deliverNoteWhenOpen(
+        {
+          whenSettled: () => controller.whenSettled(),
+          openThreadId: () => controller.getSnapshot().threadId,
+          view: () => liveChat.current,
+          nextView: () =>
+            new Promise<void>((wake) => {
+              liveChatChanged.current.push(wake);
+            }),
+        },
+        note,
+      );
+    },
+    [controller],
   );
   // A send goes to the chat that is open when it is delivered, through the view that shows it. While a chat is still
   // opening, the send waits until that chat is on screen: it is never written to the chat before it. If the chat did
@@ -2289,6 +2328,7 @@ function ConnectedApp({
           onPromptSent={onPromptSent}
           openThread={openThread}
           pickCount={pickCount}
+          deliverNote={deliverNoteToOpenChat}
           deliverToOpenChat={deliverToOpenChat}
           registerLiveChat={registerLiveChat}
           remote={remote}

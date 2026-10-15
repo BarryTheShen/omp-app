@@ -9,6 +9,7 @@ import { createOmpBranchingController } from "@/modules/R0/branching";
 import type { PromptIntent } from "@/modules/R0/runtime/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { useShortcutRegistry } from "@/shortcuts";
+import { type NoSwitchNote, withNoSwitchNote } from "./no-switch-notice";
 import { RewindPanel } from "./rewind-panel";
 import { isStreaming, REWIND_CAPABILITIES, rewindAvailable } from "./rewind-tree";
 
@@ -26,6 +27,8 @@ export interface RewindPanelOptions {
   readonly switchThread: (threadId: ThreadId) => Promise<void>;
   /** The chat picks made so far; a rewind that finishes after a pick does not switch the view. */
   readonly pickCount: () => number;
+  /** Writes a rewind's or fork's note into the chat on screen, when it finished without switching the view. */
+  readonly deliverNote: (note: NoSwitchNote) => void;
 }
 
 /**
@@ -42,6 +45,7 @@ export function useRewindPanel({
   submitPrompt,
   switchThread,
   pickCount,
+  deliverNote,
 }: RewindPanelOptions): Surface {
   const shortcuts = useShortcutRegistry();
   const available = rewindAvailable(capabilities);
@@ -106,7 +110,7 @@ export function useRewindPanel({
       reloadHistory: async () => undefined,
       switchThread,
     });
-    return createOmpConversationTransitionPort({
+    const port = createOmpConversationTransitionPort({
       store,
       send,
       branchingController,
@@ -114,7 +118,9 @@ export function useRewindPanel({
       pickCount,
       isBusy: () => isStreaming(store),
     });
-  }, [capabilities, pickCount, send, store, submitPrompt, switchThread]);
+    // The chat on screen is the one the person picked last, so the note is written through its view.
+    return withNoSwitchNote(port, deliverNote);
+  }, [capabilities, deliverNote, pickCount, send, store, submitPrompt, switchThread]);
 
   return {
     title: "Conversation history",
