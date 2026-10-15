@@ -114,6 +114,12 @@ describe("ThreadShell states", () => {
     expect(screen.getByText("No messages yet.")).toBeTruthy();
   });
 
+  test("keeps the empty state inside the message list, so the list does not move when the first message replaces it", () => {
+    const { container } = renderThread(readyStore());
+    const list = container.querySelector('[data-slot="u1-thread-messages"]');
+    expect(list?.querySelector('[data-slot="u1-thread-empty"]')).not.toBeNull();
+  });
+
   test("names an extension's error under its own heading, not as a conversation that stopped", () => {
     const store = readyStore();
     store.ingest(

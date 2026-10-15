@@ -645,8 +645,10 @@ export function ThreadShell({
             turnAnchor="bottom"
           >
             <div className="mx-auto flex min-h-full w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col">
-              <RuntimeStateSurface snapshot={snapshot} historyLoading={historyLoading} />
+              {/* The loading and empty states sit inside the message list, not above it: a state removed from above the list moved
+                  the whole transcript up when the first message replaced it (a 128 px jump, the reply-start shift in issue 1710). */}
               <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
+                <RuntimeStateSurface snapshot={snapshot} historyLoading={historyLoading} />
                 {onLoadOlder !== undefined && (snapshot.transcript.hasOlder || earlierInFlight) && (
                   <EarlierMessagesControl onLoad={loadEarlier} />
                 )}
