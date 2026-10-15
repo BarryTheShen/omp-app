@@ -49,6 +49,19 @@ export interface StopOutcome {
   readonly sentence: string;
 }
 
+/** The outcome of a stop omp confirmed: the job was running, and omp stopped it. */
+export function stoppedOutcome(jobId: string): StopOutcome {
+  return { status: "stopped", sentence: `Stopped background job ${jobId}.` };
+}
+
+/** The outcome of a stop for a job omp no longer lists as running: it had already finished. */
+export function finishedOutcome(jobId: string): StopOutcome {
+  return {
+    status: "finished",
+    sentence: `Already finished: omp has no running job with id ${jobId}.`,
+  };
+}
+
 /**
  * Reads omp's words for `/jobs kill <id>` into one outcome. omp (18.8.8 and later) answers in plain text. Its words
  * do not separate "not found" from "already finished", so an id omp no longer lists as running reads as finished. Words
@@ -59,13 +72,8 @@ export function stopOutcomeOf(texts: readonly string[], jobId: string): StopOutc
     .map((text) => text.replace(/\s+/gu, " ").trim())
     .filter((text) => text !== "")
     .join(" ");
-  if (words === `Cancelled background job ${jobId}.`)
-    return { status: "stopped", sentence: `Stopped background job ${jobId}.` };
-  if (words === `No running background job with id "${jobId}".`)
-    return {
-      status: "finished",
-      sentence: `Already finished: omp has no running job with id ${jobId}.`,
-    };
+  if (words === `Cancelled background job ${jobId}.`) return stoppedOutcome(jobId);
+  if (words === `No running background job with id "${jobId}".`) return finishedOutcome(jobId);
   if (words === `Could not cancel background job ${jobId}.`)
     return { status: "failed", sentence: `Could not stop background job ${jobId}.` };
   if (words === "Async background jobs are unavailable in this session.")

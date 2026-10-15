@@ -1,6 +1,8 @@
 import {
   AppFailure,
+  type BackgroundJobStop,
   CommandOutputEvent,
+  type CommandRunResult,
   CompactionEvent,
   DumpReport,
   ModeChangeResult,
@@ -15,6 +17,27 @@ import {
 import type { PortRegistration } from "../../../registry/ports";
 import type { A1PortContext } from "./context";
 import { createA1PortRegistration } from "./helper";
+
+/**
+ * `/jobs kill <id>` as omp answers it: the job it stopped, or one it had already finished. Any other reply keeps
+ * nothing, so a stop that did not happen is never kept as stopped.
+ */
+function backgroundJobStopOf(
+  command: string,
+  result: CommandRunResult,
+): Pick<BackgroundJobStop, "jobId" | "status"> | undefined {
+  const killed = /^\/jobs kill ([A-Za-z0-9_-]{1,60})$/u.exec(command);
+  if (killed === null || result.status !== "completed") return undefined;
+  const jobId = killed[1] ?? "";
+  const words = result.outputs
+    .map((output) => output.text.replace(/\s+/gu, " ").trim())
+    .filter((text) => text !== "")
+    .join(" ");
+  if (words === `Cancelled background job ${jobId}.`) return { jobId, status: "stopped" };
+  if (words === `No running background job with id "${jobId}".`)
+    return { jobId, status: "finished" };
+  return undefined;
+}
 
 export function createOmpCommandGatewayRegistration(context: A1PortContext): PortRegistration {
   const bindings = [
@@ -34,8 +57,15 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
   return createA1PortRegistration(
     OmpCommandGateway,
     {
-      run: (args, handlerContext) =>
-        context.ompCommandGateway.run(args, { signal: handlerContext.signal }),
+      run: async (args, handlerContext) => {
+        const result = await context.ompCommandGateway.run(args, { signal: handlerContext.signal });
+        const stop = backgroundJobStopOf(args.command, result);
+        if (stop !== undefined) await context.backgroundJobStopStore.record(args.threadId, stop);
+        return result;
+      },
+      backgroundJobStops: async (args) => ({
+        stops: [...(await context.backgroundJobStopStore.list(args.threadId))],
+      }),
       share: async (args, handlerContext) => {
         const { data } = await context.ompCommandGateway.runWithParser<ShareResult>(
           { threadId: args.threadId, command: "/share" },

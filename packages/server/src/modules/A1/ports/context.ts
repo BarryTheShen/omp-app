@@ -2,6 +2,7 @@ import type { SessionFilePath, ThreadId } from "@omp-app/contracts";
 import type { Logger } from "../../../logging";
 import type { ProviderAccountStoreService } from "../accounts";
 import type { AttachmentStoreService } from "../attachments";
+import type { BackgroundJobStopStoreService } from "../background-jobs";
 import type { CheckpointStoreService } from "../checkpoints";
 import type { ConfigStoreService } from "../config";
 import type { DraftStoreService } from "../drafts";
@@ -28,6 +29,7 @@ export interface A1PortContext {
   readonly checkpointStore: CheckpointStoreService;
   readonly draftStore: DraftStoreService;
   readonly ompCommandGateway: OmpCommandGatewayService;
+  readonly backgroundJobStopStore: BackgroundJobStopStoreService;
   readonly sessionPinStore: SessionPinStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;
   readonly usageLimitStore: UsageLimitStoreService;

@@ -32,6 +32,7 @@ import {
 } from "../src/logging";
 import { createProviderAccountStore } from "../src/modules/A1/accounts";
 import { AttachmentStoreService } from "../src/modules/A1/attachments";
+import { BackgroundJobStopStoreService } from "../src/modules/A1/background-jobs";
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
 import {
   createConfigStoreWithOmpDefaults,
@@ -342,6 +343,12 @@ export async function createCompositionServer(
   const sessionImportStore = createSessionImportStore();
   await attachmentStore.cleanup({ orphanAgeMs: 24 * 60 * 60 * 1000 });
   const ompCommandGateway = createOmpCommandGateway({ resolveSession });
+  const backgroundJobStopStore = new BackgroundJobStopStoreService({
+    env,
+    homeDir,
+    appDataDir,
+    onError: (error) => logger.warn("background-job-stops.error", { detail: String(error) }),
+  });
   const sessionPinStore = createSessionPinStore({
     env,
     homeDir,
@@ -415,6 +422,7 @@ export async function createCompositionServer(
     checkpointStore,
     draftStore,
     ompCommandGateway,
+    backgroundJobStopStore,
     sessionPinStore,
     providerAccountStore,
     usageLimitStore,

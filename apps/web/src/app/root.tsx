@@ -1318,6 +1318,13 @@ function ActiveThreadReady({
             (await slashProvider.execute(command)).outputs.map((output) => output.text),
     [slashProvider],
   );
+  // The stops omp confirmed for this chat's background jobs, kept by the server. A card reads them when the chat opens,
+  // so a stop made in one browser shows as stopped in every other browser that opens the chat.
+  const loadBackgroundJobStops = useCallback(
+    (threadId: ThreadId) =>
+      commandGateway.backgroundJobStops({ threadId }).then((read) => read.stops),
+    [commandGateway],
+  );
   // What a send does in the chat it is for: a slash command, or omp's prompt. It is read at the send, so a send that
   // waited for a chat to open runs in the chat on screen, never in the one before it. The attachments are the ones the
   // send carried when Enter was pressed (see `submit`): the chat on screen may be another view, which holds none.
@@ -1653,7 +1660,11 @@ function ActiveThreadReady({
         askDialogOffered={richAskOffered(capabilities)}
         send={guardedSend}
       />
-      <ToolRunScope runBackgroundJobCommand={runBackgroundJobCommand} store={store}>
+      <ToolRunScope
+        loadBackgroundJobStops={loadBackgroundJobStops}
+        runBackgroundJobCommand={runBackgroundJobCommand}
+        store={store}
+      >
         <TaskSubagentsScope agents={agents}>
           <TurnCancelScope cancel={cancel}>
             <AppShell

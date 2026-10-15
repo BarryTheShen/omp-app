@@ -81,6 +81,31 @@ export function backgroundJobViews(
   return views;
 }
 
+/**
+ * When each background bash call's launch result was written (ms), keyed by its call id. A kept stop of a job applies to
+ * a card only when the stop was recorded after the card's launch: omp numbers jobs per process, so a later job can carry
+ * the id of a stopped one.
+ */
+export function backgroundJobLaunchTimes(
+  order: readonly MessageKey[],
+  messages: Readonly<Record<MessageKey, RuntimeMessage>>,
+): ReadonlyMap<string, number> {
+  const times = new Map<string, number>();
+  for (const key of order) {
+    const message = messages[key]?.message;
+    if (message?.role === "toolResult") {
+      const launch = launchOf(
+        message.toolCallId,
+        message.toolName,
+        message.details,
+        message.timestamp,
+      );
+      if (launch !== undefined) times.set(launch.toolCallId, launch.at);
+    }
+  }
+  return times;
+}
+
 function launchOf(
   toolCallId: string,
   toolName: string,

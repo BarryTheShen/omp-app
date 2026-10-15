@@ -1,6 +1,6 @@
 import type { MessageKey } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { backgroundJobViews } from "./background-jobs";
+import { backgroundJobLaunchTimes, backgroundJobViews } from "./background-jobs";
 import type { ProcessState, RuntimeMessage } from "./store";
 
 /** One transcript message, keyed by its position, as the store keeps it. */
@@ -175,5 +175,29 @@ describe("background job views", () => {
       call_a: { kind: "running", jobId: "bg_1" },
       call_b: { kind: "finished", jobId: "bg_2" },
     });
+  });
+});
+
+describe("backgroundJobLaunchTimes", () => {
+  test("gives each background bash call the time its launch result was written, and no time to other results", () => {
+    const { order, messages } = transcript([
+      launch("m1", "call_a", "bg_1", 1_000),
+      message("m2", {
+        role: "toolResult",
+        toolCallId: "call_b",
+        toolName: "read",
+        content: [],
+        isError: false,
+        timestamp: 1_500,
+        details: {},
+      }),
+      launch("m3", "call_c", "bg_2", 2_000),
+    ]);
+    expect(backgroundJobLaunchTimes(order, messages)).toEqual(
+      new Map([
+        ["call_a", 1_000],
+        ["call_c", 2_000],
+      ]),
+    );
   });
 });

@@ -246,6 +246,23 @@ export const SessionDeleteCommandResult = z.discriminatedUnion("outcome", [
 ]);
 export type SessionDeleteCommandResult = z.infer<typeof SessionDeleteCommandResult>;
 
+/**
+ * A background job the chat's Stop control stopped, or found finished, as omp answered `/jobs kill <id>`, and when the
+ * server recorded it (ms). The server keeps these per chat, so every browser that opens the chat reads the same stop.
+ */
+export const BackgroundJobStop = z.strictObject({
+  jobId: z.string().min(1).max(64),
+  status: z.enum(["stopped", "finished"]),
+  at: z.number().int().nonnegative(),
+});
+export type BackgroundJobStop = z.infer<typeof BackgroundJobStop>;
+
+export const BackgroundJobStopsArgs = z.strictObject({ threadId: ThreadId });
+export type BackgroundJobStopsArgs = z.infer<typeof BackgroundJobStopsArgs>;
+
+export const BackgroundJobStopsResult = z.strictObject({ stops: z.array(BackgroundJobStop) });
+export type BackgroundJobStopsResult = z.infer<typeof BackgroundJobStopsResult>;
+
 export const OmpCommandGateway = definePort({
   name: "A1.ompCommandGateway",
   methods: {
@@ -272,6 +289,11 @@ export const OmpCommandGateway = definePort({
     sessionDelete: {
       args: SessionDeleteCommandArgs,
       result: SessionDeleteCommandResult,
+      capability: "host.command-gateway",
+    },
+    backgroundJobStops: {
+      args: BackgroundJobStopsArgs,
+      result: BackgroundJobStopsResult,
       capability: "host.command-gateway",
     },
   },
