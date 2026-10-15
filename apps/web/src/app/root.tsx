@@ -209,6 +209,8 @@ import {
 import { FolderSwitcher } from "./folder-switcher";
 import { HistorySearchDialog, useHistorySearchShortcut } from "./history-search-dialog";
 import { LargePasteMenuProvider } from "./large-paste-menu";
+import { type NewChatOutcome, type NewChatTicket, openNewChatTicket } from "./new-chat-outcome";
+import { deliverWhenChatOpen } from "./open-chat-delivery";
 import { useChatSessionInfo, useChatTodoStore } from "./owned-stores";
 import { useRetryShortcut } from "./p3-retry-shortcut";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
@@ -584,7 +586,12 @@ interface SendAttachments {
 }
 
 interface ActiveThreadProps {
-  readonly deliverToOpenChat: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>;
+  readonly deliverToOpenChat: (
+    intent: PromptIntent,
+    attachments: SendAttachments,
+    newChatEnd: Promise<NewChatOutcome> | null,
+  ) => Promise<void>;
+  readonly newChatOutcomeNow: () => Promise<NewChatOutcome> | null;
   readonly registerLiveChat: (
     threadId: ThreadId,
     deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>,
@@ -658,6 +665,7 @@ function ActiveThreadReady({
   pickCount,
   deliverNote,
   deliverToOpenChat,
+  newChatOutcomeNow,
   registerLiveChat,
   onOpenSettings,
   remote,
@@ -1388,7 +1396,9 @@ function ActiveThreadReady({
       refs: attachmentManager.toDraftRefs(),
       complete: attachmentManager.getState().complete,
     };
-    await chatDraft.submit(intent, (sent) => deliverToOpenChat(sent, attachments));
+    // A send made while a New chat opens takes that New chat's outcome now, not when it is delivered.
+    const newChatEnd = newChatOutcomeNow();
+    await chatDraft.submit(intent, (sent) => deliverToOpenChat(sent, attachments, newChatEnd));
     if (intent.mode === "bash") void onRefreshAfterCommand?.();
     attachmentManager.clearAfterSend();
     scrollController.jumpToLatest();
@@ -2105,6 +2115,12 @@ function ConnectedApp({
   // newest New chat (an older one is superseded by a newer click and will not open), so the newest hold is the one a
   // report ends; the holds of the New chats before it end at once.
   const newChatHolds = useRef<Array<() => void>>([]);
+  // The newest New chat's outcome: a send made while it opens waits for it, and is not sent when it does not open.
+  const newChatTicketRef = useRef<NewChatTicket | null>(null);
+  const newChatOutcomeNow = useCallback(
+    (): Promise<NewChatOutcome> | null => newChatTicketRef.current?.outcome ?? null,
+    [],
+  );
   const reportNewChat = useCallback(
     (status: NewChatStatus): void => {
       setNewChat(status);
@@ -2112,8 +2128,12 @@ function ConnectedApp({
         setNewChatFrom(controller?.getSnapshot().threadId ?? null);
         for (const release of newChatHolds.current.splice(0)) release();
         newChatHolds.current.push(controller?.holdSwitch() ?? (() => undefined));
+        newChatTicketRef.current?.settle("not-opened");
+        newChatTicketRef.current = openNewChatTicket();
         return;
       }
+      newChatTicketRef.current?.settle("not-opened");
+      newChatTicketRef.current = null;
       newChatHolds.current.pop()?.();
     },
     [controller],
@@ -2123,6 +2143,8 @@ function ConnectedApp({
   const openNewChatFromSidebar = useCallback(
     (threadId: ThreadId): Promise<void> => {
       newChatHolds.current.at(-1)?.();
+      newChatTicketRef.current?.settle("opened");
+      newChatTicketRef.current = null;
       return openThread(threadId);
     },
     [openThread],
@@ -2175,7 +2197,11 @@ function ConnectedApp({
   // opening, the send waits until that chat is on screen: it is never written to the chat before it. If the chat did
   // not open, nothing is sent and the text stays in the composer.
   const deliverToOpenChat = useCallback(
-    async (intent: PromptIntent, attachments: SendAttachments): Promise<void> => {
+    async (
+      intent: PromptIntent,
+      attachments: SendAttachments,
+      newChatEnd: Promise<NewChatOutcome> | null,
+    ): Promise<void> => {
       if (controller === null) {
         throw new AppFailure({
           code: "unavailable",
@@ -2183,22 +2209,19 @@ function ConnectedApp({
           retryable: false,
         });
       }
-      for (;;) {
-        await controller.whenSettled();
-        const open = controller.getSnapshot().threadId;
-        if (open === undefined) {
-          throw new AppFailure({
-            code: "unavailable",
-            message: "The chat did not open, so the message was not sent. Try again.",
-            retryable: true,
-          });
-        }
-        const live = liveChat.current;
-        if (live !== null && live.threadId === open) return live.deliver(intent, attachments);
-        await new Promise<void>((wake) => {
-          liveChatChanged.current.push(wake);
-        });
-      }
+      await deliverWhenChatOpen(
+        {
+          whenSettled: () => controller.whenSettled(),
+          openThreadId: () => controller.getSnapshot().threadId,
+          liveChat: () => liveChat.current,
+          nextChange: () =>
+            new Promise<void>((wake) => {
+              liveChatChanged.current.push(wake);
+            }),
+          newChatEnd,
+        },
+        [intent, attachments],
+      );
     },
     [controller],
   );
@@ -2366,6 +2389,7 @@ function ConnectedApp({
           pickCount={pickCount}
           deliverNote={deliverNoteToOpenChat}
           deliverToOpenChat={deliverToOpenChat}
+          newChatOutcomeNow={newChatOutcomeNow}
           registerLiveChat={registerLiveChat}
           remote={remote}
           title={title}
