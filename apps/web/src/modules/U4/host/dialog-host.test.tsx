@@ -41,6 +41,8 @@ interface HarnessState {
   refusals: number;
   refusalCode: "unavailable" | "not_found";
   rejected: number;
+  /** Whether the dialog last rendered says its answer was not sent (a Cancel or Escape that could not be sent). */
+  answerNotSent: boolean;
 }
 
 function Harness({
@@ -70,6 +72,7 @@ function Harness({
       render: (dialogRequest, context) => {
         state.answer = context.answer;
         state.deadlines[dialogRequest.id] = context.deadlineAt;
+        state.answerNotSent = context.answerNotSent === true;
         return (
           <div data-testid={`body-${dialogRequest.id}`}>
             <p>
@@ -120,6 +123,7 @@ function renderHarness(capabilities = ompUiCapabilities) {
     refusals: 0,
     refusalCode: "unavailable",
     rejected: 0,
+    answerNotSent: false,
   };
   render(
     <OverlayHost>
@@ -535,5 +539,123 @@ describe("DialogHostController outside press", () => {
     fireEvent.pointerUp(dimmedArea());
     await expect(cancelled).resolves.toBe(false);
     expect(state.answers).toEqual([]);
+  });
+});
+
+describe("DialogHostController answers omp does not receive (issue 1387)", () => {
+  test("a Cancel omp does not receive shows the question again, saying the answer was not sent", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    state.refusals = 1;
+    let settled = false;
+    const pending = open(controller, request("select", "cancel-refused")).then((result) => {
+      settled = true;
+      return result;
+    });
+    await screen.findByRole("dialog", { name: "cancel-refused" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(state.answerNotSent).toBe(true));
+    // omp still waits for an answer: the question is open again, and nothing is reported as closed.
+    expect(screen.getByRole("dialog", { name: "cancel-refused" })).toBeTruthy();
+    expect(settled).toBe(false);
+    expect(state.answers).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await expect(pending).resolves.toEqual({
+      outcome: "cancelled",
+      kind: "select",
+      timedOut: false,
+    });
+    expect(state.answers).toEqual([
+      { type: "extension_ui_response", id: "cancel-refused", cancelled: true },
+    ]);
+  });
+
+  test("an Escape omp does not receive shows the question again, saying the answer was not sent", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    state.refusals = 1;
+    const pending = open(controller, request("select", "escape-refused"));
+    const question = await screen.findByRole("dialog", { name: "escape-refused" });
+
+    fireEvent.keyDown(question, { key: "Escape" });
+    await waitFor(() => expect(state.answerNotSent).toBe(true));
+    expect(screen.getByRole("dialog", { name: "escape-refused" })).toBeTruthy();
+    expect(state.answers).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await expect(pending).resolves.toMatchObject({ outcome: "answered" });
+    expect(state.answers).toMatchObject([{ type: "extension_ui_response", id: "escape-refused" }]);
+  });
+
+  test("a timeout omp does not receive leaves the question open for the person to answer", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    state.refusals = 1;
+    let settled = false;
+    const pending = controller
+      .confirm(
+        request("confirm", "timeout-refused", 10) as Extract<DialogRequest, { kind: "confirm" }>,
+        {
+          threadId: threadA,
+        },
+      )
+      .then((confirmed) => {
+        settled = true;
+        return confirmed;
+      });
+    await screen.findByRole("dialog", { name: "timeout-refused" });
+    await waitFor(() => expect(state.refusals).toBe(0));
+    // The default answer did not reach omp. The timer is not armed again, so the question waits for the person; the
+    // wait lets a re-armed timer, if there were one, fire before the check.
+    const delay = Promise.withResolvers<void>();
+    setTimeout(delay.resolve, 30);
+    await delay.promise;
+    expect(settled).toBe(false);
+    expect(screen.getByRole("dialog", { name: "timeout-refused" })).toBeTruthy();
+    expect(state.answers).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await expect(pending).resolves.toBe(true);
+    expect(state.answers).toMatchObject([{ type: "extension_ui_response", id: "timeout-refused" }]);
+  });
+
+  test("an abort whose cancellation omp does not receive closes the question, with no error", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    state.refusals = 1;
+    const abortController = new AbortController();
+    const pending = open(controller, request("select", "abort-refused"), threadA, {
+      signal: abortController.signal,
+    });
+    await screen.findByRole("dialog", { name: "abort-refused" });
+
+    abortController.abort();
+    await expect(pending).resolves.toEqual({
+      outcome: "cancelled",
+      kind: "select",
+      timedOut: false,
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "abort-refused" })).toBeNull());
+    expect(state.answers).toEqual([]);
+  });
+
+  test("a Cancel for a question omp no longer holds closes it, with no error", async () => {
+    const state = renderHarness();
+    const controller = await controllerFrom(state);
+    state.refusals = 1;
+    state.refusalCode = "not_found";
+    const pending = open(controller, request("select", "gone-question"));
+    await screen.findByRole("dialog", { name: "gone-question" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await expect(pending).resolves.toEqual({
+      outcome: "cancelled",
+      kind: "select",
+      timedOut: false,
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "gone-question" })).toBeNull());
+    expect(state.answerNotSent).toBe(false);
   });
 });

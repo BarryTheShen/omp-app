@@ -37,6 +37,11 @@ export interface DialogRenderContext {
    * has no timeout. A request queued behind another dialog keeps the time it was received, as its timer does.
    */
   readonly deadlineAt?: number;
+  /**
+   * True when the dialog is shown again because a Cancel or an Escape did not reach omp. The question is still open, so
+   * the dialog says the answer was not sent, as it does after a refused answer (issue 1387).
+   */
+  readonly answerNotSent?: boolean;
 }
 
 export type DialogRenderer = (request: DialogRequest, context: DialogRenderContext) => ReactNode;
@@ -67,7 +72,8 @@ interface DialogEntry {
   deadlineAt: number | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
   abortListener: (() => void) | null;
-  internalClose: boolean;
+  /** The presentation on screen now. A presentation that was replaced does not restore focus (see `present`). */
+  presentation: object | undefined;
   restoreCalled: boolean;
   /** The text an editor or input holds now: its prefill until the person types. Undefined for other kinds. */
   draft: string | undefined;
@@ -181,7 +187,7 @@ export class DialogHostController implements DialogHost {
         overlay: null,
         timer: undefined,
         abortListener: null,
-        internalClose: false,
+        presentation: undefined,
         restoreCalled: false,
         deadlineAt: undefined,
         draft: initialDraft(parsed.data),
@@ -290,7 +296,7 @@ export class DialogHostController implements DialogHost {
     this.present(entry);
   }
 
-  private present(entry: DialogEntry): void {
+  private present(entry: DialogEntry, answerNotSent = false): void {
     const context: DialogRenderContext = {
       request: entry.request,
       threadId: entry.options.threadId,
@@ -301,26 +307,69 @@ export class DialogHostController implements DialogHost {
         entry.draft = text;
       },
       deadlineAt: entry.deadlineAt,
+      answerNotSent,
     };
+    // Each presentation has its own token: a presentation the host replaced restores no focus, so the one on screen does.
+    const presentation: object = {};
+    entry.presentation = presentation;
     try {
-      entry.overlay = this.overlay.open({
+      const overlay = this.overlay.open({
         kind: "modal",
         label: dialogName(entry.request),
         content: () => this.render(entry.request, context),
         restoreFocus:
-          entry.restoreFocus === undefined ? undefined : () => this.restoreAfterClose(entry),
+          entry.restoreFocus === undefined
+            ? undefined
+            : () => this.restoreAfterClose(entry, presentation),
         // omp is waiting on these answers, so a stray press must not answer them; Escape still does.
         // The app's own dialogs keep closing on a press outside, as Escape does.
         closeOnOutsidePointer: entry.options.origin === "app",
       });
-      void entry.overlay.closed.then((reason) => {
-        if (entry.state !== "active" || entry.internalClose) return;
+      entry.overlay = overlay;
+      void overlay.closed.then((reason) => {
+        // The host closed or replaced this presentation, so its close is not the person's.
+        if (entry.overlay !== overlay) return;
+        entry.overlay = null;
+        if (entry.state !== "active") return;
         if (reason === "unmount") this.settleCancelled(entry, false, false);
         else this.settleCancelled(entry, false, true);
       });
     } catch (error) {
       this.finishRejected(entry, asFailure(error, "Opening the dialog failed."));
     }
+  }
+
+  /**
+   * A Cancel, an Escape, a timeout or an abort whose answer did not reach omp (issue 1387). omp still waits for an answer,
+   * so a question it still holds stays open for the person: a Cancel or an Escape shows the dialog again, saying the answer
+   * was not sent, and a timeout leaves the dialog as it is, for the person to answer, with no timer armed again. A question
+   * omp no longer holds, or one whose request has gone (its signal is aborted), closes without an error.
+   */
+  private defaultAnswerNotSent(
+    entry: DialogEntry,
+    result: DialogResult,
+    error: unknown,
+    source: "cancel" | "timeout",
+  ): void {
+    const notHeld = error instanceof AppFailure && error.appError.code === "not_found";
+    if (notHeld || entry.options.signal?.aborted === true) {
+      this.finishResolved(entry, result);
+      return;
+    }
+    entry.state = "active";
+    // A dialog the person closed (Escape) is not on screen, and a Cancel is shown again so that the question appears once.
+    if (source === "cancel" || entry.overlay === null) {
+      this.closeOverlay(entry);
+      this.present(entry, true);
+    }
+  }
+
+  /** Takes the dialog on screen down, if there is one. The presentation closed here settles nothing (see `present`). */
+  private closeOverlay(entry: DialogEntry): void {
+    const overlay = entry.overlay;
+    if (overlay === null) return;
+    entry.overlay = null;
+    this.overlay.close(overlay.id, "programmatic");
   }
 
   private async answer(entry: DialogEntry, response: DialogResponse): Promise<void> {
@@ -368,7 +417,7 @@ export class DialogHostController implements DialogHost {
   private settleTimeout(entry: DialogEntry): Promise<void> {
     const result = defaultDialogResult(entry.request, { timedOut: true });
     return this.settleAndFinish(entry, result).catch((error) => {
-      this.finishRejected(entry, error);
+      this.defaultAnswerNotSent(entry, result, error, "timeout");
     });
   }
 
@@ -384,7 +433,7 @@ export class DialogHostController implements DialogHost {
       return Promise.resolve();
     }
     return this.settleAndFinish(entry, result).catch((error) => {
-      this.finishRejected(entry, error);
+      this.defaultAnswerNotSent(entry, result, error, "cancel");
     });
   }
 
@@ -458,11 +507,7 @@ export class DialogHostController implements DialogHost {
           queue.filter((candidate) => candidate !== entry),
         );
     }
-    if (entry.overlay) {
-      entry.internalClose = true;
-      this.overlay.close(entry.overlay.id, "programmatic");
-      entry.overlay = null;
-    }
+    this.closeOverlay(entry);
   }
 
   private advance(entry: DialogEntry): void {
@@ -477,8 +522,12 @@ export class DialogHostController implements DialogHost {
     entry.restoreFocus?.();
   }
 
-  /** Called by the overlay once its focus scope has unmounted and released the focus trap. */
-  private restoreAfterClose(entry: DialogEntry): undefined {
+  /**
+   * Called by the overlay once its focus scope has unmounted and released the focus trap. A presentation the host replaced
+   * restores nothing: the one on screen keeps the focus target until it closes.
+   */
+  private restoreAfterClose(entry: DialogEntry, presentation: object): undefined {
+    if (entry.presentation !== presentation) return undefined;
     this.restoreFocus(entry);
     return undefined;
   }

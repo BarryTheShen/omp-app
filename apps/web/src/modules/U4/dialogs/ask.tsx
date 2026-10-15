@@ -95,7 +95,9 @@ export function AskDialog({
   const [questionIndex, setQuestionIndex] = useState(0);
   const [review, setReview] = useState(false);
   const [other, setOther] = useState<Record<string, boolean>>({});
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    context.answerNotSent === true ? ANSWER_NOT_SENT : null,
+  );
   const question = request.questions[questionIndex];
   const currentDraft = drafts[question?.id ?? ""] ?? emptyDraft();
   const answers = useMemo(

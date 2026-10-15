@@ -30,7 +30,9 @@ export function SelectDialog({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    context.answerNotSent === true ? ANSWER_NOT_SENT : null,
+  );
   const showFilter = request.options.length > 7;
   const filteredOptions = useMemo(
     () => listedOptions(request, showFilter ? query : ""),

@@ -17,7 +17,9 @@ export function ConfirmDialog({
     return () => clearTimeout(timer);
   }, []);
 
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    context.answerNotSent === true ? ANSWER_NOT_SENT : null,
+  );
   const decide = async (confirmed: boolean) => {
     setError(null);
     try {

@@ -18,7 +18,9 @@ export function EditorDialog({
   readonly context: DialogRenderContext;
 }) {
   const [value, setValue] = useState(request.prefill ?? "");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    context.answerNotSent === true ? ANSWER_NOT_SENT : null,
+  );
   const readOnly = request.readOnly === true;
 
   const submit = async () => {

@@ -19,7 +19,9 @@ export function InputDialog({
   readonly context: DialogRenderContext;
 }) {
   const [value, setValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    context.answerNotSent === true ? ANSWER_NOT_SENT : null,
+  );
   const secret = isSecretInput(request);
 
   const submit = async () => {
