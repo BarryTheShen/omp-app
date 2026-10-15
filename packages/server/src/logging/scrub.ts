@@ -15,6 +15,11 @@ const SECRET_KEY_VALUE =
  * rule, which would take the word `Bearer` after `Authorization:` as the secret and leave the token behind. */
 const BEARER_TOKEN = /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi;
 
+/** The credentials of a Basic authorization header, `Authorization: Basic <token>`, and its proxy form. The token is the
+ * base64 of `user:password`, so the whole token goes, and the user name with it. It runs before the key-value rule,
+ * which needs six characters after the key and so leaves the token behind when the scheme `Basic` is the value. */
+const BASIC_CREDENTIALS = /\b((?:Proxy-)?Authorization["']?\s*[=:]\s*["']?Basic\s+)[^\s"',;&}]+/gi;
+
 /** The password in `scheme://user:password@host`, as git prints remote URLs. The user and the host stay, so the
  * line still says where it failed. It runs before the key-value rule. */
 const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s/@]+(?=@)/gi;
@@ -41,6 +46,7 @@ export function scrubText(text: string, known: readonly string[] = []): string {
     if (secret.length >= 6) result = result.split(secret).join(REDACTED);
   }
   result = result.replace(BEARER_TOKEN, REDACTED);
+  result = result.replace(BASIC_CREDENTIALS, `$1${REDACTED}`);
   result = result.replace(URL_PASSWORD, `$1${REDACTED}`);
   result = result.replace(SECRET_KEY_VALUE, `$1$2${REDACTED}`);
   for (const pattern of SECRET_PATTERNS) result = result.replace(pattern, REDACTED);

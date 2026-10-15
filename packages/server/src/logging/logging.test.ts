@@ -81,6 +81,19 @@ describe("scrubText", () => {
     );
   });
 
+  test("removes the credentials of a Basic authorization header, Proxy-Authorization included, and keeps the header's name", () => {
+    // The token is base64 of user:password. It is built here, so no literal credential sits in this source file.
+    const token = Buffer.from(["alice", "hunter2pass"].join(":")).toString("base64");
+    expect(scrubText(`Authorization: Basic ${token}`)).toBe("Authorization: Basic [redacted]");
+    expect(scrubText(`Proxy-Authorization: Basic ${token}`)).toBe(
+      "Proxy-Authorization: Basic [redacted]",
+    );
+    // The user name is inside the token, so the whole token goes and the name does not stay behind.
+    const quoted = scrubText(`{"authorization": "Basic ${token}"}`);
+    expect(quoted).toBe('{"authorization": "Basic [redacted]"}');
+    expect(quoted).not.toContain("alice");
+  });
+
   test("removes the password from a URL with credentials, and keeps the user and host", () => {
     expect(
       scrubText(
@@ -109,6 +122,17 @@ describe("createLogger", () => {
     ]);
     expect((await stat(logger.path)).mode & 0o777).toBe(0o600);
     expect(logger.path).toBe(join(dir, LOG_FILE_NAME));
+  });
+
+  test("a failure that quotes a Basic authorization header reaches the log without its credentials", async () => {
+    const dir = await tempDir();
+    const logger = createLogger({ dir, now: () => new Date("2026-10-07T06:00:00.000Z") });
+    const token = Buffer.from(["alice", "hunter2pass"].join(":")).toString("base64");
+    logger.error("request.failed", { message: `Authorization: Basic ${token} was refused` });
+    const text = readLogTail(dir, 5);
+    expect(text).toContain("Authorization: Basic [redacted] was refused");
+    expect(text).not.toContain(token);
+    expect(text).not.toContain("alice");
   });
 
   test("cuts long values (300 characters, a stack 2,000) and keeps a multi-line message on one line", async () => {
