@@ -122,13 +122,16 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
           command,
         );
         if (result.outcome !== "deleted" || check.file === undefined) return result;
-        try {
-          await context.sessionFileStore.finishOmpDelete(check.file, caller);
-        } catch (error) {
-          // A stop omp did not make, or a file that would not go: the chat stays open and listed, and the person tries again.
-          if (error instanceof AppFailure) return { outcome: "failed" };
-          throw error;
-        }
+        const finished = await context.sessionFileStore
+          .finishOmpDelete(check.file, caller)
+          .catch((error: unknown) => {
+            // A stop omp did not make, or a file that would not go: the file is left as it is, and the person tries again.
+            if (error instanceof AppFailure) return undefined;
+            throw error;
+          });
+        if (finished === undefined) return { outcome: "failed" };
+        // omp deleted its own file, but another view took the chat back while omp stopped: the file stays, and the reason is said.
+        if (finished.outcome === "refused") return { outcome: "refused", reason: finished.reason };
         // The sidebar's own delete publishes this removal on the session file stream, and every open tab drops the row.
         // A typed delete publishes the same change once the file is gone and omp has stopped.
         context.publish(

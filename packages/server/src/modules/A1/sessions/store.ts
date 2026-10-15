@@ -642,21 +642,42 @@ export class SessionFileStore {
    * Finishes a `/session delete` that omp ran on a chat and that deleted its file. omp writes the chat back when its omp
    * stops, so the chat's omp is stopped when nothing else watches it (the step the sidebar's delete takes before it removes
    * a file), with the caller's own views counted as its own: omp's exit takes them with the chat, and a stop that fails
-   * leaves them as they were. The file is removed again if omp wrote it back. A stop that fails throws, and the error
-   * reaches the person.
+   * leaves them as they were. A stop that fails throws, and the error reaches the person. Once omp has stopped, the check
+   * deleteSession makes runs again: a view that came in while omp stopped, or an omp another tab started, still holds the
+   * chat, and omp would write it back. The file is then left as it is and the refusal is returned, not thrown. Otherwise
+   * the file omp wrote back is removed.
    */
   async finishOmpDelete(
     file: SessionFile,
     caller: { readonly connectionId: string },
-  ): Promise<void> {
+  ): Promise<
+    | { readonly outcome: "removed" }
+    | { readonly outcome: "refused"; readonly reason: SessionDeleteRefusal }
+  > {
     // The caller's own views stay counted while omp stops: omp's exit takes them with the chat, and a stop that fails keeps them.
     const own = this.#options.views?.viewsOf(file.id, caller.connectionId) ?? 0;
     await this.#options.stopUnwatched?.(file.id, own);
+    const serverProcess = serverOwnsSession(this.#options, file.id, file.sessionFile);
+    // Another view counts only where the views are known: a store without them can see no other view to refuse for.
+    const others =
+      this.#options.views !== undefined &&
+      this.#options.views.watcherCount(file.id) > this.#heldViewsOf(file.id, caller);
+    if (serverProcess || others) {
+      // A turn that still runs blocked the stop: the person waits for it, as the sidebar's delete says.
+      if (this.#options.turnOf?.(file.id) === "running") {
+        return { outcome: "refused", reason: "running" };
+      }
+      return {
+        outcome: "refused",
+        reason: serverProcess && !others ? "finishing" : "open-elsewhere",
+      };
+    }
     try {
       await fs.rm(file.sessionFile, { force: true });
     } catch (error) {
       throw appFailure("permission", "Unable to delete the omp session file", true, error);
     }
+    return { outcome: "removed" };
   }
 
   /**

@@ -68,6 +68,10 @@ class FakeProcess implements OmpProcess {
   extraState: Record<string, unknown> = {};
   /** When set, `stop()` finishes only after this resolves, like a real omp flushing before exit. */
   stopGate: Promise<void> | undefined;
+  /** When set, omp's answer to `set_host_tools` waits for this, like an omp that answers late. */
+  holdHostTools: Promise<void> | undefined = undefined;
+  /** When set, `stop()` leaves the session open: a write omp has not answered is still pending after the stop. */
+  keepPendingOnStop = false;
   /** When set, `start()` fails with it, like an omp that cannot be spawned. */
   startFailure: AppFailure | undefined;
   /** The stderr omp printed before it stopped: the tail the server reads for why it stopped. */
@@ -123,6 +127,7 @@ class FakeProcess implements OmpProcess {
   async stop(): Promise<void> {
     await this.stopGate;
     this.emitEvent({ status: "stopped", processId: this.processId });
+    if (this.keepPendingOnStop) return;
     for (const listener of [...this.#closeListeners]) listener();
   }
 
@@ -161,7 +166,12 @@ class FakeProcess implements OmpProcess {
                           ...this.extraState,
                         }
                       : {};
-    this.emit({ type: "response", id: frame.id, command, success: true, data });
+    const response = { type: "response", id: frame.id, command, success: true, data };
+    if (command === "set_host_tools" && this.holdHostTools !== undefined) {
+      void this.holdHostTools.then(() => this.emit(response));
+    } else {
+      this.emit(response);
+    }
     if (command === "branch" && this.nextIdentity !== undefined) this.identity = this.nextIdentity;
     if (command === "set_session_name" && this.nextIdentity !== undefined) {
       this.identity = this.nextIdentity;
@@ -1381,6 +1391,151 @@ describe("A0.7 RpcSessionPort handlers", () => {
     gate.resolve();
     await expect(deleting).rejects.toMatchObject({ appError: { code: "conflict" } });
     expect(await renamed).toMatchObject({ appError: { code: "conflict" } });
+  });
+
+  /**
+   * Tab one holds a host tool, and lets its view go while omp stops: omp's exit ends the stop before omp answers the
+   * host write that takes the tool back. Tab two opens the chat meanwhile. Returns tab two's watcher count when it
+   * opens, and after omp's late answer; a release that comes after the stop must not reach tab two's watcher.
+   */
+  async function lateHostAnswerAfterStop(
+    letGo: (runtime: ReturnType<typeof createA0Runtime>, handlers: HandlerSet) => unknown,
+  ): Promise<{ readonly opened: number; readonly answered: number }> {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    await getHandler(handlers, "send")(
+      {
+        threadId: authorityThread,
+        registrationOwner: "owner-one",
+        command: {
+          type: "set_host_tools",
+          tools: [
+            {
+              name: "tab_one",
+              label: "tab_one",
+              description: "Tab one tool",
+              parameters: { type: "object" },
+            },
+          ],
+        },
+      },
+      call("one"),
+    );
+    const stopGate = Promise.withResolvers<void>();
+    const hostAnswer = Promise.withResolvers<void>();
+    process.stopGate = stopGate.promise;
+    process.keepPendingOnStop = true;
+    process.holdHostTools = hostAnswer.promise;
+
+    // Tab one's delete stops omp, counting its own view as its own. The stop waits at its gate.
+    const stopping = ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1);
+    for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(authorityThread); turn += 1) {
+      await Bun.sleep(0);
+    }
+    expect(ctx.processRegistry.isStopping(authorityThread)).toBe(true);
+    // Tab one lets go while the stop runs. Its host write to omp is not answered yet.
+    const letting = Promise.resolve(letGo(runtime, handlers));
+    for (let turn = 0; turn < 20; turn += 1) await Bun.sleep(0);
+    // omp exits, and tab two opens the chat.
+    stopGate.resolve();
+    await stopping;
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("two"));
+    const opened = ctx.processRegistry.watcherCount(authorityThread);
+    // omp answers tab one's host write only now, after the stop has ended.
+    hostAnswer.resolve();
+    await letting;
+    return { opened, answered: ctx.processRegistry.watcherCount(authorityThread) };
+  }
+
+  test("a close during a stop lets its view go before omp answers its host write, so the next tab keeps its watcher", async () => {
+    const result = await lateHostAnswerAfterStop((_runtime, handlers) =>
+      getHandler(handlers, "close")({ threadId: authorityThread }, call("one")),
+    );
+    expect(result).toEqual({ opened: 1, answered: 1 });
+  });
+
+  test("a connection that closes during a stop lets its views go before omp answers, so the next tab keeps its watcher", async () => {
+    const result = await lateHostAnswerAfterStop(async (runtime) => {
+      await runtime.registrations[0]?.onConnectionClosed?.("one");
+    });
+    expect(result).toEqual({ opened: 1, answered: 1 });
+  });
+
+  test("releaseViews during a stop lets its views go before omp answers, so the next tab keeps its watcher", async () => {
+    const result = await lateHostAnswerAfterStop((runtime) =>
+      runtime.views.releaseViews(authorityThread, "one"),
+    );
+    expect(result).toEqual({ opened: 1, answered: 1 });
+  });
+
+  test("a rename sent with a switched chat's old id waits for that chat's stopping omp, and writes to neither omp", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const switchedThread = ThreadId.parse("omp-session-switched-rename");
+    process.nextIdentity = {
+      threadId: switchedThread,
+      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/switched-rename.jsonl"),
+    };
+    await getHandler(handlers, "send")(
+      { threadId: authorityThread, command: { type: "branch", entryId: "entry-1" } },
+      call("one"),
+    );
+    // The switched chat is keyed by its new id, and the old id leads to it.
+    const gate = Promise.withResolvers<void>();
+    process.stop = () =>
+      gate.promise.then(() => Promise.reject(new Error("omp could not be signalled")));
+    const deleting = ctx.processRegistry.stopIfUnwatched(switchedThread, "deleted", 1);
+    for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(switchedThread); turn += 1) {
+      await Bun.sleep(0);
+    }
+    expect(ctx.processRegistry.isStopping(switchedThread)).toBe(true);
+
+    // A rename sent with the old id, while that chat's omp stops.
+    const renamed = Promise.resolve(
+      getHandler(handlers, "rename")(
+        { threadId: authorityThread, name: "during the stop" },
+        call("one"),
+      ),
+    ).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    for (let turn = 0; turn < 20; turn += 1) await Bun.sleep(0);
+    expect(process.writes.some((frame) => frame.type === "set_session_name")).toBe(false);
+
+    gate.resolve();
+    await expect(deleting).rejects.toMatchObject({ appError: { code: "conflict" } });
+    expect(await renamed).toMatchObject({ appError: { code: "conflict" } });
+    // Neither omp was asked to set the name, and no omp was started for the file the old id names.
+    expect(process.writes.some((frame) => frame.type === "set_session_name")).toBe(false);
+    expect(created).toHaveLength(1);
+  });
+
+  test("closing a chat with no open entry resolves to null, and lets go of nothing", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    await expect(
+      getHandler(handlers, "close")({ threadId: ThreadId.parse("chat-never-opened") }, call("one")),
+    ).resolves.toBeNull();
+    expect(ctx.processRegistry.watcherCount(authorityThread)).toBe(1);
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(1);
+    expect(created).toHaveLength(1);
   });
 
   test("routes UI/host answers and exposes a process crash as a replayed process event", async () => {

@@ -480,12 +480,16 @@ export class RpcSessionPortRuntime {
     await this.#serializeRename(args.threadId, async () => {
       const entry = this.#entryOrUndefined(args.threadId);
       // A chat whose omp is stopping is renamed as a closed chat: the rename waits for that omp to exit,
-      // and writes nothing into it.
+      // and writes nothing into it. It is keyed by the entry's own thread id: a switched chat's old id is an alias that
+      // no stop is keyed by, so the rename would wait for nothing.
       if (
         entry === undefined ||
         this.#context.processRegistry.isStopping(entry.bootstrap.threadId)
       ) {
-        await this.#renameClosed(args, call);
+        await this.#renameClosed(
+          { ...args, threadId: entry?.bootstrap.threadId ?? args.threadId },
+          call,
+        );
         return;
       }
       await this.#ensureRunning(entry);
@@ -851,12 +855,13 @@ export class RpcSessionPortRuntime {
     if (entry === undefined) return null;
     const count = entry.viewers.get(call.connectionId) ?? 0;
     if (count > 0) {
-      if (count === 1) {
-        await this.#releaseHostRegistrations(entry, call.connectionId, call.signal);
-        entry.viewers.delete(call.connectionId);
-      } else entry.viewers.set(call.connectionId, count - 1);
+      // The view goes before the first await: omp's answer to the host write can come after its stop has ended and a
+      // later tab has opened the chat, and a release that late must not reach that tab's watcher.
+      if (count === 1) entry.viewers.delete(call.connectionId);
+      else entry.viewers.set(call.connectionId, count - 1);
       entry.preferences.delete(call.connectionId);
       this.#context.processRegistry.release(entry.bootstrap.threadId);
+      if (count === 1) await this.#releaseHostRegistrations(entry, call.connectionId, call.signal);
       // Only a chat another tab still watches recomputes its subscription, as releaseConnection does: the last view
       // leaving sends omp nothing, so a chat whose omp is starting or has exited does not refuse its close.
       if (entry.viewers.size > 0) await this.#arbitrate(entry, call.signal);
@@ -876,12 +881,12 @@ export class RpcSessionPortRuntime {
     for (const entry of new Set(this.#entries.values())) {
       const count = entry.viewers.get(connectionId) ?? 0;
       if (count === 0) continue;
-      await this.#releaseHostRegistrations(entry, connectionId, new AbortController().signal);
       entry.viewers.delete(connectionId);
       entry.preferences.delete(connectionId);
       for (let opened = 0; opened < count; opened += 1) {
         this.#context.processRegistry.release(entry.bootstrap.threadId);
       }
+      await this.#releaseHostRegistrations(entry, connectionId, new AbortController().signal);
       if (entry.viewers.size > 0) stillWatched.push(entry);
     }
     // Another tab still watching a chat: its subscription level is recomputed without this one.
@@ -920,12 +925,12 @@ export class RpcSessionPortRuntime {
     const count = entry?.viewers.get(connectionId) ?? 0;
     if (entry === undefined || count === 0) return;
     const signal = new AbortController().signal;
-    await this.#releaseHostRegistrations(entry, connectionId, signal);
     entry.viewers.delete(connectionId);
     entry.preferences.delete(connectionId);
     for (let opened = 0; opened < count; opened += 1) {
       this.#context.processRegistry.release(entry.bootstrap.threadId);
     }
+    await this.#releaseHostRegistrations(entry, connectionId, signal);
     if (entry.viewers.size > 0) await this.#arbitrate(entry, signal);
   }
 

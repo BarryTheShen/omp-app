@@ -110,4 +110,42 @@ describe("a typed /session delete publishes the removal the sidebar's own delete
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("a typed delete whose finish finds another tab keeps the chat's file, answers open-elsewhere, and publishes no removal", async () => {
+    await mkdir(WORKTREE_DATA, { recursive: true });
+    const root = await mkdtemp(path.join(WORKTREE_DATA, "gateway-delete-finish-"));
+    try {
+      const cwd = "/workspace/app";
+      // The asking view leaves with omp's exit. While omp stops, another tab opens the chat, and omp writes it back.
+      let callerViews = 1;
+      let otherViews = 0;
+      const store = new SessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        tempRoot: path.join(root, "tmp"),
+        views: {
+          viewsOf: () => callerViews,
+          watcherCount: () => callerViews + otherViews,
+          releaseViews: async () => undefined,
+        },
+        stopUnwatched: async () => {
+          callerViews = 0;
+          otherViews = 1;
+          await writeChat(store, cwd, "chat-finish");
+        },
+      });
+      const file = await writeChat(store, cwd, "chat-finish");
+      const published: Published[] = [];
+      const run = deleteHandler(store, published, () => rm(file));
+
+      await expect(run("chat-finish")).resolves.toEqual({
+        outcome: "refused",
+        reason: "open-elsewhere",
+      });
+      await access(file);
+      expect(published).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
