@@ -279,6 +279,21 @@ export function shareSlashCommand({
 }
 
 /**
+ * `/copy`: the app's own command, the conversation copy picker over this chat. It runs the same copy action the palette
+ * command runs, so typed `/copy` and the palette give one result.
+ */
+export function copySlashCommand({ copy }: { readonly copy: () => unknown }): SlashAppCommand {
+  return {
+    name: "copy",
+    description: "Copy from this chat",
+    run: async () => {
+      await copy();
+      return {};
+    },
+  };
+}
+
+/**
  * `/mcp reload`: over RPC omp only refreshes its command list and reconnects no MCP server, so the app runs the typed
  * reload (A1's `action`) and shows the message that says what it did, not omp's own words for it.
  */

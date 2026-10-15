@@ -197,7 +197,7 @@ import { ComposerHistory } from "./composer-history";
 import { composerInput } from "./composer-input";
 import { ComposerTriggers } from "./composer-triggers";
 import { SessionContextPanel } from "./context-panel";
-import { browserClipboard, useCopyFromChat } from "./copy/use-copy-from-chat";
+import { browserClipboard, runCopyFromChat, useCopyFromChat } from "./copy/use-copy-from-chat";
 import { reportDraftFailure, useComposerDraftOwner } from "./draft-owner";
 import { type EmptyStateCopy, emptyStateCopy } from "./empty-state";
 import { useExecutionModesSurface } from "./execution-modes";
@@ -234,6 +234,7 @@ import { useShareFromChat } from "./share/use-share-from-chat";
 import {
   agentHubSlashCommand,
   askFirstSlashCommands,
+  copySlashCommand,
   freshSlashCommand,
   guardOmpSend,
   hotkeysSlashCommand,
@@ -1265,6 +1266,7 @@ function ActiveThreadReady({
       newChatSlashCommand({ lifecycle, openThread }),
       freshSlashCommand({ lifecycle }),
       shareSlashCommand({ run: () => runShareCommand(shareController) }),
+      copySlashCommand({ copy: () => runCopyFromChat(shortcutRegistry) }),
       loginSlashCommand({ openLogin }),
       settingsSlashCommand({
         openSettings: () => onOpenSettings(threadId, composerInput() ?? undefined),

@@ -33,6 +33,7 @@ import { ComposerTriggers } from "./composer-triggers";
 import {
   askFirstSlashCommand,
   askFirstSlashCommands,
+  copySlashCommand,
   describeResetTarget,
   freshSlashCommand,
   guardOmpSend,
@@ -466,6 +467,15 @@ describe("#957 /share never reaches omp unconfirmed", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  test("/copy is the app's command, named copy, and runs the copy action it is given", async () => {
+    const copy = vi.fn(async () => undefined);
+    const command = copySlashCommand({ copy });
+    expect(command.name).toBe("copy");
+    expect(command.description).toBe("Copy from this chat");
+    await expect(command.run({})).resolves.toEqual({});
+    expect(copy).toHaveBeenCalledTimes(1);
+  });
+
   test("a prompt, steer or follow-up in a form of /share never reaches omp, and other commands pass", async () => {
     const send = vi.fn(async () => undefined) as unknown as RpcSessionSend;
     const guarded = guardOmpSend(send);
@@ -479,6 +489,46 @@ describe("#957 /share never reaches omp unconfirmed", () => {
     expect(send).not.toHaveBeenCalled();
     await sent("prompt", "pong");
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("/copy typed in the composer", () => {
+  test("bare /copy is the app's command: the composer gives it to the app, and running it calls copy once", async () => {
+    const copy = vi.fn(async () => undefined);
+    const command = copySlashCommand({ copy });
+    const provider = {
+      route: async (text: string) => routeSlashText(text, [], [command]),
+    } as unknown as SlashCommandProvider;
+    await expect(
+      routeSubmit({
+        intent: { ...prompt, text: "/copy" },
+        hasAttachments: false,
+        provider,
+        appCommands: [command],
+      }),
+    ).resolves.toEqual({ kind: "app", command });
+    await command.run({});
+    expect(copy).toHaveBeenCalledTimes(1);
+  });
+
+  test("/copy with words after it goes to the app's refusal, and copy is not called", async () => {
+    const copy = vi.fn(async () => undefined);
+    const command = copySlashCommand({ copy });
+    const provider = {
+      route: async (text: string) => routeSlashText(text, [], [command]),
+    } as unknown as SlashCommandProvider;
+    const route = await routeSubmit({
+      intent: { ...prompt, text: "/copy the README" },
+      hasAttachments: false,
+      provider,
+      appCommands: [command],
+    });
+    expect(route?.kind).toBe("app");
+    if (route?.kind !== "app") throw new Error("the refusal is an app route");
+    await expect(route.command.run({})).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    expect(copy).not.toHaveBeenCalled();
   });
 });
 

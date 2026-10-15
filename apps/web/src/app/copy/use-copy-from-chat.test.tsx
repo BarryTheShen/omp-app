@@ -1,11 +1,7 @@
 import { ThreadId } from "@omp-app/contracts";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import {
-  D4_COPY_COMMAND,
-  D4_COPY_DESCRIPTORS,
-  D4_COPY_SHORTCUT,
-} from "@/modules/D4/copy/descriptors";
+import { D4_COPY_COMMAND, D4_COPY_SHORTCUT } from "@/modules/D4/copy/descriptors";
 import { OmpRuntimeStore } from "@/modules/R0/store";
 import type {
   DialogHost,
@@ -20,7 +16,7 @@ import {
   ShortcutRegistryProvider,
   useShortcutRegistry,
 } from "@/shortcuts";
-import { type CopyFromChatOptions, useCopyFromChat } from "./use-copy-from-chat";
+import { type CopyFromChatOptions, runCopyFromChat, useCopyFromChat } from "./use-copy-from-chat";
 
 afterEach(() => cleanup());
 
@@ -103,7 +99,7 @@ function mountCopy(options: Options) {
   };
   render(
     <ShortcutRegistryProvider
-      descriptors={D4_COPY_DESCRIPTORS}
+      descriptors={[D4_COPY_COMMAND, D4_COPY_SHORTCUT]}
       preferenceStore={new MemoryPreferenceStore()}
     >
       <Harness options={options} registry={registry} showStatus={showStatus} />
@@ -178,5 +174,33 @@ describe("useCopyFromChat", () => {
       ]),
     );
     expect(statuses.join(" ")).not.toContain("Copied");
+  });
+});
+
+describe("the typed /copy", () => {
+  test("runs the copy command the palette runs", () => {
+    const run = vi.fn();
+    const shortcuts = { commandFor: () => ({ run }) } as unknown as Pick<
+      ShortcutRegistry,
+      "commandFor"
+    >;
+    runCopyFromChat(shortcuts);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  test("says so, and runs nothing, while the chat's copy command is not registered yet", () => {
+    const shortcuts = { commandFor: () => undefined } as unknown as Pick<
+      ShortcutRegistry,
+      "commandFor"
+    >;
+    let failure: unknown;
+    try {
+      runCopyFromChat(shortcuts);
+    } catch (error: unknown) {
+      failure = error;
+    }
+    expect(failure).toMatchObject({
+      appError: { code: "unavailable", message: "Copy from this chat isn't ready yet. Try again." },
+    });
   });
 });

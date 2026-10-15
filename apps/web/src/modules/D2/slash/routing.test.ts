@@ -302,7 +302,7 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
     expect(await refusalOf("/clear")).toBe(
       "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
     );
-    expect(await refusalOf("/copy")).toBe(
+    expect(await refusalOf("/copy the README")).toBe(
       "/copy only runs in omp's terminal, so nothing was sent. Use Copy from this chat instead.",
     );
     expect(await refusalOf("/resume")).toBe(
@@ -317,6 +317,19 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
     expect(await refusalOf("/pause")).toBe(
       "/pause only runs in omp's terminal, so nothing was sent.",
     );
+  });
+
+  test("bare /copy is the app's command when the app lists it; words after it stay refused", () => {
+    const copy: SlashAppCommand = {
+      name: "copy",
+      description: "Copy from this chat",
+      run: async () => ({}),
+    };
+    expect(routeSlashText("/copy", entries, [copy])).toEqual({ kind: "app", command: copy });
+    expect(routeSlashText("/copy the README", entries, [copy])).not.toEqual({
+      kind: "app",
+      command: copy,
+    });
   });
 
   test("text that only looks like one of these names, or is a path, is still a prompt", () => {

@@ -24,5 +24,3 @@ export const D4_COPY_SHORTCUT = {
   chord: "Alt+C",
   scope: "global",
 } as const satisfies ShortcutDescriptor;
-
-export const D4_COPY_DESCRIPTORS = [D4_COPY_COMMAND, D4_COPY_SHORTCUT] as const;

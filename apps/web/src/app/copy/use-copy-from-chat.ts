@@ -1,4 +1,4 @@
-import type { ThreadId } from "@omp-app/contracts";
+import { AppFailure, type ThreadId } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ClipboardPort } from "@/modules/D4/contract";
 import {
@@ -11,7 +11,7 @@ import { D4_COPY_COMMAND, D4_COPY_SHORTCUT } from "@/modules/D4/copy/descriptors
 import type { OmpRuntimeStore, RuntimeSnapshot } from "@/modules/R0/store/store";
 import type { KeyedTranscriptMessage } from "@/modules/U1/copy";
 import type { DialogHost } from "@/modules/U4/contract";
-import { useShortcutRegistry } from "@/shortcuts";
+import { type ShortcutRegistry, useShortcutRegistry } from "@/shortcuts";
 
 /** The composer's text box: the picker hands focus back to it once the picker has settled. */
 const COMPOSER_INPUT = 'textarea[aria-label="Message input"]';
@@ -90,4 +90,20 @@ export function useCopyFromChat({
       unregisterShortcut();
     };
   }, [run, shortcuts]);
+}
+
+/**
+ * Runs "Copy from this chat" for a typed `/copy`: the command the palette runs. The hook registers that command from an
+ * effect, so until the effect has run there is nothing to run, and the person is told so.
+ */
+export function runCopyFromChat(shortcuts: Pick<ShortcutRegistry, "commandFor">): void {
+  const command = shortcuts.commandFor(D4_COPY_COMMAND.id);
+  if (command === undefined) {
+    throw new AppFailure({
+      code: "unavailable",
+      message: "Copy from this chat isn't ready yet. Try again.",
+      retryable: true,
+    });
+  }
+  command.run();
 }
