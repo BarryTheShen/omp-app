@@ -1,7 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
+import {
+  enableNativeSkills,
+  expect,
+  realTest,
+  screenshots,
+  startChat,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 /*
  * Issue 1264: a `/skill:<name>` run put omp's whole generated prompt into the chat. Here real omp runs a skill
@@ -13,24 +20,7 @@ const SKILL = "review-notes";
 const ARGUMENTS = "fix the typo in the intro";
 const PROMPT_LINE = "Check every note for typos before you answer.";
 
-/*
- * The fake provider's config.yml (packages/omp-rpc/scripts/fake-openai-server.ts) puts `native` in disabledProviders.
- * With it, omp 18.8.9 did not load the skill and sent `/skill:<name>` as plain text (run directly: no skill-prompt
- * message; the same config without `native` gives one). This config keeps `native` enabled and the other providers off.
- */
-const CONFIG_WITH_NATIVE_SKILLS = [
-  "disabledProviders:",
-  "  - agents-md",
-  "  - agents",
-  "  - claude",
-  "  - codex",
-  "  - gemini",
-  "  - github",
-  "  - opencode",
-  "",
-].join("\n");
-
-/** A SKILL.md with the frontmatter omp's loader reads (as in fix-799-extension-source.spec.ts), and the config that lets omp load it. */
+/** A SKILL.md with the frontmatter omp's loader reads (as in fix-799-extension-source.spec.ts). */
 async function seedSkill(agentDir: string): Promise<void> {
   const folder = join(agentDir, "skills", SKILL);
   await mkdir(folder, { recursive: true });
@@ -38,7 +28,7 @@ async function seedSkill(agentDir: string): Promise<void> {
     join(folder, "SKILL.md"),
     `---\nname: ${SKILL}\ndescription: Checks notes for typos.\n---\n${PROMPT_LINE}\n`,
   );
-  await writeFile(join(agentDir, "config.yml"), CONFIG_WITH_NATIVE_SKILLS);
+  await enableNativeSkills(agentDir);
 }
 
 /*

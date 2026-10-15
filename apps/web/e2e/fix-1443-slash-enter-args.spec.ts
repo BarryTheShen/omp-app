@@ -1,7 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
+import {
+  enableNativeSkills,
+  expect,
+  realTest,
+  screenshots,
+  startChat,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 /*
  * Issue 1443: Enter after the `/` list had offered a skill replaced the typed arguments with the skill's name, so the
@@ -15,24 +22,7 @@ const ARGUMENTS = "fix the typo in the intro";
 const COMMAND = `/skill:${SKILL} ${ARGUMENTS}`;
 const PROMPT_LINE = "Check every note for typos before you answer.";
 
-/*
- * The fake provider's config.yml (packages/omp-rpc/scripts/fake-openai-server.ts) turns off omp's `native` provider, the
- * one that loads skills, so a seeded skill would not load (follow-up #1377). This config keeps `native` on and the other
- * providers off, as fix-1264-skill-card.spec.ts does.
- */
-const CONFIG_WITH_NATIVE_SKILLS = [
-  "disabledProviders:",
-  "  - agents-md",
-  "  - agents",
-  "  - claude",
-  "  - codex",
-  "  - gemini",
-  "  - github",
-  "  - opencode",
-  "",
-].join("\n");
-
-/** A SKILL.md with the frontmatter omp's loader reads, and the config that lets omp load it. */
+/** A SKILL.md with the frontmatter omp's loader reads. */
 async function seedSkill(agentDir: string): Promise<void> {
   const folder = join(agentDir, "skills", SKILL);
   await mkdir(folder, { recursive: true });
@@ -40,7 +30,7 @@ async function seedSkill(agentDir: string): Promise<void> {
     join(folder, "SKILL.md"),
     `---\nname: ${SKILL}\ndescription: Checks notes for typos.\n---\n${PROMPT_LINE}\n`,
   );
-  await writeFile(join(agentDir, "config.yml"), CONFIG_WITH_NATIVE_SKILLS);
+  await enableNativeSkills(agentDir);
 }
 
 /** The `/` list above the composer: the listbox the slash-command catalog fills (`trigger-slot.tsx`). */

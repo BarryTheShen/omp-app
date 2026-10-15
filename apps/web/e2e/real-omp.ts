@@ -343,6 +343,27 @@ async function stopChild(child: ChildProcess | undefined): Promise<void> {
   await promise;
 }
 
+/**
+ * The fake provider turns omp's `native` provider off, and that provider loads skills from the agent folder. A spec that
+ * seeds a skill calls this to turn `native` back on; every other provider stays off, as the fake provider has them (#1377).
+ */
+export async function enableNativeSkills(agentDir: string): Promise<void> {
+  await writeFile(
+    join(agentDir, "config.yml"),
+    [
+      "disabledProviders:",
+      "  - agents-md",
+      "  - agents",
+      "  - claude",
+      "  - codex",
+      "  - gemini",
+      "  - github",
+      "  - opencode",
+      "",
+    ].join("\n"),
+  );
+}
+
 export const realOmpEnabled = process.env.OMP_APP_REAL_OMP === "1" && existsSync(REAL_OMP);
 
 /** Files for the chat's workspace folder, and whether that folder is a git repository (`git init`). */
