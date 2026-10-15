@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AppFailure, type AttachmentRef } from "@omp-app/contracts";
@@ -135,6 +135,36 @@ describe("AttachmentStoreService", () => {
       expect(error.appError.code).toBe("not_found"),
     );
     expect(third.ref.id).not.toBe(second.ref.id);
+  });
+
+  test("two blobs written in the same millisecond: eviction removes the older unreferenced one, and the new one stays", async () => {
+    setSystemTime(new Date("2020-01-01T00:00:00.000Z"));
+    try {
+      const appDataDir = await temporaryDirectory();
+      const store = new AttachmentStoreService({
+        appDataDir,
+        maxTotalBytes: 4,
+        referencedAttachments: async () => ({ refs: [], complete: true }),
+      });
+      const older = await store.put({
+        id: "older",
+        name: "a.txt",
+        mediaType: "text/plain",
+        bytes: base64("1234"),
+      });
+      const newer = await store.put({
+        id: "newer",
+        name: "b.txt",
+        mediaType: "text/plain",
+        bytes: base64("5678"),
+      });
+      await expect(store.get({ ref: newer.ref })).resolves.toBeDefined();
+      await expectAppFailure(store.get({ ref: older.ref })).then((error) =>
+        expect(error.appError.code).toBe("not_found"),
+      );
+    } finally {
+      setSystemTime();
+    }
   });
   test("never evicts a draft-referenced blob and fails when referenced storage is full", async () => {
     const appDataDir = await temporaryDirectory();

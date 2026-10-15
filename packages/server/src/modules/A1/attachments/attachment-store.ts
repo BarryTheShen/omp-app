@@ -207,7 +207,7 @@ export class AttachmentStoreService {
     } catch (error) {
       throw toFailure(error, "write attachment metadata");
     }
-    const withinCap = await this.evictIfNeeded();
+    const withinCap = await this.evictIfNeeded(undefined, hash);
     if (!withinCap || !(await this.fileExists(blobPath))) {
       // Refused: a blob this call wrote is removed, since nothing refers to it yet.
       if (!existing.exists) await this.removeBlob(hash);
@@ -295,11 +295,11 @@ export class AttachmentStoreService {
   }
 
   /**
-   * Removes unreferenced blobs, oldest first, until the store is within its cap, and returns whether
-   * it is. While a draft cannot be read, or a reference names no blob, every blob counts as
-   * referenced, so none is removed.
+   * Removes unreferenced blobs, oldest first (blobs written in the same millisecond go by name), until the store is
+   * within its cap, and returns whether it is. The blob `keep`, the one a put is writing, is never removed. While a draft
+   * cannot be read, or a reference names no blob, every blob counts as referenced, so none is removed.
    */
-  private async evictIfNeeded(orphanAgeMs?: number): Promise<boolean> {
+  private async evictIfNeeded(orphanAgeMs?: number, keep?: string): Promise<boolean> {
     const max = Math.max(1, Math.floor(this.#options.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES));
     const references = await this.#options.referencedAttachments();
     const referenced = new Set<string>();
@@ -332,9 +332,12 @@ export class AttachmentStoreService {
       blobs.push({ hash, size: stat.size, createdAt });
       total += stat.size;
     }
-    blobs.sort((left, right) => left.createdAt - right.createdAt);
+    blobs.sort(
+      (left, right) => left.createdAt - right.createdAt || (left.hash < right.hash ? -1 : 1),
+    );
     const now = Date.now();
     for (const blob of blobs) {
+      if (blob.hash === keep) continue;
       const isReferenced = keepEveryBlob || referenced.has(blob.hash);
       const isOldOrphan =
         orphanAgeMs !== undefined && !isReferenced && now - blob.createdAt >= orphanAgeMs;
