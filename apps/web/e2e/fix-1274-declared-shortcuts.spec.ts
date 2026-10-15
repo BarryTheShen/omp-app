@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { Locator } from "@playwright/test";
 import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
 
 /**
@@ -7,6 +8,12 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
  * thinking dialog from the message box; F2 on a chat in the session list opens its rename box; the sheet
  * lists Alt+K for the thinking cycle and no chord the browser keeps. Real omp, fake model.
  */
+
+/** A shortcut row's title is read in full: a title cut short is wider inside its box than the box shows. */
+async function expectReadInFull(title: Locator): Promise<void> {
+  await expect(title).toBeVisible();
+  expect(await title.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(false);
+}
 
 const AT = Date.UTC(2026, 8, 1, 12, 0, 0);
 const USAGE = {
@@ -93,9 +100,15 @@ realTest(
     await expect(sheet).toContainText("Rename session");
     await expect(sheet).toContainText("F2");
     await expect(sheet).toContainText("Delete session without confirmation");
+    await expectReadInFull(sheet.getByText("Delete session without confirmation", { exact: true }));
     await expect(sheet).not.toContainText("Toggle session");
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-1274-sheet-light.png") });
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await waitForFiniteAnimations(page);
+    await expectReadInFull(sheet.getByText("Delete session without confirmation", { exact: true }));
+    await page.screenshot({ path: join(screenshots, "fix-1274-sheet-session-dark.png") });
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
     await search.fill("thinking");
     await expect(sheet).toContainText("Cycle thinking level");
     await expect(sheet).toContainText("Alt+K");
@@ -180,8 +193,14 @@ realTest(
     const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
     await sheet.getByRole("textbox", { name: "Search shortcuts" }).fill("session");
     await expect(sheet.getByRole("heading", { name: "Session list" })).toBeVisible();
+    await expectReadInFull(sheet.getByText("Delete session without confirmation", { exact: true }));
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-1274-sheet-narrow.png") });
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await waitForFiniteAnimations(page);
+    await expectReadInFull(sheet.getByText("Delete session without confirmation", { exact: true }));
+    await page.screenshot({ path: join(screenshots, "fix-1274-sheet-narrow-dark.png") });
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
     expect(realApp.problems).toEqual([]);
   },
 );

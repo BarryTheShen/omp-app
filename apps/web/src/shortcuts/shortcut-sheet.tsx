@@ -110,7 +110,7 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
                       key={binding.id}
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="min-w-0 truncate text-sm">{binding.title}</span>
+                        <span className="min-w-0 text-sm">{binding.title}</span>
                         {registry.isBrowserReserved(binding.defaultChord, binding.scope) && (
                           <span
                             className="text-warning shrink-0 text-xs"
@@ -210,7 +210,7 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
                     className="flex items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-muted"
                     key={command.text}
                   >
-                    <span className="min-w-0 truncate text-sm">{command.title}</span>
+                    <span className="min-w-0 text-sm">{command.title}</span>
                     <code className="shrink-0 font-mono text-xs">{command.text}</code>
                   </div>
                 ))}
