@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -102,13 +102,20 @@ export function useExternalEditorShortcut({
 }: ExternalEditorShortcutOptions): void {
   const registry = useShortcutRegistry();
   useShortcutScope("composer-input");
+  // The dialog can stay open for seconds, and the chat's draft can change meanwhile: a new chat that finishes opening
+  // replaces the controller the composer shows. The kept text goes to the draft that is current when "Use this text" is
+  // pressed, not to the one that was current when Ctrl+G was pressed, so the action reads `apply` through a ref.
+  const latestApply = useRef(apply);
+  useLayoutEffect(() => {
+    latestApply.current = apply;
+  }, [apply]);
   useEffect(
     () =>
       registry.registerAction(EXTERNAL_EDITOR_SHORTCUT_ID, async () => {
         const current = readDraft();
         const kept = await edit(current);
-        if (kept !== current) apply(kept);
+        if (kept !== current) latestApply.current(kept);
       }),
-    [apply, edit, readDraft, registry],
+    [edit, readDraft, registry],
   );
 }
