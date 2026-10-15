@@ -411,7 +411,7 @@ describe("OmpProcessRegistry", () => {
           asked.push(thread);
           return settled;
         },
-        stopping: (thread, process) => {
+        stopped: (thread, process) => {
           told.push({ thread, process });
         },
       });
@@ -444,7 +444,7 @@ describe("OmpProcessRegistry", () => {
       const told: ThreadId[] = [];
       registry.setIdleHooks({
         isSettled: () => answer.promise,
-        stopping: (thread) => {
+        stopped: (thread) => {
           told.push(thread);
         },
       });
@@ -469,7 +469,7 @@ describe("OmpProcessRegistry", () => {
         isSettled: async () => {
           throw new Error("omp did not answer");
         },
-        stopping: () => undefined,
+        stopped: () => undefined,
       });
       const thread = ThreadId.parse("thread-silent");
       registry.acquire(options(thread, "/workspace/silent"));
@@ -492,7 +492,7 @@ describe("OmpProcessRegistry", () => {
       const timer = new ManualTimer();
       const created: StubProcess[] = [];
       const registry = registryWith(timer, created);
-      registry.setIdleHooks({ isSettled: async () => true, stopping: () => undefined });
+      registry.setIdleHooks({ isSettled: async () => true, stopped: () => undefined });
       const thread = ThreadId.parse("thread-exiting");
       expect(await registry.whenGone(thread, "opened")).toBeUndefined();
 
@@ -704,6 +704,57 @@ describe("OmpProcessRegistry", () => {
       expect(attempts).toBe(2);
     });
 
+    test("a viewer that lets go while omp stops does not come back as a watcher when that stop fails", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-release-mid-stop");
+      registry.acquire(options(thread, "/workspace/release-mid-stop"));
+      const stopping = Promise.withResolvers<void>();
+      createdAt(created, 0).stop = () => stopping.promise;
+
+      const outcome = refusalOf(registry.stopIfUnwatched(thread, "deleted", 1));
+      for (let turn = 0; turn < 20 && !registry.isStopping(thread); turn += 1) await Bun.sleep(0);
+      expect(registry.isStopping(thread)).toBe(true);
+
+      // The viewer that asked the delete lets go while omp is still stopping, then the stop fails.
+      registry.release(thread);
+      stopping.reject(new Error("omp could not be signalled"));
+
+      expect(await outcome).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp did not stop, so this chat was not deleted. Try again in a moment.",
+        },
+      });
+      // Nobody watches the chat now, so the failed stop does not register it again with the watcher that let go.
+      expect(registry.has(thread)).toBe(false);
+      expect(registry.watcherCount(thread)).toBe(0);
+      expect(registry.isStopping(thread)).toBe(true);
+      expect(timer.callbacks.size).toBe(0);
+    });
+
+    test("the stopped hook is told once the stop has cleared its records, so the thread is no longer stopping then", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const seen: boolean[] = [];
+      registry.setIdleHooks({
+        isSettled: async () => true,
+        stopped: (threadId) => {
+          seen.push(registry.isStopping(threadId));
+        },
+      });
+      const thread = ThreadId.parse("thread-stopped-hook");
+      registry.acquire(options(thread, "/workspace/stopped-hook"));
+      registry.release(thread);
+
+      await registry.stopIfUnwatched(thread, "deleted");
+
+      expect(seen).toEqual([false]);
+      expect(registry.isStopping(thread)).toBe(false);
+    });
+
     test("opening a chat whose old omp does not stop in time is refused, and nothing waits for ever", async () => {
       const timer = new DelayTimer();
       const created: StubProcess[] = [];
@@ -724,6 +775,104 @@ describe("OmpProcessRegistry", () => {
           message: "omp did not stop, so this chat was not opened. Try again in a moment.",
         },
       });
+    });
+
+    test("counts the asking connection's own watcher as its own, so a chat only that connection watches is stopped", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-own-watcher");
+      registry.acquire(options(thread, "/workspace/own-watcher"));
+
+      await registry.stopIfUnwatched(thread, "deleted", 1);
+
+      expect(createdAt(created, 0).stopCalls).toBe(1);
+      expect(registry.has(thread)).toBe(false);
+    });
+
+    test("leaves a chat another watcher holds running, and keeps every watcher counted", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-other-watcher");
+      registry.acquire(options(thread, "/workspace/other-watcher"));
+      registry.acquire(options(thread, "/workspace/other-watcher"));
+
+      await registry.stopIfUnwatched(thread, "deleted", 1);
+
+      expect(createdAt(created, 0).stopCalls).toBe(0);
+      expect(registry.has(thread)).toBe(true);
+      expect(registry.watcherCount(thread)).toBe(2);
+    });
+
+    test("a stop that fails keeps a chat the asking connection still watches registered, with its process", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const thread = ThreadId.parse("thread-stop-keeps");
+      const process = registry.acquire(options(thread, "/workspace/stop-keeps"));
+      createdAt(created, 0).stop = () => Promise.reject(new Error("omp could not be signalled"));
+
+      expect(await refusalOf(registry.stopIfUnwatched(thread, "deleted", 1))).toMatchObject({
+        appError: { code: "conflict" },
+      });
+      expect(registry.has(thread)).toBe(true);
+      expect(registry.watcherCount(thread)).toBe(1);
+      // The watcher still has its chat: a later acquire shares the same process.
+      expect(registry.acquire(options(thread, "/workspace/stop-keeps"))).toBe(process);
+      expect(created).toHaveLength(1);
+    });
+
+    test("tells the holders of a thread only once omp has exited, not when its stop starts", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const told: ThreadId[] = [];
+      registry.setIdleHooks({
+        isSettled: async () => true,
+        stopped: (thread) => {
+          told.push(thread);
+        },
+      });
+      const thread = ThreadId.parse("thread-told-late");
+      registry.acquire(options(thread, "/workspace/told-late"));
+      const exit = Promise.withResolvers<void>();
+      const stopStarted = Promise.withResolvers<void>();
+      createdAt(created, 0).stop = () => {
+        stopStarted.resolve();
+        return exit.promise;
+      };
+      registry.release(thread);
+
+      const stopping = registry.stopIfUnwatched(thread, "deleted");
+      await stopStarted.promise;
+      expect(told).toEqual([]);
+
+      exit.resolve();
+      await stopping;
+      expect(told).toEqual([thread]);
+    });
+
+    test("does not tell the holders of a thread that its stop failed to stop", async () => {
+      const timer = new DelayTimer();
+      const created: StubProcess[] = [];
+      const registry = registryFor(timer, created);
+      const told: ThreadId[] = [];
+      registry.setIdleHooks({
+        isSettled: async () => true,
+        stopped: (thread) => {
+          told.push(thread);
+        },
+      });
+      const thread = ThreadId.parse("thread-stop-untold");
+      registry.acquire(options(thread, "/workspace/stop-untold"));
+      createdAt(created, 0).stop = () => Promise.reject(new Error("omp could not be signalled"));
+      registry.release(thread);
+
+      expect(await refusalOf(registry.stopIfUnwatched(thread, "deleted"))).toMatchObject({
+        appError: { code: "conflict" },
+      });
+      expect(told).toEqual([]);
     });
   });
   test("watched reports whether a viewer holds the thread, not whether the registry holds its process", () => {

@@ -20,9 +20,13 @@ export interface A0Runtime {
   readonly registrations: readonly PortRegistration[];
   sessionFor(threadId: ThreadId): RpcSession | undefined;
   sessionFileOf(threadId: ThreadId): SessionFilePath | undefined;
-  /** The views each connection holds on the chats this runtime runs: a delete of a chat lets its own views go. */
+  /**
+   * The views each connection holds on the chats this runtime runs. A delete of a chat counts them; omp's exit takes the
+   * views of a chat with it, since its entry goes.
+   */
   readonly views: {
     viewsOf(threadId: ThreadId, connectionId: string): number;
+    watcherCount(threadId: ThreadId): number;
     releaseViews(threadId: ThreadId, connectionId: string): Promise<void>;
   };
 }
@@ -43,6 +47,7 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
     sessionFileOf: (threadId) => rpc.runtime.sessionFileOf(threadId),
     views: {
       viewsOf: (threadId, connectionId) => rpc.runtime.viewsOf(threadId, connectionId),
+      watcherCount: (threadId) => rpc.runtime.watcherCount(threadId),
       releaseViews: (threadId, connectionId) => rpc.runtime.releaseViews(threadId, connectionId),
     },
   };

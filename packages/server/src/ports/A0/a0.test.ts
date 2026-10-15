@@ -1206,6 +1206,183 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(created).toHaveLength(1);
   });
 
+  test("a stop that fails while this tab still watches its chat keeps the chat open for that tab", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    process.stop = () => Promise.reject(new Error("omp could not be signalled"));
+
+    // A delete from this tab stops the chat's omp, counting this tab's own view as its own. The stop fails.
+    await expect(
+      ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "conflict",
+        message: "omp did not stop, so this chat was not deleted. Try again in a moment.",
+      },
+    });
+    // The chat is still open for this tab: its entry and its view are kept, so its next message reaches omp.
+    expect(runtime.sessionFor(authorityThread)).toBeDefined();
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(1);
+    expect(ctx.processRegistry.watcherCount(authorityThread)).toBe(1);
+  });
+
+  test("a stop takes the chat's views with omp, and while omp is stopping the views are still counted for another tab", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const gate = Promise.withResolvers<void>();
+    process.stopGate = gate.promise;
+
+    const stopping = ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1);
+    for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(authorityThread); turn += 1) {
+      await Bun.sleep(0);
+    }
+    // omp is stopping: its entry has left the registry, but its views still count, so another tab is refused.
+    expect(ctx.processRegistry.isStopping(authorityThread)).toBe(true);
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(1);
+    expect(runtime.views.watcherCount(authorityThread)).toBe(1);
+
+    gate.resolve();
+    await stopping;
+    // omp has exited: the views on its chat went with it.
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(0);
+    expect(runtime.views.watcherCount(authorityThread)).toBe(0);
+    expect(runtime.sessionFor(authorityThread)).toBeUndefined();
+  });
+
+  test("a stop reaches no viewer and no replay: the stream's latest sequence does not move while omp exits", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const stream = (await getHandler(handlers, "subscribe")(
+      { threadId: authorityThread },
+      call("one"),
+    )) as { stream: StreamKey };
+    const before = ctx.replay.latestSeq(stream.stream);
+
+    await ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1);
+
+    expect(created[0]?.status).toBe("stopped");
+    expect(ctx.replay.latestSeq(stream.stream)).toBe(before);
+  });
+
+  test("a send to a chat whose omp is stopping is refused as no open thread, and writes nothing to omp", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const gate = Promise.withResolvers<void>();
+    process.stopGate = gate.promise;
+    const stopping = ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1);
+    for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(authorityThread); turn += 1) {
+      await Bun.sleep(0);
+    }
+    const writes = process.writes.length;
+
+    await expect(
+      getHandler(handlers, "send")(
+        { threadId: authorityThread, command: { type: "prompt", message: "too late" } },
+        call("one"),
+      ),
+    ).rejects.toMatchObject({
+      appError: { code: "not_found", message: `No open thread ${authorityThread}` },
+    });
+    expect(process.writes.length).toBe(writes);
+
+    gate.resolve();
+    await stopping;
+  });
+
+  test("a tab that closes its chat while omp stops is not kept as a watcher when that stop fails", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const gate = Promise.withResolvers<void>();
+    process.stop = () =>
+      gate.promise.then(() => Promise.reject(new Error("omp could not be signalled")));
+
+    // A delete from this tab starts the stop. While omp stops, this tab moves on and closes the chat.
+    const deleting = ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1);
+    for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(authorityThread); turn += 1) {
+      await Bun.sleep(0);
+    }
+    await expect(
+      getHandler(handlers, "close")({ threadId: authorityThread }, call("one")),
+    ).resolves.toBeNull();
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(0);
+
+    // The stop then fails. The chat is not registered again with a watcher that has closed it.
+    gate.resolve();
+    await expect(deleting).rejects.toMatchObject({
+      appError: {
+        code: "conflict",
+        message: "omp did not stop, so this chat was not deleted. Try again in a moment.",
+      },
+    });
+    expect(ctx.processRegistry.has(authorityThread)).toBe(false);
+    expect(ctx.processRegistry.watcherCount(authorityThread)).toBe(0);
+  });
+
+  test("a chat whose omp is stopping has no session for the command path, and a rename waits for omp to exit", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const gate = Promise.withResolvers<void>();
+    process.stop = () =>
+      gate.promise.then(() => Promise.reject(new Error("omp could not be signalled")));
+
+    const deleting = ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1);
+    for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(authorityThread); turn += 1) {
+      await Bun.sleep(0);
+    }
+    expect(runtime.sessionFor(authorityThread)).toBeUndefined();
+
+    // A rename sent while omp stops waits for the stop to end, and writes nothing into the stopping omp.
+    const renamed = Promise.resolve(
+      getHandler(handlers, "rename")(
+        { threadId: authorityThread, name: "during the stop" },
+        call("one"),
+      ),
+    ).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    for (let turn = 0; turn < 20; turn += 1) await Bun.sleep(0);
+    expect(process.writes.some((frame) => frame.type === "set_session_name")).toBe(false);
+
+    gate.resolve();
+    await expect(deleting).rejects.toMatchObject({ appError: { code: "conflict" } });
+    expect(await renamed).toMatchObject({ appError: { code: "conflict" } });
+  });
+
   test("routes UI/host answers and exposes a process crash as a replayed process event", async () => {
     const created: FakeProcess[] = [];
     const runtimeContext = context(created);

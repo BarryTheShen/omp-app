@@ -206,7 +206,7 @@ async function chatFor(root: string, chats: OmpProcessRegistry, name: string) {
     sessionsRoot: path.join(root, "sessions"),
     home: root,
     chats,
-    views: NO_VIEWS,
+    views: anonymousViews(chats),
     leaseProbe: () => "inactive",
   });
   const file = path.join(store.bucketPath(cwd), `${name}.jsonl`);
@@ -222,19 +222,51 @@ async function chatFor(root: string, chats: OmpProcessRegistry, name: string) {
 }
 
 /** No connection holds a view: a delete from any connection keeps its views as they are. */
-const NO_VIEWS: ServerViews = { viewsOf: () => 0, releaseViews: async () => undefined };
+const NO_VIEWS: ServerViews = {
+  viewsOf: () => 0,
+  watcherCount: () => 0,
+  releaseViews: async () => undefined,
+};
+
+/**
+ * Views no connection is named for: every watcher the registry counts is one view, and a delete from any connection holds
+ * none of them. The helpers that open chats through the registry use this, as A0 counts each view as a watcher.
+ */
+function anonymousViews(chats: OmpProcessRegistry): ServerViews {
+  return {
+    viewsOf: () => 0,
+    watcherCount: (threadId) => chats.watcherCount(threadId),
+    releaseViews: async () => undefined,
+  };
+}
 
 /**
  * A stand-in for the app's A0 runtime over one chat: `holds` counts each connection's views. A release lets those views
- * go the way A0 does, once per view, into the real registry.
+ * go once per view, as A0 does. A0 keeps a chat's views on its entry until omp has exited, and the registry forgets the
+ * chat then, so a view read after the exit finds none. This fake emulates that exit rule; the rule itself is proven in
+ * `a0.test.ts`, where the A0 runtime is real.
  */
 function viewsOver(
   chats: OmpProcessRegistry,
   threadId: ThreadId,
   holds: Map<string, number>,
 ): ServerViews {
+  const dropIfExited = (): void => {
+    if (!chats.has(threadId) && !chats.isStopping(threadId)) holds.clear();
+  };
   return {
-    viewsOf: (id, connectionId) => (id === threadId ? (holds.get(connectionId) ?? 0) : 0),
+    viewsOf: (id, connectionId) => {
+      if (id !== threadId) return 0;
+      dropIfExited();
+      return holds.get(connectionId) ?? 0;
+    },
+    watcherCount: (id) => {
+      if (id !== threadId) return 0;
+      dropIfExited();
+      let total = 0;
+      for (const count of holds.values()) total += count;
+      return total;
+    },
     releaseViews: async (id, connectionId) => {
       const count = holds.get(connectionId) ?? 0;
       holds.delete(connectionId);
@@ -492,7 +524,7 @@ describe("the session store the server composes", () => {
           asked.resolve();
           return settled.promise;
         },
-        stopping: () => undefined,
+        stopped: () => undefined,
       });
       const { store, cwd, file, threadId, options } = await chatFor(root, chats, "asked");
       chats.acquire(options);
@@ -621,7 +653,7 @@ describe("the session store the server composes", () => {
     const root = await makeTempRoot();
     try {
       const { chats, processes } = recordingRegistry();
-      chats.setIdleHooks({ isSettled: async () => false, stopping: () => undefined });
+      chats.setIdleHooks({ isSettled: async () => false, stopped: () => undefined });
       const { store, cwd, file, threadId, options } = await chatFor(root, chats, "still-settling");
       chats.acquire(options);
       chats.release(threadId);
@@ -637,6 +669,43 @@ describe("the session store the server composes", () => {
       expect(await exists(file)).toBe(true);
       expect(firstOf(processes).status).toBe("running");
       expect(chats.has(threadId)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a chat whose omp is still settling is refused as still finishing while the asking tab's view stays counted", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const { chats } = recordingRegistry();
+      chats.setIdleHooks({ isSettled: async () => false, stopped: () => undefined });
+      const threadId = ThreadId.parse("settling-view");
+      const holds = new Map([["tab-one", 1]]);
+      const store = createServerSessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        chats,
+        views: viewsOver(chats, threadId, holds),
+        leaseProbe: () => "inactive",
+      });
+      const file = path.join(store.bucketPath(cwd), "settling-view.jsonl");
+      await writeSession(file, "settling-view", cwd);
+      chats.acquire({ threadId, folder: FolderPath.parse(cwd), ompBin: "stub" }); // tab one's view
+
+      const error = await rejectionOf(
+        store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+      );
+
+      expect(error).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp is still finishing this chat. Try again in a moment.",
+        },
+      });
+      expect(holds.get("tab-one")).toBe(1);
+      expect(chats.has(threadId)).toBe(true);
+      expect(await exists(file)).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -680,7 +749,10 @@ describe("the session store the server composes", () => {
       const cwd = "/workspace/app";
       const { chats } = recordingRegistry();
       const threadId = ThreadId.parse("two-tabs");
-      const holds = new Map([["tab-one", 1]]);
+      const holds = new Map([
+        ["tab-one", 1],
+        ["tab-two", 1],
+      ]);
       const store = createServerSessionFileStore({
         sessionsRoot: path.join(root, "sessions"),
         home: root,
@@ -709,6 +781,67 @@ describe("the session store the server composes", () => {
       expect(chats.watcherCount(threadId)).toBe(2);
       expect(chats.has(threadId)).toBe(true);
       expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a tab with no view of its own is refused while another tab's view holds the chat, even while omp is still stopping", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const timer = firingTimer();
+      const processes: SlowStopProcess[] = [];
+      const chats = new OmpProcessRegistry({
+        timer,
+        createProcess: (options) => {
+          const process = new SlowStopProcess(options);
+          processes.push(process);
+          return process;
+        },
+      });
+      const threadId = ThreadId.parse("window-chat");
+      const holds = new Map([["tab-one", 1]]);
+      const store = createServerSessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        chats,
+        views: viewsOver(chats, threadId, holds),
+        leaseProbe: () => "inactive",
+      });
+      const file = path.join(store.bucketPath(cwd), "window-chat.jsonl");
+      await writeSession(file, "window-chat", cwd);
+      chats.acquire({ threadId, folder: FolderPath.parse(cwd), ompBin: "stub" }); // tab one's view
+
+      // Tab one asks for the delete. omp is asked to stop and does not finish within the limit.
+      const refusedToTabOne = rejectionOf(
+        store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+      );
+      await firstOf(processes).stopping.promise;
+      await Bun.sleep(0); // the stop's limit is registered once the stop has started: let that happen before it fires
+      timer.fireAll();
+      expect(await refusedToTabOne).toMatchObject({
+        appError: {
+          code: "conflict",
+          message: "omp did not stop, so this chat was not deleted. Try again in a moment.",
+        },
+      });
+
+      // Tab two holds no view of its own and asks while omp is still stopping: tab one still shows the chat.
+      const refusedToTabTwo = await rejectionOf(
+        store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-two" }),
+      );
+      expect(refusedToTabTwo).toMatchObject({
+        appError: {
+          code: "conflict",
+          message:
+            "Another tab or window has this chat open. Close it there, then delete it again.",
+        },
+      });
+      expect(holds.get("tab-one")).toBe(1);
+      expect(await exists(file)).toBe(true);
+
+      firstOf(processes).finish.resolve(); // omp may now finish its stop
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -341,16 +341,19 @@ describe("SessionFileStore.deleteSession", () => {
 
   describe("a delete from a connection that holds the chat", () => {
     /**
-     * One chat held by the given connections' views, with the server's omp for it. A view let go is released from the
-     * holders; an omp nobody watches is stopped, as the process registry stops it.
+     * One chat held by the given connections' views, with the server's omp for it. An omp nobody else watches is stopped,
+     * and omp's exit takes every view on the chat with it, as A0 does: the store lets no view go by hand on a delete.
      */
     function heldBy(holders: readonly string[]) {
       const state = { holders: [...holders], omp: true, released: [] as string[] };
       const options: SessionFileStoreOptions = {
         serverSessionIds: () => (state.omp ? new Set(["held-chat"]) : new Set<string>()),
         serverWatches: () => state.holders.length > 0,
-        stopUnwatched: async () => {
-          if (state.holders.length === 0) state.omp = false;
+        stopUnwatched: async (_sessionId, ownViews) => {
+          if (state.holders.length > ownViews) return;
+          // omp's exit takes every view on the chat with it, the asking connection's among them.
+          state.omp = false;
+          state.holders = [];
         },
         views: {
           viewsOf: (_sessionId, connectionId) =>
@@ -365,7 +368,7 @@ describe("SessionFileStore.deleteSession", () => {
       return { state, options };
     }
 
-    test("lets its own view go once the delete is certain, and deletes the chat", async () => {
+    test("the stop takes the asking connection's own view with omp, and the delete removes the chat", async () => {
       const root = await makeTempRoot();
       try {
         const cwd = "/workspace/app";
@@ -380,7 +383,8 @@ describe("SessionFileStore.deleteSession", () => {
         );
 
         expect(result).toEqual({ id: "held-chat", sessionFile: file });
-        expect(chat.state.released).toEqual(["tab-one"]);
+        expect(chat.state.holders).toEqual([]);
+        expect(chat.state.released).toEqual([]);
         expect(await exists(file)).toBe(false);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -443,12 +447,19 @@ describe("SessionFileStore.deleteSession", () => {
       }
     });
 
-    test("is refused as before when the asking connection holds no view of the chat", async () => {
+    test("is refused before any stop when the asking connection holds no view and another connection does", async () => {
       const root = await makeTempRoot();
       try {
         const cwd = "/workspace/app";
+        const asked: number[] = [];
         const chat = heldBy(["tab-two"]);
-        const store = storeFor(root, chat.options);
+        const store = storeFor(root, {
+          ...chat.options,
+          stopUnwatched: async (sessionId, ownViews) => {
+            asked.push(ownViews);
+            await chat.options.stopUnwatched?.(sessionId, ownViews);
+          },
+        });
         const file = path.join(store.bucketPath(cwd), "held-chat.jsonl");
         await writeSession(file, "held-chat", cwd);
 
@@ -456,8 +467,69 @@ describe("SessionFileStore.deleteSession", () => {
           store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
         );
 
-        expect(error).toMatchObject({ appError: { code: "conflict" } });
+        expect(error).toMatchObject({
+          appError: {
+            code: "conflict",
+            message:
+              "Another tab or window has this chat open. Close it there, then delete it again.",
+          },
+        });
+        // Another tab holds the chat and this tab holds none: the refusal comes before omp is asked to stop.
+        expect(asked).toEqual([]);
+        expect(chat.state.holders).toEqual(["tab-two"]);
         expect(chat.state.released).toEqual([]);
+        expect(await exists(file)).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    test("asks the stop to count the asking connection's own view as its own", async () => {
+      const root = await makeTempRoot();
+      try {
+        const cwd = "/workspace/app";
+        const asked: number[] = [];
+        const chat = heldBy(["tab-one"]);
+        const store = storeFor(root, {
+          ...chat.options,
+          stopUnwatched: async (_sessionId, ownViews) => {
+            asked.push(ownViews);
+            if (chat.state.holders.length <= ownViews) chat.state.omp = false;
+          },
+        });
+        const file = path.join(store.bucketPath(cwd), "held-chat.jsonl");
+        await writeSession(file, "held-chat", cwd);
+
+        await store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" });
+
+        expect(asked).toEqual([1]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    test("a refusal after the stop keeps the asking connection's own view, and its chat's file", async () => {
+      const root = await makeTempRoot();
+      try {
+        const cwd = "/workspace/app";
+        const chat = heldBy(["tab-one"]);
+        // omp does not go: the chat is still held once the stop has run.
+        const store = storeFor(root, { ...chat.options, stopUnwatched: async () => undefined });
+        const file = path.join(store.bucketPath(cwd), "held-chat.jsonl");
+        await writeSession(file, "held-chat", cwd);
+
+        const error = await refusal(
+          store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+        );
+
+        expect(error).toMatchObject({
+          appError: {
+            code: "conflict",
+            message: "omp is still finishing this chat. Try again in a moment.",
+          },
+        });
+        expect(chat.state.released).toEqual([]);
+        expect(chat.state.holders).toEqual(["tab-one"]);
         expect(await exists(file)).toBe(true);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -519,7 +591,7 @@ describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs
     }
   });
 
-  test("the finish lets go of the caller's views, stops the chat's omp, then removes the file omp wrote back", async () => {
+  test("the finish stops the chat's omp with the caller's own view counted, then removes the file omp wrote back", async () => {
     const root = await makeTempRoot();
     try {
       const cwd = "/workspace/app";
@@ -534,8 +606,8 @@ describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs
             order.push(`release ${id} ${connectionId}`);
           },
         },
-        stopUnwatched: async (id) => {
-          order.push(`stop ${id}`);
+        stopUnwatched: async (id, ownViews) => {
+          order.push(`stop ${id} ${ownViews}`);
           // omp writes the chat back while its omp stops, so the file is there again.
           await writeSession(file, "chat-one", cwd);
         },
@@ -547,7 +619,8 @@ describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs
       // omp deletes the file itself, and then the server finishes the delete.
       await rm(file);
       await store.finishOmpDelete(checked.file, { connectionId: "app" });
-      expect(order).toEqual(["release chat-one app", "stop chat-one"]);
+      // The caller's view is not let go first: it is the stop's own, and omp's exit takes it.
+      expect(order).toEqual(["stop chat-one 1"]);
       expect(await exists(file)).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -572,6 +645,42 @@ describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs
       await expect(store.finishOmpDelete(checked.file, { connectionId: "app" })).rejects.toThrow(
         "omp did not stop",
       );
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a stop that fails keeps the caller's own view counted: the finish releases nothing before omp has stopped", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const file = path.join(storeFor(root).bucketPath(cwd), "2026-10-10_chat-one.jsonl");
+      await writeSession(file, "chat-one", cwd);
+      const released: string[] = [];
+      const asked: number[] = [];
+      const store = storeFor(root, {
+        views: {
+          viewsOf: () => 1,
+          watcherCount: () => 1,
+          releaseViews: async (_id, connectionId) => {
+            released.push(connectionId);
+          },
+        },
+        stopUnwatched: async (_id, ownViews) => {
+          asked.push(ownViews);
+          throw new Error("omp did not stop");
+        },
+      });
+      const checked = await store.checkOmpDelete("chat-one", { connectionId: "app" });
+      if (checked.outcome !== "clear" || checked.file === undefined) {
+        throw new Error("the chat has no file");
+      }
+      await expect(store.finishOmpDelete(checked.file, { connectionId: "app" })).rejects.toThrow(
+        "omp did not stop",
+      );
+      expect(asked).toEqual([1]);
+      expect(released).toEqual([]);
       expect(await exists(file)).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });

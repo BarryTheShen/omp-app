@@ -52,8 +52,12 @@ export interface OmpProcessIdleHooks {
    * after another period, so leaving a chat never kills work that is still going.
    */
   readonly isSettled: (threadId: ThreadId) => Promise<boolean>;
-  /** The registry is stopping this thread's process because nobody watches it: forget it. */
-  readonly stopping: (threadId: ThreadId, process: OmpProcess) => void;
+  /**
+   * omp has stopped on purpose and has exited: forget the thread. Told when omp reports that it has stopped, whether the
+   * registry started the stop or the thread's owner did (a failed open closes its session that way), and only once omp
+   * has exited, so a stop that failed leaves the thread as it was, with its viewers.
+   */
+  readonly stopped: (threadId: ThreadId, process: OmpProcess) => void;
 }
 
 interface Entry {
@@ -82,6 +86,8 @@ export class OmpProcessRegistry {
   readonly #stopping = new Map<ThreadId, Promise<void>>();
   /** The process of each thread whose stop failed, until a stop of it succeeds: a wait for the thread tries it again. */
   readonly #stuck = new Map<ThreadId, OmpProcess>();
+  /** The entry of each thread whose stop is under way, until the stop ends: a release during the stop still counts here. */
+  readonly #closing = new Map<ThreadId, Entry>();
   #idleHooks: OmpProcessIdleHooks | undefined;
   readonly #busyListeners = new Set<(threadId: ThreadId, busy: boolean) => void>();
 
@@ -180,29 +186,35 @@ export class OmpProcessRegistry {
       if (this.#entries.get(entry.key) !== entry) return;
       this.#entries.delete(entry.key);
       entry.unsubscribe();
+      this.#idleHooks?.stopped(entry.key, entry.process);
     });
   }
 
-  /** One fewer viewer of the thread; schedules idle-close once watchers reach 0 and it is not busy. */
+  /**
+   * One fewer viewer of the thread; schedules idle-close once watchers reach 0 and it is not busy. A viewer that lets go
+   * while the thread's stop is under way counts against the entry that stop holds, so a stop that then fails restores the
+   * live count, not the count the stop started with.
+   */
   release(threadId: ThreadId): void {
-    const entry = this.#entries.get(threadId);
+    const entry = this.#entries.get(threadId) ?? this.#closing.get(threadId);
     if (entry === undefined) return;
     entry.watchers = Math.max(0, entry.watchers - 1);
-    this.#scheduleIdleIfNeeded(entry);
+    if (this.#entries.get(threadId) === entry) this.#scheduleIdleIfNeeded(entry);
   }
 
   /**
-   * Stops a thread's process now if nobody watches it, it is not busy, and omp reports it settled: a host started only
-   * for one job (a rename of a chat nobody has open) stops as soon as the job is done, not after the idle wait. A
-   * watched or busy process is left alone, and the idle timer still applies to it. Resolves once omp for the thread has
-   * exited, so a caller that reads or removes the session file next does not race that exit; refuses as `whenGone`
-   * does when omp does not stop in time.
+   * Stops a thread's process now if nobody but `ownWatchers` watches it, it is not busy, and omp reports it settled: a
+   * host started only for one job (a rename of a chat nobody has open) stops as soon as the job is done, not after the
+   * idle wait. A delete passes the watchers of the connection asking: they stay counted while the stop runs, so a refusal
+   * before omp exits leaves them as they were; omp's exit takes them with it. A watched or busy process is left alone,
+   * and the idle timer still applies to it. Resolves once omp for the thread has exited, so a caller that reads or removes
+   * the session file next does not race that exit; refuses as `whenGone` does when omp does not stop in time.
    */
-  async stopIfUnwatched(threadId: ThreadId, purpose: StopPurpose): Promise<void> {
+  async stopIfUnwatched(threadId: ThreadId, purpose: StopPurpose, ownWatchers = 0): Promise<void> {
     const entry = this.#entries.get(threadId);
-    if (entry !== undefined && entry.watchers === 0 && !entry.busy) {
+    if (entry !== undefined && entry.watchers <= ownWatchers && !entry.busy) {
       this.#cancelIdle(entry);
-      const closed = await this.#closeIfIdle(entry);
+      const closed = await this.#closeIfIdle(entry, ownWatchers);
       // A stop this call started is waited for alone: when it fails, this call refuses and does not try it again.
       if (closed !== undefined) return this.#finishedWithin(closed.stopping, purpose);
     }
@@ -276,6 +288,11 @@ export class OmpProcessRegistry {
 
   has(threadId: ThreadId): boolean {
     return this.#entries.has(threadId);
+  }
+
+  /** Whether omp for the thread is being stopped now, or its stop failed and is tried again: such a process serves nothing. */
+  isStopping(threadId: ThreadId): boolean {
+    return this.#stopping.has(threadId) || this.#stuck.has(threadId);
   }
 
   /** Whether a viewer holds the thread open. A process the registry keeps for omp's idle time alone is not watched. */
@@ -365,12 +382,15 @@ export class OmpProcessRegistry {
     }, this.#idleCloseMs);
   }
 
-  #stillUnwatched(entry: Entry): boolean {
-    return this.#entries.get(entry.key) === entry && entry.watchers === 0 && !entry.busy;
+  #stillUnwatched(entry: Entry, ownWatchers = 0): boolean {
+    return this.#entries.get(entry.key) === entry && entry.watchers <= ownWatchers && !entry.busy;
   }
 
-  async #closeIfIdle(entry: Entry): Promise<{ readonly stopping: Promise<void> } | undefined> {
-    if (!this.#stillUnwatched(entry)) return undefined;
+  async #closeIfIdle(
+    entry: Entry,
+    ownWatchers = 0,
+  ): Promise<{ readonly stopping: Promise<void> } | undefined> {
+    if (!this.#stillUnwatched(entry, ownWatchers)) return undefined;
     if (this.#idleHooks !== undefined) {
       let settled: boolean;
       try {
@@ -379,7 +399,7 @@ export class OmpProcessRegistry {
         // omp that has exited holds nothing; omp that is only slow to answer is left running.
         settled = ["exited", "error", "stopped"].includes(entry.process.status);
       }
-      if (!this.#stillUnwatched(entry)) return undefined;
+      if (!this.#stillUnwatched(entry, ownWatchers)) return undefined;
       if (!settled) {
         this.#scheduleIdleIfNeeded(entry);
         return undefined;
@@ -388,24 +408,38 @@ export class OmpProcessRegistry {
     const threadId = entry.key;
     this.#entries.delete(threadId);
     entry.unsubscribe();
-    this.#idleHooks?.stopping(threadId, entry.process);
-    return { stopping: this.#startStop(threadId, entry.process) };
+    this.#closing.set(threadId, entry);
+    return { stopping: this.#startStop(threadId, entry.process, entry) };
   }
 
   /**
-   * Starts a stop of a thread's process and records it while it is under way. A stop that fails leaves the process
-   * recorded as stuck, so the next wait for the thread tries its stop again (see `whenGone`).
+   * Starts a stop of a thread's process and records it while it is under way. The stopped hook is told once omp has
+   * exited, after the stop's own records are cleared. A stop that fails leaves the process recorded as stuck, so the next
+   * wait for the thread tries its stop again (see `whenGone`). When the caller still watches the thread (`restore`), the
+   * thread is registered again instead, with its process and the watchers it has now, so the chat stays open for them.
    */
-  #startStop(threadId: ThreadId, process: OmpProcess): Promise<void> {
+  #startStop(threadId: ThreadId, process: OmpProcess, restore?: Entry): Promise<void> {
     const stopping: Promise<void> = process.stop().then(
       () => {
         if (this.#stopping.get(threadId) === stopping) this.#stopping.delete(threadId);
         if (this.#stuck.get(threadId) === process) this.#stuck.delete(threadId);
+        if (restore !== undefined && this.#closing.get(threadId) === restore) {
+          this.#closing.delete(threadId);
+        }
+        this.#idleHooks?.stopped(threadId, process);
       },
       (error: unknown) => {
         console.error("[omp-app] could not stop an omp process", error);
         if (this.#stopping.get(threadId) === stopping) this.#stopping.delete(threadId);
-        this.#stuck.set(threadId, process);
+        if (restore !== undefined && this.#closing.get(threadId) === restore) {
+          this.#closing.delete(threadId);
+        }
+        if (restore !== undefined && restore.watchers > 0 && !this.#entries.has(threadId)) {
+          this.#entries.set(threadId, restore);
+          restore.unsubscribe = this.#forgetWhenStopped(restore);
+        } else {
+          this.#stuck.set(threadId, process);
+        }
         throw error;
       },
     );

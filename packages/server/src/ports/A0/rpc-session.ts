@@ -275,7 +275,7 @@ export class RpcSessionPortRuntime {
     this.#context = context;
     context.processRegistry.setIdleHooks({
       isSettled: (threadId) => this.#isSettled(threadId),
-      stopping: (threadId, process) => this.#forgetStopped(threadId, process),
+      stopped: (threadId, process) => this.#forgetStopped(threadId, process),
     });
   }
 
@@ -301,7 +301,12 @@ export class RpcSessionPortRuntime {
     return this.#entries;
   }
   sessionFor(threadId: ThreadId): RpcSession | undefined {
-    return this.#entryOrUndefined(threadId)?.session;
+    const entry = this.#entryOrUndefined(threadId);
+    // A chat whose omp is stopping has no session to write to: the command path refuses it as no open thread.
+    if (entry === undefined || this.#context.processRegistry.isStopping(entry.bootstrap.threadId)) {
+      return undefined;
+    }
+    return entry.session;
   }
   /** The session file an open chat's omp runs: known before omp writes the file, which a new chat's omp does after its first reply. */
   sessionFileOf(threadId: ThreadId): SessionFilePath | undefined {
@@ -359,6 +364,9 @@ export class RpcSessionPortRuntime {
       arbitration: Promise.resolve(),
     };
     entry.unsubscribeEvents = session.onEvent((event) => {
+      // The events of an omp that is stopping, its exit among them, are not published: a stop reaches no viewer and no
+      // replay, as it did before a stop kept the entry.
+      if (this.#context.processRegistry.isStopping(entry.bootstrap.threadId)) return;
       this.#trackTurn(entry.bootstrap.threadId, event);
       if (!entry.rekeyed) {
         entry.startupEvents.push(event);
@@ -471,7 +479,12 @@ export class RpcSessionPortRuntime {
   async rename(args: SessionRenameArgs, call: PortHandlerContext): Promise<null> {
     await this.#serializeRename(args.threadId, async () => {
       const entry = this.#entryOrUndefined(args.threadId);
-      if (entry === undefined) {
+      // A chat whose omp is stopping is renamed as a closed chat: the rename waits for that omp to exit,
+      // and writes nothing into it.
+      if (
+        entry === undefined ||
+        this.#context.processRegistry.isStopping(entry.bootstrap.threadId)
+      ) {
         await this.#renameClosed(args, call);
         return;
       }
@@ -833,7 +846,9 @@ export class RpcSessionPortRuntime {
   }
 
   async close(args: { threadId: ThreadId }, call: PortHandlerContext): Promise<null> {
-    const entry = this.#entry(args.threadId);
+    // A close during a stop still lets this tab's view go: a stop that then fails must not restore the view.
+    const entry = this.#entryOrUndefined(args.threadId);
+    if (entry === undefined) return null;
     const count = entry.viewers.get(call.connectionId) ?? 0;
     if (count > 0) {
       if (count === 1) {
@@ -888,6 +903,13 @@ export class RpcSessionPortRuntime {
     return this.#entryOrUndefined(threadId)?.viewers.get(connectionId) ?? 0;
   }
 
+  /** How many views every connection holds on a chat together: the count the chat's omp is watched by. */
+  watcherCount(threadId: ThreadId): number {
+    let total = 0;
+    for (const count of this.#entryOrUndefined(threadId)?.viewers.values() ?? []) total += count;
+    return total;
+  }
+
   /**
    * Lets go of every view one connection holds on a chat, as deleting the chat does: the connection's host registrations
    * on it are removed and the process registry is told once per view, as `releaseConnection` does for every chat a
@@ -931,7 +953,10 @@ export class RpcSessionPortRuntime {
 
   #entry(threadId: ThreadId): ThreadEntry {
     const entry = this.#entryOrUndefined(threadId);
-    if (entry === undefined) throw notFound(`No open thread ${threadId}`);
+    // A chat whose omp is stopping serves nothing: a send would write into an omp that is exiting.
+    if (entry === undefined || this.#context.processRegistry.isStopping(entry.bootstrap.threadId)) {
+      throw notFound(`No open thread ${threadId}`);
+    }
     return entry;
   }
 
@@ -1112,9 +1137,9 @@ export class RpcSessionPortRuntime {
   }
 
   /**
-   * The registry is stopping an unwatched thread's process: the entry that held it can't serve
-   * again, so the next open builds a fresh one (and resumes the session file) instead of finding
-   * a dead process.
+   * The registry has stopped a thread's process: its entry can't serve again, so the next open builds a fresh one (and
+   * resumes the session file) instead of finding a dead process. Told once omp has exited, so omp's exit takes the
+   * entry's viewers with it; a stop that failed leaves the entry, and its viewers, as they were.
    */
   #forgetStopped(threadId: ThreadId, process: OmpProcess): void {
     const entry = this.#entryOrUndefined(threadId);

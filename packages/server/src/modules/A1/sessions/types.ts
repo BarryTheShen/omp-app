@@ -194,17 +194,18 @@ export interface SessionFileStoreOptions {
   /** Whether a view holds the chat open. A chat the server keeps only for omp's idle time is not watched. */
   readonly serverWatches?: (sessionId: string) => boolean;
   /**
-   * Stops this server's omp for the chat when nobody watches it and no turn runs, and resolves once it has stopped. A
-   * delete calls it once the views of the connection asking are let go, so a chat nobody watches does not keep its omp for
-   * the idle time. It rejects when the stop fails or does not finish in time: the delete then removes nothing, because omp
-   * may still write the file.
+   * Stops this server's omp for the chat when nobody but `ownViews` watches it and no turn runs, and resolves once it has
+   * stopped. A delete passes the views of the connection asking: they stay counted while the stop runs, and omp's exit
+   * takes them with it. It rejects when the stop fails or does not finish in time: the delete then removes nothing,
+   * because omp may still write the file.
    */
-  readonly stopUnwatched?: (sessionId: string) => Promise<void>;
+  readonly stopUnwatched?: (sessionId: string, ownViews: number) => Promise<void>;
   /** The turn state of the chat's omp on this server; `undefined` when this server runs no omp for the chat. */
   readonly turnOf?: (sessionId: string) => SessionTurn | undefined;
   /**
-   * The views the server's connections hold on its chats. A delete that names the connection asking checks the turn and the
-   * other views first, then lets that connection's own views go before omp is stopped (see `SessionFileStore.deleteSession`).
+   * The views the server's connections hold on its chats, and how many views hold each chat together. A delete that names
+   * the connection asking checks the turn and the other views first; omp's exit then takes that connection's views with
+   * it (see `SessionFileStore.deleteSession`).
    */
   readonly views?: SessionViews;
   /** The chats this server runs a turn for in a folder. A chat with no session file yet is listed from these. */

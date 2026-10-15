@@ -112,19 +112,26 @@ describe("the session file port deletes a chat and publishes it as removed", () 
     },
   );
 
-  test("the connection that asks reaches the store, so the views it holds go with its delete", async () => {
+  test("the connection that asks reaches the store: the stop counts its views as its own, and omp's exit takes them with the chat", async () => {
     await mkdir(WORKTREE_DATA, { recursive: true });
     const root = await mkdtemp(path.join(WORKTREE_DATA, "session-port-delete-views-"));
     try {
       const cwd = "/workspace/app";
+      const holds = new Map([["tab-one", 1]]);
+      const asked: number[] = [];
       const released: string[] = [];
       const store = new SessionFileStore({
         sessionsRoot: path.join(root, "sessions"),
         home: root,
         tempRoot: path.join(root, "tmp"),
+        // omp's exit takes every view of the chat with it, as A0 does: the stop clears them.
+        stopUnwatched: async (_sessionId, ownViews) => {
+          asked.push(ownViews);
+          holds.clear();
+        },
         views: {
-          viewsOf: (_sessionId, connectionId) => (connectionId === "tab-one" ? 1 : 0),
-          watcherCount: () => 1,
+          viewsOf: (_sessionId, connectionId) => holds.get(connectionId) ?? 0,
+          watcherCount: () => [...holds.values()].reduce((sum, count) => sum + count, 0),
           releaseViews: async (_sessionId, connectionId) => {
             released.push(connectionId);
           },
@@ -154,7 +161,9 @@ describe("the session file port deletes a chat and publishes it as removed", () 
         connectionId: "tab-one",
       } as never);
 
-      expect(released).toEqual(["tab-one"]);
+      expect(asked).toEqual([1]);
+      expect(released).toEqual([]);
+      expect(holds.size).toBe(0);
       await expect(access(file)).rejects.toThrow();
     } finally {
       await rm(root, { recursive: true, force: true });
