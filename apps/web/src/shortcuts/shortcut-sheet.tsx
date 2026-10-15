@@ -1,3 +1,4 @@
+import type { DescriptorId } from "@omp-app/contracts";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +18,7 @@ import {
   useShortcutPreferenceError,
   useShortcutRegistry,
 } from "./context";
+import type { ShortcutConflict } from "./registry";
 
 /** The app's typed commands that open a surface or run an omp command; the sheet lists them under Typed commands. */
 const TYPED_COMMANDS = [P1_AGENT_HUB_TYPED_COMMAND, U0_GOAL_TYPED_COMMAND];
@@ -36,6 +38,18 @@ function formatScope(scope: string): string {
     SCOPE_NAMES[scope] ??
     scope.replace(/^panel:/, "Panel: ").replace(/^./, (char) => char.toUpperCase())
   );
+}
+
+/** Names the other shortcut that already runs on the chord, by its title, in plain words. */
+function conflictRefusal(
+  chord: string,
+  id: DescriptorId,
+  conflicts: readonly ShortcutConflict[],
+): string {
+  const titles = [
+    ...new Set(conflicts.map(({ first, second }) => (first.id === id ? second : first).title)),
+  ];
+  return `${chord} is already used by ${titles.map((title) => `“${title}”`).join(" and ")}.`;
 }
 
 /** Searchable grouped shortcut sheet with conflict-safe rebinding and reset. */
@@ -144,21 +158,13 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
                             }
                             const result = registry.rebind(binding.id, chord);
                             // A refusal names the chord the way the person's keyboard does, not the stored form.
-                            const refusal = result.error
-                              ?.split(chord)
-                              .join(chordLabel(chord, { mac: apple }));
+                            const shownChord = chordLabel(chord, { mac: apple });
+                            const refusal = result.error?.split(chord).join(shownChord);
                             setConflict(
                               result.ok
                                 ? undefined
                                 : (refusal ??
-                                    `Shortcut conflicts with ${[
-                                      ...new Set(
-                                        result.conflicts.flatMap(({ first, second }) => [
-                                          first.owner,
-                                          second.owner,
-                                        ]),
-                                      ),
-                                    ].join(" and ")}.`),
+                                    conflictRefusal(shownChord, binding.id, result.conflicts)),
                             );
                           }}
                           onKeyDown={(event) => {

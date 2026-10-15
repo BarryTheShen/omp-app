@@ -162,7 +162,9 @@ describe("ShortcutSheet", () => {
     expect(input).toHaveProperty("value", "Ctrl+Enter");
     fireEvent.change(input, { target: { value: "Mod+Shift+Enter" } });
     fireEvent.blur(input);
-    expect(screen.getByRole("alert").textContent).toContain("U0 and U2");
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Ctrl+Shift+Enter is already used by “Other composer shortcut”.",
+    );
   });
   test("resets an overridden shortcut row to its default", () => {
     render(
@@ -291,5 +293,65 @@ describe("ShortcutSheet capability gating", () => {
     );
     expect(screen.getByText("Send message")).toBeTruthy();
     expect(screen.queryByText("Gated conversation shortcut")).toBeNull();
+  });
+});
+
+describe("the refusal names every other shortcut that already uses the chord, each once", () => {
+  test("two different shortcuts are named together, and the one listed twice is named once", () => {
+    const shared: readonly Descriptor[] = [
+      {
+        id: "U0.send",
+        owner: "U0",
+        title: "Send message",
+        kind: "shortcut",
+        chord: "Mod+Enter",
+        scope: "composer",
+        covers: [],
+        requires: [],
+      },
+      {
+        id: "U2.other",
+        owner: "U2",
+        title: "Other composer shortcut",
+        kind: "shortcut",
+        chord: "Mod+Shift+Enter",
+        scope: "composer",
+        covers: [],
+        requires: [],
+      },
+      {
+        id: "U2.duplicate",
+        owner: "U2",
+        title: "Other composer shortcut",
+        kind: "shortcut",
+        chord: "Mod+Shift+Enter",
+        scope: "global",
+        covers: [],
+        requires: [],
+      },
+      {
+        id: "U2.third",
+        owner: "U2",
+        title: "Third shortcut",
+        kind: "shortcut",
+        chord: "Mod+Shift+Enter",
+        scope: "global",
+        covers: [],
+        requires: [],
+      },
+    ];
+    render(
+      <ShortcutRegistryProvider descriptors={shared} preferenceStore={new MemoryPreferenceStore()}>
+        <ShortcutSheet open onOpenChange={() => undefined} />
+      </ShortcutRegistryProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ctrl+Enter" }));
+    const input = screen.getByRole("textbox", { name: "Rebind Send message" });
+    fireEvent.change(input, { target: { value: "Mod+Shift+Enter" } });
+    fireEvent.blur(input);
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Ctrl+Shift+Enter is already used by “Other composer shortcut” and “Third shortcut”.",
+    );
   });
 });

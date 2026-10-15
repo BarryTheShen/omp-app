@@ -69,6 +69,7 @@ export interface ShortcutBinding {
 }
 
 export interface ShortcutConflict {
+  /** The first binding's scope; the two may differ (see `canRunTogether`). */
   readonly scope: string;
   readonly normalizedChord: string;
   readonly first: ShortcutBinding;
@@ -165,11 +166,57 @@ function bindingFor(descriptor: ShortcutDescriptor, chord: string): ShortcutBind
     requires: descriptor.requires,
   };
 }
+
+function isEditorScope(scope: string): boolean {
+  return scope.endsWith("-input");
+}
+
+/** Where one shortcut can run: its scope, whether it works in a text box, and the element `focus` limits it to. */
+interface ShortcutReach {
+  readonly scope: string;
+  readonly text: boolean;
+  readonly focus: string | undefined;
+}
+
+function shortcutReach(descriptor: RegisteredShortcutDescriptor): ShortcutReach {
+  return {
+    scope: descriptor.scope,
+    text: descriptor.allowInEditable === true,
+    focus: descriptor.focus,
+  };
+}
+
+/**
+ * Whether a shortcut runs only while a text box has focus: its scope is an editor's, or it works in the message box
+ * alone (`allowInEditable`, limited to that box by `focus`). The composer's shortcuts are declared in the composer
+ * scope, so their scope alone does not say where they run.
+ */
+function runsOnlyInTextBox(reach: ShortcutReach): boolean {
+  return isEditorScope(reach.scope) || (reach.text && reach.focus === "composer-input");
+}
+
+/**
+ * Whether one keypress could run both shortcuts, which are in different scopes. A global shortcut runs outside text
+ * boxes beside any shortcut that also runs there (a shortcut that runs only in a text box does not), and in a text box
+ * only beside a shortcut that works there too. Any other scope is an area of the app: two areas meet only in a text
+ * box, where both must work (`allowInEditable`). Shortcuts limited to two different elements never meet.
+ */
+function canRunTogether(first: ShortcutReach, second: ShortcutReach): boolean {
+  if (first.focus !== undefined && second.focus !== undefined && first.focus !== second.focus)
+    return false;
+  if (first.scope === "global" || second.scope === "global") {
+    const global = first.scope === "global" ? first : second;
+    const other = first.scope === "global" ? second : first;
+    return !runsOnlyInTextBox(other) || (global.text && other.text);
+  }
+  return first.text && second.text;
+}
+
 function isReservedChord(chord: string, scope: string): boolean {
   const normalized = normalizeChord(chord);
   const matches = (reserved: string) => normalizeChord(reserved) === normalized;
   if (BROWSER_RESERVED_CHORDS.some(matches)) return true;
-  return !scope.endsWith("-input") && FOCUS_NAVIGATION_CHORDS.some(matches);
+  return !isEditorScope(scope) && FOCUS_NAVIGATION_CHORDS.some(matches);
 }
 
 function reservedMessage(chord: string): string {
@@ -287,21 +334,33 @@ export class ShortcutRegistry {
     );
   }
 
+  private reachOf(id: DescriptorId): ShortcutReach {
+    const descriptor = this.descriptors.get(id);
+    return descriptor === undefined
+      ? { scope: "", text: false, focus: undefined }
+      : shortcutReach(descriptor);
+  }
+
+  /**
+   * The conflicts among bindings, in list order. Two bindings in one scope always conflict, because dispatch cannot
+   * choose between them. Two bindings in different scopes conflict when one keypress could run both (`canRunTogether`).
+   */
   public conflicts(bindings = this.bindings()): readonly ShortcutConflict[] {
     const conflicts: ShortcutConflict[] = [];
-    const seen = new Map<string, ShortcutBinding>();
-    for (const binding of bindings) {
-      const key = `${binding.scope}\u0000${binding.normalizedChord}`;
-      const first = seen.get(key);
-      if (first !== undefined) {
+    for (const [index, first] of bindings.entries()) {
+      for (const second of bindings.slice(index + 1)) {
+        if (first.normalizedChord !== second.normalizedChord) continue;
+        if (
+          first.scope !== second.scope &&
+          !canRunTogether(this.reachOf(first.id), this.reachOf(second.id))
+        )
+          continue;
         conflicts.push({
-          scope: binding.scope,
-          normalizedChord: binding.normalizedChord,
+          scope: first.scope,
+          normalizedChord: first.normalizedChord,
           first,
-          second: binding,
+          second,
         });
-      } else {
-        seen.set(key, binding);
       }
     }
     return conflicts;
