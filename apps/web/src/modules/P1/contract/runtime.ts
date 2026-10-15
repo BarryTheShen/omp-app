@@ -14,22 +14,13 @@ export type FocusedAgentReadOptions = {
 };
 
 /**
- * Read-only nested source exposed to T5. It deliberately has no cancel/steer methods: nested task
- * cards cannot mutate or answer a worker. P1's focused surface uses the richer runtime below.
+ * One worker's runtime: its reads and live frames, and cancel and steer. The focused P1 surface and a
+ * nested task card share it, and both refuse a worker that is not running.
  */
-export interface NestedTranscriptSource {
-  readonly agent: AgentRef;
-  readonly read: (options?: FocusedAgentReadOptions) => Promise<SubagentTranscriptPage>;
-  readonly subscribe: (listener: FocusedTranscriptListener) => () => void;
-  readonly readOnly: true;
-}
-
-/** Focused P1 surface: one selected running worker may be cancelled or steered. */
 export interface FocusedAgentRuntime {
   readonly agent: AgentRef;
   readonly read: (options?: FocusedAgentReadOptions) => Promise<SubagentTranscriptPage>;
   readonly subscribe: (listener: FocusedTranscriptListener) => () => void;
-  readonly readOnly: false;
   readonly cancel: () => Promise<CancelAgentResult>;
   readonly steer: (message: string) => Promise<void>;
   readonly failure?: AppError;

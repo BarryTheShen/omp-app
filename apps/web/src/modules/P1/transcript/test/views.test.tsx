@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { SubagentClient } from "@/modules/P1/client";
-import type { NestedTranscriptSource } from "@/modules/P1/contract";
+import type { FocusedAgentRuntime } from "@/modules/P1/contract";
 import { FocusedAgentTranscript } from "../focused-view";
 import { NestedAgentTranscript } from "../nested-view";
 import { ReadOnlyThread } from "../read-only-thread";
@@ -51,9 +51,15 @@ function InThread({ children }: { readonly children: ReactNode }) {
   );
 }
 
-/** A worker's read-only source, the shape a nested task card receives. */
-function nestedSource(feed: FakeFeed): NestedTranscriptSource {
-  return { agent: feed.agent, read: feed.read, subscribe: feed.subscribe, readOnly: true };
+/** A worker's runtime, the shape a nested task card receives: its feed, with cancel and steer. */
+function nestedSource(feed: FakeFeed): FocusedAgentRuntime {
+  return {
+    agent: feed.agent,
+    read: feed.read,
+    subscribe: feed.subscribe,
+    cancel: async () => ({ cancelled: true }),
+    steer: async () => {},
+  };
 }
 
 /** The first read is asked for once the view has mounted; the test answers it. */
@@ -111,6 +117,23 @@ describe("the nested worker transcript", () => {
       [],
     );
     expect(within(region as HTMLElement).queryAllByRole("textbox")).toEqual([]);
+  });
+
+  test("the controls under the messages are there only when the card asks for them", async () => {
+    const feed = new FakeFeed(agentRef());
+    const { rerender } = render(
+      <InThread>
+        <NestedAgentTranscript source={nestedSource(feed)} />
+      </InThread>,
+    );
+    expect(screen.queryByRole("button", { name: /^Cancel / })).toBeNull();
+    rerender(
+      <InThread>
+        <NestedAgentTranscript controls source={nestedSource(feed)} />
+      </InThread>,
+    );
+    expect(screen.getByRole("button", { name: /^Cancel / })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Message to Probe the transcript" })).toBeTruthy();
   });
 
   test("a failed read is a visible row with a way to try again, and the retry asks omp again", async () => {

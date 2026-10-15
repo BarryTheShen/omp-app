@@ -7,7 +7,7 @@ import {
   type SubagentTranscriptPage,
   SubagentTranscriptPageSchema,
 } from "@/modules/P1/contract";
-import { createFocusedAgentRuntime, createNestedTranscriptSource } from "../source";
+import { createFocusedAgentRuntime } from "../source";
 
 const threadId = ThreadId.parse("thread-fallback");
 const file = SessionFilePath.parse("/workspace/.omp/sessions/main/Done.jsonl");
@@ -59,7 +59,7 @@ function diskPage(): SubagentTranscriptPage {
 describe("a finished worker's transcript after a reload", () => {
   test("when omp no longer knows a finished worker, its file is read from the cursor", async () => {
     const reads: { file: string; fromByte: number | undefined }[] = [];
-    const source = createNestedTranscriptSource({
+    const source = createFocusedAgentRuntime({
       agent: agentRef("completed"),
       client: unknownToOmp(),
       finished: {
@@ -83,7 +83,7 @@ describe("a finished worker's transcript after a reload", () => {
   });
 
   test("a running worker's failed live read is not replaced by its file", async () => {
-    const source = createNestedTranscriptSource({
+    const source = createFocusedAgentRuntime({
       agent: agentRef("running"),
       client: unknownToOmp(),
       finished: { read: async () => diskPage() },
@@ -92,7 +92,7 @@ describe("a finished worker's transcript after a reload", () => {
   });
 
   test("without a file reader, a finished worker's failed live read still fails", async () => {
-    const source = createNestedTranscriptSource({
+    const source = createFocusedAgentRuntime({
       agent: agentRef("completed"),
       client: unknownToOmp(),
     });

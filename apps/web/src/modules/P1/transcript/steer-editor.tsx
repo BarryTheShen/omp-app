@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { type SteerKey, steerKeyOf } from "./steer";
 
+const ESCAPE_HINT = "Esc clears the text, then leaves.";
+
 export interface SteerEditorProps {
   readonly text: string;
   readonly sending: boolean;
@@ -10,8 +12,11 @@ export interface SteerEditorProps {
   /** Why the editor is off, in plain words; undefined while a running worker can take a message. */
   readonly unavailable: string | undefined;
   readonly failure: string | undefined;
+  /** The worker's name: the box reads "Message to <name>" and Send "Send message to <name>". Without it: "Message to this worker", "Send". */
+  readonly label?: string | undefined;
   readonly onTextChange: (text: string) => void;
-  readonly onKey: (key: SteerKey) => void;
+  /** Returns true when the editor used the key. An Escape it does not use reaches the view around the editor. */
+  readonly onKey: (key: SteerKey) => boolean;
   readonly onSend: () => void;
 }
 
@@ -25,6 +30,7 @@ export function SteerEditor({
   canSend,
   unavailable,
   failure,
+  label,
   onTextChange,
   onKey,
   onSend,
@@ -41,9 +47,14 @@ export function SteerEditor({
       composing: event.nativeEvent.isComposing,
     });
     if (key === undefined || key === "shift-enter") return;
-    if (key === "enter" || key === "escape") event.preventDefault();
-    if (key === "escape") event.stopPropagation();
-    onKey(key);
+    const used = onKey(key);
+    if (key === "enter") event.preventDefault();
+    // An Escape the editor used (its text cleared, or its view left) stops here. An Escape it did not use, with nothing
+    // typed and nothing to leave by, reaches the view around the editor, which leaves on Escape.
+    if (key === "escape" && used) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   };
 
   return (
@@ -56,7 +67,7 @@ export function SteerEditor({
       }}
     >
       <label className="text-muted-foreground text-xs font-medium" htmlFor={fieldId}>
-        Message to this worker
+        {label === undefined ? "Message to this worker" : `Message to ${label}`}
       </label>
       <Textarea
         aria-describedby={describedBy}
@@ -72,10 +83,14 @@ export function SteerEditor({
       />
       <div className="flex min-w-0 items-center justify-between gap-3">
         <p className="text-muted-foreground min-w-0 text-xs" id={hintId}>
-          {unavailable ??
-            "Enter sends. Shift+Enter starts a new line. Esc clears the text, then leaves."}
+          {unavailable ?? `Enter sends. Shift+Enter starts a new line. ${ESCAPE_HINT}`}
         </p>
-        <Button disabled={!canSend} size="sm" type="submit">
+        <Button
+          aria-label={label === undefined ? undefined : `Send message to ${label}`}
+          disabled={!canSend}
+          size="sm"
+          type="submit"
+        >
           {sending ? "Sending…" : "Send"}
         </Button>
       </div>

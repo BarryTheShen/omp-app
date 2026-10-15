@@ -4,9 +4,9 @@ export { NestedAgentTranscript, type NestedAgentTranscriptProps } from "./nested
 export { ReadOnlyThread } from "./read-only-thread";
 export {
   createFocusedAgentRuntime,
-  createNestedTranscriptSource,
   type LiveFailureListener,
   type TranscriptFeed,
   type TranscriptSourceOptions,
 } from "./source";
+export { WorkerTranscriptScope } from "./transcript-body";
 export { useAgentTranscript } from "./use-agent-transcript";

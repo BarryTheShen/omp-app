@@ -26,9 +26,9 @@ import {
   useAppConnection,
 } from "@/launch/app-connection";
 import { createSubagentClient, type SubagentClient } from "@/modules/P1/client";
-import type { NestedTranscriptSource } from "@/modules/P1/contract";
+import type { FocusedAgentRuntime } from "@/modules/P1/contract";
 import { AgentRosterStore, type RosterAgent } from "@/modules/P1/roster";
-import { createNestedTranscriptSource, ReadOnlyThread } from "@/modules/P1/transcript";
+import { createFocusedAgentRuntime, ReadOnlyThread } from "@/modules/P1/transcript";
 import { convertExternalMessage, OmpRuntimeController } from "@/modules/R0/runtime/runtime";
 import type { OmpRuntimeStore, RuntimeSnapshot } from "@/modules/R0/store/store";
 import {
@@ -171,7 +171,7 @@ function TaskCheck({ session }: { readonly session: Session }) {
   );
   // One source per roster entry: a roster update for the same worker hands its new reference to the same view.
   const sources = useRef(
-    new Map<string, { readonly agent: RosterAgent; readonly source: NestedTranscriptSource }>(),
+    new Map<string, { readonly agent: RosterAgent; readonly source: FocusedAgentRuntime }>(),
   ).current;
   const lookup = useCallback<TaskSubagentLookup>(
     (parentToolCallId) =>
@@ -186,7 +186,7 @@ function TaskCheck({ session }: { readonly session: Session }) {
           if (cached !== undefined && cached.agent === agent) return cached;
           const next = {
             agent,
-            source: createNestedTranscriptSource({ agent, client: session.subagents }),
+            source: createFocusedAgentRuntime({ agent, client: session.subagents }),
           };
           sources.set(agent.key, next);
           return next;

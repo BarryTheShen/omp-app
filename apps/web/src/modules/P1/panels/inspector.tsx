@@ -1,6 +1,7 @@
 import { useId } from "react";
-import { InlineError, Section } from "@/components/blocks";
+import { Section } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
+import { CancelButton, CancelNotice } from "./cancel-control";
 import type { HubFact, HubInspector } from "./model";
 import { StatusChip } from "./status-chip";
 
@@ -23,80 +24,6 @@ function FactList({ facts }: { readonly facts: readonly HubFact[] }) {
       ))}
     </dl>
   );
-}
-
-/** The Cancel button, while a running worker can be cancelled. */
-function CancelButton({
-  inspector,
-  onCancel,
-}: {
-  readonly inspector: HubInspector;
-  readonly onCancel: (key: string) => void;
-}) {
-  const cancel = inspector.cancel;
-  if (cancel.state === "ready" || cancel.state === "refused") {
-    return (
-      <Button
-        aria-label={`Cancel ${inspector.title}`}
-        onClick={() => onCancel(inspector.key)}
-        size="sm"
-        variant="outline"
-      >
-        Cancel
-      </Button>
-    );
-  }
-  if (cancel.state === "sending") {
-    return (
-      <Button aria-busy="true" disabled size="sm" variant="outline">
-        Cancelling…
-      </Button>
-    );
-  }
-  return null;
-}
-
-/** What the last cancel did, in plain words, under the action row. */
-function CancelNotice({
-  inspector,
-  onCancel,
-}: {
-  readonly inspector: HubInspector;
-  readonly onCancel: (key: string) => void;
-}) {
-  const cancel = inspector.cancel;
-  switch (cancel.state) {
-    case "hidden":
-    case "ready":
-    case "sending":
-      return null;
-    case "sent":
-      return (
-        <p className="text-muted-foreground text-xs" role="status">
-          Cancel sent. Waiting for the worker to stop.
-        </p>
-      );
-    case "failed":
-      return (
-        <InlineError
-          message={cancel.message}
-          onRetry={cancel.retryable ? () => onCancel(inspector.key) : undefined}
-          variant="message"
-        />
-      );
-    case "ended":
-      return <p className="text-muted-foreground text-sm">{cancel.message}</p>;
-    case "refused":
-      return (
-        <p className="text-muted-foreground text-sm" role="status">
-          {cancel.message}
-        </p>
-      );
-    case "unavailable":
-      return (
-        <p className="text-muted-foreground text-xs">Cancel is not available: {cancel.reason}</p>
-      );
-  }
 }
 
 /**
@@ -122,7 +49,11 @@ export function WorkerInspector({ inspector, onCancel, onOpenTranscript }: Worke
         </div>
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <CancelButton inspector={inspector} onCancel={onCancel} />
+            <CancelButton
+              control={inspector.cancel}
+              onCancel={() => onCancel(inspector.key)}
+              title={inspector.title}
+            />
             <Button
               aria-describedby={transcript.state === "available" ? undefined : reasonId}
               disabled={transcript.state !== "available"}
@@ -133,7 +64,7 @@ export function WorkerInspector({ inspector, onCancel, onOpenTranscript }: Worke
               Open transcript
             </Button>
           </div>
-          <CancelNotice inspector={inspector} onCancel={onCancel} />
+          <CancelNotice control={inspector.cancel} onCancel={() => onCancel(inspector.key)} />
           {transcript.state === "unavailable" ? (
             <p className="text-muted-foreground text-xs" id={reasonId}>
               {transcript.reason}

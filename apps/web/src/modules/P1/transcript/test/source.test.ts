@@ -2,7 +2,7 @@ import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { P1ClientNotification, SubagentClient } from "@/modules/P1/client";
 import type { P1SubagentEvent } from "@/modules/P1/contract";
-import { createFocusedAgentRuntime, createNestedTranscriptSource } from "../source";
+import { createFocusedAgentRuntime } from "../source";
 import {
   agentRef,
   firstFile,
@@ -80,7 +80,7 @@ async function flush(): Promise<void> {
 describe("the nested transcript source", () => {
   test("reads the worker's recorded file from the byte offset it asks for", async () => {
     const { client, recorded } = fakeClient();
-    const source = createNestedTranscriptSource({ agent: agentRef(), client });
+    const source = createFocusedAgentRuntime({ agent: agentRef(), client });
     await source.read({ fromByte: 40 });
     expect(recorded.reads).toEqual([
       { id: "worker-1", options: { sessionFile: firstFile, fromByte: 40 } },
@@ -89,7 +89,7 @@ describe("the nested transcript source", () => {
 
   test("delivers only the frames about this worker, with the thread and the sequence number", () => {
     const { client, send } = fakeClient();
-    const source = createNestedTranscriptSource({ agent: agentRef(), client });
+    const source = createFocusedAgentRuntime({ agent: agentRef(), client });
     const seen: unknown[] = [];
     source.subscribe((event) => seen.push(event));
     send({ seq: 7, event: nestedFrame("worker-1") });
@@ -110,7 +110,7 @@ describe("the nested transcript source", () => {
 
   test("takes the events level while a listener is attached, and gives it back when the last one leaves", async () => {
     const { client, recorded } = fakeClient();
-    const source = createNestedTranscriptSource({ agent: agentRef(), client });
+    const source = createFocusedAgentRuntime({ agent: agentRef(), client });
     const stop = source.subscribe(() => {});
     await flush();
     expect(recorded.levels).toEqual(["events"]);
@@ -123,7 +123,7 @@ describe("the nested transcript source", () => {
   test("reports a failure to set the events level to the caller that asked for live frames", async () => {
     const failure = new AppFailure({ code: "omp_error", message: "refused", retryable: true });
     const { client } = fakeClient({ acquireFails: failure });
-    const source = createNestedTranscriptSource({ agent: agentRef(), client });
+    const source = createFocusedAgentRuntime({ agent: agentRef(), client });
     const reported: AppFailure[] = [];
     source.subscribe(
       () => {},
@@ -131,14 +131,6 @@ describe("the nested transcript source", () => {
     );
     await flush();
     expect(reported).toEqual([failure]);
-  });
-
-  test("exposes no way to steer or cancel the worker", () => {
-    const { client } = fakeClient();
-    const source = createNestedTranscriptSource({ agent: agentRef(), client });
-    expect(source.readOnly).toBe(true);
-    expect("steer" in source).toBe(false);
-    expect("cancel" in source).toBe(false);
   });
 });
 

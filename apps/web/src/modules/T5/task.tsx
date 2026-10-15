@@ -1,7 +1,7 @@
 import type { ToolCallId } from "@omp-app/contracts";
 import { createContext, useContext } from "react";
-import type { AgentRef, NestedTranscriptSource } from "@/modules/P1/contract";
-import { NestedAgentTranscript } from "@/modules/P1/transcript";
+import type { AgentRef, FocusedAgentRuntime } from "@/modules/P1/contract";
+import { NestedAgentTranscript, WorkerTranscriptScope } from "@/modules/P1/transcript";
 import { ToolCard, type ToolCardOutcome } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
@@ -20,10 +20,13 @@ import {
 } from "./coordination";
 import { type AgentProgress, decodeTaskDetails, type TaskDetails, type TaskResult } from "./models";
 
-/** One worker a task call started: its roster reference and the read-only source of its transcript. */
+/**
+ * One worker a task call started: its roster reference and P1's runtime for it. The runtime reads the worker's
+ * transcript; the card steers and cancels the worker only inside a worker's transcript (see TaskSubagentTranscripts).
+ */
 export interface TaskSubagent {
   readonly agent: AgentRef;
-  readonly source: NestedTranscriptSource;
+  readonly source: FocusedAgentRuntime;
 }
 
 /**
@@ -38,7 +41,7 @@ export type TaskSubagentLookup = (
 
 export const TaskSubagentsContext = createContext<TaskSubagentLookup | undefined>(undefined);
 
-/** Compact task card: the agents omp started, their read-only transcripts, and the results they returned. */
+/** Compact task card: the agents omp started, their transcripts, and the results they returned. */
 export function TaskCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const normalized = normalizeToolRendererProps(rendererProps);
   const raw = rendererProps.result ?? normalized.result ?? normalized.partialResult;
@@ -129,7 +132,10 @@ function TaskBody({
   );
 }
 
-/** Each worker's transcript through P1's read-only view: the card never steers, edits or answers. */
+/**
+ * Each worker's transcript through P1's focused view. A worker the chat started stays read only; a worker started
+ * inside a worker's transcript gets the Agent Hub's cancel and message box.
+ */
 function TaskSubagentTranscripts({
   depth,
   parentTaskId,
@@ -139,6 +145,7 @@ function TaskSubagentTranscripts({
   readonly parentTaskId: ToolCallId;
   readonly subagents: readonly TaskSubagent[];
 }) {
+  const controls = useContext(WorkerTranscriptScope);
   return (
     <section className="flex min-w-0 flex-col gap-2" data-slot="t5-task-transcripts">
       <h3 className="text-xs font-medium text-muted-foreground">Worker transcripts</h3>
@@ -152,9 +159,11 @@ function TaskSubagentTranscripts({
           >
             <p className="px-4 pt-3 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">{name}</span> ·{" "}
-              {statusLabel(agent.status)} · Read only
+              {statusLabel(agent.status)}
+              {controls ? null : " · Read only"}
             </p>
             <NestedAgentTranscript
+              controls={controls}
               depth={depth}
               parentTaskId={parentTaskId}
               source={source}

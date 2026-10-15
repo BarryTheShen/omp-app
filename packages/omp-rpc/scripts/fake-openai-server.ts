@@ -74,6 +74,37 @@ function steerChildReply(messages: readonly Message[]): Reply | undefined {
   };
 }
 
+/** `spawn_nested_probe` starts a worker whose task says `nested_parent_probe`. That worker starts one nested worker
+ * (`nested_steer_child`, which keeps stepping until a steer arrives), then waits about 30 seconds in bash, so the
+ * nested worker is still running while the probe steers or cancels it. */
+function nestedParentReply(messages: readonly Message[]): Reply | undefined {
+  const start = messages.findIndex(
+    (message) => message.role === "user" && text(message.content).includes("nested_parent_probe"),
+  );
+  if (start < 0) return undefined;
+  const steps = messages.slice(start + 1).filter((message) => message.role === "tool").length;
+  if (steps === 0)
+    return {
+      tool: "task",
+      args: {
+        name: "NestedChild",
+        agent: "task",
+        task: "nested_steer_child: keep taking steps until a steer arrives from the parent, then yield.",
+        solutionSpace: "one tiny task: wait for a steer and return a short summary",
+      },
+      id: `call_nested_child_${messages.length}`,
+      thinking: "I should start one nested worker that waits for a steer.",
+    };
+  if (steps === 1)
+    return {
+      tool: "bash",
+      args: { command: "sleep 30; echo nested-parent-waited" },
+      id: `call_nested_wait_${messages.length}`,
+      thinking: "I will wait while the nested worker runs.",
+    };
+  return { text: "Nested parent finished." };
+}
+
 /** How many characters one streamed piece carries, for a reply that is streamed in pieces. */
 const STREAMED_PIECE_CHARACTERS = 12;
 /** How long the server waits between two streamed pieces, short enough for several to coalesce. */
@@ -261,6 +292,8 @@ function reply(request: Request): Reply {
   if (steerChild !== undefined) return steerChild;
   const streamChild = streamProbeReply(messages);
   if (streamChild !== undefined) return streamChild;
+  const nestedParent = nestedParentReply(messages);
+  if (nestedParent !== undefined) return nestedParent;
   const last = messages.at(-1);
   const lastUser = messages.findLastIndex((message) => message.role === "user");
   if (lastUser >= 0 && text(messages[lastUser]?.content).includes("long_loop")) {
@@ -296,6 +329,18 @@ function reply(request: Request): Reply {
   }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";
+  if (prompt.includes("spawn_nested_probe"))
+    return {
+      tool: "task",
+      args: {
+        name: "NestedParent",
+        agent: "task",
+        task: "nested_parent_probe: start one nested worker and keep running for a while.",
+        solutionSpace: "one nested worker: start it and wait for it",
+      },
+      id: `call_nested_parent_${messages.length}`,
+      thinking: "I should start a worker that starts a nested worker.",
+    };
   if (prompt.includes("spawn_steerable_subagent"))
     return {
       tool: "task",

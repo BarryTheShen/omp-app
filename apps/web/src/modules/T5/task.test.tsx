@@ -2,8 +2,8 @@ import { ThreadPrimitive } from "@assistant-ui/react";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { AgentRef, NestedTranscriptSource } from "@/modules/P1/contract";
-import { ReadOnlyThread } from "@/modules/P1/transcript";
+import type { AgentRef, FocusedAgentRuntime } from "@/modules/P1/contract";
+import { ReadOnlyThread, WorkerTranscriptScope } from "@/modules/P1/transcript";
 import { agentRef, transcriptPage, userMessage } from "@/modules/P1/transcript/test/fixtures";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import { alteredResult, recorded } from "./recorded-props";
@@ -22,14 +22,15 @@ function InThread({ children }: { readonly children: ReactNode }) {
 
 afterEach(() => cleanup());
 
-/** A worker's read-only source that holds one message: the transcript a card shows inside itself. */
-function workerSource(agent: AgentRef, message: string): NestedTranscriptSource {
+/** A worker's runtime that holds one message: the transcript a card shows inside itself. */
+function workerSource(agent: AgentRef, message: string): FocusedAgentRuntime {
   return {
     agent,
     read: async () =>
       transcriptPage({ fromByte: 0, nextByte: 1, messages: [userMessage(message)] }),
     subscribe: () => () => undefined,
-    readOnly: true,
+    cancel: async () => ({ cancelled: true }),
+    steer: async () => {},
   };
 }
 
@@ -129,6 +130,27 @@ describe("T5.2 task card worker transcripts", () => {
     const transcript = container.querySelector("[data-slot='t5-task-transcript']");
     expect(transcript?.textContent).toContain("Nested probe");
     expect(transcript?.textContent).toContain("Read only");
+  });
+
+  test("a worker that a worker started has the cancel control and message box in its card", async () => {
+    const agent = agentRef({ parentToolCallId: "task-call", description: "Nested probe" });
+    const lookup: TaskSubagentLookup = (parentToolCallId) =>
+      parentToolCallId === "task-call"
+        ? [{ agent, source: workerSource(agent, "worker task text for the probe") }]
+        : [];
+    render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <WorkerTranscriptScope.Provider value>
+          <InThread>
+            <TaskCard rendererProps={recorded("task: one agent started in the background")} />
+          </InThread>
+        </WorkerTranscriptScope.Provider>
+      </TaskSubagentsContext.Provider>,
+    );
+    expandToolCards();
+    expect(await screen.findByText("worker task text for the probe")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancel Nested probe" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Message to Nested probe" })).toBeTruthy();
   });
 
   test("a background job whose only worker failed reads Failed, not Running, once the roster knows the worker", () => {

@@ -7,7 +7,6 @@ import {
   type FocusedAgentReadOptions,
   type FocusedAgentRuntime,
   type FocusedTranscriptListener,
-  type NestedTranscriptSource,
   type P1SubagentEvent,
   type SubagentTranscriptPage,
 } from "@/modules/P1/contract";
@@ -19,7 +18,7 @@ export type LiveFailureListener = (failure: AppFailure) => void;
 
 /**
  * What the transcript view needs from one worker: its reference, a byte-cursor read and a live feed.
- * A `NestedTranscriptSource` or a `FocusedAgentRuntime` from this module satisfies it. Live feed
+ * A `FocusedAgentRuntime` from this module satisfies it. Live feed
  * failures reach `onFailure` when the caller passes one; the view always does.
  */
 export interface TranscriptFeed {
@@ -114,22 +113,6 @@ function subscriberFor(agent: AgentRef, client: SubagentClient): TranscriptFeed[
 }
 
 /**
- * The read-only source a nested task card shows: reads and live frames for one worker, and nothing
- * that can change the worker. Its type is the contract's `NestedTranscriptSource`.
- */
-export function createNestedTranscriptSource(
-  options: TranscriptSourceOptions,
-): NestedTranscriptSource & TranscriptFeed {
-  const { agent, client } = options;
-  return Object.freeze({
-    agent,
-    read: readerFor(agent, client, options.finished),
-    subscribe: subscriberFor(agent, client),
-    readOnly: true as const,
-  });
-}
-
-/**
  * The focused surface for one worker: the same reads and live frames, plus cancel and steer. Both
  * refuse a worker that is not running, so a finished worker can never be changed from here. The
  * runtime holds the roster snapshot it was made from; make a new one when the roster changes.
@@ -142,7 +125,6 @@ export function createFocusedAgentRuntime(
     agent,
     read: readerFor(agent, client, options.finished),
     subscribe: subscriberFor(agent, client),
-    readOnly: false as const,
     cancel: async (): Promise<CancelAgentResult> => {
       if (agent.status !== "running") throw notRunning("This worker has already finished.");
       return client.cancel(agent.id);

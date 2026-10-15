@@ -11,7 +11,7 @@ import {
   type RosterAgent,
   type SessionTranscriptFiles,
 } from "@/modules/P1/roster";
-import { createNestedTranscriptSource } from "@/modules/P1/transcript";
+import { createFocusedAgentRuntime } from "@/modules/P1/transcript";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import type { TaskSubagent } from "@/modules/T5/task";
 
@@ -69,7 +69,7 @@ export function createThreadAgents({
     if (cached !== undefined && cached.agent === agent) return cached;
     const next: TaskSubagent = {
       agent,
-      source: createNestedTranscriptSource({ agent, client, finished }),
+      source: createFocusedAgentRuntime({ agent, client, finished }),
     };
     sources.set(agent.key, next);
     return next;

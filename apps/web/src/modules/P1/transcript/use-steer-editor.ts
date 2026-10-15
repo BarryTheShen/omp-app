@@ -23,14 +23,15 @@ export interface SteerEditorModel {
   /** Why the editor is off, in plain words; undefined while a running worker can take a message. */
   readonly unavailable: string | undefined;
   readonly onTextChange: (text: string) => void;
-  readonly onKey: (key: SteerKey) => void;
+  /** Returns true when the editor used the key. An Escape it does not use (nothing typed, no onExit) reaches the view. */
+  readonly onKey: (key: SteerKey) => boolean;
   readonly onSend: () => void;
 }
 
 export interface SteerEditorOptions {
   /** The worker to steer. Its `steer` refuses a worker that is not running. */
   readonly runtime: Pick<FocusedAgentRuntime, "agent" | "steer">;
-  /** Escape with an empty draft: leave focus. */
+  /** Escape with an empty draft: leave focus. Without `onExit`, that Escape is left for the view around the editor. */
   readonly onExit?: () => void;
   /** Left, Left with an empty draft: return toward the Hub. */
   readonly onBack?: () => void;
@@ -63,8 +64,14 @@ export function useSteerEditor(options: SteerEditorOptions): SteerEditorModel {
     }
   };
 
-  const press = (key: SteerKey): void => {
+  /**
+   * One key press; returns whether the editor used it. Escape with nothing typed, and no `onExit` to leave by, is not
+   * used: the view around the editor handles it.
+   */
+  const press = (key: SteerKey): boolean => {
     const current = optionsRef.current;
+    if (key === "escape" && draftRef.current.text === "" && current.onExit === undefined)
+      return false;
     const at = current.now ? current.now() : Date.now();
     const canSteer = canSteerAgent(current.runtime.agent);
     const result = pressSteerKey(draftRef.current, key, { at, canSteer });
@@ -72,6 +79,7 @@ export function useSteerEditor(options: SteerEditorOptions): SteerEditorModel {
     if (result.effect.type === "send") void send(result.effect.text);
     if (result.effect.type === "exit") current.onExit?.();
     if (result.effect.type === "back") current.onBack?.();
+    return true;
   };
 
   const canSteer = canSteerAgent(options.runtime.agent);
