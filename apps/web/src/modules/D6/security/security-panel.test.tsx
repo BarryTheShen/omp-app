@@ -52,6 +52,36 @@ describe("the security panel", () => {
     );
   });
 
+  test("plan takes optional options in a box that names them, and runs with the ones typed", () => {
+    const run = vi.fn<DiagnosticCommandPort["run"]>(async () => resultOf(["Plan ready."]));
+    renderPanel(portWith(run));
+    pick("plan");
+    expect(screen.getByLabelText("Details (optional)").getAttribute("placeholder")).toBe(
+      "Options (optional), such as --path src",
+    );
+    expect(screen.getByText(/Leave this empty to plan the whole project/)).toBeTruthy();
+    pick("plan", "--path src");
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(run.mock.calls[0]?.[1]).toEqual({ name: "security", args: "plan --path src" });
+  });
+
+  test("Start the scan and Check the finding are default buttons, since they spend budget and destroy nothing", async () => {
+    const run = vi.fn<DiagnosticCommandPort["run"]>(async () => resultOf(["Done."]));
+    renderPanel(portWith(run));
+    pick("scan");
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const start = await screen.findByRole("button", { name: "Start the scan" });
+    expect(start.className).toContain("bg-primary");
+    expect(start.className).not.toContain("bg-destructive");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    pick("validate", "scan-1 f-1");
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const check = await screen.findByRole("button", { name: "Check the finding" });
+    expect(check.className).toContain("bg-primary");
+    expect(check.className).not.toContain("bg-destructive");
+    expect(run).not.toHaveBeenCalled();
+  });
+
   test("an empty required field sends nothing and opens no dialog", () => {
     const run = vi.fn();
     renderPanel(portWith(run));

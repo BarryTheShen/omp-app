@@ -68,7 +68,7 @@ describe("the reports panel", () => {
     renderPanel(portWith(vi.fn(async () => resultOf("http://127.0.0.1:3847/#/traces"))));
     fireEvent.click(screen.getByRole("button", { name: "Session trace" }));
     expect(await screen.findByText(/Starts omp's stats dashboard on this computer/)).toBeTruthy();
-    expect(screen.getByText(/contains the path of this session's file/)).toBeTruthy();
+    expect(screen.getByText(/path of this session's file is hidden in the link/)).toBeTruthy();
   });
 
   test("closing the panel stops waiting for the report and unpresses its choice", async () => {

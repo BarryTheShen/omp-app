@@ -33,7 +33,11 @@ function SecurityConfirm({
       actions={
         <>
           <CancelButton onCancel={() => onDecide(false)} />
-          <Button type="button" variant="destructive" onClick={() => onDecide(true)}>
+          <Button
+            type="button"
+            variant={confirmation.destructive ? "destructive" : "default"}
+            onClick={() => onDecide(true)}
+          >
             {confirmation.confirmLabel}
           </Button>
         </>

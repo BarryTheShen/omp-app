@@ -48,7 +48,7 @@ export const REPORT_CHOICES: readonly ReportChoice[] = [
     label: "Session trace",
     title: "Session trace",
     request: TRACE_REQUEST,
-    note: "Starts omp's stats dashboard on this computer and gives a link to this session's trace. The link contains the path of this session's file.",
+    note: "Starts omp's stats dashboard on this computer and gives a link to this session's trace. The path of this session's file is hidden in the link.",
   },
 ];
 

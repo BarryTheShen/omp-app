@@ -189,3 +189,58 @@ test("validate asks first, and its panel says omp answers in the chat", async ({
     animations: "disabled",
   });
 });
+
+test("plan a scan takes options in a box that names them, in light, dark and on a phone", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await open(page, "security");
+  await page.getByLabel("Security action", { exact: true }).selectOption("plan");
+  await expect(page.getByLabel("Details (optional)")).toHaveAttribute(
+    "placeholder",
+    "Options (optional), such as --path src",
+  );
+  await expect(page.getByText("Leave this empty to plan the whole project.")).toBeVisible();
+  await page.screenshot({ path: `${SCREENSHOTS}/d6-3-security-plan-light.png`, fullPage: true });
+
+  await open(page, "security", "dark");
+  await page.getByLabel("Security action", { exact: true }).selectOption("plan");
+  await expect(page.getByText("Leave this empty to plan the whole project.")).toBeVisible();
+  await page.screenshot({ path: `${SCREENSHOTS}/d6-3-security-plan-dark.png`, fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${SCREENSHOTS}/d6-3-security-plan-390.png`, fullPage: true });
+});
+
+test("the scan and check confirmations use the default button, not the red one", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await open(page, "security-live");
+  await page.getByLabel("Security action", { exact: true }).selectOption("scan");
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  const start = page.getByRole("button", { name: "Start the scan", exact: true });
+  await expect(start).toBeVisible();
+  await expect(start).toHaveClass(/bg-primary/);
+  await expect(start).not.toHaveClass(/bg-destructive/);
+  await page.screenshot({
+    path: `${SCREENSHOTS}/d6-3-security-scan-confirm-light.png`,
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await page.getByLabel("Security action", { exact: true }).selectOption("validate");
+  await page.getByLabel("Details (required)").fill("scan-1 finding-1");
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  const check = page.getByRole("button", { name: "Check the finding", exact: true });
+  await expect(check).toBeVisible();
+  await expect(check).toHaveClass(/bg-primary/);
+  await expect(check).not.toHaveClass(/bg-destructive/);
+  await page.screenshot({
+    path: `${SCREENSHOTS}/d6-3-security-check-confirm-light.png`,
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+});

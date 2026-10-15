@@ -4,6 +4,8 @@ export interface SecurityConfirmation {
   readonly title: string;
   readonly message: string;
   readonly confirmLabel: string;
+  /** Whether the confirm button is styled as destructive: only for an action that stops a running scan or changes stored findings. */
+  readonly destructive: boolean;
 }
 
 export type SecurityActionId =
@@ -43,7 +45,9 @@ export const SECURITY_ACTIONS: readonly SecurityActionInfo[] = [
     id: "plan",
     label: "Plan a scan",
     summary: "Make a plan for a security scan of this project.",
-    details: "none",
+    details: "optional",
+    placeholder: "Options (optional), such as --path src",
+    hint: "Leave this empty to plan the whole project. Or add options: --path and --exclude pick folders to include or leave out; --working-tree scans the files on disk; --diff takes a base and a head revision and scans what changed between them; --knowledge-base adds a folder of extra material for the plan; --output sets the folder for the plan's files; --archive-existing allows an output folder that already has files; --credential picks a stored sign-in by its number.",
   },
   {
     id: "scan",
@@ -57,6 +61,7 @@ export const SECURITY_ACTIONS: readonly SecurityActionInfo[] = [
       message:
         "The scan uses the session's model, so it spends model budget. Continue only if you want it to run.",
       confirmLabel: "Start the scan",
+      destructive: false,
     },
   },
   {
@@ -78,6 +83,7 @@ export const SECURITY_ACTIONS: readonly SecurityActionInfo[] = [
       title: "Stop this scan?",
       message: "omp will try to stop the running scan. Continue only if you want it stopped.",
       confirmLabel: "Stop the scan",
+      destructive: true,
     },
   },
   {
@@ -105,6 +111,7 @@ export const SECURITY_ACTIONS: readonly SecurityActionInfo[] = [
       title: "Import these findings?",
       message: "omp will add the findings in this file or folder to the project's stored scans.",
       confirmLabel: "Import",
+      destructive: true,
     },
   },
   {
@@ -127,6 +134,7 @@ export const SECURITY_ACTIONS: readonly SecurityActionInfo[] = [
       message:
         "omp will ask the model to check this finding in the chat. This spends model budget.",
       confirmLabel: "Check the finding",
+      destructive: false,
     },
     chatNote: "omp is checking this finding in the chat; its answer appears there.",
   },
@@ -149,6 +157,7 @@ export const SECURITY_ACTIONS: readonly SecurityActionInfo[] = [
       title: "Set this disposition?",
       message: "omp will record the disposition and rationale you typed for this finding.",
       confirmLabel: "Set disposition",
+      destructive: true,
     },
   },
 ];

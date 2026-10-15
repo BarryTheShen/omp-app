@@ -51,11 +51,41 @@ describe("the security actions", () => {
       "The security action nope is not in the catalog.",
     );
   });
+
+  test("the plan hint names each option omp's plan reads", () => {
+    const hint = securityActionOf("plan").hint ?? "";
+    for (const option of [
+      "--path",
+      "--exclude",
+      "--working-tree",
+      "--diff",
+      "--knowledge-base",
+      "--output",
+      "--archive-existing",
+      "--credential",
+    ]) {
+      expect(hint, option).toContain(option);
+    }
+  });
+
+  test("styles destructive only the actions that stop a scan or change stored findings", () => {
+    const destructive = SECURITY_ACTIONS.filter(
+      (action) => action.confirmation?.destructive === true,
+    ).map((action) => action.id);
+    expect(destructive).toEqual(["cancel", "import", "disposition"]);
+    expect(securityActionOf("scan").confirmation?.destructive).toBe(false);
+    expect(securityActionOf("validate").confirmation?.destructive).toBe(false);
+  });
 });
 
 /** omp's own argument grammar for each subcommand, as its helper reads it (omp v18.6.1 slash-commands/helpers/security.ts). */
 const OMP_GRAMMAR: readonly (readonly [SecurityActionId, string, string])[] = [
   ["plan", "", "plan"],
+  ["plan", "--path src --exclude dist", "plan --path src --exclude dist"],
+  ["plan", "--working-tree", "plan --working-tree"],
+  ["plan", "--diff main HEAD", "plan --diff main HEAD"],
+  ["plan", "--output out --archive-existing", "plan --output out --archive-existing"],
+  ["plan", "--knowledge-base notes --credential 4", "plan --knowledge-base notes --credential 4"],
   ["scan", "", "scan"],
   ["scan", "secplan_1", "scan secplan_1"],
   ["status", "", "status"],
