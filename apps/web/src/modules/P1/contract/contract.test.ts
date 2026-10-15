@@ -1,6 +1,8 @@
 import { CapabilityKey, SubagentId, ThreadId, ToolCallId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { ADVISOR_NOTE_AGE_CASES } from "../fixtures/advisor";
 import {
+  AdvisorNoteSchema,
   AdvisorStateSchema,
   AgentRefSchema,
   AgentRosterSnapshotSchema,
@@ -124,7 +126,7 @@ describe("P1 agent contracts", () => {
         status: "working",
         advisor: "reviewer",
         model: "model-id",
-        note: { text: "Reviewing", severity: "info", delayedTurns: 2 },
+        note: { note: "Reviewing", severity: "concern", turn: 4, turnsAgo: 2 },
         updatedAt: 1_759_600_000_000,
       }).success,
     ).toBe(true);
@@ -144,6 +146,37 @@ describe("P1 agent contracts", () => {
     ]);
     for (const key of Object.values(P1CapabilityKeys)) {
       expect(CapabilityKey.safeParse(key).success).toBe(true);
+    }
+  });
+
+  test("an advisor note has omp's fields and three severities, and not the names omp does not send", () => {
+    for (const severity of ["nit", "concern", "blocker"] as const) {
+      expect(AdvisorNoteSchema.safeParse({ note: "Check the order", severity }).success).toBe(true);
+    }
+    expect(AdvisorNoteSchema.safeParse({ note: "No severity, no age" }).success).toBe(true);
+    expect(
+      AdvisorNoteSchema.safeParse({
+        note: "From a named advisor",
+        advisor: "reviewer",
+        turn: 7,
+        turnsAgo: 1,
+      }).success,
+    ).toBe(true);
+    expect(AdvisorNoteSchema.safeParse({ note: "x", severity: "info" }).success).toBe(false);
+    expect(AdvisorNoteSchema.safeParse({ text: "x", severity: "concern" }).success).toBe(false);
+    expect(AdvisorNoteSchema.safeParse({ note: "x", delayedTurns: 2 }).success).toBe(false);
+    expect(AdvisorNoteSchema.safeParse({ note: "x", timestamp: 1_759_600_000_000 }).success).toBe(
+      false,
+    );
+  });
+
+  test("every note-age fixture case parses as an advisor note, and keeps the age omp gives it", () => {
+    for (const testCase of ADVISOR_NOTE_AGE_CASES) {
+      const parsed = AdvisorNoteSchema.safeParse(testCase.note);
+      expect(parsed.success, testCase.name).toBe(true);
+      expect(parsed.success ? parsed.data.turnsAgo : undefined, testCase.name).toBe(
+        testCase.expectTurnsAgo,
+      );
     }
   });
 });

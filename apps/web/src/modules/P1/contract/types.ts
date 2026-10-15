@@ -150,13 +150,15 @@ export const SubagentTranscriptPageSchema = z
   );
 export type SubagentTranscriptPage = z.infer<typeof SubagentTranscriptPageSchema>;
 
+/** omp's advisor note (packages/tui/src/chat/messages.ts:292-301, omp v18.8.9). `turn` is the primary turns completed
+ * when the note was emitted; `turnsAgo` is set only when its batch is delivered after a later turn. */
 export const AdvisorNoteSchema = z
   .object({
-    text: z.string().min(1),
-    severity: z.enum(["info", "success", "warning", "error", "unknown"]),
+    note: z.string().min(1),
+    severity: z.enum(["nit", "concern", "blocker"]).optional(),
     advisor: z.string().min(1).optional(),
-    delayedTurns: z.number().int().nonnegative().nullable().optional(),
-    timestamp: z.number().finite().optional(),
+    turn: z.number().int().nonnegative().optional(),
+    turnsAgo: z.number().int().nonnegative().optional(),
   })
   .strict();
 export type AdvisorNote = z.infer<typeof AdvisorNoteSchema>;
