@@ -159,6 +159,21 @@ function capabilityReason(
  */
 const scrollPositions = new WeakMap<SessionCatalogModel, number>();
 
+/**
+ * The New chat click that is starting, per catalog. The app rebuilds the sidebar each time a chat is opened, so a click
+ * still waiting in the sidebar that started it must find the record its successor reads: a click that a later click or a
+ * pick superseded then neither opens nor ends anything.
+ */
+const pendingNewChats = new WeakMap<SessionCatalogModel, { current: object | null }>();
+
+function pendingNewChatOf(catalog: SessionCatalogModel): { current: object | null } {
+  const existing = pendingNewChats.get(catalog);
+  if (existing) return existing;
+  const created: { current: object | null } = { current: null };
+  pendingNewChats.set(catalog, created);
+  return created;
+}
+
 export function SessionCatalogSidebar({
   catalog,
   remote,
@@ -190,7 +205,7 @@ export function SessionCatalogSidebar({
   const listRef = useRef<HTMLDivElement | null>(null);
   const newChatRef = useRef<HTMLButtonElement | null>(null);
   // The New chat that is starting, if any: a pick ends it (see `openSession`).
-  const pendingNewChat = useRef<object | null>(null);
+  const pendingNewChat = pendingNewChatOf(catalog);
   const attachList = useCallback(
     (element: HTMLDivElement | null) => {
       listRef.current = element;

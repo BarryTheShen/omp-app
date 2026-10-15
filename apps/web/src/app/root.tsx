@@ -569,11 +569,17 @@ function DraftComposer({
   );
 }
 
+/** The attachments a send carries, read when Enter is pressed in the composer that holds them (see `submit` in the view). */
+interface SendAttachments {
+  readonly refs: NonNullable<PromptIntent["attachmentRefs"]>;
+  readonly complete: Parameters<typeof withPastedText>[1];
+}
+
 interface ActiveThreadProps {
-  readonly deliverToOpenChat: (intent: PromptIntent) => Promise<void>;
+  readonly deliverToOpenChat: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>;
   readonly registerLiveChat: (
     threadId: ThreadId,
-    deliver: (intent: PromptIntent) => Promise<void>,
+    deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>,
   ) => () => void;
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly history: SelectedThreadHistoryState;
@@ -1301,21 +1307,22 @@ function ActiveThreadReady({
     [slashProvider],
   );
   // What a send does in the chat it is for: a slash command, or omp's prompt. It is read at the send, so a send that
-  // waited for a chat to open runs in the chat on screen, never in the one before it.
+  // waited for a chat to open runs in the chat on screen, never in the one before it. The attachments are the ones the
+  // send carried when Enter was pressed (see `submit`): the chat on screen may be another view, which holds none.
   const deliver = useCallback(
-    async (intent: PromptIntent): Promise<void> => {
+    async (intent: PromptIntent, attachments: SendAttachments): Promise<void> => {
       const route = await routeSubmit({
         intent,
-        hasAttachments: attachmentManager.toDraftRefs().length > 0,
+        hasAttachments: attachments.refs.length > 0,
         provider: slashProvider,
         appCommands: appSlashCommands,
       });
       if (route === null) {
         await runtimeController.submitPrompt({
           ...intent,
-          // A pasted-text chip sends its full text, from the file the manager holds (also a chip restored after a reload).
-          text: withPastedText(intent.text, attachmentManager.getState().complete),
-          attachmentRefs: attachmentManager.toDraftRefs(),
+          // A pasted-text chip sends its full text, from the file the composer held when Enter was pressed.
+          text: withPastedText(intent.text, attachments.complete),
+          attachmentRefs: attachments.refs,
         });
         return;
       }
@@ -1329,7 +1336,6 @@ function ActiveThreadReady({
       });
     },
     [
-      attachmentManager,
       appSlashCommands,
       commandGateway,
       runtimeController,
@@ -1345,8 +1351,13 @@ function ActiveThreadReady({
     // Sending shows the newest message, wherever the reader had scrolled to; the transcript then
     // keeps following by itself because it is at the bottom.
     scrollController.jumpToLatest();
-    // The draft keeps the text until the send is admitted. The send goes to the chat that is open when it is delivered.
-    await chatDraft.submit(intent, deliverToOpenChat);
+    // The draft keeps the text until the send is admitted. The send goes to the chat that is open when it is delivered,
+    // carrying the attachments this composer holds now: that chat's view may be another one, which holds none of them.
+    const attachments: SendAttachments = {
+      refs: attachmentManager.toDraftRefs(),
+      complete: attachmentManager.getState().complete,
+    };
+    await chatDraft.submit(intent, (sent) => deliverToOpenChat(sent, attachments));
     if (intent.mode === "bash") void onRefreshAfterCommand?.();
     attachmentManager.clearAfterSend();
     scrollController.jumpToLatest();
@@ -2031,30 +2042,44 @@ function ConnectedApp({
     (threadId: ThreadId): Promise<void> => openHistoryChat(threadId),
     [openHistoryChat],
   );
-  // The sidebar's New chat holds the chat switch from its first step until its chat is open, so a send made meanwhile
-  // waits for the new chat instead of going to the chat before it.
-  const newChatHold = useRef<(() => void) | undefined>(undefined);
+  // The sidebar's New chat holds the chat switch from its click until its chat's open is requested, so a send made
+  // meanwhile waits for the new chat instead of going to the chat before it. The sidebar reports the end of only the
+  // newest New chat (an older one is superseded by a newer click and will not open), so the newest hold is the one a
+  // report ends; the holds of the New chats before it end at once.
+  const newChatHolds = useRef<Array<() => void>>([]);
   const reportNewChat = useCallback(
     (status: NewChatStatus): void => {
       setNewChat(status);
       if (status.state === "opening") {
         setNewChatFrom(controller?.getSnapshot().threadId ?? null);
-        newChatHold.current ??= controller?.holdSwitch();
+        for (const release of newChatHolds.current.splice(0)) release();
+        newChatHolds.current.push(controller?.holdSwitch() ?? (() => undefined));
         return;
       }
-      newChatHold.current?.();
-      newChatHold.current = undefined;
+      newChatHolds.current.pop()?.();
     },
     [controller],
+  );
+  // The sidebar opens its New chat's chat with this. The open holds the switch from its request on (`whenSettled` waits
+  // for it), so the New chat's own hold ends here, before the history of the chat loads.
+  const openNewChatFromSidebar = useCallback(
+    (threadId: ThreadId): Promise<void> => {
+      newChatHolds.current.at(-1)?.();
+      return openThread(threadId);
+    },
+    [openThread],
   );
   // The chat on screen registers how a send reaches it: the view that shows the open chat (see `deliverToOpenChat`).
   const liveChat = useRef<{
     readonly threadId: ThreadId;
-    readonly deliver: (intent: PromptIntent) => Promise<void>;
+    readonly deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>;
   } | null>(null);
   const liveChatChanged = useRef<Array<() => void>>([]);
   const registerLiveChat = useCallback(
-    (threadId: ThreadId, deliver: (intent: PromptIntent) => Promise<void>): (() => void) => {
+    (
+      threadId: ThreadId,
+      deliver: (intent: PromptIntent, attachments: SendAttachments) => Promise<void>,
+    ): (() => void) => {
       const live = { threadId, deliver };
       liveChat.current = live;
       const waiters = liveChatChanged.current;
@@ -2070,7 +2095,7 @@ function ConnectedApp({
   // opening, the send waits until that chat is on screen: it is never written to the chat before it. If the chat did
   // not open, nothing is sent and the text stays in the composer.
   const deliverToOpenChat = useCallback(
-    async (intent: PromptIntent): Promise<void> => {
+    async (intent: PromptIntent, attachments: SendAttachments): Promise<void> => {
       if (controller === null) {
         throw new AppFailure({
           code: "unavailable",
@@ -2089,7 +2114,7 @@ function ConnectedApp({
           });
         }
         const live = liveChat.current;
-        if (live !== null && live.threadId === open) return live.deliver(intent);
+        if (live !== null && live.threadId === open) return live.deliver(intent, attachments);
         await new Promise<void>((wake) => {
           liveChatChanged.current.push(wake);
         });
@@ -2177,7 +2202,7 @@ function ConnectedApp({
           <SessionCatalogSidebar
             catalog={catalog}
             currentThreadId={history.threadId}
-            onNewChat={openThread}
+            onNewChat={openNewChatFromSidebar}
             onOpenThread={openThread}
             confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
             currentTurnRunning={() =>

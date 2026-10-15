@@ -1105,6 +1105,30 @@ describe("SelectedThreadHistoryController whenSettled", () => {
     expect(settled).toBe(true);
   });
 
+  test("a New chat's hold outlasts another chat's open, and is let go only by its own release", async () => {
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} })),
+        [],
+      ),
+      folder,
+    });
+    // This New chat's click holds the switch until its own chat is open.
+    const release = controller.holdSwitch();
+    // Another chat opens in the meantime: that open must not drop this hold.
+    await controller.openExisting(threadTwo);
+    let settled = false;
+    const waiting = controller.whenSettled().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    await waiting;
+    expect(settled).toBe(true);
+  });
+
   test("waiting for a chat to open ends when the chat is on screen, not when its history has loaded", async () => {
     const entriesHeld = Promise.withResolvers<void>();
     const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));

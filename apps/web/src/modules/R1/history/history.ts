@@ -134,7 +134,7 @@ export class SelectedThreadHistoryController {
   private stopRefetchWatch: (() => void) | undefined;
   private listeners = new Set<(state: SelectedThreadHistoryState) => void>();
   private transitions: Promise<void> = Promise.resolve();
-  /** Switches the page started but has not yet asked this controller for their chat (see `holdSwitch`). */
+  /** Switches the page started and not yet open. Each one is let go by its owner (see `holdSwitch`). */
   private readonly holds = new Set<symbol>();
   /** Opens asked for whose chat is not yet on screen: counted from the request until the commit, or the failure. */
   private pendingOpens = 0;
@@ -214,8 +214,9 @@ export class SelectedThreadHistoryController {
   }
 
   /**
-   * Holds a chat switch the page started before it asked for its chat (the sidebar's New chat, before its open). The
-   * next open request takes the hold over (see `open`). Returns the release.
+   * Holds a chat switch the page started before its chat is open (the sidebar's New chat, from its click until the chat
+   * opens or fails). The hold ends only when its release is called, so another chat's open in between does not drop it.
+   * Returns the release.
    */
   public holdSwitch(): () => void {
     const token = Symbol("switch");
@@ -397,8 +398,6 @@ export class SelectedThreadHistoryController {
   }
 
   private open(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
-    // The open request is the switch now, so a hold made before it is covered (see `whenSettled`).
-    this.holds.clear();
     this.pendingOpens += 1;
     const settle = this.openSettler();
     return this.serialize(() => this.openNow(args, settle)).finally(settle);
