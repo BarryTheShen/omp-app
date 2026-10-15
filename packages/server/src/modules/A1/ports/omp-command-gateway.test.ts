@@ -94,6 +94,22 @@ describe("OmpCommandGateway typed share and dump handlers", () => {
     expect(commands).toEqual(["/dump", "/dump all"]);
   });
 
+  test("dump runs /dump anon for the anon scope", async () => {
+    const { handlers, commands } = handlersAnswering((command) => ({
+      scope: "anon",
+      text: `report for ${command}`,
+      empty: false,
+    }));
+    const dump = handlers.dump;
+    if (dump === undefined) throw new Error("the dump handler is not registered");
+    await expect(dump({ threadId, scope: "anon" }, handlerContext())).resolves.toEqual({
+      scope: "anon",
+      text: "report for /dump anon",
+      empty: false,
+    });
+    expect(commands).toEqual(["/dump anon"]);
+  });
+
   test("a command with no parser (raw frames) is never returned as a typed reply", async () => {
     const raw = {
       command: "/share",

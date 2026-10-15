@@ -27,7 +27,7 @@ export interface ExportPortOptions {
   readonly history: ChatHistory<KeyedTranscriptMessage>;
   /** A0.8's typed session client. `export_html` runs as one typed command, with no output path. */
   readonly session: Pick<RpcSessionClient, "send">;
-  /** A1's typed `/dump` and `/dump all` reports (A1 issue 793). */
+  /** A1's typed `/dump`, `/dump all` and `/dump anon` reports (A1 issue 793). */
   readonly gateway: Pick<PortClient<typeof OmpCommandGateway>, "dump">;
 }
 
@@ -39,15 +39,16 @@ const FILE_NAMES = {
 
 const MEDIA_TYPES = { markdown: "text/markdown", plain: "text/plain" } as const;
 
-/** The download name of a `/dump` report: the session dump is Markdown, the archive report is text. */
+/** The download name of a `/dump` report: the session dump is Markdown; the archive reports are text. */
 const DUMP_FILE_NAMES: Readonly<Record<DumpScope, string>> = {
   session: "omp-dump.md",
   all: "omp-dump-archive.txt",
+  anon: "omp-dump-anonymized.txt",
 };
 
 /**
  * D4's ExportPort over one chat. Markdown and plain files come from U1.7's raw parts, of the whole chat; an HTML
- * page is omp's own `export_html`; `/dump` and `/dump all` are A1's typed reports. Nothing is written here: a
+ * page is omp's own `export_html`; `/dump`, `/dump all` and `/dump anon` are A1's typed reports. Nothing is written here: a
  * download is returned for the caller to save through the app's download path.
  */
 export function createExportPort(options: ExportPortOptions): ExportPort {

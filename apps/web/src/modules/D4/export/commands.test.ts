@@ -191,6 +191,21 @@ describe("the export slash commands", () => {
     expect(harness.downloads.map((entry) => entry.fileName)).toEqual(["omp-dump-archive.txt"]);
   });
 
+  test("/dump anon saves the anonymized archive report as omp-dump-anonymized.txt", async () => {
+    const harness = harnessWith({
+      result: () =>
+        Promise.resolve({
+          kind: "report",
+          format: "dump",
+          source: "omp",
+          text: "Session dump archive: x",
+        }),
+    });
+    await commandNamed(harness.commands, "dump").run({ args: "anon" });
+    expect(harness.requests).toEqual([{ format: "dump", threadId, scope: "anon" }]);
+    expect(harness.downloads.map((entry) => entry.fileName)).toEqual(["omp-dump-anonymized.txt"]);
+  });
+
   test("/dump with other words is refused, and nothing is asked of omp", async () => {
     const harness = harnessWith({});
     const failure = await failureOf(() =>
@@ -198,7 +213,8 @@ describe("the export slash commands", () => {
     );
     expect(failure.appError).toMatchObject({
       code: "invalid_args",
-      message: "Use /dump for this chat, or /dump all for where omp archived it.",
+      message:
+        "Use /dump for this chat, /dump all for where omp archived it, or /dump anon for an anonymized copy.",
     });
     expect(harness.requests).toEqual([]);
     expect(harness.downloads).toEqual([]);

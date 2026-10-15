@@ -5,6 +5,7 @@ import {
   type CommandRunResult,
   CompactionEvent,
   DumpReport,
+  type DumpScope,
   ModeChangeResult,
   modeChangeCommand,
   OmpCommandGateway,
@@ -38,6 +39,13 @@ function backgroundJobStopOf(
     return { jobId, status: "finished" };
   return undefined;
 }
+
+/** The command each dump scope runs in omp: `/dump`, `/dump all`, and `/dump anon` (the anonymized archive). */
+const DUMP_COMMANDS: Readonly<Record<DumpScope, string>> = {
+  session: "/dump",
+  all: "/dump all",
+  anon: "/dump anon",
+};
 
 export function createOmpCommandGatewayRegistration(context: A1PortContext): PortRegistration {
   const bindings = [
@@ -74,7 +82,7 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
         return typedReply(data, (value) => ShareResult.parse(value), "/share");
       },
       dump: async (args, handlerContext) => {
-        const command = args.scope === "all" ? "/dump all" : "/dump";
+        const command = DUMP_COMMANDS[args.scope];
         const { data } = await context.ompCommandGateway.runWithParser<DumpReport>(
           { threadId: args.threadId, command },
           { signal: handlerContext.signal },

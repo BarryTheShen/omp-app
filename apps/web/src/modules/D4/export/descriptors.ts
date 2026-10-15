@@ -1,10 +1,9 @@
 import type { Descriptor } from "@omp-app/contracts";
 
 /**
- * D4.3's registry descriptors: the five inventory rows this part builds (`D5.export`, `D5.dump`,
- * `D5.dump-all`, `D5.open`, `D5.record`), each covered once. D4.6 does not compose them into `D4_DESCRIPTORS` until
- * their commands are mounted (follow-up issue 1683), and does not declare them again. `/dump all` is a subcommand, so
- * it has no slash name of its own.
+ * D4.3's registry descriptors: the five inventory rows this part builds (`D5.export`, `D5.dump`, `D5.dump-all`,
+ * `D5.open`, `D5.record`), each covered once. `D4_DESCRIPTORS` composes them, and the chat mounts their commands
+ * (issue 1683). `/dump all` and `/dump anon` are subcommands, so they have no slash name of their own.
  */
 export const EXPORT_COMMAND_DESCRIPTORS = [
   {

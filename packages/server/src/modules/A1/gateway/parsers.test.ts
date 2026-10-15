@@ -217,6 +217,53 @@ describe("/dump replies recorded from omp 18.6.1", () => {
   });
 });
 
+/** omp 18.8.9's `/dump anon` report (session-dump-format.ts formatDumpArchiveReport): the path, the members, then the review note in place of the raw-secrets warning. */
+const ANONYMIZED_REVIEW_NOTE =
+  "Turn contents and error text are redacted and paths/literals replaced; metadata such as model names is kept — review before sharing.";
+const ANONYMIZED_ARCHIVE_TEXT = [
+  "Session dump archive: /tmp/omp-dump-anon/session-anon.zip",
+  "Contains 2 files (1 subagent transcript):",
+  "  session.jsonl",
+  "  subagent-1.jsonl",
+  ANONYMIZED_REVIEW_NOTE,
+].join("\n");
+
+describe("/dump anon replies from omp 18.8.9", () => {
+  test("the anonymized archive report is kept, ending with omp's review note", () => {
+    expect(parseDumpReply(replyWith("/dump anon", ANONYMIZED_ARCHIVE_TEXT))).toEqual({
+      scope: "anon",
+      text: ANONYMIZED_ARCHIVE_TEXT,
+      empty: false,
+    });
+  });
+
+  test("an archive that ends with the raw-secrets warning is not /dump anon's report", () => {
+    const rawEnding = ANONYMIZED_ARCHIVE_TEXT.replace(
+      ANONYMIZED_REVIEW_NOTE,
+      "This archive persists on disk and may contain raw context/secrets — treat accordingly.",
+    );
+    expect(internalFailureOf("/dump anon", rawEnding).appError.code).toBe("internal");
+  });
+
+  test("the review note does not make an archive report /dump all's", () => {
+    expect(internalFailureOf("/dump all", ANONYMIZED_ARCHIVE_TEXT).appError.code).toBe("internal");
+  });
+
+  test("with no messages, /dump anon prints omp's message", () => {
+    expect(parseDumpReply(replyWith("/dump anon", "No messages to dump yet."))).toEqual({
+      scope: "anon",
+      text: "No messages to dump yet.",
+      empty: true,
+    });
+  });
+
+  test("/dump anon with extra words is not a dump command", () => {
+    expect(internalFailureOf("/dump anon extra", ANONYMIZED_ARCHIVE_TEXT).appError.code).toBe(
+      "internal",
+    );
+  });
+});
+
 const SHARE_URL = "https://share.example.test/abc1234567#key";
 const GIST_URL = "https://gist.github.com/example/0123456789abcdef";
 const NOTE = "Note: large content was trimmed to fit the share size limit.";

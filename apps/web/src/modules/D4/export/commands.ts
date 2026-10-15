@@ -101,7 +101,7 @@ async function exportChat(
   return `Download requested for ${filename} (${count}).`;
 }
 
-/** `/dump` and `/dump all`: omp's typed report, saved as a file through the download path. */
+/** `/dump`, `/dump all` and `/dump anon`: omp's typed report, saved as a file through the download path. */
 async function dumpChat(
   deps: ExportCommandDeps,
   scope: DumpScope,
@@ -125,23 +125,25 @@ async function dumpChat(
 }
 
 /**
- * The scope the words after `/dump` ask for: none is this chat's dump, and `all` is omp's archive report.
- * Any other words are refused, so a typo never saves the wrong report.
+ * The scope the words after `/dump` ask for: none is this chat's dump, `all` is omp's archive report, and `anon` is
+ * omp's anonymized archive report. Any other words are refused, so a typo never saves the wrong report.
  */
 function dumpScopeOf(args: string | undefined): DumpScope {
   const words = (args ?? "").trim().toLowerCase();
   if (words === "") return "session";
   if (words === "all") return "all";
+  if (words === "anon") return "anon";
   throw new AppFailure({
     code: "invalid_args",
-    message: "Use /dump for this chat, or /dump all for where omp archived it.",
+    message:
+      "Use /dump for this chat, /dump all for where omp archived it, or /dump anon for an anonymized copy.",
     retryable: false,
   });
 }
 
 /**
  * D4's export slash commands, for the composition to hand to the composer as app commands. `/export`
- * opens the picker; `/dump` and `/dump all` save omp's reports; `/open` and `/record` are terminal-only
+ * opens the picker; `/dump`, `/dump all` and `/dump anon` save omp's reports; `/open` and `/record` are terminal-only
  * and fail with the reason, so the composer shows it and keeps the typed text.
  */
 export function createExportSlashCommands(deps: ExportCommandDeps): readonly SlashAppCommand[] {
@@ -153,7 +155,8 @@ export function createExportSlashCommands(deps: ExportCommandDeps): readonly Sla
     },
     {
       name: "dump",
-      description: "Save omp's dump of this chat. /dump all saves where omp archived it instead.",
+      description:
+        "Save omp's dump of this chat. /dump all and /dump anon save omp's archive reports instead.",
       takesArguments: true,
       run: async ({ signal, args }) => ({
         message: await dumpChat(deps, dumpScopeOf(args), abortOf(signal)),

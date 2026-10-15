@@ -96,8 +96,11 @@ export type ShareResult = z.infer<typeof ShareResult>;
 export const ShareCommandArgs = z.strictObject({ threadId: ThreadId });
 export type ShareCommandArgs = z.infer<typeof ShareCommandArgs>;
 
-/** `session` runs `/dump`; `all` runs `/dump all` (builtin-collaboration.ts:231-279). */
-export const DumpScope = z.enum(["session", "all"]);
+/**
+ * `session` runs `/dump`; `all` runs `/dump all` (builtin-collaboration.ts:231-279 in v18.6.1); `anon` runs `/dump anon`,
+ * the anonymized archive that omp v18.8.9 added (its `dump` subcommands in builtin-collaboration.ts).
+ */
+export const DumpScope = z.enum(["session", "all", "anon"]);
 export type DumpScope = z.infer<typeof DumpScope>;
 
 export const DumpCommandArgs = z.strictObject({ threadId: ThreadId, scope: DumpScope });

@@ -4,8 +4,9 @@ import { registerModeChangeParsers } from "./mode-parsers";
 import { parseSessionDeleteReply } from "./session-delete-parser";
 
 /*
- * Typed parsers for the `/share` and `/dump` replies of omp v18.6.1 (issue #793). Each command prints
- * one `command_output` frame, and each parser accepts only the shape omp prints for it, cited below.
+ * Typed parsers for the `/share` and `/dump` replies of omp v18.6.1 (issue #793), and for the `/dump anon` report of
+ * omp v18.8.9 (issue 1683). Each command prints one `command_output` frame, and each parser accepts only the shape
+ * omp prints for it, cited below.
  * A reply that differs is an `internal` failure, never a best-effort guess. `/dump` text is passed
  * through unparsed: the browser shows it, and no parser reads its wording.
  */
@@ -32,6 +33,18 @@ const ARCHIVE_OPENING = "Session dump archive: ";
 const ARCHIVE_CONTENTS_OPENING = "Contains ";
 const ARCHIVE_WARNING =
   "This archive persists on disk and may contain raw context/secrets — treat accordingly.";
+/**
+ * omp v18.8.9 ends an anonymized archive report (`/dump anon`) with its review note instead of the warning:
+ * `formatDumpArchiveReport` in session-dump-format.ts prints `ANONYMIZED_REVIEW_NOTE` from session-anonymizer.ts.
+ */
+const ANONYMIZED_REVIEW_NOTE =
+  "Turn contents and error text are redacted and paths/literals replaced; metadata such as model names is kept — review before sharing.";
+type ArchiveScope = Exclude<DumpScope, "session">;
+/** The line each archive report ends with: `/dump all` the warning, `/dump anon` the review note. */
+const ARCHIVE_CLOSING: Readonly<Record<ArchiveScope, string>> = {
+  all: ARCHIVE_WARNING,
+  anon: ANONYMIZED_REVIEW_NOTE,
+};
 
 /** A reply omp did not print in the expected shape: an app bug, or an omp version the app does not know. */
 function unrecognized(command: string): AppFailure {
@@ -106,20 +119,22 @@ export function parseShareReply(context: CommandParserContext): ShareResult {
 function scopeOf(command: string): DumpScope | undefined {
   if (command === "/dump") return "session";
   if (command === "/dump all") return "all";
+  if (command === "/dump anon") return "anon";
   return undefined;
 }
 
-function isArchiveReport(text: string): boolean {
+/** An archive report: the path line, the contents line, then the closing line its scope ends with. */
+function isArchiveReport(text: string, scope: ArchiveScope): boolean {
   const lines = text.split("\n");
   return (
     lines[0]?.startsWith(ARCHIVE_OPENING) === true &&
     lines[1]?.startsWith(ARCHIVE_CONTENTS_OPENING) === true &&
-    lines[lines.length - 1] === ARCHIVE_WARNING
+    lines[lines.length - 1] === ARCHIVE_CLOSING[scope]
   );
 }
 
 /**
- * Reads `/dump` or `/dump all`: the session dump, the archive report, or omp's message for a session
+ * Reads `/dump`, `/dump all` or `/dump anon`: the session dump, an archive report, or omp's message for a session
  * with no messages. The text is omp's own and is returned unchanged.
  */
 export function parseDumpReply(context: CommandParserContext): DumpReport {
@@ -129,9 +144,9 @@ export function parseDumpReply(context: CommandParserContext): DumpReport {
   const empty = text === NO_MESSAGES;
   const shaped =
     empty ||
-    (scope === "all"
-      ? isArchiveReport(text)
-      : SESSION_DUMP_OPENINGS.some((opening) => text.startsWith(opening)));
+    (scope === "session"
+      ? SESSION_DUMP_OPENINGS.some((opening) => text.startsWith(opening))
+      : isArchiveReport(text, scope));
   if (!shaped) throw unrecognized(context.command);
   return DumpReport.parse({ scope, text, empty });
 }

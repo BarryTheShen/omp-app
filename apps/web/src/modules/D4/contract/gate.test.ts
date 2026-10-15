@@ -163,7 +163,7 @@ const PROOFS: readonly { readonly proof: string; readonly files: readonly string
   },
   {
     proof:
-      "descriptor coverage: the three D5 rows D4 mounts, each once; the five export rows stay uncovered until issue 1683 mounts them; the two D4 slash names mounted today, each once",
+      "descriptor coverage: each of the eight D5 rows D4 mounts, once; the six D4 slash names mounted, each once",
     files: [
       "descriptors/descriptors.test.ts",
       "export/descriptors.test.ts",

@@ -23,7 +23,7 @@ export const browserClipboard: ClipboardPort = {
   },
 };
 
-function orderedMessages(snapshot: RuntimeSnapshot): readonly KeyedTranscriptMessage[] {
+export function orderedMessages(snapshot: RuntimeSnapshot): readonly KeyedTranscriptMessage[] {
   return snapshot.messageOrder.flatMap((key) => {
     const record = snapshot.messages[key];
     return record === undefined ? [] : [{ key: record.key, message: record.message }];

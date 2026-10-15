@@ -2,7 +2,11 @@ import type {
   PersistedMessageKey,
   SessionImportResult as SessionImportResultValue,
 } from "@omp-app/contracts";
-import { SessionImportResult as SessionImportResultSchema, ThreadId } from "@omp-app/contracts";
+import {
+  DumpScope,
+  SessionImportResult as SessionImportResultSchema,
+  ThreadId,
+} from "@omp-app/contracts";
 import { z } from "zod";
 import type { RawTranscriptPart } from "@/modules/U1/copy";
 
@@ -114,7 +118,7 @@ export const ExportRequestSchema = z.discriminatedUnion("format", [
   z.strictObject({
     format: z.literal("dump"),
     threadId: ThreadId,
-    scope: z.enum(["session", "all"]),
+    scope: DumpScope,
   }),
 ]);
 export type ExportRequest = z.infer<typeof ExportRequestSchema>;

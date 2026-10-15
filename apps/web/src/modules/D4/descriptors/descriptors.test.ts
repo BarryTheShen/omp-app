@@ -8,31 +8,24 @@ const D5_ROWS = INVENTORY.filter((item) => item.group === "D5")
   .map((item) => item.id)
   .sort();
 
-/** The D5 rows whose commands are mounted today: copy (`D4.copyFromChat`) and share (`D4.shareChat`). */
-const MOUNTED_ROWS = ["D5.conversation-copy-selector", "D5.copy", "D5.share"];
-
-/** The export rows, which stay uncovered until their commands are mounted (follow-up issue 1683). */
-const UNMOUNTED_ROWS = ["D5.dump", "D5.dump-all", "D5.export", "D5.open", "D5.record"];
-
 describe("D4's composed descriptors", () => {
   test("pass the registry check with no problems", () => {
     expect(validateRegistry(D4_DESCRIPTORS)).toEqual([]);
   });
 
-  test("cover the three D5 rows whose commands are mounted, each exactly once; the five export rows stay uncovered", () => {
+  test("cover each of the eight D5 rows exactly once: copy, share, the conversation picker and the five export rows", () => {
     expect(D5_ROWS).toHaveLength(8);
     const covered: readonly string[] = D4_DESCRIPTORS.flatMap((descriptor) => [
       ...descriptor.covers,
     ]).sort();
-    expect(covered).toEqual(MOUNTED_ROWS);
-    expect(D5_ROWS.filter((row) => !covered.includes(row))).toEqual(UNMOUNTED_ROWS);
+    expect(covered).toEqual(D5_ROWS);
   });
 
-  test("claim the two D4 slash names that are mounted today, each once: copy and share", () => {
+  test("claim the six D4 slash names, each once: copy, share, export, dump, open and record", () => {
     const names = D4_DESCRIPTORS.flatMap((descriptor) =>
       "slash" in descriptor && descriptor.slash !== undefined ? [descriptor.slash.name] : [],
     ).sort();
-    expect(names).toEqual(["copy", "share"]);
+    expect(names).toEqual(["copy", "dump", "export", "open", "record", "share"]);
   });
 
   test("every descriptor belongs to D4, and the copy command keeps the id its handler runs", () => {

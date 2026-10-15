@@ -201,6 +201,7 @@ import { browserClipboard, runCopyFromChat, useCopyFromChat } from "./copy/use-c
 import { reportDraftFailure, useComposerDraftOwner } from "./draft-owner";
 import { type EmptyStateCopy, emptyStateCopy } from "./empty-state";
 import { useExecutionModesSurface } from "./execution-modes";
+import { exportSlashCommandsFor } from "./export/export-commands";
 import {
   ExternalEditorDialog,
   type ExternalEditRequest,
@@ -783,6 +784,20 @@ function ActiveThreadReady({
     download: saveTextFile,
     showStatus: setCommandStatus,
   });
+  // The export commands for this chat: typed /export opens the picker, and typed /dump saves omp's reports as files.
+  const exportCommands = useMemo(
+    () =>
+      exportSlashCommandsFor({
+        threadId,
+        store,
+        loadOlder: onLoadOlder,
+        session: rpc as RpcSessionClient,
+        gateway: commandGateway,
+        dialogs: dialogHost,
+        download: saveTextFile,
+      }),
+    [commandGateway, dialogHost, onLoadOlder, rpc, store, threadId],
+  );
   const shareController = useShareFromChat({
     client,
     threadId,
@@ -1275,6 +1290,7 @@ function ActiveThreadReady({
       freshSlashCommand({ lifecycle }),
       shareSlashCommand({ run: () => runShareCommand(shareController) }),
       copySlashCommand({ copy: () => runCopyFromChat(shortcutRegistry) }),
+      ...exportCommands,
       loginSlashCommand({ openLogin }),
       settingsSlashCommand({
         openSettings: () => onOpenSettings(threadId, composerInput() ?? undefined),
@@ -1302,6 +1318,7 @@ function ActiveThreadReady({
       catalog,
       client,
       commandGateway,
+      exportCommands,
       goalCommand,
       lifecycle,
       onOpenSettings,

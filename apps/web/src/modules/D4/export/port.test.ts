@@ -302,6 +302,21 @@ describe("omp's dump reports", () => {
     expect(dumped).toEqual([{ threadId, scope: "all" }]);
   });
 
+  test("/dump anon asks for the anon scope and returns omp's report", async () => {
+    const { port, dumped } = portWith({
+      dump: () =>
+        Promise.resolve({ scope: "anon", text: "Session dump archive: /x.zip", empty: false }),
+    });
+    const result = await port.export({ format: "dump", threadId, scope: "anon" });
+    expect(dumped).toEqual([{ threadId, scope: "anon" }]);
+    expect(result).toEqual({
+      kind: "report",
+      format: "dump",
+      source: "omp",
+      text: "Session dump archive: /x.zip",
+    });
+  });
+
   test("a dump of a chat with no messages is not found, with nothing to save", async () => {
     const { port } = portWith({
       dump: () => Promise.resolve({ scope: "all", text: "No messages to dump yet.", empty: true }),

@@ -114,6 +114,9 @@ describe("D4 export contracts", () => {
     expect(ExportRequestSchema.safeParse({ format: "dump", threadId, scope: "all" }).success).toBe(
       true,
     );
+    expect(ExportRequestSchema.safeParse({ format: "dump", threadId, scope: "anon" }).success).toBe(
+      true,
+    );
     expect(ExportRequestSchema.safeParse({ format: "dump", threadId }).success).toBe(false);
   });
 
