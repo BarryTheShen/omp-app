@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  type ReasoningGroupComponent,
-  type ReasoningMessagePartComponent,
-  useAuiState,
-  useScrollLock,
-} from "@assistant-ui/react";
+import { type ReasoningMessagePartComponent, useScrollLock } from "@assistant-ui/react";
 import { memo, useCallback, useRef } from "react";
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
 import {
@@ -48,25 +43,6 @@ function ReasoningRoot({ ref, onAnimationStart, ...props }: ReasoningRootProps) 
 
 const ReasoningImpl: ReasoningMessagePartComponent = () => <MarkdownText />;
 
-const ReasoningGroupImpl: ReasoningGroupComponent = ({ children, startIndex, endIndex }) => {
-  const isReasoningStreaming = useAuiState((s) => {
-    if (s.message.status?.type !== "running") return false;
-    for (let index = startIndex; index <= endIndex; index++) {
-      if (s.message.parts[index]?.status.type === "running") return true;
-    }
-    return false;
-  });
-
-  return (
-    <ReasoningRoot streaming={isReasoningStreaming}>
-      <ReasoningTrigger active={isReasoningStreaming} />
-      <ReasoningContent aria-busy={isReasoningStreaming}>
-        <ReasoningText>{children}</ReasoningText>
-      </ReasoningContent>
-    </ReasoningRoot>
-  );
-};
-
 const Reasoning = memo(ReasoningImpl) as unknown as ReasoningMessagePartComponent & {
   Root: typeof ReasoningRoot;
   Trigger: typeof ReasoningTrigger;
@@ -82,21 +58,10 @@ Reasoning.Content = ReasoningContent;
 Reasoning.Text = ReasoningText;
 Reasoning.Fade = ReasoningFade;
 
-/**
- * @deprecated This wrapper targets the legacy `components.ReasoningGroup`
- * prop on `<MessagePrimitive.Parts>`. Use `<MessagePrimitive.GroupedParts>`
- * with a `groupBy` returning `"group-reasoning"` and compose `ReasoningRoot`
- * / `ReasoningTrigger` / `ReasoningContent` / `ReasoningText` directly.
- * See `thread.aui.tsx` for an example.
- */
-const ReasoningGroup = memo(ReasoningGroupImpl);
-ReasoningGroup.displayName = "ReasoningGroup";
-
 export {
   Reasoning,
   ReasoningContent,
   ReasoningFade,
-  ReasoningGroup,
   ReasoningRoot,
   ReasoningText,
   ReasoningTrigger,
