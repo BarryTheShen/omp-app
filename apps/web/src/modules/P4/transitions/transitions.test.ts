@@ -141,6 +141,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: active.branchingController,
+      pickCount: () => 0,
     });
 
     const result = await port.branch({ threadId: sourceThread, entryId: sourceEntry });
@@ -194,6 +195,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: active.branchingController,
+      pickCount: () => 0,
     });
 
     const result = await port.fork({ threadId: sourceThread, entryId: sourceEntry });
@@ -228,6 +230,7 @@ describe("OmpConversationTransitionPort", () => {
       send: rpc({ cancelled: true }, calls),
       capabilities,
       branchingController: branchController(switched),
+      pickCount: () => 0,
     });
 
     await expect(port.fork({ threadId: sourceThread })).resolves.toEqual({
@@ -260,6 +263,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: active.branchingController,
+      pickCount: () => 0,
     });
 
     await expect(port.fork({ threadId: sourceThread })).rejects.toMatchObject({
@@ -293,6 +297,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: branchController(switched),
+      pickCount: () => 0,
     });
 
     await expect(
@@ -317,6 +322,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: active.branchingController,
+      pickCount: () => 0,
     });
 
     await expect(
@@ -348,6 +354,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: branchController([]),
+      pickCount: () => 0,
     });
 
     const first = port.fork({ threadId: sourceThread });
@@ -372,6 +379,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities: {},
       branchingController: branchController([]),
+      pickCount: () => 0,
     });
     await expect(unavailablePort.fork({ threadId: sourceThread })).rejects.toMatchObject({
       appError: { code: "unavailable", capability: "omp.cmd.fork" },
@@ -383,6 +391,7 @@ describe("OmpConversationTransitionPort", () => {
       capabilities,
       isBusy: () => true,
       branchingController: branchController([]),
+      pickCount: () => 0,
     });
     await expect(busyPort.fork({ threadId: sourceThread })).rejects.toMatchObject({
       appError: { code: "conflict" },
@@ -411,6 +420,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: branchController([]),
+      pickCount: () => 0,
     });
     await expect(unsettledPort.fork({ threadId: sourceThread })).rejects.toMatchObject({
       appError: { code: "conflict" },
@@ -430,6 +440,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: branchController(switched),
+      pickCount: () => 0,
     });
 
     await expect(port.fork({ threadId: sourceThread })).rejects.toMatchObject({
@@ -451,6 +462,7 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: branchController(switched),
+      pickCount: () => 0,
     });
 
     await expect(
@@ -478,11 +490,38 @@ describe("OmpConversationTransitionPort", () => {
       send,
       capabilities,
       branchingController: branchController([]),
+      pickCount: () => 0,
     });
 
     await expect(port.fork(request)).rejects.toMatchObject({
       appError: { code: "cancelled", message: "user cancelled" },
     });
     expect(calls).toBe(0);
+  });
+
+  test("a rewind that finishes after another chat was picked leaves the view where it is", async () => {
+    const source = sourceStore();
+    const calls: Array<{ readonly threadId: ThreadId; readonly type: string }> = [];
+    const answer = rpc({ text: "source text", cancelled: false }, calls);
+    let picks = 0;
+    // The person opens another chat while omp is still answering the branch.
+    const send = (async (args, options) => {
+      const result = await answer(args, options);
+      if (args.command.type === "branch") picks += 1;
+      return result;
+    }) as RpcSessionSend;
+    const switched: ThreadId[] = [];
+    const port = createOmpConversationTransitionPort({
+      store: source,
+      send,
+      capabilities,
+      branchingController: branchController(switched),
+      pickCount: () => picks,
+    });
+
+    const result = await port.branch({ threadId: sourceThread, entryId: sourceEntry });
+
+    expect(switched).toEqual([]);
+    expect(result).toMatchObject({ cancelled: false, reloaded: false, sourceRetained: true });
   });
 });

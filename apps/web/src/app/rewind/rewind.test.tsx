@@ -109,6 +109,7 @@ function Harness({ currentThread, send, switchThread, capabilities, holder }: Ha
     capabilities,
     submitPrompt: async () => undefined,
     switchThread,
+    pickCount: () => 0,
   });
   const surfaces: SurfaceMap = {
     todo: { title: "Todo checklist", render: () => <p>Todo body</p> },

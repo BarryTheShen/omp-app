@@ -24,6 +24,8 @@ export interface RewindPanelOptions {
   readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
   /** R1's thread switch: it loads the chosen session's history before it resolves. */
   readonly switchThread: (threadId: ThreadId) => Promise<void>;
+  /** The chat picks made so far; a rewind that finishes after a pick does not switch the view. */
+  readonly pickCount: () => number;
 }
 
 /**
@@ -39,6 +41,7 @@ export function useRewindPanel({
   capabilities,
   submitPrompt,
   switchThread,
+  pickCount,
 }: RewindPanelOptions): Surface {
   const shortcuts = useShortcutRegistry();
   const available = rewindAvailable(capabilities);
@@ -108,9 +111,10 @@ export function useRewindPanel({
       send,
       branchingController,
       capabilities,
+      pickCount,
       isBusy: () => isStreaming(store),
     });
-  }, [capabilities, send, store, submitPrompt, switchThread]);
+  }, [capabilities, pickCount, send, store, submitPrompt, switchThread]);
 
   return {
     title: "Conversation history",

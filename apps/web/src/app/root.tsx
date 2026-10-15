@@ -591,6 +591,7 @@ interface ActiveThreadProps {
   /** Called when the person sends a message (the sidebar's list is fetched again once it is answered). */
   readonly onPromptSent: () => void;
   readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly pickCount: () => number;
   readonly leftSidebar: ReactNode;
   readonly title: string;
   readonly p3Runs: P3Runs;
@@ -632,6 +633,7 @@ function ActiveThreadReady({
   leftSidebar,
   onPromptSent,
   openThread,
+  pickCount,
   deliverToOpenChat,
   registerLiveChat,
   onOpenSettings,
@@ -1454,6 +1456,7 @@ function ActiveThreadReady({
       capabilities,
       submitPrompt: runtimeController.submitPrompt,
       switchThread: openThread,
+      pickCount,
     }),
     commandOutput: commandOutputSurface,
     executionModes: useExecutionModesSurface({
@@ -1982,10 +1985,14 @@ function ConnectedApp({
       return false;
     }
   };
+  // Every chat the person or the app opens is a pick. A rewind or fork that finishes after a pick does not
+  // switch the view, so the chat the person picked last stays on screen.
+  const picks = useRef(0);
   // Opens a chat through the history. A chat whose saved model omp cannot restore is recorded with its id, so the
   // empty screen offers the model picker for that chat, and a model picked there opens that chat with it.
   const openHistoryChat = useCallback(
     async (threadId: ThreadId, model?: ModelChoice): Promise<void> => {
+      picks.current += 1;
       if (!controller) {
         throw new AppFailure({
           code: "unavailable",
@@ -2006,6 +2013,7 @@ function ConnectedApp({
     },
     [controller, reportOpenFailure],
   );
+  const pickCount = useCallback((): number => picks.current, []);
   const openThread = useCallback(
     (threadId: ThreadId): Promise<void> => openHistoryChat(threadId),
     [openHistoryChat],
@@ -2230,6 +2238,7 @@ function ConnectedApp({
           onOpenSettings={openSettings}
           onPromptSent={onPromptSent}
           openThread={openThread}
+          pickCount={pickCount}
           deliverToOpenChat={deliverToOpenChat}
           registerLiveChat={registerLiveChat}
           remote={remote}

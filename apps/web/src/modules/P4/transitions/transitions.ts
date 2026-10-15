@@ -36,6 +36,8 @@ export interface ConversationTransitionOptions {
   readonly capabilities?: CapabilityMap;
   /** Optional host busy signal for queued/background work that is not represented by streaming. */
   readonly isBusy?: () => boolean;
+  /** The chat picks made so far. A rewind or fork that finishes after a pick does not switch the view. */
+  readonly pickCount: () => number;
 }
 /** Immutable source state retained for retry/rollback UI when a transition cannot publish. */
 export interface ConversationSourceSnapshot {
@@ -187,6 +189,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
   private readonly send: RpcSessionSend;
   private readonly branchingController: BranchingController;
   private readonly isBusy: (() => boolean) | undefined;
+  private readonly pickCount: () => number;
   private capabilities: CapabilityMap;
   private transitioning = false;
   private retainedSource: ConversationSourceSnapshot | null = null;
@@ -197,6 +200,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
     this.branchingController = options.branchingController;
     this.isBusy = options.isBusy;
     this.capabilities = options.capabilities ?? EMPTY_CAPABILITIES;
+    this.pickCount = options.pickCount;
   }
 
   public getCapabilities(): CapabilityMap {
@@ -217,6 +221,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
   public async branch(request: BranchRequest): Promise<ConversationBranchResult> {
     throwIfAborted(request.signal);
     const sourceThreadId = this.prepare(request.threadId, BRANCH_CAPABILITY, "Conversation rewind");
+    const picks = this.pickCount();
     try {
       let result: OmpWire.BranchResult;
       try {
@@ -243,6 +248,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
       const identity = await this.reloadIdentity(
         sourceThreadId,
         "The branched session did not become available",
+        picks,
       );
       return {
         sourceThreadId,
@@ -250,7 +256,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
         entryId: request.entryId,
         sessionFile: identity.sessionFile,
         cancelled: false,
-        reloaded: true,
+        reloaded: identity.switched,
         sourceRetained: true,
         wording: "conversation rewind",
       };
@@ -262,6 +268,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
   public async fork(request: ForkRequest): Promise<ForkResult> {
     throwIfAborted(request.signal);
     const sourceThreadId = this.prepare(request.threadId, FORK_CAPABILITY, "Conversation fork");
+    const picks = this.pickCount();
     try {
       let result: OmpWire.CancellationResult;
       try {
@@ -291,6 +298,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
       const identity = await this.reloadIdentity(
         sourceThreadId,
         "The forked session did not become available",
+        picks,
       );
       return {
         sourceThreadId,
@@ -298,7 +306,7 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
         entryId: request.entryId ?? null,
         sessionFile: identity.sessionFile,
         cancelled: false,
-        reloaded: true,
+        reloaded: identity.switched,
         sourceRetained: true,
       };
     } finally {
@@ -354,7 +362,12 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
   private async reloadIdentity(
     sourceThreadId: ThreadId,
     fallback: string,
-  ): Promise<{ readonly threadId: ThreadId; readonly sessionFile: SessionFilePath | null }> {
+    picks: number,
+  ): Promise<{
+    readonly threadId: ThreadId;
+    readonly sessionFile: SessionFilePath | null;
+    readonly switched: boolean;
+  }> {
     let state: OmpWire.SessionState;
     try {
       // A successful branch/fork has already changed omp's process identity. Do not pass the
@@ -371,11 +384,14 @@ export class OmpConversationTransitionPort implements ConversationTransitionPort
         );
       }
       const sessionFile = sessionFileFromState(state);
-      // R0.4's switchTo calls its selected-thread seam and then SessionHistoryLoader. That loader
-      // hydrates the active branch through OmpRuntimeStore.setTree/pairEndedMessages before this
-      // method publishes a successful result, so the source snapshot is never used as the target.
-      await this.branchingController.switchTo(threadId);
-      return { threadId, sessionFile };
+      // A pick made since this transition began is the chat the person wants on screen. Then this
+      // branch or fork finishes in the background, and it is in the session list. Otherwise R0.4's
+      // switchTo calls its selected-thread seam and then SessionHistoryLoader, which hydrates the
+      // active branch through OmpRuntimeStore.setTree/pairEndedMessages before this method publishes
+      // a successful result, so the source snapshot is never used as the target.
+      const switched = this.pickCount() === picks;
+      if (switched) await this.branchingController.switchTo(threadId);
+      return { threadId, sessionFile, switched };
     } catch (error) {
       throw asFailure(error, fallback);
     }
