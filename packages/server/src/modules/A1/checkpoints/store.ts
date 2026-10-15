@@ -276,21 +276,25 @@ function shadowGitDir(root: string, key: string, threadId: string): string {
   return join(root, "checkpoints", key, threadId, "shadow-git");
 }
 
-/** Paths a shadow tree holds. A restore may only write or remove what the tree holds. */
+/**
+ * Paths a shadow tree holds. A restore may only write or remove what the tree holds. A nested repository is a commit
+ * entry (a gitlink): the tree holds one reference to it, never its files, so a restore does not hold its path.
+ */
 async function treePaths(
   gitBinary: string,
   gitDir: string,
   workspace: string,
   treeId: string,
 ): Promise<Set<string>> {
-  const listing = await runGit(gitBinary, gitDir, workspace, [
-    "ls-tree",
-    "-r",
-    "-z",
-    "--name-only",
-    treeId,
-  ]);
-  return new Set(listing.split("\0").filter((entry) => entry !== ""));
+  const listing = await runGit(gitBinary, gitDir, workspace, ["ls-tree", "-r", "-z", treeId]);
+  const paths = new Set<string>();
+  for (const entry of listing.split("\0")) {
+    // Each entry is "<mode> <type> <object>", a tab, then the path.
+    const tab = entry.indexOf("\t");
+    if (tab === -1 || entry.slice(0, tab).split(" ")[1] === "commit") continue;
+    paths.add(entry.slice(tab + 1));
+  }
+  return paths;
 }
 
 function uniqueExcluded(items: readonly ExcludedPath[]): ExcludedPath[] {

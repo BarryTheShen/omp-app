@@ -1093,4 +1093,83 @@ describe("CheckpointStore and git-ignored files", () => {
       await fs.rm(appData, { recursive: true, force: true });
     }
   });
+
+  test("a checkpoint that holds a nested repository's reference restores while that repository is in the workspace", async () => {
+    const workspace = await tempRoot("gitlink-restore");
+    const appData = await tempRoot("gitlink-restore-data");
+    try {
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.mkdir(join(workspace, "nested"));
+      initNestedRepo(join(workspace, "nested"));
+      await fs.writeFile(join(workspace, "nested", "x.txt"), "precious\n");
+
+      // Checkpoints taken before nested repositories were left out stored one reference to each: a commit entry.
+      // Rewrite this checkpoint's tree that way, with the nested repository's commit at its path.
+      const root = join(appData, "checkpoints", checkpoint.workspaceKey, checkpoint.ompSessionId);
+      const index = join(root, "gitlink-index");
+      const shadowGit = (args: string[]): string => {
+        const result = Bun.spawnSync({
+          cmd: ["git", ...args],
+          env: { ...process.env, GIT_DIR: join(root, "shadow-git"), GIT_INDEX_FILE: index },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        if (result.exitCode !== 0)
+          throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString()}`);
+        return result.stdout.toString().trim();
+      };
+      const nestedHead = Bun.spawnSync({
+        cmd: ["git", "-C", join(workspace, "nested"), "rev-parse", "HEAD"],
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+        .stdout.toString()
+        .trim();
+      const recordsPath = join(root, "records.jsonl");
+      const [record] = (await fs.readFile(recordsPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { shadowTreeId: string });
+      if (record === undefined) throw new Error("No checkpoint record was written");
+      shadowGit(["read-tree", record.shadowTreeId]);
+      shadowGit(["update-index", "--add", "--cacheinfo", `160000,${nestedHead},nested`]);
+      record.shadowTreeId = shadowGit(["write-tree"]);
+      await fs.writeFile(recordsPath, `${JSON.stringify(record)}\n`);
+
+      await fs.writeFile(join(workspace, "a.txt"), "two\n");
+      const plan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: checkpoint.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: checkpoint.workspaceHash,
+      });
+      expect(plan.excludedPaths.map((item) => item.path)).toContain("nested");
+      const restored = await store.restore({ planId: plan.planId, confirmed: true });
+      expect(restored.filesRestored).toBe(true);
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("one\n");
+      expect(await fs.readFile(join(workspace, "nested", "x.txt"), "utf8")).toBe("precious\n");
+      // The nested repository itself is untouched: its own .git is still there and still points at the same commit.
+      expect((await fs.stat(join(workspace, "nested", ".git"))).isDirectory()).toBe(true);
+      const headAfter = Bun.spawnSync({
+        cmd: ["git", "-C", join(workspace, "nested"), "rev-parse", "HEAD"],
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+        .stdout.toString()
+        .trim();
+      expect(headAfter).toBe(nestedHead);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
 });
