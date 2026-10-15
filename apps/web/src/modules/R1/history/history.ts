@@ -197,6 +197,25 @@ export class SelectedThreadHistoryController {
     return open;
   }
 
+  /**
+   * Opens a chat the person picked from a list (the sidebar, the chat list, the palette). The chat on screen stays as it is
+   * when it is open and loaded and no other open or switch is pending: its store, its scroll position, its open folds and a
+   * running turn stay, and omp is not asked to open it again (issue 1359). With another open pending (a New chat, say) the
+   * pick queues behind it, so the last pick is the one shown. A pick with a model opens the chat with it (see `openExisting`).
+   */
+  public pickExisting(threadId: ThreadId, model?: ModelChoice): Promise<OmpRuntimeStore> {
+    const current = this.state.store;
+    if (
+      current !== undefined &&
+      model === undefined &&
+      this.state.threadId === threadId &&
+      this.pendingOpens === 0 &&
+      this.holds.size === 0
+    )
+      return Promise.resolve(current);
+    return this.openExisting(threadId, model);
+  }
+
   private async openWithModel(threadId: ThreadId, model: ModelChoice): Promise<OmpRuntimeStore> {
     const store = await this.open({ threadId, model });
     rememberPickedModel(threadId, model);

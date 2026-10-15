@@ -11,8 +11,11 @@ export interface P3RunHooksOptions {
   /** The open chat's store: its branch controller reads the source entries from here. */
   readonly store: OmpRuntimeStore;
   readonly send: RpcSessionSend;
-  /** Opens a chat, as the composition's history does; a branch uses it to switch to the new chat. */
-  readonly openThread: (threadId: ThreadId) => Promise<void>;
+  /**
+   * Switches to the chat a branch made. The chat is opened again even when its id already names it: omp moves the
+   * running session to the branch in place, so the store on screen can still be the source's (see root's `switchChat`).
+   */
+  readonly switchChat: (threadId: ThreadId) => Promise<void>;
   readonly runs: P3Runs;
   /** P5's optional decorator, supplied at composition time. P5 is not mounted yet. */
   readonly decorator?: EditRunDecorator | undefined;
@@ -20,7 +23,7 @@ export interface P3RunHooksOptions {
 
 /** The edit and regenerate handlers for one open chat, bound to that chat's store and send. */
 export function useP3RunHandlers(options: P3RunHooksOptions): P3RunHandlers {
-  const { store, send, openThread, runs, decorator } = options;
+  const { store, send, switchChat, runs, decorator } = options;
   return useMemo(() => {
     const branching = createOmpBranchingController({
       store,
@@ -28,14 +31,14 @@ export function useP3RunHandlers(options: P3RunHooksOptions): P3RunHandlers {
       submitPrompt: async (intent) => {
         await runs.handoff.submit(intent);
       },
-      // openThread resolves only after the new chat's history has loaded, so there is nothing to reload.
+      // switchChat resolves only after the new chat's history has loaded, so there is nothing to reload.
       reloadHistory: async () => undefined,
       switchThread: (threadId) => {
         runs.handoff.expect(threadId);
-        return openThread(threadId);
+        return switchChat(threadId);
       },
     });
     const run = createP3EditRun({ branching, handoff: runs.handoff, decorator });
     return createP3RunHandlers({ store, run, handoff: runs.handoff, status: runs.status });
-  }, [decorator, openThread, runs, send, store]);
+  }, [decorator, runs, send, store, switchChat]);
 }

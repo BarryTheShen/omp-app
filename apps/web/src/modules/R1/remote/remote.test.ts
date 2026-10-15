@@ -102,6 +102,56 @@ describe("NativeRemoteThreadListAdapter", () => {
     expect(order).toEqual(["rename", `refresh ${threadOne}`]);
   });
 
+  test("a pick of the chat already loaded sends nothing while the newest open has finished (issue 1359)", async () => {
+    const opened: OpenThreadArgs[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([metadata(threadOne, "One", "2026-10-05T00:00:00.000Z")]),
+      open: async (args: OpenThreadArgs) => {
+        opened.push(args);
+        return openResult(threadOne);
+      },
+      loadedThreadId: () => threadOne,
+    });
+    await expect(adapter.initialize(threadOne)).resolves.toMatchObject({ remoteId: threadOne });
+    expect(opened).toEqual([]);
+  });
+
+  test("a pick of the chat already loaded is an open while a New chat is still opening, so the pick is the newest", async () => {
+    const opened: OpenThreadArgs[] = [];
+    const newChat = Promise.withResolvers<OpenThreadResult>();
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([metadata(threadOne, "One", "2026-10-05T00:00:00.000Z")]),
+      open: (args: OpenThreadArgs) => {
+        opened.push(args);
+        if ("start" in args) return newChat.promise;
+        return Promise.resolve(openResult(threadOne));
+      },
+      loadedThreadId: () => threadOne,
+    });
+    const creating = adapter.initialize("new");
+    await expect(adapter.initialize(threadOne)).resolves.toMatchObject({ remoteId: threadOne });
+    expect(opened.at(-1)).toEqual({ threadId: threadOne });
+    newChat.resolve(openResult(threadTwo));
+    await expect(creating).rejects.toMatchObject({ appError: { code: "cancelled" } });
+  });
+
+  test("a pick of another chat opens it while the chat on screen is loaded (issue 1359)", async () => {
+    const opened: OpenThreadArgs[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([
+        metadata(threadOne, "One", "2026-10-05T00:00:00.000Z"),
+        metadata(threadTwo, "Two", "2026-10-04T00:00:00.000Z"),
+      ]),
+      open: async (args: OpenThreadArgs) => {
+        opened.push(args);
+        return openResult(threadTwo);
+      },
+      loadedThreadId: () => threadOne,
+    });
+    await expect(adapter.initialize(threadTwo)).resolves.toMatchObject({ remoteId: threadTwo });
+    expect(opened).toEqual([{ threadId: threadTwo }]);
+  });
+
   test("a rename omp refuses keeps omp's reason, and the list is not re-read", async () => {
     const refreshed: ThreadId[] = [];
     const adapter = createNativeRemoteThreadListAdapter({

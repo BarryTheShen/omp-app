@@ -609,6 +609,8 @@ interface ActiveThreadProps {
   /** Called when the person sends a message (the sidebar's list is fetched again once it is answered). */
   readonly onPromptSent: () => void;
   readonly openThread: (threadId: ThreadId) => Promise<void>;
+  /** Switches to a chat a branch or a rewind made: it is opened again, whatever its id names (PR 1645). */
+  readonly switchChat: (threadId: ThreadId) => Promise<void>;
   readonly pickCount: () => number;
   readonly leftSidebar: ReactNode;
   readonly title: string;
@@ -651,6 +653,7 @@ function ActiveThreadReady({
   leftSidebar,
   onPromptSent,
   openThread,
+  switchChat,
   pickCount,
   deliverNote,
   deliverToOpenChat,
@@ -1043,7 +1046,7 @@ function ActiveThreadReady({
     }),
     [attachmentManager],
   );
-  const p3Handlers = useP3RunHandlers({ store, send: guardedSend, openThread, runs: p3Runs });
+  const p3Handlers = useP3RunHandlers({ store, send: guardedSend, switchChat, runs: p3Runs });
   // The banner of an omp that stopped on its own offers this: the server starts omp again on this chat.
   const restartOmp = useCallback(async (): Promise<void> => {
     await rpc.restart({ threadId });
@@ -1502,7 +1505,7 @@ function ActiveThreadReady({
       send: guardedSend,
       capabilities,
       submitPrompt: runtimeController.submitPrompt,
-      switchThread: openThread,
+      switchThread: switchChat,
       pickCount,
       deliverNote,
     }),
@@ -1883,9 +1886,10 @@ function ConnectedApp({
             close: rpc.close,
             rename: rpc.rename,
             deleteThread: (threadId) => deleteChatFile({ threadId, catalog, sessionFiles }),
+            loadedThreadId: () => controller?.getSnapshot().threadId,
           })
         : null,
-    [catalog, rpc.open, rpc.close, rpc.rename, sessionFiles],
+    [catalog, controller, rpc.open, rpc.close, rpc.rename, sessionFiles],
   );
   useEffect(() => {
     let active = true;
@@ -2046,10 +2050,14 @@ function ConnectedApp({
   // Every chat the person or the app opens is a pick. A rewind or fork that finishes after a pick does not
   // switch the view, so the chat the person picked last stays on screen.
   const picks = useRef(0);
-  // Opens a chat through the history. A chat whose saved model omp cannot restore is recorded with its id, so the
-  // empty screen offers the model picker for that chat, and a model picked there opens that chat with it.
-  const openHistoryChat = useCallback(
-    async (threadId: ThreadId, model?: ModelChoice): Promise<void> => {
+  // Opens a chat through the history, with the open the caller asked for. A chat whose saved model omp cannot restore is
+  // recorded with its id, so the empty screen offers the model picker for that chat, and a model picked there opens that
+  // chat with it.
+  const openHistoryChatThrough = useCallback(
+    async (
+      threadId: ThreadId,
+      open: (history: SelectedThreadHistoryController) => Promise<unknown>,
+    ): Promise<void> => {
       picks.current += 1;
       if (!controller) {
         throw new AppFailure({
@@ -2060,7 +2068,7 @@ function ConnectedApp({
         });
       }
       try {
-        await controller.openExisting(threadId, model);
+        await open(controller);
       } catch (error) {
         if (error instanceof AppFailure && error.appError.code === "model_unavailable") {
           reportOpenFailure(threadId, error.appError);
@@ -2071,10 +2079,24 @@ function ConnectedApp({
     },
     [controller, reportOpenFailure],
   );
+  const openHistoryChat = useCallback(
+    (threadId: ThreadId, model?: ModelChoice): Promise<void> =>
+      openHistoryChatThrough(threadId, (history) => history.pickExisting(threadId, model)),
+    [openHistoryChatThrough],
+  );
   const pickCount = useCallback((): number => picks.current, []);
+  // A chat picked from a list (the sidebar, the chat list, the palette) stays as it is when it is open and loaded: nothing
+  // is reloaded (issue 1359).
   const openThread = useCallback(
     (threadId: ThreadId): Promise<void> => openHistoryChat(threadId),
     [openHistoryChat],
+  );
+  // A switch to a chat a branch or a rewind made (a regenerate, an edit, a rewind). The chat on screen can still be the
+  // source's store: omp moves the running session to the branch in place, so the chat is always opened again (PR 1645).
+  const switchChat = useCallback(
+    (threadId: ThreadId): Promise<void> =>
+      openHistoryChatThrough(threadId, (history) => history.openExisting(threadId)),
+    [openHistoryChatThrough],
   );
   // The sidebar's New chat holds the chat switch from its click until its chat's open is requested, so a send made
   // meanwhile waits for the new chat instead of going to the chat before it. The sidebar reports the end of only the
@@ -2338,6 +2360,7 @@ function ConnectedApp({
           onOpenSettings={openSettings}
           onPromptSent={onPromptSent}
           openThread={openThread}
+          switchChat={switchChat}
           pickCount={pickCount}
           deliverNote={deliverNoteToOpenChat}
           deliverToOpenChat={deliverToOpenChat}
