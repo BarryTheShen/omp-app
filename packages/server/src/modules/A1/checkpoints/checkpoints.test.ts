@@ -695,6 +695,130 @@ describe("CheckpointStore and git-ignored files", () => {
     }
   });
 
+  test("a file the project's .git/info/exclude lists is in neither the tree nor the manifest, and a restore leaves it alone", async () => {
+    const workspace = await tempRoot("project-exclude");
+    const appData = await tempRoot("project-exclude-data");
+    try {
+      runGitIn(workspace, ["init", "-q"]);
+      await fs.writeFile(join(workspace, ".git", "info", "exclude"), "private.txt\n");
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      await fs.writeFile(join(workspace, "private.txt"), "notes\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      expect(checkpoint.includedPaths.map((item) => item.path)).toEqual(["a.txt"]);
+      expect(checkpoint.excludedPaths.map((item) => item.path)).toContain("private.txt");
+      expect(await shadowTreeNames(appData, checkpoint)).toEqual(["a.txt"]);
+
+      await fs.writeFile(join(workspace, "private.txt"), "edited\n");
+      await fs.writeFile(join(workspace, "a.txt"), "two\n");
+      const plan = await store.planRestore({
+        workspace: folder,
+        operation: "files-only",
+        snapshotId: checkpoint.snapshotId,
+        currentConversation: conversation(workspace),
+        targetConversation: null,
+        expectedWorkspaceHash: checkpoint.workspaceHash,
+      });
+      expect(plan.capturedPathCount).toBe(1);
+      await store.restore({ planId: plan.planId, confirmed: true });
+      expect(await fs.readFile(join(workspace, "private.txt"), "utf8")).toBe("edited\n");
+      expect(await fs.readFile(join(workspace, "a.txt"), "utf8")).toBe("one\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("a checkpoint whose tree holds a file the project now excludes is refused on restore, not overwritten", async () => {
+    const workspace = await tempRoot("project-exclude-legacy");
+    const appData = await tempRoot("project-exclude-legacy-data");
+    try {
+      runGitIn(workspace, ["init", "-q"]);
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      await fs.writeFile(join(workspace, ".git", "info", "exclude"), "private.txt\n");
+      await fs.writeFile(join(workspace, "private.txt"), "notes\n");
+
+      // A checkpoint taken before the project's exclude rules were honoured holds the file: put it in this record's tree.
+      const root = join(appData, "checkpoints", checkpoint.workspaceKey, checkpoint.ompSessionId);
+      const index = join(root, "legacy-index");
+      const shadowGit = (args: string[]): string => {
+        const result = Bun.spawnSync({
+          cmd: ["git", ...args],
+          env: { ...process.env, GIT_DIR: join(root, "shadow-git"), GIT_INDEX_FILE: index },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        if (result.exitCode !== 0)
+          throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString()}`);
+        return result.stdout.toString().trim();
+      };
+      const recordsPath = join(root, "records.jsonl");
+      const [record] = (await fs.readFile(recordsPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { shadowTreeId: string });
+      if (record === undefined) throw new Error("No checkpoint record was written");
+      const blob = shadowGit(["hash-object", "-w", join(workspace, "private.txt")]);
+      shadowGit(["read-tree", record.shadowTreeId]);
+      shadowGit(["update-index", "--add", "--cacheinfo", `100644,${blob},private.txt`]);
+      record.shadowTreeId = shadowGit(["write-tree"]);
+      await fs.writeFile(recordsPath, `${JSON.stringify(record)}\n`);
+
+      await fs.writeFile(join(workspace, "private.txt"), "edited\n");
+      await fs.writeFile(join(workspace, "a.txt"), "two\n");
+      await expect(
+        store.planRestore({
+          workspace: folder,
+          operation: "files-only",
+          snapshotId: checkpoint.snapshotId,
+          currentConversation: conversation(workspace),
+          targetConversation: null,
+          expectedWorkspaceHash: checkpoint.workspaceHash,
+        }),
+      ).rejects.toThrow();
+      expect(await fs.readFile(join(workspace, "private.txt"), "utf8")).toBe("edited\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("an exclude file that cannot be read stops the capture, and captures nothing", async () => {
+    const workspace = await tempRoot("project-exclude-unreadable");
+    const appData = await tempRoot("project-exclude-unreadable-data");
+    try {
+      runGitIn(workspace, ["init", "-q"]);
+      // A folder where the exclude file should be: git can name it, but reading it fails.
+      await fs.rm(join(workspace, ".git", "info", "exclude"));
+      await fs.mkdir(join(workspace, ".git", "info", "exclude"));
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      await fs.writeFile(join(workspace, "private.txt"), "notes\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      await expect(
+        store.snapshot({
+          workspace: FolderPath.parse(workspace),
+          conversation: conversation(workspace),
+          source: "manual",
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
   test("honours the person's global git ignore file", async () => {
     const workspace = await tempRoot("global-ignore");
     const appData = await tempRoot("global-ignore-data");

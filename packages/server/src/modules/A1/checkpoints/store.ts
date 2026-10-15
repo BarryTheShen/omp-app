@@ -1,7 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Stats } from "node:fs";
-import { lstat, mkdir, readdir, readFile, readlink, realpath, rm } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   AppFailure,
   type CheckpointDiff,
@@ -163,6 +173,7 @@ async function gitIgnoredPaths(
 ): Promise<UncapturedPaths> {
   const probe = join(root, "ignore-probes", workspaceKey(workspace));
   await ensureShadow(gitBinary, probe, workspace);
+  await syncProjectExclude(gitBinary, probe, workspace);
   const listing = await runGit(
     gitBinary,
     probe,
@@ -359,6 +370,76 @@ function uncapturedConflictFailure(paths: readonly string[]): AppFailure {
   );
 }
 
+/** True for "no such file": the one error that means the project has no such rules. */
+function isMissing(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+/**
+ * The project's own exclude rules, `info/exclude` of its git directory, as text. Only a workspace with a `.git` of its
+ * own has them: a folder inside another repository takes none of that repository's rules here. Undefined only when
+ * there are none (no `.git`, or no `info/exclude`). Any other failure to read them is an error: a capture must never
+ * go on without the rules the person set, or it would hold the files they excluded.
+ */
+async function projectExcludeText(
+  gitBinary: string,
+  workspace: string,
+): Promise<string | undefined> {
+  try {
+    await lstat(join(workspace, ".git"));
+  } catch (error) {
+    if (isMissing(error)) return undefined;
+    throw error;
+  }
+  const env: Record<string, string | undefined> = { ...process.env, GIT_CONFIG_NOSYSTEM: "1" };
+  delete env.GIT_DIR;
+  delete env.GIT_WORK_TREE;
+  delete env.GIT_INDEX_FILE;
+  const child = Bun.spawn({
+    cmd: [gitBinary, "rev-parse", "--git-path", "info/exclude"],
+    cwd: workspace,
+    stdout: "pipe",
+    stderr: "pipe",
+    env,
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    output(child.stdout),
+    output(child.stderr),
+  ]);
+  if (code !== 0)
+    throw failure("internal", `shadow git failed: ${stderr.trim() || "rev-parse --git-path"}`);
+  const found = stdout.trim();
+  try {
+    return await readFile(isAbsolute(found) ? found : join(workspace, found), "utf8");
+  } catch (error) {
+    if (isMissing(error)) return undefined;
+    const reason = error instanceof Error ? error.message : "unknown error";
+    throw failure("internal", `the project's exclude file cannot be read: ${reason}`);
+  }
+}
+
+/**
+ * Gives a shadow or probe repository the project's exclude rules, so git applies them as the project does. The file is
+ * written beside its place and renamed into it, so a git run never reads half of it.
+ */
+async function syncProjectExclude(
+  gitBinary: string,
+  gitDir: string,
+  workspace: string,
+): Promise<void> {
+  const text = await projectExcludeText(gitBinary, workspace);
+  const target = join(gitDir, "info", "exclude");
+  if (text === undefined) {
+    await rm(target, { force: true });
+    return;
+  }
+  await mkdir(join(gitDir, "info"), { recursive: true });
+  const staged = `${target}.${randomUUID()}.tmp`;
+  await writeFile(staged, text);
+  await rename(staged, target);
+}
+
 async function ensureShadow(gitBinary: string, gitDir: string, workspace: string): Promise<void> {
   await mkdir(gitDir, { recursive: true, mode: 0o700 });
   try {
@@ -374,6 +455,7 @@ async function captureTree(
   workspace: string,
   nested: readonly string[],
 ): Promise<string> {
+  await syncProjectExclude(gitBinary, gitDir, workspace);
   // Start from an empty index: a checkpoint holds what git would add now, not files that an
   // earlier checkpoint tracked and a later ignore rule covers.
   await runGit(gitBinary, gitDir, workspace, ["read-tree", "--empty"]);
