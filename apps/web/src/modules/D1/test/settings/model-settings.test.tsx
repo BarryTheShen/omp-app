@@ -134,9 +134,31 @@ describe("D1 model settings sections", () => {
     render(
       <ModelSettingsSection descriptor={descriptor} runtime={runtime(descriptor, "conflict")} />,
     );
-    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Keep mine" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Keep my edits" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reload latest" }));
+  });
+
+  test("says a session-only and an unsupported change in the words the other settings tabs use", () => {
+    const descriptor = modelSettingsSections[0];
+    if (!descriptor) throw new Error("missing thinking section");
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "ready", { applyStatus: "session-only" })}
+      />,
+    );
+    expect(screen.getByText("This session only")).toBeTruthy();
+    expect(screen.queryByText("Session only")).toBeNull();
+    cleanup();
+    render(
+      <ModelSettingsSection
+        descriptor={descriptor}
+        runtime={runtime(descriptor, "ready", { applyStatus: "unsupported" })}
+      />,
+    );
+    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(screen.queryByText("Unsupported")).toBeNull();
   });
 
   test("names the settings omp did not save, with the reason, and marks their rows", () => {
@@ -262,8 +284,12 @@ describe("D1 model settings sections", () => {
     expect(screen.getByRole("button", { name: "Save changes" }).hasAttribute("disabled")).toBe(
       true,
     );
-    expect(screen.getByRole("button", { name: "Reload" }).hasAttribute("disabled")).toBe(false);
-    expect(screen.getByRole("button", { name: "Keep mine" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Reload latest" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+    expect(screen.getByRole("button", { name: "Keep my edits" }).hasAttribute("disabled")).toBe(
+      false,
+    );
     expect(screen.getByText(/Another change arrived for Thinking Level/)).toBeTruthy();
   });
 });

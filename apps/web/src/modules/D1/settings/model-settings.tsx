@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { InlineError } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import {
+  applyStatusLabel,
+  CONFLICT_BUTTON_LABELS,
   environmentOverrideText,
   SettingsSection,
   type SettingsSectionDescriptor,
@@ -139,7 +141,7 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
               size="sm"
               onClick={() => runtime.resolveConflict("reload")}
             >
-              Reload
+              {CONFLICT_BUTTON_LABELS.reload}
             </Button>
             <Button
               type="button"
@@ -147,7 +149,7 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
               size="sm"
               onClick={() => runtime.resolveConflict("keep-mine")}
             >
-              Keep mine
+              {CONFLICT_BUTTON_LABELS.keepMine}
             </Button>
           </span>
         </div>
@@ -158,21 +160,4 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
       ) : null}
     </div>
   );
-}
-
-function applyStatusLabel(
-  status: NonNullable<ReturnType<SettingsRuntime["getSnapshot"]>["applyStatus"]>,
-): string {
-  switch (status) {
-    case "session-only":
-      return "Session only";
-    case "reload-required":
-      return "Reload required";
-    case "restart-required":
-      return "Restart required";
-    case "unsupported":
-      return "Unsupported";
-    default:
-      return "Applied";
-  }
 }

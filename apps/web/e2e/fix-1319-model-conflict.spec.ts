@@ -82,15 +82,19 @@ realTest(
 
     await expect(level).toBeDisabled();
     await expect(save).toBeDisabled();
-    await expect(conflict.getByRole("button", { name: "Reload", exact: true })).toBeEnabled();
-    await expect(conflict.getByRole("button", { name: "Keep mine", exact: true })).toBeEnabled();
+    await expect(
+      conflict.getByRole("button", { name: "Reload latest", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      conflict.getByRole("button", { name: "Keep my edits", exact: true }),
+    ).toBeEnabled();
     await expectStyledSettings(page, "light");
     await capture(page, "fix-1319-conflict-light.png", conflict);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await capture(page, "fix-1319-conflict-narrow.png", conflict);
 
-    await conflict.getByRole("button", { name: "Keep mine", exact: true }).click();
+    await conflict.getByRole("button", { name: "Keep my edits", exact: true }).click();
     await expect(conflict).toHaveCount(0);
     await expect(level).toBeEnabled();
     await save.click();

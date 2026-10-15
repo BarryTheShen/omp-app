@@ -693,3 +693,25 @@ export function structuredValue(
   }
   return { ok: true, value: items };
 }
+
+/** The words for a setting's apply status: one set, used by every settings tab. */
+export function applyStatusLabel(status: ApplyStatus): string {
+  switch (status) {
+    case "session-only":
+      return "This session only";
+    case "reload-required":
+      return "Reload required";
+    case "restart-required":
+      return "Restart required";
+    case "unsupported":
+      return "Unavailable";
+    default:
+      return "Applied";
+  }
+}
+
+/** The two buttons of a settings conflict: one set, used by every settings tab. */
+export const CONFLICT_BUTTON_LABELS = {
+  reload: "Reload latest",
+  keepMine: "Keep my edits",
+} as const;

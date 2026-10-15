@@ -39,7 +39,8 @@ import {
   useAppearanceSettingsController,
 } from "@/modules/S1/settings";
 import {
-  type ApplyStatus,
+  applyStatusLabel,
+  CONFLICT_BUTTON_LABELS,
   environmentOverrideText,
   SettingsSection,
   type SettingsSectionDescriptor,
@@ -238,21 +239,6 @@ function changedEdits(
   );
 }
 
-function applyStatusLabel(status: ApplyStatus): string {
-  switch (status) {
-    case "session-only":
-      return "This session only";
-    case "reload-required":
-      return "Reload required";
-    case "restart-required":
-      return "Restart required";
-    case "unsupported":
-      return "Unavailable";
-    default:
-      return "Applied";
-  }
-}
-
 function phaseLabel(
   phase: ReturnType<SettingsRuntime["getSnapshot"]>["phase"],
 ): string | undefined {
@@ -433,7 +419,7 @@ function SettingsRuntimeEditor({
                 runtime.resolveConflict("reload");
               }}
             >
-              Reload latest
+              {CONFLICT_BUTTON_LABELS.reload}
             </Button>
             <Button
               type="button"
@@ -444,7 +430,7 @@ function SettingsRuntimeEditor({
                 runtime.resolveConflict("keep-mine");
               }}
             >
-              Keep my edits
+              {CONFLICT_BUTTON_LABELS.keepMine}
             </Button>
           </Toolbar>
         </Section>
