@@ -564,6 +564,108 @@ describe("CheckpointStore and git-ignored files", () => {
     }
   });
 
+  test("a secret-looking file or a skip-listed folder at any depth is in neither the tree nor the manifest", async () => {
+    const workspace = await tempRoot("secret-any-depth");
+    const appData = await tempRoot("secret-any-depth-data");
+    try {
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      await fs.writeFile(join(workspace, ".env"), "TOKEN=root\n");
+      await fs.mkdir(join(workspace, "config"));
+      await fs.writeFile(join(workspace, "config", ".env.local"), "TOKEN=nested\n");
+      await fs.writeFile(join(workspace, "key.pem"), "private\n");
+      await fs.mkdir(join(workspace, "pkg", "node_modules"), { recursive: true });
+      await fs.writeFile(join(workspace, "pkg", "node_modules", "x.js"), "module\n");
+      await fs.mkdir(join(workspace, "pkg", "dist"));
+      await fs.writeFile(join(workspace, "pkg", "dist", "out.js"), "built\n");
+      await fs.mkdir(join(workspace, ".envs"));
+      await fs.writeFile(join(workspace, ".envs", "config.json"), "{}\n");
+      await fs.mkdir(join(workspace, ".env.d"));
+      await fs.writeFile(join(workspace, ".env.d", "db.yaml"), "password: x\n");
+      await fs.mkdir(join(workspace, "secrets.pem"));
+      await fs.writeFile(join(workspace, "secrets.pem", "inner.txt"), "key\n");
+      await fs.mkdir(join(workspace, "sub", "secrets.key"), { recursive: true });
+      await fs.writeFile(join(workspace, "sub", "secrets.key", "inner.txt"), "key\n");
+      await fs.mkdir(join(workspace, "deep"));
+      await fs.writeFile(join(workspace, "deep", "private.key"), "key\n");
+      await fs.mkdir(join(workspace, "src", "build"), { recursive: true });
+      await fs.writeFile(join(workspace, "src", "build", "index.ts"), "export {};\n");
+      await fs.writeFile(join(workspace, "build"), "a file named build\n");
+      await fs.mkdir(join(workspace, "sub", ".omp"), { recursive: true });
+      await fs.writeFile(join(workspace, "sub", ".omp", "secrets.yml"), "token: x\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+      const included = checkpoint.includedPaths.map((item) => item.path);
+      expect(included).toEqual(["a.txt"]);
+      expect(await shadowTreeNames(appData, checkpoint)).toEqual(included);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
+  test("a restore refuses to replace a secret-looking file that a checkpoint holds and the workspace now has", async () => {
+    const workspace = await tempRoot("policy-restore");
+    const appData = await tempRoot("policy-restore-data");
+    try {
+      await fs.writeFile(join(workspace, "a.txt"), "one\n");
+      const store = new CheckpointStoreService({ appDataDir: appData });
+      const folder = FolderPath.parse(workspace);
+      const checkpoint = await store.snapshot({
+        workspace: folder,
+        conversation: conversation(workspace),
+        source: "manual",
+      });
+
+      // A checkpoint taken on the earlier code holds .env: put its OLD content into this record's tree. The person's NEW one is on disk.
+      await fs.writeFile(join(workspace, ".env"), "OLD\n");
+      const root = join(appData, "checkpoints", checkpoint.workspaceKey, checkpoint.ompSessionId);
+      const index = join(root, "policy-index");
+      const shadowGit = (args: string[]): string => {
+        const result = Bun.spawnSync({
+          cmd: ["git", ...args],
+          env: { ...process.env, GIT_DIR: join(root, "shadow-git"), GIT_INDEX_FILE: index },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        if (result.exitCode !== 0)
+          throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString()}`);
+        return result.stdout.toString().trim();
+      };
+      const blob = shadowGit(["hash-object", "-w", join(workspace, ".env")]);
+      const recordsPath = join(root, "records.jsonl");
+      const [record] = (await fs.readFile(recordsPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { shadowTreeId: string });
+      if (record === undefined) throw new Error("No checkpoint record was written");
+      shadowGit(["read-tree", record.shadowTreeId]);
+      shadowGit(["update-index", "--add", "--cacheinfo", `100644,${blob},.env`]);
+      record.shadowTreeId = shadowGit(["write-tree"]);
+      await fs.writeFile(recordsPath, `${JSON.stringify(record)}\n`);
+      await fs.writeFile(join(workspace, ".env"), "NEW\n");
+
+      await expect(
+        store.planRestore({
+          workspace: folder,
+          operation: "files-only",
+          snapshotId: checkpoint.snapshotId,
+          currentConversation: conversation(workspace),
+          targetConversation: null,
+          expectedWorkspaceHash: checkpoint.workspaceHash,
+        }),
+      ).rejects.toMatchObject({ appError: { code: "conflict" } });
+      expect(await fs.readFile(join(workspace, ".env"), "utf8")).toBe("NEW\n");
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+      await fs.rm(appData, { recursive: true, force: true });
+    }
+  });
+
   test("a restore never deletes a file that a later ignore rule now covers", async () => {
     const workspace = await tempRoot("tracked-ignored");
     const appData = await tempRoot("tracked-ignored-data");

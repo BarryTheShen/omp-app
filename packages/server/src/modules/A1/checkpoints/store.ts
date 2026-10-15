@@ -195,14 +195,42 @@ async function gitIgnoredPaths(
   return { files, directories, holding };
 }
 
-/** Adds nested git repositories to the uncaptured paths: a checkpoint cannot hold their files. */
-function withNestedRepos(paths: UncapturedPaths, nested: readonly string[]): UncapturedPaths {
-  const directories = new Set([...paths.directories, ...nested]);
+/**
+ * Adds paths no checkpoint holds to the uncaptured set: nested git repositories (a checkpoint stores one reference to each)
+ * and what checkpoint policy leaves out (skipped and secret-looking names). A restore refuses to replace them.
+ */
+function withUncaptured(
+  paths: UncapturedPaths,
+  extra: { readonly files: readonly string[]; readonly directories: readonly string[] },
+): UncapturedPaths {
+  const files = new Set([...paths.files, ...extra.files]);
+  const directories = new Set([...paths.directories, ...extra.directories]);
   const holding = new Set(paths.holding);
-  for (const repo of nested) {
-    for (const ancestor of ancestorsOf(repo)) holding.add(ancestor);
+  for (const entry of [...extra.files, ...extra.directories]) {
+    for (const ancestor of ancestorsOf(entry)) holding.add(ancestor);
   }
-  return { files: paths.files, directories, holding };
+  return { files, directories, holding };
+}
+
+/**
+ * Folder and file names no checkpoint captures, at any depth. scanWorkspace (the manifest) and captureTree (the stored
+ * tree) both read this list, so the two hold the same paths.
+ */
+const SKIPPED_FOLDER_NAMES = [".git", "node_modules", ".omp", "dist", "build"] as const;
+
+/** The same secret-looking names as `isSecretName`, as git pathspecs for captureTree, at any depth: the names and their folders. */
+const SECRET_PATHSPECS = [
+  ":(exclude,glob)**/.env*",
+  ":(exclude,glob)**/.env*/**",
+  ":(exclude,glob)**/*.pem",
+  ":(exclude,glob)**/*.pem/**",
+  ":(exclude,glob)**/*.key",
+  ":(exclude,glob)**/*.key/**",
+] as const;
+
+/** A secret-looking file name: `.env*`, `*.pem` or `*.key`. Such a file is never captured, at any depth. */
+function isSecretName(name: string): boolean {
+  return name.startsWith(".env") || name.endsWith(".pem") || name.endsWith(".key");
 }
 
 /**
@@ -222,8 +250,11 @@ async function scanWorkspace(
   const manifest: ManifestEntry[] = [];
   const excluded: ExcludedPath[] = [];
   const nested: string[] = [];
+  // What policy leaves out, as the uncaptured set holds it: a restore must not replace it without an undo copy.
+  const policyFiles: string[] = [];
+  const policyDirectories: string[] = [];
   const gitIgnored = await gitIgnoredPaths(gitBinary, excludedRoot, workspace);
-  const skip = new Set([".git", "node_modules", ".omp", "dist", "build"]);
+  const skip = new Set<string>(SKIPPED_FOLDER_NAMES);
   async function walk(directory: string): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const absolute = join(directory, entry.name);
@@ -233,14 +264,12 @@ async function scanWorkspace(
         (excludedRoot && (absolute === excludedRoot || absolute.startsWith(`${excludedRoot}/`)))
       ) {
         excluded.push({ path: rel || entry.name, reason: "excluded by checkpoint policy" });
+        (entry.isDirectory() ? policyDirectories : policyFiles).push(rel || entry.name);
         continue;
       }
-      if (
-        entry.name.startsWith(".env") ||
-        entry.name.endsWith(".pem") ||
-        entry.name.endsWith(".key")
-      ) {
+      if (isSecretName(entry.name)) {
         excluded.push({ path: rel, reason: "secret-looking path" });
+        (entry.isDirectory() ? policyDirectories : policyFiles).push(rel);
         continue;
       }
       if (isUncaptured(gitIgnored, rel)) {
@@ -280,7 +309,15 @@ async function scanWorkspace(
   }
   await walk(workspace);
   manifest.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-  return { manifest, excluded, uncaptured: withNestedRepos(gitIgnored, nested), nested };
+  return {
+    manifest,
+    excluded,
+    uncaptured: withUncaptured(gitIgnored, {
+      files: policyFiles,
+      directories: [...policyDirectories, ...nested],
+    }),
+    nested,
+  };
 }
 
 function shadowGitDir(root: string, key: string, threadId: string): string {
@@ -464,11 +501,12 @@ async function captureTree(
     "-A",
     "--",
     ".",
-    ":!.git",
-    ":!node_modules",
-    ":!.omp",
-    ":!dist",
-    ":!build",
+    // The names scanWorkspace leaves out, at any depth: a folder or file of that name anywhere in the workspace.
+    ...SKIPPED_FOLDER_NAMES.flatMap((name) => [
+      `:(exclude,glob)**/${name}`,
+      `:(exclude,glob)**/${name}/**`,
+    ]),
+    ...SECRET_PATHSPECS,
     // Git would store a nested repository as one commit reference: leave its contents out.
     ...nested.map((path) => `:(exclude,literal)${path}`),
   ]);
