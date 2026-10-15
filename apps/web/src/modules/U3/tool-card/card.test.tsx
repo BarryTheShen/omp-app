@@ -213,6 +213,16 @@ describe("ToolCard state grammar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy raw result" }));
     expect(onCopy).toHaveBeenCalledWith(lines, "result");
   });
+
+  test("a summary in a narrow card takes its own line, so it is not squeezed to a few letters", () => {
+    render(<ToolCard state={state("success", "narrow-summary")} summary="Result submitted" />);
+    expect(screen.getByText("Result submitted").className).toContain("basis-full");
+    expect(screen.getByText("Result submitted").className).toContain("@xs/tool-card:flex-1");
+    expect(screen.getByRole("button", { name: "Run bash: Complete" }).className).toContain(
+      "flex-wrap",
+    );
+  });
+
   test("does not echo raw JSON arguments when no renderer summary is supplied", () => {
     render(<ToolCard state={state("success", "summary")} />);
     const trigger = screen.getByRole("button", { name: "Run bash: Complete" });

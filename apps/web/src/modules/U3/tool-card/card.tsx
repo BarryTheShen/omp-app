@@ -158,7 +158,7 @@ export function ToolCard({
   const Icon = status.icon;
   return (
     <Collapsible
-      className={cn("group/tool-card w-full min-w-0", className)}
+      className={cn("group/tool-card @container/tool-card w-full min-w-0", className)}
       data-phase={state.phase}
       data-queued={state.queued === true ? "true" : undefined}
       data-slot="u3-tool-card"
@@ -170,7 +170,7 @@ export function ToolCard({
         aria-controls={contentId}
         aria-expanded={open}
         aria-label={`${state.label}: ${status.label}`}
-        className="group/tool-card-trigger flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-start text-sm outline-none transition-colors hover:bg-muted/70 focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="group/tool-card-trigger flex w-full min-w-0 flex-wrap items-center gap-x-2 rounded-lg px-2 py-1.5 text-start text-sm outline-none transition-colors hover:bg-muted/70 focus-visible:ring-3 focus-visible:ring-ring/50"
         data-slot="u3-tool-card-trigger"
       >
         <Icon
@@ -184,7 +184,10 @@ export function ToolCard({
         <span className="min-w-0 truncate font-medium text-foreground">{state.label}</span>
         <span
           className={cn(
-            "min-w-0 flex-1 text-xs",
+            // Under 20rem (a narrow side panel), the summary takes its own line under the label, chip and chevron,
+            // indented to the label and set off by a small gap; from 20rem it sits between the label and the chip, as
+            // before. An empty summary takes no line under 20rem.
+            "order-5 min-w-0 basis-full ps-6 pt-1 text-xs empty:hidden @xs/tool-card:order-2 @xs/tool-card:flex-1 @xs/tool-card:ps-0 @xs/tool-card:pt-0 @xs/tool-card:empty:block",
             // A call with no result says so in full, so its one line wraps rather than being cut off.
             state.phase === "unrecorded" ? "break-words" : "truncate",
             summaryTone ?? "text-muted-foreground",
@@ -195,7 +198,7 @@ export function ToolCard({
         </span>
         <span
           className={cn(
-            "shrink-0 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium leading-tight",
+            "order-3 shrink-0 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium leading-tight",
             TONE_CLASSES[status.tone],
           )}
           data-slot="u3-tool-card-status"
@@ -206,7 +209,7 @@ export function ToolCard({
         <Icons.chevronDown
           aria-hidden="true"
           className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none",
+            "order-4 size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none",
             open && "rotate-180",
           )}
         />
