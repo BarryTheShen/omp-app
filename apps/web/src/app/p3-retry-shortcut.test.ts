@@ -1,6 +1,6 @@
 import type { ThreadId } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
-import type { P3FailedState, P3RunState } from "@/modules/P3/runs/status";
+import { createP3RunStatus, type P3FailedState, type P3RunState } from "@/modules/P3/runs/status";
 import { P3_SHORTCUT_DESCRIPTORS } from "@/modules/P3/shortcuts/descriptors";
 import { MemoryPreferenceStore, ShortcutRegistry } from "@/shortcuts/registry";
 import { registerRetryShortcut } from "./p3-retry-shortcut";
@@ -62,6 +62,20 @@ describe("Alt+R retries the failed turn exactly when Try again is offered", () =
 
   test("with no failure in progress, Alt+R does nothing", () => {
     const { registry, retry } = setup(state({ phase: "sent" }));
+    registry.dispatch(altR(), "global");
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  test("a failure the person dismissed is no longer retried", () => {
+    const status = createP3RunStatus();
+    status.set(state({}));
+    const registry = new ShortcutRegistry(P3_SHORTCUT_DESCRIPTORS, {
+      preferenceStore: new MemoryPreferenceStore(),
+    });
+    const retry = vi.fn(async (_failure: P3FailedState) => undefined);
+    registerRetryShortcut({ registry, threadId: chat, status, retry });
+
+    status.dismiss();
     registry.dispatch(altR(), "global");
     expect(retry).not.toHaveBeenCalled();
   });

@@ -50,11 +50,20 @@ export interface P3RunStatus {
   getSnapshot(): P3RunState;
   subscribe(listener: () => void): () => void;
   set(state: P3RunState): void;
+  /**
+   * Ends a finished or failed run's notice: the person closed it, opened another chat, or sent another
+   * message. A run still sending is left alone, because its outcome is not known yet.
+   */
+  dismiss(): void;
 }
 
 export function createP3RunStatus(): P3RunStatus {
   let state: P3RunState = { phase: "idle" };
   const listeners = new Set<() => void>();
+  const publish = (next: P3RunState): void => {
+    state = next;
+    for (const listener of listeners) listener();
+  };
   return {
     getSnapshot: () => state,
     subscribe(listener) {
@@ -63,9 +72,10 @@ export function createP3RunStatus(): P3RunStatus {
         listeners.delete(listener);
       };
     },
-    set(next) {
-      state = next;
-      for (const listener of listeners) listener();
+    set: publish,
+    dismiss() {
+      if (state.phase !== "sent" && state.phase !== "failed") return;
+      publish({ phase: "idle" });
     },
   };
 }

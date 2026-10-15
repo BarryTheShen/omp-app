@@ -42,6 +42,7 @@ describe("P3RunStatusView", () => {
     render(
       <P3RunStatusView
         canRetry={false}
+        onDismiss={() => undefined}
         onOpenSource={onOpenSource}
         onRetry={() => undefined}
         openError={null}
@@ -59,6 +60,7 @@ describe("P3RunStatusView", () => {
     render(
       <P3RunStatusView
         canRetry={false}
+        onDismiss={() => undefined}
         onOpenSource={() => undefined}
         onRetry={() => undefined}
         openError={null}
@@ -74,6 +76,7 @@ describe("P3RunStatusView", () => {
   test("a restore the app managed says what it restored", () => {
     const props = {
       canRetry: false,
+      onDismiss: () => undefined,
       onOpenSource: () => undefined,
       onRetry: () => undefined,
       openError: null,
@@ -100,6 +103,7 @@ describe("P3RunStatusView", () => {
     const { rerender } = render(
       <P3RunStatusView
         canRetry
+        onDismiss={() => undefined}
         onOpenSource={() => undefined}
         onRetry={onRetry}
         openError={null}
@@ -118,6 +122,7 @@ describe("P3RunStatusView", () => {
     rerender(
       <P3RunStatusView
         canRetry={false}
+        onDismiss={() => undefined}
         onOpenSource={() => undefined}
         onRetry={onRetry}
         openError={null}
@@ -132,6 +137,7 @@ describe("P3RunStatusView", () => {
     render(
       <P3RunStatusView
         canRetry={false}
+        onDismiss={() => undefined}
         onOpenSource={() => undefined}
         onRetry={() => undefined}
         openError="The original chat could not be opened."
@@ -141,6 +147,49 @@ describe("P3RunStatusView", () => {
     );
 
     expect(screen.getByRole("alert").textContent).toBe("The original chat could not be opened.");
+  });
+
+  test("a finished or failed notice has a Dismiss control that ends it, and a sending run has none", () => {
+    const onDismiss = vi.fn();
+    const { rerender } = render(
+      <P3RunStatusView
+        canRetry={false}
+        onDismiss={onDismiss}
+        onOpenSource={() => undefined}
+        onRetry={() => undefined}
+        openError={null}
+        showOpenSource={false}
+        state={sent}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <P3RunStatusView
+        canRetry={false}
+        onDismiss={onDismiss}
+        onOpenSource={() => undefined}
+        onRetry={() => undefined}
+        openError={null}
+        showOpenSource={false}
+        state={failed}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeTruthy();
+
+    rerender(
+      <P3RunStatusView
+        canRetry={false}
+        onDismiss={onDismiss}
+        onOpenSource={() => undefined}
+        onRetry={() => undefined}
+        openError={null}
+        showOpenSource={false}
+        state={{ ...record, phase: "sending" }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
   });
 });
 
@@ -195,5 +244,56 @@ describe("P3RunStatusSurface", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalledWith(failed);
+  });
+
+  test("opening a chat the run did not touch ends a finished notice", () => {
+    const runs = createP3Runs();
+    runs.status.set(sent);
+
+    render(
+      <P3RunStatusSurface
+        onOpenSource={async () => undefined}
+        onRetry={async () => undefined}
+        runs={runs}
+        threadId={otherChat}
+      />,
+    );
+
+    expect(runs.status.getSnapshot()).toEqual({ phase: "idle" });
+  });
+
+  test("a notice stays while the person is in a chat its run touched", () => {
+    const runs = createP3Runs();
+    runs.status.set(sent);
+
+    render(
+      <P3RunStatusSurface
+        onOpenSource={async () => undefined}
+        onRetry={async () => undefined}
+        runs={runs}
+        threadId={newChat}
+      />,
+    );
+
+    expect(runs.status.getSnapshot()).toBe(sent);
+    expect(screen.getByText("Sent in this new chat, branched from the original.")).toBeTruthy();
+  });
+
+  test("Dismiss in the chat ends the notice everywhere it shows", () => {
+    const runs = createP3Runs();
+    runs.status.set(sent);
+
+    render(
+      <P3RunStatusSurface
+        onOpenSource={async () => undefined}
+        onRetry={async () => undefined}
+        runs={runs}
+        threadId={sourceThread}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(runs.status.getSnapshot()).toEqual({ phase: "idle" });
+    expect(screen.queryByText(/Sent in/)).toBeNull();
   });
 });

@@ -78,6 +78,7 @@ import { NotificationProjector, sessionRetiredNotices } from "@/modules/N1/notif
 import { StatusSegments } from "@/modules/N1/status";
 import {
   createP3Runs,
+  endNoticeOnPrompt,
   P3EditSurface,
   type P3EditTarget,
   P3MessageActions,
@@ -652,6 +653,11 @@ function ActiveThreadReady({
   const connection = useAppConnection();
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
   const guardedSend = useMemo(() => guardOmpSend(rpc.send), [rpc.send]);
+  // A prompt the person sends ends a finished run's notice (endNoticeOnPrompt); other sends are unchanged.
+  const messageSend = useMemo(
+    () => endNoticeOnPrompt(guardedSend, p3Runs.status),
+    [guardedSend, p3Runs.status],
+  );
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
   const pasteFiles = useMemo(() => client.port(PasteFileStore), [client]);
   const savePasteFile = useCallback(
@@ -1080,7 +1086,7 @@ function ActiveThreadReady({
   );
   const { controller: runtimeController, runtime } = useOmpRuntime({
     store,
-    send: guardedSend,
+    send: messageSend,
     capabilities,
     attachments: runtimeAttachments,
     onEdit: p3Handlers.onEdit,
@@ -1094,8 +1100,8 @@ function ActiveThreadReady({
   const transcriptRootRef = useRef<HTMLDivElement | null>(null);
   const scrollController = useThreadScrollController(transcriptRootRef);
   const queueController = useMemo(
-    () => createQueueController({ store, send: guardedSend, capabilities }),
-    [capabilities, guardedSend, store],
+    () => createQueueController({ store, send: messageSend, capabilities }),
+    [capabilities, messageSend, store],
   );
   useLayoutEffect(() => {
     answerExtensionUiRef.current = (response, options) =>

@@ -1,5 +1,5 @@
 import type { ThreadId } from "@omp-app/contracts";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { InlineError } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import type { WorkspaceGuarantee } from "../contract";
@@ -94,6 +94,7 @@ export interface P3RunStatusViewProps {
   readonly onRetry: () => void;
   readonly showOpenSource: boolean;
   readonly onOpenSource: () => void;
+  readonly onDismiss: () => void;
   readonly openError: string | null;
 }
 
@@ -105,6 +106,7 @@ export function P3RunStatusView({
   showOpenSource,
   onOpenSource,
   openError,
+  onDismiss,
 }: P3RunStatusViewProps) {
   return (
     <div className="flex min-w-0 flex-col gap-2 text-sm" data-slot="p3-run-status">
@@ -119,11 +121,18 @@ export function P3RunStatusView({
       {state.phase === "failed" ? (
         <FailedNotice canRetry={canRetry} onRetry={onRetry} state={state} />
       ) : null}
-      {showOpenSource ? (
-        <div>
-          <Button onClick={onOpenSource} size="sm" type="button" variant="outline">
-            Open the original chat
-          </Button>
+      {showOpenSource || state.phase !== "sending" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {showOpenSource ? (
+            <Button onClick={onOpenSource} size="sm" type="button" variant="outline">
+              Open the original chat
+            </Button>
+          ) : null}
+          {state.phase !== "sending" ? (
+            <Button onClick={onDismiss} size="sm" type="button" variant="ghost">
+              Dismiss
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {openError ? (
@@ -156,6 +165,10 @@ export function P3RunStatusSurface({
     runs.status.getSnapshot,
   );
   const [openError, setOpenError] = useState<string | null>(null);
+  // A notice belongs to the chats its run touched. Opening any other chat ends the notice.
+  useEffect(() => {
+    if (state.phase !== "idle" && !belongsTo(state, threadId)) runs.status.dismiss();
+  }, [runs.status, state, threadId]);
   if (state.phase === "idle" || !belongsTo(state, threadId)) return null;
   // A retry runs in the chat it belongs to, where this surface's handlers are live.
   const canRetry = state.phase === "failed" && state.retryable && state.chatThreadId === threadId;
@@ -172,6 +185,7 @@ export function P3RunStatusSurface({
         if (state.phase === "failed") void onRetry(state);
       }}
       openError={openError}
+      onDismiss={() => runs.status.dismiss()}
       showOpenSource={state.sourceThreadId !== threadId}
       state={state}
     />
