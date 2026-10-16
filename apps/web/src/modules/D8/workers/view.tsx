@@ -108,17 +108,17 @@ function WorkersBody({
   return (
     <div className="flex min-w-0 flex-col gap-4 p-4">
       {snapshot.error === null ? null : <InlineError message={snapshot.error} onRetry={onRetry} />}
-      <Section heading="Tan workers" variant="plain">
+      <Section heading="Side-task workers" variant="plain">
         <EmptyState
-          hint="omp runs /tan work as a background job and does not report it to this app, so a tan worker cannot be started from here yet."
-          title="Tan workers are not reported here"
+          hint="omp does not report side-task workers to this app, so they cannot be started here yet."
+          title="Side-task workers are not reported here"
           variant="compact"
         />
       </Section>
-      <Section heading="Vibe workers" variant="plain">
+      <Section heading="Persistent workers" variant="plain">
         <EmptyState
-          hint="Vibe mode is terminal-only in omp, so its workers are not reported to this app and cannot be started from here yet."
-          title="Vibe workers are not reported here"
+          hint="omp does not report persistent workers to this app, so they cannot be started here yet."
+          title="Persistent workers are not reported here"
           variant="compact"
         />
       </Section>
@@ -160,7 +160,8 @@ export function WorkersPanelView({
     lifecycle,
     position,
     title: "Workers",
-    description: "Subagents in this chat. Tan and vibe workers are not reported to this app.",
+    description:
+      "Subagents in this chat. Side-task and persistent workers are not reported to this app.",
     error: null,
     readOnly: false,
     pendingUpdates: 0,

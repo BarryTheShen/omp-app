@@ -76,7 +76,7 @@ test.beforeAll(() => {
   buildWorkersPlaygrounds();
 });
 
-test("workers panel lists its tan, vibe and subagent sections, and keeps stop gated, in light, dark and narrow layouts", async ({
+test("workers panel lists its side-task, persistent worker and subagent sections, and keeps stop gated, in light, dark and narrow layouts", async ({
   page,
 }) => {
   await page.goto("/d8-5-workers-playground.html");
@@ -87,8 +87,8 @@ test("workers panel lists its tan, vibe and subagent sections, and keeps stop ga
   await visualExpect(panel).toContainText("Using bash · 7 tool calls");
   await visualExpect(panel).toContainText("Finished");
   await visualExpect(panel).toContainText("Cancelled");
-  await visualExpect(panel).toContainText("Tan workers");
-  await visualExpect(panel).toContainText("Vibe workers");
+  await visualExpect(panel).toContainText("Side-task workers");
+  await visualExpect(panel).toContainText("Persistent workers");
   await visualExpect(panel).toContainText("Subagents");
   await visualExpect(panel).toContainText("Queued");
   await visualExpect(panel.getByRole("button", { name: /^Stop / })).toHaveCount(1);

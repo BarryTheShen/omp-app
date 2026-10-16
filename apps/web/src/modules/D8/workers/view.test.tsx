@@ -83,13 +83,19 @@ function renderView(
 }
 
 describe("WorkersPanelView", () => {
-  test("shows the tan, vibe and subagent sections, and no start control", () => {
+  test("shows the side-task, persistent worker and subagent sections, and no start control", () => {
     renderView(snapshotOf([], {}));
-    expect(screen.getByText("Tan workers")).toBeTruthy();
+    expect(screen.getByText("Side-task workers")).toBeTruthy();
+    expect(screen.getByText("Persistent workers")).toBeTruthy();
     expect(screen.getByText("Subagents")).toBeTruthy();
-    expect(screen.getByText("Tan workers are not reported here")).toBeTruthy();
+    expect(screen.getByText("Side-task workers are not reported here")).toBeTruthy();
     expect(screen.getByText("No subagents yet")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Start / })).toBeNull();
+    expect(
+      screen.getByText(
+        "Subagents in this chat. Side-task and persistent workers are not reported to this app.",
+      ),
+    ).toBeTruthy();
   });
 
   test("offers Stop only for a running worker once omp can cancel, and calls onStop with the worker id", () => {
@@ -134,12 +140,12 @@ describe("WorkersPanelView", () => {
 });
 
 describe("WorkersPanelView reports only what omp sends", () => {
-  test("says omp does not report tan or vibe workers here, and lists a tan-named subagent under Subagents", () => {
-    renderView(snapshotOf([agent("tan-1", "tan", "running")], {}));
-    expect(screen.getByText("Tan workers are not reported here")).toBeTruthy();
-    expect(screen.getByText("Vibe workers are not reported here")).toBeTruthy();
+  test("says omp does not report side-task or persistent workers here, and lists a side-task-named subagent under Subagents", () => {
+    renderView(snapshotOf([agent("side-task-1", "task", "running")], {}));
+    expect(screen.getByText("Side-task workers are not reported here")).toBeTruthy();
+    expect(screen.getByText("Persistent workers are not reported here")).toBeTruthy();
     expect(screen.getByText("Subagents")).toBeTruthy();
-    expect(screen.getByText("Worker tan-1")).toBeTruthy();
+    expect(screen.getByText("Worker side-task-1")).toBeTruthy();
   });
 
   test("shows no Stop for a queued worker, and reads a stop in flight as Stopping with its button disabled", () => {
