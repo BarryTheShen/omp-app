@@ -1,9 +1,31 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ExecutionRecord } from "@/modules/U2/execution";
 import { ExecutionRow } from "./execution-row";
 
-afterEach(() => cleanup());
+const originalResizeObserver = globalThis.ResizeObserver;
+let resizeCallbacks: Array<() => void> = [];
+
+beforeEach(() => {
+  resizeCallbacks = [];
+  globalThis.ResizeObserver = class {
+    readonly #callback: ResizeObserverCallback;
+
+    constructor(callback: ResizeObserverCallback) {
+      this.#callback = callback;
+      resizeCallbacks.push(() => this.#callback([], this as unknown as ResizeObserver));
+    }
+
+    observe() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  globalThis.ResizeObserver = originalResizeObserver;
+});
 
 const run: ExecutionRecord = {
   id: "entry:thread:bash",
@@ -37,14 +59,45 @@ describe("U1 execution row", () => {
     expect(screen.queryByTestId("u1-execution-output")).toBeNull();
   });
 
-  test("the command and the output are scroll regions a keyboard can reach", () => {
+  test("short command and output blocks are groups without keyboard stops", () => {
     render(<ExecutionRow record={run} />);
-    const command = screen.getByRole("region", { name: "Command" });
-    const output = screen.getByRole("region", { name: "Output" });
-    expect(command.textContent).toBe("ls /missing");
-    expect(command.tabIndex).toBe(0);
-    expect(output.tabIndex).toBe(0);
-    expect(output.textContent).toContain("No such file or directory");
+    const command = screen.getByRole("group", { name: "Command" });
+    const output = screen.getByRole("group", { name: "Output" });
+    expect(screen.queryByRole("region", { name: "Command" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Output" })).toBeNull();
+    expect(command.getAttribute("tabindex")).toBeNull();
+    expect(output.getAttribute("tabindex")).toBeNull();
+  });
+  test("measures both groups and updates their tab stops after resize", () => {
+    render(<ExecutionRow record={run} />);
+    const command = screen.getByRole("group", { name: "Command" });
+    const output = screen.getByRole("group", { name: "Output" });
+
+    Object.defineProperties(command, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 200 },
+    });
+    Object.defineProperties(output, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 100 },
+    });
+    act(() => {
+      resizeCallbacks.forEach((resize) => {
+        resize();
+      });
+    });
+    expect(command.getAttribute("tabindex")).toBe("0");
+    expect(output.getAttribute("tabindex")).toBeNull();
+
+    Object.defineProperty(command, "scrollHeight", { configurable: true, value: 100 });
+    Object.defineProperty(output, "scrollHeight", { configurable: true, value: 200 });
+    act(() => {
+      resizeCallbacks.forEach((resize) => {
+        resize();
+      });
+    });
+    expect(command.getAttribute("tabindex")).toBeNull();
+    expect(output.getAttribute("tabindex")).toBe("0");
   });
 
   test("the header has an arrow that screen readers skip, so the card reads as a disclosure", () => {
