@@ -9,12 +9,17 @@ type Reply =
   | (ToolCall & { thinking?: string })
   | { tools: readonly ToolCall[]; thinking?: string }
   | { failure: string }
+  /** A retryable provider error for the retry-notice e2e. */
+  | { retryableFailure: string }
   /** `auth_probe` makes the provider refuse the key with HTTP 401, as a real provider does for a bad key. */
   | { unauthorized: string };
 
 /** The calls a tool reply makes: one call, or several in one assistant message. */
 function toolCallsOf(
-  value: Exclude<Reply, { text: string } | { failure: string } | { unauthorized: string }>,
+  value: Exclude<
+    Reply,
+    { text: string } | { failure: string } | { retryableFailure: string } | { unauthorized: string }
+  >,
 ): readonly ToolCall[] {
   return "tools" in value ? value.tools : [value];
 }
@@ -329,6 +334,8 @@ function reply(request: Request): Reply {
   }
   if (last?.role === "tool") return { text: `tool said: ${text(last.content)}` };
   const prompt = last?.role === "user" ? text(last.content) : "";
+  if (prompt.includes("retry_failure_probe"))
+    return { retryableFailure: "fake provider retry failure" };
   if (prompt.includes("spawn_nested_probe"))
     return {
       tool: "task",
@@ -721,6 +728,17 @@ const server = Bun.serve({
         },
         { status: 401 },
       );
+    if ("retryableFailure" in value)
+      return Response.json(
+        {
+          error: {
+            message: value.retryableFailure,
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
+        { status: 503 },
+      );
     if ("failure" in value)
       return Response.json(
         { error: { message: value.failure, type: "invalid_request_error" } },
@@ -835,6 +853,10 @@ await Bun.write(
     "  - gemini",
     "  - github",
     "  - opencode",
+    "",
+    "retry:",
+    "  maxRetries: 3",
+    "  baseDelayMs: 50",
     "",
   ].join("\n"),
 );
