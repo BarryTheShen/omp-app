@@ -3,6 +3,7 @@ import { AppFailure, type ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { BranchRepositoryItem } from "../contract";
 import { type BranchHeadStorage, createBranchRepository } from ".";
+import { HEAD_KEY_PREFIX } from "./repository";
 
 const threadId = "p3-thread" as ThreadId;
 
@@ -36,7 +37,6 @@ describe("P3 assistant-ui branch repository", () => {
       threadId,
       items: branchItems,
       headId: "child",
-      switchBranch: async (headId) => ({ threadId, headId, items: branchItems }),
     });
     expect(repository.snapshot().items.map((item) => item.message.id)).toEqual([
       "root",
@@ -53,30 +53,45 @@ describe("P3 assistant-ui branch repository", () => {
     });
   });
 
-  test("persists the selected head after the R0.4 branch callback", async () => {
+  test("persists the selected head with no omp command, and a reload reads it back", async () => {
     const persisted = storage();
-    const switchCalls: string[] = [];
     const first = createBranchRepository({
       threadId,
       items: branchItems,
+      headId: "child",
       storage: persisted,
-      switchBranch: async (headId) => {
-        switchCalls.push(headId);
-        return { threadId, headId, items: branchItems };
-      },
     });
     await first.switchHead("sibling");
+    expect(first.snapshot().headId).toBe("sibling");
+    expect(persisted.values.get(`${HEAD_KEY_PREFIX}${threadId}`)).toBe("sibling");
+
     const second = createBranchRepository({
       threadId,
       items: branchItems,
+      headId: "child",
       storage: persisted,
-      switchBranch: async (headId) => ({ threadId, headId, items: branchItems }),
     });
-    expect(switchCalls).toEqual(["sibling"]);
     expect(second.snapshot().headId).toBe("sibling");
     await second.persistHead(null);
     expect(second.snapshot().headId).toBeNull();
     expect(persisted.values.size).toBe(1);
+  });
+
+  test("a head switch never needs omp: it moves the visible head, and a head the repository lacks is refused", async () => {
+    const repository = createBranchRepository({
+      threadId,
+      items: branchItems,
+      headId: "child",
+      storage: storage(),
+    });
+
+    await repository.switchHead("sibling");
+    expect(repository.snapshot().headId).toBe("sibling");
+
+    await expect(repository.switchHead("missing")).rejects.toMatchObject({
+      appError: { code: "not_found" },
+    });
+    expect(repository.snapshot().headId).toBe("sibling");
   });
 
   test("rejects missing/orphaned heads and supports authoritative refetch", async () => {

@@ -1,5 +1,5 @@
 import { ExportedMessageRepository, type ThreadMessageLike } from "@assistant-ui/react";
-import type { CapabilityKey, ThreadId } from "@omp-app/contracts";
+import type { ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type {
   BranchRepositoryItem,
@@ -17,7 +17,6 @@ export interface BranchRepositoryOptions<TMessage extends ThreadMessageLike> {
   readonly items: readonly BranchRepositoryItem<TMessage>[];
   readonly headId?: string | null;
   readonly storage?: BranchHeadStorage;
-  readonly switchBranch?: (headId: string) => Promise<BranchRepositorySnapshot<TMessage>>;
   readonly refetch?: () => Promise<BranchRepositorySnapshot<TMessage>>;
 }
 
@@ -114,21 +113,8 @@ export function createBranchRepository<TMessage extends ThreadMessageLike>(
     async switchHead(nextHead) {
       if (!validHeads().has(nextHead))
         throw failure("not_found", "The selected branch is no longer present");
-      if (!options.switchBranch) {
-        throw new AppFailure({
-          code: "unavailable",
-          message: "Branch switching requires R0.4's branch action",
-          retryable: false,
-          capability: "omp.cmd.branch" satisfies CapabilityKey,
-        });
-      }
-      const next = await options.switchBranch(nextHead);
-      ordered = parentsFirst(next.items);
-      const resolvedHead = next.headId ?? nextHead;
-      if (!validHeads().has(resolvedHead)) {
-        throw failure("invalid_args", "R0.4 returned a branch head that is not present");
-      }
-      await persist(resolvedHead);
+      // A head switch changes which version of a message is shown, and remembers it: it never calls omp.
+      await persist(nextHead);
       return currentSnapshot();
     },
     async persistHead(nextHead) {

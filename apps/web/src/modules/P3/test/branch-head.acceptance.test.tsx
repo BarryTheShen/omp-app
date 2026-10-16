@@ -77,16 +77,10 @@ function PickerAt({
 describe("acceptance: assistant-ui branches import, switch, persist and reload", () => {
   test("two sibling answers import parents first, the picked head is persisted, and a reload reads it back", async () => {
     const storage = memoryStorage();
-    const switched: string[] = [];
     const options = {
       threadId,
       items: siblingItems(),
       storage,
-      // The composition's callback returns the repository it now shows; no omp command is involved here.
-      switchBranch: async (headId: string) => {
-        switched.push(headId);
-        return { threadId, headId, items: siblingItems() };
-      },
     };
     const first = createBranchRepository({ ...options, headId: "child" });
 
@@ -105,7 +99,6 @@ describe("acceptance: assistant-ui branches import, switch, persist and reload",
     });
 
     await first.switchHead("sibling");
-    expect(switched).toEqual(["sibling"]);
     expect(first.snapshot().headId).toBe("sibling");
     expect(storage.getItem(`${HEAD_KEY_PREFIX}${threadId}`)).toBe("sibling");
 
@@ -173,7 +166,6 @@ describe("acceptance: assistant-ui branches import, switch, persist and reload",
       items: siblingItems(),
       headId: "child",
       storage: memoryStorage(),
-      switchBranch: async (headId) => ({ threadId, headId, items: siblingItems() }),
     });
 
     await expect(repository.switchHead("missing-message")).rejects.toMatchObject({
@@ -228,7 +220,7 @@ describe("acceptance: assistant-ui branches import, switch, persist and reload",
     expect(repository.snapshot().items).toEqual(before);
   });
 
-  test.skip("a head switch never needs omp: with no branch command the picker still switches the visible repository (spec §4.1 and §5.9; follow-up #1688)", async () => {
+  test("a head switch never needs omp: with no branch command the picker still switches the visible repository (spec §4.1 and §5.9)", async () => {
     const repository = createBranchRepository({
       threadId,
       items: siblingItems(),
