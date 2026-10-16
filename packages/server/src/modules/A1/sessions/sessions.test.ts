@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { appendFile, mkdir, mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { sessionLeaseProbe } from "../../../process";
+import { leaseSocketName } from "../../../process/session-lease";
 import {
   parseSessionContent,
   parseTitleSlotLine,
@@ -61,6 +63,14 @@ async function writeSession(
 
 async function removeRoot(root: string): Promise<void> {
   await rm(root, { recursive: true, force: true });
+}
+function unixSocketTable(names: readonly string[] = []): string {
+  const header = "Num RefCount Protocol Flags Type St Inode Path";
+  const rows = names.map(
+    (name, index) =>
+      `${index.toString(16).padStart(16, "0")}: 00000003 00000000 00000000 0002 03 ${1000 + index} ${name}`,
+  );
+  return [header, ...rows].join("\n");
 }
 
 describe("omp session bucket rule", () => {
@@ -356,6 +366,92 @@ describe("SessionFileStore", () => {
       expect(result.sessions.find((session) => session.id === "local")?.liveness.lease).toBe(
         "held",
       );
+    } finally {
+      await removeRoot(root);
+    }
+  });
+  test("reads the socket table once for a listing, not once per chat", async () => {
+    const root = await makeTempRoot();
+    try {
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(root, "workspace");
+      await Promise.all(
+        ["one", "two", "three"].map((id, index) =>
+          writeSession(path.join(sessionsRoot, "-workspace", `${id}.jsonl`), {
+            id,
+            cwd,
+            timestamp: `2026-10-04T12:00:0${index}.000Z`,
+          }),
+        ),
+      );
+      let table = unixSocketTable();
+      let reads = 0;
+      const ownersDir = path.join(root, "owners");
+      const leaseProbe = sessionLeaseProbe({
+        ownersDir: () => ownersDir,
+        platform: "linux",
+        readUnixSockets: async () => {
+          reads += 1;
+          return table;
+        },
+      });
+      const store = new SessionFileStore({
+        sessionsRoot,
+        home: root,
+        tempRoot: path.join(root, "tmp"),
+        leaseProbe,
+      });
+
+      const first = await store.listSessions({ folder: cwd });
+      expect(first.sessions).toHaveLength(3);
+      expect(first.sessions.every((session) => session.liveness.lease === "free")).toBe(true);
+      expect(reads).toBe(1);
+
+      table = unixSocketTable([`@${leaseSocketName("two", ownersDir)}`]);
+      const second = await store.listSessions({ folder: cwd });
+      expect(second.sessions.find((session) => session.id === "two")?.liveness.lease).toBe("held");
+      expect(reads).toBe(2);
+    } finally {
+      await removeRoot(root);
+    }
+  });
+
+  test("direct session lookups read the lease table fresh", async () => {
+    const root = await makeTempRoot();
+    try {
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(root, "workspace");
+      const ownersDir = path.join(root, "owners");
+      await Promise.all(
+        ["one", "two"].map((id, index) =>
+          writeSession(path.join(sessionsRoot, "-workspace", `${id}.jsonl`), {
+            id,
+            cwd,
+            timestamp: `2026-10-04T12:00:0${index}.000Z`,
+          }),
+        ),
+      );
+      let table = unixSocketTable();
+      let reads = 0;
+      const leaseProbe = sessionLeaseProbe({
+        ownersDir: () => ownersDir,
+        platform: "linux",
+        readUnixSockets: async () => {
+          reads += 1;
+          return table;
+        },
+      });
+      const store = new SessionFileStore({
+        sessionsRoot,
+        home: root,
+        tempRoot: path.join(root, "tmp"),
+        leaseProbe,
+      });
+
+      expect((await store.findSession("one"))?.liveness.lease).toBe("free");
+      table = unixSocketTable([`@${leaseSocketName("two", ownersDir)}`]);
+      expect((await store.findSession("two"))?.liveness.lease).toBe("held");
+      expect(reads).toBe(2);
     } finally {
       await removeRoot(root);
     }

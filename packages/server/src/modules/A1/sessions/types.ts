@@ -173,10 +173,11 @@ export type LeaseProbeResult = "active" | "inactive" | "unknown" | boolean | nul
  * A probe should acquire and immediately release a free lease; `null` means
  * another process currently owns it.
  */
-export type SessionLeaseProbe = (
-  sessionId: string,
-  sessionFile: string,
-) => LeaseProbeResult | Promise<LeaseProbeResult>;
+export interface SessionLeaseProbe {
+  (sessionId: string, sessionFile: string): LeaseProbeResult | Promise<LeaseProbeResult>;
+  /** Returns a probe that shares one lease-table read across one session listing. */
+  forListing?(): SessionLeaseProbe;
+}
 
 export interface SessionFileStoreOptions {
   /** Defaults to omp's resolved `~/.omp/agent/sessions` equivalent. */

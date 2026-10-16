@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { access, chmod, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { leaseSocketName, sessionLeaseProbe } from "../../../process/session-lease";
 import { SessionFileStore } from "./index";
 import type { SessionFileStoreOptions } from "./types";
 
@@ -24,6 +25,14 @@ async function writeSession(sessionFile: string, id: string, cwd: string): Promi
   const header = { type: "session", version: 3, id, timestamp: "2026-10-10T12:00:00.000Z", cwd };
   await mkdir(path.dirname(sessionFile), { recursive: true });
   await writeFile(sessionFile, `${JSON.stringify(header)}\n`, "utf8");
+}
+function unixSocketTable(names: readonly string[] = []): string {
+  const header = "Num RefCount Protocol Flags Type St Inode Path";
+  const rows = names.map(
+    (name, index) =>
+      `${index.toString(16).padStart(16, "0")}: 00000003 00000000 00000000 0002 03 ${1000 + index} ${name}`,
+  );
+  return [header, ...rows].join("\n");
 }
 
 async function exists(file: string): Promise<boolean> {
@@ -287,6 +296,39 @@ describe("SessionFileStore.deleteSession", () => {
       const error = await refusal(store.deleteSession({ folder: cwd, sessionFile: file }));
 
       expect(error).toMatchObject({ appError: { code: "conflict" } });
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  test("reads a delete guard's lease table after the stop, not from the prior probe", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const ownersDir = path.join(root, "owners");
+      const file = path.join(storeFor(root).bucketPath(cwd), "held.jsonl");
+      await writeSession(file, "held", cwd);
+      let table = unixSocketTable();
+      let reads = 0;
+      const leaseProbe = sessionLeaseProbe({
+        ownersDir: () => ownersDir,
+        platform: "linux",
+        readUnixSockets: async () => {
+          reads += 1;
+          return table;
+        },
+      });
+      const store = storeFor(root, {
+        leaseProbe,
+        stopUnwatched: async () => {
+          table = unixSocketTable([`@${leaseSocketName("held", ownersDir)}`]);
+        },
+      });
+
+      const error = await refusal(store.deleteSession({ folder: cwd, sessionFile: file }));
+
+      expect(error).toMatchObject({ appError: { code: "conflict" } });
+      expect(reads).toBe(2);
       expect(await exists(file)).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });

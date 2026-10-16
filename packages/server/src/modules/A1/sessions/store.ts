@@ -478,7 +478,10 @@ export class SessionFileStore {
     const start = found < 0 ? candidates.length : found;
     const end = limit === undefined ? candidates.length : start + limit;
     const page = candidates.slice(start, end);
-    const outcomes = await inBatches(page, (candidate) => this.#listingEntry(candidate));
+    const leaseProbe = this.#options.leaseProbe?.forListing?.() ?? this.#options.leaseProbe;
+    const outcomes = await inBatches(page, (candidate) =>
+      this.#listingEntry(candidate, leaseProbe),
+    );
     const sessions: SessionFile[] = [];
     for (const outcome of outcomes) {
       parseWarnings.push(...outcome.parseWarnings);
@@ -961,7 +964,10 @@ export class SessionFileStore {
   }
 
   /** A listing item built from a summary; `readSession` is the whole-file read. */
-  async #listingEntry(candidate: SessionCandidate): Promise<SessionReadOutcome> {
+  async #listingEntry(
+    candidate: SessionCandidate,
+    leaseProbe = this.#options.leaseProbe,
+  ): Promise<SessionReadOutcome> {
     let summary: SessionSummary;
     try {
       summary = await this.#summary(candidate);
@@ -975,7 +981,7 @@ export class SessionFileStore {
     const serverProcess = serverOwnsSession(this.#options, header.id, candidate.file);
     const lease = serverProcess
       ? ({ lease: "held" } satisfies { lease: SessionLeaseState })
-      : await detectSessionLiveness(header.id, candidate.file, this.#options.leaseProbe);
+      : await detectSessionLiveness(header.id, candidate.file, leaseProbe);
     const file: SessionFile = {
       id: header.id,
       sessionFile: candidate.file,

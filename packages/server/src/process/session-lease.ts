@@ -92,25 +92,45 @@ export async function probeSessionLease(options: SessionLeaseOptions): Promise<S
   return unixDatagramNames(procNetUnix).has(name) ? "held" : "free";
 }
 
+/** Callable server lease bridge for one session's owner lock. */
+export type SessionLeaseProbeFunction = ((
+  sessionId: string,
+) => Promise<"active" | "inactive" | "unknown">) & {
+  forListing?: () => SessionLeaseProbeFunction;
+};
 /**
- * The lease probe the session store takes (`leaseProbe`): `active` while another omp holds the chat, so a delete
+ * Creates the lease probe the session store takes (`leaseProbe`): `active` while another omp holds the chat, so a delete
  * refuses it and a listing shows it held; `inactive` when none does. `unknown` off Linux and when the socket table
- * cannot be read: the store does not refuse those. The owners directory is read on each probe, as the rename's
- * check reads it.
+ * cannot be read: the store does not refuse those. The base probe reads the table on every call; `forListing()` creates
+ * a fresh probe that reads it once for all chats in that listing.
  */
 export function sessionLeaseProbe(
   options: Omit<SessionLeaseOptions, "sessionId" | "ownersDir"> & {
     readonly ownersDir: () => string;
   },
-): (sessionId: string) => Promise<"active" | "inactive" | "unknown"> {
-  return async (sessionId) => {
-    const lease = await probeSessionLease({
-      ...options,
-      ownersDir: options.ownersDir(),
-      sessionId,
-    });
-    if (lease === "held") return "active";
-    if (lease === "free") return "inactive";
-    return "unknown";
+): SessionLeaseProbeFunction {
+  const readUnixSockets = options.readUnixSockets ?? readProcNetUnix;
+  const create = (cacheRead: boolean): SessionLeaseProbeFunction => {
+    let table: Promise<string> | undefined;
+    const probe: SessionLeaseProbeFunction = async (sessionId) => {
+      const readTable = (): Promise<string> => {
+        if (!cacheRead) return readUnixSockets();
+        if (table === undefined) table = readUnixSockets();
+        return table;
+      };
+      const lease = await probeSessionLease({
+        ...options,
+        readUnixSockets: readTable,
+        ownersDir: options.ownersDir(),
+        sessionId,
+      });
+      if (lease === "held") return "active";
+      if (lease === "free") return "inactive";
+      return "unknown";
+    };
+    return probe;
   };
+  const probe = create(false);
+  probe.forListing = () => create(true);
+  return probe;
 }
