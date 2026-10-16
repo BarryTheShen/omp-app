@@ -74,10 +74,9 @@ realTest(
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-813-copied-light.png") });
 
-    // The shortcut opens the same picker. The composer must not hold focus: Alt+C is not taken there.
-    await page.getByRole("region", { name: "Conversation transcript" }).click({
-      position: { x: 4, y: 4 },
-    });
+    // Alt+C must work from the composer, where a person usually starts the shortcut.
+    await composer.focus();
+    await expect(composer).toBeFocused();
     await page.keyboard.press("Alt+c");
     await expect(picker(page)).toBeVisible();
     await page.getByRole("button", { name: "Cancel", exact: true }).click();

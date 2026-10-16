@@ -1,5 +1,7 @@
 import type { CommandDescriptor, ShortcutDescriptor } from "@omp-app/contracts";
 
+type EditableShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable: true };
+
 /**
  * The palette command that opens the conversation copy picker over the open chat. It covers omp's
  * conversation copy selector (`D5.conversation-copy-selector` in the C0 inventory).
@@ -23,4 +25,5 @@ export const D4_COPY_SHORTCUT = {
   requires: [],
   chord: "Alt+C",
   scope: "global",
-} as const satisfies ShortcutDescriptor;
+  allowInEditable: true,
+} as const satisfies EditableShortcutDescriptor;
