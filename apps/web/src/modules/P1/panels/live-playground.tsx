@@ -18,6 +18,7 @@ import { type FocusedAgentRuntime, P1CapabilityKeys } from "@/modules/P1/contrac
 import { AgentRosterStore, createChatFinishedWorkers } from "@/modules/P1/roster";
 import { createFocusedAgentRuntime, FocusedAgentTranscript } from "@/modules/P1/transcript";
 import { createSelectedThreadHistoryController } from "@/modules/R1/history";
+import { isUsable } from "@/registry-core/hooks";
 import {
   type AgentHubActions,
   type AgentHubController,
@@ -51,8 +52,8 @@ function failureOf(error: unknown): AppError {
   return { code: "internal", message: "The agent hub could not start.", retryable: true };
 }
 
-function cancelFor(capabilities: CapabilityMap, subagents: SubagentClient): CancelAction {
-  if (capabilities[P1CapabilityKeys.cancel]?.state !== "available") {
+export function cancelFor(capabilities: CapabilityMap, subagents: SubagentClient): CancelAction {
+  if (!isUsable(capabilities, P1CapabilityKeys.cancel)) {
     return { state: "unavailable", reason: "This omp cannot cancel workers." };
   }
   return { state: "available", run: (agent) => subagents.cancel(agent.id) };

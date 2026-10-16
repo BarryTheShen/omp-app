@@ -13,6 +13,7 @@ import {
 } from "@omp-app/contracts";
 import type { SubagentSession } from "@/modules/P1/client";
 import { SubagentTranscriptPageSchema } from "@/modules/P1/contract";
+import { isUsable } from "@/registry-core/hooks";
 import type { FinishedWorker, FinishedWorkerSource } from "./types";
 
 /** The two session-file reads a finished-worker source makes; the SessionFileStore port client has both. */
@@ -117,7 +118,7 @@ export function createChatFinishedWorkers(
     threadId,
     files,
     sessionFile: async () => {
-      if (capabilities["host.session-files"]?.state !== "available") return undefined;
+      if (!isUsable(capabilities, "host.session-files")) return undefined;
       const state = await session.send({ threadId, command: { type: "get_state" } });
       const parsed = SessionFilePath.safeParse(state.sessionFile);
       return parsed.success ? parsed.data : undefined;

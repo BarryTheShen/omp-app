@@ -1,5 +1,6 @@
 import {
   AppFailure,
+  CapabilityStatus,
   SessionFilePath,
   type SessionSubagentsResult,
   SubagentId,
@@ -222,6 +223,20 @@ function sessionReporting(
 
 describe("a chat's finished workers, read through its live omp", () => {
   const available = { "host.session-files": { state: "available", via: "rpc" } } as const;
+  const fallback = {
+    "host.session-files": CapabilityStatus.parse({
+      state: "fallback",
+      via: "rpc",
+      detail: "Saved session files are available.",
+    }),
+  };
+  const unavailable = {
+    "host.session-files": CapabilityStatus.parse({
+      state: "unavailable",
+      via: "rpc",
+      detail: "Session files cannot be read.",
+    }),
+  };
 
   test("asks omp for the chat's session file, then lists the workers beside it", async () => {
     const asked: unknown[] = [];
@@ -236,7 +251,19 @@ describe("a chat's finished workers, read through its live omp", () => {
     expect(listed.map((item) => item.agent.id)).toEqual(["Done"]);
   });
 
-  test("asks nothing and lists nothing when the host has no session files", async () => {
+  test("asks nothing and lists nothing when session files are unavailable", async () => {
+    const asked: unknown[] = [];
+    const source = createChatFinishedWorkers({
+      threadId,
+      session: sessionReporting(chat, asked),
+      files: files([worker("Done")]),
+      capabilities: unavailable,
+    });
+    expect(await source.list()).toEqual([]);
+    expect(asked).toEqual([]);
+  });
+
+  test("asks nothing and lists nothing when the host reports no session-files capability at all", async () => {
     const asked: unknown[] = [];
     const source = createChatFinishedWorkers({
       threadId,
@@ -246,6 +273,18 @@ describe("a chat's finished workers, read through its live omp", () => {
     });
     expect(await source.list()).toEqual([]);
     expect(asked).toEqual([]);
+  });
+
+  test("reads finished workers when session files are a fallback", async () => {
+    const asked: unknown[] = [];
+    const source = createChatFinishedWorkers({
+      threadId,
+      session: sessionReporting(chat, asked),
+      files: files([worker("Done")]),
+      capabilities: fallback,
+    });
+    expect((await source.list()).map((item) => item.agent.id)).toEqual(["Done"]);
+    expect(asked).toEqual([{ threadId, command: { type: "get_state" } }]);
   });
 
   test("lists nothing while the chat has no session file, and finds its workers once it has one", async () => {
