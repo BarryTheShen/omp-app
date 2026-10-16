@@ -9,3 +9,6 @@ export function runFailure(
 ): AppFailure {
   return new AppFailure({ code, message, retryable });
 }
+
+/** The message R0 gives a branch omp cancelled. A cancelled edit shows it when no editor holds its text. */
+export const CANCELLED_BRANCH_MESSAGE = "omp cancelled the branch";

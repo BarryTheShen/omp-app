@@ -64,7 +64,7 @@ describe("failure matrix: the message the person sees, and what the run keeps", 
     expect(run.runs.status.getSnapshot().phase).not.toBe("sent");
   });
 
-  test.skip("omp cancels the branch: a silent no-op, with no notice (spec §5.5; follow-up #1691)", async () => {
+  test("omp cancels the branch: a silent no-op, with no notice (spec §5.5)", async () => {
     const run = renderRun({ branch: [BRANCH_CANCELLED] });
 
     await editFromSource(run);

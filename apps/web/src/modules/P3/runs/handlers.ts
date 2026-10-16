@@ -13,6 +13,7 @@ import type {
   P3RunKind,
   P3RunRecord,
   P3RunReplacement,
+  P3RunState,
   P3RunStatus,
   P3SentState,
 } from "./status";
@@ -60,9 +61,22 @@ function sentFields(result: EditRunResult): Omit<P3SentState, keyof P3RunRecord 
 export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers {
   const { store, run, handoff, status } = options;
 
-  const publishFailed = (record: P3RunRecord, error: unknown): void => {
+  // Publishes a run's failure. A run started from the editor that omp cancels before a chat opened is a silent no-op:
+  // no notice, and the editor keeps the person's text (spec 5.5). Only the run that still owns the status ends silently;
+  // a newer run's state, `sending` or later, is left as it is. Any other cancelled run (Try again, regenerate) keeps its
+  // failed notice, which holds the text, so the text is never lost without a message.
+  const publishFailed = (
+    record: P3RunRecord,
+    error: unknown,
+    sending: P3RunState | null,
+    fromEditor: boolean,
+  ): void => {
     const failure = asEditFailure(error, FALLBACK_MESSAGE);
     const target = handoff.target;
+    if (fromEditor && failure.appError.code === "cancelled" && target === null) {
+      if (sending !== null && status.getSnapshot() === sending) status.set({ phase: "idle" });
+      return;
+    }
     status.set({
       phase: "failed",
       ...recordOf(record),
@@ -79,6 +93,7 @@ export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers
     sourceEntryId: EntryId | null,
     replacement: P3RunReplacement | null,
     runConfig: unknown,
+    fromEditor: boolean,
   ): Promise<void> => {
     handoff.beginRun();
     let record: P3RunRecord = {
@@ -87,6 +102,7 @@ export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers
       sourceThreadId: store.getSnapshot().threadId,
       replacement: replacement ?? { text: "", images: [] },
     };
+    let sending: P3RunState | null = null;
     try {
       if (sourceEntryId === null) throw runFailure("not_found", NOT_SAVED_MESSAGE, false);
       const source = captureP3EditSource(store, sourceEntryId);
@@ -98,6 +114,7 @@ export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers
       };
       record = { ...record, replacement: sent };
       status.set({ phase: "sending", ...record });
+      sending = status.getSnapshot();
       const result =
         kind === "edit"
           ? await run.edit({
@@ -108,7 +125,7 @@ export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers
           : await run.reload({ source: source.editSource, runConfig });
       status.set({ phase: "sent", ...record, ...sentFields(result) });
     } catch (error) {
-      publishFailed(record, error);
+      publishFailed(record, error, sending, fromEditor);
     }
   };
 
@@ -116,11 +133,12 @@ export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers
   const resend = async (failure: P3FailedState): Promise<void> => {
     const record = recordOf(failure);
     status.set({ phase: "sending", ...record });
+    const sending = status.getSnapshot();
     try {
       const result = await run.resend(record.replacement);
       status.set({ phase: "sent", ...record, ...sentFields(result) });
     } catch (error) {
-      publishFailed(record, error);
+      publishFailed(record, error, sending, false);
     }
   };
 
@@ -131,13 +149,14 @@ export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers
       EntryIdSchema.safeParse(message.sourceId).data ?? null,
       { text: prompt.text, images: prompt.images ?? [] },
       undefined,
+      true,
     );
   };
 
   const onReload = async (parentId: string | null, config: unknown): Promise<void> => {
     // assistant-ui names the user message an answer belongs to by its row, which is not its entry id.
     const entryId = parentId === null ? null : storedEntryId(store, parentId);
-    await start("regenerate", entryId, null, config);
+    await start("regenerate", entryId, null, config, false);
   };
 
   const retry = (failure: P3FailedState): Promise<void> =>
@@ -148,6 +167,7 @@ export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers
           failure.sourceEntryId,
           failure.kind === "edit" ? failure.replacement : null,
           undefined,
+          false,
         );
 
   return { onEdit, onReload, retry };

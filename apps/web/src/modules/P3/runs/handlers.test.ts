@@ -35,6 +35,7 @@ interface SetupOptions {
   /** What an edit does; it may open `opened` through the handoff, the way a branch does. */
   readonly edit?: (request: EditRequest, handoff: P3ThreadHandoff) => Promise<EditRunResult>;
   readonly resend?: (replacement: P3RunReplacement) => Promise<EditRunResult>;
+  readonly reload?: (request: ReloadRequest, handoff: P3ThreadHandoff) => Promise<EditRunResult>;
 }
 
 function setup(options: SetupOptions = {}) {
@@ -58,6 +59,7 @@ function setup(options: SetupOptions = {}) {
     },
     reload: async (request) => {
       regenerations.push(request);
+      if (options.reload) return options.reload(request, handoff);
       handoff.expect(opened);
       return admitted;
     },
@@ -155,6 +157,36 @@ describe("P3 run handlers", () => {
     expect(status.getSnapshot()).toMatchObject({ phase: "sent", threadId: opened });
   });
 
+  test("Try again on a failed edit that omp cancels keeps the person's text in the failed notice: no run ends silently", async () => {
+    let attempts = 0;
+    const { handlers, status, phases } = setup({
+      edit: async () => {
+        attempts += 1;
+        if (attempts === 1)
+          throw new AppFailure({ code: "omp_error", message: "omp is busy", retryable: true });
+        throw new AppFailure({
+          code: "cancelled",
+          message: "omp cancelled the branch",
+          retryable: false,
+        });
+      },
+    });
+
+    await handlers.onEdit(editAppend(String(userEntry), "Explain again"));
+    await handlers.retry(failedOf(status));
+
+    expect(attempts).toBe(2);
+    expect(phases).toEqual(["sending", "failed", "sending", "failed"]);
+    expect(status.getSnapshot()).toMatchObject({
+      phase: "failed",
+      branched: false,
+      chatThreadId: sourceThread,
+      message: "omp cancelled the branch",
+      retryable: false,
+      replacement: { text: "Explain again" },
+    });
+  });
+
   test("a failure after the chat opened retries on that chat without branching again", async () => {
     const { handlers, status, edits, resends } = setup({
       edit: async (_request, opening) => {
@@ -230,5 +262,83 @@ describe("P3 run handlers", () => {
 
     expect(regenerations).toEqual([]);
     expect(failedOf(status)).toMatchObject({ kind: "regenerate", retryable: false });
+  });
+
+  test("regenerate that omp cancels keeps a failed notice: only an edit started from the editor ends silently", async () => {
+    const { handlers, status, store } = setup({
+      reload: async () => {
+        throw new AppFailure({
+          code: "cancelled",
+          message: "omp cancelled the branch",
+          retryable: false,
+        });
+      },
+    });
+    const [rowKey] = store.getSnapshot().messageOrder;
+
+    await handlers.onReload(String(rowKey), undefined);
+
+    expect(failedOf(status)).toMatchObject({
+      kind: "regenerate",
+      message: "omp cancelled the branch",
+      retryable: false,
+      replacement: { text: "Explain" },
+    });
+  });
+
+  test("a branch omp cancels is a silent no-op: the run ends idle, with no notice and no failure", async () => {
+    const cancelled = new AppFailure({
+      code: "cancelled",
+      message: "omp cancelled the branch",
+      retryable: false,
+    });
+    const { handlers, status, phases, edits } = setup({
+      edit: async () => {
+        throw cancelled;
+      },
+    });
+
+    await handlers.onEdit(editAppend(String(userEntry), "Explain again"));
+
+    expect(edits).toHaveLength(1);
+    expect(phases).toEqual(["sending", "idle"]);
+    expect(status.getSnapshot()).toEqual({ phase: "idle" });
+  });
+
+  test("a cancelled run that a newer run has replaced leaves the newer run's state in place", async () => {
+    const finish: Array<(outcome: "cancelled" | "admitted") => void> = [];
+    const { handlers, status, phases } = setup({
+      edit: (_request, opening) =>
+        new Promise<EditRunResult>((resolve, reject) => {
+          finish.push((outcome) => {
+            if (outcome === "admitted") {
+              opening.expect(opened);
+              resolve(admitted);
+              return;
+            }
+            reject(
+              new AppFailure({
+                code: "cancelled",
+                message: "omp cancelled the branch",
+                retryable: false,
+              }),
+            );
+          });
+        }),
+    });
+
+    const first = handlers.onEdit(editAppend(String(userEntry), "First"));
+    const second = handlers.onEdit(editAppend(String(userEntry), "Second"));
+    finish[0]?.("cancelled");
+    await first;
+
+    expect(status.getSnapshot()).toMatchObject({
+      phase: "sending",
+      replacement: { text: "Second" },
+    });
+    finish[1]?.("admitted");
+    await second;
+    expect(status.getSnapshot()).toMatchObject({ phase: "sent" });
+    expect(phases).toEqual(["sending", "sending", "sent"]);
   });
 });

@@ -1674,7 +1674,12 @@ function ActiveThreadReady({
     editHandoff: {
       title: "Edit message",
       render: () => (
-        <P3EditSurface onClose={() => setEditing(null)} store={store} target={editing} />
+        <P3EditSurface
+          onClose={() => setEditing(null)}
+          runs={p3Runs}
+          store={store}
+          target={editing}
+        />
       ),
     },
     toolsHidden: {
