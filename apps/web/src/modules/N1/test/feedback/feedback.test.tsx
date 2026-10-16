@@ -299,7 +299,8 @@ describe("NotificationFeedback", () => {
     projector.dispose();
   });
 
-  test("dismissing the line dismisses every informational notice in it", () => {
+  test("dismissing the line dismisses every informational notice in it, and the line fades out before it hides", () => {
+    vi.useFakeTimers();
     const projector = makeProjector();
     render(<NotificationFeedback projector={projector} />);
     notify(projector, "Build cache warmed", "info");
@@ -307,8 +308,23 @@ describe("NotificationFeedback", () => {
 
     fireEvent.click(strip().getByRole("button", { name: "Dismiss notices from omp" }));
 
-    expect(screen.getByTestId("n1-quiet").hidden).toBe(true);
     expect(projector.getBus().getSnapshot().notifications).toHaveLength(0);
+    // The line stays drawn for its fade, then hides.
+    expect(screen.getByTestId("n1-quiet").hidden).toBe(false);
+    leave();
+    expect(screen.getByTestId("n1-quiet").hidden).toBe(true);
+    projector.dispose();
+  });
+
+  test("the notices list is inert while the line is closed, and active once it opens", () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback projector={projector} />);
+    notify(projector, "Build cache warmed", "info");
+    const toggle = strip().getByRole("button", { name: "1 notice from omp" });
+    const list = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
+    expect(list?.hasAttribute("inert")).toBe(true);
+    fireEvent.click(toggle);
+    expect(list?.hasAttribute("inert")).toBe(false);
     projector.dispose();
   });
 

@@ -345,12 +345,18 @@ export function isStackNotice(notification: Notification): boolean {
 }
 
 /**
- * Whether a banner or toast is still fading out. The notices panel and the status strip stay drawn for it, then hide, so
- * `hidden` does not cut its fade short (issue 1209). Quiet notices are not animated, so they are not counted here.
+ * Whether a banner, toast or quiet line is still fading out. The notices panel and the status strip stay drawn for it,
+ * then hide, so `hidden` does not cut its fade short (issues 1209 and 1736).
  */
 export function usePanelLeaving(notifications: readonly Notification[]): boolean {
-  const stacked = useMemo(() => notifications.filter(isStackNotice), [notifications]);
-  return usePresentItems(stacked, keyOf, LEAVE_MS).some((entry) => entry.leaving);
+  const fading = useMemo(
+    () =>
+      notifications.filter(
+        (notification) => isStackNotice(notification) || isQuietNotice(notification),
+      ),
+    [notifications],
+  );
+  return usePresentItems(fading, keyOf, LEAVE_MS).some((entry) => entry.leaving);
 }
 
 /** Whether a notice is informational: it is kept in the omp notices line rather than drawn as a card. */
@@ -401,24 +407,33 @@ export function NotificationBanners({ projector }: { readonly projector: Notific
 
 /**
  * The informational notices omp sends, collapsed into one quiet line: "3 notices from omp". Opening it lists them, each
- * cut where it is long. The line is never read aloud, and a notice that was shown is not shown again when its chat is
- * reopened or the page reloads (see `NotificationBus.publish`). Dismissing the line dismisses them all.
+ * cut where it is long. The line fades in when its first notice arrives and fades out once they are all dismissed; its
+ * list opens and closes over the motion tokens. The line is never read aloud, and a notice that was shown is not shown
+ * again when its chat is reopened or the page reloads (see `NotificationBus.publish`). Dismissing the line dismisses
+ * them all.
  */
 export function NotificationQuiet({ projector }: { readonly projector: NotificationProjector }) {
   const snapshot = useNotificationSnapshot(projector);
   const listId = useId();
   const [open, setOpen] = useState(false);
-  const quiet = snapshot.notifications.filter(isQuietNotice);
-  const count = quiet.length;
+  // A dismissed notice stays drawn for its fade (`LEAVE_MS`), so the line fades out with it instead of vanishing.
+  const quiet = useMemo(
+    () => snapshot.notifications.filter(isQuietNotice),
+    [snapshot.notifications],
+  );
+  const present = usePresentItems(quiet, keyOf, LEAVE_MS);
+  const live = present.filter((entry) => !entry.leaving).map((entry) => entry.item);
+  const count = live.length;
   useEffect(() => {
     if (count === 0) setOpen(false);
   }, [count]);
   return (
     <section
       aria-label="Notices from omp"
-      className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground"
+      className={`flex min-w-0 flex-col text-xs text-muted-foreground ${count === 0 ? LEAVE_FADE : ENTER_FADE}`}
       data-testid="n1-quiet"
-      hidden={count === 0}
+      hidden={present.length === 0}
+      inert={count === 0 || undefined}
     >
       <div className="flex min-w-0 items-center gap-1">
         <Button
@@ -437,7 +452,7 @@ export function NotificationQuiet({ projector }: { readonly projector: Notificat
           aria-label="Dismiss notices from omp"
           className="motion-reduce:transition-none"
           onClick={() => {
-            for (const notification of quiet) {
+            for (const notification of live) {
               projector.getBus().dismiss(notification.threadId, notification.dedupeKey);
             }
           }}
@@ -448,21 +463,27 @@ export function NotificationQuiet({ projector }: { readonly projector: Notificat
           <Icons.close aria-hidden="true" />
         </Button>
       </div>
-      <ul
-        className="flex max-h-[30dvh] min-w-0 flex-col gap-1 overflow-y-auto"
-        hidden={!open}
-        id={listId}
+      <div
+        className={`grid min-w-0 transition-[grid-template-rows,opacity,visibility] duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none ${open ? "grid-rows-[1fr] opacity-100" : "invisible grid-rows-[0fr] opacity-0"}`}
       >
-        {quiet.map((notification) => (
-          <li
-            className="min-w-0 break-words whitespace-pre-wrap"
-            data-notice-key={keyOf(notification)}
-            key={keyOf(notification)}
+        <div className="min-h-0 overflow-hidden">
+          <ul
+            className="flex max-h-[30dvh] min-w-0 flex-col gap-1 overflow-y-auto pt-1"
+            id={listId}
+            inert={!open || undefined}
           >
-            <NoticeText text={notification.message} />
-          </li>
-        ))}
-      </ul>
+            {live.map((notification) => (
+              <li
+                className="min-w-0 break-words whitespace-pre-wrap"
+                data-notice-key={keyOf(notification)}
+                key={keyOf(notification)}
+              >
+                <NoticeText text={notification.message} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </section>
   );
 }
