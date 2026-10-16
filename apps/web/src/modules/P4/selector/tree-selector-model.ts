@@ -495,13 +495,6 @@ export function createP4TreeSelectorViewModel(
 
   const selectedEntryId = state.selectedEntryId;
   const previewEntryId = selectedEntryId ?? currentLeafId;
-  const previewNode =
-    (previewEntryId === null ? undefined : entryById.get(previewEntryId)) ??
-    (currentLeafId === null ? undefined : entryById.get(currentLeafId));
-  const previewLabel =
-    state.filter.showLabels && previewNode?.node.label !== undefined
-      ? previewNode.node.label
-      : undefined;
   const nearestListed = (entryId: EntryId | null): EntryId | null => {
     let current = entryId;
     while (current !== null) {
@@ -510,6 +503,13 @@ export function createP4TreeSelectorViewModel(
     }
     return null;
   };
+  const visiblePreviewId =
+    previewEntryId === null ? null : (nearestListed(previewEntryId) ?? rows[0]?.entryId ?? null);
+  const previewNode = visiblePreviewId === null ? undefined : entryById.get(visiblePreviewId);
+  const previewLabel =
+    state.filter.showLabels && previewNode?.node.label !== undefined
+      ? previewNode.node.label
+      : undefined;
   const openEntryId =
     nearestListed(selectedEntryId) ?? nearestListed(currentLeafId) ?? rows[0]?.entryId ?? null;
   const status = statusFor(state, activeSnapshot, isLoading, unavailableReason);

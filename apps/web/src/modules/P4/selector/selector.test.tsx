@@ -865,21 +865,23 @@ describe("P4 tree selector model and views", () => {
 });
 
 describe("a marked entry the list hides cannot be chosen", () => {
-  test("a search that hides the marked message disables Rewind here, and clearing it enables it", () => {
+  test("a search that hides the marked message previews a visible row", () => {
     const snapshot = treeSnapshot();
     const hidden = createP4TreeSelectorViewModel(
       snapshot,
       selectorState({
-        selectedEntryId: rootId,
-        filter: { query: "saved entry", showLabels: true },
+        selectedEntryId: leafId,
+        filter: { query: "ordinary response", showLabels: true },
       }),
     );
-    expect(hidden.rows.map((row) => row.entryId)).not.toContain(rootId);
+    expect(hidden.rows.map((row) => row.entryId)).toEqual([siblingId]);
     expect(hidden.canSelect).toBe(false);
+    expect(hidden.preview?.entryId).toBe(siblingId);
+    expect(hidden.preview?.text).toBe("Ordinary response from the sibling branch.");
 
     const shown = createP4TreeSelectorViewModel(
       snapshot,
-      selectorState({ selectedEntryId: rootId }),
+      selectorState({ selectedEntryId: leafId }),
     );
     expect(shown.canSelect).toBe(true);
   });
