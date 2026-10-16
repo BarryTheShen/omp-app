@@ -364,29 +364,70 @@ export function Toolbar({ ariaLabel, alignment = "start", children }: ToolbarPro
   );
 }
 
+export interface NoticeProps {
+  readonly message: string;
+  readonly tone?: "neutral" | "danger";
+}
+
+/** A compact floating message used for status and error feedback without bespoke markup. */
+export function Notice({ message, tone = "neutral" }: NoticeProps) {
+  return (
+    <p
+      className={
+        tone === "danger"
+          ? "border-border bg-popover text-danger shadow-overlay rounded-md border px-3 py-2 text-xs"
+          : "border-border bg-popover text-popover-foreground shadow-overlay rounded-md border px-3 py-2 text-xs"
+      }
+      role={tone === "danger" ? "alert" : "status"}
+    >
+      {message}
+    </p>
+  );
+}
+
 export interface EmptyStateProps {
   readonly title: string;
   readonly hint?: ReactNode;
   readonly action?: ReactNode;
-  readonly variant?: "fill" | "compact";
+  readonly variant?: "fill" | "compact" | "large";
 }
 
 export function EmptyState({ title, hint, action, variant = "fill" }: EmptyStateProps) {
   const compact = variant === "compact";
+  const large = variant === "large";
   return (
     <div
       className={
         compact
           ? "text-muted-foreground flex shrink-0 flex-col gap-2 px-4 py-3 text-sm"
-          : "flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4 text-center"
+          : large
+            ? "mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-2 px-6 py-12 text-center"
+            : "flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4 text-center"
       }
       role="status"
     >
-      <p className={compact ? "text-foreground font-medium" : "text-sm font-medium"} title={title}>
+      <p
+        className={
+          compact
+            ? "text-foreground font-medium"
+            : large
+              ? "text-lg font-medium tracking-tight"
+              : "text-sm font-medium"
+        }
+        title={title}
+      >
         {title}
       </p>
       {hint ? (
-        <p className={compact ? "text-muted-foreground" : "text-muted-foreground text-xs"}>
+        <p
+          className={
+            compact
+              ? "text-muted-foreground"
+              : large
+                ? "text-muted-foreground text-sm"
+                : "text-muted-foreground text-xs"
+          }
+        >
           {hint}
         </p>
       ) : null}

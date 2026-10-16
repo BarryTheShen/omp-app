@@ -281,6 +281,8 @@ realTest(
       await page.getByRole("button", { name: "Start guided goal", exact: true }).click();
       await answerInterview(page, "5000");
       await page.getByRole("button", { name: "Save", exact: true }).click();
+      await realExpect(page.getByRole("button", { name: "Deny", exact: true })).toHaveCount(0);
+      await realExpect(page.getByText("Review this request before continuing.")).toHaveCount(0);
       await page.getByRole("button", { name: "Confirm", exact: true }).click();
       await realExpect(page.getByRole("status").filter({ hasText: CREATED_NOTICE })).toBeVisible({
         timeout: 60_000,

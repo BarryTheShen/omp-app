@@ -7,6 +7,7 @@ import {
 } from "@omp-app/client";
 import { AppFailure } from "@omp-app/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { LogHint } from "./log-hint";
 import {
   type LaunchLocationLike,
@@ -208,7 +209,13 @@ export function useAppConnection(): AppConnectionSnapshot {
   return context;
 }
 
-function LaunchStatusScreen({ state, reason }: Pick<AppConnectionSnapshot, "state" | "reason">) {
+function LaunchStatusScreen({
+  state,
+  reason,
+  onRetry,
+}: Pick<AppConnectionSnapshot, "state" | "reason"> & {
+  readonly onRetry?: () => void;
+}) {
   const missing = state === "missing-token";
   const rejected = state === "rejected";
   const originRejected = state === "origin-rejected";
@@ -237,13 +244,21 @@ function LaunchStatusScreen({ state, reason }: Pick<AppConnectionSnapshot, "stat
         <p className="text-muted-foreground text-sm leading-relaxed">
           {missing
             ? "Start the app server, then open the URL it prints. The launch token is supplied in the URL fragment and is kept only for this browser session."
-            : (reason ?? "The app server is unavailable. The client will keep trying to connect.")}
+            : (reason ??
+              (connecting
+                ? "Waiting for the app server to answer."
+                : "The app server is unavailable. The client will keep trying to connect."))}
         </p>
         {rejected && (
           <p className="text-muted-foreground text-sm">
             Start the app again to receive a fresh launch URL, then reload this page.
           </p>
         )}
+        {onRetry ? (
+          <Button type="button" variant="outline" onClick={onRetry}>
+            Retry
+          </Button>
+        ) : null}
         <LogHint />
       </section>
     </main>
@@ -263,7 +278,7 @@ export function AppConnectionGate({ children }: { readonly children: ReactNode }
     connection.state === "invalid-token" ||
     connection.state === "origin-rejected" ||
     connection.state === "closed" ||
-    (connection.state === "connecting" && connection.reason !== undefined)
+    connection.state === "connecting"
   ) {
     return <LaunchStatusScreen state={connection.state} reason={connection.reason} />;
   }

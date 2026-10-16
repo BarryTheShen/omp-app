@@ -88,6 +88,8 @@ export const ConfirmDialogRequestSchema = z.strictObject({
   id: UiRequestId,
   title: z.string().min(1),
   message: z.string().min(1),
+  /** App-owned questions use two plain decision buttons; omp approvals keep the deny-safe grammar. */
+  variant: z.enum(["approval", "question"]).optional(),
   timeoutMs: TimeoutMs.optional(),
 });
 export type ConfirmDialogRequest = z.infer<typeof ConfirmDialogRequestSchema>;

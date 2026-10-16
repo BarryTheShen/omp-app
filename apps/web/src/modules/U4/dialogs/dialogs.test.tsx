@@ -175,6 +175,25 @@ describe("confirm dialog", () => {
     expect(result.answers).toEqual([{ kind: "confirm", confirmed: false }]);
   });
 
+  test("app-owned questions focus Cancel and show only two plain decision buttons", async () => {
+    const result = renderRequest({
+      kind: "confirm",
+      id: "app-confirm-1" as UiRequestId,
+      title: "Delete session?",
+      message: "This cannot be undone.",
+      variant: "question",
+    });
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    await waitFor(() => expect(document.activeElement).toBe(cancel));
+    expect(cancel.getAttribute("data-confirmation-default")).toBe("cancel");
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Deny" })).toBeNull();
+    expect(screen.queryByText(/Review this request/)).toBeNull();
+    fireEvent.click(cancel);
+    expect(result.cancellations).toBe(1);
+    expect(result.answers).toEqual([]);
+  });
+
   test("renders untrusted text as text, never executable markup", () => {
     renderRequest({
       kind: "confirm",

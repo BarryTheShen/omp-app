@@ -158,7 +158,11 @@ export class DialogHostController implements DialogHost {
     }
     const parsed = DialogRequestSchema.safeParse(request);
     if (!parsed.success) return Promise.reject(invalidRequest());
-    if (origin === "app" && !parsed.data.id.startsWith("app-")) {
+    const normalized =
+      origin === "app" && parsed.data.kind === "confirm" && parsed.data.variant === undefined
+        ? { ...parsed.data, variant: "question" as const }
+        : parsed.data;
+    if (origin === "app" && !normalized.id.startsWith("app-")) {
       return Promise.reject(
         failure("invalid_args", "App dialog request ids must start with app-."),
       );
@@ -170,14 +174,14 @@ export class DialogHostController implements DialogHost {
         failure("unavailable", "That chat is not open, so this dialog cannot be shown here."),
       );
     }
-    if (this.entries.has(parsed.data.id)) {
+    if (this.entries.has(normalized.id)) {
       return Promise.reject(conflict("A dialog with this request id is already open."));
     }
 
     const entryOptions = { ...options, origin };
     return new Promise<DialogResultFor<R>>((resolve, reject) => {
       const entry: DialogEntry = {
-        request: parsed.data,
+        request: normalized,
         options: entryOptions,
         resolve: resolve as unknown as (result: DialogResult) => void,
         reject,
@@ -190,9 +194,9 @@ export class DialogHostController implements DialogHost {
         presentation: undefined,
         restoreCalled: false,
         deadlineAt: undefined,
-        draft: initialDraft(parsed.data),
+        draft: initialDraft(normalized),
       };
-      this.entries.set(parsed.data.id, entry);
+      this.entries.set(normalized.id, entry);
       const key = String(entryOptions.threadId);
       const queue = this.queues.get(key) ?? [];
       queue.push(entry);

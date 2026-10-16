@@ -1,7 +1,16 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Button } from "@/components/ui/button";
-import { EmptyState, InlineError, ListRow, Panel, Section, SettingRow, Toolbar } from "./index";
+import {
+  EmptyState,
+  InlineError,
+  ListRow,
+  Notice,
+  Panel,
+  Section,
+  SettingRow,
+  Toolbar,
+} from "./index";
 
 afterEach(cleanup);
 
@@ -149,6 +158,29 @@ test("EmptyState renders a title, hint, and optional action", () => {
   rerender(<EmptyState title="Nothing here" variant="compact" />);
   expect(screen.getByRole("status").textContent).toBe("Nothing here");
   expect(screen.queryByRole("button")).toBeNull();
+});
+
+test("large EmptyState keeps the transcript title and hint hierarchy", () => {
+  const { container } = render(
+    <EmptyState
+      title="Ready when you are"
+      hint="Choose a workspace folder and start a new session."
+      variant="large"
+    />,
+  );
+  expect(container.firstElementChild?.className).toContain("max-w-3xl");
+  expect(screen.getByText("Ready when you are").className).toContain("text-lg");
+  expect(
+    screen.getByText("Choose a workspace folder and start a new session.").className,
+  ).toContain("text-sm");
+});
+
+test("Notice keeps neutral and danger feedback in the shared floating block", () => {
+  const { rerender } = render(<Notice message="Saved" />);
+  expect(screen.getByRole("status").textContent).toBe("Saved");
+
+  rerender(<Notice message="Could not save" tone="danger" />);
+  expect(screen.getByRole("alert").textContent).toBe("Could not save");
 });
 
 test("InlineError exposes its message and invokes optional retry", () => {

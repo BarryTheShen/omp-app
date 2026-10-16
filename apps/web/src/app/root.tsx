@@ -2,9 +2,7 @@ import { AssistantRuntimeProvider, useAui, useAuiState } from "@assistant-ui/rea
 import {
   type AppError,
   AppFailure,
-  type AppHealth,
   AppPort,
-  type AppServerInfo,
   AttachmentBlobStore,
   type CapabilityMap,
   type DescriptorId,
@@ -49,6 +47,7 @@ import {
 } from "@/app/rewind/no-switch-notice";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { ToolRunScope } from "@/app/tool-run-scope";
+import { EmptyState, Notice } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import {
   AppConnectionGate,
@@ -56,9 +55,9 @@ import {
   ConnectionBanner,
   LaunchStatusScreen,
   OmpUnavailableScreen,
-  rememberLogFile,
   SEND_BLOCKED_TEXT,
   useAppConnection,
+  useFirstAnswers,
   useWatchNotice,
   WatchNotice,
 } from "@/launch";
@@ -273,7 +272,6 @@ const EMPTY_HISTORY: SelectedThreadHistoryState = {
   error: null,
   openedNew: false,
 };
-const EMPTY_CAPABILITIES: CapabilityMap = Object.freeze({});
 function useNotificationProjector(
   store: OmpRuntimeStore,
   onEditorText: (text: string, context: { readonly threadId: ThreadId }) => void,
@@ -366,13 +364,7 @@ function EmptyTranscript({
   readonly copy: EmptyStateCopy;
   readonly action?: ReactNode;
 }) {
-  return (
-    <div className="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-      <p className="text-lg font-medium tracking-tight">{copy.title}</p>
-      <p className="text-muted-foreground text-sm">{copy.detail}</p>
-      {action}
-    </div>
-  );
+  return <EmptyState title={copy.title} hint={copy.detail} action={action} variant="large" />;
 }
 
 function RouterBridge({
@@ -1468,22 +1460,8 @@ function ActiveThreadReady({
             commandError !== null) && (
             <div className="absolute start-0 top-full z-10 flex w-max max-w-[min(26rem,calc(100vw-4.5rem))] flex-col gap-1 pt-1">
               <ShortcutPreferenceNotice />
-              {commandStatus && (
-                <p
-                  className="border-border bg-popover text-popover-foreground shadow-overlay rounded-md border px-3 py-2 text-xs"
-                  role="status"
-                >
-                  {commandStatus}
-                </p>
-              )}
-              {commandError && (
-                <p
-                  className="border-border bg-popover text-danger shadow-overlay rounded-md border px-3 py-2 text-xs"
-                  role="alert"
-                >
-                  {commandError}
-                </p>
-              )}
+              {commandStatus ? <Notice message={commandStatus} /> : null}
+              {commandError ? <Notice message={commandError} tone="danger" /> : null}
             </div>
           )}
         </div>
@@ -2516,10 +2494,18 @@ function ConnectedApp({
 function ConnectedRoot() {
   const connection = useAppConnection();
   const client = connection.client;
-  const [capabilities, setCapabilities] = useState<CapabilityMap>(EMPTY_CAPABILITIES);
-  const [serverInfo, setServerInfo] = useState<AppServerInfo>();
-  const [health, setHealth] = useState<AppHealth>();
-  const [startFailed, setStartFailed] = useState(false);
+  const reportFirstAnswerFailure = useCallback((error: unknown) => {
+    // A blank page would say nothing: show what happened, and leave a line in the log.
+    reportClientError({
+      kind: "error",
+      message: `The app server's first answers failed: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }, []);
+  const { state: firstAnswers, retry: retryInitialRequest } = useFirstAnswers(
+    client,
+    reportFirstAnswerFailure,
+  );
+  const { capabilities, serverInfo, health } = firstAnswers;
   const shortcutPreferences = useMemo<PreferenceStore>(
     () => ({
       get: (key) => window.localStorage.getItem(key) ?? undefined,
@@ -2530,32 +2516,10 @@ function ConnectedRoot() {
   );
   useEffect(() => {
     if (!client) return;
-    let active = true;
     const app = client.port(AppPort);
     // From here on, errors in the page land in the app's debug log next to the server's own lines.
     setClientErrorSink((report) => app.reportClientError(report));
-    setStartFailed(false);
-    void Promise.all([app.capabilities({}), app.serverInfo({}), app.health({})])
-      .then(([nextCapabilities, nextServerInfo, nextHealth]) => {
-        if (!active) return;
-        rememberLogFile(nextServerInfo.logFile);
-        setCapabilities(nextCapabilities);
-        setHealth(nextHealth);
-        setServerInfo(nextServerInfo);
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        // A blank page would say nothing: show what happened, and leave a line in the log.
-        reportClientError({
-          kind: "error",
-          message: `The app server's first answers failed: ${error instanceof Error ? error.message : String(error)}`,
-        });
-        setStartFailed(true);
-      });
-    return () => {
-      active = false;
-      setClientErrorSink(undefined);
-    };
+    return () => setClientErrorSink(undefined);
   }, [client]);
   // The page reads the server's watches now and then, so the notice shows and clears while the app runs.
   const readHealth = useMemo(
@@ -2563,15 +2527,18 @@ function ConnectedRoot() {
     [client],
   );
   const watchNotice = useWatchNotice(readHealth);
-  if (client && !serverInfo && startFailed) {
+  if (client && firstAnswers.status === "failed") {
     return (
       <LaunchStatusScreen
-        reason="The app server is running but did not answer the page's first questions. Reload the page; if it happens again, attach the app's log to a bug report."
+        reason="The app server is running but did not answer the page's first questions. Try again, or attach the app's log to a bug report."
         state="closed"
+        onRetry={retryInitialRequest}
       />
     );
   }
-  if (!client || !serverInfo) return null;
+  if (!client) return null;
+  if (firstAnswers.status !== "ready" || !serverInfo)
+    return <LaunchStatusScreen state="connecting" />;
   // Without omp no chat can open or start: say so, instead of showing an app that fails silently.
   if (serverInfo.omp === null)
     return <OmpUnavailableScreen noModel={health?.code === "no_model"} reason={health?.detail} />;

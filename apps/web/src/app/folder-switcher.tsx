@@ -1,5 +1,6 @@
 import { FolderPath } from "@omp-app/contracts";
 import { useRef, useState } from "react";
+import { InlineError } from "@/components/blocks";
 
 function folderLabel(folder: FolderPath | undefined): string {
   if (!folder) return "Choose folder…";
@@ -90,11 +91,7 @@ export function FolderSwitcher({
           </button>
         </div>
       )}
-      {error && (
-        <p className="text-danger text-xs" role="alert">
-          {error}
-        </p>
-      )}
+      {error ? <InlineError message={error} variant="compact" /> : null}
     </div>
   );
 }

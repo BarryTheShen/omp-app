@@ -11,9 +11,10 @@ export function ConfirmDialog({
   readonly request: ConfirmDialogRequest;
   readonly context: DialogRenderContext;
 }) {
-  const denyRef = useRef<HTMLButtonElement>(null);
+  const defaultRef = useRef<HTMLButtonElement>(null);
+  const appQuestion = request.variant === "question";
   useEffect(() => {
-    const timer = setTimeout(() => denyRef.current?.focus(), 0);
+    const timer = setTimeout(() => defaultRef.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, []);
 
@@ -35,25 +36,41 @@ export function ConfirmDialog({
       description={request.message}
       actions={
         <>
-          <CancelButton onCancel={context.cancel} />
-          <Button
-            ref={denyRef}
-            type="button"
-            variant="outline"
-            onClick={() => void decide(false)}
-            data-confirmation-default="deny"
-          >
-            Deny
-          </Button>
+          {appQuestion ? (
+            <Button
+              ref={defaultRef}
+              type="button"
+              variant="outline"
+              onClick={() => void context.cancel()}
+              data-confirmation-default="cancel"
+            >
+              Cancel
+            </Button>
+          ) : (
+            <CancelButton onCancel={context.cancel} />
+          )}
+          {!appQuestion ? (
+            <Button
+              ref={defaultRef}
+              type="button"
+              variant="outline"
+              onClick={() => void decide(false)}
+              data-confirmation-default="deny"
+            >
+              Deny
+            </Button>
+          ) : null}
           <Button type="button" onClick={() => void decide(true)}>
             Confirm
           </Button>
         </>
       }
     >
-      <p className="rounded-md border border-warning/30 bg-warning-surface p-3 text-sm text-warning-surface-foreground">
-        Review this request before continuing. Deny is the safe default.
-      </p>
+      {!appQuestion ? (
+        <p className="rounded-md border border-warning/30 bg-warning-surface p-3 text-sm text-warning-surface-foreground">
+          Review this request before continuing. Deny is the safe default.
+        </p>
+      ) : null}
       {error ? <ErrorText>{error}</ErrorText> : null}
     </DialogFrame>
   );

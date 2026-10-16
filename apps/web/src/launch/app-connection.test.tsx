@@ -1,8 +1,13 @@
 import type { AppClient, ConnectionStateEvent, CreateAppClientOptions } from "@omp-app/client";
 import { AppFailure } from "@omp-app/contracts";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { AppConnectionGate, AppConnectionProvider, useAppConnection } from "./app-connection";
+import {
+  AppConnectionGate,
+  AppConnectionProvider,
+  LaunchStatusScreen,
+  useAppConnection,
+} from "./app-connection";
 import { DEFAULT_LOG_FILE, rememberLogFile } from "./log-location";
 import type { LaunchLocationLike } from "./token";
 
@@ -61,6 +66,20 @@ afterEach(() => {
 });
 
 describe("app connection launch gate", () => {
+  test("shows Retry when the first answers fail", () => {
+    const retry = vi.fn();
+    render(
+      <LaunchStatusScreen state="closed" reason="The first answers failed." onRetry={retry} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+  test("the first connection says it is waiting, not that the server is unavailable", () => {
+    render(<LaunchStatusScreen state="connecting" />);
+    expect(screen.getByText("Waiting for the app server to answer.")).toBeTruthy();
+    expect(screen.queryByText(/unavailable/i)).toBeNull();
+  });
+
   test("shows a clear start instruction when no token is available", async () => {
     render(
       <AppConnectionProvider
