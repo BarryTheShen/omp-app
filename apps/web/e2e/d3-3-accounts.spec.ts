@@ -42,6 +42,11 @@ async function seedAccountDatabase(agentDir: string): Promise<void> {
 const db = new Database(process.env.D3_ACCOUNT_DB);
 db.run("CREATE TABLE auth_credentials (id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, credential_type TEXT NOT NULL, data TEXT NOT NULL, disabled_cause TEXT DEFAULT NULL, identity_key TEXT DEFAULT NULL, created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)), updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)))");
 db.run("CREATE TABLE cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at INTEGER NOT NULL)");
+db.run("CREATE TABLE auth_change_revision (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL)");
+db.run("INSERT INTO auth_change_revision (id, revision) VALUES (1, 0)");
+db.run("CREATE TRIGGER auth_change_revision_auth_credentials_insert AFTER INSERT ON auth_credentials BEGIN UPDATE auth_change_revision SET revision = revision + 1 WHERE id = 1; END");
+db.run("CREATE TRIGGER auth_change_revision_auth_credentials_update AFTER UPDATE ON auth_credentials BEGIN UPDATE auth_change_revision SET revision = revision + 1 WHERE id = 1; END");
+db.run("CREATE TRIGGER auth_change_revision_auth_credentials_delete AFTER DELETE ON auth_credentials BEGIN UPDATE auth_change_revision SET revision = revision + 1 WHERE id = 1; END");
 const access = ["Bearer", "t".repeat(32)].join(" ");
 const refresh = ["refresh", "r".repeat(32)].join("-");
 const email = ["account", "example.test"].join("@");
@@ -55,7 +60,7 @@ db.close();`;
 }
 test.beforeAll(() => buildPlaygroundPage());
 
-realTest("lists and pins a redacted provider account through real omp", async ({ realApp }) => {
+realTest("lists, pins, and logs out a provider account in real omp", async ({ realApp }) => {
   const page = await realApp.open();
   await seedAccountDatabase(realApp.agentDir);
   await startChat(page);
@@ -128,5 +133,8 @@ realTest("lists and pins a redacted provider account through real omp", async ({
   await page.getByRole("button", { name: "Dismiss" }).click();
   await page.getByRole("button", { name: "Use for this chat" }).click();
   await expect(page.getByText(/provider sign-in.*active/)).toBeVisible();
-  expect(realApp.problems).toEqual([]);
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page.getByText(maskedAccountLabel)).toHaveCount(0);
+  await expect(page.getByText("No saved provider accounts")).toBeVisible();
 });
