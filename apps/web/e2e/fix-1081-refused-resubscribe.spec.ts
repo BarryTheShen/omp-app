@@ -91,7 +91,6 @@ realTest(
     // Switch away and back. The reopen subscribes afresh; its history must have arrived before anything is typed, since
     // the chat's draft lands with it and would replace text typed earlier. The old chat's reply stays on screen until then.
     await startChat(page);
-    await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 90_000 });
     watching = true;
     await page
       .getByRole("listbox", { name: "Session list" })

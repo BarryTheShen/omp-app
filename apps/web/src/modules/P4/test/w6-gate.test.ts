@@ -101,6 +101,7 @@ function r1Controller(omp: RecordedOmp, sourceStore: OmpRuntimeStore) {
   };
   const client = {
     port: () => rpc,
+    onResync: () => () => {},
     subscribe: async () => ({
       stream: "recorded-session",
       lastSeq: 0,

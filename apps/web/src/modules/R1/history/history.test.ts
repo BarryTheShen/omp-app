@@ -18,6 +18,9 @@ const folder = "/workspace/project" as FolderPath;
 const threadOne = ThreadIdSchema.parse("thread-one");
 const threadTwo = ThreadIdSchema.parse("thread-two");
 
+/** The client's resync listener, as the history controller registers it for a chat's watch. */
+type ResyncListener = (event: { readonly reason: string; readonly stream?: unknown }) => void;
+
 /** Resolves when `gate` opens. Like a request on the app's client, it rejects if the request's signal aborts first. */
 function untilAborted(gate: Promise<void>, signal: AbortSignal | undefined): Promise<void> {
   return new Promise<void>((resolve, reject) => {
@@ -333,6 +336,124 @@ describe("SelectedThreadHistoryController open and paging", () => {
     await picked;
     expect(opened.at(-1)).toEqual({ threadId: threadOne });
     expect(controller.getSnapshot().threadId).toBe(threadOne);
+  });
+
+  test("a pick made while a latest-chat open is still pending is the chat shown, even when that open resolves after it", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const opened: OpenThreadArgs[] = [];
+    const latest = Promise.withResolvers<unknown>();
+    const rpc = createRpc((args) => {
+      opened.push(args);
+      if ("start" in args) return latest.promise;
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const opening = controller.openLatest();
+    const picked = controller.pickExisting(threadOne);
+    await vi.waitFor(() => expect(opened.some((args) => "start" in args)).toBe(true));
+    latest.resolve({ threadId: threadTwo, sessionFile: null, capabilities: {} });
+    await opening;
+    await picked;
+    expect(opened.at(-1)).toEqual({ threadId: threadOne });
+    expect(controller.getSnapshot().threadId).toBe(threadOne);
+  });
+
+  test("a New chat asked for while a pick is still opening is the chat shown: it is the last request", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const opened: OpenThreadArgs[] = [];
+    const pickOpen = Promise.withResolvers<unknown>();
+    const rpc = createRpc((args) => {
+      opened.push(args);
+      if ("start" in args) return { threadId: threadTwo, sessionFile: null, capabilities: {} };
+      return pickOpen.promise;
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const picked = controller.pickExisting(threadOne);
+    await vi.waitFor(() => expect(opened.some((args) => "threadId" in args)).toBe(true));
+    const creating = controller.openNew();
+    pickOpen.resolve({ threadId: threadOne, sessionFile: null, capabilities: {} });
+    await picked;
+    await creating;
+    expect(opened.at(-1)).toEqual({ folderPath: folder, start: "new" });
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
+  });
+
+  test("a chat whose watch the server refused for good is reopened by the next pick of it, not left deaf", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const opened: OpenThreadArgs[] = [];
+    const resyncListeners: ResyncListener[] = [];
+    const rpc = createRpc((args) => {
+      opened.push(args);
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const client = fakeClient(rpc, subscriptions);
+    const controller = createSelectedThreadHistoryController({
+      client: {
+        ...client,
+        onResync: (listener: ResyncListener) => {
+          resyncListeners.push(listener);
+          return () => {};
+        },
+      } as unknown as AppClient,
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    // After a reconnect the server refuses the chat's resubscribe: the client reports it, and no event reaches the chat.
+    for (const listener of resyncListeners) {
+      listener({ reason: "subscription-failed", stream: "A0.rpcSession/event/thread" });
+    }
+    await controller.pickExisting(threadOne);
+    expect(opened).toHaveLength(2);
+    expect(subscriptions).toHaveLength(2);
+  });
+
+  test("reopening a deaf chat on its own pick keeps the chat on screen until the new one is loaded", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const opened: OpenThreadArgs[] = [];
+    const resyncListeners: ResyncListener[] = [];
+    const reopen = Promise.withResolvers<unknown>();
+    let reopening = false;
+    const rpc = createRpc((args) => {
+      opened.push(args);
+      if (reopening) return reopen.promise;
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const client = fakeClient(rpc, subscriptions);
+    const controller = createSelectedThreadHistoryController({
+      client: {
+        ...client,
+        onResync: (listener: ResyncListener) => {
+          resyncListeners.push(listener);
+          return () => {};
+        },
+      } as unknown as AppClient,
+      folder,
+    });
+    const first = await controller.openExisting(threadOne);
+    for (const listener of resyncListeners) {
+      listener({ reason: "subscription-failed", stream: "A0.rpcSession/event/thread" });
+    }
+    const emptied: Array<unknown> = [];
+    controller.subscribe((state) => {
+      if (state.threadId === undefined || state.store === undefined) emptied.push(state.threadId);
+    });
+    reopening = true;
+    const picked = controller.pickExisting(threadOne);
+    await vi.waitFor(() => expect(opened).toHaveLength(2));
+    // While omp reopens the chat, the chat on screen stays: nothing cleared it.
+    expect(controller.getSnapshot().store).toBe(first);
+    expect(emptied).toEqual([]);
+    reopen.resolve({ threadId: threadOne, sessionFile: null, capabilities: {} });
+    const second = await picked;
+    expect(second).not.toBe(first);
+    expect(controller.getSnapshot().store).toBe(second);
+    expect(emptied).toEqual([]);
   });
 
   test("reopening the chat on screen asks omp for it again, as a reconnect does: its store is new", async () => {

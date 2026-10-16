@@ -130,6 +130,9 @@ export class SelectedThreadHistoryController {
   });
   private subscription: EventSubscription | undefined;
   private offEvents: (() => void) | undefined;
+  /** The server refused the chat's resubscribe after a reconnect, so no event reaches it until it is opened again (issue 1081). */
+  private watchRefused = false;
+  private offResync: (() => void) | undefined;
   private loader: SessionHistoryLoader | undefined;
   private stopRefetchWatch: (() => void) | undefined;
   /** The chat whose open lost the connection, opened again once the connection is back (see `reopenFailedOpen`). */
@@ -183,7 +186,9 @@ export class SelectedThreadHistoryController {
     if (model !== undefined) return this.openWithModel(threadId, model);
     const pending = this.pendingOpen;
     if (pending !== undefined && pending.threadId === threadId) return pending.open;
-    const open = this.open({ threadId }).catch((error: unknown) => {
+    // A chat whose watch the server refused is opened again in place: it stays on screen until the new open is loaded.
+    const keepShown = this.watchRefused && this.state.threadId === threadId;
+    const open = this.open({ threadId }, keepShown).catch((error: unknown) => {
       // omp refuses a chat whose saved model is gone. The model remembered for the chat, if any, opens it.
       const picked =
         asFailure(error, "").appError.code === "model_unavailable"
@@ -203,9 +208,10 @@ export class SelectedThreadHistoryController {
 
   /**
    * Opens a chat the person picked from a list (the sidebar, the chat list, the palette). The chat on screen stays as it is
-   * when it is open and loaded and no other open or switch is pending: its store, its scroll position, its open folds and a
-   * running turn stay, and omp is not asked to open it again (issue 1359). With another open pending (a New chat, say) the
-   * pick queues behind it, so the last pick is the one shown. A pick with a model opens the chat with it (see `openExisting`).
+   * when it is open, loaded and watched, and no other open or switch is pending: its store, its scroll position, its open
+   * folds and a running turn stay, and omp is not asked to open it again (issue 1359). A chat whose watch the server refused
+   * after a reconnect is opened again, so it receives its events (issue 1081). With another open pending (a New chat, say)
+   * the pick queues behind it, so the last pick is the one shown. A pick with a model opens the chat with it (see `openExisting`).
    */
   public pickExisting(threadId: ThreadId, model?: ModelChoice): Promise<OmpRuntimeStore> {
     const current = this.state.store;
@@ -214,7 +220,8 @@ export class SelectedThreadHistoryController {
       model === undefined &&
       this.state.threadId === threadId &&
       this.pendingOpens === 0 &&
-      this.holds.size === 0
+      this.holds.size === 0 &&
+      !this.watchRefused
     )
       return Promise.resolve(current);
     return this.openExisting(threadId, model);
@@ -355,7 +362,7 @@ export class SelectedThreadHistoryController {
     return this.serialize(() => this.closeNow());
   }
 
-  private async closeNow(): Promise<void> {
+  private async closeNow(keepShown = false): Promise<void> {
     // A chat whose turn is still running is kept and watched until the turn ends (issue 935): the list must learn of the
     // row it writes even though the chat is no longer open.
     const running = this.state.store?.getSnapshot().prompt.streaming === true;
@@ -365,6 +372,9 @@ export class SelectedThreadHistoryController {
     this.stopRefetchWatch = undefined;
     this.offEvents?.();
     this.offEvents = undefined;
+    this.offResync?.();
+    this.offResync = undefined;
+    this.watchRefused = false;
     const subscription = this.subscription;
     this.subscription = undefined;
     const releasedThreadId = this.state.threadId;
@@ -375,14 +385,16 @@ export class SelectedThreadHistoryController {
         : undefined;
     if (watched) this.watchTurnEnd(watched.threadId, watched.subscription);
     else if (subscription) await subscription.unsubscribe();
-    this.commit({
-      threadId: undefined,
-      store: undefined,
-      capabilities: undefined,
-      isLoading: false,
-      error: null,
-      openedNew: false,
-    });
+    // A chat reopened in place keeps the transcript on screen until its new open commits (see `openNow`).
+    if (!keepShown)
+      this.commit({
+        threadId: undefined,
+        store: undefined,
+        capabilities: undefined,
+        isLoading: false,
+        error: null,
+        openedNew: false,
+      });
     // Tell the server this view is gone. Without it every chat the tab ever opened kept its omp
     // process (about 380 MB while idle) until the app quit. Not awaited: switching chats must not
     // wait on the server, and `release` handles every failure itself. A watched chat is let go when its turn ends.
@@ -432,7 +444,7 @@ export class SelectedThreadHistoryController {
     return releaseThread(this.rpc.close, threadId);
   }
 
-  private open(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
+  private open(args: OpenThreadArgs, keepShown = false): Promise<OmpRuntimeStore> {
     // Asking for a chat gives up the chat a dropped connection left. Every request takes a ticket, and an open that
     // fails is recorded for a reopen only while its ticket is the latest: a later pick or close came after it.
     this.requests += 1;
@@ -440,7 +452,7 @@ export class SelectedThreadHistoryController {
     this.failedOpen = undefined;
     this.pendingOpens += 1;
     const settle = this.openSettler();
-    return this.serialize(() => this.openNow(args, settle, ticket)).finally(settle);
+    return this.serialize(() => this.openNow(args, settle, ticket, keepShown)).finally(settle);
   }
 
   /** Ends one open's pending state, once: at its commit, or when it fails. A later call does nothing. */
@@ -458,13 +470,14 @@ export class SelectedThreadHistoryController {
     args: OpenThreadArgs,
     settle: () => void,
     ticket: number,
+    keepShown = false,
   ): Promise<OmpRuntimeStore> {
     const openedNew = "start" in args && args.start === "new";
     const closesAtStart = this.closes;
     // The thread this open names: a dropped connection leaves it to be opened again (see `reopenFailedOpen`).
     const requested = "threadId" in args ? args.threadId : undefined;
-    await this.closeNow();
-    this.commit({ isLoading: true, error: null });
+    await this.closeNow(keepShown);
+    if (!keepShown) this.commit({ isLoading: true, error: null });
     // The subscription a watch held on this chat, if the open took the chat over. Let go only after the open subscribes.
     let watchHold: EventSubscription | undefined;
     // The chat's store once it is committed on screen: a failure after that point keeps the chat (see the catch).
@@ -480,17 +493,20 @@ export class SelectedThreadHistoryController {
         this.options.createLoader?.(threadId, this.rpc, store) ??
         this.defaultLoader(threadId, store);
       this.loader = loader;
-      this.commit({
-        threadId,
-        store,
-        capabilities: result.capabilities,
-        isLoading: true,
-        error: null,
-        openedNew,
-      });
-      shownStore = store;
-      // The chat is on screen: a send that waited for it may go now, though its history still loads below.
-      settle();
+      // A chat reopened in place keeps its transcript on screen until the new open has its history (no flash).
+      if (!keepShown) {
+        this.commit({
+          threadId,
+          store,
+          capabilities: result.capabilities,
+          isLoading: true,
+          error: null,
+          openedNew,
+        });
+        shownStore = store;
+        // The chat is on screen: a send that waited for it may go now, though its history still loads below.
+        settle();
+      }
       // From here the composer takes text, so a reload or a restart must already find this chat: its id is saved now,
       // not after the history has loaded. Otherwise text typed in a new chat is lost when the app restarts in that window.
       // Not when a close was asked for while this open was pending: the chat is closed, and saving its id would
@@ -512,6 +528,7 @@ export class SelectedThreadHistoryController {
         error: null,
         openedNew,
       });
+      settle();
       return store;
     } catch (error) {
       const failure = asFailure(error, "Opening the selected thread failed");
@@ -631,6 +648,12 @@ export class SelectedThreadHistoryController {
       replay = undefined;
     }
     this.subscription = subscription;
+    this.watchRefused = false;
+    this.offResync?.();
+    this.offResync = this.client.onResync((event) => {
+      if (event.reason !== "subscription-failed" || event.stream !== subscription.stream) return;
+      this.watchRefused = true;
+    });
     if (collected !== undefined) {
       for (const event of eventsAfterLastTurnEnd(collected)) apply(event.payload, event.seq, true);
     }
