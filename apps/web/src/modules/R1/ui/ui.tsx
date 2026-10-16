@@ -202,6 +202,10 @@ export function SessionCatalogSidebar({
   const moreButtons = useRef(new Map<ThreadId, HTMLButtonElement>());
   const [menuSessionId, setMenuSessionId] = useState<ThreadId | undefined>();
   const previousCatalog = useRef(catalog);
+  const refreshedMissingThread = useRef<{
+    readonly catalog: SessionCatalogModel;
+    readonly threadId: ThreadId;
+  } | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const newChatRef = useRef<HTMLButtonElement | null>(null);
   // The New chat that is starting, if any: a pick ends it (see `openSession`).
@@ -240,6 +244,20 @@ export function SessionCatalogSidebar({
     // A failed load is kept in the catalog's error, and the sidebar shows it with a retry.
     void catalog.list({ filter: { ...current.filter, query }, limit: 50 }).catch(() => undefined);
   }, [catalog, query]);
+  useEffect(() => {
+    if (currentThreadId === undefined || !snapshot.isLoaded || snapshot.isLoading) return;
+    const current = catalog.getSnapshot();
+    const refreshed = refreshedMissingThread.current;
+    if (refreshed?.catalog === catalog && refreshed.threadId === currentThreadId) return;
+    refreshedMissingThread.current = { catalog, threadId: currentThreadId };
+    const listed =
+      current.sessions.some((session) => session.id === currentThreadId) ||
+      current.running.some((running) => running.id === currentThreadId);
+    if (listed) return;
+    // A branch/rewind creates a new omp file without a SessionFileChanged event; reread the current
+    // folder once when the active thread is not in the already-loaded catalog.
+    void catalog.list({ filter: current.filter, limit: 100 }).catch(() => undefined);
+  }, [catalog, currentThreadId, snapshot.isLoaded, snapshot.isLoading]);
 
   useEffect(() => {
     if (!menuSessionId) return;

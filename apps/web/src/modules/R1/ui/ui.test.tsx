@@ -125,8 +125,10 @@ function renderSidebar(
       remote={props.remote ?? fakeRemote(calls)}
     />
   );
-  render(renameAvailable ? withRegistry(createRegistry([]), RENAME_AVAILABLE, sidebar) : sidebar);
-  return { catalog, calls };
+  const view = render(
+    renameAvailable ? withRegistry(createRegistry([]), RENAME_AVAILABLE, sidebar) : sidebar,
+  );
+  return { catalog, calls, rerender: view.rerender };
 }
 
 /** Opens a row's More actions and then its Rename item, the way a person does. */
@@ -172,6 +174,53 @@ describe("SessionCatalogSidebar", () => {
       finishOpen();
     });
     await waitFor(() => expect(opened).toEqual(["new"]));
+  });
+  test("reloads the catalog when a branch becomes the active chat before its row is listed", async () => {
+    const source = session("source", "2026-10-05T00:00:00.000Z", "Source session");
+    const branch = session("branch", "2026-10-06T00:00:00.000Z", "Branch session");
+    const files = [source];
+    let listCalls = 0;
+    const catalog = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => {
+          listCalls += 1;
+          return { sessions: files, nextCursor: null };
+        },
+        readSession: async ({ sessionFile }) =>
+          files.find((file) => file.sessionFile === sessionFile) as SessionFile,
+      },
+    });
+    await catalog.list({ filter: { scope, query: "" }, limit: 50 });
+    const calls: string[] = [];
+    const { rerender } = renderSidebar({
+      catalog,
+      currentThreadId: source.id,
+      remote: fakeRemote(calls),
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: /Source session/ })).toBeTruthy(),
+    );
+    expect(listCalls).toBe(1);
+
+    files.push(branch);
+    await act(async () => {
+      rerender(
+        <SessionCatalogSidebar
+          catalog={catalog}
+          currentThreadId={branch.id}
+          remote={fakeRemote(calls)}
+        />,
+      );
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: /Branch session/ })).toBeTruthy(),
+    );
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+    expect(
+      screen.getByRole("option", { name: /Branch session/ }).getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(listCalls).toBe(2);
   });
 
   test("a pick the chat refuses hands the selection back to the chat that is open", async () => {
