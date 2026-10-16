@@ -69,6 +69,8 @@ export function useComposerDraft({
   const hydratedFor = useRef<DraftController | null>(null);
   // The controller the composer has cleared its text for. The text on screen before that is the previous chat's.
   const clearedFor = useRef<DraftController | null>(null);
+  // The chat whose text the composer last cleared. A new controller of the same chat keeps the text and the caret.
+  const clearedChat = useRef<object | null>(null);
   // The text and attachments the composer and the controller last agreed on: the composer's own writes set them before
   // they reach the controller, and the values the composer takes from the controller set them too. A controller value
   // that differs was changed without the composer.
@@ -142,14 +144,19 @@ export function useComposerDraft({
 
   useEffect(() => {
     if (hydratedFor.current !== controller) {
-      composer.setText("");
-      // Nothing is agreed for a chat whose draft has not loaded: the text here is still the previous chat's.
-      agreedText.current = null;
-      // The attachments on screen are the previous chat's too: they leave with its text until this chat's draft loads.
-      restoreAttachments(controller, []);
+      // A move of the same chat's draft to another controller keeps the text on screen: clearing it and writing it back
+      // moves the caret to the end. Only a different chat starts with an empty composer.
+      if (clearedChat.current !== chat) {
+        composer.setText("");
+        // Nothing is agreed for a chat whose draft has not loaded: the text here is still the previous chat's.
+        agreedText.current = null;
+        // The attachments on screen are the previous chat's too: they leave with its text until this chat's draft loads.
+        restoreAttachments(controller, []);
+      }
+      clearedChat.current = chat;
     }
     clearedFor.current = controller;
-  }, [composer, controller, restoreAttachments]);
+  }, [chat, composer, controller, restoreAttachments]);
   useEffect(() => {
     if (snapshot.status !== "ready" || hydratedFor.current === controller) return;
     hydratedFor.current = controller;

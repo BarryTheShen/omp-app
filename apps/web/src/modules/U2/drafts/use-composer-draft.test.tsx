@@ -859,3 +859,50 @@ describe("useComposerDraft: a picture still loading when the person moves to ano
     expect(saved.draft?.attachments ?? []).toEqual([]);
   });
 });
+
+/** A real text box bound to the composer draft, so the caret can be read. */
+function TextBox({ chat, controller }: { chat: object; controller: DraftController }) {
+  const [text, setText] = useState("");
+  const composer = useMemo(() => ({ setText }), []);
+  useComposerDraft({
+    chat,
+    controller,
+    text,
+    composer,
+    attachments: noAttachments,
+    isRecalledPrompt: notRecalled,
+  });
+  return <textarea value={text} onChange={(event) => setText(event.target.value)} />;
+}
+
+describe("useComposerDraft: the same chat's draft moving to another scope", () => {
+  test("keeps the text and the caret where the person left them", async () => {
+    const store = new ScopedDraftStore();
+    const scope = chatScope("chat-caret");
+    await store.save({
+      scope,
+      draft: { text: "ab", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    const chat = {};
+    const first = new DraftController({ store, scope, timers: noTimers });
+    const view = render(<TextBox chat={chat} controller={first} />);
+    const box = document.querySelector("textarea");
+    if (box === null) throw new Error("the text box is not rendered");
+    await act(async () => {
+      await first.load();
+    });
+    await waitFor(() => expect(box.value).toBe("ab"));
+    act(() => box.setSelectionRange(1, 1));
+
+    const second = new DraftController({ store, scope, timers: noTimers });
+    view.rerender(<TextBox chat={chat} controller={second} />);
+    await act(async () => {
+      await second.load();
+      await second.flush();
+    });
+
+    expect(box.value).toBe("ab");
+    expect(box.selectionStart).toBe(1);
+  });
+});
