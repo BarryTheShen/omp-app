@@ -13,6 +13,7 @@ import {
   backgroundJobLaunchTimes,
   backgroundJobViews,
 } from "@/modules/R0/store/background-jobs";
+import { type BackgroundJobKeptStops, BackgroundJobKeptStopsContext } from "@/modules/T5/job-stops";
 import { ToolRunActiveContext } from "@/modules/U1/tool-slots";
 import {
   type BackgroundJobCommand,
@@ -65,6 +66,17 @@ export function ToolRunScope({
   const jobs = useSyncExternalStore(source.subscribe, source.read);
   const [stops, setStops] = useState(() => ({ store, outcomes: new Map<string, StopOutcome>() }));
   const kept = useKeptStops(store, loadBackgroundJobStops);
+  const keptForTasks = useMemo<BackgroundJobKeptStops | undefined>(() => {
+    if (kept === undefined) return undefined;
+    const launchedAt = new Map<string, number>();
+    for (const [toolCallId, view] of jobs.views) {
+      const at = jobs.launchedAt.get(toolCallId);
+      if (at === undefined) continue;
+      const latest = launchedAt.get(view.jobId);
+      if (latest === undefined || at > latest) launchedAt.set(view.jobId, at);
+    }
+    return { stops: kept.stops, launchedAt };
+  }, [jobs, kept]);
   const scope = useMemo<BackgroundJobsScope>(
     () => ({
       viewOf: (toolCallId): BackgroundJobView | undefined => jobs.views.get(toolCallId),
@@ -89,11 +101,13 @@ export function ToolRunScope({
     [jobs, stops, kept, store],
   );
   return (
-    <ToolRunActiveContext.Provider value={streaming}>
-      <BackgroundJobCommandContext.Provider value={runBackgroundJobCommand}>
-        <BackgroundJobsContext.Provider value={scope}>{children}</BackgroundJobsContext.Provider>
-      </BackgroundJobCommandContext.Provider>
-    </ToolRunActiveContext.Provider>
+    <BackgroundJobKeptStopsContext.Provider value={keptForTasks}>
+      <ToolRunActiveContext.Provider value={streaming}>
+        <BackgroundJobCommandContext.Provider value={runBackgroundJobCommand}>
+          <BackgroundJobsContext.Provider value={scope}>{children}</BackgroundJobsContext.Provider>
+        </BackgroundJobCommandContext.Provider>
+      </ToolRunActiveContext.Provider>
+    </BackgroundJobKeptStopsContext.Provider>
   );
 }
 

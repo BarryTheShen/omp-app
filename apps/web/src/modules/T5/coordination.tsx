@@ -203,7 +203,7 @@ export function RecipientRows({ receipts }: { readonly receipts: readonly IrcRec
 
 /** The Stop control of one job row, and omp's answer to the stop asked for it. */
 function JobStopLine({ job, stops }: { readonly job: JobSnapshot; readonly stops: JobStops }) {
-  const outcome = stops.outcomeOf(job.id);
+  const outcome = stops.outcomeOf(job);
   const stoppable = stops.canStop(job);
   if (!stoppable && outcome === undefined) return null;
   return (

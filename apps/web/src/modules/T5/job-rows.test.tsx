@@ -1,11 +1,17 @@
+import type { BackgroundJobStop } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   type BackgroundJobCommand,
   BackgroundJobCommandContext,
 } from "@/modules/U3/tool-card/background-job";
+import { keptStopOutcome, resolveStopOutcome } from "../U3/tool-card/stopped-jobs";
 import { JobRows } from "./coordination";
-import { useJobStops } from "./job-stops";
+import {
+  type BackgroundJobKeptStops,
+  BackgroundJobKeptStopsContext,
+  useJobStops,
+} from "./job-stops";
 import type { JobSnapshot } from "./models";
 
 afterEach(() => cleanup());
@@ -20,15 +26,83 @@ function JobsWithStops({ jobs }: { readonly jobs: readonly JobSnapshot[] }) {
   return <JobRows jobs={jobs} stops={stops} />;
 }
 
-function renderJobs(jobs: readonly JobSnapshot[], gateway: BackgroundJobCommand | undefined) {
+function renderJobs(
+  jobs: readonly JobSnapshot[],
+  gateway: BackgroundJobCommand | undefined,
+  keptStops?: BackgroundJobKeptStops,
+) {
   return render(
     <BackgroundJobCommandContext.Provider value={gateway}>
-      <JobsWithStops jobs={jobs} />
+      <BackgroundJobKeptStopsContext.Provider value={keptStops}>
+        <JobsWithStops jobs={jobs} />
+      </BackgroundJobKeptStopsContext.Provider>
     </BackgroundJobCommandContext.Provider>,
   );
 }
 
 describe("T5 Tasks view: stopping background jobs", () => {
+  test("a kept stop does not override failed or completed row snapshots", () => {
+    const keptStops: BackgroundJobKeptStops = {
+      stops: new Map<string, BackgroundJobStop>([
+        ["bg_failed", { jobId: "bg_failed", status: "stopped", at: 10 }],
+        ["bg_completed", { jobId: "bg_completed", status: "stopped", at: 10 }],
+      ]),
+      launchedAt: new Map([
+        ["bg_failed", 5],
+        ["bg_completed", 5],
+      ]),
+    };
+    renderJobs(
+      [job("bg_failed", "failed"), job("bg_completed", "completed")],
+      vi.fn(async () => []),
+      keptStops,
+    );
+    expect(screen.getByText("Failed")).toBeTruthy();
+    expect(screen.getByText("Completed")).toBeTruthy();
+    expect(screen.queryByText("Cancelled")).toBeNull();
+  });
+
+  test("a kept stop after launch gives Tasks the same outcome as the card resolver", () => {
+    const stop = { jobId: "bg_1", status: "stopped", at: 20 } as const;
+    const launchedAt = 10;
+    const cardOutcome = resolveStopOutcome(undefined, true, () =>
+      keptStopOutcome(stop, launchedAt),
+    );
+    expect(cardOutcome).toEqual({
+      status: "stopped",
+      sentence: "Stopped background job bg_1.",
+    });
+    renderJobs(
+      [job("bg_1", "running")],
+      vi.fn(async () => []),
+      { stops: new Map([["bg_1", stop]]), launchedAt: new Map([["bg_1", launchedAt]]) },
+    );
+    expect(screen.getByText("Cancelled")).toBeTruthy();
+    expect(screen.getByText("Stopped background job bg_1.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
+  });
+
+  test("a stop recorded before a reused job id launch is ignored", () => {
+    const stop = { jobId: "bg_1", status: "stopped", at: 10 } as const;
+    renderJobs(
+      [job("bg_1", "running")],
+      vi.fn(async () => []),
+      { stops: new Map([["bg_1", stop]]), launchedAt: new Map([["bg_1", 20]]) },
+    );
+    expect(screen.getByText("Running")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
+  });
+
+  test("a kept stop with no known launch time is ignored", () => {
+    const stop = { jobId: "bg_1", status: "stopped", at: 10 } as const;
+    renderJobs(
+      [job("bg_1", "running")],
+      vi.fn(async () => []),
+      { stops: new Map([["bg_1", stop]]), launchedAt: new Map() },
+    );
+    expect(screen.getByText("Running")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
+  });
   test("a running job has a named Stop control; a finished job has none", () => {
     renderJobs(
       [job("bg_1", "running"), job("bg_2", "completed")],

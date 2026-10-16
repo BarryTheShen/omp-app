@@ -1,4 +1,5 @@
-import { useContext, useState } from "react";
+import type { BackgroundJobStop } from "@omp-app/contracts";
+import { createContext, useContext, useState } from "react";
 import {
   BackgroundJobCommandContext,
   type StopOutcome,
@@ -6,7 +7,18 @@ import {
   stopFailedOutcome,
   stopOutcomeOf,
 } from "../U3/tool-card/background-job";
+import { keptStopOutcome, resolveStopOutcome } from "../U3/tool-card/stopped-jobs";
 import type { JobSnapshot } from "./models";
+
+export interface BackgroundJobKeptStops {
+  readonly stops: ReadonlyMap<string, BackgroundJobStop>;
+  readonly launchedAt: ReadonlyMap<string, number>;
+}
+
+/** Stops the server kept, plus launch times for rejecting stops from earlier jobs with a reused id. */
+export const BackgroundJobKeptStopsContext = createContext<BackgroundJobKeptStops | undefined>(
+  undefined,
+);
 
 /** omp's command that stops every running background job (`/jobs kill all`, builtin-session.ts at v18.9.1). */
 const STOP_ALL_COMMAND = "/jobs kill all";
@@ -63,14 +75,14 @@ export interface JobStops {
   /** A stop request is with omp. */
   readonly pending: boolean;
   /**
-   * The status a job shows, in its row and in the card's header. The card's snapshot is what the job was when its wait
-   * ran; a stop that omp answered says what the job is now.
+   * A failed or completed snapshot is authoritative; a running row may take a live outcome or a kept stop recorded after
+   * that job's known launch.
    */
   statusOf(job: JobSnapshot): string;
   /** Whether a job shows its Stop control: it runs by the stops' answers, and no Stop all has ended every running job. */
   canStop(job: JobSnapshot): boolean;
-  /** omp's answer to the Stop of one job, once asked. */
-  outcomeOf(jobId: string): StopOutcome | undefined;
+  /** A live outcome, or a kept outcome that belongs to this running job. */
+  outcomeOf(job: JobSnapshot): StopOutcome | undefined;
   /** omp's answer to Stop all, once asked. */
   readonly allOutcome: StopOutcome | undefined;
   /**
@@ -90,6 +102,7 @@ export interface JobStops {
 /** The stop controls for one list of background jobs, through the chat's command gateway. */
 export function useJobStops(): JobStops {
   const runCommand = useContext(BackgroundJobCommandContext);
+  const keptStops = useContext(BackgroundJobKeptStopsContext);
   const [outcomes, setOutcomes] = useState<Readonly<Record<string, StopOutcome | undefined>>>({});
   const [allOutcome, setAllOutcome] = useState<StopOutcome | undefined>(undefined);
   const [cancelledByAll, setCancelledByAll] = useState<readonly string[]>([]);
@@ -133,11 +146,18 @@ export function useJobStops(): JobStops {
     }
   }
 
+  function outcomeOf(job: JobSnapshot): StopOutcome | undefined {
+    const stop = keptStops?.stops.get(job.id);
+    return resolveStopOutcome(outcomes[job.id], job.status === "running", () =>
+      keptStopOutcome(stop, keptStops?.launchedAt.get(job.id)),
+    );
+  }
+
   function statusOf(job: JobSnapshot): string {
     if (job.status !== "running") return job.status;
-    const own = outcomes[job.id]?.status;
-    if (own === "stopped") return "cancelled";
-    if (own === "finished" || allOutcome?.status === "finished") return "already_completed";
+    const outcome = outcomeOf(job)?.status;
+    if (outcome === "stopped") return "cancelled";
+    if (outcome === "finished" || allOutcome?.status === "finished") return "already_completed";
     return cancelledByAll.includes(job.id) ? "cancelled" : job.status;
   }
 
@@ -154,9 +174,7 @@ export function useJobStops(): JobStops {
     pending,
     statusOf,
     canStop,
-    outcomeOf(jobId) {
-      return outcomes[jobId];
-    },
+    outcomeOf,
     allOutcome,
     statusesAsOfCall: allOutcome !== undefined && !endedAll,
     stop,
