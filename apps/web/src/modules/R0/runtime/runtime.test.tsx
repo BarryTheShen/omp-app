@@ -826,12 +826,15 @@ describe("R0.3 assistant-ui runtime", () => {
         ...assistantMessage([{ type: "text", text: "Second answer." }]),
         usage: cold,
         timestamp: 4,
+        duration: 1_200,
+        ttft: 300,
       },
     ] as unknown as OmpMessage[];
     turns.forEach((message, index) => {
       ompEvent(store, { type: "message_start", messageId: `m${index}`, message }, index * 2 + 1);
       ompEvent(store, { type: "message_end", messageId: `m${index}`, message }, index * 2 + 2);
     });
+    ompEvent(store, { type: "agent_end" }, 9);
     const views = createOmpRuntime({
       store,
       send: (() => Promise.resolve()) as unknown as RpcSessionSend,
@@ -849,7 +852,91 @@ describe("R0.3 assistant-ui runtime", () => {
     if (!second) throw new Error("expected the second answer");
     expect(convertMessage(second).metadata?.custom).toMatchObject({
       ompUsage: cold,
+      ompTurnUsage: { input: 300, output: 1, cacheRead: 0, cacheWrite: 800 },
+      ompTurnDurationMs: 1_200,
+      ompTurnTtftMs: 300,
       ompPreviousUsage: warm,
+    });
+  });
+  test("sums usage and durations for all assistant requests joined with tool results", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ompEvent(store, { type: "agent_start" }, 1);
+    const usageOne = { ...baseUsage, input: 10, output: 5, cacheRead: 2, cacheWrite: 3 };
+    const usageTwo = { ...baseUsage, input: 20, output: 6, cacheRead: 4, cacheWrite: 1 };
+    const usageThree = { ...baseUsage, input: 30, output: 7, cacheRead: 5, cacheWrite: 2 };
+    const requests = [
+      { role: "user", content: [{ type: "text", text: "Run three tools." }], timestamp: 1 },
+      {
+        ...assistantMessage([{ type: "toolCall", id: "call-1", name: "bash", arguments: {} }]),
+        usage: usageOne,
+        stopReason: "toolUse",
+        duration: 120,
+        ttft: 45,
+        timestamp: 2,
+      },
+      toolResultMessage("call-1"),
+      {
+        ...assistantMessage([{ type: "toolCall", id: "call-2", name: "bash", arguments: {} }]),
+        usage: usageTwo,
+        stopReason: "toolUse",
+        duration: 180,
+        ttft: 30,
+        timestamp: 3,
+      },
+      toolResultMessage("call-2"),
+      {
+        ...assistantMessage([{ type: "text", text: "Finished." }]),
+        usage: usageThree,
+        duration: 220,
+        ttft: 25,
+        timestamp: 4,
+      },
+    ] as unknown as OmpMessage[];
+    requests.forEach((message, index) => {
+      ompEvent(
+        store,
+        { type: "message_start", messageId: `turn-${index}`, message },
+        index * 2 + 2,
+      );
+      ompEvent(store, { type: "message_end", messageId: `turn-${index}`, message }, index * 2 + 3);
+    });
+    const runningViews = createOmpRuntime({
+      store,
+      send: (() => Promise.resolve()) as unknown as RpcSessionSend,
+    }).messages();
+    expect(
+      runningViews
+        .filter((view) => view.record.message.role === "assistant")
+        .every((view) => view.ompTurnUsage === undefined),
+    ).toBe(true);
+    ompEvent(store, { type: "agent_end" }, requests.length * 2 + 2);
+
+    const views = createOmpRuntime({
+      store,
+      send: (() => Promise.resolve()) as unknown as RpcSessionSend,
+    }).messages();
+    const assistantViews = views.filter((view) => view.record.message.role === "assistant");
+    expect(assistantViews).toHaveLength(3);
+    const totals = { input: 60, output: 18, cacheRead: 11, cacheWrite: 6 };
+    for (const view of assistantViews) {
+      expect(view.ompTurnUsage).toEqual(totals);
+      expect(view.ompTurnDurationMs).toBe(520);
+      expect(view.ompTurnTtftMs).toBe(45);
+    }
+
+    const joined = unstable_convertExternalMessages(
+      views.slice(1),
+      convertExternalMessage,
+      false,
+      {},
+    );
+    expect(joined).toHaveLength(1);
+    const message = joined[0];
+    if (!message) throw new Error("expected a joined assistant turn");
+    expect(message.metadata?.custom).toMatchObject({
+      ompTurnUsage: totals,
+      ompTurnDurationMs: 520,
+      ompTurnTtftMs: 45,
     });
   });
 

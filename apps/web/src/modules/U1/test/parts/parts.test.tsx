@@ -154,6 +154,46 @@ describe("U1.3 standalone parts", () => {
     expect(document.querySelector('[data-message-surface="system-note"]')).toBeTruthy();
     expect(document.querySelector('[data-message-surface="assistant-text"]')).toBeTruthy();
   });
+  test("does not add a usage-row placeholder when an assistant message has no usage", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const noUsage = {
+      ...assistantMessage("assistant", "answer without usage"),
+      usage: undefined,
+    } as unknown as OmpMessage;
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "assistant-no-usage",
+          message: noUsage,
+        },
+      } as RpcSessionEvent,
+      2,
+    );
+    render(<RuntimeThread store={store} />);
+
+    expect(document.querySelector('[data-slot="u1-turn-usage"]')).toBeNull();
+  });
+  test("does not show partial usage while an assistant message is still running", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "assistant-running-usage",
+          message: assistantMessage("assistant", "streaming answer"),
+        },
+      } as RpcSessionEvent,
+      2,
+    );
+    render(<RuntimeThread store={store} />);
+
+    expect(document.querySelector('[data-slot="u1-turn-usage"]')).toBeNull();
+  });
 
   test("every message surface lets a long unbroken word wrap inside it", () => {
     const store = new OmpRuntimeStore({ threadId });

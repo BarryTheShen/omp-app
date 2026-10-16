@@ -1,17 +1,25 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
-import type { CompactionPort, ContextUsagePort } from "../contract";
+import type {
+  CompactionPort,
+  ContextUsagePort,
+  UsageLimitsSource,
+  UsagePort,
+  UsageSnapshot,
+} from "../contract";
 import { CompactionControls } from "./compaction-controls";
 import { ContextMeter } from "./context-meter";
+import { ContextStatusBar } from "./status-bar";
 
 function contextPort(
   usage: { tokens: number; contextWindow: number; percent: number } | null,
+  tokensPerSecond: number | null = usage === null ? null : 12,
 ): ContextUsagePort {
   const snapshot = {
     usage,
     isCompacting: false,
     autoCompactionEnabled: usage === null ? null : true,
-    tokensPerSecond: usage === null ? null : 12,
+    tokensPerSecond,
     revision: "context-test",
     error: null,
   };
@@ -46,7 +54,59 @@ function compactionPort(): { port: CompactionPort; calls: string[] } {
 
 afterEach(cleanup);
 
+function usagePort(): UsagePort {
+  const snapshot: UsageSnapshot = {
+    sessionId: "context-test",
+    status: "ready",
+    totals: null,
+    contextUsage: null,
+    tokenRate: null,
+    lastTurn: null,
+    revision: "usage-test",
+    error: null,
+  };
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: () => () => undefined,
+    refresh: async () => snapshot,
+  };
+}
+
+const unavailableLimits: UsageLimitsSource = {
+  read: async () => ({ state: "unavailable", reason: "Unavailable in this test." }),
+};
+
 describe("P7 context and compaction surfaces", () => {
+  test("shows the output speed only while the turn is running", () => {
+    const { rerender } = render(
+      <ContextStatusBar
+        context={contextPort(null, 12)}
+        usage={usagePort()}
+        limits={unavailableLimits}
+        isStreaming={false}
+      />,
+    );
+    expect(screen.queryByText("12.0 tokens/s")).toBeNull();
+    rerender(
+      <ContextStatusBar
+        context={contextPort(null, 12)}
+        usage={usagePort()}
+        limits={unavailableLimits}
+        isStreaming={true}
+      />,
+    );
+    expect(screen.getByText("12.0 tokens/s").textContent).toBe("12.0 tokens/s");
+    rerender(
+      <ContextStatusBar
+        context={contextPort(null, 12)}
+        usage={usagePort()}
+        limits={unavailableLimits}
+        isStreaming={false}
+      />,
+    );
+    expect(screen.queryByText("12.0 tokens/s")).toBeNull();
+  });
+
   test("renders a meter and an explicit unavailable state instead of treating missing usage as zero", () => {
     const { rerender } = render(<ContextMeter port={contextPort(null)} />);
     expect(screen.getByText("Context usage is unavailable from this host.")).toBeTruthy();

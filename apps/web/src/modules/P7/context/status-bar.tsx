@@ -20,10 +20,12 @@ export function ContextStatusBar({
   context,
   usage,
   limits,
+  isStreaming,
 }: {
   readonly context: ContextUsagePort;
   readonly usage: UsagePort;
   readonly limits: UsageLimitsSource;
+  readonly isStreaming: boolean;
 }) {
   const snapshot = useContextSnapshot(context);
   const window = snapshot.usage;
@@ -57,6 +59,9 @@ export function ContextStatusBar({
         <span>Context usage unavailable</span>
       )}
       {snapshot.isCompacting ? <span role="status">Compacting…</span> : null}
+      {isStreaming && snapshot.tokensPerSecond !== null ? (
+        <span>{snapshot.tokensPerSecond.toFixed(1)} tokens/s</span>
+      ) : null}
       <UsagePopover port={usage} limits={limits} />
     </section>
   );

@@ -71,6 +71,14 @@ export interface StoppedQueue {
   readonly restored: OmpWire.AbortAndRestoreQueueResult;
 }
 
+/** Numeric token totals for all assistant requests joined into one transcript turn. */
+export interface OmpTurnUsage {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+}
+
 /** A stable external-store item; only the affected item is replaced when a tool changes. */
 export interface RuntimeMessageView {
   readonly record: RuntimeMessage;
@@ -81,6 +89,12 @@ export interface RuntimeMessageView {
   readonly toolResultMatched?: boolean;
   /** Tool calls the person stopped (see `stoppedToolCallIds`): they read cancelled, not as failures. */
   readonly stoppedToolCallIds?: readonly string[];
+  /** The summed usage of all joined assistant requests in this turn. */
+  readonly ompTurnUsage?: OmpTurnUsage;
+  /** Summed request durations when every joined request reports one. */
+  readonly ompTurnDurationMs?: number;
+  /** TTFT from the first joined assistant request, when it reports one. */
+  readonly ompTurnTtftMs?: number;
   /** The usage of the assistant turn before this one (null when none): a cache miss is measured from it. */
   readonly previousAssistantUsage?: OmpWire.Usage | null;
   /**
@@ -462,6 +476,13 @@ function convertRecord(
         ? {
             ompEntryIds: [...(view?.joinedAssistantEntryIds ?? [storeKey])],
             ompUsage: message.usage,
+            ompTurnUsage: view === undefined ? usageNumbersOf(message.usage) : view.ompTurnUsage,
+            ompTurnDurationMs:
+              view === undefined
+                ? nonNegativeFiniteNumber(message.duration)
+                : view.ompTurnDurationMs,
+            ompTurnTtftMs:
+              view === undefined ? nonNegativeFiniteNumber(message.ttft) : view.ompTurnTtftMs,
             ompPreviousUsage: view?.previousAssistantUsage ?? null,
           }
         : {}),
@@ -653,9 +674,53 @@ function previousAssistantUsages(
   return usages;
 }
 
+function usageNumbersOf(value: unknown): OmpTurnUsage | undefined {
+  if (!isRecord(value)) return undefined;
+  const { input, output, cacheRead, cacheWrite } = value;
+  if (
+    typeof input !== "number" ||
+    !Number.isFinite(input) ||
+    input < 0 ||
+    typeof output !== "number" ||
+    !Number.isFinite(output) ||
+    output < 0 ||
+    typeof cacheRead !== "number" ||
+    !Number.isFinite(cacheRead) ||
+    cacheRead < 0 ||
+    typeof cacheWrite !== "number" ||
+    !Number.isFinite(cacheWrite) ||
+    cacheWrite < 0
+  ) {
+    return undefined;
+  }
+  return { input, output, cacheRead, cacheWrite };
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function sameOmpTurnUsage(
+  left: OmpTurnUsage | undefined,
+  right: OmpTurnUsage | undefined,
+): boolean {
+  return (
+    left === right ||
+    (left !== undefined &&
+      right !== undefined &&
+      left.input === right.input &&
+      left.output === right.output &&
+      left.cacheRead === right.cacheRead &&
+      left.cacheWrite === right.cacheWrite)
+  );
+}
+
 type ProjectedMessageMetadata = {
   readonly joinedAssistantEntryIds: readonly string[];
   readonly toolResultMatched: boolean | undefined;
+  readonly ompTurnUsage?: OmpTurnUsage;
+  readonly ompTurnDurationMs?: number;
+  readonly ompTurnTtftMs?: number;
 };
 
 function projectedMessageMetadata(
@@ -665,13 +730,60 @@ function projectedMessageMetadata(
   let segment: RuntimeMessage[] = [];
   const assistantEntryIds: string[] = [];
   const assistantToolCallIds = new Set<string>();
-  const flush = (): void => {
+  const flush = (finished: boolean): void => {
+    let assistantCount = 0;
+    let input = 0;
+    let output = 0;
+    let cacheRead = 0;
+    let cacheWrite = 0;
+    let usageComplete = true;
+    let durationMs = 0;
+    let durationComplete = true;
+    let ttftMs: number | undefined;
+    for (const record of segment) {
+      const message = record.message;
+      if (message.role !== "assistant") continue;
+      assistantCount += 1;
+      if (assistantCount === 1) ttftMs = nonNegativeFiniteNumber(message.ttft);
+      const usage = usageNumbersOf(message.usage);
+      if (usage === undefined) {
+        usageComplete = false;
+      } else {
+        input += usage.input;
+        output += usage.output;
+        cacheRead += usage.cacheRead;
+        cacheWrite += usage.cacheWrite;
+      }
+      const requestDuration = nonNegativeFiniteNumber(message.duration);
+      if (requestDuration === undefined) {
+        durationComplete = false;
+      } else {
+        durationMs += requestDuration;
+      }
+    }
+    const ompTurnUsage =
+      finished &&
+      assistantCount > 0 &&
+      usageComplete &&
+      Number.isFinite(input) &&
+      Number.isFinite(output) &&
+      Number.isFinite(cacheRead) &&
+      Number.isFinite(cacheWrite)
+        ? { input, output, cacheRead, cacheWrite }
+        : undefined;
+    const ompTurnDurationMs =
+      finished && assistantCount > 0 && durationComplete && Number.isFinite(durationMs)
+        ? durationMs
+        : undefined;
     for (const record of segment) {
       const message = record.message;
       result[record.key] = {
         joinedAssistantEntryIds: [...assistantEntryIds],
         toolResultMatched:
           message.role === "toolResult" ? assistantToolCallIds.has(message.toolCallId) : undefined,
+        ...(ompTurnUsage === undefined ? {} : { ompTurnUsage }),
+        ...(ompTurnDurationMs === undefined ? {} : { ompTurnDurationMs }),
+        ...(ttftMs === undefined ? {} : { ompTurnTtftMs: ttftMs }),
       };
     }
     segment = [];
@@ -682,7 +794,7 @@ function projectedMessageMetadata(
     const record = snapshot.messages[key];
     if (!record || isHiddenMessage(record.message)) continue;
     if (record.message.role !== "assistant" && record.message.role !== "toolResult") {
-      flush();
+      flush(true);
       continue;
     }
     segment.push(record);
@@ -691,7 +803,7 @@ function projectedMessageMetadata(
       for (const toolCallId of toolCallIds(record.message)) assistantToolCallIds.add(toolCallId);
     }
   }
-  flush();
+  flush(!snapshot.prompt.streaming);
   return result;
 }
 
@@ -773,6 +885,9 @@ class RuntimeMessageProjector {
         let unchanged =
           sameIds(previous.view.joinedAssistantEntryIds, projected.joinedAssistantEntryIds) &&
           (previous.view.previousAssistantUsage ?? null) === previousUsage &&
+          sameOmpTurnUsage(previous.view.ompTurnUsage, projected.ompTurnUsage) &&
+          previous.view.ompTurnDurationMs === projected.ompTurnDurationMs &&
+          previous.view.ompTurnTtftMs === projected.ompTurnTtftMs &&
           previous.view.toolResultMatched === projected.toolResultMatched &&
           sameIds(previous.view.stoppedToolCallIds, stopped) &&
           (previous.view.closesRow ?? false) === closesRow;
@@ -802,6 +917,9 @@ class RuntimeMessageProjector {
         joinedAssistantEntryIds: projected.joinedAssistantEntryIds,
         toolResultMatched: projected.toolResultMatched,
         stoppedToolCallIds: stopped,
+        ompTurnUsage: projected.ompTurnUsage,
+        ompTurnDurationMs: projected.ompTurnDurationMs,
+        ompTurnTtftMs: projected.ompTurnTtftMs,
         previousAssistantUsage: previousUsage,
         closesRow,
       };

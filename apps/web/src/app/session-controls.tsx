@@ -1,7 +1,7 @@
 import type { AppClient } from "@omp-app/client";
 import type { CapabilityMap, FolderPath, RpcSessionClient, ThreadId } from "@omp-app/contracts";
 import { RpcSessionPort } from "@omp-app/contracts";
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { ThinkingLevel } from "@/modules/D1/contract";
 import { ModelHubController, ModelHubPanel, openHubRoles } from "@/modules/D1/hub";
@@ -256,7 +256,20 @@ export function SessionStatusBar({
       limits: createUsageLimitsSource(client),
     };
   }, [client, store, threadId]);
-  return <ContextStatusBar context={ports.context} usage={ports.usage} limits={ports.limits} />;
+  const subscribeToStreaming = useCallback(
+    (listener: () => void) => store.subscribe(() => listener()),
+    [store],
+  );
+  const getStreaming = useCallback(() => store.getSnapshot().prompt.streaming, [store]);
+  const isStreaming = useSyncExternalStore(subscribeToStreaming, getStreaming, getStreaming);
+  return (
+    <ContextStatusBar
+      context={ports.context}
+      usage={ports.usage}
+      limits={ports.limits}
+      isStreaming={isStreaming}
+    />
+  );
 }
 
 function projection(store: OmpRuntimeStore, threadId: ThreadId) {

@@ -4,6 +4,7 @@ import { File } from "@/components/assistant-ui/elements/file";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { ENTER_FADE, isRecent } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import type { OmpTurnUsage } from "@/modules/R0/runtime";
 import { executionRecordOf } from "@/modules/U2/execution";
 import { MarkdownText } from "../markdown";
 import { ReasoningGroup } from "../reasoning";
@@ -16,6 +17,7 @@ import { fileMentionFilesOf } from "./file-mention";
 import { endingOf, MessageEndingNote } from "./message-ending";
 import { hasPastedBlock, PastedBlockText } from "./pasted-text";
 import { storeKeyOf } from "./store-key";
+
 export interface MessagePartsProps {
   readonly message: MessageState;
   readonly toolRenderers?: ToolRendererMap;
@@ -180,6 +182,93 @@ function fileMentionOf(message: MessageState): readonly FileMention[] | undefine
   return raw === undefined ? undefined : fileMentionFilesOf(raw);
 }
 
+interface TurnUsageFields {
+  readonly usage: OmpTurnUsage | undefined;
+  readonly durationMs: number | undefined;
+  readonly ttftMs: number | undefined;
+  readonly timestamp: number | undefined;
+}
+
+function turnUsageFieldsOf(message: MessageState): TurnUsageFields {
+  const custom = message.metadata.custom;
+  const raw: unknown = custom.ompTurnUsage;
+  let usage: OmpTurnUsage | undefined;
+  if (typeof raw === "object" && raw !== null) {
+    const candidate = raw as Partial<OmpTurnUsage>;
+    if (
+      typeof candidate.input === "number" &&
+      Number.isFinite(candidate.input) &&
+      typeof candidate.output === "number" &&
+      Number.isFinite(candidate.output) &&
+      typeof candidate.cacheRead === "number" &&
+      Number.isFinite(candidate.cacheRead) &&
+      typeof candidate.cacheWrite === "number" &&
+      Number.isFinite(candidate.cacheWrite)
+    ) {
+      usage = candidate as OmpTurnUsage;
+    }
+  }
+  const duration = custom.ompTurnDurationMs;
+  const ttft = custom.ompTurnTtftMs;
+  return {
+    usage,
+    durationMs: typeof duration === "number" ? duration : undefined,
+    ttftMs: typeof ttft === "number" ? ttft : undefined,
+    timestamp: message.createdAt?.getTime(),
+  };
+}
+
+/** The dim, wrapping usage strip under a completed assistant response. */
+export function formatTurnUsage({
+  usage,
+  durationMs,
+  ttftMs,
+  timestamp,
+}: TurnUsageFields): readonly string[] | null {
+  if (!usage) return null;
+  const input = usage.input + usage.cacheWrite;
+  const output = usage.output;
+  const cache = usage.cacheRead;
+  if (input + output + cache === 0) return null;
+
+  const parts: string[] = [];
+  if (timestamp !== undefined && Number.isFinite(timestamp) && timestamp > 0) {
+    const date = new Date(timestamp);
+    parts.push(
+      `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`,
+    );
+  }
+  parts.push(`in ${input.toLocaleString()}`, `out ${output.toLocaleString()}`);
+  if (cache > 0) parts.push(`cache ${cache.toLocaleString()}`);
+  if (ttftMs !== undefined && Number.isFinite(ttftMs) && ttftMs > 0) {
+    parts.push(`first token ${(ttftMs / 1_000).toFixed(1)}s`);
+  }
+  if (durationMs !== undefined && Number.isFinite(durationMs) && durationMs > 100 && output > 0) {
+    parts.push(`${((output / durationMs) * 1_000).toFixed(1)} tokens/s`);
+  }
+  return parts;
+}
+
+function TurnUsageRow({ fields }: { readonly fields: TurnUsageFields }): ReactNode {
+  const parts = formatTurnUsage(fields);
+  if (!parts) return null;
+  const label = `Turn usage: ${parts.join(" · ")}`;
+  return (
+    <output
+      aria-label={label}
+      className="text-muted-foreground mt-2 flex min-w-0 flex-wrap gap-x-2 text-xs font-mono"
+      data-slot="u1-turn-usage"
+      title={label}
+    >
+      {parts.map((part) => (
+        <span key={part} className="whitespace-nowrap">
+          {part}
+        </span>
+      ))}
+    </output>
+  );
+}
+
 /** Renders one assistant-ui message with U1's role grammar and U3's tool boundary. */
 export function MessageParts({
   message,
@@ -247,6 +336,9 @@ export function MessageParts({
         )}
         {ending !== undefined && <MessageEndingNote ending={ending} />}
         {extra}
+        {role === "assistant" && message.status?.type !== "running" ? (
+          <TurnUsageRow fields={turnUsageFieldsOf(message)} />
+        ) : null}
       </div>
       {actions}
     </MessagePrimitive.Root>

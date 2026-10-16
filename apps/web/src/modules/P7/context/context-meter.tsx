@@ -66,7 +66,7 @@ export function ContextMeter({ port }: { readonly port: ContextUsagePort }) {
                   : "Auto-compaction unavailable"}
             </span>
             {snapshot.tokensPerSecond !== null ? (
-              <span>{snapshot.tokensPerSecond.toFixed(1)} tok/s</span>
+              <span>{snapshot.tokensPerSecond.toFixed(1)} tokens/s</span>
             ) : null}
           </div>
         </div>

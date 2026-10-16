@@ -1,6 +1,7 @@
 export type {
   OmpRuntime,
   OmpRuntimeOptions,
+  OmpTurnUsage,
   PromptDelivery,
   PromptIntent,
   PromptMode,

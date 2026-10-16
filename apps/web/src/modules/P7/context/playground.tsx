@@ -87,6 +87,7 @@ export function ContextUsagePlayground() {
         <div className="border-border rounded-xl border px-3 py-2" data-testid="p7-status-line">
           <ContextStatusBar
             context={contextPort}
+            isStreaming={true}
             usage={usagePort}
             limits={{
               read: async () => ({
