@@ -42,6 +42,8 @@ import {
   applyStatusLabel,
   CONFLICT_BUTTON_LABELS,
   environmentOverrideText,
+  SETTINGS_CONFLICT_DESCRIPTION,
+  SETTINGS_CONFLICT_HEADING,
   SettingsSection,
   type SettingsSectionDescriptor,
   type StagedSettings,
@@ -248,7 +250,7 @@ function phaseLabel(
     case "saving":
       return "Saving changes…";
     case "conflict":
-      return "Settings changed elsewhere";
+      return SETTINGS_CONFLICT_HEADING;
     case "error":
       return "Settings unavailable";
     default:
@@ -405,9 +407,9 @@ function SettingsRuntimeEditor({
       />
       {snapshot.conflict ? (
         <Section
-          heading="Settings changed elsewhere"
+          heading={SETTINGS_CONFLICT_HEADING}
           headingLevel={3}
-          description="Another change arrived while this section was open. Reload the latest values or keep your edits and save again."
+          description={SETTINGS_CONFLICT_DESCRIPTION}
         >
           <Toolbar ariaLabel="Conflict actions">
             <Button

@@ -1,8 +1,17 @@
+import { Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AppearancePreview } from "../appearance/preview";
 import { ShowImagesSelector, ThemeSelector } from "../appearance/selectors";
-import { SettingsSection, saveLocationText, UnsavedSettingsNotice } from "../settings-kit";
+import {
+  applyStatusLabel,
+  CONFLICT_BUTTON_LABELS,
+  SETTINGS_CONFLICT_DESCRIPTION,
+  SETTINGS_CONFLICT_HEADING,
+  SettingsSection,
+  saveLocationText,
+  UnsavedSettingsNotice,
+} from "../settings-kit";
 import type {
   AppearanceSettingsActions,
   AppearanceSettingsActiveSectionModel,
@@ -16,10 +25,6 @@ export type AppearanceSettingsViewProps = {
   /** Hide the standalone page heading when this view is embedded in another settings surface. */
   readonly showHeader?: boolean;
 };
-
-function statusLabel(status: string): string {
-  return status.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
 
 /** The tab an arrow, Home or End key moves to; wraps at either end. Undefined for other keys. */
 function appearanceTabTarget(key: string, index: number, count: number): number | undefined {
@@ -52,7 +57,11 @@ function ActiveSectionView({
         staged={section.staged}
         validation={section.validation}
         disabled={section.disabled}
-        applyStatus={section.applyStatus ? statusLabel(section.applyStatus) : undefined}
+        applyStatus={
+          section.conflict || !section.applyStatus
+            ? undefined
+            : applyStatusLabel(section.applyStatus)
+        }
         unsavedKeys={section.unsavedKeys}
         onStage={(staged) => actions.onStage(section.descriptor.id, staged)}
         onPreview={actions.onPreview}
@@ -61,29 +70,29 @@ function ActiveSectionView({
         onCancel={() => actions.onCancel(section.descriptor.id)}
       />
       {section.conflict ? (
-        <div
-          className="border-warning/50 bg-warning-surface rounded-lg border px-4 py-4"
-          role="alert"
-        >
-          <p className="text-warning-surface-foreground text-sm">
-            Another settings writer changed {section.conflictLabels.join(", ")}.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => actions.onConflictChoice(section.descriptor.id, "reload")}
-            >
-              Reload latest
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => actions.onConflictChoice(section.descriptor.id, "keep-mine")}
-            >
-              Keep my edits
-            </Button>
-          </div>
+        <div role="alert">
+          <Section
+            heading={SETTINGS_CONFLICT_HEADING}
+            headingLevel={3}
+            description={SETTINGS_CONFLICT_DESCRIPTION}
+          >
+            <Toolbar ariaLabel="Conflict actions" alignment="start">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => actions.onConflictChoice(section.descriptor.id, "reload")}
+              >
+                {CONFLICT_BUTTON_LABELS.reload}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => actions.onConflictChoice(section.descriptor.id, "keep-mine")}
+              >
+                {CONFLICT_BUTTON_LABELS.keepMine}
+              </Button>
+            </Toolbar>
+          </Section>
         </div>
       ) : section.unsavedLabels.length > 0 ? (
         <UnsavedSettingsNotice labels={section.unsavedLabels} reason={section.error ?? ""} />

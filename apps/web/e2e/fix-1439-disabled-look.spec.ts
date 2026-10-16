@@ -10,7 +10,7 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
  * also holds a structured editor (Policy 1) beside its mode dropdown.
  */
 
-const CONFLICT = "Another change arrived for Thinking Level";
+const CONFLICT = "Settings changed elsewhere";
 const APPROVAL_CONFLICT = "Settings changed elsewhere";
 // The Tool Approval section starts with one per-tool policy, so its structured editor has a row to draw.
 const APPROVAL_START = "tools:\n  approvalMode: yolo\n  approval:\n    bash: allow\n";

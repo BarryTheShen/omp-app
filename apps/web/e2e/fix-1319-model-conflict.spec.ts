@@ -5,11 +5,11 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
 
 /**
  * #1319 on real omp: the Model tab's Thinking section. Another writer changes the same setting, so the section
- * holds a conflict: its fields and Save are disabled until the person chooses Reload or Keep mine. A Save pressed
- * twice writes once, so the person's own write never shows up as a conflict.
+ * holds a conflict: its fields and Save are disabled until the person chooses Reload latest or Keep my edits. A Save
+ * pressed twice writes once, so the person's own write never shows up as a conflict.
  */
 
-const CONFLICT = "Another change arrived for Thinking Level";
+const CONFLICT = "Settings changed elsewhere";
 
 type ConflictView = {
   readonly section: Locator;
@@ -66,11 +66,18 @@ async function reachConflict(page: Page, agentDir: string): Promise<ConflictView
   await save.evaluate((button) => (button as HTMLButtonElement).click());
   const conflict = section.getByRole("alert").filter({ hasText: CONFLICT });
   await expect(conflict).toBeVisible({ timeout: 15_000 });
+  await expect(conflict.getByRole("heading", { name: CONFLICT, exact: true })).toHaveCount(1);
+  await expect(
+    conflict.getByText(
+      "Another change arrived while this section was open. Reload the latest values or keep your edits and save again.",
+      { exact: true },
+    ),
+  ).toHaveCount(1);
   return { section, level, save, conflict };
 }
 
 realTest(
-  "a Thinking Level another writer changed is a conflict: fields and Save wait for a choice, then Keep mine saves",
+  "a Thinking Level another writer changed is a conflict: fields and Save wait for a choice, then Keep my edits saves",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(240_000);
     const page = await realApp.open({

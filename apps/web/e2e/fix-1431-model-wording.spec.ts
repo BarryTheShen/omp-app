@@ -8,7 +8,7 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
  * settings tab does: Reload latest and Keep my edits. The Model tab said Reload and Keep mine.
  */
 
-const CONFLICT = "Another change arrived for Thinking Level";
+const CONFLICT = "Settings changed elsewhere";
 
 async function openModelThinking(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -44,6 +44,13 @@ realTest(
     const page = await realApp.open();
     await page.setViewportSize({ width: 1280, height: 1100 });
     const section = await reachConflict(page, realApp.agentDir);
+    await expect(section.getByRole("heading", { name: CONFLICT, exact: true })).toHaveCount(1);
+    await expect(
+      section.getByText(
+        "Another change arrived while this section was open. Reload the latest values or keep your edits and save again.",
+        { exact: true },
+      ),
+    ).toHaveCount(1);
     const conflict = section.getByRole("alert").filter({ hasText: CONFLICT });
     await expect(
       conflict.getByRole("button", { name: "Reload latest", exact: true }),

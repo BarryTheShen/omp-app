@@ -269,13 +269,13 @@ describe("D1 model settings sections", () => {
     expect(screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
   });
 
-  test("the fields and Save are disabled in a conflict, which names the setting and keeps its choices", () => {
+  test("a conflict with an earlier apply status shows one shared card and keeps its choices", () => {
     const descriptor = modelSettingsSections[0];
     if (!descriptor) throw new Error("missing thinking section");
     render(
       <ModelSettingsSection
         descriptor={descriptor}
-        runtime={runtime(descriptor, "conflict", {}, thinkingEdit)}
+        runtime={runtime(descriptor, "conflict", { applyStatus: "restart-required" }, thinkingEdit)}
       />,
     );
     expect(screen.getByRole("combobox", { name: "Thinking Level" }).hasAttribute("disabled")).toBe(
@@ -290,6 +290,13 @@ describe("D1 model settings sections", () => {
     expect(screen.getByRole("button", { name: "Keep my edits" }).hasAttribute("disabled")).toBe(
       false,
     );
-    expect(screen.getByText(/Another change arrived for Thinking Level/)).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "Settings changed elsewhere" })).toHaveLength(1);
+    expect(
+      screen.getByText(
+        "Another change arrived while this section was open. Reload the latest values or keep your edits and save again.",
+        { exact: true },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Restart required", { exact: true })).toBeNull();
   });
 });

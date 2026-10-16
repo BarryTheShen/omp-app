@@ -34,9 +34,12 @@ import type {
   ValidationResult,
 } from "../../S1/settings-kit";
 import {
+  CONFLICT_BUTTON_LABELS,
   effectiveEntry,
   provenanceLabel,
   readSection,
+  SETTINGS_CONFLICT_DESCRIPTION,
+  SETTINGS_CONFLICT_HEADING,
   SettingsSection,
   saveLocationText,
   settingLabels,
@@ -620,8 +623,8 @@ function ContextSettingsSectionView({
       {state.conflict ? (
         <div role="alert">
           <Section
-            description="Another change arrived while this section was open. Reload the latest values or keep your edits and save again."
-            heading="Settings changed elsewhere"
+            description={SETTINGS_CONFLICT_DESCRIPTION}
+            heading={SETTINGS_CONFLICT_HEADING}
             headingLevel={3}
           >
             <Toolbar ariaLabel="Conflict actions" alignment="start">
@@ -631,7 +634,7 @@ function ContextSettingsSectionView({
                 variant="outline"
                 onClick={() => actions.onConflictChoice("reload")}
               >
-                Reload latest
+                {CONFLICT_BUTTON_LABELS.reload}
               </Button>
               <Button
                 type="button"
@@ -639,7 +642,7 @@ function ContextSettingsSectionView({
                 variant="outline"
                 onClick={() => actions.onConflictChoice("keep-mine")}
               >
-                Keep my edits
+                {CONFLICT_BUTTON_LABELS.keepMine}
               </Button>
             </Toolbar>
           </Section>

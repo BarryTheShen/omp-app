@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, test } from "vitest";
 import { AppearanceSettingsView, useAppearanceSettingsController } from "../../../S1/settings";
 import type {
+  ApplyStatus,
   ConfigChangeSource,
   ConfigStoreClient,
   SettingsSectionDescriptor,
@@ -94,12 +95,14 @@ function AppearanceSettingsHarness({
   initialSectionId,
   previewPalette,
   applyThemePreview,
+  applyStatus,
 }: {
   readonly client: ConfigStoreClient;
   readonly appearanceSections?: readonly SettingsSectionDescriptor[];
   readonly initialSectionId?: string;
   readonly previewPalette?: "light" | "dark";
   readonly applyThemePreview?: boolean;
+  readonly applyStatus?: ApplyStatus;
 }) {
   const { model, actions } = useAppearanceSettingsController({
     appearanceSections,
@@ -111,7 +114,11 @@ function AppearanceSettingsHarness({
     layer: "global",
     previewPalette,
   });
-  return <AppearanceSettingsView model={model} actions={actions} onClose={() => undefined} />;
+  const viewModel =
+    applyStatus === undefined || model.activeSection === undefined
+      ? model
+      : { ...model, activeSection: { ...model.activeSection, applyStatus } };
+  return <AppearanceSettingsView model={viewModel} actions={actions} onClose={() => undefined} />;
 }
 
 describe("S1.3 appearance settings surface", () => {
@@ -147,6 +154,79 @@ describe("S1.3 appearance settings surface", () => {
     expect(savedTheme.value).toBe("custom-dark");
   });
 
+  test("a conflict uses the shared card without a lingering apply status", async () => {
+    const composerShape: ConfigEntry = {
+      key: "composer.shape",
+      secret: false,
+      value: "built-in",
+      source: "global",
+      overrides: [],
+    };
+    const state: FakeConfig = {
+      entries: [...DEFAULT_ENTRIES, composerShape],
+      revision: "revision-1",
+      writes: [],
+      failNextList: false,
+    };
+    render(
+      <AppearanceSettingsHarness
+        appearanceSections={[COMPOSER_SETTINGS_SECTION]}
+        applyThemePreview={false}
+        client={fakeClient(state)}
+        initialSectionId={COMPOSER_SETTINGS_SECTION.id}
+        previewPalette="light"
+      />,
+    );
+
+    const shape = await screen.findByRole("textbox", { name: "Composer Shape" });
+    fireEvent.change(shape, { target: { value: "mine" } });
+    const save = screen.getByRole("button", { name: "Save changes" });
+    await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(save);
+    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
+
+    fireEvent.change(shape, { target: { value: "mine again" } });
+    state.entries = state.entries.map((entry) =>
+      entry.key === "composer.shape" ? { ...entry, value: "theirs" } : entry,
+    );
+    state.revision = "revision-external";
+    await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(save);
+
+    expect(await screen.findByRole("heading", { name: "Settings changed elsewhere" })).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Another change arrived while this section was open. Reload the latest values or keep your edits and save again.",
+        { exact: true },
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Keep my edits" })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "Settings changed elsewhere" })).toHaveLength(1);
+    expect(screen.queryByText("Applied", { exact: true })).toBeNull();
+  });
+
+  test("uses the shared plain words for an unavailable apply status", async () => {
+    const state: FakeConfig = {
+      entries: [...DEFAULT_ENTRIES],
+      revision: "revision-1",
+      writes: [],
+      failNextList: false,
+    };
+    render(
+      <AppearanceSettingsHarness
+        appearanceSections={[COMPOSER_SETTINGS_SECTION]}
+        applyStatus="unsupported"
+        client={fakeClient(state)}
+        initialSectionId={COMPOSER_SETTINGS_SECTION.id}
+        previewPalette="light"
+      />,
+    );
+
+    await screen.findByRole("textbox", { name: "Composer Shape" });
+    expect(screen.getByText("Unavailable", { exact: true })).toBeTruthy();
+    expect(screen.queryByText("Unsupported", { exact: true })).toBeNull();
+  });
   test("surfaces a ConfigStore read failure and recovers through Retry", async () => {
     const state: FakeConfig = {
       entries: [...DEFAULT_ENTRIES],

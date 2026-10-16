@@ -1,10 +1,12 @@
 import { useEffect } from "react";
-import { InlineError } from "@/components/blocks";
+import { InlineError, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import {
   applyStatusLabel,
   CONFLICT_BUTTON_LABELS,
   environmentOverrideText,
+  SETTINGS_CONFLICT_DESCRIPTION,
+  SETTINGS_CONFLICT_HEADING,
   SettingsSection,
   type SettingsSectionDescriptor,
   type StagedSettings,
@@ -26,8 +28,6 @@ function phaseLabel(
       return "Loading settings…";
     case "saving":
       return "Saving…";
-    case "conflict":
-      return "Conflict — choose how to continue";
     case "error":
       return "Settings unavailable";
     default:
@@ -100,11 +100,13 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
     ? applyStatusLabel(snapshot.applyStatus)
     : phaseLabel(snapshot.phase);
   const status =
-    notice === undefined
-      ? applied
-      : snapshot.applyStatus && snapshot.applyStatus !== "applied"
-        ? applyStatusLabel(snapshot.applyStatus)
-        : undefined;
+    snapshot.phase === "conflict"
+      ? undefined
+      : notice === undefined
+        ? applied
+        : snapshot.applyStatus && snapshot.applyStatus !== "applied"
+          ? applyStatusLabel(snapshot.applyStatus)
+          : undefined;
 
   return (
     <div
@@ -125,33 +127,31 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
         onCancel={() => runtime.cancel()}
       />
       {snapshot.phase === "conflict" && snapshot.conflict ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
-        >
-          <span className="text-warning-foreground">
-            Another change arrived for{" "}
-            {settingLabels(descriptor, snapshot.conflict.changedKeys).join(", ")}. Reload it or keep
-            your edits and save again.
-          </span>
-          <span className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => runtime.resolveConflict("reload")}
-            >
-              {CONFLICT_BUTTON_LABELS.reload}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => runtime.resolveConflict("keep-mine")}
-            >
-              {CONFLICT_BUTTON_LABELS.keepMine}
-            </Button>
-          </span>
+        <div role="alert">
+          <Section
+            heading={SETTINGS_CONFLICT_HEADING}
+            headingLevel={3}
+            description={SETTINGS_CONFLICT_DESCRIPTION}
+          >
+            <Toolbar ariaLabel="Conflict actions" alignment="start">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => runtime.resolveConflict("reload")}
+              >
+                {CONFLICT_BUTTON_LABELS.reload}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => runtime.resolveConflict("keep-mine")}
+              >
+                {CONFLICT_BUTTON_LABELS.keepMine}
+              </Button>
+            </Toolbar>
+          </Section>
         </div>
       ) : unsavedLabels.length > 0 ? (
         <UnsavedSettingsNotice labels={unsavedLabels} reason={snapshot.error?.message ?? ""} />

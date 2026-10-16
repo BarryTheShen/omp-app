@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { useState } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import {
+  applyStatusLabel,
+  CONFLICT_BUTTON_LABELS,
   type ConfigSnapshot,
   type ConfigStoreClient,
   commit,
@@ -722,5 +724,24 @@ describe("S1 environment overrides after a save", () => {
     expect(environmentOverrideText({ variables: [] })).toBe(
       "Saved, but omp still uses the value from the environment until the variable is removed.",
     );
+  });
+});
+describe("shared settings status and conflict wording", () => {
+  test("keeps each apply status and conflict action's words stable", () => {
+    expect(
+      (
+        ["applied", "session-only", "reload-required", "restart-required", "unsupported"] as const
+      ).map(applyStatusLabel),
+    ).toEqual([
+      "Applied",
+      "This session only",
+      "Reload required",
+      "Restart required",
+      "Unavailable",
+    ]);
+    expect(CONFLICT_BUTTON_LABELS).toEqual({
+      reload: "Reload latest",
+      keepMine: "Keep my edits",
+    });
   });
 });

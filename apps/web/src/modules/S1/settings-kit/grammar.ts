@@ -709,6 +709,10 @@ export function applyStatusLabel(status: ApplyStatus): string {
       return "Applied";
   }
 }
+/** Shared wording for an external settings conflict. */
+export const SETTINGS_CONFLICT_HEADING = "Settings changed elsewhere";
+export const SETTINGS_CONFLICT_DESCRIPTION =
+  "Another change arrived while this section was open. Reload the latest values or keep your edits and save again.";
 
 /** The two buttons of a settings conflict: one set, used by every settings tab. */
 export const CONFLICT_BUTTON_LABELS = {
