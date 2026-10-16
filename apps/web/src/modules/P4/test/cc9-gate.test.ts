@@ -2,6 +2,8 @@ import type { CapabilityMap } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import {
   FORKED_THREAD_ID,
+  RECORDED_BACKGROUND_ONLY_FORK_REPLY,
+  RECORDED_BUSY_FORK_REPLY,
   RECORDED_EARLIER_ENTRY_ID,
   RECORDED_THREAD_ID,
   type RecordedOmp,
@@ -14,9 +16,8 @@ import { shippedSources } from "./shipped";
 /*
  * CC9 on P4's side. A conversation rewind or fork is a typed command on omp's session. It is kept apart from
  * assistant-ui message branches (P3) and from workspace snapshots (P5), and it never sends a prompt, writes a
- * file or restores a workspace. It renders nothing: it reads the transition port and the shipped text. Not covered
- * here: P5's snapshot ids against EntryId (P5.6, issue #363, runs on W7), and omp's own reply when a fork is refused
- * while a background job runs (follow-up #1717).
+ * file or restores a workspace. Its fake send port replays the captured running-turn refusal and background-only
+ * fork acceptance from `recorded-tree-replies.json` through P4's transition code.
  */
 
 /** Both transitions are available. `transitions.ts` gates on these two keys. */
@@ -72,9 +73,7 @@ describe("CC9: a conversation rewind or fork is a typed session command, never a
     ]);
   });
 
-  // Follow-up #1717 records omp's own reply to a fork refused while a background job runs. This check covers
-  // only P4's refusal, which comes before omp is called.
-  test("a fork refused while the conversation is busy sends nothing to omp", async () => {
+  test("P4 refuses a fork before sending while the selected conversation is busy", async () => {
     const omp = recordedOmp();
 
     await expect(
@@ -84,6 +83,41 @@ describe("CC9: a conversation rewind or fork is a typed session command, never a
       }),
     ).rejects.toMatchObject({ appError: { code: "conflict" } });
     expect(omp.calls).toEqual([]);
+  });
+
+  test("P4 preserves omp's captured session_busy refusal during a running turn", async () => {
+    const omp = recordedOmp({ busyFork: true });
+    await expect(
+      transitionsOn(omp).fork({
+        threadId: RECORDED_THREAD_ID,
+        entryId: RECORDED_EARLIER_ENTRY_ID,
+      }),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "omp_error",
+        message: RECORDED_BUSY_FORK_REPLY.error,
+        omp: RECORDED_BUSY_FORK_REPLY,
+      },
+    });
+    expect(omp.calls).toEqual([{ threadId: RECORDED_THREAD_ID, type: "fork" }]);
+  });
+
+  test("P4 accepts omp's captured fork reply while only a background job runs", async () => {
+    const omp = recordedOmp({ backgroundOnlyFork: true });
+    const result = await transitionsOn(omp).fork({
+      threadId: RECORDED_THREAD_ID,
+      entryId: RECORDED_EARLIER_ENTRY_ID,
+    });
+    expect(result).toMatchObject({
+      threadId: FORKED_THREAD_ID,
+      cancelled: RECORDED_BACKGROUND_ONLY_FORK_REPLY.cancelled,
+      reloaded: true,
+      sourceRetained: true,
+    });
+    expect(omp.calls).toEqual([
+      { threadId: RECORDED_THREAD_ID, type: "fork" },
+      { threadId: RECORDED_THREAD_ID, type: "get_state" },
+    ]);
   });
 
   test("branch and fork refuse when their capability is unavailable, and send nothing to omp", async () => {

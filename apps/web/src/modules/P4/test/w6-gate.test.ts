@@ -1,7 +1,13 @@
 import type { AppClient } from "@omp-app/client";
 import type { CapabilityMap, EntryId, FolderPath, ThreadId } from "@omp-app/contracts";
-import { checkScrubbed, SessionEntryHead } from "@omp-app/contracts";
+import {
+  checkScrubbed,
+  EntryId as EntryIdSchema,
+  parseFixture,
+  SessionEntryHead,
+} from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import recordedTreeCapture from "@/modules/D4/copy/fixtures/real-chat-p4-tree.fixture.jsonl?raw";
 import type { SessionHistoryLoader } from "@/modules/R0/history/history";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import { createSelectedThreadHistoryController } from "@/modules/R1/history";
@@ -11,28 +17,41 @@ import {
   FORKED_LABEL_ID,
   FORKED_SESSION_FILE,
   FORKED_THREAD_ID,
+  FORKED_WITHOUT_LABEL_SESSION_FILE,
+  FORKED_WITHOUT_LABEL_THREAD_ID,
+  RECORDED_BACKGROUND_ONLY_FORK_REPLY,
   RECORDED_BEFORE_EARLIER_ID,
+  RECORDED_BUSY_FORK_REPLY,
   RECORDED_EARLIER_ENTRY_ID,
   RECORDED_ENTRIES,
+  RECORDED_FORK_REPLY,
+  RECORDED_FORK_WITH_LABEL_ENTRIES_REPLY,
+  RECORDED_FORK_WITH_LABEL_TREE_REPLY,
+  RECORDED_FORK_WITHOUT_LABEL_ENTRIES_REPLY,
+  RECORDED_FORK_WITHOUT_LABEL_REPLY,
+  RECORDED_FORK_WITHOUT_LABEL_TREE_REPLY,
+  RECORDED_GET_ENTRIES_AFTER_REPLY,
+  RECORDED_GET_ENTRIES_REPLY,
+  RECORDED_GET_TREE_REPLY,
   RECORDED_LABEL_TEXT,
   RECORDED_LEAF_ID,
   RECORDED_SESSION_FILE,
   RECORDED_THREAD_ID,
+  RECORDED_UNKNOWN_SINCE_ID,
+  RECORDED_UNKNOWN_SINCE_REPLY,
   type RecordedOmp,
   recordedOmp,
   recordedStore,
   SESSIONS_BUCKET,
 } from "../fixtures/recorded-tree";
-import { OmpSessionTreePort } from "../history";
+import { IncrementalHistoryCursor, OmpSessionTreePort } from "../history";
 import { createP4LabelsViewModel } from "../labels/model";
 import { createP4TreeSelectorViewModel } from "../selector/tree-selector-model";
 import { createOmpConversationTransitionPort } from "../transitions";
 
 /*
- * The W6 gate for P4 at the model level: the recorded tree in ../fixtures/recorded-tree.ts, a fake omp that answers
- * by omp's rules (cited there), and P4's adapter, transition port and view models. It renders no component and saves
- * no screenshot. The real-omp leg (a real per-folder session driven through the app) is not here: P4.6 owns no e2e
- * spec, so it is follow-up #1718.
+ * The W6 model leg uses omp replies captured with FixtureRecorder and P4's history, transition and view-model code.
+ * The separate real-omp browser leg is `apps/web/e2e/p4-6-w6-real.spec.ts` (#1718).
  */
 
 /** Both transitions are available. `transitions.ts` gates on these two keys. */
@@ -129,16 +148,70 @@ function transitionsOn(
 }
 
 describe("W6, at the model level: a recorded tree lists its entries, selects an earlier message, forks without touching the source, keeps labels and reloads the selected head", () => {
-  test("the recorded entries have the head fields the app reads, are scrubbed, and form one chain", () => {
+  test("loads the scrubbed live omp capture with its release and scenario tags", () => {
+    const parsed = parseFixture(recordedTreeCapture);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error(parsed.error.message);
+    expect(parsed.value.header.omp).toMatchObject({
+      version: "18.8.9",
+      commit: "fa5ff4a3a977a28b93d025f4cf50f046e019f18c",
+    });
+    expect(parsed.value.header.tags).toEqual(
+      expect.arrayContaining(["running-turn", "background-only"]),
+    );
+  });
+  test("every reply in the replies bundle is exactly the response omp recorded in the capture", () => {
+    const parsed = parseFixture(recordedTreeCapture);
+    if (!parsed.ok) throw new Error(parsed.error.message);
+    const sent = new Map<string, string>();
+    const answered = new Map<string, Record<string, unknown>>();
+    for (const frame of parsed.value.frames) {
+      const body = JSON.parse(frame.line) as Record<string, unknown>;
+      if (typeof body.id !== "string") continue;
+      if (frame.dir === "stdin" && typeof body.type === "string") sent.set(body.id, body.type);
+      if (frame.dir === "stdout" && body.type === "response") answered.set(body.id, body);
+    }
+    const data = (id: string, command: string): unknown => {
+      expect(sent.get(id)).toBe(command);
+      return answered.get(id)?.data;
+    };
+    const refusal = (id: string, command: string): unknown => {
+      expect(sent.get(id)).toBe(command);
+      const { error, code } = answered.get(id) ?? {};
+      return { command, error, code };
+    };
+    expect(RECORDED_GET_ENTRIES_REPLY).toEqual(data("rpc-3", "get_entries"));
+    expect(RECORDED_GET_TREE_REPLY).toEqual(data("rpc-4", "get_tree"));
+    expect(RECORDED_GET_ENTRIES_AFTER_REPLY).toEqual(data("rpc-5", "get_entries"));
+    expect(RECORDED_UNKNOWN_SINCE_REPLY).toEqual(refusal("rpc-6", "get_entries"));
+    expect(RECORDED_FORK_WITHOUT_LABEL_REPLY).toEqual(data("rpc-7", "fork"));
+    expect(RECORDED_FORK_WITHOUT_LABEL_ENTRIES_REPLY).toEqual(data("rpc-8", "get_entries"));
+    expect(RECORDED_FORK_WITHOUT_LABEL_TREE_REPLY).toEqual(data("rpc-9", "get_tree"));
+    expect(RECORDED_FORK_REPLY).toEqual(data("rpc-11", "fork"));
+    expect(RECORDED_FORK_WITH_LABEL_ENTRIES_REPLY).toEqual(data("rpc-12", "get_entries"));
+    expect(RECORDED_FORK_WITH_LABEL_TREE_REPLY).toEqual(data("rpc-13", "get_tree"));
+    expect(RECORDED_BUSY_FORK_REPLY).toEqual(refusal("rpc-16", "fork"));
+    expect(RECORDED_BACKGROUND_ONLY_FORK_REPLY).toEqual(data("rpc-19", "fork"));
+  });
+  test("the captured entries have valid heads, a message chain, and a label side entry", () => {
     expect(checkScrubbed(JSON.stringify(RECORDED_ENTRIES))).toEqual([]);
-    for (const path of [RECORDED_SESSION_FILE, FORKED_SESSION_FILE, SESSIONS_BUCKET]) {
+    for (const path of [
+      RECORDED_SESSION_FILE,
+      FORKED_SESSION_FILE,
+      FORKED_WITHOUT_LABEL_SESSION_FILE,
+      SESSIONS_BUCKET,
+    ]) {
       expect(checkScrubbed(path)).toEqual([]);
     }
     expect(RECORDED_ENTRIES.every((entry) => SessionEntryHead.safeParse(entry).success)).toBe(true);
-    expect(RECORDED_ENTRIES.filter((entry) => entry.parentId === null)).toHaveLength(1);
-    for (const [index, entry] of RECORDED_ENTRIES.slice(1).entries()) {
-      expect(entry.parentId).toBe(RECORDED_ENTRIES[index]?.id);
+    const messages = RECORDED_ENTRIES.filter((entry) => entry.type === "message");
+    expect(messages.filter((entry) => entry.parentId === null)).toHaveLength(1);
+    for (const [index, entry] of messages.slice(1).entries()) {
+      expect(entry.parentId).toBe(messages[index]?.id);
     }
+    const label = RECORDED_ENTRIES.find((entry) => entry.type === "label");
+    expect(label?.parentId).toBe(RECORDED_EARLIER_ENTRY_ID);
+    expect(label?.targetId).toBe(RECORDED_EARLIER_ENTRY_ID);
   });
 
   test("lists the recorded entries in append order, and after a durable cursor lists only the entries after it", async () => {
@@ -162,6 +235,29 @@ describe("W6, at the model level: a recorded tree lists its entries, selects an 
       RECORDED_ENTRIES.slice(earlierIndex + 1).map((entry) => entry.id),
     );
   });
+  test("P4 history preserves the captured unknown_since error and reloads a stale cursor", async () => {
+    const port = new OmpSessionTreePort({ send: recordedOmp().send });
+    await expect(
+      port.loadAfter(RECORDED_THREAD_ID, RECORDED_UNKNOWN_SINCE_ID),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "omp_error",
+        omp: RECORDED_UNKNOWN_SINCE_REPLY,
+      },
+    });
+
+    const omp = recordedOmp({ unknownSince: true });
+    const cursor = new IncrementalHistoryCursor({
+      port: new OmpSessionTreePort({ send: omp.send }),
+      pageSize: 10,
+    });
+    await cursor.loadNewest(RECORDED_THREAD_ID);
+    const refreshed = await cursor.loadNewer(RECORDED_THREAD_ID);
+    expect(refreshed.entries.map((entry) => entry.id)).toEqual(
+      RECORDED_ENTRIES.map((entry) => entry.id),
+    );
+    expect(refreshed.error).toBeNull();
+  });
 
   test("reads the tree with its leaf, the children omp recorded, the label omp resolved, and the session file", async () => {
     const port = new OmpSessionTreePort({
@@ -183,7 +279,7 @@ describe("W6, at the model level: a recorded tree lists its entries, selects an 
     ]);
     const labelled = nodeFor(snapshot.tree, RECORDED_EARLIER_ENTRY_ID);
     expect(labelled?.label?.text).toBe(RECORDED_LABEL_TEXT);
-    expect(labelled?.children.map((child) => child.entry.type)).toEqual(["label"]);
+    expect(labelled?.children.map((child) => child.entry.type)).toEqual(["label", "message"]);
     expect(nodeFor(snapshot.tree, RECORDED_LEAF_ID)?.children).toEqual([]);
   });
 
@@ -252,6 +348,24 @@ describe("W6, at the model level: a recorded tree lists its entries, selects an 
     const forked = await port.readTree(FORKED_THREAD_ID);
     expect(forked.leafId).toBe(FORKED_LABEL_ID);
     expect(lastListedEntry(forked)).toBe(RECORDED_EARLIER_ENTRY_ID);
+  });
+  test("a recorded fork whose path ends before the label reloads with no carried label", async () => {
+    const omp = recordedOmp();
+    const rootEntryId = EntryIdSchema.parse(RECORDED_ENTRIES[0]?.id);
+    const port = new OmpSessionTreePort({ send: omp.send, sessionFile: RECORDED_SESSION_FILE });
+    const result = await transitionsOn(recordedStore(), omp, []).fork({
+      threadId: RECORDED_THREAD_ID,
+      entryId: rootEntryId,
+    });
+    expect(result).toMatchObject({
+      threadId: FORKED_WITHOUT_LABEL_THREAD_ID,
+      sessionFile: FORKED_WITHOUT_LABEL_SESSION_FILE,
+      sourceRetained: true,
+      reloaded: true,
+    });
+    const forked = await port.readTree(FORKED_WITHOUT_LABEL_THREAD_ID);
+    expect(forked.leafId).toBe(rootEntryId);
+    expect(forked.labels).toEqual([]);
   });
 
   test("keeps the label: the labels model lists it for the source and the forked session, and the selector model's row carries it", async () => {
