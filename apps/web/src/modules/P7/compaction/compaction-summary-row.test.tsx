@@ -45,6 +45,20 @@ describe("compactionSummaryOfRow", () => {
 });
 
 describe("CompactionSummaryRow", () => {
+  test("shows omp's warning as written below the divider", () => {
+    const row = rowWith({
+      ompRole: "compactionSummary",
+      ompCompactionSummary: {
+        ...summary,
+        warning: "Freed too little for maintenance.",
+      },
+    });
+    const { getByRole } = render(<CompactionSummaryRow message={row} summary={summary} />);
+    expect(getByRole("status").textContent).toBe(
+      "Compaction note: Freed too little for maintenance.",
+    );
+  });
+
   test("draws the divider under the row's id; expanding it shows the method and the token counts", () => {
     const row = rowWith({ ompRole: "compactionSummary", ompCompactionSummary: summary });
     const { container, getByRole, getByText } = render(

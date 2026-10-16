@@ -1860,6 +1860,7 @@ describe("OmpRuntimeStore", () => {
           tokensBefore: 120_000,
           tokensAfter: 28_000,
           method: "remote",
+          warning: "Compaction freed too little for maintenance.",
         },
         { type: "model_change", id: "m1", parentId: "c1", timestamp: "2026-10-05T00:00:01.000Z" },
       ],
@@ -1877,6 +1878,7 @@ describe("OmpRuntimeStore", () => {
         tokensAfter: 28_000,
         method: "remote",
         timestamp: Date.parse("2026-10-05T00:00:01.000Z"),
+        warning: "Compaction freed too little for maintenance.",
       },
     });
   });

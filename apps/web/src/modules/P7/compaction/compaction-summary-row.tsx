@@ -28,6 +28,14 @@ export function compactionSummaryOfRow(
   };
 }
 
+function compactionWarningOfRow(message: MessageState): string | undefined {
+  const { ompRole, ompCompactionSummary } = message.metadata.custom;
+  if (ompRole !== "compactionSummary" || typeof ompCompactionSummary !== "object") return undefined;
+  if (ompCompactionSummary === null) return undefined;
+  const warning = (ompCompactionSummary as Record<string, unknown>).warning;
+  return typeof warning === "string" ? warning : undefined;
+}
+
 /**
  * A compaction row in the transcript: the divider, under the row's id so the scroll and anchor code
  * find it like any other row.
@@ -39,6 +47,7 @@ export function CompactionSummaryRow({
   readonly message: MessageState;
   readonly summary: OmpWire.CompactionSummaryMessage;
 }) {
+  const warning = compactionWarningOfRow(message);
   return (
     <div
       className="w-full min-w-0"
@@ -46,7 +55,7 @@ export function CompactionSummaryRow({
       data-role="system"
       data-slot="p7-compaction-summary-row"
     >
-      <CompactionSummaryDivider message={summary} />
+      <CompactionSummaryDivider message={summary} warning={warning} />
     </div>
   );
 }

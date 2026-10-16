@@ -749,11 +749,12 @@ function branchSummaryFromEntry(raw: Record<string, unknown>): OmpMessage | unde
 }
 
 /**
- * omp's compaction: the summary that replaced the older conversation, with the token counts and the method omp used.
- * Its fields are `CompactionEntry` (omp v18.6.1 session/session-entries.ts:121-130).
+ * omp's compaction summary and its optional display metadata.
+ * `warning` is a typed `CompactionEntry` field in omp v18.8.9:
+ * `packages/coding-agent/src/session/session-entries.ts:135-155`.
  */
 function compactionFromEntry(raw: Record<string, unknown>): OmpMessage | undefined {
-  const { summary, shortSummary, tokensBefore, tokensAfter, method, timestamp } = raw;
+  const { summary, shortSummary, tokensBefore, tokensAfter, method, timestamp, warning } = raw;
   if (typeof summary !== "string" || typeof tokensBefore !== "number") return undefined;
   if (typeof timestamp !== "string") return undefined;
   const time = Date.parse(timestamp);
@@ -766,6 +767,7 @@ function compactionFromEntry(raw: Record<string, unknown>): OmpMessage | undefin
     ...(typeof shortSummary === "string" ? { shortSummary } : {}),
     ...(typeof tokensAfter === "number" ? { tokensAfter } : {}),
     ...(typeof method === "string" ? { method } : {}),
+    ...(typeof warning === "string" ? { warning } : {}),
   }) as unknown as OmpMessage;
 }
 
