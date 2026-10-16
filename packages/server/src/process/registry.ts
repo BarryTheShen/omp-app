@@ -341,18 +341,6 @@ export class OmpProcessRegistry {
     return entry.process;
   }
 
-  async restart(threadId: ThreadId): Promise<void> {
-    const entry = this.#entries.get(threadId);
-    if (entry === undefined) {
-      throw new AppFailure({
-        code: "not_found",
-        message: `No process is registered for thread ${threadId}`,
-        retryable: false,
-      });
-    }
-    await entry.process.restart();
-  }
-
   /** Stops every registered process; for server shutdown. */
   async closeAll(): Promise<void> {
     const entries = [...this.#entries.values()];

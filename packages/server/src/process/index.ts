@@ -2,7 +2,6 @@ export { type ExternalOmpState, findExternalOmp, readProcessTable } from "./exte
 export { logOmpProcess } from "./log";
 export {
   type OmpProcess,
-  type OmpProcessBackoffOptions,
   type OmpProcessEvent,
   type OmpProcessListener,
   type OmpProcessOptions,

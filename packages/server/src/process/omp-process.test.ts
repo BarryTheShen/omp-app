@@ -16,13 +16,11 @@ const threadId = ThreadId.parse("thread-a0-5-process");
 
 class ManualTimer implements RpcSessionTimer {
   #nextId = 0;
-  readonly callbacks = new Map<number, { readonly handler: () => void; readonly delay: number }>();
-  readonly delays: number[] = [];
+  readonly callbacks = new Map<number, () => void>();
 
-  setTimeout(handler: () => void, delayMs: number): number {
-    this.delays.push(delayMs);
+  setTimeout(handler: () => void, _delayMs: number): number {
     const id = ++this.#nextId;
-    this.callbacks.set(id, { handler, delay: delayMs });
+    this.callbacks.set(id, handler);
     return id;
   }
 
@@ -30,17 +28,10 @@ class ManualTimer implements RpcSessionTimer {
     if (typeof handle === "number") this.callbacks.delete(handle);
   }
 
-  fireWhere(predicate: (delay: number) => boolean): void {
-    const callbacks = [...this.callbacks.entries()];
-    for (const [id, entry] of callbacks) {
-      if (!predicate(entry.delay)) continue;
-      this.callbacks.delete(id);
-      entry.handler();
-    }
-  }
-
   fireAll(): void {
-    this.fireWhere(() => true);
+    const callbacks = [...this.callbacks.values()];
+    this.callbacks.clear();
+    for (const callback of callbacks) callback();
   }
 }
 
@@ -202,7 +193,7 @@ describe("OmpProcess spawn and stdio", () => {
     expect(response).toMatchObject({ id: "cmd-1", command: "get_state", success: true });
   });
 
-  test("rejects start() and restart() once stopped, and stop() is idempotent", async () => {
+  test("rejects start() once stopped, and stop() is idempotent", async () => {
     const folder = await temporaryFolder();
     const process = track(spawnOmpProcess({ threadId, folder, ompBin: FAKE_OMP }));
     await process.start();
@@ -213,7 +204,6 @@ describe("OmpProcess spawn and stdio", () => {
     await process.stop(); // idempotent, no throw
 
     await expect(process.start()).rejects.toBeInstanceOf(AppFailure);
-    await expect(process.restart()).rejects.toBeInstanceOf(AppFailure);
   });
 });
 
@@ -384,80 +374,6 @@ describe("OmpProcess crash handling", () => {
     expect(process.stderrTail.length).toBeLessThanOrEqual(2500);
     expect(process.stderrTail).toContain("B");
     expect(process.stderrTail.endsWith("B")).toBe(true);
-  });
-});
-
-describe("OmpProcess restart with backoff", () => {
-  test("delays escalate across repeated crash-driven restarts and the first attempt is immediate", async () => {
-    const timer = new ManualTimer();
-    const folder = await temporaryFolder();
-    const process = track(
-      spawnOmpProcess({
-        threadId,
-        folder,
-        ompBin: FAKE_OMP,
-        env: { FAKE_OMP_EXIT_CODE: "2" },
-        backoff: { baseMs: 50, maxMs: 500, stableMs: 999_999 },
-        timer,
-      }),
-    );
-
-    await process.start();
-    await waitForEvent(process, (event) => event.status === "exited");
-    const firstProcessId = process.processId;
-
-    await process.restart(); // consecutiveFailures 0 -> delay 0, no timer entry
-    await waitForEvent(process, (event) => event.status === "exited");
-    const secondProcessId = process.processId;
-
-    const restart2 = process.restart(); // consecutiveFailures 1 -> delay 50
-    const pumpBackoff = () => timer.fireWhere((delay) => delay < 999_999);
-    await waitForEvent(process, (event) => event.status === "exited", { pump: pumpBackoff });
-    await restart2;
-
-    const restart3 = process.restart(); // consecutiveFailures 2 -> delay 100
-    await waitForEvent(process, (event) => event.status === "exited", { pump: pumpBackoff });
-    await restart3;
-
-    const backoffDelays = timer.delays.filter((delay) => delay !== 999_999);
-    expect(backoffDelays).toEqual([50, 100]);
-    expect(secondProcessId).not.toBe(firstProcessId);
-  });
-
-  test("a stable run resets the backoff counter", async () => {
-    const timer = new ManualTimer();
-    const folder = await temporaryFolder();
-    const process = track(
-      spawnOmpProcess({
-        threadId,
-        folder,
-        ompBin: FAKE_OMP,
-        env: { FAKE_OMP_EXIT_CODE: "2" },
-        backoff: { baseMs: 50, maxMs: 500, stableMs: 10 },
-        timer,
-      }),
-    );
-
-    await process.start();
-    await waitForEvent(process, (event) => event.status === "exited");
-    await process.restart(); // first attempt is immediate; failure count becomes 1
-    await waitForEvent(process, (event) => event.status === "exited");
-
-    const restart3 = process.restart(); // delay 50 after the second failure
-    await waitForEvent(process, (event) => event.status === "running", {
-      pump: () => timer.fireWhere((delay) => delay === 50),
-    });
-    await restart3;
-    // The process is "running" again; fire the stability timer to simulate a stable run.
-    timer.fireWhere((delay) => delay === 10);
-    await waitForEvent(process, (event) => event.status === "exited");
-
-    const restart4 = process.restart(); // stability reset makes this immediate again
-    await waitForEvent(process, (event) => event.status === "running");
-    await restart4;
-
-    const backoffDelays = timer.delays.filter((delay) => delay !== 10);
-    expect(backoffDelays).toEqual([50]);
   });
 });
 

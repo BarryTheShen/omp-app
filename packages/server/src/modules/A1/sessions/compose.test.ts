@@ -36,10 +36,6 @@ class StubProcess implements OmpProcess {
     return Promise.resolve();
   }
 
-  restart(): Promise<void> {
-    return Promise.resolve();
-  }
-
   stop(): Promise<void> {
     this.status = "stopped";
     this.emit({ status: "stopped", processId: this.processId });

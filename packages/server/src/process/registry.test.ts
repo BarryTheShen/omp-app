@@ -44,7 +44,6 @@ class StubProcess implements OmpProcess {
   pid = 1234;
   stderrTail = "";
   startCalls = 0;
-  restartCalls = 0;
   stopCalls = 0;
   #eventListeners = new Set<(event: OmpProcessEvent) => void>();
   #chunkListeners = new Set<(chunk: Uint8Array) => void>();
@@ -57,11 +56,6 @@ class StubProcess implements OmpProcess {
 
   start(): Promise<void> {
     this.startCalls += 1;
-    return Promise.resolve();
-  }
-
-  restart(): Promise<void> {
-    this.restartCalls += 1;
     return Promise.resolve();
   }
 
@@ -234,31 +228,6 @@ describe("OmpProcessRegistry", () => {
     expect(registry.busyIn("/workspace/one")).toEqual([busy]);
     expect(registry.busyIn("/workspace/two")).toEqual([elsewhere]);
     expect(registry.busyIn("/workspace/three")).toEqual([]);
-  });
-
-  test("forgets an intentionally stopped process but retains a crashed one for restart", async () => {
-    const timer = new ManualTimer();
-    const created: StubProcess[] = [];
-    const registry = new OmpProcessRegistry({
-      timer,
-      createProcess: (processOptions) => {
-        const process = new StubProcess(processOptions);
-        created.push(process);
-        return process;
-      },
-    });
-    const thread = ThreadId.parse("thread-3");
-    registry.acquire(options(thread, "/workspace/three"));
-    const process = createdAt(created, 0);
-    expect(registry.has(thread)).toBe(true);
-    await registry.restart(thread);
-    expect(process.restartCalls).toBe(1);
-
-    process.emit({ status: "stopped", processId: process.processId });
-    expect(registry.has(thread)).toBe(false);
-    const replacement = registry.acquire(options(thread, "/workspace/three"));
-    expect(replacement).not.toBe(process);
-    expect(created).toHaveLength(2);
   });
 
   test("respawn replaces a crashed process with one built from new arguments and keeps the thread's viewers", async () => {

@@ -13,22 +13,9 @@ import type { RpcDuplex, RpcSessionTimer } from "@omp-app/omp-rpc";
 
 /** `--mode rpc-ui` is required: it is the only mode that forwards extension/tool UI requests. */
 const OMP_MODE_ARGS = ["--mode", "rpc-ui"] as const;
-
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_MAX_STDERR_BYTES = 16 * 1024;
 const DEFAULT_MAX_PENDING_CHUNK_BYTES = 1024 * 1024;
-const DEFAULT_BACKOFF_BASE_MS = 500;
-const DEFAULT_BACKOFF_MAX_MS = 30_000;
-const DEFAULT_BACKOFF_STABLE_MS = 30_000;
-
-export interface OmpProcessBackoffOptions {
-  /** Delay before the second restart attempt; doubles on each further attempt. Default 500 ms. */
-  readonly baseMs?: number;
-  /** Ceiling for the doubling delay. Default 30000 ms. */
-  readonly maxMs?: number;
-  /** How long a process must stay running before a later crash resets the backoff. Default 30000 ms. */
-  readonly stableMs?: number;
-}
 
 export interface OmpProcessOptions {
   /** For attribution and logging only; never parsed or matched against omp's own session id. */
@@ -47,7 +34,6 @@ export interface OmpProcessOptions {
   readonly maxStderrBytes?: number;
   /** Grace period between SIGTERM and SIGKILL. Default 5000 ms. */
   readonly terminationGraceMs?: number;
-  readonly backoff?: OmpProcessBackoffOptions;
   /** Injectable for deterministic tests; defaults to the global timer. */
   readonly timer?: RpcSessionTimer;
   /** Injectable for deterministic tests; defaults to `Bun.spawn`. */
@@ -86,28 +72,12 @@ export interface OmpProcess extends RpcDuplex {
   stderrSettled?(): Promise<void>;
   /** Spawns the child if this is the first call; later calls return the same promise. */
   start(): Promise<void>;
-  /**
-   * Terminates the current child (if any) and spawns a fresh one, with backoff between repeated
-   * attempts. Rejects if the process was already `stop()`ped; a concurrent call returns the same
-   * in-flight promise.
-   */
-  restart(): Promise<void>;
   /** Terminates the child (SIGTERM, then SIGKILL after the grace period) and marks this terminal. */
   stop(): Promise<void>;
   onEvent(listener: OmpProcessListener): () => void;
 }
 
 type OmpSubprocess = Bun.Subprocess<"pipe", "pipe", "pipe">;
-
-function requiredBackoff(
-  options: OmpProcessBackoffOptions | undefined,
-): Required<OmpProcessBackoffOptions> {
-  return {
-    baseMs: options?.baseMs ?? DEFAULT_BACKOFF_BASE_MS,
-    maxMs: options?.maxMs ?? DEFAULT_BACKOFF_MAX_MS,
-    stableMs: options?.stableMs ?? DEFAULT_BACKOFF_STABLE_MS,
-  };
-}
 
 function defaultTimer(): RpcSessionTimer {
   return {
@@ -164,7 +134,6 @@ class SpawnedOmpProcess implements OmpProcess {
   readonly #envOverrides: Readonly<Record<string, string | undefined>>;
   readonly #maxStderrBytes: number;
   readonly #terminationGraceMs: number;
-  readonly #backoff: Required<OmpProcessBackoffOptions>;
   readonly #timer: RpcSessionTimer;
   readonly #spawn: typeof Bun.spawn;
   readonly #listeners = new Set<OmpProcessListener>();
@@ -175,12 +144,9 @@ class SpawnedOmpProcess implements OmpProcess {
   #processId: OmpProcessId | undefined;
   #child: OmpSubprocess | undefined;
   #startPromise: Promise<void> | undefined;
-  #restartPromise: Promise<void> | undefined;
   #expectingExit = false;
   #terminal = false;
   #stopFailed = false;
-  #consecutiveFailures = 0;
-  #stabilityTimer: unknown;
   #stderrDecoder = new TextDecoder();
   #stderrText = "";
   /** Settles when the stderr pipe has been read to its end (see `stderrSettled`). */
@@ -199,7 +165,6 @@ class SpawnedOmpProcess implements OmpProcess {
     this.#envOverrides = options.env ?? {};
     this.#maxStderrBytes = options.maxStderrBytes ?? DEFAULT_MAX_STDERR_BYTES;
     this.#terminationGraceMs = options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS;
-    this.#backoff = requiredBackoff(options.backoff);
     this.#timer = options.timer ?? defaultTimer();
     this.#spawn = options.spawn ?? Bun.spawn;
   }
@@ -227,24 +192,11 @@ class SpawnedOmpProcess implements OmpProcess {
     return this.#startPromise;
   }
 
-  restart(): Promise<void> {
-    if (this.#terminal)
-      return Promise.reject(conflictFailure("This omp process was already stopped"));
-    if (this.#restartPromise === undefined) {
-      const attempt = this.#doRestart().finally(() => {
-        this.#restartPromise = undefined;
-      });
-      this.#restartPromise = attempt;
-    }
-    return this.#restartPromise;
-  }
-
   async stop(): Promise<void> {
     // A stop whose wait failed may have left the child running, so the next stop tries again.
     if (this.#terminal && !this.#stopFailed) return;
     this.#terminal = true;
     this.#stopFailed = false;
-    this.#cancelStability();
     try {
       await this.#terminate();
     } catch (error) {
@@ -328,21 +280,6 @@ class SpawnedOmpProcess implements OmpProcess {
     this.#stderrDone = this.#pumpStderr(child.stderr);
     void child.exited.then((exitCode) => this.#onChildExited(exitCode));
     this.#setStatus("running");
-    this.#armStability();
-  }
-
-  async #doRestart(): Promise<void> {
-    this.#setStatus("restarting");
-    this.#cancelStability();
-    await this.#terminate();
-    if (this.#terminal) return;
-    const delay = this.#computeBackoffDelay();
-    this.#consecutiveFailures += 1;
-    if (delay > 0) await this.#wait(delay);
-    if (this.#terminal) return;
-    const attempt = this.#spawnChild();
-    this.#startPromise = attempt;
-    await attempt;
   }
 
   async #terminate(): Promise<void> {
@@ -377,7 +314,6 @@ class SpawnedOmpProcess implements OmpProcess {
   }
 
   #onChildExited(exitCode: number): void {
-    this.#cancelStability();
     if (this.#expectingExit) return;
     const child = this.#child;
     const signal = child?.signalCode ?? null;
@@ -461,32 +397,6 @@ class SpawnedOmpProcess implements OmpProcess {
       else env[key] = value;
     }
     return env;
-  }
-
-  #computeBackoffDelay(): number {
-    if (this.#consecutiveFailures === 0) return 0;
-    const scaled = this.#backoff.baseMs * 2 ** (this.#consecutiveFailures - 1);
-    return Math.min(this.#backoff.maxMs, scaled);
-  }
-
-  #wait(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      this.#timer.setTimeout(resolve, ms);
-    });
-  }
-
-  #armStability(): void {
-    this.#stabilityTimer = this.#timer.setTimeout(() => {
-      this.#stabilityTimer = undefined;
-      this.#consecutiveFailures = 0;
-    }, this.#backoff.stableMs);
-  }
-
-  #cancelStability(): void {
-    if (this.#stabilityTimer !== undefined) {
-      this.#timer.clearTimeout(this.#stabilityTimer);
-      this.#stabilityTimer = undefined;
-    }
   }
 
   #setStatus(status: ProcessStatus): void {

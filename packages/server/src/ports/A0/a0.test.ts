@@ -119,11 +119,6 @@ class FakeProcess implements OmpProcess {
     return Promise.resolve();
   }
 
-  async restart(): Promise<void> {
-    this.emitEvent({ status: "restarting", processId: this.processId });
-    this.emitEvent({ status: "running", processId: this.processId });
-  }
-
   async stop(): Promise<void> {
     await this.stopGate;
     this.emitEvent({ status: "stopped", processId: this.processId });
