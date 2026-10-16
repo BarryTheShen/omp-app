@@ -364,7 +364,7 @@ function buildInspector(
     facts,
     progress,
     step: metrics.step,
-    task: readText(agent.task),
+    task: readText(agent.assignment ?? agent.task),
     cancel: cancelControl(agent, input.cancels, input.cancelAction),
     transcript: input.transcriptAction,
   };

@@ -508,10 +508,11 @@ describe("CC4: every hub state builds plain words, and every unavailable control
     expect(headings).toEqual(expect.arrayContaining(["From task call 1", "From task call 2"]));
   });
 
-  test.fails("the inspector does not show omp's assignment preamble (#1687)", () => {
+  test("the inspector shows the worker's own assignment without omp's preamble (#1687)", () => {
     const model = buildHubModel(hubStateInput(stateSpec("running")));
 
-    expect(model.inspector?.task ?? "").not.toContain("Complete assignment thoroughly:");
+    expect(model.inspector?.task).toBe("long_probe_child: run one slow step.");
+    expect(model.inspector?.task).not.toContain("Complete assignment thoroughly:");
   });
 });
 

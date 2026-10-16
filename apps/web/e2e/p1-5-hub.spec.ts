@@ -337,6 +337,26 @@ realTest(
 );
 
 realTest(
+  "real omp: the Agent Hub inspector shows the worker assignment without omp's preamble",
+  async ({ realApp }) => {
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await page.getByRole("tab", { name: "Agents" }).click();
+    const hub = page.getByRole("region", { name: "Agent Hub" });
+    await sendPrompt(composer, "spawn_long_subagent");
+    const running = hub.getByRole("option", { name: /Running.*LongProbe/ });
+    await expect(running).toHaveCount(1, { timeout: 120_000 });
+    await running.click();
+    const inspector = hub.getByRole("region", { name: "Selected worker" });
+    await expect(inspector).toContainText("long_probe_child: run one slow step.", {
+      timeout: 60_000,
+    });
+    await expect(inspector).not.toContainText("Complete assignment thoroughly:");
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+realTest(
   "real omp: a finished worker stays under Recent after a reload, and its transcript opens",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);

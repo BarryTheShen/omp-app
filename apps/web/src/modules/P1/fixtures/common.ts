@@ -77,6 +77,7 @@ export function progressEvent(
       agent: "task",
       agentSource: "bundled",
       task: typeof progress.task === "string" ? progress.task : "",
+      assignment: typeof progress.assignment === "string" ? progress.assignment : undefined,
       progress: { ...progress },
       ...(sessionFile === undefined ? {} : { sessionFile }),
     },
