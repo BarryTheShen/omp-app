@@ -46,7 +46,7 @@ describe("D8 autonomy contracts", () => {
     );
     expect(continuationStatus({ ...goal, status: "paused" }, ["rpc"])?.label).toBe("Paused");
     expect(continuationStatus(goal, ["interactive"])?.label).toBe(
-      "omp will not continue this goal by itself. Add rpc to Goal Continuation Modes in Settings, Tasks, to let it.",
+      'omp will not continue this goal by itself. Add "rpc" to Goal Continuation Modes in Settings, Tasks, to let it.',
     );
     expect(continuationStatus(goal, null)?.label).toBe(
       "The app cannot tell whether omp continues this goal by itself.",

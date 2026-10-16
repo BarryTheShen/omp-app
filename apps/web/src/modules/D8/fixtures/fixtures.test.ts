@@ -136,17 +136,15 @@ describe("D8 fixtures match the contract schemas", () => {
     ).toBeNull();
   });
 
-  // Main-side defect, issue #1693: a budget-limited goal is described as one omp keeps working on. The marker fails today
-  // for that reason, and turns red when the defect is fixed; then delete the marker.
-  test.fails("a budget-limited goal does not say omp keeps working on it (#1693)", () => {
+  test("a budget-limited goal does not say omp keeps working on it (#1693)", () => {
     const budgetLimited = GoalSchema.parse({
       ...RECORDED_GOAL_CREATED.value,
       status: "budget-limited",
       tokenBudget: 5000,
     });
-    expect(
-      continuationStatus(budgetLimited, CONTINUATION_MODE_SETTINGS.withRpc)?.label,
-    ).not.toMatch(/keeps working/);
+    expect(continuationStatus(budgetLimited, CONTINUATION_MODE_SETTINGS.withRpc)?.label).toBe(
+      "omp stops continuing this goal because it reached its token budget.",
+    );
   });
 
   test("only the task progress record names an agent source; the wait jobs' sources are unknown", () => {

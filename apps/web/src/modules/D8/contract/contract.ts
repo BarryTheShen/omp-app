@@ -98,13 +98,16 @@ export function continuationStatus(
   modes: readonly string[] | null,
 ): ContinuationStatus | null {
   if (goal === null || goal.status === "complete" || goal.status === "dropped") return null;
+  if (goal.status === "budget-limited") {
+    return { label: "omp stops continuing this goal because it reached its token budget." };
+  }
   if (modes === null) {
     return { label: "The app cannot tell whether omp continues this goal by itself." };
   }
   if (!modes.includes("rpc")) {
     return {
       label:
-        "omp will not continue this goal by itself. Add rpc to Goal Continuation Modes in Settings, Tasks, to let it.",
+        'omp will not continue this goal by itself. Add "rpc" to Goal Continuation Modes in Settings, Tasks, to let it.',
     };
   }
   return {

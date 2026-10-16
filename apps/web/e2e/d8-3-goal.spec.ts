@@ -171,7 +171,7 @@ realTest(
       await realExpect(panel).toContainText("Active", { timeout: 60_000 });
       await realExpect(panel).toContainText("5,000 tokens");
       await realExpect(panel).toContainText(
-        "omp will not continue this goal by itself. Add rpc to Goal Continuation Modes in Settings, Tasks, to let it.",
+        'omp will not continue this goal by itself. Add "rpc" to Goal Continuation Modes in Settings, Tasks, to let it.',
       );
 
       await panel.getByRole("button", { name: "Pause goal" }).click();

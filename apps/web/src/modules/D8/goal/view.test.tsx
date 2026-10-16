@@ -115,7 +115,7 @@ describe("GoalPanelView", () => {
     expect(screen.getByText("1 minute 5 seconds")).toBeTruthy();
     expect(
       screen.getByText(
-        "omp will not continue this goal by itself. Add rpc to Goal Continuation Modes in Settings, Tasks, to let it.",
+        'omp will not continue this goal by itself. Add "rpc" to Goal Continuation Modes in Settings, Tasks, to let it.',
       ),
     ).toBeTruthy();
     expect(screen.queryByText("active")).toBeNull();

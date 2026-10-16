@@ -22,7 +22,7 @@ const availableCapabilities: CapabilityMap = {
 
 const otherThreadId = ThreadId.parse("thread-other");
 const OMP_WONT_CONTINUE =
-  "omp will not continue this goal by itself. Add rpc to Goal Continuation Modes in Settings, Tasks, to let it.";
+  'omp will not continue this goal by itself. Add "rpc" to Goal Continuation Modes in Settings, Tasks, to let it.';
 
 function makeGoal(
   status: GoalStatus = "active",
