@@ -7,6 +7,7 @@ import {
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
+import { RECORDED_PROGRESS } from "@/modules/P1/fixtures";
 import type { AgentRosterStoreSnapshot, RosterAgent } from "@/modules/P1/roster";
 import { buildWorkersModel, formatElapsed, type WorkerRowModel } from "./model";
 
@@ -117,6 +118,118 @@ describe("buildWorkersModel", () => {
     });
     expect(rowFor(model.rows, "clock-1:1").elapsed).toBe("1 minute 30 seconds");
     expect(rowFor(model.rows, "clock-2:1").elapsed).toBe("1 minute");
+  });
+
+  test("uses a model override string or the recorded override list, never the worker role", () => {
+    const stringOverride = workerAgent({
+      key: "override-string:1",
+      id: SubagentId.parse("override-string"),
+      metrics: {
+        durationMs: 0,
+        receivedAt: NOW,
+        raw: { modelOverride: " openai/test-model ", modelRole: "task" },
+      },
+    });
+    const recordedOverride = workerAgent({
+      key: "override-recorded:1",
+      id: SubagentId.parse("override-recorded"),
+      metrics: {
+        durationMs: 0,
+        receivedAt: NOW,
+        raw: { ...RECORDED_PROGRESS, resolvedModel: undefined, modelRole: "task" },
+      },
+    });
+    const model = buildWorkersModel({
+      snapshot: snapshotOf(
+        [stringOverride, recordedOverride],
+        ["override-string:1", "override-recorded:1"],
+      ),
+      now: NOW,
+      capabilities: ALL_P1_AVAILABLE,
+    });
+    expect(rowFor(model.rows, "override-string:1").model).toBe("openai/test-model");
+    expect(rowFor(model.rows, "override-recorded:1").model).toBe("fake/fake-model");
+  });
+
+  test("prefers the resolved model, truncates to 160 characters, and omits blank values", () => {
+    const resolved = workerAgent({
+      key: "resolved-model:1",
+      id: SubagentId.parse("resolved-model"),
+      metrics: {
+        durationMs: 0,
+        receivedAt: NOW,
+        raw: {
+          resolvedModel: " openai/resolved-model ",
+          modelOverride: ["openai/override-model"],
+          modelRole: "task",
+        },
+      },
+    });
+    const longModelValue = "m".repeat(200);
+    const longModel = workerAgent({
+      key: "long-model:1",
+      id: SubagentId.parse("long-model"),
+      metrics: { durationMs: 0, receivedAt: NOW, raw: { resolvedModel: longModelValue } },
+    });
+    const blank = workerAgent({
+      key: "blank-model:1",
+      id: SubagentId.parse("blank-model"),
+      metrics: {
+        durationMs: 0,
+        receivedAt: NOW,
+        raw: { resolvedModel: " ", modelOverride: " ", modelRole: "task" },
+      },
+    });
+    const model = buildWorkersModel({
+      snapshot: snapshotOf(
+        [resolved, longModel, blank],
+        ["resolved-model:1", "long-model:1", "blank-model:1"],
+      ),
+      now: NOW,
+      capabilities: ALL_P1_AVAILABLE,
+    });
+
+    expect(rowFor(model.rows, "resolved-model:1").model).toBe("openai/resolved-model");
+    expect(rowFor(model.rows, "long-model:1").model).toBe(`${"m".repeat(159)}…`);
+    expect(rowFor(model.rows, "blank-model:1").model).toBeNull();
+  });
+
+  test("takes the first non-blank entry of omp's override list, and none from an empty or blank list", () => {
+    const skipsBlank = workerAgent({
+      key: "list-blank-first:1",
+      id: SubagentId.parse("list-blank-first"),
+      metrics: {
+        durationMs: 0,
+        receivedAt: NOW,
+        raw: { modelOverride: ["  ", "openai/second"], modelRole: "task" },
+      },
+    });
+    const empty = workerAgent({
+      key: "list-empty:1",
+      id: SubagentId.parse("list-empty"),
+      metrics: { durationMs: 0, receivedAt: NOW, raw: { modelOverride: [], modelRole: "task" } },
+    });
+    const allBlank = workerAgent({
+      key: "list-all-blank:1",
+      id: SubagentId.parse("list-all-blank"),
+      metrics: {
+        durationMs: 0,
+        receivedAt: NOW,
+        raw: { modelOverride: [" ", ""], modelRole: "task" },
+      },
+    });
+    const model = buildWorkersModel({
+      snapshot: snapshotOf(
+        [skipsBlank, empty, allBlank],
+        ["list-blank-first:1", "list-empty:1", "list-all-blank:1"],
+      ),
+      now: NOW,
+      capabilities: ALL_P1_AVAILABLE,
+    });
+
+    expect(rowFor(model.rows, "list-blank-first:1").model).toBe("openai/second");
+    expect(rowFor(model.rows, "list-empty:1").model).toBeNull();
+    expect(rowFor(model.rows, "list-all-blank:1").model).toBeNull();
   });
 
   test("shows the tokens and cost omp reported, and nothing when omp reported neither", () => {

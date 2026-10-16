@@ -70,14 +70,37 @@ export function formatElapsed(ms: number): string {
   return parts.filter((part): part is string => part !== null).join(" ");
 }
 
+const MAX_MODEL_LENGTH = 160;
+
+function modelText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (text.length === 0) return null;
+  return text.length > MAX_MODEL_LENGTH ? `${text.slice(0, MAX_MODEL_LENGTH - 1)}…` : text;
+}
+
+function modelValue(value: unknown): string | null {
+  if (!Array.isArray(value)) return modelText(value);
+  for (const candidate of value) {
+    const text = modelText(candidate);
+    if (text !== null) return text;
+  }
+  return null;
+}
+
+function modelOf(agent: RosterAgent): string | null {
+  return modelValue(agent.metrics.raw.resolvedModel) ?? modelValue(agent.metrics.raw.modelOverride);
+}
+
 /**
- * How long a worker has run. omp's last report is frozen for a finished worker; a running one keeps counting
+ * How long a worker has run. omp's last report is frozen for a non-running worker; a running one keeps counting
  * from the moment the roster received that report, on the roster clock.
  */
-export function elapsedOf(agent: RosterAgent, active: boolean, now: number): string | null {
+export function elapsedOf(agent: RosterAgent, now: number): string | null {
   const reported = agent.metrics.durationMs;
-  if (reported === undefined) return null;
-  const ms = active ? reported + Math.max(0, now - agent.metrics.receivedAt) : reported;
+  if (reported === undefined || agent.status === "pending") return null;
+  const ms =
+    agent.status === "running" ? reported + Math.max(0, now - agent.metrics.receivedAt) : reported;
   return formatElapsed(ms);
 }
 
@@ -146,8 +169,8 @@ function rowOf(
     detail: agent.agent,
     status: statusPresentation(agent.status),
     active,
-    elapsed: elapsedOf(agent, active, now),
-    model: readWorkerMetrics(agent.metrics.raw).model,
+    elapsed: elapsedOf(agent, now),
+    model: modelOf(agent),
     step: active ? readWorkerMetrics(agent.metrics.raw).step : null,
     toolCalls: toolCallsOf(readWorkerMetrics(agent.metrics.raw).toolCalls),
     usage: usageOf(agent),

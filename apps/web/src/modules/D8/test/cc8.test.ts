@@ -110,13 +110,11 @@ describe("CC8: the workers panel shows what omp reports and nothing more", () =>
     expect(rowFor("ScoutOne").model).toBe("openai-codex/gpt-5.6-luna:max");
   });
 
-  // Main-side defects, issue #1694: the panel counts a queued worker's time as running, and shows its role as its model.
-  // Each marker fails today for the reason in its name, and turns red when that defect is fixed; then delete the marker.
-  test.fails("a queued worker shows no elapsed time (#1694)", () => {
+  test("a queued worker shows no elapsed time (#1694)", () => {
     expect(rowFor("BuilderTwo").elapsed).toBeNull();
   });
 
-  test.fails("a queued worker's model is not its role (#1694)", () => {
+  test("a queued worker's model is not its role (#1694)", () => {
     expect(rowFor("BuilderTwo").model).toBeNull();
   });
 
