@@ -12,6 +12,7 @@ import { D2_DESCRIPTORS } from "../modules/D2";
 import { D3_LOGIN_DESCRIPTORS } from "../modules/D3/descriptors";
 import { D4_DESCRIPTORS } from "../modules/D4/descriptors";
 import { D5_LIFECYCLE_COMMAND_DESCRIPTORS } from "../modules/D5/descriptors";
+import { D6_REPORT_PALETTE_COMMANDS } from "../modules/D6/reports";
 import { D7_EXECUTION_MODES_COMMAND } from "../modules/D7/modes/descriptors";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { I1_SETTINGS_SECTIONS } from "../modules/I1/settings/descriptors";
@@ -115,6 +116,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...D4_DESCRIPTORS,
   ...R1_DESCRIPTORS,
   ...D5_LIFECYCLE_COMMAND_DESCRIPTORS,
+  ...D6_REPORT_PALETTE_COMMANDS,
   ...N1_DESCRIPTORS,
   ...P3_MESSAGE_DESCRIPTORS,
   ...P4_DESCRIPTORS,

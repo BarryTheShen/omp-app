@@ -73,6 +73,8 @@ import type {
   SessionInfoRuntimeSource,
 } from "@/modules/D5/contract";
 import { SessionLifecycleController } from "@/modules/D5/lifecycle";
+import { createDiagnosticCommandPort, ReportsPanel } from "@/modules/D6/reports";
+import { SecurityReportPanel } from "@/modules/D6/security";
 import { FAST_REFUSAL_NOTICE_SOURCE } from "@/modules/D7/modes";
 import { useLiveVoiceSurfaces } from "@/modules/I5/live";
 import {
@@ -170,6 +172,7 @@ import {
   richAskOffered,
   subscribeNonModalExtensionUi,
 } from "@/modules/U4/router";
+import type { PanelFocusToken } from "@/modules/U5/panel/contract";
 import { PanelShell } from "@/modules/U5/panel/shell";
 import { TodoChecklist } from "@/modules/U5/todo/checklist/checklist";
 import { projectTodoSnapshot } from "@/modules/U5/todo/model";
@@ -179,7 +182,7 @@ import { U0_SHORTCUT_SHEET_COMMAND } from "@/palette/descriptor";
 import { idleCommandHandlers } from "@/palette/idle-commands";
 import { DESCRIPTORS, RENDERERS, registry, TOOL_RENDERERS } from "@/registry";
 import { RegistryProvider } from "@/registry-core";
-import { AppShell, ComposerNote } from "@/shell";
+import { AppShell, ComposerNote, useRightSidebar } from "@/shell";
 import {
   type PreferenceStore,
   ShortcutPreferenceNotice,
@@ -645,6 +648,42 @@ function ActiveThreadContent(props: ActiveThreadProps) {
   if (!props.history.store || !props.history.threadId) return null;
   return <ActiveThreadReady {...props} />;
 }
+function FocusDiagnosticPanelOnReveal({
+  open,
+  reveal,
+  title,
+}: {
+  readonly open: boolean;
+  readonly reveal: number;
+  readonly title: string;
+}) {
+  const sidebar = useRightSidebar();
+  const focusedReveal = useRef<number | null>(null);
+  useEffect(() => {
+    if (open && sidebar !== null && !sidebar.open) sidebar.show();
+  }, [open, sidebar]);
+  useEffect(() => {
+    if (!open || sidebar?.open === false || focusedReveal.current === reveal) return;
+    const timer = window.setTimeout(() => {
+      const active = document.activeElement;
+      const composer = composerInput();
+      if (active !== document.body && active !== composer) return;
+      if (active === composer && composer instanceof HTMLTextAreaElement && composer.value !== "")
+        return;
+      const panel = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-panel-open="true"]'),
+      ).find((candidate) => candidate.querySelector("h2")?.textContent?.trim() === title);
+      const target = panel?.querySelector<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (target === null || target === undefined) return;
+      focusedReveal.current = reveal;
+      target.focus({ preventScroll: true });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [open, reveal, sidebar?.open, title]);
+  return null;
+}
 
 function ActiveThreadReady({
   client,
@@ -703,6 +742,25 @@ function ActiveThreadReady({
   });
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
+  const [diagnosticPanel, setDiagnosticPanel] = useState<"reports" | "security" | null>(null);
+  const [diagnosticPanelOpen, setDiagnosticPanelOpen] = useState(false);
+  const [diagnosticPanelReveal, setDiagnosticPanelReveal] = useState(0);
+  const diagnosticPort = useMemo(() => createDiagnosticCommandPort(client), [client]);
+  const diagnosticFocusToken: PanelFocusToken = `d6-panel-${diagnosticPanelReveal}`;
+  const restoreDiagnosticPanelFocus = useCallback(
+    (token: PanelFocusToken) => {
+      if (token === diagnosticFocusToken) composerInput()?.focus({ preventScroll: true });
+    },
+    [diagnosticFocusToken],
+  );
+  const closeDiagnosticPanel = useCallback(() => {
+    restoreDiagnosticPanelFocus(diagnosticFocusToken);
+    setDiagnosticPanelOpen(false);
+    setDiagnosticPanel(null);
+  }, [diagnosticFocusToken, restoreDiagnosticPanelFocus]);
+  useEffect(() => {
+    if (diagnosticPanel !== null) setDiagnosticPanelOpen(true);
+  }, [diagnosticPanel]);
   const shortcutPreferenceError = useShortcutPreferenceError();
   // The message being edited, and the row button that opened the editor (focus returns to it on cancel).
   const [editing, setEditing] = useState<P3EditTarget | null>(null);
@@ -1014,6 +1072,16 @@ function ActiveThreadReady({
     if (catalog && remote) handlers.set("R1.openSession", openSessionBrowser);
     handlers.set(D3_LOGIN_COMMAND.id, () => openLogin());
     handlers.set("S1.settings", () => onOpenSettings(threadId, composerInput() ?? undefined));
+    handlers.set("D6.reports", () => {
+      setDiagnosticPanelOpen(false);
+      setDiagnosticPanel("reports");
+      setDiagnosticPanelReveal((reveal) => reveal + 1);
+    });
+    handlers.set("D6.security", () => {
+      setDiagnosticPanelOpen(false);
+      setDiagnosticPanel("security");
+      setDiagnosticPanelReveal((reveal) => reveal + 1);
+    });
     handlers.set("U0.themeSystem", () => setThemePreference("system"));
     handlers.set("U0.themeLight", () => setThemePreference("light"));
     handlers.set("U0.themeDark", () => setThemePreference("dark"));
@@ -1283,6 +1351,12 @@ function ActiveThreadReady({
     show: showCommandOutput,
     surface: commandOutputSurface,
   } = useCommandReport({ threadId });
+  const previousCommandOutputReveal = useRef(commandOutputReveal);
+  useEffect(() => {
+    if (previousCommandOutputReveal.current === commandOutputReveal) return;
+    previousCommandOutputReveal.current = commandOutputReveal;
+    if (diagnosticPanel !== null) closeDiagnosticPanel();
+  }, [closeDiagnosticPanel, commandOutputReveal, diagnosticPanel]);
   // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
   const appSlashCommands = useMemo(
     () => [
@@ -1524,7 +1598,38 @@ function ActiveThreadReady({
       pickCount,
       deliverNote,
     }),
-    commandOutput: commandOutputSurface,
+    commandOutput:
+      diagnosticPanel === null
+        ? commandOutputSurface
+        : {
+            title: diagnosticPanel === "reports" ? "Reports" : "Security",
+            open: true,
+            reveal: diagnosticPanelReveal,
+            render: () =>
+              diagnosticPanel === "reports" ? (
+                <ReportsPanel
+                  invokingFocus={diagnosticFocusToken}
+                  onOpenChange={(open) => {
+                    if (!open) closeDiagnosticPanel();
+                  }}
+                  open={diagnosticPanelOpen}
+                  port={diagnosticPort}
+                  restoreFocus={restoreDiagnosticPanelFocus}
+                  threadId={threadId}
+                />
+              ) : (
+                <SecurityReportPanel
+                  invokingFocus={diagnosticFocusToken}
+                  onOpenChange={(open) => {
+                    if (!open) closeDiagnosticPanel();
+                  }}
+                  open={diagnosticPanelOpen}
+                  port={diagnosticPort}
+                  restoreFocus={restoreDiagnosticPanelFocus}
+                  threadId={threadId}
+                />
+              ),
+          },
     executionModes: useExecutionModesSurface({
       client,
       threadId,
@@ -1696,6 +1801,11 @@ function ActiveThreadReady({
                     {area("panels")}
                     <RevealAgentHub reveal={agentsReveal} />
                     <RevealCommandOutput reveal={commandOutputReveal} />
+                    <FocusDiagnosticPanelOnReveal
+                      open={diagnosticPanelOpen}
+                      reveal={diagnosticPanelReveal}
+                      title={diagnosticPanel === "reports" ? "Reports" : "Security"}
+                    />
                   </>
                 }
                 transcript={
