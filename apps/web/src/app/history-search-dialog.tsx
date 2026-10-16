@@ -66,7 +66,7 @@ export function HistorySearchDialog({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       highlight(Math.min(active + 1, results.length - 1));

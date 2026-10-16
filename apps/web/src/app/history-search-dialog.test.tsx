@@ -58,6 +58,14 @@ describe("history search dialog", () => {
     fireEvent.keyDown(search, { key: "Enter" });
     expect(onPick).toHaveBeenCalledWith("message 18");
   });
+  test("an IME Enter with keyCode 229 does not pick the highlighted history row", () => {
+    const onPick = vi.fn();
+    const search = renderDialog(onPick);
+
+    fireEvent.keyDown(search, { key: "Enter", keyCode: 229, isComposing: false });
+
+    expect(onPick).not.toHaveBeenCalled();
+  });
 
   test("Up scrolls the highlighted row back into view, up to the top row", () => {
     const search = renderDialog();
