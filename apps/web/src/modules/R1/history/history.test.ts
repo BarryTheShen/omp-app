@@ -86,7 +86,9 @@ function fakeClient(
   rpc: RpcSessionClient,
   subscriptions: SubscriptionRecord[],
   replayed: readonly RpcSessionEvent[] = [],
+  failSubscriptionAt?: number,
 ): AppClient {
+  let subscribeCount = 0;
   return {
     connectionState: "open",
     instanceId: "instance-1",
@@ -94,6 +96,8 @@ function fakeClient(
     onConnectionState: () => () => {},
     onResync: () => () => {},
     subscribe: async (_port: unknown, _event: unknown, options?: SubscribeOptions) => {
+      subscribeCount += 1;
+      if (subscribeCount === failSubscriptionAt) throw new Error("The connection dropped");
       const record: SubscriptionRecord = { options, listeners: [], unsubscribed: false };
       subscriptions.push(record);
       // Like the real client, the onEvent listener is attached before the request, and the events the server replays
@@ -699,6 +703,165 @@ describe("SelectedThreadHistoryController open and paging", () => {
     rekeyed({ kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent, 4);
     await Promise.resolve();
     expect(oldStore.getSnapshot().prompt.streaming).toBe(false);
+  });
+  test("keeps the new id and refetch watch when the re-key subscription fails", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      calls,
+    );
+    const saved: Array<ThreadId | undefined> = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions, [], 2),
+      folder,
+      onThreadIdChange: (threadId) => saved.push(threadId),
+    });
+    const store = await controller.openExisting(threadOne);
+    const rekey = subscriptions[0]?.listeners[0];
+    if (!rekey) throw new Error("initial subscription did not attach");
+
+    rekey(
+      {
+        kind: "notification",
+        frame: { type: "session_info_update", sessionId: threadTwo },
+      } as RpcSessionEvent,
+      1,
+    );
+    await vi.waitFor(() => expect(saved).toContain(threadTwo));
+
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
+    expect(controller.getSnapshot().error?.message).toBe("The connection dropped");
+    store.ingest({ kind: "process", status: "running" }, 3);
+    await vi.waitFor(() =>
+      expect(
+        calls.filter((call) => call.threadId === threadTwo && call.type === "get_entries"),
+      ).toHaveLength(1),
+    );
+    expect(store.getSnapshot().needsRefetch).toBe(false);
+  });
+
+  test("reports a failed re-key history read and keeps its retry watch", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    let failFirstRekeyRead = true;
+    const rpc = {
+      ...base,
+      send: async (
+        args: { readonly threadId: ThreadId; readonly command: { readonly type: string } },
+        options?: { readonly signal?: AbortSignal },
+      ) => {
+        calls.push({ type: args.command.type, threadId: args.threadId });
+        if (
+          failFirstRekeyRead &&
+          args.threadId === threadTwo &&
+          args.command.type === "get_entries"
+        ) {
+          failFirstRekeyRead = false;
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The chat history could not be read.",
+            retryable: true,
+          });
+        }
+        return base.send(args as never, options);
+      },
+    } as unknown as RpcSessionClient;
+    const saved: Array<ThreadId | undefined> = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+      onThreadIdChange: (threadId) => saved.push(threadId),
+    });
+    const store = await controller.openExisting(threadOne);
+    const rekey = subscriptions[0]?.listeners[0];
+    if (!rekey) throw new Error("initial subscription did not attach");
+    rekey(
+      {
+        kind: "notification",
+        frame: { type: "session_info_update", sessionId: threadTwo },
+      } as RpcSessionEvent,
+      1,
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().error?.message).toBe("The chat history could not be read."),
+    );
+
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
+    expect(saved).toContain(threadTwo);
+    store.ingest({ kind: "process", status: "running" }, 3);
+    await vi.waitFor(() =>
+      expect(
+        calls.filter((call) => call.threadId === threadTwo && call.type === "get_entries"),
+      ).toHaveLength(2),
+    );
+    expect(store.getSnapshot().needsRefetch).toBe(false);
+  });
+
+  test("does not report a superseded re-key refetch, but still saves the new id and keeps watching", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const stateReadStarted = Promise.withResolvers<void>();
+    const neverReleased = Promise.withResolvers<void>();
+    const base = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    let holdRekeyStateRead = true;
+    const rpc = {
+      ...base,
+      send: async (
+        args: { readonly threadId: ThreadId; readonly command: { readonly type: string } },
+        options?: { readonly signal?: AbortSignal },
+      ) => {
+        calls.push({ type: args.command.type, threadId: args.threadId });
+        if (
+          holdRekeyStateRead &&
+          args.threadId === threadTwo &&
+          args.command.type === "get_state"
+        ) {
+          holdRekeyStateRead = false;
+          stateReadStarted.resolve();
+          await untilAborted(neverReleased.promise, options?.signal);
+        }
+        return base.send(args as never, options);
+      },
+    } as unknown as RpcSessionClient;
+    const saved: Array<ThreadId | undefined> = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+      onThreadIdChange: (threadId) => saved.push(threadId),
+    });
+    const store = await controller.openExisting(threadOne);
+    const rekey = subscriptions[0]?.listeners[0];
+    if (!rekey) throw new Error("initial subscription did not attach");
+    rekey(
+      {
+        kind: "notification",
+        frame: { type: "session_info_update", sessionId: threadTwo },
+      } as RpcSessionEvent,
+      1,
+    );
+    await stateReadStarted.promise;
+
+    const rekeyed = subscriptions[1]?.listeners[0];
+    if (!rekeyed) throw new Error("re-keyed subscription did not attach");
+    rekeyed({ kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent, 2);
+    await vi.waitFor(() => expect(saved).toContain(threadTwo));
+
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
+    expect(controller.getSnapshot().error).toBeNull();
+    await vi.waitFor(() =>
+      expect(
+        calls.filter((call) => call.threadId === threadTwo && call.type === "get_entries"),
+      ).toHaveLength(1),
+    );
+    store.ingest({ kind: "process", status: "running" }, 4);
+    await vi.waitFor(() =>
+      expect(
+        calls.filter((call) => call.threadId === threadTwo && call.type === "get_entries"),
+      ).toHaveLength(2),
+    );
+    expect(store.getSnapshot().needsRefetch).toBe(false);
   });
 
   test("refreshes history and session state after each settled turn", async () => {

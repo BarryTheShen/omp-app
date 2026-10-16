@@ -664,12 +664,17 @@ export class SelectedThreadHistoryController {
     // omp may move the same session to a persisted file while a prompt is streaming. Keep the
     // existing store/runtime and only move the event subscription and future history requests.
     this.commit({ threadId, store, isLoading: false, error: null });
-    // While a prompt streams, its settle refetches; otherwise refetch now.
     const streaming = store.getSnapshot().prompt.streaming;
-    await this.attachSubscription(threadId, store);
-    if (!streaming) await loader.refetch();
-    this.stopRefetchWatch = loader.watchNeedsRefetch();
-    this.options.onThreadIdChange?.(threadId);
+    try {
+      await this.attachSubscription(threadId, store);
+      if (!streaming) await loader.refetch();
+    } catch (error) {
+      const failure = asFailure(error, "Refreshing the session after its id changed failed");
+      if (failure.appError.code !== "cancelled") this.commit({ error: failure.appError });
+    } finally {
+      this.stopRefetchWatch = loader.watchNeedsRefetch();
+      this.options.onThreadIdChange?.(threadId);
+    }
   }
 
   private commit(patch: Partial<SelectedThreadHistoryState>): void {
