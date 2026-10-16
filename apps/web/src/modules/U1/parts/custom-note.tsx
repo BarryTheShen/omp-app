@@ -19,10 +19,7 @@ export interface CustomNoteView {
   /** A short plain-English heading, when the kind of message is known. */
   readonly heading: string | undefined;
   readonly body: string;
-  /**
-   * The body is omp's full text: the note shows the heading as its one line and keeps the body behind a
-   * "Full message" control.
-   */
+  /** Whether this message keeps its body behind a "Full message" control. */
   readonly bodyInDetails?: boolean;
 }
 
@@ -123,8 +120,45 @@ export function describeCustomMessage(source: CustomNoteSource): CustomNoteView 
         body: typeof message === "string" ? message : withoutWrapper(text),
       };
     }
-    case "async-result":
-      return { heading: "Background job finished", body: withoutWrapper(text) };
+    case "async-result": {
+      // omp v18.8.9 sends typed job metadata without a separate display result (`packages/coding-agent/src/session/async-job-delivery.ts:50-64,127-149`);
+      // its model-facing template is `packages/coding-agent/src/prompts/tools/async-result.md:4`; show a plain status line.
+      const jobs = field(details, "jobs");
+      if (Array.isArray(jobs) && jobs.length > 0) {
+        const lines = jobs.map((job) => {
+          const type = field(job, "type");
+          const label = field(job, "label");
+          const jobId = field(job, "jobId");
+          const durationMs = field(job, "durationMs");
+          const cleanLabel = typeof label === "string" ? label.replace(/\s+/g, " ").trim() : "";
+          const kind = type === "bash" ? "command" : type === "task" ? "task" : "job";
+          const name =
+            cleanLabel === ""
+              ? `Background ${kind}${typeof jobId === "string" ? ` ${jobId}` : ""}`
+              : type === "bash"
+                ? cleanLabel
+                : `Background ${kind} ${cleanLabel}`;
+          const duration =
+            typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs >= 0
+              ? (() => {
+                  const seconds = Math.round(durationMs / 1000);
+                  return ` · ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+                })()
+              : "";
+          return `${name} finished${duration}.`;
+        });
+        return {
+          heading: lines.join(" · "),
+          body: withoutWrapper(text),
+          bodyInDetails: true,
+        };
+      }
+      return {
+        heading: "Background job finished",
+        body: withoutWrapper(text),
+        bodyInDetails: true,
+      };
+    }
     case "advisor": {
       const notes = field(details, "notes");
       const lines = Array.isArray(notes)

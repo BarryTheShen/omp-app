@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { U1_REAL_ENTRIES } from "../src/modules/U1/fixtures/real-entries";
@@ -9,7 +11,8 @@ import { expect, realTest, screenshots } from "./real-omp";
  * a chat made of real entries of each kind (`modules/U1/fixtures/real-entries.ts`) in the real app on
  * real omp: every shown one is a note that shows the words its sample lists (for a worker, its name, how it ended
  * and whether its transcript is here), in order and once; none of the
- * hidden ones is on the page; and nothing says 'Unable to render'. The same after a reload.
+ * hidden ones is on the page; and nothing says 'Unable to render'. The bash notice uses only its typed job summary,
+ * not omp's message for the model. The same holds after a reload.
  */
 
 const usage = {
@@ -73,6 +76,14 @@ async function check(page: Page, label: string) {
   await expect(page.getByText("Unable to render this omp message.")).toHaveCount(0);
 }
 
+async function assertThemeTokens(page: Page) {
+  await page.locator("html").evaluate((element) => {
+    if (getComputedStyle(element).getPropertyValue("--background").trim() === "") {
+      throw new Error("theme tokens did not load");
+    }
+  });
+}
+
 realTest(
   "omp's own messages are notes in the chat; the ones for the model are not",
   async ({ realApp }) => {
@@ -80,12 +91,38 @@ realTest(
     await page.setViewportSize({ width: 1100, height: 1500 });
     await page.getByRole("listbox", { name: "Session list" }).getByRole("option").first().click();
     await check(page, "first open");
+    await mkdir(join(screenshots, "custom-messages"), { recursive: true });
+    const bashNotice = page.locator('[data-custom-type="async-result"]').filter({
+      hasText: "sleep 120 finished",
+    });
+    const bashDetails = bashNotice.locator('[data-slot="u1-custom-note-details"]');
+    await expect(bashDetails).not.toHaveAttribute("open", "");
+    await expect(bashDetails.locator('[data-slot="u1-custom-note-body"]')).toBeHidden();
+    await expect(bashNotice).toContainText("sleep 120 finished · 120 seconds.");
+    await assertThemeTokens(page);
     await page.getByRole("region", { name: "Conversation transcript" }).screenshot({
       path: join(screenshots, "custom-messages", "notes-light.png"),
     });
+    await bashDetails.getByText("Full message", { exact: true }).click();
+    await expect(bashDetails).toContainText("(no output)");
+    await expect(bashDetails).toContainText("Wall time: 120.08 seconds");
+    await bashDetails.getByText("Full message", { exact: true }).click();
 
+    await page.evaluate(() => window.localStorage.setItem("omp-app.theme", "dark"));
     await page.reload();
     await page.getByRole("listbox", { name: "Session list" }).getByRole("option").first().click();
     await check(page, "after a reload");
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await assertThemeTokens(page);
+    await page.getByRole("region", { name: "Conversation transcript" }).screenshot({
+      path: join(screenshots, "custom-messages", "notes-dark.png"),
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(bashNotice).toContainText("sleep 120 finished · 120 seconds.");
+    await assertThemeTokens(page);
+    await page.getByRole("region", { name: "Conversation transcript" }).screenshot({
+      path: join(screenshots, "custom-messages", "notes-narrow.png"),
+    });
   },
 );

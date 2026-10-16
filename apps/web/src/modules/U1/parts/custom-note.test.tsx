@@ -49,13 +49,36 @@ describe("describeCustomMessage", () => {
     expect(view).toEqual({ heading: "Advisor note", body: "First.\n\nSecond." });
   });
 
-  test("a finished job and a finished process show their text without the model's wrapper", () => {
-    expect(
-      describeCustomMessage(sourceOf("custom_message async-result: a command")).body,
-    ).toContain("Wall time: 120.08 seconds");
+  test("a bash job shows its typed line and keeps omp's full message in details", () => {
+    const view = describeCustomMessage(sourceOf("custom_message async-result: a command"));
+    expect(view.heading).toBe("sleep 120 finished · 120 seconds.");
+    expect(view.body).toContain("Background job bg_3 has completed.");
+    expect(view.body).toContain("(no output)");
+    expect(view.bodyInDetails).toBe(true);
+  });
+
+  test("a finished process keeps its note", () => {
     expect(describeCustomMessage(sourceOf("custom_message launch-completion")).heading).toBe(
       "Process finished",
     );
+  });
+
+  test("summarizes multiple background jobs from labels, ids and durations", () => {
+    const view = describeCustomMessage({
+      customType: "async-result",
+      details: {
+        jobs: [
+          { type: "bash", label: "echo start\n&& echo done", durationMs: 1_000 },
+          { type: "bash", jobId: "bg_2", durationMs: 2_000 },
+        ],
+      },
+      text: "<system-notice>Model-facing text.</system-notice>",
+    });
+    expect(view.heading).toBe(
+      "echo start && echo done finished · 1 second. · Background command bg_2 finished · 2 seconds.",
+    );
+    expect(view.body).toBe("Model-facing text.");
+    expect(view.bodyInDetails).toBe(true);
   });
 
   test("a kind with no heading shows its text alone, and a message without the details it expects still shows", () => {
@@ -111,10 +134,21 @@ describe("describeCustomMessage", () => {
 });
 
 describe("CustomNote", () => {
-  test("shows the heading and the text of one of omp's messages", () => {
-    render(<CustomNote source={sourceOf("custom_message advisor")} />);
-    expect(screen.getByText("Advisor note")).toBeTruthy();
-    expect(screen.getByText(/Dedup did not work/)).toBeTruthy();
+  test("a finished bash notice shows its typed line and keeps omp's message behind Full message", () => {
+    const { container } = render(
+      <CustomNote source={sourceOf("custom_message async-result: a command")} />,
+    );
+    expect(screen.getByText("sleep 120 finished · 120 seconds.")).toBeTruthy();
+    const details = container.querySelector<HTMLDetailsElement>(
+      '[data-slot="u1-custom-note-details"]',
+    );
+    expect(details?.open).toBe(false);
+    expect(screen.getByText("Full message")).toBeTruthy();
+    fireEvent.click(screen.getByText("Full message"));
+    expect(details?.open).toBe(true);
+    expect(details?.textContent).toContain("(no output)");
+    expect(details?.textContent).toContain("Wall time: 120.08 seconds");
+    expect(details?.textContent).toContain("Resume your work using the result below");
   });
 
   test("a tangent shows its line, and omp's full text stays in a closed details control", () => {
@@ -228,7 +262,7 @@ describe("a background worker's notice", () => {
     for (const text of ompText) expect(container.textContent).not.toContain(text);
   });
 
-  test("a notice that also names a command keeps omp's text, because only workers have a transcript", () => {
+  test("a notice with a command and worker summarizes its typed job fields", () => {
     const { container } = renderNote(() => ({ status: "completed", transcript: null }), {
       customType: "async-result",
       details: {
@@ -237,9 +271,17 @@ describe("a background worker's notice", () => {
           { jobId: "FailProbe", type: "task" },
         ],
       },
-      text: "<system-notice>\nBackground job bg_1 has completed.\n</system-notice>",
+      text: "<system-notice>\nBackground job bg_1 has completed. Resume your work using the result below.\n</system-notice>",
     });
-    expect(screen.getByText("Background job finished")).toBeTruthy();
+    expect(
+      screen.getByText("Background command bg_1 finished. · Background task FailProbe finished."),
+    ).toBeTruthy();
+    const details = container.querySelector<HTMLDetailsElement>(
+      '[data-slot="u1-custom-note-details"]',
+    );
+    expect(details?.open).toBe(false);
+    fireEvent.click(screen.getByText("Full message"));
+    expect(details?.textContent).toContain("Resume your work using the result below");
     expect(container.querySelector('[data-slot="u1-custom-note-worker"]')).toBeNull();
   });
 

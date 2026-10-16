@@ -80,7 +80,7 @@ export const U1_REAL_ENTRIES: readonly RealEntry[] = [
       },
       timestamp: "2026-10-03T12:00:02.000Z",
     },
-    shows: ["Background job finished", "(no output)", "Wall time: 120.08 seconds"],
+    shows: ["sleep 120 finished · 120 seconds."],
     hidden: false,
   },
   {
