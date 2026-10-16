@@ -114,6 +114,13 @@ function securityLabel(item: ControlItem): string {
   return "Enabled";
 }
 
+function copyDetails(item: ControlItem, duplicateName: boolean): string | undefined {
+  const details: string[] = [];
+  if ("shadowed" in item && item.shadowed) details.push("Shadowed");
+  if (duplicateName && "version" in item && item.version) details.push(item.version);
+  return details.length === 0 ? undefined : details.join(" · ");
+}
+
 export function ExtensionControlCenter({
   catalog,
   folder,
@@ -221,6 +228,13 @@ export function ExtensionControlCenter({
     () => rowKeysOf(catalogState.snapshot ? tabItems(catalogState.snapshot, tab) : []),
     [catalogState.snapshot, tab],
   );
+  const nameCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of catalogState.snapshot ? tabItems(catalogState.snapshot, tab) : []) {
+      counts.set(itemName(item), (counts.get(itemName(item)) ?? 0) + 1);
+    }
+    return counts;
+  }, [catalogState.snapshot, tab]);
   const keyOf = (item: ControlItem): string => rowKeys.get(item) ?? itemId(item);
   const selected =
     selectedId === null ? null : (items.find((item) => keyOf(item) === selectedId) ?? null);
@@ -338,24 +352,32 @@ export function ExtensionControlCenter({
               <div className="grid min-h-0 gap-3 md:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
                 {(!narrow || selected === null) && (
                   <ul aria-label={`${tab} results`} className="min-h-0 space-y-1 overflow-auto">
-                    {items.map((item) => (
-                      <li key={keyOf(item)}>
-                        <button
-                          ref={(node) => {
-                            if (keyOf(item) === selectedId) selectedButtonRef.current = node;
-                          }}
-                          className={`border-border flex w-full min-w-0 flex-col rounded-md border px-2 py-2 text-start text-sm ${selected === item ? "bg-accent" : "bg-background"}`}
-                          data-testid={`extension-item-${keyOf(item)}`}
-                          type="button"
-                          onClick={() => setSelectedId(keyOf(item))}
-                        >
-                          <span className="truncate font-medium">{itemName(item)}</span>
-                          <span className="truncate text-xs text-muted-foreground">
-                            {itemOriginText(item)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
+                    {items.map((item) => {
+                      const details = copyDetails(item, (nameCounts.get(itemName(item)) ?? 0) > 1);
+                      return (
+                        <li key={keyOf(item)}>
+                          <button
+                            ref={(node) => {
+                              if (keyOf(item) === selectedId) selectedButtonRef.current = node;
+                            }}
+                            className={`border-border flex w-full min-w-0 flex-col rounded-md border px-2 py-2 text-start text-sm ${selected === item ? "bg-accent" : "bg-background"}`}
+                            data-testid={`extension-item-${keyOf(item)}`}
+                            type="button"
+                            onClick={() => setSelectedId(keyOf(item))}
+                          >
+                            <span className="truncate font-medium">{itemName(item)}</span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              {itemOriginText(item)}
+                            </span>
+                            {details !== undefined && (
+                              <span className="truncate text-xs text-muted-foreground">
+                                {details}
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 {(!narrow || selected !== null) && (

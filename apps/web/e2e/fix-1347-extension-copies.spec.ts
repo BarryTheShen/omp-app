@@ -57,10 +57,16 @@ realTest(
     await rows.nth(0).click();
     await expect(rows.nth(0)).toHaveClass(/bg-accent/);
     const firstShown = await versionShown(inspector);
+    await expect(rows.nth(0)).toContainText(firstShown);
+    if (firstShown === GLOBAL_VERSION) await expect(rows.nth(0)).toContainText("Shadowed");
+    else await expect(rows.nth(0)).not.toContainText("Shadowed");
     await rows.nth(1).click();
     await expect(rows.nth(1)).toHaveClass(/bg-accent/);
     await expect(rows.nth(0)).not.toHaveClass(/bg-accent/);
     const secondShown = await versionShown(inspector);
+    await expect(rows.nth(1)).toContainText(secondShown);
+    if (secondShown === GLOBAL_VERSION) await expect(rows.nth(1)).toContainText("Shadowed");
+    else await expect(rows.nth(1)).not.toContainText("Shadowed");
     expect(secondShown).not.toBe(firstShown);
     // The copy omp uses is the one that is not marked shadowed: the global 1.0.0 copy is the shadowed one.
     if (secondShown === GLOBAL_VERSION) await expect(inspector).toContainText("Shadowed");

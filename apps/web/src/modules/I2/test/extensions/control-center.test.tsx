@@ -92,7 +92,7 @@ describe("ExtensionControlCenter", () => {
       extensions: [
         {
           id: "shadowed",
-          name: "Shadowed",
+          name: "Copy",
           provider: "demo",
           source: "plugin",
           version: "1.0.0",
@@ -102,7 +102,7 @@ describe("ExtensionControlCenter", () => {
         },
         {
           id: "shadowed",
-          name: "Shadowed",
+          name: "Copy",
           provider: "demo",
           source: "plugin",
           version: "2.0.0",
@@ -110,8 +110,18 @@ describe("ExtensionControlCenter", () => {
           shadowed: false,
           capabilities: [],
         },
+        {
+          id: "unique",
+          name: "Unique",
+          provider: "demo",
+          source: "plugin",
+          version: "3.0.0",
+          enabled: true,
+          shadowed: false,
+          capabilities: [],
+        },
       ],
-      sources: [{ source: "plugin", provider: "demo", total: 2, enabled: 2, shadowed: 1 }],
+      sources: [{ source: "plugin", provider: "demo", total: 3, enabled: 3, shadowed: 1 }],
     };
     const fake: ExtensionCatalog = {
       list: vi.fn(async () => copies),
@@ -121,8 +131,15 @@ describe("ExtensionControlCenter", () => {
     render(<ExtensionControlCenter catalog={fake} folder={folder} capabilities={available} />);
     fireEvent.click(screen.getByTestId("extension-tab-plugins"));
     const list = await screen.findByRole("list", { name: "plugins results" });
-    const [first, second] = within(list).getAllByRole("button");
-    if (first === undefined || second === undefined) throw new Error("two rows were expected");
+    const first = within(list).getByRole("button", { name: /1\.0\.0/ });
+    const second = within(list).getByRole("button", { name: /2\.0\.0/ });
+    const unique = within(list).getByRole("button", { name: /Unique/ });
+    expect(first.textContent?.match(/Shadowed/g) ?? []).toHaveLength(1);
+    expect(second.textContent?.match(/Shadowed/g) ?? []).toHaveLength(0);
+    expect(first.textContent).toContain("1.0.0");
+    expect(second.textContent).toContain("2.0.0");
+    expect(unique.textContent).toContain("Unique");
+    expect(unique.textContent).not.toContain("3.0.0");
     fireEvent.click(second);
     expect(screen.getByTestId("extension-inspector").textContent).toContain("2.0.0");
     expect(screen.getByTestId("extension-inspector").textContent).not.toContain("1.0.0");
@@ -132,6 +149,49 @@ describe("ExtensionControlCenter", () => {
     expect(screen.getByTestId("extension-inspector").textContent).toContain("1.0.0");
     expect(first.className).toContain("bg-accent");
     expect(second.className).not.toContain("bg-accent");
+  });
+
+  test("a unique plugin beside duplicate copies has no version, while each duplicate row shows one", async () => {
+    const mixed: ExtensionCatalogSnapshot = {
+      ...snapshot,
+      extensions: [
+        ...snapshot.extensions,
+        {
+          id: "shared",
+          name: "Copy",
+          provider: "demo",
+          source: "plugin",
+          version: "1.0.0",
+          enabled: true,
+          shadowed: true,
+          capabilities: [],
+        },
+        {
+          id: "shared",
+          name: "Copy",
+          provider: "demo",
+          source: "plugin",
+          version: "2.0.0",
+          enabled: true,
+          shadowed: false,
+          capabilities: [],
+        },
+      ],
+      sources: [{ source: "plugin", provider: "demo", total: 3, enabled: 3, shadowed: 1 }],
+    };
+    const fake: ExtensionCatalog = {
+      list: vi.fn(async () => mixed),
+      reload: vi.fn(async () => mixed),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(<ExtensionControlCenter catalog={fake} folder={folder} capabilities={available} />);
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    const list = await screen.findByRole("list", { name: "plugins results" });
+    expect(within(list).getByRole("button", { name: /Plugin One/ }).textContent).not.toContain(
+      "1.0.0",
+    );
+    expect(within(list).getByRole("button", { name: /1.0.0/ }).textContent).toContain("1.0.0");
+    expect(within(list).getByRole("button", { name: /2.0.0/ }).textContent).toContain("2.0.0");
   });
 
   test("an empty tab says what is missing in its own words, and a search with no result says so", async () => {
