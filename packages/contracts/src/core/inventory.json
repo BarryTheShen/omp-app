@@ -3654,15 +3654,6 @@
     "source": "src/modes/interactive-mode.ts:3581-3685; src/modes/components/status-line/segments.ts:277-285"
   },
   {
-    "id": "C3.vision-delegation",
-    "group": "C3",
-    "name": "vision delegation",
-    "kind": "mode",
-    "rpc": "RPC",
-    "ui": "toggle",
-    "source": "src/slash-commands/builtin-modes.ts:532-572; src/config/settings-schema.ts:4230-4240"
-  },
-  {
     "id": "C3.advisor-configuration-overlay",
     "group": "C3",
     "name": "Advisor configuration overlay",
