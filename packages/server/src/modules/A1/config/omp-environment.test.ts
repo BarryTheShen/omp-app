@@ -59,6 +59,7 @@ describe("ompEnvironmentValues", () => {
             PI_BROWSER_RELAY: "ON",
             PI_BROWSER_CMUX: "0",
             PI_BROWSER_TERN: "no",
+            PI_NO_THINKING_LOOP_GUARD: "1",
           },
         }),
       ),
@@ -68,11 +69,19 @@ describe("ompEnvironmentValues", () => {
       "browser.relay": true,
       "browser.cmux": false,
       "browser.tern": false,
+      "model.loopGuard.enabled": false,
     });
-    // omp matches these spellings exactly (packages/utils/src/env.ts:472-487): "True" is not on.
+    // omp matches these spellings exactly (packages/utils/src/env.ts:472-487): "True" is not on, and
+    // PI_NO_THINKING_LOOP_GUARD values other than "1" do not override the saved setting.
     expect(
       await ompEnvironmentValues(
-        sourcesIn(root, { processEnv: { PI_AUTO_QA: "garbage", PI_INTENT_TRACING: "True" } }),
+        sourcesIn(root, {
+          processEnv: {
+            PI_AUTO_QA: "garbage",
+            PI_INTENT_TRACING: "True",
+            PI_NO_THINKING_LOOP_GUARD: "0",
+          },
+        }),
       ),
     ).toEqual({ "dev.autoqa": false, "tools.intentTracing": false });
   });

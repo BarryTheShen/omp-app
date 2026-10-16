@@ -43,6 +43,12 @@ const OMP_ENVIRONMENT_SETTINGS = [
   { key: "browser.cmux", variable: "PI_BROWSER_CMUX", type: "boolean" },
   // packages/coding-agent/src/tools/browser/tern/kind.ts:33.
   { key: "browser.tern", variable: "PI_BROWSER_TERN", type: "boolean" },
+  // omp checks this variable for "1" to disable loop guard; every other value leaves the config setting enabled.
+  {
+    key: "model.loopGuard.enabled",
+    variable: "PI_NO_THINKING_LOOP_GUARD",
+    type: "invertedBoolean",
+  },
 ] as const;
 
 /** The environment variable that sets each setting above, by setting id: an entry names the variable that overrides it. */
@@ -141,6 +147,10 @@ export async function ompEnvironmentValues(
   for (const setting of OMP_ENVIRONMENT_SETTINGS) {
     const raw = firstSetText(setting.variable, layers);
     if (raw === undefined) continue;
+    if (setting.type === "invertedBoolean") {
+      if (raw === "1") values[setting.key] = false;
+      continue;
+    }
     if (setting.type === "boolean") {
       values[setting.key] = ON_TEXTS[raw] === true;
       continue;
