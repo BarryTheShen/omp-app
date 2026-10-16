@@ -433,15 +433,7 @@ const NotificationPayload = z
   })
   .strict();
 
-export const ProcessStatus = z.enum([
-  "starting",
-  "ready",
-  "running",
-  "stopped",
-  "restarting",
-  "exited",
-  "error",
-]);
+export const ProcessStatus = z.enum(["starting", "ready", "running", "stopped", "exited", "error"]);
 export type ProcessStatus = z.infer<typeof ProcessStatus>;
 
 const ProcessStatusPayload = z

@@ -1232,7 +1232,7 @@ export class OmpRuntimeController {
       messages: this.messages(snapshot),
       convertMessage: this.converter,
       isRunning: snapshot.prompt.streaming,
-      isLoading: snapshot.process.status === "starting" || snapshot.process.status === "restarting",
+      isLoading: snapshot.process.status === "starting",
       isSendDisabled: !(canPrompt || canBash),
       onNew: this.onNew,
       unstable_enableToolInvocations: false,

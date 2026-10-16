@@ -165,7 +165,7 @@ export type ChatFailure = AppError & {
 };
 
 export interface ProcessState {
-  readonly status: "starting" | "ready" | "running" | "stopped" | "restarting" | "exited" | "error";
+  readonly status: "starting" | "ready" | "running" | "stopped" | "exited" | "error";
   readonly error: AppError | null;
   /** When the process started (ms since the epoch), as its frames say. Undefined until a frame has said. */
   readonly startedAt?: number;
@@ -322,7 +322,6 @@ const PROCESS_STATUSES: Record<ProcessState["status"], true> = {
   ready: true,
   running: true,
   stopped: true,
-  restarting: true,
   exited: true,
   error: true,
 };
@@ -1506,10 +1505,7 @@ export class OmpRuntimeStore {
     const previousStatus = this.snapshot.process.status;
     const startsNewProcess =
       (status === "starting" || status === "ready") &&
-      (previousStatus === "exited" ||
-        previousStatus === "restarting" ||
-        previousStatus === "stopped" ||
-        previousStatus === "error");
+      (previousStatus === "exited" || previousStatus === "stopped" || previousStatus === "error");
     if (startsNewProcess) {
       next.processGeneration += 1;
       next.processId = processIdForGeneration(next.threadId, next.processGeneration);

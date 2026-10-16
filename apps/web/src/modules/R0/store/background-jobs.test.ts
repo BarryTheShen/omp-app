@@ -80,9 +80,6 @@ describe("background job views", () => {
     expect(viewsOf([launch("1", "call_a", "bg_1", 100)], process("exited", 50))).toEqual({
       call_a: { kind: "ended", jobId: "bg_1" },
     });
-    expect(viewsOf([launch("1", "call_a", "bg_1", 100)], process("restarting", 50))).toEqual({
-      call_a: { kind: "ended", jobId: "bg_1" },
-    });
   });
 
   test("a live process that has not said when it started leaves its jobs unknown", () => {

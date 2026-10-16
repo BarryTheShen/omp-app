@@ -278,7 +278,6 @@ function RuntimeStateSurface({
   // Until the chat's history is read, an empty list does not mean the chat is empty.
   if (
     snapshot.process.status === "starting" ||
-    snapshot.process.status === "restarting" ||
     (historyLoading && snapshot.messageOrder.length === 0)
   ) {
     return (

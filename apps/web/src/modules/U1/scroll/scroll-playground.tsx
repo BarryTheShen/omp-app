@@ -211,13 +211,10 @@ function ScrollPlayground() {
     setEntries(updated);
     fixture.store.pairEndedMessages(updated, last.id);
   }, [entries, fixture.store]);
-
   const reconnect = useCallback(() => {
-    fixture.store.ingest({ kind: "process", status: "restarting" }, sequence.current++);
     fixture.store.pairEndedMessages(entries, entries.at(-1)?.id ?? null);
     fixture.store.ingest({ kind: "process", status: "ready" }, sequence.current++);
   }, [entries, fixture.store]);
-
   return (
     <RegistryProvider capabilities={CAPABILITIES} registry={registry} renderers={RENDERERS}>
       <AssistantRuntimeProvider runtime={runtime}>

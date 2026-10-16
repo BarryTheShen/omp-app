@@ -284,8 +284,6 @@ export function processBlockReason(process: ProcessState): string | undefined {
       return undefined;
     case "starting":
       return "omp is still starting. Try again in a moment.";
-    case "restarting":
-      return "omp is reconnecting. Try again in a moment.";
     case "stopped":
       return "omp is not running. Start it again to continue.";
     case "exited":

@@ -140,14 +140,8 @@ describe("RecoveryController availability", () => {
     });
   });
 
-  test("keeps both commands unavailable while omp restarts or has stopped, with a plain reason", () => {
+  test("keeps both commands unavailable while omp has stopped, with a plain reason", () => {
     const h = harness();
-    h.setProcess({ status: "restarting", error: null });
-    expect(h.controller.getAvailability("retry")).toMatchObject({
-      state: "unavailable",
-      reason: "omp is reconnecting. Try again in a moment.",
-    });
-
     h.setProcess({ status: "exited", error: null });
     expect(h.controller.getAvailability("handoff")).toMatchObject({
       state: "unavailable",
