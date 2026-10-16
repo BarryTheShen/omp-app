@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
@@ -50,6 +50,110 @@ function headerModel(page: Page): Locator {
 /** omp's config.yml in this run's agent folder. */
 function configPath(realApp: { readonly agentDir: string }): string {
   return join(realApp.agentDir, "config.yml");
+}
+
+type ConfigWriteHold = {
+  readonly recentWriteSent: Promise<void>;
+  readonly release: () => void;
+  readonly install: (page: Page) => Promise<void>;
+};
+
+/** Holds every ConfigStore write until the test releases it, so the race cannot depend on wall-clock timing. */
+function holdConfigWrites(): ConfigWriteHold {
+  let notifyRecentWrite!: () => void;
+  let released = false;
+  const held: Array<() => void> = [];
+  const recentWriteSent = new Promise<void>((resolve) => {
+    notifyRecentWrite = resolve;
+  });
+  return {
+    recentWriteSent,
+    release: () => {
+      released = true;
+      for (const send of held.splice(0)) send();
+    },
+    install: async (page) => {
+      await page.routeWebSocket(/\/ws/, (socket) => {
+        const server = socket.connectToServer();
+        socket.onMessage((message) => {
+          const frame = JSON.parse(String(message)) as {
+            readonly args?: { readonly key?: unknown };
+            readonly method?: unknown;
+            readonly port?: unknown;
+            readonly type?: unknown;
+          };
+          if (
+            frame.type === "call" &&
+            frame.port === "A1.configStore" &&
+            frame.method === "write"
+          ) {
+            if (frame.args?.key === "app.recentModels") notifyRecentWrite();
+            if (released) server.send(message);
+            else held.push(() => server.send(message));
+            return;
+          }
+          server.send(message);
+        });
+        server.onMessage((message) => socket.send(message));
+      });
+    },
+  };
+}
+type RecentWriteFailure = {
+  readonly install: (page: Page) => Promise<void>;
+};
+
+function failNextRecentWrite(message: string): RecentWriteFailure {
+  let failed = false;
+  return {
+    install: async (page) => {
+      await page.routeWebSocket(/\/ws/, (socket) => {
+        const server = socket.connectToServer();
+        let failedCallId: string | undefined;
+        socket.onMessage((frame) => {
+          const parsed = JSON.parse(String(frame)) as {
+            readonly args?: { readonly key?: unknown };
+            readonly id?: string;
+            readonly method?: unknown;
+            readonly port?: unknown;
+            readonly type?: unknown;
+          };
+          if (
+            !failed &&
+            parsed.type === "call" &&
+            parsed.port === "A1.configStore" &&
+            parsed.method === "write" &&
+            parsed.args?.key === "app.recentModels"
+          ) {
+            failed = true;
+            failedCallId = parsed.id;
+          }
+          server.send(frame);
+        });
+        server.onMessage((frame) => {
+          if (failedCallId !== undefined) {
+            const parsed = JSON.parse(String(frame)) as {
+              readonly id?: string;
+              readonly type?: unknown;
+            };
+            if (parsed.type === "result" && parsed.id === failedCallId) {
+              socket.send(
+                JSON.stringify({
+                  type: "result",
+                  id: failedCallId,
+                  ok: false,
+                  error: { code: "internal", message, retryable: true },
+                }),
+              );
+              failedCallId = undefined;
+              return;
+            }
+          }
+          socket.send(frame);
+        });
+      });
+    },
+  };
 }
 
 /** The dialog's own background and type came from the app's stylesheet, not the browser's defaults. */
@@ -180,6 +284,81 @@ realTest(
     expect(await readFile(join(realApp.appDataDir, "config.yml"), "utf8")).toContain(
       "fake/claude-3-haiku-20240307",
     );
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+realTest(
+  "a recent model stays visible when its config write is delayed through a dialog reopen",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const heldWrites = holdConfigWrites();
+    const page = await realApp.open({ beforeLoad: heldWrites.install });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const dialog = await openModelDialog(page);
+
+    await dialog.getByRole("button", { name: FAKE_HAIKU }).click();
+    await expect(dialog.getByText("Active: fake/claude-3-haiku-20240307")).toBeVisible({
+      timeout: 20_000,
+    });
+    await heldWrites.recentWriteSent;
+    await dialog.getByRole("button", { name: FAKE_FABLE }).click();
+    await expect(dialog.getByText("Active: fake/claude-fable-5")).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const reopened = await reopenModelDialog(page, dialog);
+    const recentModels = reopened.getByRole("region", { name: "Recent models" });
+    await expect(recentModels.getByRole("button", { name: FAKE_HAIKU })).toBeVisible();
+    heldWrites.release();
+    await expect
+      .poll(async () => {
+        try {
+          return await readFile(join(realApp.appDataDir, "config.yml"), "utf8");
+        } catch (error) {
+          if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
+          throw error;
+        }
+      })
+      .toContain("fake/claude-3-haiku-20240307");
+    await expect(recentModels.getByRole("button", { name: FAKE_HAIKU })).toBeVisible();
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+realTest(
+  "a failed recent-model save keeps the pick and explains the failure in later dialogs",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const message = "Disk full while saving recent models.";
+    const failure = failNextRecentWrite(message);
+    const page = await realApp.open({ beforeLoad: failure.install });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const dialog = await openModelDialog(page);
+    await dialog.getByRole("button", { name: FAKE_HAIKU }).click();
+    await expect(dialog.getByText("Active: fake/claude-3-haiku-20240307")).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(dialog.getByRole("alert")).toContainText(message, { timeout: 20_000 });
+    await mkdir(screenshots, { recursive: true });
+    await dialog.screenshot({ path: join(screenshots, "fix-1551-recent-save-failed-light.png") });
+
+    const reopened = await reopenModelDialog(page, dialog);
+    await expect(reopened.getByRole("alert")).toContainText(message);
+    await expect(
+      reopened
+        .getByRole("region", { name: "Recent models" })
+        .getByRole("button", { name: FAKE_HAIKU }),
+    ).toBeVisible();
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await waitForFiniteAnimations(page);
+    await page.screenshot({ path: join(screenshots, "fix-1551-recent-save-failed-dark.png") });
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(reopened.getByRole("alert")).toContainText(message);
+    await waitForFiniteAnimations(page);
+    await page.screenshot({ path: join(screenshots, "fix-1551-recent-save-failed-narrow.png") });
     expect(realApp.problems).toEqual([]);
   },
 );

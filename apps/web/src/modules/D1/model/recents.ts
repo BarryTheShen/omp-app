@@ -27,10 +27,15 @@ export interface RecentModelsPort {
 
 const StoredKeys = z.array(z.string().min(1));
 
+const configRecentModelsPorts = new WeakMap<AppClient, RecentModelsPort>();
+
 /** The ConfigStore-backed port: the app layer, so the list never goes into omp's files. */
 export function createConfigRecentModelsPort(client: AppClient): RecentModelsPort {
+  const existing = configRecentModelsPorts.get(client);
+  if (existing) return existing;
+
   const config = client.port(ConfigStore);
-  return {
+  const port: RecentModelsPort = {
     read: async () => {
       const listed = await config.list({ prefix: RECENT_MODELS_KEY, folder: null });
       const entry = listed.entries.find((candidate) => candidate.key === RECENT_MODELS_KEY);
@@ -56,6 +61,8 @@ export function createConfigRecentModelsPort(client: AppClient): RecentModelsPor
       return result.revision;
     },
   };
+  configRecentModelsPorts.set(client, port);
+  return port;
 }
 
 export interface RecentModelsSnapshot {
@@ -70,23 +77,55 @@ function failureMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+type RecentModelsState = {
+  revision: Revision | null;
+  queue: Promise<void>;
+  snapshot: RecentModelsSnapshot;
+  pendingKeys: string[];
+  retainedKeys: string[];
+  saveError: string | null;
+  instances: Set<RecentModels>;
+};
+
+const recentModelsStates = new WeakMap<RecentModelsPort, RecentModelsState>();
+
+function recentModelsState(port: RecentModelsPort): RecentModelsState {
+  const existing = recentModelsStates.get(port);
+  if (existing) return existing;
+  const state: RecentModelsState = {
+    revision: null,
+    queue: Promise.resolve(),
+    snapshot: Object.freeze({ keys: [], error: null }),
+    pendingKeys: [],
+    retainedKeys: [],
+    saveError: null,
+    instances: new Set(),
+  };
+  recentModelsStates.set(port, state);
+  return state;
+}
+
+function orderedKeys(keys: readonly string[]): string[] {
+  return [...new Set(keys)].slice(0, RECENT_MODELS_LIMIT);
+}
+
 /**
- * The recent-models list in the browser. A choice shows at once; the save follows, one at a time, and
- * a save that finds the file changed elsewhere takes that list and saves the choice again.
+ * The recent-models list in the browser. Dialog instances using the same ConfigStore port share their optimistic
+ * picks and serialized writes, so a read from a newly opened dialog cannot replace a pick that is still saving.
  */
 export class RecentModels {
   private readonly port: RecentModelsPort;
+  private readonly state: RecentModelsState;
   private readonly listeners = new Set<(snapshot: RecentModelsSnapshot) => void>();
-  private revision: Revision | null = null;
-  private queue: Promise<void> = Promise.resolve();
-  private snapshot: RecentModelsSnapshot = Object.freeze({ keys: [], error: null });
 
   public constructor(port: RecentModelsPort) {
     this.port = port;
+    this.state = recentModelsState(port);
+    this.state.instances.add(this);
   }
 
   public getSnapshot(): RecentModelsSnapshot {
-    return this.snapshot;
+    return this.state.snapshot;
   }
 
   public subscribe(listener: (snapshot: RecentModelsSnapshot) => void): () => void {
@@ -96,38 +135,55 @@ export class RecentModels {
     };
   }
 
-  /** Loads the saved list. A failed read leaves the list empty and says why. */
+  /** Loads saved models without dropping picks whose writes are still in flight or have failed. */
   public async read(): Promise<void> {
     try {
       const next = await this.port.read();
-      this.revision = next.revision;
-      this.commit({ keys: next.keys.slice(0, RECENT_MODELS_LIMIT), error: null });
+      this.state.revision = next.revision;
+      this.commit({
+        keys: orderedKeys([...this.state.pendingKeys, ...this.state.retainedKeys, ...next.keys]),
+        error: this.state.saveError,
+      });
     } catch (error) {
-      this.commit({ error: failureMessage(error, "The recent models could not be read.") });
+      this.commit({
+        error:
+          this.state.saveError ?? failureMessage(error, "The recent models could not be read."),
+      });
     }
   }
 
   /** Puts the model first. Resolves once the save has been tried; a failed save is in the snapshot. */
   public record(model: ModelRef): Promise<void> {
     const key = modelKey(model);
-    const keys = [key, ...this.snapshot.keys.filter((item) => item !== key)];
-    this.commit({ keys: keys.slice(0, RECENT_MODELS_LIMIT), error: null });
-    this.queue = this.queue.then(() => this.save());
-    return this.queue;
+    this.state.pendingKeys = orderedKeys([
+      key,
+      ...this.state.pendingKeys.filter((item) => item !== key),
+    ]);
+    this.state.saveError = null;
+    this.commit({
+      keys: orderedKeys([key, ...this.state.snapshot.keys.filter((item) => item !== key)]),
+      error: null,
+    });
+    this.state.queue = this.state.queue.then(() => this.save());
+    return this.state.queue;
   }
 
   public dispose(): void {
+    this.state.instances.delete(this);
     this.listeners.clear();
   }
 
   private async save(): Promise<void> {
+    const keys = this.state.snapshot.keys.slice();
     try {
-      if (this.revision === null) await this.refreshRevision();
-      this.revision = await this.port.write(this.snapshot.keys, this.revision as Revision);
+      if (this.state.revision === null) await this.refreshRevision();
+      this.state.revision = await this.port.write(keys, this.state.revision as Revision);
+      this.removeSavedKeys(keys);
+      this.state.saveError = null;
       this.commit({ error: null });
     } catch (error) {
       if (!(error instanceof AppFailure && error.appError.code === "conflict")) {
-        this.commit({ error: failureMessage(error, "The recent models could not be saved.") });
+        this.failSave(error);
         return;
       }
       await this.saveAfterConflict();
@@ -137,24 +193,45 @@ export class RecentModels {
   /** The file changed elsewhere: keep the saved list, put the newest choice first, and save again. */
   private async saveAfterConflict(): Promise<void> {
     try {
-      const head = this.snapshot.keys[0];
+      const head = this.state.snapshot.keys[0];
       const fresh = await this.port.read();
-      const keys = head ? [head, ...fresh.keys.filter((item) => item !== head)] : [...fresh.keys];
-      const limited = keys.slice(0, RECENT_MODELS_LIMIT);
-      this.revision = await this.port.write(limited, fresh.revision);
-      this.commit({ keys: limited, error: null });
+      const keys = orderedKeys(head ? [head, ...fresh.keys] : fresh.keys);
+      this.state.revision = await this.port.write(keys, fresh.revision);
+      this.removeSavedKeys(keys);
+      this.state.saveError = null;
+      this.commit({
+        keys: orderedKeys([...keys, ...this.state.pendingKeys, ...this.state.retainedKeys]),
+        error: null,
+      });
     } catch (error) {
-      this.commit({ error: failureMessage(error, "The recent models could not be saved.") });
+      this.failSave(error);
     }
   }
 
   private async refreshRevision(): Promise<void> {
     const next = await this.port.read();
-    this.revision = next.revision;
+    this.state.revision = next.revision;
+  }
+
+  private removeSavedKeys(keys: readonly string[]): void {
+    const saved = new Set(keys);
+    this.state.pendingKeys = this.state.pendingKeys.filter((key) => !saved.has(key));
+    this.state.retainedKeys = this.state.retainedKeys.filter((key) => !saved.has(key));
+  }
+
+  private failSave(error: unknown): void {
+    this.state.retainedKeys = orderedKeys([...this.state.pendingKeys, ...this.state.retainedKeys]);
+    this.state.pendingKeys = [];
+    this.state.saveError = failureMessage(error, "The recent models could not be saved.");
+    this.commit({ error: this.state.saveError });
   }
 
   private commit(patch: Partial<RecentModelsSnapshot>): void {
-    this.snapshot = Object.freeze({ ...this.snapshot, ...patch });
-    for (const listener of this.listeners) listener(this.snapshot);
+    this.state.snapshot = Object.freeze({ ...this.state.snapshot, ...patch });
+    for (const instance of this.state.instances) instance.publish();
+  }
+
+  private publish(): void {
+    for (const listener of this.listeners) listener(this.state.snapshot);
   }
 }
