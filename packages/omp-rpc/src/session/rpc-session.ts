@@ -280,7 +280,7 @@ function createFailure(
 
 function asTransportFailure(cause: unknown): AppFailure {
   if (cause instanceof AppFailure) return cause;
-  return createFailure("omp_exited", "The omp RPC transport closed", true);
+  return createFailure("omp_exited", "omp stopped unexpectedly. Try again.", true);
 }
 
 /** omp refuses a prompt that arrives while its agent is still running a turn: `AgentBusyError` (omp v18.6.1, packages/agent/src/agent.ts:103). */
@@ -537,7 +537,7 @@ export class RpcSession {
     try {
       const ready = await this.#readyPromise;
       if (ready === undefined) {
-        throw createFailure("omp_exited", "The omp RPC transport closed before ready", true);
+        throw createFailure("omp_exited", "omp stopped while it was starting. Try again.", true);
       }
       this.#state = "negotiating";
       if (ready.supportedProtocolVersions?.includes(2) === true) {
@@ -906,7 +906,11 @@ export class RpcSession {
 
   #handleWriteFailure(id: string): void {
     const pending = this.#pending.get(id);
-    const failure = createFailure("omp_exited", "The omp RPC transport rejected a write", true);
+    const failure = createFailure(
+      "omp_exited",
+      "omp stopped before it got the request. Try again.",
+      true,
+    );
     if (pending !== undefined) this.#rejectPending(pending, failure);
     this.#state = "error";
     this.#emitProcessError(failure);

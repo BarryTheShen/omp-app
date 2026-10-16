@@ -51,7 +51,7 @@ describe("emptyStateCopy", () => {
   test("a startup failure with a typed reason says what happened and the next step, in plain words", () => {
     const startupFailure = {
       code: "omp_exited",
-      message: "The omp RPC transport closed before ready",
+      message: "omp stopped while it was starting. Try again.",
       retryable: true,
     } as const;
     for (const [startup, words] of [
@@ -61,7 +61,20 @@ describe("emptyStateCopy", () => {
     ] as const) {
       const copy = emptyStateCopy({ opening: false, error: { ...startupFailure, startup } });
       expect(copy.detail).toContain(words);
-      expect(copy.detail).not.toMatch(/RPC transport/);
+      expect(copy.detail).not.toMatch(/RPC|transport/);
     }
+  });
+
+  test("with no startup reason, the empty state shows the error's message as written", () => {
+    const copy = emptyStateCopy({
+      opening: false,
+      error: {
+        code: "omp_exited",
+        message: "omp stopped while it was starting. Try again.",
+        retryable: true,
+      },
+    });
+    expect(copy.detail).toBe("omp stopped while it was starting. Try again.");
+    expect(copy.detail).not.toMatch(/RPC|transport/);
   });
 });
