@@ -1,5 +1,18 @@
 import type { RealToolResult } from "../../U3/tool-card/real-result";
 
+/** The text of a device call that returned many rows: the recorded device answer's shape, with the rows generated. */
+const MANY_ROWS = JSON.stringify(
+  {
+    head: "60 results for example search",
+    n: 60,
+    rows: Array.from({ length: 60 }, (_, index) => ({
+      id: String(100_000_000_000 + index),
+      price: `$${250 + index}.00`,
+    })),
+  },
+  null,
+  2,
+);
 /**
  * Real `write` results whose target is not a file: a message to another agent, a background job's
  * kill, and a device (`xd://`) call. Paths and content are replaced; the result shapes are omp's.
@@ -90,5 +103,26 @@ export const T1_WRITE_TARGET_RESULTS: readonly RealToolResult[] = [
     result: { content: [{ type: "text", text: "Aborted: Cancelled" }], details: {} },
     isError: true,
     shows: ["Aborted: Cancelled"],
+  },
+  {
+    name: "write: a device call that returns many rows",
+    toolName: "write",
+    args: {
+      path: "xd://browser",
+      content: '{"action":"run","name":"listings","timeout":90,"code":"return rows"}',
+    },
+    result: {
+      content: [{ type: "text", text: MANY_ROWS }],
+      details: {
+        // omp also sends `tier` and `inner` here (420 browser successes in the session store carry them); the write card reads only `tool`, so they are left out.
+        xdev: {
+          tool: "browser",
+          mode: "execute",
+          args: { action: "run", name: "listings", timeout: 90, code: "return rows" },
+        },
+      },
+    },
+    isError: false,
+    shows: ["60 results for example search"],
   },
 ];
