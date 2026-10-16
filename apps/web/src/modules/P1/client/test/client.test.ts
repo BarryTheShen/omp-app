@@ -172,10 +172,10 @@ describe("P1 subagent client commands", () => {
     await client.dispose();
   });
 
-  test("turns cancelled false into a retryable conflict, so the caller re-reads the worker before the row changes", async () => {
+  test("turns cancelled false into a non-retryable not-found answer", async () => {
     const { client } = fakeClient({ cancelled: false });
     await expect(client.cancel(subagentId)).rejects.toMatchObject({
-      appError: { code: "conflict", retryable: true },
+      appError: { code: "not_found", retryable: false },
     });
     await client.dispose();
   });

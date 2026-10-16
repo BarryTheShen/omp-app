@@ -36,11 +36,9 @@ export interface SubagentCommandCase {
 }
 
 /**
- * Success and failure of cancel and steer. Every failure reads as a typed AppFailure; omp's words stay in `omp`.
  * omp answers `cancelled: false` for an id that is not a running subagent of this session: unknown, another
- * session's, finished, or already cancelled, so hosts can treat it as idempotent (docs/rpc.md, "Cancelling
- * subagents", v18.8.9 lines 1030-1035). The client reports that answer as a retryable conflict (client.ts:217-219).
- * The mapping is issue 1686.
+ * session's, finished, or already cancelled. The client reports a typed, non-retryable `not_found` answer so
+ * callers can re-read the roster (docs/rpc.md, "Cancelling subagents", v18.8.9 lines 1030-1035).
  */
 export const SUBAGENT_COMMAND_CASES: readonly SubagentCommandCase[] = [
   {
@@ -51,10 +49,10 @@ export const SUBAGENT_COMMAND_CASES: readonly SubagentCommandCase[] = [
     expect: { outcome: "resolves", sent: true },
   },
   {
-    name: "cancel: omp answers false, and the client reports a retryable conflict (issue 1686)",
+    name: "cancel: omp answers false, and the client reports a non-retryable not_found (issue 1686)",
     command: "cancel",
     reply: { cancelled: false },
-    expect: { outcome: "rejects", code: "conflict", retryable: true, sent: true },
+    expect: { outcome: "rejects", code: "not_found", retryable: false, sent: true },
   },
   {
     name: "cancel: the capability is missing, so nothing is sent",

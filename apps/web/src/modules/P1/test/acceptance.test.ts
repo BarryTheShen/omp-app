@@ -368,13 +368,21 @@ describe("CC8: cancel and steer send the typed command, succeed or fail in plain
     expect(words).toMatch(/Your text is still here/);
   });
 
-  test.fails("cancelled:false is idempotent, so it is not a conflict (#1686)", async () => {
+  test.fails("omp's steer refusal is not read by its wording: without a code it is not a conflict (#1676)", async () => {
+    const { session } = fakeSession({ ompError: OMP_NOT_RUNNING_TEXT });
+    const outcome = await rejectionOf(commandClient(session).steer(WORKER, "Check it."));
+
+    if (!(outcome instanceof AppFailure)) throw new Error("omp's refusal did not fail the steer.");
+    expect(outcome.appError.code).not.toBe("conflict");
+  });
+  test("cancelled:false is a typed not-found answer, not a conflict (#1686)", async () => {
     const { session } = fakeSession({ reply: { cancelled: false } });
     const outcome = await rejectionOf(commandClient(session).cancel(WORKER));
 
-    expect(outcome instanceof AppFailure ? outcome.appError.code : undefined).not.toBe("conflict");
+    expect(outcome).toMatchObject({
+      appError: { code: "not_found", retryable: false },
+    });
   });
-
   test("a refused cancel reads as plain words, not as a code", () => {
     expect(CANCEL_REFUSED_MESSAGE).not.toMatch(/conflict|omp_error|cancel_subagent/);
   });

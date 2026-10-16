@@ -210,9 +210,8 @@ class SubagentClientImpl implements SubagentClient {
       );
       const parsed = CancelAgentResultSchema.parse(result);
       // omp answers false when the id is not a running subagent of this session (docs/rpc.md, "Cancelling subagents").
-      // Issue 1156 records the same answer for a worker that get_subagents still lists as running.
-      // The caller re-reads the roster before the row changes.
-      if (!parsed.cancelled) throw failure("conflict", "omp did not stop the worker", true);
+      // Preserve a typed answer so callers can re-read the roster and distinguish an ended worker from a refusal.
+      if (!parsed.cancelled) throw failure("not_found", "omp is not running this worker", false);
       return { cancelled: true };
     } catch (error) {
       throw asP1Failure(error, failure("omp_error", "Subagent cancel request failed", true));

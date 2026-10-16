@@ -83,9 +83,9 @@ describe("AgentHub controller cancel", () => {
     const key = keyOf(store.getSnapshot().order, "busy");
     const run = vi.fn<() => Promise<unknown>>().mockRejectedValue(
       new AppFailure({
-        code: "conflict",
-        message: "omp did not stop the worker",
-        retryable: true,
+        code: "not_found",
+        message: "omp is not running this worker",
+        retryable: false,
       }),
     );
     const controller = createAgentHubController({ roster: store, actions: actions(run) });
