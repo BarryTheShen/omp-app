@@ -194,7 +194,8 @@ describe("keepReaderPlace after the reader jumps away", () => {
   /** A place 355 px below the view's top, in a view that spans 100 to 600 on screen. */
   function jumpFixture() {
     const fixed = fixture({ scrollTop: 7_305, rowTop: 355 });
-    fixed.viewport.getBoundingClientRect = () => ({ top: 100, bottom: 600 }) as DOMRect;
+    fixed.viewport.getBoundingClientRect = () =>
+      ({ left: 0, top: 100, width: 800, height: 500, bottom: 600 }) as DOMRect;
     fixed.row.getBoundingClientRect = () =>
       ({ top: 100 + fixed.state.rowTop, bottom: 172 + fixed.state.rowTop }) as DOMRect;
     return fixed;
@@ -202,13 +203,42 @@ describe("keepReaderPlace after the reader jumps away", () => {
 
   test("a Home jump not yet reported does not pull the reader back to the old place", () => {
     const { viewport, row, state } = jumpFixture();
+    const currentRow = document.createElement("div");
+    currentRow.dataset.messageId = "entry:thread:current";
+    viewport.append(currentRow);
+    currentRow.getBoundingClientRect = () => ({ top: 280, bottom: 352 }) as DOMRect;
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = () => currentRow;
+    try {
+      rememberReaderPlace(viewport, { row, offset: 355, scrollTop: 7_305 });
+      // The view moves to the top, and the rows drawn there grow by 676 px above the old place, which is now far below.
+      viewport.scrollTop = 173;
+      state.rowTop += 676;
+      keepReaderPlace(viewport);
+      expect(state.scrollTop).toBe(173);
+      expect(readerPlaceOf(viewport)?.row).toBe(currentRow);
+    } finally {
+      document.elementFromPoint = originalElementFromPoint;
+      viewport.remove();
+    }
+  });
+
+  test("while the place is held, a scroll away does not replace it and layout compensation still runs", () => {
+    const { viewport, row, state } = jumpFixture();
     rememberReaderPlace(viewport, { row, offset: 355, scrollTop: 7_305 });
-    // The view moves to the top, and the rows drawn there grow by 676 px above the old place, which is now far below.
-    viewport.scrollTop = 173;
-    state.rowTop += 676;
-    keepReaderPlace(viewport);
-    expect(state.scrollTop).toBe(173);
-    expect(readerPlaceOf(viewport)?.row).not.toBe(row);
+    const release = holdReaderPlace(viewport, 60_000);
+    try {
+      expect(isHoldingPlace(viewport)).toBe(true);
+      viewport.scrollTop = 6_500;
+      state.rowTop += 80;
+      keepReaderPlace(viewport);
+      expect(state.scrollTop).toBe(6_580);
+      expect(state.rowTop).toBe(1_160);
+      expect(readerPlaceOf(viewport)?.row).toBe(row);
+    } finally {
+      release();
+      viewport.remove();
+    }
   });
 
   test("a small scroll that keeps the place on screen still has a layout change above it undone", () => {

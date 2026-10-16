@@ -128,26 +128,28 @@ realTest(
         (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
       );
     const scrollTop = () => viewport.evaluate((element) => element.scrollTop);
+    const settledScrollTop = async () => {
+      let previous = -1;
+      let same = 0;
+      await expect
+        .poll(
+          async () => {
+            const now = await scrollTop();
+            same = now === previous ? same + 1 : 0;
+            previous = now;
+            return same;
+          },
+          { intervals: [300], timeout: 20_000 },
+        )
+        .toBeGreaterThanOrEqual(3);
+    };
     await expect(page.getByText("All 60 steps are done.")).toBeAttached({ timeout: 60_000 });
     // Open the steps, so the turn is as tall as a person scrolls through it.
     await openAllToolCards(page);
     await expect.poll(remainingScroll).toBeLessThan(80);
 
     await viewport.press("Home");
-    // The view is at the top once its position has held still for three reads, 300 ms apart.
-    let previous = -1;
-    let same = 0;
-    await expect
-      .poll(
-        async () => {
-          const now = await scrollTop();
-          same = now === previous ? same + 1 : 0;
-          previous = now;
-          return same;
-        },
-        { intervals: [300], timeout: 20_000 },
-      )
-      .toBeGreaterThanOrEqual(3);
+    await settledScrollTop();
     expect(await scrollTop()).toBe(0);
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "u1-8-real-scroll", "home-top-light.png") });
@@ -158,6 +160,7 @@ realTest(
     await page.evaluate(() => document.documentElement.classList.remove("dark"));
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await settledScrollTop();
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "u1-8-real-scroll", "home-top-narrow.png") });
     expect(await scrollTop()).toBe(0);
