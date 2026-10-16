@@ -76,8 +76,11 @@ export class FileWatchRegistry {
 export function fileWatchMessage(
   snapshot: Extract<FileWatchSnapshot, { readonly state: "limited" }>,
 ): string {
-  // Only a full computer names its cause: the person can act on it. Any other failure says what it did and stops.
-  const cause =
-    snapshot.reason === "watcher-limit" ? ", because this computer has no file watchers left" : "";
-  return `omp app can't watch some of its files for changes${cause}. It checks them every second instead, so changes still show, a little later.`;
+  // Only a full computer names its cause and an action that may help; another watch failure gives no guessed remedy.
+  const watcherLimit = snapshot.reason === "watcher-limit";
+  const cause = watcherLimit ? ", because this computer has no file watchers left" : "";
+  const remedy = watcherLimit
+    ? " Closing programs that watch many files, such as editors, may free some."
+    : "";
+  return `omp app can't watch some of its files for changes${cause}.${remedy} It checks them every second instead, so changes still show, a little later.`;
 }

@@ -23,6 +23,10 @@ export const APP_ROOT = resolve(process.cwd(), "../..");
 const SERVER_SCRIPT = resolve(APP_ROOT, "packages/server/scripts/dev.ts");
 const FAKE_PROVIDER = resolve(APP_ROOT, "packages/omp-rpc/scripts/fake-openai-server.ts");
 const SESSION_PATHS = resolve(APP_ROOT, "packages/server/src/modules/A1/sessions/paths.ts");
+const FILE_WATCH_REGISTRY = resolve(
+  APP_ROOT,
+  "packages/server/src/modules/A1/fs/file-watch-registry.ts",
+);
 const LOGGING = resolve(APP_ROOT, "packages/server/src/logging/index.ts");
 export const screenshots = resolve(APP_ROOT, ".data/screenshots");
 
@@ -197,6 +201,7 @@ async function startServer(
     readonly noModel: boolean;
     readonly port: number;
     readonly serverFolder: string;
+    readonly fileWatchFailure: "watcher-limit" | undefined;
   },
 ): Promise<{ readonly process: ChildProcess; readonly url: string }> {
   const script = join(root, "app-root-server.ts");
@@ -207,6 +212,7 @@ import { join } from "node:path";
 import { createCompositionServer } from ${JSON.stringify(SERVER_SCRIPT)};
 import { createLogger } from ${JSON.stringify(LOGGING)};
 import { sessionBucketName } from ${JSON.stringify(SESSION_PATHS)};
+import { FileWatchRegistry } from ${JSON.stringify(FILE_WATCH_REGISTRY)};
 // Old chats written the way omp writes them, before the app starts.
 const seed = ${options.seedSessions};
 if (seed > 0) {
@@ -305,6 +311,15 @@ if (seededEntries.length > 0) {
   await writeFile(file, lines.map((line) => JSON.stringify(line)).join("\\n") + "\\n");
   await utimes(file, when, when);
 }
+const fileWatch = ${
+      options.fileWatchFailure === "watcher-limit"
+        ? `new FileWatchRegistry({
+  watchDirectory: () => {
+    throw Object.assign(new Error("EMFILE"), { code: "EMFILE" });
+  },
+})`
+        : "undefined"
+    };
 const server = await createCompositionServer({
   port: ${options.port},
   cwd: ${JSON.stringify(options.serverFolder)},
@@ -315,6 +330,7 @@ const server = await createCompositionServer({
   ompBin: ${JSON.stringify(options.ompBinary ?? REAL_OMP)},
   ompArgs: ${options.noModel || !options.defaultModel ? "[]" : '["--model", "fake/fake-model"]'},
   staticRoot: ${JSON.stringify(resolve(APP_ROOT, "apps/web/dist"))},
+  fileWatch,
   idleCloseMs: ${options.idleCloseMs === undefined ? "undefined" : options.idleCloseMs},
   logger: createLogger({ dir: ${JSON.stringify(join(root, "logs"))} }),
   statsIntervalMs: 1000,
@@ -385,6 +401,7 @@ export interface SeedWorkspace {
  * A spec that needs `@` file mentions seeds files with `realTest.use({ seedWorkspace: { files, gitRepo: true } })`; file search lists git files only.
  * A spec that needs omp's environment overrides (for example `PI_AUTO_QA=0`) starts the app with `realTest.use({ serverEnv: { PI_AUTO_QA: "0" } })`.
  * A spec that needs a value omp reads from the agent folder's `.env` file (not the process environment) writes it with `realTest.use({ seedAgentDotEnv: "PI_INTENT_TRACING=0\n" })` before the app starts.
+ * A notice test can exercise the watcher-limit message with `realTest.use({ fileWatchFailure: "watcher-limit" })`.
  * A spec whose default folder is the home folder, as on the desktop (the server runs in it), uses `realTest.use({ serverInHome: true })`.
  */
 export const realTest = test.extend<{
@@ -400,6 +417,7 @@ export const realTest = test.extend<{
   ompBinary: string | undefined;
   defaultModel: boolean;
   noModel: boolean;
+  fileWatchFailure: "watcher-limit" | undefined;
   serverPort: number;
   /** Extra environment for the app's server and the omp it starts (omp reads these as overrides). */
   serverEnv: Readonly<Record<string, string>>;
@@ -419,6 +437,7 @@ export const realTest = test.extend<{
   noModel: [false, { option: true }],
   serverPort: [0, { option: true }],
   serverEnv: [{}, { option: true }],
+  fileWatchFailure: [undefined, { option: true }],
   serverInHome: [false, { option: true }],
   realApp: async (
     {
@@ -437,6 +456,7 @@ export const realTest = test.extend<{
       serverPort,
       serverEnv,
       serverInHome,
+      fileWatchFailure,
     },
     use,
     testInfo,
@@ -499,6 +519,7 @@ export const realTest = test.extend<{
         noModel,
         port: serverPort,
         serverFolder: serverInHome ? home : folder,
+        fileWatchFailure,
       });
       // A port of 0 is a free port picked at each start. The first start's port is kept, so a restart comes back at the
       // same address (and the browser's storage for that address still applies).
@@ -532,6 +553,7 @@ export const realTest = test.extend<{
           noModel,
           port: keptPort,
           serverFolder: serverInHome ? home : folder,
+          fileWatchFailure,
         });
         url = server.url;
         serverPid = server.process.pid;

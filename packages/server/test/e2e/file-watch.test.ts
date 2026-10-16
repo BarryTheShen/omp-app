@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { watch } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
@@ -56,10 +57,11 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-/** A composition server whose watchers all fail the way a full computer's do. */
+/** A composition server whose watches start unavailable, then recover when watcher slots are freed. */
 async function startServerWithFailingWatches(): Promise<{
   readonly server: CompositionServer;
   readonly registry: FileWatchRegistry;
+  readonly freeWatcherSlots: () => void;
 }> {
   const root = await temporaryRoot();
   const home = join(root, "home");
@@ -75,11 +77,15 @@ async function startServerWithFailingWatches(): Promise<{
   const ompBin = join(root, "fake-omp");
   await writeFile(ompBin, FAKE_OMP, { mode: 0o755 });
   await chmod(ompBin, 0o755);
+  let watcherSlotsAvailable = false;
   const registry = new FileWatchRegistry({
-    watchDirectory: () => {
-      throw Object.assign(new Error("ENOSPC: System limit for number of file watchers reached"), {
-        code: "ENOSPC",
-      });
+    watchDirectory: (directory, listener) => {
+      if (!watcherSlotsAvailable) {
+        throw Object.assign(new Error("ENOSPC: System limit for number of file watchers reached"), {
+          code: "ENOSPC",
+        });
+      }
+      return watch(directory, { persistent: false }, listener);
     },
   });
   const server = await createCompositionServer({
@@ -93,7 +99,7 @@ async function startServerWithFailingWatches(): Promise<{
     fileWatch: registry,
   });
   servers.push(server);
-  return { server, registry };
+  return { server, registry, freeWatcherSlots: () => (watcherSlotsAvailable = true) };
 }
 
 function clientFor(server: CompositionServer) {
@@ -110,8 +116,8 @@ function clientFor(server: CompositionServer) {
 }
 
 describe("watch failures through the production server", () => {
-  test("every store that watches files reports the files it cannot watch, and the page's health says so", async () => {
-    const { server, registry } = await startServerWithFailingWatches();
+  test("reports failed watches, clears disposed watches, and recovers when watcher slots return", async () => {
+    const { server, registry, freeWatcherSlots } = await startServerWithFailingWatches();
     const client = clientFor(server);
     // Subscribing is what starts each store's watchers, as the settings, drafts, sessions, extensions and
     // rules screens do when they open.
@@ -133,8 +139,23 @@ describe("watch failures through the production server", () => {
     expect(failing.some((path) => path.includes("rules"))).toBe(true);
     expect(failing.some((path) => path.endsWith("session-pins.json"))).toBe(true);
     expect(failing.some((path) => path.includes("drafts"))).toBe(true);
+    const draftSubscription = subscriptions[1];
+    await draftSubscription.unsubscribe();
+    expect(registry.failingPaths().some((path) => path.includes("drafts"))).toBe(false);
 
-    for (const subscription of subscriptions) await subscription.unsubscribe();
+    freeWatcherSlots();
+    let recoveredHealth = await client.port(AppPort).health({});
+    // A1's watcher retries every 1000 ms by default (`file-watcher.ts:94`), so this production check uses its real timer.
+    for (let attempt = 0; attempt < 50 && recoveredHealth.status !== "ok"; attempt += 1) {
+      await Bun.sleep(100);
+      recoveredHealth = await client.port(AppPort).health({});
+    }
+    expect(recoveredHealth).toEqual({ status: "ok" });
+    expect(registry.failingPaths()).toEqual([]);
+
+    for (const [index, subscription] of subscriptions.entries()) {
+      if (index !== 1) await subscription.unsubscribe();
+    }
     client.dispose();
   }, 60_000);
 });

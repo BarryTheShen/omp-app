@@ -1823,11 +1823,13 @@ function ConnectedApp({
   capabilities,
   launchFolder,
   watchNotice,
+  onDismissWatchNotice,
 }: {
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly capabilities: CapabilityMap;
   readonly launchFolder: FolderPath;
   readonly watchNotice: string | undefined;
+  readonly onDismissWatchNotice: () => void;
 }) {
   const connection = useAppConnection();
   const overlay = useStableOverlayHost();
@@ -2391,7 +2393,10 @@ function ConnectedApp({
   const watchSurface: Surface = {
     title: "Watched files",
     open: watchNotice !== undefined,
-    render: () => (watchNotice === undefined ? null : <WatchNotice detail={watchNotice} />),
+    render: () =>
+      watchNotice === undefined ? null : (
+        <WatchNotice detail={watchNotice} onDismiss={onDismissWatchNotice} />
+      ),
   };
   const emptyTranscriptSurfaces: SurfaceMap = {
     connection: connectionSurface,
@@ -2571,7 +2576,8 @@ function ConnectedRoot() {
                 capabilities={capabilities}
                 client={client}
                 launchFolder={serverInfo.launchFolder}
-                watchNotice={watchNotice}
+                watchNotice={watchNotice.detail}
+                onDismissWatchNotice={watchNotice.dismiss}
               />
             </OverlayHost>
           </ShortcutSheetHost>

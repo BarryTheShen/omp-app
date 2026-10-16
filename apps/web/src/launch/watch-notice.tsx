@@ -9,7 +9,13 @@ const WATCH_POLL_MS = 10_000;
  * A status line over the chat while the server cannot watch some files. Changes made outside the app do
  * not show until it can, so the person is told why instead of seeing nothing happen.
  */
-export function WatchNotice({ detail }: { readonly detail: string }) {
+export function WatchNotice({
+  detail,
+  onDismiss,
+}: {
+  readonly detail: string;
+  readonly onDismiss: () => void;
+}) {
   return (
     <div
       aria-live="polite"
@@ -18,7 +24,16 @@ export function WatchNotice({ detail }: { readonly detail: string }) {
       role="status"
     >
       <Icons.warning aria-hidden="true" className="mt-px size-3.5 shrink-0" />
-      <span className="min-w-0">{detail}</span>
+      <div className="min-w-0 flex-1">
+        <span>{detail}</span>
+      </div>
+      <button
+        className="shrink-0 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2"
+        onClick={onDismiss}
+        type="button"
+      >
+        Dismiss
+      </button>
     </div>
   );
 }
@@ -35,15 +50,19 @@ export function watchNoticeFor(health: AppHealth): string | undefined {
 export function useWatchNotice(
   readHealth: (() => Promise<AppHealth>) | undefined,
   intervalMs = WATCH_POLL_MS,
-): string | undefined {
+): { readonly detail: string | undefined; readonly dismiss: () => void } {
   const [notice, setNotice] = useState<string>();
+  const [dismissed, setDismissed] = useState<string>();
   useEffect(() => {
     if (!readHealth) return;
     let active = true;
     const poll = () => {
       void readHealth().then(
         (health) => {
-          if (active) setNotice(watchNoticeFor(health));
+          if (!active) return;
+          const nextNotice = watchNoticeFor(health);
+          setNotice((previous) => (previous === nextNotice ? previous : nextNotice));
+          setDismissed((previous) => (previous === nextNotice ? previous : undefined));
         },
         () => undefined,
       );
@@ -55,5 +74,10 @@ export function useWatchNotice(
       window.clearInterval(timer);
     };
   }, [readHealth, intervalMs]);
-  return notice;
+  return {
+    detail: notice === dismissed ? undefined : notice,
+    dismiss: () => {
+      if (notice !== undefined) setDismissed(notice);
+    },
+  };
 }

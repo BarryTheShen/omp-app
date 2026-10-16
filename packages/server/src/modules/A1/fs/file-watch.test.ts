@@ -164,6 +164,9 @@ describe("the watch registry", () => {
     expect(message).toContain("omp app can't watch some of its files for changes");
     expect(message).toContain("this computer has no file watchers left");
     expect(message).toContain(
+      "Closing programs that watch many files, such as editors, may free some.",
+    );
+    expect(message).toContain(
       "It checks them every second instead, so changes still show, a little later.",
     );
     expect(message).not.toMatch(/ENOSPC|EMFILE|inotify|FileWatch|registry|polling/i);
@@ -177,7 +180,7 @@ describe("the watch registry", () => {
 
   test("a full computer names its cause in the same message", () => {
     expect(fileWatchMessage({ state: "limited", reason: "watcher-limit", failing: 1 })).toBe(
-      "omp app can't watch some of its files for changes, because this computer has no file watchers left. It checks them every second instead, so changes still show, a little later.",
+      "omp app can't watch some of its files for changes, because this computer has no file watchers left. Closing programs that watch many files, such as editors, may free some. It checks them every second instead, so changes still show, a little later.",
     );
   });
 });

@@ -30,16 +30,31 @@ realTest(
       // the agent folder here. They were opened before the folder became unreadable, so a restart tries again.
       await realApp.restartServer();
       const opened = await realApp.open();
-      await expect(opened.locator(NOTICE)).toHaveText(WATCH_FAILED_NOTICE, { timeout: 30_000 });
-      await opened.screenshot({ path: join(screenshots, "fix-913-watch-notice-light.png") });
-      await opened.evaluate(() => document.documentElement.classList.add("dark"));
-      await waitForFiniteAnimations(opened);
-      await opened.screenshot({ path: join(screenshots, "fix-913-watch-notice-dark.png") });
-      await opened.evaluate(() => document.documentElement.classList.remove("dark"));
+      const notice = opened.locator(NOTICE);
+      await expect(notice.getByText(WATCH_FAILED_NOTICE, { exact: true })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(notice.getByRole("button", { name: "Dismiss" })).toBeVisible();
+      await expect(notice).not.toContainText("Closing programs that watch many files");
+      await expect(notice).toHaveCSS("font-size", "12px");
+      await opened.screenshot({ path: join(screenshots, "fix-1075-watch-failed-light.png") });
+      const darkPage = await realApp.open({
+        beforeLoad: (target) =>
+          target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
+      });
+      const darkNotice = darkPage.locator(NOTICE);
+      await expect(darkNotice.getByText(WATCH_FAILED_NOTICE, { exact: true })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(darkPage.locator("html")).toHaveClass(/dark/);
+      await expect(darkNotice).toHaveCSS("font-size", "12px");
+      await waitForFiniteAnimations(darkPage);
+      await darkPage.screenshot({ path: join(screenshots, "fix-1075-watch-failed-dark.png") });
       await opened.setViewportSize({ width: 390, height: 844 });
       await waitForFiniteAnimations(opened);
-      await expect(opened.locator(NOTICE)).toHaveText(WATCH_FAILED_NOTICE);
-      await opened.screenshot({ path: join(screenshots, "fix-913-watch-notice-390.png") });
+      await expect(notice.getByText(WATCH_FAILED_NOTICE, { exact: true })).toBeVisible();
+      await expect(notice).toHaveCSS("font-size", "12px");
+      await notice.screenshot({ path: join(screenshots, "fix-1075-watch-failed-390.png") });
       return opened;
     });
     // Once the folder is readable the server opens the watch within a second, and the page reads the server's
