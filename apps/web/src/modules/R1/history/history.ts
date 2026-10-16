@@ -132,6 +132,10 @@ export class SelectedThreadHistoryController {
   private offEvents: (() => void) | undefined;
   private loader: SessionHistoryLoader | undefined;
   private stopRefetchWatch: (() => void) | undefined;
+  /** The chat whose open lost the connection, opened again once the connection is back (see `reopenFailedOpen`). */
+  private failedOpen: ThreadId | undefined;
+  // Counts the requests that change the chat on screen (an open or a close): see `open`.
+  private requests = 0;
   private listeners = new Set<(state: SelectedThreadHistoryState) => void>();
   private transitions: Promise<void> = Promise.resolve();
   /** Switches the page started and not yet open. Each one is let go by its owner (see `holdSwitch`). */
@@ -279,6 +283,16 @@ export class SelectedThreadHistoryController {
     }
   }
 
+  /**
+   * Opens again the chat whose open lost the connection (issue 1617), once the connection is back. Nothing is opened
+   * when no open was lost, or when the person has since picked, opened or closed a chat: each of those forgets it.
+   */
+  public async reopenFailedOpen(): Promise<void> {
+    const threadId = this.failedOpen;
+    if (threadId === undefined) return;
+    await this.openExisting(threadId);
+  }
+
   /** Re-subscribes without replay duplication; A0's afterSeq is the authoritative resume cursor. */
   public async resume(afterSeq?: number): Promise<void> {
     const threadId = this.state.threadId;
@@ -336,6 +350,8 @@ export class SelectedThreadHistoryController {
   public close(): Promise<void> {
     // Counted when asked, not when it runs: an open still pending now must not save its chat as the one open.
     this.closes += 1;
+    this.requests += 1;
+    this.failedOpen = undefined;
     return this.serialize(() => this.closeNow());
   }
 
@@ -417,9 +433,14 @@ export class SelectedThreadHistoryController {
   }
 
   private open(args: OpenThreadArgs): Promise<OmpRuntimeStore> {
+    // Asking for a chat gives up the chat a dropped connection left. Every request takes a ticket, and an open that
+    // fails is recorded for a reopen only while its ticket is the latest: a later pick or close came after it.
+    this.requests += 1;
+    const ticket = this.requests;
+    this.failedOpen = undefined;
     this.pendingOpens += 1;
     const settle = this.openSettler();
-    return this.serialize(() => this.openNow(args, settle)).finally(settle);
+    return this.serialize(() => this.openNow(args, settle, ticket)).finally(settle);
   }
 
   /** Ends one open's pending state, once: at its commit, or when it fails. A later call does nothing. */
@@ -433,9 +454,15 @@ export class SelectedThreadHistoryController {
     };
   }
 
-  private async openNow(args: OpenThreadArgs, settle: () => void): Promise<OmpRuntimeStore> {
+  private async openNow(
+    args: OpenThreadArgs,
+    settle: () => void,
+    ticket: number,
+  ): Promise<OmpRuntimeStore> {
     const openedNew = "start" in args && args.start === "new";
     const closesAtStart = this.closes;
+    // The thread this open names: a dropped connection leaves it to be opened again (see `reopenFailedOpen`).
+    const requested = "threadId" in args ? args.threadId : undefined;
     await this.closeNow();
     this.commit({ isLoading: true, error: null });
     // The subscription a watch held on this chat, if the open took the chat over. Let go only after the open subscribes.
@@ -499,6 +526,9 @@ export class SelectedThreadHistoryController {
         this.commit({ isLoading: false });
         return shownStore;
       }
+      // A dropped connection leaves the chat closed: the chat is opened again once the connection is back (issue 1617).
+      if (failure.appError.code === "unavailable" && ticket === this.requests)
+        this.failedOpen = requested;
       await this.closeNow();
       this.commit({ isLoading: false, error: failure.appError });
       throw failure;

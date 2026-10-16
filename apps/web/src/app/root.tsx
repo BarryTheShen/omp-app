@@ -2033,6 +2033,11 @@ function ConnectedApp({
     if (controller && history.threadId)
       void controller.openExisting(history.threadId).catch(() => undefined);
   }, [client.instanceId, connection.state, controller, history.threadId]);
+  // A chat whose open lost the connection is opened again once the connection is back (issue 1617).
+  useEffect(() => {
+    if (connection.state !== "connected" || !controller) return;
+    void controller.reopenFailedOpen().catch(() => undefined);
+  }, [connection.state, controller]);
   // A chat's turn starting or settling changes its row. The server names the chat, and each open folder's list reads it again.
   useEffect(
     () =>
@@ -2120,6 +2125,19 @@ function ConnectedApp({
   const openThread = useCallback(
     (threadId: ThreadId): Promise<void> => openHistoryChat(threadId),
     [openHistoryChat],
+  );
+  // A pick from the sidebar: a chat that did not open is shown where it would open (the history's error, on the empty
+  // screen), so that failure is not raised again here. Any other refusal, such as no folder being selected, still is.
+  const openSidebarChat = useCallback(
+    async (threadId: ThreadId): Promise<void> => {
+      try {
+        await openThread(threadId);
+      } catch (error) {
+        if (controller !== null && controller.getSnapshot().error !== null) return;
+        throw error;
+      }
+    },
+    [controller, openThread],
   );
   // A switch to a chat a branch or a rewind made (a regenerate, an edit, a rewind). The chat on screen can still be the
   // source's store: omp moves the running session to the branch in place, so the chat is always opened again (PR 1645).
@@ -2324,7 +2342,7 @@ function ConnectedApp({
             catalog={catalog}
             currentThreadId={history.threadId}
             onNewChat={openNewChatFromSidebar}
-            onOpenThread={openThread}
+            onOpenThread={openSidebarChat}
             confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
             currentTurnRunning={() =>
               controller?.getSnapshot().store?.getSnapshot().prompt.streaming === true

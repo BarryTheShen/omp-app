@@ -32,7 +32,7 @@ function createRpc(
   calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [],
   questions: readonly OpenQuestionRecord[] = [],
   holdFirstStateRead?: Promise<void>,
-  historyFailure?: AppFailure,
+  historyFailure?: () => AppFailure | undefined,
 ): RpcSessionClient {
   let stateReads = 0;
   const send = async (
@@ -51,9 +51,11 @@ function createRpc(
           await untilAborted(holdFirstStateRead, options?.signal);
         }
         return { sessionId: args.threadId };
-      case "get_entries":
-        if (historyFailure) throw historyFailure;
+      case "get_entries": {
+        const failure = historyFailure?.();
+        if (failure) throw failure;
         return { entries: [], leafId: null };
+      }
       default:
         return undefined;
     }
@@ -1103,11 +1105,12 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       [],
       [],
       undefined,
-      new AppFailure({
-        code: "omp_exited",
-        message: "omp exited (signal SIGKILL)",
-        retryable: true,
-      }),
+      () =>
+        new AppFailure({
+          code: "omp_exited",
+          message: "omp exited (signal SIGKILL)",
+          retryable: true,
+        }),
     );
     const controller = createSelectedThreadHistoryController({
       client: fakeClient(rpc, subscriptions),
@@ -1488,5 +1491,181 @@ describe("SelectedThreadHistoryController whenSettled", () => {
     void controller.openExisting(threadOne);
     await controller.whenSettled();
     expect(controller.getSnapshot()).toMatchObject({ threadId: threadOne, isLoading: true });
+  });
+});
+
+describe("SelectedThreadHistoryController after the connection drops while a chat opens", () => {
+  test("a chat whose open lost the connection is opened again once the connection is back", async () => {
+    let connectionDown = true;
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () =>
+        connectionDown
+          ? new AppFailure({
+              code: "unavailable",
+              message: "The connection was lost.",
+              retryable: true,
+            })
+          : undefined,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await expect(controller.openExisting(threadOne)).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    expect(controller.getSnapshot().threadId).toBeUndefined();
+
+    connectionDown = false;
+    await controller.reopenFailedOpen();
+
+    expect(controller.getSnapshot()).toMatchObject({ threadId: threadOne, error: null });
+  });
+
+  test("a chat the person closes is not opened again when the connection comes back", async () => {
+    let connectionDown = true;
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () =>
+        connectionDown
+          ? new AppFailure({
+              code: "unavailable",
+              message: "The connection was lost.",
+              retryable: true,
+            })
+          : undefined,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await expect(controller.openExisting(threadOne)).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    await controller.close();
+    connectionDown = false;
+    await controller.reopenFailedOpen();
+
+    expect(controller.getSnapshot().threadId).toBeUndefined();
+  });
+
+  test("a pick made while the open is failing is not reopened once the connection is back", async () => {
+    const lost = Promise.withResolvers<void>();
+    const rpc = createRpc((args) => {
+      if ("threadId" in args && args.threadId === threadOne) {
+        return lost.promise.then(() => {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The connection was lost.",
+            retryable: true,
+          });
+        });
+      }
+      return { threadId: threadTwo, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    const failing = controller.openExisting(threadOne).catch(() => undefined);
+    const picked = controller.openExisting(threadTwo);
+    lost.resolve();
+    await Promise.all([failing, picked]);
+    await controller.reopenFailedOpen();
+
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
+  });
+
+  test("a chat closed while its open is failing is not opened again", async () => {
+    const lost = Promise.withResolvers<void>();
+    const rpc = createRpc((args) => {
+      if ("threadId" in args && args.threadId === threadOne) {
+        return lost.promise.then(() => {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "The connection was lost.",
+            retryable: true,
+          });
+        });
+      }
+      return { threadId: threadTwo, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    const failing = controller.openExisting(threadOne).catch(() => undefined);
+    const closed = controller.close();
+    lost.resolve();
+    await Promise.all([failing, closed]);
+    await controller.reopenFailedOpen();
+
+    expect(controller.getSnapshot().threadId).toBeUndefined();
+  });
+
+  test("a chat closed after its open failed is not opened again when the connection comes back", async () => {
+    let connectionDown = true;
+    const rpc = createRpc(() => {
+      if (connectionDown) {
+        throw new AppFailure({
+          code: "unavailable",
+          message: "The connection was lost.",
+          retryable: true,
+        });
+      }
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await expect(controller.openExisting(threadOne)).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    await controller.close();
+    connectionDown = false;
+    await controller.reopenFailedOpen();
+
+    expect(controller.getSnapshot().threadId).toBeUndefined();
+  });
+
+  test("a chat the person picked after the drop is kept when the connection comes back", async () => {
+    let connectionDown = true;
+    const rpc = createRpc((args) => {
+      const threadId = "threadId" in args ? args.threadId : threadTwo;
+      if (threadId === threadOne && connectionDown) {
+        throw new AppFailure({
+          code: "unavailable",
+          message: "The connection was lost.",
+          retryable: true,
+        });
+      }
+      return { threadId, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+
+    await expect(controller.openExisting(threadOne)).rejects.toMatchObject({
+      appError: { code: "unavailable" },
+    });
+    await controller.openExisting(threadTwo);
+    connectionDown = false;
+    await controller.reopenFailedOpen();
+
+    expect(controller.getSnapshot().threadId).toBe(threadTwo);
   });
 });
