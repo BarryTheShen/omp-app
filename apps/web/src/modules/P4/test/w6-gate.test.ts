@@ -1,7 +1,10 @@
-import type { CapabilityMap, EntryId, ThreadId } from "@omp-app/contracts";
+import type { AppClient } from "@omp-app/client";
+import type { CapabilityMap, EntryId, FolderPath, ThreadId } from "@omp-app/contracts";
 import { checkScrubbed, SessionEntryHead } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import type { OmpRuntimeStore } from "@/modules/R0/store/store";
+import type { SessionHistoryLoader } from "@/modules/R0/history/history";
+import { OmpRuntimeStore } from "@/modules/R0/store/store";
+import { createSelectedThreadHistoryController } from "@/modules/R1/history";
 import type { TreeNode, TreeSelectorState, TreeSnapshot } from "../contract";
 import { EntryCursorSchema, TreeSnapshotSchema } from "../contract";
 import {
@@ -65,13 +68,59 @@ function lastListedEntry(snapshot: TreeSnapshot): EntryId | undefined {
     ?.entryId;
 }
 
-function transitionsOn(store: OmpRuntimeStore, omp: RecordedOmp, switched: ThreadId[]) {
+function r1Controller(omp: RecordedOmp, sourceStore: OmpRuntimeStore) {
+  const rpc = {
+    open: async (args: { readonly threadId: ThreadId }) => ({
+      threadId: args.threadId,
+      sessionFile: null,
+      capabilities: AVAILABLE,
+    }),
+    send: omp.send,
+    close: async () => null,
+    openQuestions: async () => [],
+    stateFrames: async () => [],
+  };
+  const client = {
+    port: () => rpc,
+    subscribe: async () => ({
+      stream: "recorded-session",
+      lastSeq: 0,
+      onEvent: () => () => {},
+      unsubscribe: async () => {},
+    }),
+  } as unknown as AppClient;
+
+  return createSelectedThreadHistoryController({
+    client,
+    folder: "/workspace" as FolderPath,
+    createStore: (threadId) =>
+      threadId === RECORDED_THREAD_ID ? sourceStore : new OmpRuntimeStore({ threadId }),
+    createLoader: () =>
+      ({
+        loadInitial: async () => {},
+        loadOlder: async () => {},
+        loadFullOutput: async () => {},
+        refetch: async () => {},
+        refreshAfterTurn: async () => {},
+        watchNeedsRefetch: () => () => {},
+        dispose: () => {},
+      }) as unknown as SessionHistoryLoader,
+  });
+}
+
+function transitionsOn(
+  store: OmpRuntimeStore,
+  omp: RecordedOmp,
+  switched: ThreadId[],
+  switchTo?: (threadId: ThreadId) => Promise<void>,
+) {
   return createOmpConversationTransitionPort({
     store,
     send: omp.send,
     branchingController: {
       switchTo: async (threadId) => {
         switched.push(threadId);
+        await switchTo?.(threadId);
       },
     },
     capabilities: AVAILABLE,
@@ -163,14 +212,20 @@ describe("W6, at the model level: a recorded tree lists its entries, selects an 
     );
   });
 
-  test("forks from the selected message: the source is not changed, and the reloaded session's selector model lists that message last, with its label carried onto it", async () => {
+  test("forks from the selected message and R1 opens the forked thread before P4 reloads its tree", async () => {
     const omp = recordedOmp();
     const port = new OmpSessionTreePort({ send: omp.send, sessionFile: RECORDED_SESSION_FILE });
-    const store = recordedStore();
+    const sourceStore = recordedStore();
+    const controller = r1Controller(omp, sourceStore);
+    await controller.openExisting(RECORDED_THREAD_ID);
+    const store = controller.getSnapshot().store;
+    if (!store) throw new Error("R1 did not open the recorded source thread");
     const storeBefore = store.getSnapshot();
     const sourceBefore = await port.readTree(RECORDED_THREAD_ID);
     const switched: ThreadId[] = [];
-    const transitions = transitionsOn(store, omp, switched);
+    const transitions = transitionsOn(store, omp, switched, async (threadId) => {
+      await controller.openExisting(threadId);
+    });
 
     const result = await transitions.fork({
       threadId: RECORDED_THREAD_ID,
@@ -186,7 +241,8 @@ describe("W6, at the model level: a recorded tree lists its entries, selects an 
       reloaded: true,
       sourceRetained: true,
     });
-    expect(switched).toEqual([FORKED_THREAD_ID]);
+    expect(controller.getSnapshot().threadId).toBe(FORKED_THREAD_ID);
+    expect(controller.getSnapshot().store).not.toBe(sourceStore);
     expect(store.getSnapshot()).toBe(storeBefore);
     expect(transitions.getRetainedSource()?.threadId).toBe(RECORDED_THREAD_ID);
     expect(await port.readTree(RECORDED_THREAD_ID)).toEqual(sourceBefore);
