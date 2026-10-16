@@ -69,7 +69,7 @@ export function createThreadAgents({
     if (cached !== undefined && cached.agent === agent) return cached;
     const next: TaskSubagent = {
       agent,
-      source: createFocusedAgentRuntime({ agent, client, finished }),
+      source: createFocusedAgentRuntime({ agent, client, finished, roster, rosterKey: agent.key }),
     };
     sources.set(agent.key, next);
     return next;

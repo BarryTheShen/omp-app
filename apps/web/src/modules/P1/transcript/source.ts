@@ -30,11 +30,23 @@ export interface TranscriptFeed {
   ) => () => void;
 }
 
+/** The part of the roster a refused cancel reads again: a re-read, then the worker's own entry. */
+interface RosterReader {
+  readonly refresh: () => Promise<void>;
+  readonly getSnapshot: () => {
+    readonly agents: Readonly<Record<string, { readonly terminalAt: number | null }>>;
+  };
+}
+
 export interface TranscriptSourceOptions {
   readonly agent: AgentRef;
   readonly client: SubagentClient;
   /** Reads a finished worker's file once omp no longer knows the worker, as after a reload. */
   readonly finished?: Pick<FinishedWorkerSource, "read"> | undefined;
+  /** The roster the worker is listed in: a refused cancel reads it again before the refusal is worded. */
+  readonly roster?: RosterReader | undefined;
+  /** The worker's key in that roster (`RosterAgent.key`); omp reusing the worker's id does not change it. */
+  readonly rosterKey?: string | undefined;
 }
 
 function readerFor(
@@ -120,14 +132,23 @@ function subscriberFor(agent: AgentRef, client: SubagentClient): TranscriptFeed[
 export function createFocusedAgentRuntime(
   options: TranscriptSourceOptions,
 ): FocusedAgentRuntime & TranscriptFeed {
-  const { agent, client } = options;
+  const { agent, client, roster, rosterKey } = options;
   return Object.freeze({
     agent,
     read: readerFor(agent, client, options.finished),
     subscribe: subscriberFor(agent, client),
     cancel: async (): Promise<CancelAgentResult> => {
       if (agent.status !== "running") throw notRunning("This worker has already finished.");
-      return client.cancel(agent.id);
+      try {
+        return await client.cancel(agent.id);
+      } catch (error) {
+        // omp refuses a cancel with a conflict, or says it no longer knows the worker: both are read again on the roster.
+        const refused =
+          error instanceof AppFailure &&
+          (error.appError.code === "conflict" || error.appError.code === "not_found");
+        if (!refused || roster === undefined || rosterKey === undefined) throw error;
+        throw await settledRefusal(roster, rosterKey);
+      }
     },
     steer: async (message: string): Promise<void> => {
       if (!canSteerAgent(agent)) {
@@ -140,4 +161,30 @@ export function createFocusedAgentRuntime(
 
 function notRunning(message: string): AppFailure {
   return new AppFailure({ code: "conflict", message, retryable: false });
+}
+
+/**
+ * omp refused a cancel. As the Agent Hub does, the roster is read again before the refusal is worded, and the worker's
+ * own entry, by its key, decides: an entry the re-read no longer lists as running is reported as not running, and
+ * anything else keeps the refusal, including a roster that cannot be read.
+ */
+async function settledRefusal(roster: RosterReader, key: string): Promise<AppFailure> {
+  const refusal = new AppFailure({
+    code: "conflict",
+    message: "omp did not stop the worker",
+    retryable: true,
+  });
+  try {
+    await roster.refresh();
+  } catch {
+    return refusal;
+  }
+  const listed = roster.getSnapshot().agents[key];
+  return listed === undefined || listed.terminalAt !== null
+    ? new AppFailure({
+        code: "not_found",
+        message: "Subagent is no longer running",
+        retryable: false,
+      })
+    : refusal;
 }

@@ -163,3 +163,100 @@ describe("the focused runtime", () => {
     expect(recorded.cancels).toEqual([]);
   });
 });
+
+/** A client whose cancel omp refuses the way it answers `cancelled: false`: the client reports a retryable conflict. */
+function refusingClient(): SubagentClient {
+  const { client } = fakeClient();
+  return {
+    ...client,
+    cancel: async () => {
+      throw new AppFailure({
+        code: "conflict",
+        message: "omp did not stop the worker",
+        retryable: true,
+      });
+    },
+  };
+}
+
+/** The roster as the nested card reads it: `endedAt` is when the re-read lists the worker as finished, if it does. */
+function rosterThat(options: { readonly endedAt?: number; readonly refreshFails?: boolean } = {}) {
+  let terminalAt: number | null = null;
+  return {
+    refresh: async (): Promise<void> => {
+      if (options.refreshFails === true) {
+        throw new AppFailure({
+          code: "unavailable",
+          message: "The roster could not be read.",
+          retryable: true,
+        });
+      }
+      terminalAt = options.endedAt ?? null;
+    },
+    getSnapshot: () => ({ agents: { "worker-1:1": { id: "worker-1", terminalAt } } }),
+  };
+}
+
+describe("the nested transcript source: a refused cancel is worded after the roster is read again", () => {
+  test("a worker omp has ended reads as not running, not as one that is still running", async () => {
+    const runtime = createFocusedAgentRuntime({
+      agent: agentRef(),
+      client: refusingClient(),
+      roster: rosterThat({ endedAt: 1_759_600_100_000 }),
+      rosterKey: "worker-1:1",
+    });
+    await expect(runtime.cancel()).rejects.toMatchObject({ appError: { code: "not_found" } });
+  });
+
+  test("a refused cancel stays a refusal while the roster still lists the worker as running", async () => {
+    const runtime = createFocusedAgentRuntime({
+      agent: agentRef(),
+      client: refusingClient(),
+      roster: rosterThat(),
+      rosterKey: "worker-1:1",
+    });
+    await expect(runtime.cancel()).rejects.toMatchObject({ appError: { code: "conflict" } });
+  });
+
+  test("a refused cancel stays a refusal when the roster cannot be read again", async () => {
+    const runtime = createFocusedAgentRuntime({
+      agent: agentRef(),
+      client: refusingClient(),
+      roster: rosterThat({ endedAt: 1_759_600_100_000, refreshFails: true }),
+      rosterKey: "worker-1:1",
+    });
+    await expect(runtime.cancel()).rejects.toMatchObject({ appError: { code: "conflict" } });
+  });
+
+  test("without a roster, a refused cancel is passed on as omp answered it", async () => {
+    const runtime = createFocusedAgentRuntime({ agent: agentRef(), client: refusingClient() });
+    await expect(runtime.cancel()).rejects.toMatchObject({ appError: { code: "conflict" } });
+  });
+
+  test("with a roster but no key for the worker, a refused cancel is passed on as omp answered it", async () => {
+    const runtime = createFocusedAgentRuntime({
+      agent: agentRef(),
+      client: refusingClient(),
+      roster: rosterThat({ endedAt: 1_759_600_100_000 }),
+    });
+    await expect(runtime.cancel()).rejects.toMatchObject({ appError: { code: "conflict" } });
+  });
+
+  test("a refused cancel reads the worker's own roster entry, not an earlier worker that reused its id", async () => {
+    const runtime = createFocusedAgentRuntime({
+      agent: agentRef(),
+      client: refusingClient(),
+      roster: {
+        refresh: async () => undefined,
+        getSnapshot: () => ({
+          agents: {
+            "worker-1:1": { id: "worker-1", terminalAt: 1_759_600_100_000 },
+            "worker-1:2": { id: "worker-1", terminalAt: null },
+          },
+        }),
+      },
+      rosterKey: "worker-1:2",
+    });
+    await expect(runtime.cancel()).rejects.toMatchObject({ appError: { code: "conflict" } });
+  });
+});
