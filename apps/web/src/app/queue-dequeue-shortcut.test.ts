@@ -12,7 +12,7 @@ import { QUEUE_DEQUEUE_MESSAGES, registerQueueDequeueShortcut } from "./queue-de
 /** A queue whose remove calls are recorded, so a test can see what left the queue. */
 function queueOf(queued: Partial<QueueSnapshot>) {
   const removed: string[] = [];
-  const snapshot: QueueSnapshot = {
+  let snapshot: QueueSnapshot = {
     steering: [],
     followUp: [],
     steeringMode: "all",
@@ -33,12 +33,26 @@ function queueOf(queued: Partial<QueueSnapshot>) {
       return { changed: true };
     },
   } as unknown as QueuePort;
-  return { controller: createQueueAdapter(port), removed };
+  return {
+    controller: createQueueAdapter(port),
+    removed,
+    leaveQueue: () => {
+      snapshot = { ...snapshot, followUp: [] };
+    },
+  };
 }
 
-/** Registers the action on a registry that holds the real P6 descriptors, and returns a press of Alt+Up. */
-function setup(queued: Partial<QueueSnapshot>, boxText = "") {
-  const { controller, removed } = queueOf(queued);
+/**
+ * Registers the action on a registry that holds the real P6 descriptors, and returns a press of Alt+Up. With
+ * `leaveAfterCheck`, the follow-up leaves the queue after the action has checked it, as omp can send it meanwhile.
+ * With `restoreFails`, putting the text back in the box throws.
+ */
+function setup(
+  queued: Partial<QueueSnapshot>,
+  boxText = "",
+  options: { readonly leaveAfterCheck?: boolean; readonly restoreFails?: boolean } = {},
+) {
+  const { controller, removed, leaveQueue } = queueOf(queued);
   const restored: string[] = [];
   const notify = vi.fn();
   const fail = vi.fn();
@@ -48,8 +62,12 @@ function setup(queued: Partial<QueueSnapshot>, boxText = "") {
   registerQueueDequeueShortcut({
     registry,
     queue: controller,
-    draft: () => ({ text: boxText, attachmentRefs: [] }),
+    draft: () => {
+      if (options.leaveAfterCheck === true) leaveQueue();
+      return { text: boxText, attachmentRefs: [] };
+    },
     restore: (request) => {
+      if (options.restoreFails === true) throw new Error("The message box is gone");
       restored.push(request.text);
     },
     notify,
@@ -109,5 +127,27 @@ describe("Alt+Up brings the last queued message back into the box", () => {
     expect(notify).toHaveBeenCalledWith(QUEUE_DEQUEUE_MESSAGES.alreadySent);
     expect(restored).toEqual([]);
     expect(removed).toEqual([]);
+  });
+
+  test("when the message leaves the queue after the check, says so in the header and changes nothing", async () => {
+    const { press, restored, removed, notify, fail } = setup({ followUp: ["follow up"] }, "", {
+      leaveAfterCheck: true,
+    });
+    press();
+    await vi.waitFor(() =>
+      expect(fail).toHaveBeenCalledWith("The queued message is no longer present"),
+    );
+    expect(notify).not.toHaveBeenCalled();
+    expect(restored).toEqual([]);
+    expect(removed).toEqual([]);
+  });
+
+  test("any other failure while the message is taken back is said in the header too", async () => {
+    const { press, notify, fail } = setup({ followUp: ["follow up"] }, "", { restoreFails: true });
+    press();
+    await vi.waitFor(() =>
+      expect(fail).toHaveBeenCalledWith("The queued message could not be brought back. Try again."),
+    );
+    expect(notify).not.toHaveBeenCalled();
   });
 });
