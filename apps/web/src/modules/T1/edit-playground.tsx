@@ -34,8 +34,8 @@ function EditPlayground() {
       data-testid="t1-edit-playground"
     >
       <header className="border-border bg-card mx-auto w-full max-w-5xl rounded-xl border p-4 shadow-xs">
-        <h1 className="text-lg font-semibold tracking-tight">T1.3 Edit renderer</h1>
-        <p className="text-muted-foreground text-sm">Shared edit and apply_patch diff cards</p>
+        <h1 className="text-lg font-semibold tracking-tight">File changes</h1>
+        <p className="text-muted-foreground text-sm">Review changed lines and diagnostics.</p>
       </header>
       <section className="border-border bg-card mx-auto mt-6 flex w-full max-w-5xl flex-col gap-4 rounded-xl border p-4 shadow-xs sm:p-6">
         <EditCard
@@ -66,7 +66,12 @@ function EditPlayground() {
                   path: "src/b.ts",
                   op: "create",
                   diff: "@@ -0,0 +1,2 @@\n+export const b = true;\n+export default b;",
-                  diagnostics: [{ severity: "warning", message: "Review generated export" }],
+                  diagnostics: {
+                    server: "patch",
+                    messages: ["patch: Review generated export"],
+                    summary: "Patch warnings: 1",
+                    errored: false,
+                  },
                 },
               ],
               snapshotsPruned: true,

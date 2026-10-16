@@ -66,7 +66,12 @@ describe("EditCard", () => {
                 diff: "@@ -1 +1 @@\n-old\n+new",
                 op: "update",
                 move: { path: "src/c.ts" },
-                diagnostics: [{ severity: "warning", message: "Review generated import" }],
+                diagnostics: {
+                  server: "patch",
+                  messages: ["patch: Review generated import"],
+                  summary: "Patch warnings: 1",
+                  errored: false,
+                },
               },
             ],
           },
@@ -81,7 +86,7 @@ describe("EditCard", () => {
     expect(screen.getByRole("button", { name: "apply_patch: Complete" }).textContent).toContain(
       "2 files · +2 −2",
     );
-    expect(screen.getByText("Review generated import")).toBeTruthy();
+    expect(screen.getByText("patch: Review generated import")).toBeTruthy();
     expect(screen.getByText(/src\/b\.ts → src\/c\.ts/)).toBeTruthy();
   });
 
@@ -130,7 +135,12 @@ describe("EditCard", () => {
           {
             path: "src/empty.ts",
             op: "update",
-            diagnostics: [{ severity: "info", message: "No matching lines" }],
+            diagnostics: {
+              server: "patch",
+              messages: [],
+              summary: "No matching lines",
+              errored: false,
+            },
             conflict: "Hashline changed before apply",
           },
           { path: "src/empty.ts" },

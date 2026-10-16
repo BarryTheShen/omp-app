@@ -5,6 +5,14 @@ import { OutputMetaSchema, TruncationMetaSchema } from "../U3/tool-card/output-m
 const UnknownRecord = z.record(z.string(), z.unknown());
 const OptionalText = z.string().optional();
 
+export const EditDiagnosticsSchema = z.looseObject({
+  server: z.string().optional(),
+  messages: z.array(z.string()).optional(),
+  summary: z.string().optional(),
+  errored: z.boolean().optional(),
+});
+export type EditDiagnostics = z.infer<typeof EditDiagnosticsSchema>;
+
 export const DiagnosticSchema = z.looseObject({
   severity: z.enum(["error", "warning", "info", "hint"]).optional(),
   message: z.string().optional(),
@@ -123,7 +131,7 @@ export type EditToolArgs = z.infer<typeof EditToolArgsSchema>;
 export const EditPerFileResultSchema = z.looseObject({
   path: z.string().optional(),
   diff: z.string().optional(),
-  diagnostics: z.array(DiagnosticSchema).optional(),
+  diagnostics: EditDiagnosticsSchema.optional(),
   op: z.enum(["create", "delete", "update"]).optional(),
   move: UnknownRecord.optional(),
   error: z.string().optional(),
@@ -136,7 +144,7 @@ export type EditPerFileResult = z.infer<typeof EditPerFileResultSchema>;
 export const EditToolDetailsSchema = z.looseObject({
   diff: z.string().optional(),
   firstChangedLine: z.int().positive().optional(),
-  diagnostics: z.array(DiagnosticSchema).optional(),
+  diagnostics: EditDiagnosticsSchema.optional(),
   op: z.enum(["create", "delete", "update"]).optional(),
   move: UnknownRecord.optional(),
   meta: OutputMetaSchema.optional(),

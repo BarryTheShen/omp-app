@@ -6,9 +6,9 @@ import type { ToolCardPhase, ToolRenderer, ToolRendererProps } from "../U3/tool-
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { splitToolResult } from "../U3/tool-card/result";
 import {
-  type Diagnostic,
   decodeEditArgs,
   decodeEditDetails,
+  type EditDiagnostics,
   type EditPerFileResult,
   type EditToolArgs,
   type EditToolDetails,
@@ -219,7 +219,7 @@ function EditBody({
           {conflict}
         </p>
       )}
-      {diagnostics && diagnostics.length > 0 && <Diagnostics diagnostics={diagnostics} />}
+      {diagnostics && <Diagnostics diagnostics={diagnostics} />}
       <CopyButton label={copyLabel} onCopy={onCopy} raw={copyText} />
     </section>
   );
@@ -268,7 +268,7 @@ function EditFileSection({ file }: { readonly file: EditPerFileResult }) {
         <p className="text-muted-foreground text-xs">No changes were made.</p>
       )}
       {conflict && <p className="text-danger text-xs">{conflict}</p>}
-      {diagnostics && diagnostics.length > 0 && <Diagnostics diagnostics={diagnostics} />}
+      {diagnostics && <Diagnostics diagnostics={diagnostics} />}
     </section>
   );
 }
@@ -415,22 +415,32 @@ function RawPreview({ label, text }: { readonly label: string; readonly text: st
   );
 }
 
-function Diagnostics({ diagnostics }: { readonly diagnostics: readonly Diagnostic[] }) {
-  const visible = diagnostics.slice(0, 8);
+function Diagnostics({ diagnostics }: { readonly diagnostics: EditDiagnostics }) {
+  const messages = diagnostics.messages?.slice(0, 8) ?? [];
+  const hiddenMessages = Math.max(0, (diagnostics.messages?.length ?? 0) - messages.length);
+  const className = diagnostics.errored
+    ? "text-danger"
+    : messages.length > 0
+      ? "text-warning"
+      : "text-muted-foreground";
+  const occurrences = new Map<string, number>();
   return (
-    <div className="flex flex-col gap-1 text-xs" data-slot="t1-edit-diagnostics">
+    <div className={`flex flex-col gap-1 text-xs ${className}`} data-slot="t1-edit-diagnostics">
       <span className="font-medium text-muted-foreground">Diagnostics</span>
-      <ul className="flex flex-col gap-1">
-        {visible.map((diagnostic) => (
-          <li className={diagnosticClass(diagnostic.severity)} key={diagnosticKey(diagnostic)}>
-            {diagnosticMessage(diagnostic)}
-          </li>
-        ))}
-      </ul>
-      {diagnostics.length > visible.length && (
-        <span className="text-muted-foreground">
-          {diagnostics.length - visible.length} more diagnostics.
-        </span>
+      {diagnostics.summary && (
+        <p>
+          {diagnostics.errored ? `Diagnostics error: ${diagnostics.summary}` : diagnostics.summary}
+        </p>
+      )}
+      {messages.map((message) => {
+        const occurrence = occurrences.get(message) ?? 0;
+        occurrences.set(message, occurrence + 1);
+        return <p key={`${message}:${occurrence}`}>{message}</p>;
+      })}
+      {hiddenMessages > 0 && (
+        <p className="text-muted-foreground">
+          {hiddenMessages} more diagnostic message{hiddenMessages === 1 ? "" : "s"}.
+        </p>
       )}
     </div>
   );
@@ -760,26 +770,6 @@ function statusClass(phase: ToolCardPhase): string {
   if (phase === "running" || phase === "partial")
     return "rounded border border-info/40 bg-info-surface px-2 py-0.5 text-info-surface-foreground";
   return "rounded border border-success/40 bg-success-surface px-2 py-0.5 text-success-surface-foreground";
-}
-
-function diagnosticMessage(diagnostic: Diagnostic): string {
-  const location = diagnostic.path
-    ? `${diagnostic.path}${diagnostic.line === undefined ? "" : `:${diagnostic.line}`}`
-    : diagnostic.line === undefined
-      ? ""
-      : `line ${diagnostic.line}`;
-  const message = diagnostic.message ?? "Diagnostic reported by edit result.";
-  return location ? `${location}: ${message}` : message;
-}
-
-function diagnosticKey(diagnostic: Diagnostic): string {
-  return `${diagnostic.path ?? ""}:${diagnostic.line ?? ""}:${diagnostic.column ?? ""}:${diagnostic.message ?? "diagnostic"}`;
-}
-
-function diagnosticClass(severity: Diagnostic["severity"]): string {
-  if (severity === "error") return "text-danger";
-  if (severity === "warning") return "text-warning";
-  return "text-muted-foreground";
 }
 
 function conflictNotice(value: unknown): string | undefined {
