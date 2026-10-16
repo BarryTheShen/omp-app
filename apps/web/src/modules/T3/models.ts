@@ -10,7 +10,6 @@ export const T3_CAPABILITIES = {
   eval: "upstream.eval" as CapabilityKey,
   debug: "upstream.debug" as CapabilityKey,
   computer: "upstream.computer" as CapabilityKey,
-  inspectImage: "upstream.inspect-image" as CapabilityKey,
 } as const;
 
 export const EvalArgsSchema = z.looseObject({
@@ -50,16 +49,10 @@ export const ComputerArgsSchema = z.looseObject({
   timeout: z.number().nonnegative().optional(),
   chain: z.array(UnknownRecord).optional(),
 });
-export const InspectImageArgsSchema = z.looseObject({
-  path: z.string().optional(),
-  mode: z.string().optional(),
-  prompt: z.string().optional(),
-});
 
 export type EvalArgs = z.infer<typeof EvalArgsSchema>;
 export type DebugArgs = z.infer<typeof DebugArgsSchema>;
 export type ComputerArgs = z.infer<typeof ComputerArgsSchema>;
-export type InspectImageArgs = z.infer<typeof InspectImageArgsSchema>;
 
 export const EvalCellSchema = z.looseObject({
   index: z.int().nonnegative().optional(),
@@ -168,22 +161,11 @@ export const ComputerDetailsSchema = z.looseObject({
   output: z.unknown().optional(),
   meta: OutputMetaSchema.optional(),
 });
-export const InspectImageDetailsSchema = z.looseObject({
-  path: z.string().optional(),
-  mode: z.string().optional(),
-  status: z.string().optional(),
-  description: z.string().optional(),
-  analysis: z.string().optional(),
-  image: z.unknown().optional(),
-  error: z.string().optional(),
-  meta: OutputMetaSchema.optional(),
-});
 
 export type EvalCell = z.infer<typeof EvalCellSchema>;
 export type EvalDetails = z.infer<typeof EvalDetailsSchema>;
 export type DebugDetails = z.infer<typeof DebugDetailsSchema>;
 export type ComputerDetails = z.infer<typeof ComputerDetailsSchema>;
-export type InspectImageDetails = z.infer<typeof InspectImageDetailsSchema>;
 
 export interface T3Decode<T> {
   readonly ok: boolean;
@@ -256,9 +238,6 @@ export function decodeDebugDetails(raw: unknown): T3Decode<DebugDetails> {
 export function decodeComputerArgs(raw: unknown): T3Decode<ComputerArgs> {
   return decode(ComputerArgsSchema, raw, "computer arguments");
 }
-export function decodeInspectImageArgs(raw: unknown): T3Decode<InspectImageArgs> {
-  return decode(InspectImageArgsSchema, raw, "inspect_image arguments");
-}
 
 function model<TArgs, TDetails>(
   argsSchema: z.ZodType<TArgs>,
@@ -301,12 +280,6 @@ export function normalizeComputer(
 ): T3ToolModel<ComputerArgs, ComputerDetails> {
   return model(ComputerArgsSchema, ComputerDetailsSchema, args, result, "computer");
 }
-export function normalizeInspectImage(
-  args: unknown,
-  result: unknown,
-): T3ToolModel<InspectImageArgs, InspectImageDetails> {
-  return model(InspectImageArgsSchema, InspectImageDetailsSchema, args, result, "inspect_image");
-}
 
 export function mapT3Failure(error: unknown, toolName: string): AppFailure {
   if (error instanceof AppFailure) return error;
@@ -330,6 +303,5 @@ export function capabilityAvailable(
 export function capabilityFailure(capability: CapabilityKey, message: string): AppFailure {
   return new AppFailure({ code: "unavailable", message, retryable: false, capability });
 }
-
-export type T3ToolArgs = EvalArgs | DebugArgs | ComputerArgs | InspectImageArgs;
-export type T3ToolDetails = EvalDetails | DebugDetails | ComputerDetails | InspectImageDetails;
+export type T3ToolArgs = EvalArgs | DebugArgs | ComputerArgs;
+export type T3ToolDetails = EvalDetails | DebugDetails | ComputerDetails;

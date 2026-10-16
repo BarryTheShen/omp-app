@@ -56,7 +56,6 @@ const FAMILIES_WITHOUT_A_SAMPLE: readonly {
   },
   { toolName: "computer", args: { action: "screenshot" } },
   { toolName: "debug", args: { action: "step_over" } },
-  { toolName: "inspect_image", args: { path: "pixel.png" } },
   { toolName: "github", args: { op: "repo_view", repo: "owner/repo" } },
   { toolName: "vibe_kill", args: { id: "vibe-1" } },
   { toolName: "vibe_list", args: {} },

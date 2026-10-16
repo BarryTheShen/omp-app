@@ -5,11 +5,9 @@ import {
   decodeDebugArgs,
   decodeDebugDetails,
   decodeEvalArgs,
-  decodeInspectImageArgs,
   mapT3Failure,
   normalizeComputer,
   normalizeEval,
-  normalizeInspectImage,
 } from "./models";
 
 describe("T3 tolerant execution models", () => {
@@ -68,19 +66,6 @@ describe("T3 tolerant execution models", () => {
         { details: { backend: "computer", permissions: { input: false } } },
       ),
     ).toMatchObject({ details: { permissions: { input: false } } });
-  });
-
-  test("accepts inspect-image analysis and preserves safe bounded preview", () => {
-    expect(decodeInspectImageArgs({ path: "image.png", mode: "describe" }).ok).toBe(true);
-    expect(
-      normalizeInspectImage(
-        { path: "image.png" },
-        {
-          content: [{ type: "text", text: "A diagram" }],
-          details: { description: "A diagram", status: "complete" },
-        },
-      ),
-    ).toMatchObject({ details: { description: "A diagram" }, preview: "A diagram" });
   });
 
   test("malformed details remain raw and become a visible malformed model", () => {

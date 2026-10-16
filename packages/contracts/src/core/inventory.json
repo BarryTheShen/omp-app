@@ -1116,15 +1116,6 @@
     "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/packages/tui/src/tools/eval.ts:689-740"
   },
   {
-    "id": "T3.inspect-image",
-    "group": "T3",
-    "name": "inspect_image",
-    "kind": "tool-renderer",
-    "rpc": "RPC",
-    "ui": "collapsible card",
-    "source": "src/tools/renderers.ts:95-96; src/tools/inspect-image-renderer.ts:34-80"
-  },
-  {
     "id": "T4.browser",
     "group": "T4",
     "name": "browser",
