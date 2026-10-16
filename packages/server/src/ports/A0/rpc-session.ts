@@ -934,6 +934,24 @@ export class RpcSessionPortRuntime {
     if (entry.viewers.size > 0) await this.#arbitrate(entry, signal);
   }
 
+  /**
+   * Gives a connection back the views a delete's stop took from it: its count less what it holds on the chat now. The
+   * views join the entry of the chat's running omp, each counted once, as `open` counts a view, so a tab that asked to
+   * delete a chat another tab's omp now serves keeps a watcher there. A chat no running omp serves gets nothing: no omp
+   * is started for it, and the refusal stands as it was.
+   */
+  restoreViews(threadId: ThreadId, connectionId: string, count: number): void {
+    const entry = this.#entryOrUndefined(threadId);
+    const registry = this.#context.processRegistry;
+    if (entry === undefined || !registry.has(entry.bootstrap.threadId)) return;
+    if (registry.isStopping(entry.bootstrap.threadId)) return;
+    const missing = count - (entry.viewers.get(connectionId) ?? 0);
+    for (let view = 0; view < missing; view += 1) {
+      registry.acquire(this.#processOptions(entry.bootstrap));
+      this.#addViewer(entry, connectionId);
+    }
+  }
+
   async dispose(): Promise<void> {
     for (const entry of this.#entries.values()) entry.unsubscribeEvents();
     this.#entries.clear();

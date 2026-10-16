@@ -220,4 +220,9 @@ export interface SessionViews {
   watcherCount(sessionId: string): number;
   /** Lets go of every view the connection holds on the chat. */
   releaseViews(sessionId: string, connectionId: string): Promise<void>;
+  /**
+   * Gives the connection back the views a delete's stop took from it, when the delete is refused and another tab's omp
+   * serves the chat: `count` less what it holds on the chat now.
+   */
+  restoreViews?(sessionId: string, connectionId: string, count: number): void;
 }

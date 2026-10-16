@@ -565,9 +565,9 @@ export class SessionFileStore {
    * is still watched, one a viewer opened during the stop, or one whose turn runs, is refused, because omp would write it
    * back. The server's own chats are checked once more with no await before the removal. The artifacts directory is checked
    * the same way before anything is removed. Once the chat's file is gone the delete succeeds: artifacts that cannot be
-   * removed stay, and are reported as `artifactsKept`. omp's exit takes the caller's views with it, before the file is
-   * removed, so a refusal after omp has exited (a viewer opened the chat while omp stopped) leaves the caller uncounted on
-   * this server.
+   * removed stay, and are reported as `artifactsKept`. omp's exit takes the caller's views with it, so a refusal after omp
+   * has exited gives them back to the chat's running omp when another tab's omp serves the chat (`#restoreViews`): the tab
+   * keeps the chat it asked to delete, counted once.
    */
   async deleteSession(
     args: { readonly folder: string; readonly sessionFile: string },
@@ -584,14 +584,12 @@ export class SessionFileStore {
     const outcome = await this.#readSessionFile(sessionFile);
     if (!outcome.file) throw notListed();
     const { file } = outcome;
-    if (file.turn === "running") throw appFailure("conflict", RUNNING_TURN_SENTENCE, true);
-    const held = this.#heldViewsOf(file.id, caller);
-    if (file.liveness.serverProcess || file.liveness.lease === "held") {
-      throw heldFailure(this.#options, file.id, file.liveness.serverProcess, held);
-    }
-    // No await between this check and the removal below: a viewer that came in while the lease was probed is refused.
-    if (serverOwnsSession(this.#options, file.id, sessionFile)) {
-      throw heldFailure(this.#options, file.id, true, held);
+    try {
+      this.#refuseWhileHeld(file, sessionFile, caller);
+    } catch (error) {
+      // The stop took the asking connection's views with omp: when another tab's omp serves the chat now, they come back.
+      this.#restoreViews(file, sessionFile, caller, ownViews);
+      throw error;
     }
     try {
       await fs.rm(sessionFile);
@@ -702,6 +700,43 @@ export class SessionFileStore {
     const views = this.#options.views;
     if (caller === undefined || views === undefined) return 0;
     return views.viewsOf(sessionId, caller.connectionId);
+  }
+
+  /**
+   * The refusals a delete makes after its stop, while the chat still exists: its turn runs, or a view or an omp holds it.
+   * Nothing is awaited here, so the check and the removal that follows see the same state: a viewer that came in while the
+   * lease was probed is refused.
+   */
+  #refuseWhileHeld(
+    file: SessionFile,
+    sessionFile: string,
+    caller: { readonly connectionId: string } | undefined,
+  ): void {
+    if (file.turn === "running") throw appFailure("conflict", RUNNING_TURN_SENTENCE, true);
+    const held = this.#heldViewsOf(file.id, caller);
+    if (file.liveness.serverProcess || file.liveness.lease === "held") {
+      throw heldFailure(this.#options, file.id, file.liveness.serverProcess, held);
+    }
+    if (serverOwnsSession(this.#options, file.id, sessionFile)) {
+      throw heldFailure(this.#options, file.id, true, held);
+    }
+  }
+
+  /**
+   * Gives the asking connection its views back when a refused delete leaves another tab's omp serving the chat: the stop
+   * took them with omp, and the tab still shows the chat. The views join that running omp (`views.restoreViews`), so a
+   * chat no omp of this server serves keeps the refusal as it was, and no omp is started.
+   */
+  #restoreViews(
+    file: SessionFile,
+    sessionFile: string,
+    caller: { readonly connectionId: string } | undefined,
+    ownViews: number,
+  ): void {
+    const views = this.#options.views;
+    if (views?.restoreViews === undefined || caller === undefined || ownViews === 0) return;
+    if (!serverOwnsSession(this.#options, file.id, sessionFile)) return;
+    views.restoreViews(file.id, caller.connectionId, ownViews);
   }
 
   async #listedSessionFile(value: string): Promise<string> {

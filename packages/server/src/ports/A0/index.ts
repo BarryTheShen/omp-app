@@ -28,6 +28,8 @@ export interface A0Runtime {
     viewsOf(threadId: ThreadId, connectionId: string): number;
     watcherCount(threadId: ThreadId): number;
     releaseViews(threadId: ThreadId, connectionId: string): Promise<void>;
+    /** Gives the connection back the views a delete's stop took, joined to the chat's running omp (see the rpc runtime). */
+    restoreViews(threadId: ThreadId, connectionId: string, count: number): void;
   };
 }
 
@@ -49,6 +51,8 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
       viewsOf: (threadId, connectionId) => rpc.runtime.viewsOf(threadId, connectionId),
       watcherCount: (threadId) => rpc.runtime.watcherCount(threadId),
       releaseViews: (threadId, connectionId) => rpc.runtime.releaseViews(threadId, connectionId),
+      restoreViews: (threadId, connectionId, count) =>
+        rpc.runtime.restoreViews(threadId, connectionId, count),
     },
   };
 }

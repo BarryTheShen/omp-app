@@ -1538,6 +1538,43 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(created).toHaveLength(1);
   });
 
+  test("restoreViews gives a connection back its view on the omp another tab started, once each, and starts no omp for a chat nothing serves", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const gate = Promise.withResolvers<void>();
+    process.stopGate = gate.promise;
+
+    // Tab one's delete stops omp, counting its own view as its own. The stop waits at its gate.
+    const deleting = ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1);
+    for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(authorityThread); turn += 1) {
+      await Bun.sleep(0);
+    }
+    // Tab two opens the chat while omp stops: the omp it starts after the stop serves the chat.
+    const second = getHandler(handlers, "open")({ threadId: authorityThread }, call("two"));
+    gate.resolve();
+    await deleting;
+    await second;
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(0);
+    expect(runtime.views.watcherCount(authorityThread)).toBe(1);
+
+    // The refused delete gives tab one its view back on that omp, once: a second call adds nothing.
+    runtime.views.restoreViews(authorityThread, "one", 1);
+    runtime.views.restoreViews(authorityThread, "one", 1);
+    expect(runtime.views.viewsOf(authorityThread, "one")).toBe(1);
+    expect(runtime.views.watcherCount(authorityThread)).toBe(2);
+    expect(created).toHaveLength(2);
+
+    // A chat no running omp serves gets nothing, and no omp is started for it.
+    runtime.views.restoreViews(ThreadId.parse("chat-nothing-serves"), "one", 1);
+    expect(created).toHaveLength(2);
+  });
+
   test("routes UI/host answers and exposes a process crash as a replayed process event", async () => {
     const created: FakeProcess[] = [];
     const runtimeContext = context(created);

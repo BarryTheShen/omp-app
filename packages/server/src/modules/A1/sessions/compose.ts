@@ -23,6 +23,7 @@ export interface ServerViews {
   viewsOf(threadId: ThreadId, connectionId: string): number;
   watcherCount(threadId: ThreadId): number;
   releaseViews(threadId: ThreadId, connectionId: string): Promise<void>;
+  restoreViews?(threadId: ThreadId, connectionId: string, count: number): void;
 }
 
 /**
@@ -32,9 +33,9 @@ export interface ServerViews {
  * view let go of would keep its omp for the idle time, and its delete would be refused. A stop that fails or does not
  * finish in time refuses the delete, so no file is removed while omp may still write it. `views` lets a delete from a
  * connection that holds the chat go through: the turn and the other views are checked first, and that connection's views
- * stay counted while omp stops. omp's exit takes them with it, so a refusal after omp exits leaves that connection
- * uncounted. `leaseProbe` says whether another omp holds a chat open. Without it that chat reads as unknown: its delete
- * goes ahead, and omp writes the chat back or to a copy.
+ * stay counted while omp stops. omp's exit takes them with it, so a refusal after omp exits gives them back to the chat's
+ * running omp when another tab's omp serves the chat. `leaseProbe` says whether another omp holds a chat open. Without it
+ * that chat reads as unknown: its delete goes ahead, and omp writes the chat back or to a copy.
  */
 export function createServerSessionFileStore(options: {
   readonly sessionsRoot: string;
@@ -62,6 +63,8 @@ export function createServerSessionFileStore(options: {
       watcherCount: (sessionId) => options.views.watcherCount(ThreadId.parse(sessionId)),
       releaseViews: (sessionId, connectionId) =>
         options.views.releaseViews(ThreadId.parse(sessionId), connectionId),
+      restoreViews: (sessionId, connectionId, count) =>
+        options.views.restoreViews?.(ThreadId.parse(sessionId), connectionId, count),
     },
     runningIn: (folder) => options.chats.busyIn(folder),
   });

@@ -535,6 +535,91 @@ describe("SessionFileStore.deleteSession", () => {
         await rm(root, { recursive: true, force: true });
       }
     });
+
+    test("a refusal after the stop gives the asking connection's view back to the other tab's running omp, and keeps the chat", async () => {
+      const root = await makeTempRoot();
+      try {
+        const cwd = "/workspace/app";
+        const state = { holders: ["tab-one"], omp: true };
+        const restored: {
+          readonly id: string;
+          readonly connectionId: string;
+          readonly count: number;
+        }[] = [];
+        const store = storeFor(root, {
+          serverSessionIds: () => (state.omp ? new Set(["held-chat"]) : new Set<string>()),
+          serverWatches: () => state.holders.length > 0,
+          stopUnwatched: async () => {
+            // omp's exit takes tab one's view. Tab two opens the chat while omp stops, so its omp serves the chat.
+            state.holders = ["tab-two"];
+            state.omp = true;
+          },
+          views: {
+            viewsOf: (_sessionId, connectionId) =>
+              state.holders.filter((holder) => holder === connectionId).length,
+            watcherCount: () => state.holders.length,
+            releaseViews: async () => undefined,
+            restoreViews: (id, connectionId, count) => {
+              restored.push({ id, connectionId, count });
+            },
+          },
+        });
+        const file = path.join(store.bucketPath(cwd), "held-chat.jsonl");
+        await writeSession(file, "held-chat", cwd);
+
+        const error = await refusal(
+          store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+        );
+
+        expect(error).toMatchObject({
+          appError: {
+            code: "conflict",
+            message:
+              "Another tab or window has this chat open. Close it there, then delete it again.",
+          },
+        });
+        expect(restored).toEqual([{ id: "held-chat", connectionId: "tab-one", count: 1 }]);
+        expect(await exists(file)).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
+
+    test("a refusal after the stop for a chat another omp holds, with no omp of this server, gives nothing back", async () => {
+      const root = await makeTempRoot();
+      try {
+        const cwd = "/workspace/app";
+        const restored: string[] = [];
+        const store = storeFor(root, {
+          leaseProbe: () => null,
+          views: {
+            viewsOf: () => 1,
+            watcherCount: () => 1,
+            releaseViews: async () => undefined,
+            restoreViews: () => {
+              restored.push("restored");
+            },
+          },
+        });
+        const file = path.join(store.bucketPath(cwd), "held-lease.jsonl");
+        await writeSession(file, "held-lease", cwd);
+
+        const error = await refusal(
+          store.deleteSession({ folder: cwd, sessionFile: file }, { connectionId: "tab-one" }),
+        );
+
+        expect(error).toMatchObject({
+          appError: {
+            code: "conflict",
+            message: "Close this chat before deleting it: omp has it open.",
+          },
+        });
+        expect(restored).toEqual([]);
+        expect(await exists(file)).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    });
   });
 });
 
