@@ -16,6 +16,7 @@ import type { P3RunReplacement } from "./status";
 export interface P3BranchHandler {
   editFrom(entryId: EntryId, intent: PromptIntent): Promise<void>;
   regenerateFrom(entryId: EntryId): Promise<void>;
+  reconcileAfterBranch(): Promise<void>;
 }
 
 export interface P3EditRunOptions {
@@ -97,6 +98,7 @@ export function createP3EditRun(options: P3EditRunOptions): P3EditRun {
       return decorator ? decorator(asEdit, branchAndRegenerate) : branchAndRegenerate(asEdit);
     },
     resend: async (replacement) => {
+      await branching.reconcileAfterBranch();
       const images = ompImages(replacement.images);
       const threadId = await handoff.submit({
         mode: "prompt",

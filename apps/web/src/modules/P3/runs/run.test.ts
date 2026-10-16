@@ -45,6 +45,7 @@ function harness(options: { readonly opensChat: boolean; readonly decorator?: Ed
       handoff.expect(opened);
       await handoff.submit({ mode: "prompt", text: source.originalText, delivery: "new" });
     },
+    reconcileAfterBranch: async () => undefined,
   };
   const run = createP3EditRun({ branching, handoff, decorator: options.decorator });
   return { handoff, run, sent, edits, regenerations };

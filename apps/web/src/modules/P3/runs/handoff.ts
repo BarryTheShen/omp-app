@@ -34,6 +34,7 @@ export class P3ThreadHandoff {
   private readonly mountTimeoutMs: number;
   private waiter: Waiter | null = null;
   private opened: ThreadId | null = null;
+  private branchOpened = false;
 
   public constructor(options: P3ThreadHandoffOptions = {}) {
     this.onAdmitted = options.onAdmitted;
@@ -45,10 +46,21 @@ export class P3ThreadHandoff {
     return this.opened;
   }
 
+  /** Whether omp accepted a branch for the current run, even if its new session is not reconciled yet. */
+  public get branched(): boolean {
+    return this.branchOpened;
+  }
+
   /** A run starts: no chat is open for it yet, and a send still waiting for an earlier run is dropped. */
   public beginRun(): void {
     this.opened = null;
+    this.branchOpened = false;
     this.dropWaiter(runFailure("cancelled", "The earlier send was replaced by a new one.", false));
+  }
+
+  /** Records omp's successful branch response before the follow-up state read. */
+  public markBranched(): void {
+    this.branchOpened = true;
   }
 
   /** A branch opened `threadId`: the run's next send goes to that chat. */

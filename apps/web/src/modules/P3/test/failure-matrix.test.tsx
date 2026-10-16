@@ -383,7 +383,7 @@ describe("failure matrix: the message the person sees, and what the run keeps", 
     expect(run.chats.size).toBe(0);
   });
 
-  test.skip("omp branched, then get_state failed before the new chat opened: Try again must not branch omp again (follow-up #1690)", async () => {
+  test("omp branched, then get_state failed before the new chat opened: Try again must not branch omp again (follow-up #1690)", async () => {
     const run = renderRun({
       getState: failure("omp_error", "test stand-in: omp did not report its chat", true),
     });

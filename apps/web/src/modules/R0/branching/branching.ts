@@ -10,6 +10,8 @@ export interface BranchingOptions {
   readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
   /** R0.2's history reload for the newly selected session/head. */
   readonly reloadHistory: () => Promise<void>;
+  /** Records omp's accepted branch before the follow-up state read. */
+  readonly onBranched?: (() => void) | undefined;
   /** Switches the app's selected thread; R1/R0.3 owns the thread-list/runtime composition. */
   readonly switchThread: (threadId: ThreadId) => Promise<void>;
 }
@@ -111,13 +113,15 @@ export class OmpBranchingController {
   private readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
   private readonly reloadHistory: () => Promise<void>;
   private readonly switchThread: (threadId: ThreadId) => Promise<void>;
-
+  private readonly onBranched: (() => void) | undefined;
+  private branchNeedsReconcile = false;
   public constructor(options: BranchingOptions) {
     this.store = options.store;
     this.send = options.send;
     this.submitPrompt = options.submitPrompt;
     this.reloadHistory = options.reloadHistory;
     this.switchThread = options.switchThread;
+    this.onBranched = options.onBranched;
   }
 
   /** Branches from a user entry, switches to omp's reported new session, reloads, then submits the edit through R0.3. */
@@ -137,6 +141,13 @@ export class OmpBranchingController {
     await this.branchAndSubmit(entryId, promptFromUserEntry(message));
   }
 
+  /** Reconciles a branch that omp accepted when its first state read failed, without branching again. */
+  public async reconcileAfterBranch(): Promise<void> {
+    if (!this.branchNeedsReconcile) return;
+    await this.reconcileBranch();
+    this.branchNeedsReconcile = false;
+  }
+
   /** The one branch-then-send path for edit and regenerate. */
   private async branchAndSubmit(entryId: EntryId, intent: PromptIntent): Promise<void> {
     await this.branchAndReload(entryId);
@@ -144,6 +155,22 @@ export class OmpBranchingController {
       await this.submitPrompt({ ...intent, delivery: "new" });
     } catch (error) {
       throw asFailure(error, "The prompt failed after branching");
+    }
+  }
+  private async reconcileBranch(): Promise<ThreadId> {
+    const sourceThreadId = this.store.getSnapshot().threadId;
+    try {
+      const state = (await this.send({
+        threadId: sourceThreadId,
+        command: { type: "get_state" },
+      })) as OmpWire.SessionState;
+      this.branchNeedsReconcile = false;
+      const nextThreadId = state.sessionId as ThreadId;
+      await this.switchThread(nextThreadId);
+      await this.reloadHistory();
+      return nextThreadId;
+    } catch (error) {
+      throw asFailure(error, "The branched session did not become available");
     }
   }
 
@@ -191,20 +218,11 @@ export class OmpBranchingController {
       throw asFailure(error, "Branching the session failed");
     }
     if (result.cancelled) throw cancelled("omp cancelled the branch");
-
-    let state: OmpWire.SessionState;
-    try {
-      state = (await this.send({
-        threadId: sourceThreadId,
-        command: { type: "get_state" },
-      })) as OmpWire.SessionState;
-      const nextThreadId = state.sessionId as ThreadId;
-      await this.switchThread(nextThreadId);
-      await this.reloadHistory();
-      return nextThreadId;
-    } catch (error) {
-      throw asFailure(error, "The branched session did not become available");
-    }
+    this.branchNeedsReconcile = true;
+    this.onBranched?.();
+    const nextThreadId = await this.reconcileBranch();
+    this.branchNeedsReconcile = false;
+    return nextThreadId;
   }
 }
 

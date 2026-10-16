@@ -73,14 +73,15 @@ export function createP3RunHandlers(options: P3RunHandlerOptions): P3RunHandlers
   ): void => {
     const failure = asEditFailure(error, FALLBACK_MESSAGE);
     const target = handoff.target;
-    if (fromEditor && failure.appError.code === "cancelled" && target === null) {
+    const branched = handoff.branched || target !== null;
+    if (fromEditor && failure.appError.code === "cancelled" && !branched) {
       if (sending !== null && status.getSnapshot() === sending) status.set({ phase: "idle" });
       return;
     }
     status.set({
       phase: "failed",
       ...recordOf(record),
-      branched: target !== null,
+      branched,
       chatThreadId: target ?? record.sourceThreadId,
       message: failure.appError.code === "internal" ? FALLBACK_MESSAGE : failure.appError.message,
       retryable: failure.appError.retryable,

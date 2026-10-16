@@ -33,6 +33,7 @@ export function useP3RunHandlers(options: P3RunHooksOptions): P3RunHandlers {
       },
       // switchChat resolves only after the new chat's history has loaded, so there is nothing to reload.
       reloadHistory: async () => undefined,
+      onBranched: () => runs.handoff.markBranched(),
       switchThread: (threadId) => {
         runs.handoff.expect(threadId);
         return switchChat(threadId);
