@@ -43,10 +43,11 @@ realTest(
     await sendPrompt(composer, "run_quick_background");
     const card = bashCard(page, "sleep 2; echo quick-done");
     await expect(card).toBeVisible({ timeout: 120_000 });
-    // omp delivers the job's result into the chat when the job ends: the card must have heard of it by then.
-    await expect(page.getByText("Background job finished").first()).toBeVisible({
-      timeout: 120_000,
-    });
+    const notice = page
+      .locator('[data-custom-type="async-result"]')
+      .filter({ hasText: /sleep 2; echo quick-done finished · \d+ seconds?\./ })
+      .first();
+    await expect(notice).toBeVisible({ timeout: 120_000 });
     await openToolCard(card);
     await expect(card).toContainText("Background job bg_1 finished.");
     await expect(card).not.toContainText(RUNNING_NOTE);
