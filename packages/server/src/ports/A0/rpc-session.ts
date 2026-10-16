@@ -425,6 +425,10 @@ export class RpcSessionPortRuntime {
     args: SendCommandArgs<K>,
     call: PortHandlerContext,
   ): Promise<unknown> {
+    // A chat no omp here serves may still be open in another omp: the send is refused with the sentence that says so.
+    if (this.#entryOrUndefined(args.threadId) === undefined) {
+      await this.#refuseWhenHeldElsewhere(args.threadId, call.signal);
+    }
     const entry = this.#entry(args.threadId);
     await this.#ensureRunning(entry);
     if (args.command.type === "set_host_tools") {
@@ -981,6 +985,23 @@ export class RpcSessionPortRuntime {
       throw notFound(`No open thread ${threadId}`);
     }
     return entry;
+  }
+
+  /**
+   * A send to a chat no omp here serves. When another omp holds the chat, the send is refused with the sentence that says
+   * so: nothing is sent and no omp starts on the file. Otherwise this returns, and `#entry` refuses as it did before.
+   */
+  async #refuseWhenHeldElsewhere(threadId: ThreadId, signal: AbortSignalLike): Promise<void> {
+    const resolved = await this.#context.resolveThread(threadId, signal);
+    if (resolved === undefined) return;
+    const other = await this.#context.externalOmp(threadId, resolved.sessionFile, undefined);
+    if (other !== "running") return;
+    throw new AppFailure({
+      code: "conflict",
+      message:
+        "Another omp has this chat open, so nothing was sent. Close that omp, then reload this page.",
+      retryable: true,
+    });
   }
 
   /** Host registrations are released through a connection's viewer count, so only a viewer may make one. */

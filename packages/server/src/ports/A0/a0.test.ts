@@ -1316,6 +1316,43 @@ describe("A0.7 RpcSessionPort handlers", () => {
     await stopping;
   });
 
+  test("a send to a chat another omp holds, with no omp here, is refused with the sentence and starts no omp", async () => {
+    const created: FakeProcess[] = [];
+    const runtime = createA0Runtime({ ...context(created), externalOmp: async () => "running" });
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await expect(
+      getHandler(handlers, "send")(
+        { threadId: authorityThread, command: { type: "prompt", message: "hello" } },
+        call("tab"),
+      ),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "conflict",
+        message:
+          "Another omp has this chat open, so nothing was sent. Close that omp, then reload this page.",
+        retryable: true,
+      },
+    });
+    expect(created).toHaveLength(0);
+  });
+
+  test("a send to a chat nobody holds, with no omp here, is still refused as no open thread, and starts no omp", async () => {
+    const created: FakeProcess[] = [];
+    const runtime = createA0Runtime(context(created));
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await expect(
+      getHandler(handlers, "send")(
+        { threadId: authorityThread, command: { type: "prompt", message: "hello" } },
+        call("tab"),
+      ),
+    ).rejects.toMatchObject({
+      appError: { code: "not_found", message: `No open thread ${authorityThread}` },
+    });
+    expect(created).toHaveLength(0);
+  });
+
   test("a tab that closes its chat while omp stops is not kept as a watcher when that stop fails", async () => {
     const created: FakeProcess[] = [];
     const ctx = context(created);
