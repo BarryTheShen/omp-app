@@ -642,7 +642,9 @@ function setProcess(
     ...(since === undefined ? {} : { startedAt: since }),
   };
   if (processError) next.error = processError;
-  else if (status === "ready" || status === "running" || status === "starting") next.error = null;
+  else if (status === "ready" || status === "running" || status === "starting") {
+    if (next.error?.heading !== EXTENSION_ERROR_HEADING) next.error = null;
+  }
 }
 
 function cancelActiveTools(next: MutableSnapshot): void {

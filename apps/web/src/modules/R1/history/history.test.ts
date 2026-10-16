@@ -506,6 +506,36 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(subscriptions[0]?.options?.afterSeq).toBe(0);
     expect(store.getSnapshot()).toMatchObject({ lastSeq: 1, process: { status: "ready" } });
   });
+  test("keeps a startup extension error when the replayed process becomes ready afterward", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions, [
+        {
+          kind: "notification",
+          frame: {
+            type: "extension_error",
+            extensionPath: "/extensions/startup-error-1421.ts",
+            event: "session_start",
+            error: "notes index is locked",
+          },
+        } as RpcSessionEvent,
+        {
+          kind: "process",
+          status: "ready",
+        } as RpcSessionEvent,
+      ]),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    expect(store.getSnapshot().error).toEqual({
+      code: "omp_error",
+      message: "notes index is locked",
+      retryable: false,
+      heading: "An extension reported an error",
+      extension: "startup-error-1421",
+    });
+  });
 
   test("a question omp is still waiting on is shown again when its chat is opened, and one it answered is not", async () => {
     const subscriptions: SubscriptionRecord[] = [];

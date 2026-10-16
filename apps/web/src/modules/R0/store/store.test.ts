@@ -1977,6 +1977,7 @@ describe("OmpRuntimeStore", () => {
       },
       1,
     );
+    ingest(store, { kind: "process", status: "ready" }, 2);
     expect(store.getSnapshot().error).toEqual({
       code: "omp_error",
       message: "index is locked",
