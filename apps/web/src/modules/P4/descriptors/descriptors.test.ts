@@ -67,11 +67,21 @@ describe("P4 descriptor coverage", () => {
         owner: "P4",
       });
     }
-    // The tree panel belongs to P4 in the table, but no descriptor registers it yet (follow-up #1719).
-    expect(namespaceClaim("panel", "tree")).toMatchObject({ status: "owned", owner: "P4" });
+    expect(namespaceClaim("panel", "tree")).toMatchObject({
+      status: "owned",
+      owner: "P4",
+    });
+    expect(P4_DESCRIPTORS.find((descriptor) => descriptor.kind === "panel")).toMatchObject({
+      id: "P4.tree",
+      owner: "P4",
+      title: "Conversation tree",
+      covers: [],
+    });
   });
 
-  test("the registry passes C0 validation with no problems", () => {
+  test("the P4 descriptor registry has no duplicate ids", () => {
+    const ids = P4_DESCRIPTORS.map((descriptor) => descriptor.id);
+    expect(new Set(ids).size).toBe(ids.length);
     expect(validateRegistry(P4_DESCRIPTORS)).toEqual([]);
   });
 

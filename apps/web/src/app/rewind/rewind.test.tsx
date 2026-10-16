@@ -27,7 +27,7 @@ afterEach(cleanup);
 
 const threadId = "rewind-thread" as ThreadId;
 const otherThread = "other-thread" as ThreadId;
-const REWIND_COMMAND = "P4.tree" as DescriptorId;
+const REWIND_COMMAND = "P4.treeCommand" as DescriptorId;
 
 function message(
   id: string,

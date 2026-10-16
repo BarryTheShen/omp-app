@@ -360,7 +360,7 @@ describe("U0 command palette", () => {
 });
 
 /** The palette's own command list is the handlers it was given plus the commands features register. */
-const TREE = commandById("P4.tree");
+const TREE = commandById("P4.treeCommand");
 
 /** Registers a command the way a mounted feature does, while the palette is on screen. */
 function CommandRegistrar({ run }: { readonly run: () => void }) {

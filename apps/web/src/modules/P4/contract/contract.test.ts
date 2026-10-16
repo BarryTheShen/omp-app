@@ -64,8 +64,8 @@ describe("P4 entry/tree contracts", () => {
 });
 
 describe("P4 descriptor boundary", () => {
-  test("covers exactly nine durable-tree rows and no P3 assistant-ui rows", () => {
-    expect(P4_DESCRIPTORS).toHaveLength(9);
+  test("covers the nine durable-tree rows and registers the tree panel without a duplicate id", () => {
+    expect(P4_DESCRIPTORS).toHaveLength(10);
     expect(P4_DESCRIPTORS.flatMap((descriptor) => descriptor.covers).sort()).toEqual([
       "P3.app-session-tree",
       "P3.app-tree-foldorup",

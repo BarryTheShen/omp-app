@@ -41,12 +41,20 @@ export const P4_DESCRIPTORS = [
   },
   {
     kind: "command",
-    id: "P4.tree",
+    id: "P4.treeCommand",
     owner: "P4",
     title: "Conversation tree",
     covers: ["P3.tree"],
     requires: ["omp.cmd.get_tree"],
     slash: { name: "tree", source: "builtin" },
+  },
+  {
+    kind: "panel",
+    id: "P4.tree",
+    owner: "P4",
+    title: "Conversation tree",
+    covers: [],
+    requires: ["omp.cmd.get_tree", "omp.cmd.branch"],
   },
   {
     kind: "dialog",

@@ -14,7 +14,7 @@ import { RewindPanel } from "./rewind-panel";
 import { isStreaming, REWIND_CAPABILITIES, rewindAvailable } from "./rewind-tree";
 
 /** P4's palette command and shortcut that open the rewind tree (`modules/P4/contract/descriptors.ts`). */
-const REWIND_COMMAND: DescriptorId = "P4.tree";
+const REWIND_COMMAND: DescriptorId = "P4.treeCommand";
 const REWIND_SHORTCUT: DescriptorId = "P4.sessionTree";
 
 export interface RewindPanelOptions {
