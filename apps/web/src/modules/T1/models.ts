@@ -160,6 +160,12 @@ export const AstEditToolArgsSchema = z.looseObject({
 });
 export type AstEditToolArgs = z.infer<typeof AstEditToolArgsSchema>;
 
+export const AstEditFileReplacementSchema = z.looseObject({
+  path: z.string(),
+  count: z.int().nonnegative(),
+});
+export type AstEditFileReplacement = z.infer<typeof AstEditFileReplacementSchema>;
+
 export const AstEditToolDetailsSchema = z.looseObject({
   totalReplacements: z.int().nonnegative().optional(),
   filesTouched: z.int().nonnegative().optional(),
@@ -170,7 +176,7 @@ export const AstEditToolDetailsSchema = z.looseObject({
   parseErrorsTotal: z.int().nonnegative().optional(),
   scopePath: z.string().optional(),
   files: z.array(z.string()).optional(),
-  fileReplacements: z.array(UnknownRecord).optional(),
+  fileReplacements: z.array(AstEditFileReplacementSchema).optional(),
   meta: OutputMetaSchema.optional(),
   displayContent: z.string().optional(),
   searchPath: z.string().optional(),

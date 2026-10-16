@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { openAllToolCards } from "./real-omp";
+import { openAllToolCards, waitForFiniteAnimations } from "./real-omp";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -71,6 +71,16 @@ test("renders AST edit structural diffs, parse errors and safety limits in light
   await openAllToolCards(page);
   await expect(page.getByText("console.log(value)").first()).toBeVisible();
   await expect(page.getByText("logger.info(value)").first()).toBeVisible();
+  await expect(page.getByTestId("t1-ast-edit-preview")).toContainText(
+    "## logger.ts (2 replacements)",
+  );
+  await expect(page.getByTestId("t1-ast-edit-replacements")).toContainText("src/logger.ts");
+  await expect(page.getByTestId("t1-ast-edit-replacements")).toContainText("2 replacements");
+  await expect(page.getByTestId("t1-ast-edit-preview")).toContainText("-10│console.log(value)");
+  await expect(page.getByTestId("t1-ast-edit-preview")).toContainText(
+    "## logger.test.ts (1 replacement)",
+  );
+  await waitForFiniteAnimations(page);
   await expect(page.getByRole("alert")).toContainText("Parse errors");
   await page.screenshot({
     path: "../../.data/screenshots/t1.5-ast-edit-light.png",
@@ -86,6 +96,9 @@ test("renders AST edit structural diffs, parse errors and safety limits in light
   await darkPage.goto("/t1-ast-edit-playground.html");
   await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
   await expectStyles(darkPage);
+  await openAllToolCards(darkPage);
+  await expect(darkPage.getByTestId("t1-ast-edit-preview")).toContainText("-10│console.log(value)");
+  await waitForFiniteAnimations(darkPage);
   await expect(darkPage.locator("html")).toHaveClass(/dark/);
   await darkPage.screenshot({
     path: "../../.data/screenshots/t1.5-ast-edit-dark.png",
@@ -96,6 +109,8 @@ test("renders AST edit structural diffs, parse errors and safety limits in light
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expectStyles(page);
+  await expect(page.getByTestId("t1-ast-edit-preview")).toContainText("-10│console.log(value)");
+  await waitForFiniteAnimations(page);
   await page.screenshot({
     path: "../../.data/screenshots/t1.5-ast-edit-narrow.png",
     fullPage: true,

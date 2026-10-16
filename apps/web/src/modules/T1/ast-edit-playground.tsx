@@ -30,9 +30,9 @@ function AstEditPlayground() {
       data-testid="t1-ast-edit-playground"
     >
       <header className="border-border bg-card mx-auto w-full max-w-4xl rounded-xl border p-4 shadow-xs">
-        <h1 className="text-lg font-semibold tracking-tight">T1.5 AST edit renderer</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Structural file changes</h1>
         <p className="text-muted-foreground text-sm">
-          Structural replacements, parse errors and safety limits
+          Review matched code changes, counts and parse issues.
         </p>
       </header>
       <section className="border-border bg-card mx-auto mt-6 flex w-full max-w-4xl flex-col gap-5 rounded-xl border p-4 shadow-xs sm:p-6">
@@ -41,15 +41,13 @@ function AstEditPlayground() {
             totalReplacements: 3,
             filesTouched: 2,
             filesSearched: 14,
-            applied: true,
+            applied: false,
             fileReplacements: [
-              { path: "src/logger.ts", before: "console.log(value)", after: "logger.info(value)" },
-              {
-                path: "tests/logger.test.ts",
-                before: "console.log(value)",
-                after: "logger.info(value)",
-              },
+              { path: "src/logger.ts", count: 2 },
+              { path: "tests/logger.test.ts", count: 1 },
             ],
+            displayContent:
+              "# src/\n## logger.ts (2 replacements)\n-10│console.log(value)\n+10│logger.info(value)\n-14│console.log(value)\n+14│logger.info(value)\n\n# tests/\n## logger.test.ts (1 replacement)\n-3│console.log(value)\n+3│logger.info(value)",
           })}
         />
         <AstEditCard

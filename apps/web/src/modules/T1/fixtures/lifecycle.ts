@@ -18,8 +18,6 @@ export interface T1LifecycleFixture extends ToolCardFixture {
   readonly size: "normal" | "large";
   /** The facts a person needs from this result, once its card is open (the settled states show them). */
   readonly shows: readonly string[];
-  /** A known defect the card exposes; only that fixture's placeholder check is marked until it is fixed. */
-  readonly knownIssue?: string;
   /** T4 draws URL reads, so the gate renders this fixture through a stub renderer that it injects. */
   readonly renderer?: "url-stub";
 }
@@ -36,7 +34,6 @@ const LARGE_RESULTS: Readonly<Record<string, true>> = {
 interface Sample {
   readonly sample: RealToolResult;
   readonly basis: T1FixtureBasis;
-  readonly knownIssue?: string;
   readonly renderer?: "url-stub";
 }
 
@@ -51,7 +48,6 @@ const SAMPLES: readonly Sample[] = [
   ...T1_OMP_SOURCE_RESULTS.map((sample) => ({
     sample,
     basis: "omp-source" as const,
-    knownIssue: sample.knownIssue,
   })),
 ];
 
@@ -68,10 +64,7 @@ function descriptorFor(toolName: string): T1ToolDescriptor {
  * The lifecycle of one result: the call while it runs, while it streams its partial output, when it is cancelled, and
  * when it settles (success, or error for a result omp marked as failed). Each carries the state the normalizer must give it.
  */
-function lifecycleOf(
-  { sample, basis, knownIssue, renderer }: Sample,
-  index: number,
-): T1LifecycleFixture[] {
+function lifecycleOf({ sample, basis, renderer }: Sample, index: number): T1LifecycleFixture[] {
   const descriptor = descriptorFor(sample.toolName).id;
   const size = LARGE_RESULTS[sample.name] === true ? "large" : "normal";
   const call = {
@@ -92,7 +85,6 @@ function lifecycleOf(
     shows: state === "success" || state === "error" ? sample.shows : [],
     input,
     expect,
-    ...(knownIssue === undefined ? {} : { knownIssue }),
     ...(renderer === undefined ? {} : { renderer }),
   });
   const settled = sample.isError

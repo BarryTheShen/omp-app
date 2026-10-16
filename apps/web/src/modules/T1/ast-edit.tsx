@@ -2,12 +2,16 @@ import { ToolCard } from "../U3/tool-card/card";
 import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { detailsSource } from "../U3/tool-card/result";
-import { type AstEditToolDetails, decodeAstEditArgs, decodeAstEditDetails } from "./models";
+import {
+  type AstEditFileReplacement,
+  type AstEditToolDetails,
+  decodeAstEditArgs,
+  decodeAstEditDetails,
+} from "./models";
 
-interface ReplacementView {
+interface FileReplacementView {
   readonly path: string;
-  readonly before: string;
-  readonly after: string;
+  readonly count: number;
 }
 
 export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
@@ -43,27 +47,30 @@ export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRen
               <span>Scope: {args.value.paths.join(", ") || "workspace"}</span>
             </div>
             {replacements.length > 0 && (
-              <div className="mt-3 flex flex-col gap-3" data-testid="t1-ast-edit-replacements">
-                {replacements.map((replacement, index) => (
+              <div className="mt-3 flex flex-col gap-1" data-testid="t1-ast-edit-replacements">
+                {replacements.map((replacement) => (
                   <div
-                    className="border-border/70 min-w-0 rounded-md border p-2"
-                    data-testid={`t1-ast-edit-replacement-${index}`}
-                    key={`${replacement.path}:${replacement.before}:${replacement.after}`}
+                    className="flex min-w-0 flex-wrap items-center justify-between gap-2"
+                    data-testid="t1-ast-edit-replacement"
+                    key={replacement.path}
                   >
-                    <p className="truncate text-xs font-medium" title={replacement.path}>
+                    <span className="min-w-0 truncate font-mono text-xs" title={replacement.path}>
                       {replacement.path}
-                    </p>
-                    <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2">
-                      <pre className="bg-destructive/10 text-destructive min-w-0 overflow-x-auto rounded p-2 text-xs whitespace-pre-wrap">
-                        {replacement.before || "(no before text)"}
-                      </pre>
-                      <pre className="bg-success/10 text-success min-w-0 overflow-x-auto rounded p-2 text-xs whitespace-pre-wrap">
-                        {replacement.after || "(no replacement text)"}
-                      </pre>
-                    </div>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {replacement.count} replacement{replacement.count === 1 ? "" : "s"}
+                    </span>
                   </div>
                 ))}
               </div>
+            )}
+            {parsedDetails?.displayContent && parsedDetails.displayContent.length > 0 && (
+              <pre
+                className="bg-muted/40 mt-3 overflow-x-auto rounded p-2 font-mono text-xs whitespace-pre-wrap"
+                data-testid="t1-ast-edit-preview"
+              >
+                {parsedDetails.displayContent}
+              </pre>
             )}
             {parsedDetails?.parseErrors && parsedDetails.parseErrors.length > 0 && (
               <div
@@ -127,16 +134,10 @@ function summaryText(details: AstEditToolDetails | undefined, phase: string): st
   return searched === undefined ? counts : `${counts} · searched ${searched}`;
 }
 
-function replacementViews(details: AstEditToolDetails): readonly ReplacementView[] {
-  const files = details.fileReplacements ?? [];
-  return files.slice(0, details.limitReached ? 20 : 100).map((file, index) => {
-    const path = stringValue(file.path) ?? details.files?.[index] ?? `match ${index + 1}`;
-    const before =
-      stringValue(file.before) ?? stringValue(file.oldText) ?? stringValue(file.pattern) ?? "";
-    const after =
-      stringValue(file.after) ?? stringValue(file.newText) ?? stringValue(file.replacement) ?? "";
-    return { path, before, after };
-  });
+function replacementViews(details: AstEditToolDetails): readonly FileReplacementView[] {
+  return (details.fileReplacements ?? [])
+    .slice(0, details.limitReached ? 20 : 100)
+    .map(({ path, count }: AstEditFileReplacement) => ({ path, count }));
 }
 
 function formatPattern(ops: readonly { readonly pat: string; readonly out: string }[]): string {

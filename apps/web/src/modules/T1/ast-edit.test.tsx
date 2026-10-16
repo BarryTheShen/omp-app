@@ -26,17 +26,17 @@ function props(
 }
 
 describe("AstEditCard", () => {
-  test("renders structural pattern, counts and before/after replacements", () => {
+  test("renders structural pattern, per-file counts and omp's formatted preview", () => {
+    const displayContent = "-10│console.log(value)\n+10│logger.info(value)";
     render(
       <AstEditCard
         rendererProps={props({
           totalReplacements: 2,
           filesTouched: 1,
           filesSearched: 4,
-          applied: true,
-          fileReplacements: [
-            { path: "src/log.ts", before: "console.log(value)", after: "logger.info(value)" },
-          ],
+          applied: false,
+          fileReplacements: [{ path: "src/log.ts", count: 2 }],
+          displayContent,
         })}
       />,
     );
@@ -45,8 +45,11 @@ describe("AstEditCard", () => {
     expect(screen.getByRole("button", { name: "ast_edit: Complete" }).textContent).toContain(
       "2 replacements",
     );
-    expect(screen.getByText("console.log(value)")).toBeTruthy();
-    expect(screen.getByText("logger.info(value)")).toBeTruthy();
+    expect(screen.getByText("src/log.ts")).toBeTruthy();
+    expect(screen.getByText("2 replacements")).toBeTruthy();
+    expect(screen.getByTestId("t1-ast-edit-preview").textContent).toBe(displayContent);
+    expect(screen.queryByText("(no before text)")).toBeNull();
+    expect(screen.queryByText("(no replacement text)")).toBeNull();
   });
 
   test("shows parse errors and safety-limit guidance without claiming application", () => {

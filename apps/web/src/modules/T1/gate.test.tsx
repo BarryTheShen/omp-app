@@ -29,13 +29,6 @@ const PLACEHOLDERS = [
   "(no before text)",
   "(no replacement text)",
 ];
-const AST_EDIT_PREVIEW_PLACEHOLDERS: readonly string[] = [
-  "(no before text)",
-  "(no replacement text)",
-];
-const OTHER_PLACEHOLDERS = PLACEHOLDERS.filter(
-  (placeholder) => !AST_EDIT_PREVIEW_PLACEHOLDERS.includes(placeholder),
-);
 
 /** The stand-in for T4's URL renderer: it shows the first line of the text it is given, so the test can see it. */
 const URL_STUB: ReadUrlRenderer = (props) => <p>stub: {props.text.split("\n")[0] ?? ""}</p>;
@@ -210,28 +203,12 @@ describe("T1 lifecycle fixtures", () => {
       for (const fact of fixture.shows) expect(text).toContain(fact.replace(/\s+/g, " "));
     });
 
-    if (fixture.knownIssue === undefined) {
-      test(`shows no placeholder phrase for ${fixture.name}`, () => {
-        const { container } = renderFixture(fixture);
-        openEveryFold(container);
-        const text = visibleText(container);
-        for (const placeholder of PLACEHOLDERS) expect(text).not.toContain(placeholder);
-      });
-    } else {
-      test(`shows no other placeholder phrase for ${fixture.name}`, () => {
-        const { container } = renderFixture(fixture);
-        openEveryFold(container);
-        const text = visibleText(container);
-        for (const placeholder of OTHER_PLACEHOLDERS) expect(text).not.toContain(placeholder);
-      });
-      test.fails(`shows no placeholder phrase for ${fixture.name}: the card prints placeholders for this result until ${fixture.knownIssue} is fixed`, () => {
-        const { container } = renderFixture(fixture);
-        openEveryFold(container);
-        const text = visibleText(container);
-        for (const placeholder of AST_EDIT_PREVIEW_PLACEHOLDERS)
-          expect(text).not.toContain(placeholder);
-      });
-    }
+    test(`shows no placeholder phrase for ${fixture.name}`, () => {
+      const { container } = renderFixture(fixture);
+      openEveryFold(container);
+      const text = visibleText(container);
+      for (const placeholder of PLACEHOLDERS) expect(text).not.toContain(placeholder);
+    });
   }
 
   test("a URL read is handed to the injected T4 renderer, and the card shows what T4 draws", () => {
