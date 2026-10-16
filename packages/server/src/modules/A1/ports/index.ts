@@ -14,6 +14,7 @@ import { createOmpCommandGatewayRegistration } from "./omp-command-gateway";
 import { createPasteFileStoreRegistration } from "./paste-file-store";
 import { createPlanDocumentRegistration } from "./plan-documents";
 import { createProviderAccountStoreRegistration } from "./provider-accounts";
+import { createProviderErrorRegistration } from "./provider-error";
 import { createRuleStoreRegistration } from "./rule-store";
 import { createSessionFileStoreRegistration } from "./session-file-store";
 import { createSessionImportRegistration } from "./session-import";
@@ -37,6 +38,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createAttachmentStoreRegistration(context),
     createSessionImportRegistration(context),
     createProviderAccountStoreRegistration(context),
+    createProviderErrorRegistration(context),
     createExtensionCatalogRegistration(context),
     createMemoryStoreRegistration(context),
     createFileSearchRegistration(context),

@@ -48,7 +48,7 @@ import {
 } from "../../R0/store";
 import { FullOutputProvider } from "../../U3/tool-card/full-output";
 import { failureShownUnderAnswer } from "../parts/message-ending";
-import { splitProviderError } from "../parts/provider-error";
+import { useProviderError } from "../parts/provider-error-resolver";
 import { storeKeyOf } from "../parts/store-key";
 import {
   captureVisibleMessageAnchor,
@@ -98,7 +98,7 @@ export interface ThreadShellProps {
   readonly slots?: ThreadRowSlots;
   readonly autoScroll?: boolean;
   readonly footer?: ReactNode;
-  /** Loads the page of messages older than the ones shown; the control is offered while the store holds older history. */
+  /** Loads the page of messages older than the ones shown; the control is offered while store holds older history. */
   readonly onLoadOlder?: () => Promise<void>;
   /** Loads the full text of a tool output the thread shows shortened (the card offers it when set). */
   readonly onLoadFullOutput?: (toolCallId: string) => Promise<void>;
@@ -137,7 +137,6 @@ function RuntimeError({
   onRestartOmp,
 }: {
   error: ChatFailure;
-  /** Whether the banner repeats omp's words; not when the answer that stopped already says them. */
   showDetail: boolean;
   onRetry?: () => Promise<void> | void;
   onRestartOmp?: () => Promise<void> | void;
@@ -151,9 +150,22 @@ function RuntimeError({
   // An omp that stopped is started again; any other failure is retried by whoever owns it.
   const stopped = error.code === "omp_exited";
   const action = stopped ? onRestartOmp : onRetry;
-  // The reason omp gave, with the extension that failed in front ("notes: index is locked").
-  const reason = splitProviderError(error.message).reason;
-  const detail = error.extension ? `${error.extension}: ${reason}` : reason;
+  const providerError = useProviderError(
+    error.code === "omp_error" && error.extension === undefined ? error.message : undefined,
+  );
+  const reason = error.extension
+    ? error.message
+    : error.code === "omp_error"
+      ? (providerError?.message ?? "")
+      : error.message;
+  const detail = [
+    error.extension ? `${error.extension}: ${reason}` : reason,
+    providerError?.requestLogSaveFailureReason
+      ? `The request log could not be saved: ${providerError.requestLogSaveFailureReason}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const retry = async () => {
     if (action === undefined || retrying) return;

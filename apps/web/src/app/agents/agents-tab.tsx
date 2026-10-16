@@ -6,6 +6,7 @@ import type { AgentRef } from "@/modules/P1/contract";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
 import { createAgentHubController } from "@/modules/P1/panels";
 import type { RosterAgent } from "@/modules/P1/roster";
+import type { ProviderErrorResolver } from "@/modules/U1/parts/provider-error-resolver";
 import { useRightSidebar } from "@/shell";
 import { AgentsPanel, type AgentsView, type LiveAgents } from "./agents-panel";
 import type { ThreadAgents } from "./thread-agents";
@@ -41,26 +42,31 @@ function isRosterAgent(agent: AgentRef): agent is RosterAgent {
 export function agentsSurface({
   agents,
   reveal,
+  resolveProviderError,
 }: {
   readonly agents: ThreadAgents | null;
-  /** Changes each time a person asks for the hub (`← ←`): the tab comes to the front and shows the hub. */
   readonly reveal?: number;
+  readonly resolveProviderError?: ProviderErrorResolver;
 }): Surface {
   return {
     title: "Agents",
     requires: AGENT_CAPABILITIES,
     grow: true,
     reveal,
-    render: () => <AgentsTab agents={agents} reveal={reveal} />,
+    render: () => (
+      <AgentsTab agents={agents} reveal={reveal} resolveProviderError={resolveProviderError} />
+    ),
   };
 }
 
 function AgentsTab({
   agents,
   reveal,
+  resolveProviderError,
 }: {
   readonly agents: ThreadAgents | null;
   readonly reveal: number | undefined;
+  readonly resolveProviderError?: ProviderErrorResolver;
 }) {
   const [attempt, setAttempt] = useState(0);
   const [live, setLive] = useState<LiveAgents | null>(null);
@@ -114,6 +120,7 @@ function AgentsTab({
   return (
     <AgentsPanel
       live={live}
+      resolveProviderError={resolveProviderError}
       onBack={() => setView({ kind: "hub" })}
       onRetry={() => setAttempt((count) => count + 1)}
       view={view}

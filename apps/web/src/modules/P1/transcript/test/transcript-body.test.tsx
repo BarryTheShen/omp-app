@@ -1,8 +1,9 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import { ThreadPrimitive } from "@assistant-ui/react";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ProviderErrorResolverProvider } from "@/modules/U1/parts/provider-error-resolver";
 import { ToolRendererResolverContext } from "@/modules/U1/tool-slots";
 import { ToolFallback } from "@/modules/U3/tool-card/fallback";
 import { createToolRegistry } from "@/modules/U3/tool-card/registry";
@@ -164,5 +165,43 @@ describe("a worker's calls with no result", () => {
     );
     expect(screen.queryByText("No result recorded")).toBeNull();
     expect(screen.queryByTestId("tool-state-chip-unrecorded")).toBeNull();
+  });
+  test("a worker error uses the typed resolver and never renders omp's request-log path", async () => {
+    const requestPath = "/example/omp-home/logs/http-400-requests/request.json";
+    const providerWords = "400 worker provider failure";
+    const raw = `${providerWords}\n${providerWords} (type=invalid_request_error)\nraw-http-request=${requestPath}`;
+    const message: ThreadMessageLike = {
+      role: "assistant",
+      content: [{ type: "text", text: "The answer stopped." }],
+      status: { type: "incomplete", reason: "error", error: raw },
+    };
+    const resolveProviderError = vi.fn(async () => ({
+      message: `${providerWords} (type=invalid_request_error)`,
+    }));
+    const renderers = { bash: ToolFallback, write: ToolFallback };
+
+    render(
+      <ProviderErrorResolverProvider resolver={resolveProviderError}>
+        <ToolRendererResolverContext.Provider value={(toolName) => renderers[toolName as "bash"]}>
+          <InThread>
+            <AgentTranscriptBody
+              depth={0}
+              taskName="Worker"
+              toolRenderers={renderers}
+              transcript={view("completed", [message])}
+            />
+          </InThread>
+        </ToolRendererResolverContext.Provider>
+      </ProviderErrorResolverProvider>,
+    );
+
+    await waitFor(() => expect(resolveProviderError).toHaveBeenCalledWith(raw));
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(`${providerWords} (type=invalid_request_error)`),
+    );
+    const text = document.body.textContent ?? "";
+    expect(text.split(providerWords).length).toBe(2);
+    expect(text).not.toContain(requestPath);
+    expect(text).not.toContain("raw-http-request=");
   });
 });

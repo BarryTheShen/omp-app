@@ -12,6 +12,7 @@ export * from "./omp-command-gateway";
 export * from "./paste-file-store";
 export * from "./plan-documents";
 export * from "./provider-accounts";
+export * from "./provider-error";
 export * from "./rule-store";
 export * from "./session-file-store";
 export * from "./session-import";

@@ -29,6 +29,8 @@ import {
   McpCommandServerListResult,
   McpCommandServerName,
   OmpCommandGateway,
+  ProviderErrorPort,
+  ProviderErrorResult,
   RestorePlan,
   RestoreResult,
   SecretStatus,
@@ -520,6 +522,26 @@ describe("A1 OmpCommandGateway", () => {
     );
   });
 });
+describe("A1 provider errors", () => {
+  test("accepts typed provider text and an optional save-failure reason, never a request path", () => {
+    expect(
+      ProviderErrorPort.methods.parse.args.safeParse({ text: "400 invalid request" }).success,
+    ).toBe(true);
+    expect(
+      ProviderErrorResult.safeParse({
+        message: "400 invalid request",
+        requestLogSaveFailureReason: "EACCES: permission denied",
+      }).success,
+    ).toBe(true);
+    expect(
+      ProviderErrorResult.safeParse({
+        message: "400 invalid request",
+        requestLogPath: "/local/request.json",
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("A1 MCP command summaries", () => {
   test("accepts omp server names and defaults catalog truncation metadata", () => {
     for (const name of ["cloudflare:cloudflare-api", "_internal", ".hidden", "-dash"]) {

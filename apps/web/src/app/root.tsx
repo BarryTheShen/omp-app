@@ -18,6 +18,7 @@ import {
   OmpCommandGateway,
   type OmpWire,
   PasteFileStore,
+  ProviderErrorPort,
   type RpcSessionClient,
   RpcSessionPort,
   type RpcSessionSend,
@@ -116,6 +117,7 @@ import { createNativeRemoteThreadListAdapter, deleteChatFile } from "@/modules/R
 import { type NewChatStatus, SessionCatalogSidebar } from "@/modules/R1/ui";
 import { LateDiagnosticsCard } from "@/modules/T2/late-diagnostics";
 import { MessageParts } from "@/modules/U1/parts";
+import { ProviderErrorResolverProvider } from "@/modules/U1/parts/provider-error-resolver";
 import { TranscriptDisplayPolicyProvider } from "@/modules/U1/policy";
 import { ToolCallsControl } from "@/modules/U1/policy/tool-calls-control";
 import { ToolsHiddenNotice } from "@/modules/U1/policy/tools-hidden-notice";
@@ -682,6 +684,11 @@ function ActiveThreadReady({
   const store = history.store as OmpRuntimeStore;
   const threadId = history.threadId as ThreadId;
   const connection = useAppConnection();
+  const providerErrors = useMemo(() => client.port(ProviderErrorPort), [client]);
+  const resolveProviderError = useCallback(
+    (text: string) => providerErrors.parse({ text }),
+    [providerErrors],
+  );
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
   const guardedSend = useMemo(() => guardOmpSend(rpc.send), [rpc.send]);
   // A prompt the person sends ends a finished run's notice (endNoticeOnPrompt); other sends are unchanged.
@@ -1528,7 +1535,7 @@ function ActiveThreadReady({
         />
       ),
     },
-    agents: agentsSurface({ agents, reveal: agentsReveal }),
+    agents: agentsSurface({ agents, reveal: agentsReveal, resolveProviderError }),
     rewind: useRewindPanel({
       threadId,
       store,
@@ -1700,117 +1707,119 @@ function ActiveThreadReady({
       >
         <TaskSubagentsScope agents={agents}>
           <TurnCancelScope cancel={cancel}>
-            <AppShell
-              composer={composer}
-              leftSidebar={leftSidebar}
-              statusBar={area("statusBar")}
-              threadHeader={area("header")}
-              rightSidebar={
-                <>
-                  {area("panels")}
-                  <RevealAgentHub reveal={agentsReveal} />
-                  <RevealCommandOutput reveal={commandOutputReveal} />
-                </>
-              }
-              transcript={
-                store && threadId ? (
-                  <TranscriptDisplayPolicyProvider threadId={threadId}>
-                    <TranscriptShortcuts followLatest={scrollController.followLatest}>
-                      <div className="h-full min-h-0" ref={transcriptRootRef}>
-                        <ThreadShell
-                          autoScroll={!scrollController.followPaused}
-                          credentialActions={credentialActions}
-                          readingPlace={{
-                            threadId,
-                            resumeAt: resumePlace,
-                            historyLoading: history.isLoading,
-                          }}
-                          footer={
-                            <>
-                              {area("threadFooter")}
-                              {area("threadOverlay")}
-                            </>
-                          }
-                          onLoadOlder={onLoadOlder}
-                          onLoadFullOutput={onLoadFullOutput}
-                          onRestartOmp={restartOmp}
-                          notices={transcriptNotices}
-                          slots={{
-                            renderMessage: (message, renderNested) => {
-                              const branchSummary = branchSummaryOfRow(message);
-                              if (branchSummary !== undefined)
-                                return (
-                                  <BranchSummaryRow message={message} summary={branchSummary} />
-                                );
-                              const compactionSummary = compactionSummaryOfRow(message);
-                              if (compactionSummary !== undefined)
-                                return (
-                                  <CompactionSummaryRow
-                                    message={message}
-                                    summary={compactionSummary}
-                                  />
-                                );
-                              const { ompCustomType, ompCustomDetails } = message.metadata.custom;
-                              if (ompCustomType === "lsp-late-diagnostic")
-                                return (
-                                  <div data-message-id={message.id}>
-                                    <LateDiagnosticsCard
-                                      identity={message.id}
-                                      snapshot={{
-                                        customType: ompCustomType,
-                                        details: ompCustomDetails,
-                                      }}
+            <ProviderErrorResolverProvider resolver={resolveProviderError}>
+              <AppShell
+                composer={composer}
+                leftSidebar={leftSidebar}
+                statusBar={area("statusBar")}
+                threadHeader={area("header")}
+                rightSidebar={
+                  <>
+                    {area("panels")}
+                    <RevealAgentHub reveal={agentsReveal} />
+                    <RevealCommandOutput reveal={commandOutputReveal} />
+                  </>
+                }
+                transcript={
+                  store && threadId ? (
+                    <TranscriptDisplayPolicyProvider threadId={threadId}>
+                      <TranscriptShortcuts followLatest={scrollController.followLatest}>
+                        <div className="h-full min-h-0" ref={transcriptRootRef}>
+                          <ThreadShell
+                            autoScroll={!scrollController.followPaused}
+                            credentialActions={credentialActions}
+                            readingPlace={{
+                              threadId,
+                              resumeAt: resumePlace,
+                              historyLoading: history.isLoading,
+                            }}
+                            footer={
+                              <>
+                                {area("threadFooter")}
+                                {area("threadOverlay")}
+                              </>
+                            }
+                            onLoadOlder={onLoadOlder}
+                            onLoadFullOutput={onLoadFullOutput}
+                            onRestartOmp={restartOmp}
+                            notices={transcriptNotices}
+                            slots={{
+                              renderMessage: (message, renderNested) => {
+                                const branchSummary = branchSummaryOfRow(message);
+                                if (branchSummary !== undefined)
+                                  return (
+                                    <BranchSummaryRow message={message} summary={branchSummary} />
+                                  );
+                                const compactionSummary = compactionSummaryOfRow(message);
+                                if (compactionSummary !== undefined)
+                                  return (
+                                    <CompactionSummaryRow
+                                      message={message}
+                                      summary={compactionSummary}
                                     />
-                                  </div>
+                                  );
+                                const { ompCustomType, ompCustomDetails } = message.metadata.custom;
+                                if (ompCustomType === "lsp-late-diagnostic")
+                                  return (
+                                    <div data-message-id={message.id}>
+                                      <LateDiagnosticsCard
+                                        identity={message.id}
+                                        snapshot={{
+                                          customType: ompCustomType,
+                                          details: ompCustomDetails,
+                                        }}
+                                      />
+                                    </div>
+                                  );
+                                return (
+                                  <>
+                                    <CacheMissRow message={message} />
+                                    <MessageParts
+                                      message={message}
+                                      actions={rowActions(message)}
+                                      renderNested={(part) =>
+                                        part.messages === undefined
+                                          ? undefined
+                                          : renderNested?.(
+                                              part.messages,
+                                              part.toolCallId,
+                                              part.toolName,
+                                            )
+                                      }
+                                      toolRenderers={toolRenderers}
+                                    />
+                                  </>
                                 );
-                              return (
-                                <>
-                                  <CacheMissRow message={message} />
-                                  <MessageParts
-                                    message={message}
-                                    actions={rowActions(message)}
-                                    renderNested={(part) =>
-                                      part.messages === undefined
-                                        ? undefined
-                                        : renderNested?.(
-                                            part.messages,
-                                            part.toolCallId,
-                                            part.toolName,
-                                          )
+                              },
+                              renderNested: (messages, taskId, toolName) => {
+                                const parsedTaskId = ToolCallId.safeParse(taskId);
+                                return (
+                                  <NestedTranscript
+                                    depth={0}
+                                    key={taskId}
+                                    messages={messages}
+                                    parentTaskId={
+                                      parsedTaskId.success ? parsedTaskId.data : undefined
                                     }
+                                    taskName={toolName}
                                     toolRenderers={toolRenderers}
                                   />
-                                </>
-                              );
-                            },
-                            renderNested: (messages, taskId, toolName) => {
-                              const parsedTaskId = ToolCallId.safeParse(taskId);
-                              return (
-                                <NestedTranscript
-                                  depth={0}
-                                  key={taskId}
-                                  messages={messages}
-                                  parentTaskId={
-                                    parsedTaskId.success ? parsedTaskId.data : undefined
-                                  }
-                                  taskName={toolName}
-                                  toolRenderers={toolRenderers}
-                                />
-                              );
-                            },
-                          }}
-                          store={store}
-                        />
-                      </div>
-                    </TranscriptShortcuts>
-                  </TranscriptDisplayPolicyProvider>
-                ) : (
-                  <EmptyTranscript
-                    copy={emptyStateCopy({ opening: history.isLoading, error: history.error })}
-                  />
-                )
-              }
-            />
+                                );
+                              },
+                            }}
+                            store={store}
+                          />
+                        </div>
+                      </TranscriptShortcuts>
+                    </TranscriptDisplayPolicyProvider>
+                  ) : (
+                    <EmptyTranscript
+                      copy={emptyStateCopy({ opening: history.isLoading, error: history.error })}
+                    />
+                  )
+                }
+              />
+            </ProviderErrorResolverProvider>
           </TurnCancelScope>
         </TaskSubagentsScope>
       </ToolRunScope>

@@ -1,4 +1,4 @@
-import type { AppError } from "@omp-app/contracts";
+import type { AppError, ProviderErrorResult } from "@omp-app/contracts";
 import { InlineError } from "@/components/blocks";
 import {
   answerErrorStatus,
@@ -6,7 +6,6 @@ import {
   credentialFailureFromStatusError,
 } from "@/modules/D3/auth/credential";
 import { CredentialFailureNotice } from "@/modules/D3/auth/credential-notice";
-import { splitProviderError } from "./provider-error";
 
 /** How an answer that did not finish normally ended. */
 export type MessageEnding =
@@ -22,22 +21,30 @@ const MAX_ERROR_CHARACTERS = 600;
  * stop (the person's or omp's), or the length limit. A message that finished, or is still running,
  * has none.
  */
-export function endingOf(message: {
-  readonly role: string;
-  readonly status?: { readonly type: string; readonly reason?: string; readonly error?: unknown };
-}): MessageEnding | undefined {
+export function endingOf(
+  message: {
+    readonly role: string;
+    readonly status?: { readonly type: string; readonly reason?: string; readonly error?: unknown };
+  },
+  providerError?: ProviderErrorResult,
+): MessageEnding | undefined {
   if (message.role !== "assistant" || message.status?.type !== "incomplete") return undefined;
   switch (message.status.reason) {
     case "error": {
-      // A refused key or login is said in plain words, with its way out; any other error keeps omp's words.
       const failure = credentialFailureFromStatusError(message.status.error);
       if (failure !== null) return { kind: "credential", failure };
-      if (typeof message.status.error !== "string" || message.status.error.length === 0) {
-        return { kind: "error", text: undefined };
+      if (providerError !== undefined) {
+        return {
+          kind: "error",
+          text: providerError.message === "" ? undefined : providerError.message,
+          ...(providerError.requestLogSaveFailureReason
+            ? {
+                details: `The request log could not be saved: ${providerError.requestLogSaveFailureReason}`,
+              }
+            : {}),
+        };
       }
-      // omp's words, once; its saved-request diagnostics sit behind "Show details".
-      const { reason, details } = splitProviderError(message.status.error);
-      return { kind: "error", text: reason === "" ? undefined : reason, details };
+      return { kind: "error", text: undefined };
     }
     case "cancelled":
       return { kind: "interrupted" };

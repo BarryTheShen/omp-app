@@ -11,6 +11,10 @@ import type { SubagentClient } from "@/modules/P1/client";
 import { type AgentHubController, AgentHubPanel, useAgentHub } from "@/modules/P1/panels";
 import type { AgentRosterStore, FinishedWorkerSource, RosterAgent } from "@/modules/P1/roster";
 import { createFocusedAgentRuntime, FocusedAgentTranscript } from "@/modules/P1/transcript";
+import {
+  type ProviderErrorResolver,
+  ProviderErrorResolverProvider,
+} from "@/modules/U1/parts/provider-error-resolver";
 
 /** The live parts of the Agents tab for one chat: the hub, its roster, and omp's subagent client. */
 export interface LiveAgents {
@@ -30,20 +34,29 @@ export interface AgentsPanelProps {
   readonly view: AgentsView;
   readonly onBack: () => void;
   readonly onRetry: () => void;
+  readonly resolveProviderError?: ProviderErrorResolver;
 }
 
 /** The Agents tab's body. It takes its state and callbacks from `AgentsTab`, which owns them in `agents-tab.tsx`. */
-export function AgentsPanel({ live, view, onBack, onRetry }: AgentsPanelProps): ReactNode {
+export function AgentsPanel({
+  live,
+  view,
+  onBack,
+  onRetry,
+  resolveProviderError,
+}: AgentsPanelProps): ReactNode {
   if (live === null) return <EmptyState title="Loading the agents…" variant="compact" />;
   if (view.kind === "transcript") {
     return (
-      <WorkerTranscript
-        agent={view.agent}
-        client={live.client}
-        finished={live.finished}
-        onBack={onBack}
-        roster={live.roster}
-      />
+      <ProviderErrorResolverProvider resolver={resolveProviderError}>
+        <WorkerTranscript
+          agent={view.agent}
+          client={live.client}
+          finished={live.finished}
+          onBack={onBack}
+          roster={live.roster}
+        />
+      </ProviderErrorResolverProvider>
     );
   }
   return <Hub controller={live.controller} onRetry={onRetry} />;

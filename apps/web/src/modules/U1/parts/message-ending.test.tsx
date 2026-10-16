@@ -11,16 +11,29 @@ const assistant = (status: { type: string; reason?: string; error?: unknown }) =
 });
 
 describe("endingOf", () => {
-  test("an error carries omp's own words; without any, it still is an error", () => {
+  test("a provider error never returns omp's raw words when there is no typed result", () => {
     expect(
       endingOf(assistant({ type: "incomplete", reason: "error", error: "404 not found" })),
-    ).toEqual({
-      kind: "error",
-      text: "404 not found",
-    });
+    ).toEqual({ kind: "error", text: undefined });
     expect(endingOf(assistant({ type: "incomplete", reason: "error" }))).toEqual({
       kind: "error",
       text: undefined,
+    });
+  });
+
+  test("uses the provider text and save-failure reason only after the typed result arrives", () => {
+    expect(
+      endingOf(
+        assistant({ type: "incomplete", reason: "error", error: "raw-http-request=/local/path" }),
+        {
+          message: "400 bad request",
+          requestLogSaveFailureReason: "EACCES: permission denied",
+        },
+      ),
+    ).toEqual({
+      kind: "error",
+      text: "400 bad request",
+      details: "The request log could not be saved: EACCES: permission denied",
     });
   });
 
@@ -43,7 +56,7 @@ describe("endingOf", () => {
     expect(endingOf({ role: "assistant" })).toBeUndefined();
   });
 
-  test("a status carrying a refused key is a credential ending; any other error keeps omp's words", () => {
+  test("a refused key remains typed; other text waits for the server result", () => {
     expect(
       endingOf(
         assistant({
@@ -68,10 +81,7 @@ describe("endingOf", () => {
     });
     expect(
       endingOf(assistant({ type: "incomplete", reason: "error", error: "404 not found" })),
-    ).toEqual({
-      kind: "error",
-      text: "404 not found",
-    });
+    ).toEqual({ kind: "error", text: undefined });
   });
 });
 

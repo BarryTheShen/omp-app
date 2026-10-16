@@ -16,21 +16,19 @@ import { ExecutionRow } from "./execution-row";
 import { fileMentionFilesOf } from "./file-mention";
 import { endingOf, MessageEndingNote } from "./message-ending";
 import { hasPastedBlock, PastedBlockText } from "./pasted-text";
+import { useProviderError } from "./provider-error-resolver";
 import { storeKeyOf } from "./store-key";
 
 export interface MessagePartsProps {
   readonly message: MessageState;
   readonly toolRenderers?: ToolRendererMap;
   readonly extra?: ReactNode;
-  /** Controls drawn under the bubble, inside the row: the edit and regenerate actions. */
   readonly actions?: ReactNode;
-  /** Use compact rows and let each tool call place its nested transcript directly below the card. */
   readonly nested?: boolean;
   readonly renderNested?: (
     part: Extract<EnrichedPartState, { readonly type: "tool-call" }>,
   ) => ReactNode;
 }
-
 export interface ImagePartProps {
   readonly src: string;
   readonly alt: string;
@@ -286,8 +284,14 @@ export function MessageParts({
   const note = isSystem ? customNoteOf(message) : undefined;
   const execution = isSystem ? executionOf(message) : undefined;
   const files = isSystem ? fileMentionOf(message) : undefined;
-  const ending = endingOf(message);
-  // A very long assistant turn folds its earlier steps away (see earlier-steps.tsx).
+  const errorText =
+    message.status?.type === "incomplete" &&
+    message.status.reason === "error" &&
+    typeof message.status.error === "string"
+      ? message.status.error
+      : undefined;
+  const providerError = useProviderError(errorText);
+  const ending = endingOf(message, providerError);
   const groupBy = useTurnGroupBy(!isUser && !isSystem);
   const className = isUser
     ? nested

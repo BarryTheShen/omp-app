@@ -29,15 +29,15 @@ realTest(
     // The banner does not repeat omp's words: the answer that stopped already says them.
     await expect(banner.getByText(PROVIDER_WORDS)).toHaveCount(0);
 
-    // The error is under the failing answer, once, in plain words; omp's saved-request path sits behind "Show details".
+    // The error is under the failing answer, once, in plain words; omp's local request-log path never reaches the browser.
     const ending = page.locator('[data-ending="error"]');
     await expect(ending).toHaveCount(1);
+    await expect(ending).toContainText(PROVIDER_WORDS, { timeout: 120_000 });
     await expect(ending).toContainText("The model stopped with an error");
     const sentence = (await ending.textContent()) ?? "";
     expect(sentence.split(PROVIDER_WORDS).length).toBe(2);
     expect(sentence).not.toContain("raw-http-request=");
-    await ending.getByText("Show details").click();
-    await expect(ending.getByText("Request log:", { exact: false })).toBeVisible();
+    expect(sentence).not.toContain("http-400-requests");
 
     // The composer still sends after the error.
     await sendPrompt(composer, "hello after the error");
