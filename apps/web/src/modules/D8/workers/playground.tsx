@@ -1,6 +1,7 @@
 import { type CapabilityMap, SessionFilePath, SubagentId, ThreadId } from "@omp-app/contracts";
-import { StrictMode, useState } from "react";
+import { StrictMode, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Button } from "@/components/ui/button";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
 import type { AgentRosterStoreSnapshot, RosterAgent } from "@/modules/P1/roster";
 import { OverlayHost } from "../../../overlay";
@@ -102,14 +103,25 @@ function fixtureSnapshot(): WorkersPanelSnapshot {
 }
 
 function WorkersPlayground() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(
+    () => !new URLSearchParams(window.location.search).has("closed"),
+  );
+  const openButton = useRef<HTMLButtonElement>(null);
+  const restoreFocus = (token: string) => {
+    if (token === "workers-panel-open") openButton.current?.focus();
+  };
   return (
     <main className="min-h-screen bg-background text-foreground" data-testid="workers-playground">
+      <Button ref={openButton} onClick={() => setOpen(true)} type="button" variant="outline">
+        Open workers panel
+      </Button>
       <WorkersPanelView
         open={open}
         position="right"
         snapshot={fixtureSnapshot()}
+        invokingFocus="workers-panel-open"
         onOpenChange={(nextOpen) => setOpen(nextOpen)}
+        restoreFocus={restoreFocus}
         onOpenTranscript={() => undefined}
         onRetry={() => undefined}
         onStop={() => undefined}

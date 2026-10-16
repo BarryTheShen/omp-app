@@ -33,13 +33,26 @@ interface PlaygroundProps {
 
 function GuidedPlayground({ controller, message, onMessageChange }: PlaygroundProps) {
   const view = useGuidedGoal(controller);
+  const evidenceState = new URLSearchParams(window.location.search).get("state");
+  const snapshot =
+    evidenceState === "interviewing"
+      ? { ...view.snapshot, status: "interviewing" as const, createReason: null }
+      : evidenceState === "creating"
+        ? { ...view.snapshot, status: "creating" as const, createReason: null }
+        : evidenceState === "blocked"
+          ? {
+              ...view.snapshot,
+              status: "idle" as const,
+              createReason: "A goal is already active. Drop it before creating another.",
+            }
+          : view.snapshot;
   return (
     <main
       className="flex min-h-screen flex-col gap-6 bg-background p-4 text-foreground"
       data-testid="d8-4-guided-playground"
     >
       <div className="w-full max-w-xl">
-        <GuidedGoalView onRetry={view.retry} onStart={view.start} snapshot={view.snapshot} />
+        <GuidedGoalView onRetry={view.retry} onStart={view.start} snapshot={snapshot} />
       </div>
       <div className="w-full max-w-xl">
         <label className="flex flex-col gap-2 text-sm">
@@ -92,6 +105,10 @@ function Playground() {
       dialogs,
       capabilities: () => playgroundCapabilities,
       goal: playgroundGoal,
+      restoreFocus: () =>
+        requestAnimationFrame(() =>
+          document.querySelector<HTMLButtonElement>("[data-testid=guided-start]")?.focus(),
+        ),
       composer: {
         read: () => messageRef.current,
         write: async (text) => {

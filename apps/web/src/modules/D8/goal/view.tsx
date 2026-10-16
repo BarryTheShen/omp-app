@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { EmptyState, Section, SettingRow, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
-import type { PanelOpenReason, PanelState } from "../../U5/panel/contract";
+import type { PanelFocusToken, PanelOpenReason, PanelState } from "../../U5/panel/contract";
 import { PanelShell } from "../../U5/panel/shell";
 import type { GoalStatus } from "../contract";
 import type { GoalPanelSnapshot } from "./controller";
@@ -19,6 +19,8 @@ export interface GoalPanelViewProps {
   readonly position: PanelState["position"];
   readonly snapshot: GoalPanelSnapshot;
   readonly onOpenChange: (open: boolean, reason: PanelOpenReason) => void;
+  readonly invokingFocus?: PanelFocusToken;
+  readonly restoreFocus?: (token: PanelFocusToken) => void;
   readonly onRefresh: () => void;
   readonly onCreate: () => void;
   readonly onPause: () => void;
@@ -82,6 +84,8 @@ export function GoalPanelView({
   onPause,
   onResume,
   onDrop,
+  invokingFocus,
+  restoreFocus,
 }: GoalPanelViewProps) {
   const objectiveId = useId();
   const busy = snapshot.pending !== null;
@@ -225,8 +229,10 @@ export function GoalPanelView({
     <PanelShell
       body={body}
       className="min-w-0"
+      invokingFocus={invokingFocus}
       onOpenChange={onOpenChange}
       onRetry={onRefresh}
+      restoreFocus={restoreFocus}
       state={panelState}
       toolbar={toolbar}
     />

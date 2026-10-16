@@ -5,7 +5,7 @@ import type {
   EditorDialogRequest,
   InputDialogRequest,
 } from "../../U4/contract";
-import type { DialogHost } from "../../U4/contract/dialog-host";
+import type { DialogHost, FocusRestoreHandle } from "../../U4/contract/dialog-host";
 import type { AutonomyPort, GoalModeState, GoalRpcArgs } from "../contract";
 import { type GuidedComposerDraft, reviewedGoalText } from "./composer";
 import { type KeptBlock, placeBlock, removeBlock } from "./composer-block";
@@ -61,6 +61,7 @@ export interface GuidedGoalControllerOptions {
   readonly dialogs: Pick<DialogHost, "open" | "confirm">;
   readonly capabilities: () => CapabilityMap | undefined;
   readonly goal: GuidedGoalSource;
+  readonly restoreFocus?: FocusRestoreHandle;
   /** The chat's composer draft: the text the person has not sent is kept here. */
   readonly composer: GuidedComposerDraft;
 }
@@ -458,11 +459,13 @@ export class GuidedGoalController {
     readonly threadId: ThreadId;
     readonly signal: AbortSignal;
     readonly origin: "app";
+    readonly restoreFocus?: FocusRestoreHandle;
   } {
     return {
       threadId: this.options.threadId,
       signal: this.abortController.signal,
       origin: "app",
+      restoreFocus: this.options.restoreFocus,
     };
   }
 

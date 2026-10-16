@@ -132,6 +132,10 @@ function RealGuidedGoal({ folder }: { readonly folder: string }) {
         dialogs: dialogHost,
         capabilities: () => opened.capabilities,
         goal: goalSourceOf(runtime),
+        restoreFocus: () =>
+          requestAnimationFrame(() =>
+            document.querySelector<HTMLButtonElement>("[data-testid=guided-start]")?.focus(),
+          ),
         composer: {
           read: () => messageRef.current,
           write: async (text) => {

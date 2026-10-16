@@ -35,14 +35,16 @@ describe("GuidedGoalView", () => {
   });
 
   test("a goal that cannot be created right now disables the start and says why", () => {
-    renderView({ createReason: "A goal is already active. Drop it before creating another." });
-
-    expect(screen.getByRole("button", { name: "Start guided goal" }).hasAttribute("disabled")).toBe(
-      true,
+    const props = renderView({
+      createReason: "A goal is already active. Drop it before creating another.",
+    });
+    const start = screen.getByRole("button", { name: "Start guided goal" });
+    expect(start.getAttribute("aria-disabled")).toBe("true");
+    expect(start.getAttribute("aria-describedby")).toBe(
+      screen.getByText("A goal is already active. Drop it before creating another.").id,
     );
-    expect(
-      screen.getByText("A goal is already active. Drop it before creating another."),
-    ).toBeTruthy();
+    fireEvent.click(start);
+    expect(props.onStart).not.toHaveBeenCalled();
   });
 
   test("a paused goal's reason is shown as omp words it", () => {
@@ -53,24 +55,27 @@ describe("GuidedGoalView", () => {
     ).toBeTruthy();
   });
 
-  test("while the dialogs are open the section says so and nothing can be started", () => {
-    renderView({ status: "interviewing" });
+  test("while the dialogs are open the section says so and the start remains inactive", () => {
+    const props = renderView({ status: "interviewing" });
 
-    expect(
-      screen.getByText("Answer the questions in the dialog. Nothing is created until you confirm."),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Interview in progress" }).hasAttribute("disabled"),
-    ).toBe(true);
-  });
-
-  test("while omp creates the goal the section says so", () => {
-    renderView({ status: "creating" });
-
-    expect(screen.getByText("Creating the goal…")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Creating goal…" }).hasAttribute("disabled")).toBe(
-      true,
+    const description = screen.getByText(
+      "Answer the questions in the dialog. Nothing is created until you confirm.",
     );
+    const start = screen.getByRole("button", { name: "Interview in progress" });
+    expect(start.getAttribute("aria-disabled")).toBe("true");
+    expect(start.getAttribute("aria-describedby")).toBe(description.id);
+    fireEvent.click(start);
+    expect(props.onStart).not.toHaveBeenCalled();
+  });
+  test("while omp creates the goal the start remains inactive", () => {
+    const props = renderView({ status: "creating" });
+
+    const description = screen.getByText("Creating the goal…");
+    const start = screen.getByRole("button", { name: "Creating goal…" });
+    expect(start.getAttribute("aria-disabled")).toBe("true");
+    expect(start.getAttribute("aria-describedby")).toBe(description.id);
+    fireEvent.click(start);
+    expect(props.onStart).not.toHaveBeenCalled();
   });
 
   test("a created goal says that omp works on it once the person sends a message", () => {

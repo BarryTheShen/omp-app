@@ -1,5 +1,5 @@
 import { AppFailure, type CapabilityMap, ThreadId } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { ConfirmDialogRequest, DialogRequest, DialogResultFor } from "../../U4/contract";
 import type { DialogHostOpenOptions } from "../../U4/contract/dialog-host";
 import type {
@@ -71,6 +71,7 @@ interface HarnessOptions {
   readonly composer?: string;
   readonly state?: GoalModeState | null;
   readonly unavailable?: boolean;
+  readonly restoreFocus?: () => void;
   /** One outcome per create: `ok`, or the failure omp or the connection gave. */
   readonly creates?: readonly ("ok" | AppFailure)[];
 }
@@ -178,16 +179,15 @@ function makeHarness(options: HarnessOptions = {}) {
       box = text;
     },
   };
-
   const controller = new GuidedGoalController({
     threadId,
     autonomy,
     dialogs,
     capabilities: () => (options.unavailable ? {} : availableCapabilities),
     goal,
+    restoreFocus: options.restoreFocus,
     composer,
   });
-
   return {
     controller,
     requests,
@@ -253,6 +253,17 @@ describe("guided goal controller: the dialogs and the goal", () => {
     });
     expect(h.writes).toEqual([]);
     expect(h.box()).toBe("");
+  });
+  test("passes the dialog focus restore callback through to every app dialog", async () => {
+    const restoreFocus = vi.fn();
+    const h = makeHarness({ restoreFocus });
+    h.reply(...interviewReplies("", GOAL_TEXT));
+    h.confirmReply(false);
+
+    await h.controller.start();
+
+    expect(h.optionsSeen).toHaveLength(9);
+    expect(h.optionsSeen.every((options) => options.restoreFocus === restoreFocus)).toBe(true);
   });
 
   test("a confirmation is always asked before the create, and a declined one creates nothing", async () => {

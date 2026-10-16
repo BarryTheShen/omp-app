@@ -1,10 +1,11 @@
 import { AppError } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { Goal, GoalState } from "../contract";
 import { continuationStatus } from "../contract";
 import type { GoalPanelSnapshot } from "./controller";
-import { GoalPanelView } from "./view";
+import { GoalPanelView, type GoalPanelViewProps } from "./view";
 
 afterEach(cleanup);
 
@@ -86,7 +87,10 @@ function makeSnapshot(patch: Partial<GoalPanelSnapshot> = {}): GoalPanelSnapshot
   };
 }
 
-function renderGoal(snapshot = makeSnapshot()) {
+function renderGoal(
+  snapshot = makeSnapshot(),
+  focus: Pick<GoalPanelViewProps, "invokingFocus" | "restoreFocus"> = {},
+) {
   const actions = {
     onOpenChange: vi.fn(),
     onRefresh: vi.fn(),
@@ -95,11 +99,36 @@ function renderGoal(snapshot = makeSnapshot()) {
     onResume: vi.fn(),
     onDrop: vi.fn(),
   };
-  render(<GoalPanelView open position="right" snapshot={snapshot} {...actions} />);
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return (
+      <GoalPanelView
+        open={open}
+        position="right"
+        snapshot={snapshot}
+        {...focus}
+        {...actions}
+        onOpenChange={(next, reason) => {
+          actions.onOpenChange(next, reason);
+          setOpen(next);
+        }}
+      />
+    );
+  }
+  render(<Harness />);
   return actions;
 }
 
 describe("GoalPanelView", () => {
+  test("forwards panel focus tokens to PanelShell for restoration on close", () => {
+    const restoreFocus = vi.fn();
+    renderGoal(makeSnapshot(), { invokingFocus: "goal-opener", restoreFocus });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Goal" }));
+
+    expect(restoreFocus).toHaveBeenCalledWith("goal-opener");
+  });
+
   test("shows no continuation row when the goal has no continuation status", () => {
     renderGoal(makeSnapshot({ continuation: null }));
     expect(screen.queryByText("Continuation")).toBeNull();

@@ -1,6 +1,6 @@
 import { EmptyState, InlineError, Section } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
-import type { PanelOpenReason, PanelState } from "@/modules/U5/panel/contract";
+import type { PanelFocusToken, PanelOpenReason, PanelState } from "@/modules/U5/panel/contract";
 import { PanelShell } from "@/modules/U5/panel/shell";
 import type { WorkersPanelSnapshot } from "./controller";
 import type { WorkerRowModel } from "./model";
@@ -10,6 +10,8 @@ export interface WorkersPanelViewProps {
   readonly position: PanelState["position"];
   readonly snapshot: WorkersPanelSnapshot;
   readonly onOpenChange: (open: boolean, reason: PanelOpenReason) => void;
+  readonly invokingFocus?: PanelFocusToken;
+  readonly restoreFocus?: (token: PanelFocusToken) => void;
   readonly onRetry: () => void;
   readonly onStop: (id: string) => void;
   /** Placement opens a worker's transcript read-only; without it the transcript control says why it is off. */
@@ -153,6 +155,8 @@ export function WorkersPanelView({
   onRetry,
   onStop,
   onOpenTranscript,
+  invokingFocus,
+  restoreFocus,
 }: WorkersPanelViewProps) {
   const lifecycle: PanelState["lifecycle"] = snapshot.loading ? "loading" : "populated";
   const panelState: PanelState = {
@@ -178,8 +182,10 @@ export function WorkersPanelView({
     <PanelShell
       body={body}
       className="min-w-0"
+      invokingFocus={invokingFocus}
       onOpenChange={onOpenChange}
       onRetry={onRetry}
+      restoreFocus={restoreFocus}
       state={panelState}
     />
   );

@@ -1,5 +1,6 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Button } from "@/components/ui/button";
 import type { Goal, GoalState } from "../contract";
 import { continuationStatus } from "../contract";
 import type { GoalPanelSnapshot } from "./controller";
@@ -19,7 +20,13 @@ const initialGoal: Goal = {
 function GoalPlayground() {
   const [goal, setGoal] = useState(initialGoal);
   const [notice, setNotice] = useState<string | null>(null);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(
+    () => !new URLSearchParams(window.location.search).has("closed"),
+  );
+  const openButton = useRef<HTMLButtonElement>(null);
+  const restoreFocus = (token: string) => {
+    if (token === "goal-panel-open") openButton.current?.focus();
+  };
   const goalState: GoalState = {
     goal,
     state: { enabled: true, mode: "active", goal },
@@ -73,11 +80,16 @@ function GoalPlayground() {
 
   return (
     <main className="min-h-screen bg-background text-foreground" data-testid="goal-playground">
+      <Button ref={openButton} onClick={() => setOpen(true)} type="button" variant="outline">
+        Open goal panel
+      </Button>
       <GoalPanelView
         open={open}
         position="right"
         snapshot={snapshot}
+        invokingFocus="goal-panel-open"
         onOpenChange={(nextOpen) => setOpen(nextOpen)}
+        restoreFocus={restoreFocus}
         onRefresh={() => setNotice("The latest goal status is shown.")}
         onCreate={() => updateStatus("active")}
         onPause={() => updateStatus("paused")}

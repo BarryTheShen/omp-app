@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { InlineError, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +29,16 @@ const EMPTY_FORM: LoopForm = { count: "", minutes: "", command: "", mode: "until
  */
 export function LoopControls({ gate, run, onStart, onPause, onResume, onStop }: LoopControlsProps) {
   const headingId = useId();
+  const focusAfterStart = useRef(false);
   const [form, setForm] = useState<LoopForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  const firstActionRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (run !== "idle" && focusAfterStart.current) {
+      firstActionRef.current?.focus();
+      focusAfterStart.current = false;
+    }
+  }, [run]);
 
   if (gate.state === "unavailable") {
     return (
@@ -56,6 +64,7 @@ export function LoopControls({ gate, run, onStart, onPause, onResume, onStop }: 
     }
     setFormError(null);
     onStart(result.spec);
+    focusAfterStart.current = true;
   };
 
   const setField = (field: keyof LoopForm, value: string) => {
@@ -121,11 +130,11 @@ export function LoopControls({ gate, run, onStart, onPause, onResume, onStop }: 
       ) : (
         <Toolbar ariaLabel="Loop actions">
           {run === "running" ? (
-            <Button onClick={onPause} type="button" variant="outline">
+            <Button ref={firstActionRef} onClick={onPause} type="button" variant="outline">
               Pause loop
             </Button>
           ) : (
-            <Button onClick={onResume} type="button" variant="outline">
+            <Button ref={firstActionRef} onClick={onResume} type="button" variant="outline">
               Resume loop
             </Button>
           )}

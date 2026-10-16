@@ -1,8 +1,10 @@
 import { type CapabilityMap, SubagentId, ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { P1CapabilityKeys } from "@/modules/P1/contract";
 import type { AgentRosterStoreSnapshot, RosterAgent } from "@/modules/P1/roster";
+import type { PanelFocusToken } from "@/modules/U5/panel/contract";
 import type { WorkersPanelSnapshot } from "./controller";
 import { buildWorkersModel } from "./model";
 import { WorkersPanelView } from "./view";
@@ -63,26 +65,48 @@ function renderView(
     onRetry: () => void;
     onStop: (id: string) => void;
     onOpenTranscript: (id: string) => void;
+    invokingFocus: PanelFocusToken;
+    restoreFocus: (token: PanelFocusToken) => void;
   }> = {},
 ) {
   const onOpenChange = vi.fn();
   const onRetry = handlers.onRetry ?? vi.fn();
   const onStop = handlers.onStop ?? vi.fn();
-  render(
-    <WorkersPanelView
-      open
-      position="right"
-      snapshot={snapshot}
-      onOpenChange={onOpenChange}
-      onOpenTranscript={handlers.onOpenTranscript}
-      onRetry={onRetry}
-      onStop={onStop}
-    />,
-  );
-  return { onRetry, onStop };
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return (
+      <WorkersPanelView
+        open={open}
+        position="right"
+        snapshot={snapshot}
+        invokingFocus={handlers.invokingFocus}
+        onOpenChange={(next, reason) => {
+          onOpenChange(next, reason);
+          setOpen(next);
+        }}
+        onOpenTranscript={handlers.onOpenTranscript}
+        onRetry={onRetry}
+        onStop={onStop}
+        restoreFocus={handlers.restoreFocus}
+      />
+    );
+  }
+  render(<Harness />);
+  return { onOpenChange, onRetry, onStop };
 }
-
 describe("WorkersPanelView", () => {
+  test("forwards panel focus tokens to PanelShell for restoration on close", () => {
+    const restoreFocus = vi.fn();
+    renderView(snapshotOf([], {}), {
+      invokingFocus: "workers-opener",
+      restoreFocus,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Workers" }));
+
+    expect(restoreFocus).toHaveBeenCalledWith("workers-opener");
+  });
+
   test("shows the side-task, persistent worker and subagent sections, and no start control", () => {
     renderView(snapshotOf([], {}));
     expect(screen.getByText("Side-task workers")).toBeTruthy();
