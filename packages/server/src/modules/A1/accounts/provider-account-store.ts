@@ -370,12 +370,12 @@ export class ProviderAccountStoreService {
     try {
       const transaction = db.transaction(() => {
         const row = findAccount(queryRows(db, args.providerId), args.providerId, args.accountId);
-        const result = db
+        const updatedRows = db
           .query(
-            "UPDATE auth_credentials SET disabled_cause = ?, updated_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ? AND provider = ? AND disabled_cause IS NULL",
+            "UPDATE auth_credentials SET disabled_cause = ?, updated_at = CAST(strftime('%s','now') AS INTEGER) WHERE id = ? AND provider = ? AND disabled_cause IS NULL RETURNING id",
           )
-          .run("deleted by user", row.id, args.providerId);
-        if (result.changes !== 1) {
+          .all("deleted by user", row.id, args.providerId) as Array<{ id: number }>;
+        if (updatedRows.length !== 1 || updatedRows[0]?.id !== row.id) {
           throw failure(
             "conflict",
             "Provider account changed before logout; reload and retry.",

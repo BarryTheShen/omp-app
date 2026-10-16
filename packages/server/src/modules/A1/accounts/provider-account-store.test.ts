@@ -36,6 +36,27 @@ function openCredentialDatabase(home: string): Database {
       value TEXT NOT NULL,
       expires_at INTEGER NOT NULL
     );
+    -- Mirrors omp v18.8.9's auth/sqlite-credential-store.ts change tracking.
+    CREATE TABLE IF NOT EXISTS auth_change_revision (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      revision INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO auth_change_revision (id, revision) VALUES (1, 0);
+    CREATE TRIGGER IF NOT EXISTS auth_change_revision_auth_credentials_insert
+    AFTER INSERT ON auth_credentials
+    BEGIN
+      UPDATE auth_change_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER IF NOT EXISTS auth_change_revision_auth_credentials_update
+    AFTER UPDATE ON auth_credentials
+    BEGIN
+      UPDATE auth_change_revision SET revision = revision + 1 WHERE id = 1;
+    END;
+    CREATE TRIGGER IF NOT EXISTS auth_change_revision_auth_credentials_delete
+    AFTER DELETE ON auth_credentials
+    BEGIN
+      UPDATE auth_change_revision SET revision = revision + 1 WHERE id = 1;
+    END;
   `);
   return db;
 }
@@ -250,6 +271,11 @@ describe("ProviderAccountStoreService", () => {
     const db = openCredentialDatabase(home);
     insertAccount(db, accountRow("openai-codex", "oauth", JSON.stringify({ accountId: "one" })));
     insertAccount(db, accountRow("openai-codex", "oauth", JSON.stringify({ accountId: "two" })));
+    const revisionBeforeLogout = (
+      db.query("SELECT revision FROM auth_change_revision WHERE id = 1").get() as {
+        revision: number;
+      }
+    ).revision;
     db.close();
 
     const store = new ProviderAccountStoreService({ homeDir: home, env: {} });
@@ -271,7 +297,13 @@ describe("ProviderAccountStoreService", () => {
       id: number;
       disabled_cause: string | null;
     }>;
+    const revisionAfterLogout = (
+      check.query("SELECT revision FROM auth_change_revision WHERE id = 1").get() as {
+        revision: number;
+      }
+    ).revision;
     check.close();
+    expect(revisionAfterLogout).toBe(revisionBeforeLogout + 1);
     expect(rows).toEqual([
       { id: 1, disabled_cause: "deleted by user" },
       { id: 2, disabled_cause: null },
