@@ -180,8 +180,8 @@ describe("P1 subagent client commands", () => {
     await client.dispose();
   });
 
-  test("a steer omp refuses for a worker it does not run reads as a retryable conflict", async () => {
-    const refusal = `Subagent not running: ${subagentId}`;
+  test("a steer refusal uses the typed command field, not its human-readable error", async () => {
+    const refusal = "worker is no longer running";
     const { client } = fakeClient({ steerRefusal: refusal });
     await expect(client.steer(subagentId, "hello")).rejects.toMatchObject({
       appError: { code: "conflict", retryable: true },

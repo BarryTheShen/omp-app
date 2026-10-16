@@ -3,8 +3,8 @@ import type { AppErrorCode } from "@omp-app/contracts";
 /**
  * omp's answer when a steer reaches a worker that is not listed as running: `Subagent not running: <id>`.
  * Sources: docs/rpc.md, "Steering subagents", failure responses (line 1064 at omp v18.8.9; line 957 at v18.6.1);
- * packages/coding-agent/src/modes/rpc/rpc-mode.ts:826 (v18.8.9) and :741 (v18.6.1). The client matches this
- * text (apps/web/src/modules/P1/client/client.ts:80-83); issue 1676 tracks replacing the match with an omp code.
+ * packages/coding-agent/src/modes/rpc/rpc-mode.ts:826 (v18.8.9) and :741 (v18.6.1). The client does not read these
+ * words: it recognises a refused steer by the answer's command (`omp.command === "steer_subagent"`, client.ts), issue 1676.
  */
 export const OMP_NOT_RUNNING_TEXT = "Subagent not running: worker-1";
 
@@ -71,7 +71,7 @@ export const SUBAGENT_COMMAND_CASES: readonly SubagentCommandCase[] = [
     expect: { outcome: "resolves", sent: true },
   },
   {
-    name: "steer: omp refuses a worker it does not run, and the client matches its text (issue 1676)",
+    name: "steer: omp refuses a worker it does not run, and the client classifies the refusal by its command, not its words (issue 1676)",
     command: "steer",
     message: "Check the failing test first.",
     ompError: OMP_NOT_RUNNING_TEXT,

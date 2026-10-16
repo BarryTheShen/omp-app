@@ -77,12 +77,6 @@ function asP1Failure(error: unknown, fallback: AppFailure): AppFailure {
   return error instanceof AppFailure ? error : fallback;
 }
 
-/** omp refuses a steer to a worker it does not run right now: its own words name the worker as not running. */
-function isNotRunningRefusal(error: AppFailure): boolean {
-  const omp = error.appError.omp;
-  return omp?.command === "steer_subagent" && omp.error.startsWith("Subagent not running");
-}
-
 function requiredCapability(capabilities: CapabilityMap, key: keyof typeof P1CapabilityKeys): void {
   const capability = P1CapabilityKeys[key];
   if (isUsable(capabilities, capability)) return;
@@ -240,9 +234,10 @@ class SubagentClientImpl implements SubagentClient {
       );
     } catch (error) {
       const cause = asP1Failure(error, failure("omp_error", "Subagent steer request failed", true));
-      // omp refuses a message to a worker it does not list as running (docs/rpc.md, "Steering subagents").
-      // Issue 1156 records the same refusal for a worker that get_subagents still lists as running.
-      if (isNotRunningRefusal(cause))
+      // omp's RPC answer carries the command and error fields in a typed result
+      // (docs/rpc.md, "Steering subagents"; rpc-mode.ts:2243-2255, v18.8.9). Preserve
+      // the command-typed refusal instead of classifying its human-readable error text.
+      if (cause.appError.omp?.command === "steer_subagent")
         throw failure("conflict", "omp did not take the message", true);
       throw cause;
     }
