@@ -815,6 +815,7 @@ function ActiveThreadReady({
     openChat: openThread,
     showStatus: setCommandStatus,
     showError: setCommandError,
+    restoreComposerFocus: () => composerInput()?.focus(),
   });
   const runtimeSource = useMemo<SessionInfoRuntimeSource>(
     () => ({

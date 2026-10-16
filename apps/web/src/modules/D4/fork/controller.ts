@@ -5,7 +5,7 @@ import {
   type ThreadId,
   UiRequestId,
 } from "@omp-app/contracts";
-import type { DialogHost } from "@/modules/U4/contract";
+import type { DialogHost, FocusRestoreHandle } from "@/modules/U4/contract";
 import type { ShareImportResultDto } from "../contract";
 import { checkShareLink } from "./link";
 import type { ShareImportPort } from "./port";
@@ -52,6 +52,8 @@ export interface ImportControllerDeps {
   /** Whether omp can import at all: the upstream gate. It is read first, so while it is missing nothing is asked. */
   readonly importAvailable: () => boolean;
   readonly dialogs: DialogHost;
+  /** Focus destination supplied by the composer and invoked by U4 after each import dialog closes. */
+  readonly restoreFocus: FocusRestoreHandle;
   /** Opens the new chat. A rejection leaves the import done: the outcome says the chat could not be opened. */
   readonly openChat: (threadId: ThreadId) => Promise<void>;
   /** Called once the person has confirmed and the import starts. */
@@ -85,7 +87,11 @@ function fromFailure(error: AppFailure): ImportOutcome {
  */
 export function createImportController(deps: ImportControllerDeps): ImportController {
   let inFlight: Promise<ImportOutcome> | undefined;
-  const chat = { threadId: deps.threadId, origin: "app" as const };
+  const chat = {
+    threadId: deps.threadId,
+    origin: "app" as const,
+    restoreFocus: deps.restoreFocus,
+  };
 
   async function run(): Promise<ImportOutcome> {
     try {

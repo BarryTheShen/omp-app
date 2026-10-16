@@ -1,7 +1,7 @@
 import type { AppClient } from "@omp-app/client";
 import type { FolderPath, ThreadId } from "@omp-app/contracts";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { DialogHost } from "@/modules/U4/contract";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import type { DialogHost, FocusRestoreHandle } from "@/modules/U4/contract";
 import { useCapabilityStatus } from "@/registry-core/hooks";
 import { useShortcutRegistry } from "@/shortcuts";
 import { createImportController } from "./controller";
@@ -9,15 +9,14 @@ import { D4_IMPORT_SHARE_COMMAND } from "./descriptors";
 import { describeImportOutcome } from "./outcome";
 import { createShareImportClient, createShareImportPort } from "./port";
 
-/** The composer's text box: focus goes back to it once the import has settled. */
-const COMPOSER_INPUT = 'textarea[aria-label="Message input"]';
-
 export interface ImportFromShareOptions {
   readonly client: AppClient;
   /** The open chat: its folder is where the new chat goes, and its dialog host shows the questions. */
   readonly threadId: ThreadId;
   readonly folder: FolderPath | null;
   readonly dialogs: DialogHost;
+  /** The composer supplies the focus target; U4 invokes it when an import dialog closes. */
+  readonly restoreComposerFocus: FocusRestoreHandle;
   /** Opens the new chat, through the same path as the sidebar. */
   readonly openChat: (threadId: ThreadId) => Promise<void>;
   /** Shows a sentence in the chat's status line: the import in progress, or the outcome. */
@@ -28,8 +27,8 @@ export interface ImportFromShareOptions {
 
 /**
  * Registers "Import a shared chat" as a palette command. While omp cannot import, the palette lists the command as
- * unavailable and no question opens; once omp can, the link question opens as the palette closes. Focus returns to
- * the composer once the import settles.
+ * unavailable and no question opens; once omp can, the link question opens as the palette closes. U4 owns dialog focus
+ * restoration.
  */
 export function useImportFromShare({
   client,
@@ -39,6 +38,7 @@ export function useImportFromShare({
   openChat,
   showStatus,
   showError,
+  restoreComposerFocus,
 }: ImportFromShareOptions): void {
   const shortcuts = useShortcutRegistry();
   // The upstream gate: the same status the palette reads, so the command and the questions agree.
@@ -50,11 +50,13 @@ export function useImportFromShare({
   const openChatRef = useRef(openChat);
   const statusRef = useRef(showStatus);
   const availableRef = useRef(importAvailable);
+  const restoreComposerFocusRef = useRef(restoreComposerFocus);
   useLayoutEffect(() => {
     folderRef.current = folder;
     openChatRef.current = openChat;
     statusRef.current = showStatus;
     availableRef.current = importAvailable;
+    restoreComposerFocusRef.current = restoreComposerFocus;
   });
   const controller = useMemo(
     () =>
@@ -64,12 +66,12 @@ export function useImportFromShare({
         importPort: createShareImportPort(createShareImportClient(client)),
         importAvailable: () => availableRef.current,
         dialogs,
+        restoreFocus: () => restoreComposerFocusRef.current(),
         openChat: (id) => openChatRef.current(id),
         onImporting: () => statusRef.current("Importing the shared chat…"),
       }),
     [client, dialogs, threadId],
   );
-  const [settled, setSettled] = useState(0);
   const run = useCallback(() => {
     void controller.importShare().then((outcome) => {
       if (outcome.outcome === "failed" || outcome.outcome === "refused") {
@@ -79,11 +81,7 @@ export function useImportFromShare({
         showError(null);
         showStatus(describeImportOutcome(outcome));
       }
-      setSettled((count) => count + 1);
     });
   }, [controller, showError, showStatus]);
-  useEffect(() => {
-    if (settled > 0) document.querySelector<HTMLTextAreaElement>(COMPOSER_INPUT)?.focus();
-  }, [settled]);
   useEffect(() => shortcuts.registerCommand(D4_IMPORT_SHARE_COMMAND.id, { run }), [run, shortcuts]);
 }

@@ -61,6 +61,7 @@ class ScriptedDialogs implements DialogHost {
     if (answer === undefined) {
       return Promise.reject(new Error("No answer was scripted for this question."));
     }
+    options.restoreFocus?.();
     return Promise.resolve(answer as DialogResultFor<R>);
   }
 
@@ -98,6 +99,7 @@ function harness(
     importAvailable?: boolean;
     answer?: () => Promise<ShareImportResultDto>;
     openChat?: () => Promise<void>;
+    restoreFocus?: () => void;
   } = {},
 ): Harness {
   const dialogs = new ScriptedDialogs(answers);
@@ -111,6 +113,7 @@ function harness(
     importPort: port,
     importAvailable: () => importAvailable,
     dialogs,
+    restoreFocus: options.restoreFocus ?? (() => undefined),
     openChat: (threadId) => {
       opened.push(threadId);
       return options.openChat?.() ?? Promise.resolve();
@@ -137,6 +140,33 @@ describe("the import flow", () => {
     const h = harness([TYPED(LINK), CONFIRMED]);
     await h.run();
     expect(h.dialogs.requests.map((request) => request.kind)).toEqual(["input", "confirm"]);
+  });
+  test("U4 restores composer focus for every import dialog, including artifact notes", async () => {
+    let restored = 0;
+    const restoreFocus = () => {
+      restored += 1;
+    };
+    const result: ShareImportResultDto = {
+      ...RESULT,
+      artifactStatus: "unavailable",
+      artifactWarnings: ["One attachment could not be copied."],
+    };
+    const h = harness([TYPED(LINK), CONFIRMED, DONE], {
+      restoreFocus,
+      answer: () => Promise.resolve(result),
+    });
+    expect(await h.run()).toMatchObject({ outcome: "imported-with-notes" });
+    expect(h.dialogs.requests.map((request) => request.kind)).toEqual([
+      "input",
+      "confirm",
+      "editor",
+    ]);
+    expect(h.dialogs.options.map((options) => options.restoreFocus)).toEqual([
+      restoreFocus,
+      restoreFocus,
+      restoreFocus,
+    ]);
+    expect(restored).toBe(3);
   });
 
   test("refuses before asking anything when the open chat has no folder", async () => {
@@ -294,6 +324,7 @@ describe("the import flow", () => {
       importPort: h.port,
       importAvailable: () => true,
       dialogs: h.dialogs,
+      restoreFocus: () => undefined,
       openChat: () => Promise.resolve(),
     });
     const first = controller.importShare();
