@@ -593,14 +593,19 @@ export class ModeController implements ModeControllerPort {
     }
     // The choice is shown as made until omp answers; the value omp last left stays underneath.
     const previous = this.modeStates.slow ?? initialSlowState(this.capabilities, this.rpc);
+    // get_state confirms scope; set_slow_mode only confirms the toggle.
+    const reportedScope =
+      this.reportedSlow?.slowModeSupported === true ? previous.scope : "default";
+    const reportedUsageLimit =
+      this.reportedSlow?.slowModeSupported === true ? previous.usageLimit : undefined;
     this.modeStates.slow = ModeState.parse({
       mode: "slow",
       state: "requested",
-      scope: previous.scope,
+      scope: reportedScope,
       source: "omp-rpc",
       capability: SLOW_CAPABILITY,
       requested,
-      ...(previous.usageLimit ? { usageLimit: previous.usageLimit } : {}),
+      ...(reportedUsageLimit ? { usageLimit: reportedUsageLimit } : {}),
     });
     this.commit();
     try {
@@ -608,7 +613,7 @@ export class ModeController implements ModeControllerPort {
         { enabled: requested },
         commandOptions(options?.signal ?? this.signal),
       );
-      this.modeStates.slow = slowKnownState(result.enabled, previous.scope, previous.usageLimit);
+      this.modeStates.slow = slowKnownState(result.enabled, reportedScope, reportedUsageLimit);
       this.commit();
       // omp announces no event for a change, so the usage-limit stage is read again from get_state.
       await this.refresh(options).catch(() => undefined);

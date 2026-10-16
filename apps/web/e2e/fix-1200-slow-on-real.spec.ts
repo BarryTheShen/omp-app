@@ -77,6 +77,18 @@ async function capture(page: Page, dialog: Locator, name: string): Promise<void>
   await dialog.screenshot({ animations: "disabled", path: join(screenshots, name) });
 }
 
+async function assertStyled(dialog: Locator): Promise<void> {
+  const font = await dialog
+    .getByRole("heading", { name: "Execution modes" })
+    .evaluate((heading) => {
+      const expected = getComputedStyle(document.documentElement)
+        .getPropertyValue("--font-sans")
+        .trim();
+      return { actual: getComputedStyle(heading).fontFamily, expected };
+    });
+  expect(font.actual).toBe(font.expected);
+}
+
 /** The session list's first chat is the saved one: it opens from the list and shows its answer. */
 async function openSavedChat(page: Page): Promise<void> {
   const row = page.getByRole("listbox", { name: "Session list" }).getByRole("option").first();
@@ -138,6 +150,55 @@ realTest(
     const narrow = await openDialog(page);
     await expectSlow(narrow, true);
     await capture(page, narrow, "fix-1200-slow-on-narrow.png");
+    expect(realApp.problems).toEqual([]);
+  },
+);
+realTest(
+  "#1358 real omp: Slow mode never says this chat only before omp confirms its scope",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    const page = await realApp.open();
+    await openSavedChat(page);
+    await page.getByRole("button", { name: "Execution modes" }).click();
+    const dialog = page.getByRole("dialog", { name: "Execution modes" });
+    // Skip the visibility wait so the first change can race omp's initial state report.
+    const scopeSentence =
+      "Use the provider's slower, lower-cost option when it has one. Applies to this chat only.";
+    await expect(dialog.getByText(scopeSentence, { exact: true })).toHaveCount(0);
+    await slowButton(dialog, "Turn on").click();
+    await expect(dialog.getByText(scopeSentence, { exact: true })).toHaveCount(0);
+    await expect(
+      dialog.getByText(
+        "Use the provider's slower, lower-cost option when it has one. Saved for every chat.",
+        { exact: true },
+      ),
+    ).toBeVisible({ timeout: 60_000 });
+    await assertStyled(dialog);
+    await capture(page, dialog, "fix-1358-slow-scope-light.png");
+    await page.evaluate(() => window.localStorage.setItem("omp-app.theme", "dark"));
+    await page.reload();
+    await openSavedChat(page);
+    const dark = await openDialog(page);
+    await expect(
+      dark.getByText(
+        "Use the provider's slower, lower-cost option when it has one. Saved for every chat.",
+        { exact: true },
+      ),
+    ).toBeVisible({ timeout: 60_000 });
+    await assertStyled(dark);
+    await capture(page, dark, "fix-1358-slow-scope-dark.png");
+    await dark.getByRole("button", { name: "Done" }).click();
+    await expect(dark).toBeHidden();
+    await page.setViewportSize({ width: 390, height: 844 });
+    const narrow = await openDialog(page);
+    await expect(
+      narrow.getByText(
+        "Use the provider's slower, lower-cost option when it has one. Saved for every chat.",
+        { exact: true },
+      ),
+    ).toBeVisible({ timeout: 60_000 });
+    await assertStyled(narrow);
+    await capture(page, narrow, "fix-1358-slow-scope-narrow.png");
     expect(realApp.problems).toEqual([]);
   },
 );

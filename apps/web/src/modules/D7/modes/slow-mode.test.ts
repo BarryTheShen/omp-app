@@ -181,6 +181,44 @@ describe("changing Slow mode through set_slow_mode", () => {
     await expect(pending).resolves.toMatchObject({ ok: true });
     controller.dispose();
   });
+  test("does not assign a scope before omp has reported it, including the reply-refresh gap", async () => {
+    const answer = Promise.withResolvers<{ readonly enabled: boolean }>();
+    const refresh = Promise.withResolvers<GetStateResult>();
+    const refreshStarted = Promise.withResolvers<void>();
+    const { rpc } = rpcFake({
+      state: () => {
+        refreshStarted.resolve();
+        return refresh.promise;
+      },
+      setSlow: () => answer.promise,
+    });
+    const controller = new ModeController({ threadId, capabilities: capabilities(), rpc });
+    const pending = controller.request({ mode: "slow", scope: "session", requested: true });
+
+    expect(controller.getSnapshot().modes.slow).toMatchObject({
+      state: "requested",
+      requested: true,
+      scope: "default",
+    });
+    answer.resolve({ enabled: true });
+    await refreshStarted.promise;
+    expect(controller.getSnapshot().modes.slow).toMatchObject({
+      state: "known",
+      enabled: true,
+      scope: "default",
+    });
+
+    refresh.resolve(
+      stateWith({ slowModeSupported: true, slowModeEnabled: true, slowModeScope: "session" }),
+    );
+    await expect(pending).resolves.toMatchObject({ ok: true });
+    expect(controller.getSnapshot().modes.slow).toMatchObject({
+      state: "known",
+      enabled: true,
+      scope: "session",
+    });
+    controller.dispose();
+  });
 
   test("a change omp refuses because the model has no slow mode says so in plain words, and omp's own text is not shown", async () => {
     const { rpc } = rpcFake({
