@@ -646,7 +646,8 @@ export class SessionFileStore {
    * leaves them as they were. A stop that fails throws, and the error reaches the person. Once omp has stopped, the check
    * deleteSession makes runs again: a view that came in while omp stopped, or an omp another tab started, still holds the
    * chat, and omp would write it back. The file is then left as it is and the refusal is returned, not thrown. Otherwise
-   * the file omp wrote back is removed.
+   * the file omp wrote back is removed. A refusal also gives the caller's views back to the omp that serves the chat now,
+   * as `deleteSession` does.
    */
   async finishOmpDelete(
     file: SessionFile,
@@ -664,6 +665,8 @@ export class SessionFileStore {
       this.#options.views !== undefined &&
       this.#options.views.watcherCount(file.id) > this.#heldViewsOf(file.id, caller);
     if (serverProcess || others) {
+      // The stop took the caller's views with omp: a refusal gives them back to the omp that serves the chat now.
+      this.#restoreViews(file, file.sessionFile, caller, own);
       // A turn that still runs blocked the stop: the person waits for it, as the sidebar's delete says.
       if (this.#options.turnOf?.(file.id) === "running") {
         return { outcome: "refused", reason: "running" };

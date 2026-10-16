@@ -882,4 +882,48 @@ describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("a finish refused for another tab's live omp gives the asking connection's view back to that omp, and keeps the file", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const file = path.join(storeFor(root).bucketPath(cwd), "2026-10-10_chat-one.jsonl");
+      await writeSession(file, "chat-one", cwd);
+      // The asking view leaves with omp's stop. While omp stops, another tab opens the chat, and its omp serves it.
+      let callerViews = 1;
+      let otherViews = 0;
+      const restored: { id: string; connectionId: string; count: number }[] = [];
+      const store = storeFor(root, {
+        views: {
+          viewsOf: () => callerViews,
+          watcherCount: () => callerViews + otherViews,
+          releaseViews: async () => undefined,
+          restoreViews: (id, connectionId, count) => {
+            restored.push({ id, connectionId, count });
+          },
+        },
+        serverOwnsSession: () => otherViews > 0,
+        stopUnwatched: async () => {
+          callerViews = 0;
+          otherViews = 1;
+          // omp writes the chat back while it stops, so the file is there again.
+          await writeSession(file, "chat-one", cwd);
+        },
+      });
+      const checked = await store.checkOmpDelete("chat-one", { connectionId: "app" });
+      if (checked.outcome !== "clear" || checked.file === undefined) {
+        throw new Error("the chat has no file");
+      }
+      // omp deletes the file itself, and then the server finishes the delete.
+      await rm(file);
+      await expect(store.finishOmpDelete(checked.file, { connectionId: "app" })).resolves.toEqual({
+        outcome: "refused",
+        reason: "open-elsewhere",
+      });
+      expect(restored).toEqual([{ id: "chat-one", connectionId: "app", count: 1 }]);
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
