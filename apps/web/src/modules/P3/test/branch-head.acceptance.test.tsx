@@ -211,7 +211,7 @@ describe("acceptance: assistant-ui branches import, switch, persist and reload",
     expect(repository.snapshot().headId).toBe("child");
   });
 
-  test.skip("a refused refetch keeps the visible items as well as the head (spec §4.1; follow-up #1723)", async () => {
+  test("a refused refetch keeps the visible items as well as the head (spec §4.1; follow-up #1723)", async () => {
     const repository = createBranchRepository({
       threadId,
       items: siblingItems(),

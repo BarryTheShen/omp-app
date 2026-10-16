@@ -140,10 +140,12 @@ export function createBranchRepository<TMessage extends ThreadMessageLike>(
     async refetch() {
       if (!options.refetch) return currentSnapshot();
       const next = await options.refetch();
-      ordered = parentsFirst(next.items);
-      if (next.headId !== null && !validHeads().has(next.headId)) {
+      const nextOrdered = parentsFirst(next.items);
+      // Validate the candidate head before publishing: a refused refetch must preserve the visible snapshot.
+      if (next.headId !== null && !nextOrdered.some((item) => item.message.id === next.headId)) {
         throw failure("invalid_args", "Refetched branch head is not present in the repository");
       }
+      ordered = nextOrdered;
       headId = next.headId;
       return currentSnapshot();
     },
