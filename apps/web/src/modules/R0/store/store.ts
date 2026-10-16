@@ -1109,6 +1109,8 @@ export class OmpRuntimeStore {
       return;
     }
 
+    const wasForwardedAcrossGap =
+      event.kind === "notification" && this.forwardedAcrossGap.delete(seq);
     const next = mutableSnapshot(this.snapshot);
     switch (eventValue.kind) {
       case "omp":
@@ -1147,7 +1149,7 @@ export class OmpRuntimeStore {
     next.lastSeq = seq;
     this.commit(next);
     if (event.kind === "omp") this.forwardOmpEvent(event.event, seq, fromHistory);
-    if (event.kind === "notification" && !askingFromHistory)
+    if (event.kind === "notification" && !askingFromHistory && !wasForwardedAcrossGap)
       this.forwardNotification(event.frame, seq, fromHistory);
   }
 

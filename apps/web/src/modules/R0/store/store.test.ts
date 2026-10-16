@@ -1353,6 +1353,25 @@ describe("OmpRuntimeStore", () => {
     expect(heard).toHaveLength(3);
     expect(heard[2]).toEqual({ type: "subagent_progress", seq: 4, replayed: false });
   });
+  test("does not forward a gap notification again when replay catches up from a lower cursor", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const heard: number[] = [];
+    store.subscribeNotifications(["subagent_lifecycle"], (_frame, seq) => {
+      heard.push(seq);
+    });
+    const ended = { type: "subagent_lifecycle", payload: { id: "worker-1", status: "completed" } };
+
+    ingest(store, { kind: "process", status: "ready" }, 1);
+    ingest(store, { kind: "notification", frame: ended }, 3);
+    expect(heard).toEqual([3]);
+
+    store.resetSequence(0);
+    ingest(store, { kind: "process", status: "ready" }, 1);
+    ingest(store, { kind: "process", status: "running" }, 2);
+    ingest(store, { kind: "notification", frame: ended }, 3);
+
+    expect(heard).toEqual([3]);
+  });
 
   test("across a gap, a question is kept from its router, and omp's cancel of it is routed", () => {
     const store = new OmpRuntimeStore({ threadId });
