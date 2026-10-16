@@ -81,11 +81,10 @@ export function areaSurfaces(
 
 function surfaceClass(area: LayoutAreaName, surface: Surface): string {
   // The status bar is one line that never wraps (issue 1607). Its growing surface, the segments, takes the room that is left and
-  // truncates inside itself; every other surface keeps its natural width, so none is clipped and no segment that arrives changes
-  // the line count, so the composer does not move.
+  // truncates inside itself; other row areas give growing surfaces a readable 12rem basis, then let them shrink and truncate.
   if (area === "statusBar") return cn("min-w-0", surface.grow ? "flex-1" : "flex-none");
   const row = ROW_AREAS[area] === true;
-  return cn("min-w-0", surface.grow && (row ? "flex-1" : "flex min-h-0 flex-1 flex-col"));
+  return cn("min-w-0", surface.grow && (row ? "flex-[1_1_12rem]" : "flex min-h-0 flex-1 flex-col"));
 }
 
 type ListedPanels = readonly (readonly [SurfaceId, Surface])[];
