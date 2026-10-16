@@ -1091,7 +1091,7 @@ describe("OmpRuntimeStore", () => {
     });
   });
 
-  test("a refused answer is thrown to the dialog and leaves the thread's banner clear, also after a retry (issue 1386)", async () => {
+  test("a failed answer is thrown to the dialog and leaves the thread's banner clear, also after a retry (issue 1386)", async () => {
     let attempts = 0;
     const store = new OmpRuntimeStore({
       threadId,
@@ -1100,8 +1100,8 @@ describe("OmpRuntimeStore", () => {
           attempts += 1;
           if (attempts === 1) {
             throw new AppFailure({
-              code: "unavailable",
-              message: "omp did not accept the answer.",
+              code: "omp_exited",
+              message: "The omp RPC transport closed",
               retryable: true,
             });
           }
@@ -1116,7 +1116,7 @@ describe("OmpRuntimeStore", () => {
         kind: "notification",
         frame: {
           type: "extension_ui_request",
-          id: "ui-refused",
+          id: "ui-failed",
           method: "confirm",
           title: "Continue?",
           message: "yes",
@@ -1126,18 +1126,59 @@ describe("OmpRuntimeStore", () => {
     );
     const response = {
       type: "extension_ui_response" as const,
-      id: "ui-refused" as UiRequestId,
+      id: "ui-failed" as UiRequestId,
       confirmed: true,
     };
     await expect(store.answerExtensionUi(response)).rejects.toMatchObject({
-      appError: { code: "unavailable", message: "omp did not accept the answer." },
+      appError: { code: "omp_exited", message: "The omp RPC transport closed" },
     });
     expect(store.getSnapshot().error).toBeNull();
-    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-refused"]);
+    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-failed"]);
 
     await store.answerExtensionUi(response);
     expect(store.getSnapshot().error).toBeNull();
     expect(store.getSnapshot().pending.extensionUi).toEqual({});
+  });
+  test("a not-found answer keeps the store entry but leaves the conversation banner clear", async () => {
+    const store = new OmpRuntimeStore({
+      threadId,
+      transport: {
+        answerExtensionUi: async () => {
+          throw new AppFailure({
+            code: "not_found",
+            message: "No pending extension UI request",
+            retryable: false,
+          });
+        },
+      },
+    });
+    ingest(store, { kind: "process", status: "ready" }, 1);
+    ingest(
+      store,
+      {
+        kind: "notification",
+        frame: {
+          type: "extension_ui_request",
+          id: "ui-gone",
+          method: "confirm",
+          title: "Continue?",
+          message: "yes",
+        },
+      },
+      2,
+    );
+
+    await expect(
+      store.answerExtensionUi({
+        type: "extension_ui_response",
+        id: "ui-gone" as UiRequestId,
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({
+      appError: { code: "not_found", message: "No pending extension UI request" },
+    });
+    expect(Object.keys(store.getSnapshot().pending.extensionUi)).toEqual(["ui-gone"]);
+    expect(store.getSnapshot().error).toBeNull();
   });
 
   test("ignores unknown notifications, replays, and events after a sequence gap", () => {

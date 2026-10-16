@@ -32,14 +32,14 @@ async function expectStylesLoaded(page: Page): Promise<void> {
 }
 
 /**
- * Issue #1318. The person answers a question and the server refuses the answer. The question stays open with the
- * choice made, and says the answer was not sent; sending it again answers omp and closes the question.
+ * Issue #1318. When the app cannot send an answer, the question stays open with the choice made and says the answer
+ * was not sent; sending it again answers omp and closes the question.
  */
 realTest(
-  "an answer the server refuses keeps the question open with the choice, and sending again answers omp",
+  "an answer that cannot be sent keeps the question open with the choice, and retrying answers omp",
   async ({ realApp }) => {
-    let refuseNext = false;
-    let refused = 0;
+    let failNext = false;
+    let failures = 0;
     const page = await realApp.open({
       beforeLoad: async (target) => {
         await target.routeWebSocket(/\/ws\?/, (socket) => {
@@ -47,17 +47,18 @@ realTest(
           server.onMessage((message) => socket.send(message));
           socket.onMessage((message) => {
             const id = answerCallId(message);
-            if (refuseNext && id !== undefined) {
-              refuseNext = false;
-              refused += 1;
+            if (failNext && id !== undefined) {
+              failNext = false;
+              failures += 1;
+              // Mirrors the server's AppFailure when its omp RPC transport closes (rpc-session.ts:281-284).
               socket.send(
                 JSON.stringify({
                   type: "result",
                   id,
                   ok: false,
                   error: {
-                    code: "unavailable",
-                    message: "omp did not accept the answer.",
+                    code: "omp_exited",
+                    message: "The omp RPC transport closed",
                     retryable: true,
                   },
                 }),
@@ -77,9 +78,9 @@ realTest(
     await question.getByRole("radio", { name: /^SQLite/ }).click();
     await question.getByRole("button", { name: "Review", exact: true }).click();
 
-    refuseNext = true;
+    failNext = true;
     await question.getByRole("button", { name: "Submit", exact: true }).click();
-    await expect.poll(() => refused, { timeout: 30_000 }).toBe(1);
+    await expect.poll(() => failures, { timeout: 30_000 }).toBe(1);
     // The question stays open with the choice, and says the send failed. No toast says a message could not be shown.
     await expect(question.getByRole("alert")).toHaveText(NOT_SENT);
     await expect(question.getByText("SQLite", { exact: true })).toBeVisible();
@@ -104,7 +105,7 @@ realTest(
     // Sending the same answer again goes through: the question closes once omp has the answer.
     await question.getByRole("button", { name: "Submit", exact: true }).click();
     await expect(question).toBeHidden({ timeout: 30_000 });
-    expect(refused).toBe(1);
+    expect(failures).toBe(1);
     expect(realApp.problems).toEqual([]);
   },
 );

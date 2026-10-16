@@ -1370,9 +1370,9 @@ export class OmpRuntimeStore {
   }
 
   /**
-   * Answer a pending extension UI request and remove it only after A0 accepts the answer. A refused answer is thrown to
-   * the caller, which says the answer was not sent and keeps the question open. It is not written to the thread's
-   * banner, which is for the conversation (issue 1386).
+   * A failed answer is thrown to the caller; this store keeps its pending entry until the transport accepts it. The dialog
+   * host keeps `invalid_args` and `omp_exited` questions open for retry, but closes to the default result on `not_found`.
+   * None of these failures are written to the thread's banner.
    */
   public async answerExtensionUi(
     response: ExtensionUiResponse,

@@ -38,8 +38,8 @@ interface HarnessState {
   answers: OmpWire.ExtensionUiResponse[];
   answer: ((response: DialogResponse) => Promise<void>) | undefined;
   deadlines: Record<string, number | undefined>;
-  refusals: number;
-  refusalCode: "unavailable" | "not_found";
+  failures: number;
+  failureCode: "omp_exited" | "not_found";
   rejected: number;
   /** Whether the dialog last rendered says its answer was not sent (a Cancel or Escape that could not be sent). */
   answerNotSent: boolean;
@@ -59,12 +59,15 @@ function Harness({
       overlay,
       capabilities,
       answerExtensionUi: async (response) => {
-        if (state.refusals > 0) {
-          state.refusals -= 1;
+        if (state.failures > 0) {
+          state.failures -= 1;
           throw new AppFailure({
-            code: state.refusalCode,
-            message: "omp did not accept the answer.",
-            retryable: state.refusalCode === "unavailable",
+            code: state.failureCode,
+            message:
+              state.failureCode === "not_found"
+                ? "No pending extension UI request"
+                : "The omp RPC transport closed",
+            retryable: state.failureCode === "omp_exited",
           });
         }
         state.answers.push(response);
@@ -120,8 +123,8 @@ function renderHarness(capabilities = ompUiCapabilities) {
     answers: [],
     answer: undefined,
     deadlines: {},
-    refusals: 0,
-    refusalCode: "unavailable",
+    failures: 0,
+    failureCode: "omp_exited",
     rejected: 0,
     answerNotSent: false,
   };
@@ -180,18 +183,18 @@ describe("DialogHostController", () => {
     });
   });
 
-  test("a refused answer keeps the question open, and Approve sends the same answer when pressed again", async () => {
+  test("a failed answer keeps the question open, and Approve retries the same answer", async () => {
     const state = renderHarness();
     const controller = await controllerFrom(state);
-    state.refusals = 1;
-    const asked = open(controller, request("confirm", "refused-once"));
-    await screen.findByRole("dialog", { name: "refused-once" });
+    state.failures = 1;
+    const asked = open(controller, request("confirm", "failed-once"));
+    await screen.findByRole("dialog", { name: "failed-once" });
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await waitFor(() => expect(state.rejected).toBe(1));
-    // omp still waits for this answer, so the question stays open and nothing is reported as closed.
-    expect(screen.getByRole("dialog", { name: "refused-once" })).toBeTruthy();
-    expect(screen.getByTestId("body-refused-once")).toBeTruthy();
+    // A request that is still pending can be retried, and is not reported as closed.
+    expect(screen.getByRole("dialog", { name: "failed-once" })).toBeTruthy();
+    expect(screen.getByTestId("body-failed-once")).toBeTruthy();
     expect(state.answers).toEqual([]);
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
@@ -200,15 +203,15 @@ describe("DialogHostController", () => {
       response: { kind: "confirm", confirmed: true },
     });
     expect(state.answers).toEqual([
-      { type: "extension_ui_response", id: "refused-once", confirmed: true },
+      { type: "extension_ui_response", id: "failed-once", confirmed: true },
     ]);
   });
 
-  test("an answer for a question omp no longer holds closes the dialog, with no retry", async () => {
+  test("an answer for a question the app no longer has closes the dialog, with no retry", async () => {
     const state = renderHarness();
     const controller = await controllerFrom(state);
-    state.refusals = 1;
-    state.refusalCode = "not_found";
+    state.failures = 1;
+    state.failureCode = "not_found";
     const asked = open(controller, request("confirm", "already-gone"));
     await screen.findByRole("dialog", { name: "already-gone" });
 
@@ -542,22 +545,22 @@ describe("DialogHostController outside press", () => {
   });
 });
 
-describe("DialogHostController answers omp does not receive (issue 1387)", () => {
-  test("a Cancel omp does not receive shows the question again, saying the answer was not sent", async () => {
+describe("DialogHostController answers that do not reach omp (issue 1387)", () => {
+  test("a Cancel whose answer fails to reach omp shows the question again, saying the answer was not sent", async () => {
     const state = renderHarness();
     const controller = await controllerFrom(state);
-    state.refusals = 1;
+    state.failures = 1;
     let settled = false;
-    const pending = open(controller, request("select", "cancel-refused")).then((result) => {
+    const pending = open(controller, request("select", "cancel-failed")).then((result) => {
       settled = true;
       return result;
     });
-    await screen.findByRole("dialog", { name: "cancel-refused" });
+    await screen.findByRole("dialog", { name: "cancel-failed" });
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(state.answerNotSent).toBe(true));
     // omp still waits for an answer: the question is open again, and nothing is reported as closed.
-    expect(screen.getByRole("dialog", { name: "cancel-refused" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "cancel-failed" })).toBeTruthy();
     expect(settled).toBe(false);
     expect(state.answers).toEqual([]);
 
@@ -568,35 +571,35 @@ describe("DialogHostController answers omp does not receive (issue 1387)", () =>
       timedOut: false,
     });
     expect(state.answers).toEqual([
-      { type: "extension_ui_response", id: "cancel-refused", cancelled: true },
+      { type: "extension_ui_response", id: "cancel-failed", cancelled: true },
     ]);
   });
 
-  test("an Escape omp does not receive shows the question again, saying the answer was not sent", async () => {
+  test("an Escape whose answer fails to reach omp shows the question again, saying the answer was not sent", async () => {
     const state = renderHarness();
     const controller = await controllerFrom(state);
-    state.refusals = 1;
-    const pending = open(controller, request("select", "escape-refused"));
-    const question = await screen.findByRole("dialog", { name: "escape-refused" });
+    state.failures = 1;
+    const pending = open(controller, request("select", "escape-failed"));
+    const question = await screen.findByRole("dialog", { name: "escape-failed" });
 
     fireEvent.keyDown(question, { key: "Escape" });
     await waitFor(() => expect(state.answerNotSent).toBe(true));
-    expect(screen.getByRole("dialog", { name: "escape-refused" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "escape-failed" })).toBeTruthy();
     expect(state.answers).toEqual([]);
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await expect(pending).resolves.toMatchObject({ outcome: "answered" });
-    expect(state.answers).toMatchObject([{ type: "extension_ui_response", id: "escape-refused" }]);
+    expect(state.answers).toMatchObject([{ type: "extension_ui_response", id: "escape-failed" }]);
   });
 
-  test("a timeout omp does not receive leaves the question open for the person to answer", async () => {
+  test("a timeout whose answer cannot reach omp leaves the question open for the person to answer", async () => {
     const state = renderHarness();
     const controller = await controllerFrom(state);
-    state.refusals = 1;
+    state.failures = 1;
     let settled = false;
     const pending = controller
       .confirm(
-        request("confirm", "timeout-refused", 10) as Extract<DialogRequest, { kind: "confirm" }>,
+        request("confirm", "timeout-failed", 10) as Extract<DialogRequest, { kind: "confirm" }>,
         {
           threadId: threadA,
         },
@@ -605,31 +608,31 @@ describe("DialogHostController answers omp does not receive (issue 1387)", () =>
         settled = true;
         return confirmed;
       });
-    await screen.findByRole("dialog", { name: "timeout-refused" });
-    await waitFor(() => expect(state.refusals).toBe(0));
+    await screen.findByRole("dialog", { name: "timeout-failed" });
+    await waitFor(() => expect(state.failures).toBe(0));
     // The default answer did not reach omp. The timer is not armed again, so the question waits for the person; the
     // wait lets a re-armed timer, if there were one, fire before the check.
     const delay = Promise.withResolvers<void>();
     setTimeout(delay.resolve, 30);
     await delay.promise;
     expect(settled).toBe(false);
-    expect(screen.getByRole("dialog", { name: "timeout-refused" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "timeout-failed" })).toBeTruthy();
     expect(state.answers).toEqual([]);
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await expect(pending).resolves.toBe(true);
-    expect(state.answers).toMatchObject([{ type: "extension_ui_response", id: "timeout-refused" }]);
+    expect(state.answers).toMatchObject([{ type: "extension_ui_response", id: "timeout-failed" }]);
   });
 
-  test("an abort whose cancellation omp does not receive closes the question, with no error", async () => {
+  test("an abort whose cancellation cannot reach omp closes the question, with no error", async () => {
     const state = renderHarness();
     const controller = await controllerFrom(state);
-    state.refusals = 1;
+    state.failures = 1;
     const abortController = new AbortController();
-    const pending = open(controller, request("select", "abort-refused"), threadA, {
+    const pending = open(controller, request("select", "abort-failed"), threadA, {
       signal: abortController.signal,
     });
-    await screen.findByRole("dialog", { name: "abort-refused" });
+    await screen.findByRole("dialog", { name: "abort-failed" });
 
     abortController.abort();
     await expect(pending).resolves.toEqual({
@@ -637,15 +640,15 @@ describe("DialogHostController answers omp does not receive (issue 1387)", () =>
       kind: "select",
       timedOut: false,
     });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "abort-refused" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "abort-failed" })).toBeNull());
     expect(state.answers).toEqual([]);
   });
 
-  test("a Cancel for a question omp no longer holds closes it, with no error", async () => {
+  test("a Cancel for a question the app session no longer has closes it, with no error", async () => {
     const state = renderHarness();
     const controller = await controllerFrom(state);
-    state.refusals = 1;
-    state.refusalCode = "not_found";
+    state.failures = 1;
+    state.failureCode = "not_found";
     const pending = open(controller, request("select", "gone-question"));
     await screen.findByRole("dialog", { name: "gone-question" });
 

@@ -1,4 +1,4 @@
-import type { ThreadId, UiRequestId } from "@omp-app/contracts";
+import { AppFailure, type ThreadId, type UiRequestId } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AskDialogRequest, DialogRequest, DialogResponse } from "../contract";
@@ -447,16 +447,21 @@ describe("rich Ask dialog and result card", () => {
   });
 });
 
-/** A dialog whose answers are refused while `state.refuse` is on: a refused answer never reaches omp. */
-function renderRefusedAnswers(request: DialogRequest) {
+/** A dialog whose answers fail as the app's RPC session closes: the answer does not reach omp. */
+function renderFailedAnswers(request: DialogRequest) {
   const answers: DialogResponse[] = [];
-  const state = { refuse: true };
+  const state = { fail: true };
   const context: DialogRenderContext = {
     request,
     threadId,
     signal: new AbortController().signal,
     answer: async (response) => {
-      if (state.refuse) throw new Error("omp did not accept the answer.");
+      if (state.fail)
+        throw new AppFailure({
+          code: "omp_exited",
+          message: "The omp RPC transport closed",
+          retryable: true,
+        });
       answers.push(response);
     },
     cancel: async () => undefined,
@@ -466,11 +471,11 @@ function renderRefusedAnswers(request: DialogRequest) {
   return { answers, state };
 }
 
-describe("a refused answer", () => {
+describe("a failed answer", () => {
   test("an input keeps the typed value, says sending failed, and Continue sends the same value again", async () => {
-    const result = renderRefusedAnswers({
+    const result = renderFailedAnswers({
       kind: "input",
-      id: "input-refused" as UiRequestId,
+      id: "input-failed" as UiRequestId,
       title: "Database name",
     } as DialogRequest);
     fireEvent.change(screen.getByLabelText("Database name"), { target: { value: "Postgres" } });
@@ -481,16 +486,16 @@ describe("a refused answer", () => {
     expect((screen.getByLabelText("Database name") as HTMLInputElement).value).toBe("Postgres");
     expect(result.answers).toEqual([]);
 
-    result.state.refuse = false;
+    result.state.fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     await waitFor(() => expect(result.answers).toEqual([{ kind: "input", value: "Postgres" }]));
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  test("a confirm whose answer is refused says so, and Confirm can be pressed again", async () => {
-    const result = renderRefusedAnswers({
+  test("a confirm whose answer fails says so, and Confirm can be pressed again", async () => {
+    const result = renderFailedAnswers({
       kind: "confirm",
-      id: "confirm-refused" as UiRequestId,
+      id: "confirm-failed" as UiRequestId,
       title: "Delete workspace?",
       message: "This cannot be undone.",
     });
@@ -499,15 +504,15 @@ describe("a refused answer", () => {
       "Sending your answer failed. Try again.",
     );
 
-    result.state.refuse = false;
+    result.state.fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(result.answers).toEqual([{ kind: "confirm", confirmed: true }]));
   });
 
-  test("a select whose answer is refused keeps the chosen option and says sending failed", async () => {
-    const result = renderRefusedAnswers({
+  test("a select whose answer fails keeps the chosen option and says sending failed", async () => {
+    const result = renderFailedAnswers({
       kind: "select",
-      id: "select-refused" as UiRequestId,
+      id: "select-failed" as UiRequestId,
       title: "Choose",
       options: ["Alpha", "Beta"],
     });
@@ -518,7 +523,7 @@ describe("a refused answer", () => {
     );
     expect(screen.getByRole("option", { name: "Beta" }).getAttribute("aria-selected")).toBe("true");
 
-    result.state.refuse = false;
+    result.state.fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Choose" }));
     await waitFor(() => expect(result.answers).toEqual([{ kind: "select", value: "Beta" }]));
   });

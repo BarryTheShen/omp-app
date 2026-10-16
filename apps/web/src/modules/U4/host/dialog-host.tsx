@@ -39,7 +39,7 @@ export interface DialogRenderContext {
   readonly deadlineAt?: number;
   /**
    * True when the dialog is shown again because a Cancel or an Escape did not reach omp. The question is still open, so
-   * the dialog says the answer was not sent, as it does after a refused answer (issue 1387).
+   * the dialog says the answer was not sent, as it does after a failed answer send (issue 1387).
    */
   readonly answerNotSent?: boolean;
 }
@@ -342,8 +342,8 @@ export class DialogHostController implements DialogHost {
   /**
    * A Cancel, an Escape, a timeout or an abort whose answer did not reach omp (issue 1387). omp still waits for an answer,
    * so a question it still holds stays open for the person: a Cancel or an Escape shows the dialog again, saying the answer
-   * was not sent, and a timeout leaves the dialog as it is, for the person to answer, with no timer armed again. A question
-   * omp no longer holds, or one whose request has gone (its signal is aborted), closes without an error.
+   * was not sent, and a timeout leaves the dialog as it is, for the person to answer, with no timer armed again. When the app
+   * has no pending question, or its request signal is aborted, the dialog closes without an error.
    */
   private defaultAnswerNotSent(
     entry: DialogEntry,
@@ -389,7 +389,7 @@ export class DialogHostController implements DialogHost {
       await this.settleAndFinish(entry, result);
     } catch (error) {
       if (error instanceof AppFailure && error.appError.code === "not_found") {
-        // omp no longer holds this question (its request or its chat is gone), so there is nothing to send to.
+        // The app session has no pending question for this id, so close to the default result.
         this.finishResolved(entry, defaultDialogResult(entry.request, { timedOut: false }));
         return;
       }

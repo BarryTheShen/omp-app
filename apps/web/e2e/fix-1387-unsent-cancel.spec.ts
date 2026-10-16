@@ -35,14 +35,14 @@ async function expectStylesLoaded(page: Page): Promise<void> {
 }
 
 /**
- * Opens a chat whose question the first answer call after `refuseNext` is refused on the wire, as omp would refuse it
- * (the same way the #1318 spec refuses a Submit). Returns the page and the count of refusals.
+ * Opens a chat where the first answer call after `failNext` fails at the app connection, as in the #1318 spec.
+ * Returns the page and the count of failed sends.
  */
-async function openRefusingFirstAnswer(
+async function openFailingFirstAnswer(
   realApp: RealApp,
-): Promise<{ page: Page; refused: () => number; refuseNext: () => void }> {
+): Promise<{ page: Page; failed: () => number; failNext: () => void }> {
   let armed = false;
-  let refusals = 0;
+  let failures = 0;
   const page = await realApp.open({
     beforeLoad: async (target) => {
       await target.routeWebSocket(/\/ws\?/, (socket) => {
@@ -52,15 +52,16 @@ async function openRefusingFirstAnswer(
           const id = answerCallId(message);
           if (armed && id !== undefined) {
             armed = false;
-            refusals += 1;
+            failures += 1;
+            // Mirrors the server's AppFailure when its omp RPC transport closes (rpc-session.ts:281-284).
             socket.send(
               JSON.stringify({
                 type: "result",
                 id,
                 ok: false,
                 error: {
-                  code: "unavailable",
-                  message: "omp did not accept the answer.",
+                  code: "omp_exited",
+                  message: "The omp RPC transport closed",
                   retryable: true,
                 },
               }),
@@ -74,30 +75,29 @@ async function openRefusingFirstAnswer(
   });
   return {
     page,
-    refused: () => refusals,
-    refuseNext: () => {
+    failed: () => failures,
+    failNext: () => {
       armed = true;
     },
   };
 }
 
 /**
- * Issue 1387 on real omp. A Cancel that omp does not receive keeps the question open and says the answer was not sent,
- * the same as a refused answer (issue 1318). No toast says a message could not be shown, and the next Cancel reaches omp
- * and closes the question.
+ * Issue 1387 on real omp. A Cancel that fails to reach omp keeps the question open and says the answer was not sent.
+ * No toast says a message could not be shown, and the next Cancel reaches omp and closes the question.
  */
 realTest(
-  "a Cancel omp refuses keeps the question open and says the answer was not sent",
+  "a Cancel that fails to reach omp keeps the question open and says the answer was not sent",
   async ({ realApp }) => {
-    const { page, refused, refuseNext } = await openRefusingFirstAnswer(realApp);
+    const { page, failed, failNext } = await openFailingFirstAnswer(realApp);
     const composer = await startChat(page);
     await sendPrompt(composer, PROMPT);
     const question = page.getByRole("dialog", { name: QUESTION });
     await expect(question).toBeVisible({ timeout: 45_000 });
 
-    refuseNext();
+    failNext();
     await question.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect.poll(refused, { timeout: 30_000 }).toBe(1);
+    await expect.poll(failed, { timeout: 30_000 }).toBe(1);
     // The question is shown again once the closed one has left: exactly one question on screen, saying the send failed.
     await expect(page.getByRole("dialog")).toHaveCount(1, { timeout: 30_000 });
     await expect(question.getByRole("alert")).toHaveText(NOT_SENT);
@@ -122,28 +122,28 @@ realTest(
     // The next Cancel reaches omp, and the question closes with no toast.
     await question.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(question).toBeHidden({ timeout: 30_000 });
-    expect(refused()).toBe(1);
+    expect(failed()).toBe(1);
     await expect(page.getByText(ROUTING_TOAST)).toHaveCount(0);
     expect(realApp.problems).toEqual([]);
   },
 );
 
 /**
- * Issue 1387 on real omp: an Escape that omp does not receive is a Cancel, so the question is shown again, saying the
- * answer was not sent.
+ * Issue 1387 on real omp: an Escape whose answer fails to reach omp is a Cancel, so the question is shown again,
+ * saying the answer was not sent.
  */
 realTest(
-  "an Escape omp refuses shows the question again, saying the answer was not sent",
+  "an Escape whose answer fails to reach omp shows the question again, saying the answer was not sent",
   async ({ realApp }) => {
-    const { page, refused, refuseNext } = await openRefusingFirstAnswer(realApp);
+    const { page, failed, failNext } = await openFailingFirstAnswer(realApp);
     const composer = await startChat(page);
     await sendPrompt(composer, PROMPT);
     const question = page.getByRole("dialog", { name: QUESTION });
     await expect(question).toBeVisible({ timeout: 45_000 });
 
-    refuseNext();
+    failNext();
     await page.keyboard.press("Escape");
-    await expect.poll(refused, { timeout: 30_000 }).toBe(1);
+    await expect.poll(failed, { timeout: 30_000 }).toBe(1);
     await expect(page.getByRole("dialog")).toHaveCount(1, { timeout: 30_000 });
     await expect(question.getByRole("alert")).toHaveText(NOT_SENT);
     await expect(page.getByText(ROUTING_TOAST)).toHaveCount(0);
@@ -153,7 +153,7 @@ realTest(
 
     await question.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(question).toBeHidden({ timeout: 30_000 });
-    expect(refused()).toBe(1);
+    expect(failed()).toBe(1);
     expect(realApp.problems).toEqual([]);
   },
 );
