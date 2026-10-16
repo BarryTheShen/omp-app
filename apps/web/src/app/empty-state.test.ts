@@ -19,7 +19,7 @@ describe("emptyStateCopy", () => {
 
   test("when a chat failed to open, says why in the error's own words", () => {
     expect(emptyStateCopy({ opening: false, error: failure })).toEqual({
-      title: "Ready when you are",
+      title: "This chat could not open",
       detail: "omp stopped before it could open a chat.",
       composer: null,
     });
@@ -75,6 +75,7 @@ describe("emptyStateCopy", () => {
       },
     });
     expect(copy.detail).toBe("omp stopped while it was starting. Try again.");
+    expect(copy.title).toBe("This chat could not open");
     expect(copy.detail).not.toMatch(/RPC|transport/);
   });
 });
