@@ -218,12 +218,49 @@ describe("app connection launch gate", () => {
           message: "Launch link has expired",
           retryable: false,
         },
-        tokenRefusal: "expired",
+        refusal: "expired",
       }),
     );
     expect(
       await screen.findByRole("heading", { name: "This launch link has expired" }),
     ).toBeTruthy();
+  });
+  test("a disallowed page address is not described as an expired launch link", async () => {
+    const client = makeClient("connecting");
+    render(
+      <AppConnectionProvider
+        createClient={() => client}
+        history={{ replaceState: vi.fn() }}
+        location={pageLocation}
+        storage={{ getItem: () => null, setItem: vi.fn() }}
+      >
+        <AppConnectionGate>
+          <Harness />
+        </AppConnectionGate>
+      </AppConnectionProvider>,
+    );
+    act(() =>
+      client.emit({
+        state: "closed",
+        attempt: 0,
+        error: {
+          code: "permission",
+          message: "This page address is not allowed to reach omp-app",
+          retryable: false,
+        },
+        refusal: "origin",
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "This page address is not allowed to reach omp-app",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Open the URL the app printed when it last started, from the same machine."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/expired/i)).toBeNull();
+    expect(screen.getByRole("main").getAttribute("data-launch-state")).toBe("origin-rejected");
   });
 
   test("a launch link the app never printed says it is not valid, and never that it expired", async () => {
@@ -245,7 +282,7 @@ describe("app connection launch gate", () => {
         state: "closed",
         attempt: 0,
         error: { code: "permission", message: "Launch token is not valid", retryable: false },
-        tokenRefusal: "invalid",
+        refusal: "invalid",
       }),
     );
     expect(
@@ -274,7 +311,7 @@ describe("app connection launch gate", () => {
         state: "closed",
         attempt: 0,
         error: { code: "permission", message: "Launch link has expired", retryable: false },
-        tokenRefusal: "expired",
+        refusal: "expired",
       }),
     );
     expect(

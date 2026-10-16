@@ -49,7 +49,7 @@ export interface AppServer {
 
 export interface UpgradeClose {
   readonly closeCode: 4401 | 4403;
-  readonly reason: "invalid token" | "expired token" | "invalid origin";
+  readonly reason: "invalid token" | "expired token" | "origin not allowed";
 }
 
 export interface UpgradePolicy {
@@ -103,7 +103,7 @@ export function authorizeWebSocketUpgrade(
   const candidate = url.searchParams.get("token") ?? "";
   if (!hostAllowed(request, policy.port)) return forbiddenUpgrade();
   if (!originAllowed(request.headers.get("origin"), policy)) {
-    return { closeCode: 4403, reason: "invalid origin" };
+    return { closeCode: 4403, reason: "origin not allowed" };
   }
   if (!constantTimeEqual(policy.token, candidate)) {
     const expired = policy.earlierLaunchTokens?.has(launchTokenDigest(candidate)) === true;

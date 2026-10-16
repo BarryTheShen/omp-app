@@ -655,7 +655,7 @@ describe("createAppClient", () => {
     expect(states.at(-1)).toMatchObject({
       state: "closed",
       error: { code: "permission", message: "Launch token is not valid" },
-      tokenRefusal: "invalid",
+      refusal: "invalid",
     });
     client.dispose();
   });
@@ -669,7 +669,7 @@ describe("createAppClient", () => {
     expect(states.at(-1)).toMatchObject({
       state: "closed",
       error: { code: "permission", message: "Launch link has expired" },
-      tokenRefusal: "expired",
+      refusal: "expired",
     });
     client.dispose();
   });
@@ -713,16 +713,26 @@ describe("createAppClient", () => {
     client.dispose();
   });
 
-  test("a subscribe made after the connection ended fails, even for a stream already subscribed", async () => {
+  test("a disallowed page address closes the connection as an origin refusal, and later subscribes fail with it", async () => {
     const server = new FakeServer();
     const client = await openClient(server);
+    const states: ConnectionStateEvent[] = [];
+    client.onConnectionState((event) => states.push(event));
     await client.subscribe(EventPort, "updated", { scope: "thread-1" });
-    server.current().socket.onclose?.({ code: 4403 });
+    server.current().socket.onclose?.({ code: 4403, reason: "origin not allowed" });
     await eventually(() => client.connectionState === "closed");
+    expect(states.at(-1)).toMatchObject({
+      state: "closed",
+      error: { code: "permission", message: "This page address is not allowed to reach omp-app" },
+      refusal: "origin",
+    });
     const sameStream = settle(client.subscribe(EventPort, "updated", { scope: "thread-1" }));
     await eventually(() => sameStream.settled);
     expect(sameStream.error).toMatchObject({
-      appError: { code: "permission", message: "WebSocket origin is not allowed" },
+      appError: {
+        code: "permission",
+        message: "This page address is not allowed to reach omp-app",
+      },
     });
     const otherStream = settle(client.subscribe(EventPort, "updated", { scope: "thread-2" }));
     await eventually(() => otherStream.settled);

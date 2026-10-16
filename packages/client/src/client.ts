@@ -43,8 +43,8 @@ export interface ConnectionStateEvent {
   readonly state: ConnectionState;
   readonly attempt: number;
   readonly error?: AppError;
-  /** Why the server refused the launch token: "expired" for a link an earlier start printed, "invalid" for one it never printed. */
-  readonly tokenRefusal?: "expired" | "invalid";
+  /** Why the server refused this connection: an expired/invalid launch link or an unallowed page address. */
+  readonly refusal?: "expired" | "invalid" | "origin";
 }
 
 export type ResyncReason =
@@ -452,18 +452,20 @@ class AppClientImpl implements AppClient {
       const code = closeCode(event);
       if (code === 4401 || code === 4403) {
         this.terminal = true;
-        let tokenRefusal: "expired" | "invalid" | undefined;
-        let message = "WebSocket origin is not allowed";
+        let refusal: ConnectionStateEvent["refusal"];
+        let message = "This page address is not allowed to reach omp-app";
         if (code === 4401) {
           const expired = closeReason(event) === "expired token";
-          tokenRefusal = expired ? "expired" : "invalid";
+          refusal = expired ? "expired" : "invalid";
           message = expired ? "Launch link has expired" : "Launch token is not valid";
+        } else {
+          refusal = "origin";
         }
         const error = appFailure("permission", message, false);
         this.closedFailure = error;
         this.rejectPending(error);
         this.rejectOpenWaiters(error);
-        this.setConnectionState("closed", error.appError, tokenRefusal);
+        this.setConnectionState("closed", error.appError, refusal);
         return;
       }
       this.rejectPending(appFailure("unavailable", "Connection to the app server closed", true));
@@ -861,7 +863,7 @@ class AppClientImpl implements AppClient {
   private setConnectionState(
     state: ConnectionState,
     error?: AppError,
-    tokenRefusal?: "expired" | "invalid",
+    refusal?: ConnectionStateEvent["refusal"],
   ): void {
     if (this._connectionState === state && error === undefined && state !== "connecting") return;
     this._connectionState = state;
@@ -869,7 +871,7 @@ class AppClientImpl implements AppClient {
       state,
       attempt: this.reconnectAttempt,
       ...(error ? { error } : {}),
-      ...(tokenRefusal ? { tokenRefusal } : {}),
+      ...(refusal ? { refusal } : {}),
     };
     for (const listener of this.stateListeners) this.notifyListener(listener, event);
   }

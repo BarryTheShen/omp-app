@@ -351,7 +351,7 @@ describe("A0.6 upgrade and static serving", () => {
         origins: ["http://allowed.test"],
         port: 4317,
       }),
-    ).toEqual({ closeCode: 4403, reason: "invalid origin" });
+    ).toEqual({ closeCode: 4403, reason: "origin not allowed" });
     expect(
       authorizeWebSocketUpgrade(request("right", "http://allowed.test", "evil.test:4317"), {
         token: "right",
@@ -477,7 +477,7 @@ describe("A0.6 upgrade and static serving", () => {
       });
       await expect(close(`${app.url}/ws?token=right`, "http://denied.test")).resolves.toEqual({
         code: 4403,
-        reason: "invalid origin",
+        reason: "origin not allowed",
       });
     } finally {
       void app.stop();

@@ -20,8 +20,9 @@ import {
 /**
  * `reconnecting`: a connection that was open dropped; the app keeps retrying and keeps its screen.
  * `connecting`: the first connection, before the app has ever been open.
- * `rejected`: the server refused the connection with a permission error other than an unknown token; the screen says the link has expired.
- * `invalid-token`: the server refused a launch link that no start of the app ever printed.
+ * `rejected`: the server refused an expired launch link.
+ * `origin-rejected`: the page address is not allowed to connect to the app.
+ * `invalid-token`: the server refused a launch link no start of the app ever printed.
  */
 export type AppConnectionState =
   | "missing-token"
@@ -29,6 +30,7 @@ export type AppConnectionState =
   | "connected"
   | "reconnecting"
   | "rejected"
+  | "origin-rejected"
   | "invalid-token"
   | "closed";
 
@@ -69,13 +71,14 @@ function stateFromClient(
   state: ClientConnectionState,
   error: ConnectionStateEvent["error"],
   hasConnected: boolean,
-  tokenRefusal: ConnectionStateEvent["tokenRefusal"],
+  refusal: ConnectionStateEvent["refusal"],
 ): AppConnectionState {
   if (state === "open") return "connected";
   if (state === "reconnecting") return "reconnecting";
   if (state === "connecting") return hasConnected ? "reconnecting" : "connecting";
   if (error?.code === "permission") {
-    return tokenRefusal === "invalid" ? "invalid-token" : "rejected";
+    if (refusal === "origin") return "origin-rejected";
+    return refusal === "invalid" ? "invalid-token" : "rejected";
   }
   return "closed";
 }
@@ -153,9 +156,9 @@ export function AppConnectionProvider({
     // After UNREACHABLE_AFTER_MS of failed reconnects the snapshot says so, and the banner says what to do.
     let unreachable = false;
     let unreachableTimer: number | undefined;
-    const update = ({ state, attempt, error, tokenRefusal }: ConnectionStateEvent): void => {
+    const update = ({ state, attempt, error, refusal }: ConnectionStateEvent): void => {
       if (state === "open") hasConnected = true;
-      const mappedState = stateFromClient(state, error, hasConnected, tokenRefusal);
+      const mappedState = stateFromClient(state, error, hasConnected, refusal);
       if (mappedState !== "reconnecting") {
         window.clearTimeout(unreachableTimer);
         unreachableTimer = undefined;
@@ -170,11 +173,13 @@ export function AppConnectionProvider({
       const reason =
         mappedState === "rejected"
           ? "Open the URL the app printed when it last started."
-          : mappedState === "invalid-token"
-            ? "Open the full URL the app printed when it last started, including the part after the #."
-            : mappedState === "connecting" && attempt >= 3
-              ? `Can't reach the app server at ${url}. Retrying…`
-              : undefined;
+          : mappedState === "origin-rejected"
+            ? "Open the URL the app printed when it last started, from the same machine."
+            : mappedState === "invalid-token"
+              ? "Open the full URL the app printed when it last started, including the part after the #."
+              : mappedState === "connecting" && attempt >= 3
+                ? `Can't reach the app server at ${url}. Retrying…`
+                : undefined;
       setSnapshot({
         client,
         state: mappedState,
@@ -206,6 +211,7 @@ export function useAppConnection(): AppConnectionSnapshot {
 function LaunchStatusScreen({ state, reason }: Pick<AppConnectionSnapshot, "state" | "reason">) {
   const missing = state === "missing-token";
   const rejected = state === "rejected";
+  const originRejected = state === "origin-rejected";
   const invalid = state === "invalid-token";
   const connecting = state === "connecting";
   return (
@@ -218,13 +224,15 @@ function LaunchStatusScreen({ state, reason }: Pick<AppConnectionSnapshot, "stat
         <h1 className="text-xl font-semibold tracking-tight" id="launch-status-title">
           {missing
             ? "Start omp-app to connect"
-            : rejected
-              ? "This launch link has expired"
-              : invalid
-                ? "This launch link is not valid"
-                : connecting
-                  ? "Connecting to omp-app"
-                  : "Could not connect to omp-app"}
+            : originRejected
+              ? "This page address is not allowed to reach omp-app"
+              : rejected
+                ? "This launch link has expired"
+                : invalid
+                  ? "This launch link is not valid"
+                  : connecting
+                    ? "Connecting to omp-app"
+                    : "Could not connect to omp-app"}
         </h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
           {missing
@@ -253,6 +261,7 @@ export function AppConnectionGate({ children }: { readonly children: ReactNode }
     connection.state === "missing-token" ||
     connection.state === "rejected" ||
     connection.state === "invalid-token" ||
+    connection.state === "origin-rejected" ||
     connection.state === "closed" ||
     (connection.state === "connecting" && connection.reason !== undefined)
   ) {
