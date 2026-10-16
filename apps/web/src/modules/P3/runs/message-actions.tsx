@@ -14,15 +14,15 @@ export interface P3MessageActionsProps {
 }
 
 /**
- * Edit on a user row and Regenerate on an assistant row. Both wait while a turn streams. Regenerate is
- * assistant-ui's Reload, so it reaches R0's onReload with the user message the answer came from.
+ * Edit on a user row and Regenerate on an assistant row. User editing waits while a turn streams.
+ * The assistant action host stays mounted while streaming so assistant-ui's Reload subscription can
+ * reveal the control when the thread settles.
  */
 export function P3MessageActions({ onEdit }: P3MessageActionsProps) {
   const role = useAuiState((state) => state.message.role);
   const running = useAuiState((state) => state.thread.isRunning);
-  if (running) return null;
   if (role === "user") {
-    if (onEdit === undefined) return null;
+    if (running || onEdit === undefined) return null;
     return (
       <div className="flex justify-end px-2 py-1" data-slot="p3-message-actions">
         <Button

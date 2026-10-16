@@ -77,4 +77,14 @@ describe("P3 message actions", () => {
 
     expect(screen.queryByRole("button")).toBeNull();
   });
+  test("keeps the assistant action host mounted while a turn streams", () => {
+    const { container } = render(
+      <Harness messageRole="assistant" onReload={() => undefined} running />,
+    );
+
+    expect(container.querySelector('[data-slot="p3-message-actions"]')).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Regenerate response" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
 });
