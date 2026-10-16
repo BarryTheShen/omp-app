@@ -121,6 +121,11 @@ realTest(
     await composer.focus();
     await composer.press("ArrowUp");
     await expect(composer).toHaveValue("first line\nsecond line");
+    // History restores the caret on the next animation frame; wait for that behavior before
+    // pressing Down, or the test can move from the end of the prompt and browse history instead.
+    await expect
+      .poll(() => composer.evaluate((input: HTMLTextAreaElement) => input.selectionStart))
+      .toBe(0);
     // The caret is on the first line, so Down is the caret's: the prompt stays as it is.
     await composer.press("ArrowDown");
     await expect(composer).toHaveValue("first line\nsecond line");
