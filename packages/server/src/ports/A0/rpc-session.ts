@@ -15,6 +15,7 @@ import {
   type OmpWire,
   type OpenQuestionRecord,
   type OpenThreadArgs,
+  RequestId,
   type RpcSessionEvent,
   RpcSessionPort,
   type RpcSessionPort as RpcSessionPortContract,
@@ -268,6 +269,8 @@ export class RpcSessionPortRuntime {
   readonly #context: A0PortContext;
   readonly #entries = new Map<ThreadId, ThreadEntry>();
   readonly #aliases = new Map<ThreadId, ThreadId>();
+  /** The connections a refused delete's chat is opening again for, until that open ends: `closed` once they close. */
+  readonly #pendingReopens = new Map<string, { closed: boolean }>();
   /** The renames of each chat, one after another: a second rename waits for the first to finish. */
   readonly #renames = new Map<ThreadId, Promise<void>>();
 
@@ -275,7 +278,8 @@ export class RpcSessionPortRuntime {
     this.#context = context;
     context.processRegistry.setIdleHooks({
       isSettled: (threadId) => this.#isSettled(threadId),
-      stopped: (threadId, process) => this.#forgetStopped(threadId, process),
+      stopped: (threadId, process, refusedDelete) =>
+        this.#forgetStopped(threadId, process, refusedDelete),
     });
   }
 
@@ -881,6 +885,8 @@ export class RpcSessionPortRuntime {
    * process registry after its idle time, unless it is still running a turn.
    */
   async releaseConnection(connectionId: string): Promise<void> {
+    const pending = this.#pendingReopens.get(connectionId);
+    if (pending !== undefined) pending.closed = true;
     const stillWatched: ThreadEntry[] = [];
     for (const entry of new Set(this.#entries.values())) {
       const count = entry.viewers.get(connectionId) ?? 0;
@@ -1183,11 +1189,62 @@ export class RpcSessionPortRuntime {
   /**
    * The registry has stopped a thread's process: its entry can't serve again, so the next open builds a fresh one (and
    * resumes the session file) instead of finding a dead process. Told once omp has exited, so omp's exit takes the
-   * entry's viewers with it; a stop that failed leaves the entry, and its viewers, as they were.
+   * entry's viewers with it; a stop that failed leaves the entry, and its viewers, as they were. A stop a refused delete
+   * waited on past the limit keeps the views its tabs count: the chat is opened again for them (`#reopenAfterStop`).
    */
-  #forgetStopped(threadId: ThreadId, process: OmpProcess): void {
+  #forgetStopped(threadId: ThreadId, process: OmpProcess, refusedDelete: boolean): void {
     const entry = this.#entryOrUndefined(threadId);
-    if (entry !== undefined && entry.process === process) this.#forget(entry);
+    if (entry === undefined || entry.process !== process) return;
+    const kept = refusedDelete ? [...entry.viewers] : [];
+    this.#forget(entry);
+    if (kept.length > 0) void this.#reopenAfterStop(threadId, kept);
+  }
+
+  /**
+   * Opens a refused delete's chat again for the tabs that counted views on it when omp stopped. The delete did not remove
+   * the chat, so its file is still there. A chat another omp holds stays closed (the next send says so, see `send`), and
+   * no omp starts on a file another omp writes. A tab that closes while this runs is not given its view back.
+   */
+  async #reopenAfterStop(
+    threadId: ThreadId,
+    kept: readonly (readonly [string, number])[],
+  ): Promise<void> {
+    const signal = new AbortController().signal;
+    const pending = new Map<string, { closed: boolean }>();
+    for (const [connectionId] of kept) {
+      const record = this.#pendingReopens.get(connectionId) ?? { closed: false };
+      this.#pendingReopens.set(connectionId, record);
+      pending.set(connectionId, record);
+    }
+    try {
+      const resolved = await this.#context.resolveThread(threadId, signal);
+      if (resolved === undefined) return;
+      const other = await this.#context.externalOmp(threadId, resolved.sessionFile, undefined);
+      if (other !== "none") return;
+      for (const [connectionId, count] of kept) {
+        // Read through a function: the record changes while an open waits, and TypeScript cannot follow that in a loop.
+        const closed = (): boolean => pending.get(connectionId)?.closed === true;
+        for (let view = 0; view < count && !closed(); view += 1) {
+          await this.open(
+            { threadId },
+            {
+              connectionId,
+              signal,
+              requestId: RequestId.parse(`reopen-${threadId}`),
+              portContext: undefined,
+            },
+          );
+          if (closed()) await this.releaseViews(threadId, connectionId);
+        }
+      }
+    } catch (error) {
+      console.error("[omp-app] could not open a chat again after its refused delete", error);
+    } finally {
+      for (const [connectionId, record] of pending) {
+        if (this.#pendingReopens.get(connectionId) === record)
+          this.#pendingReopens.delete(connectionId);
+      }
+    }
   }
 
   /** Whether omp says the thread is idle; a thread nothing holds counts as idle. */

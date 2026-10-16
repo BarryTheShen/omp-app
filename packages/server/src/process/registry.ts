@@ -55,9 +55,10 @@ export interface OmpProcessIdleHooks {
   /**
    * omp has stopped on purpose and has exited: forget the thread. Told when omp reports that it has stopped, whether the
    * registry started the stop or the thread's owner did (a failed open closes its session that way), and only once omp
-   * has exited, so a stop that failed leaves the thread as it was, with its viewers.
+   * has exited, so a stop that failed leaves the thread as it was, with its viewers. `refusedDelete` says that a delete's
+   * wait for this stop ran past the limit and was refused: the views its connection still counts are the owner's to keep.
    */
-  readonly stopped: (threadId: ThreadId, process: OmpProcess) => void;
+  readonly stopped: (threadId: ThreadId, process: OmpProcess, refusedDelete: boolean) => void;
 }
 
 interface Entry {
@@ -88,6 +89,8 @@ export class OmpProcessRegistry {
   readonly #stuck = new Map<ThreadId, OmpProcess>();
   /** The entry of each thread whose stop is under way, until the stop ends: a release during the stop still counts here. */
   readonly #closing = new Map<ThreadId, Entry>();
+  /** The threads whose delete waited past the stop limit (and was refused) since its last wait; the stop tells its owner. */
+  readonly #refusedDeletes = new Set<ThreadId>();
   #idleHooks: OmpProcessIdleHooks | undefined;
   readonly #busyListeners = new Set<(threadId: ThreadId, busy: boolean) => void>();
 
@@ -111,7 +114,7 @@ export class OmpProcessRegistry {
   async whenGone(threadId: ThreadId, purpose: StopPurpose): Promise<void> {
     const stopping = this.#stopping.get(threadId) ?? this.#retryStuck(threadId);
     if (stopping === undefined) return;
-    await this.#finishedWithin(stopping, purpose);
+    await this.#finishedWithin(stopping, purpose, threadId);
   }
 
   /**
@@ -186,7 +189,7 @@ export class OmpProcessRegistry {
       if (this.#entries.get(entry.key) !== entry) return;
       this.#entries.delete(entry.key);
       entry.unsubscribe();
-      this.#idleHooks?.stopped(entry.key, entry.process);
+      this.#idleHooks?.stopped(entry.key, entry.process, false);
     });
   }
 
@@ -211,21 +214,30 @@ export class OmpProcessRegistry {
    * the session file next does not race that exit; refuses as `whenGone` does when omp does not stop in time.
    */
   async stopIfUnwatched(threadId: ThreadId, purpose: StopPurpose, ownWatchers = 0): Promise<void> {
+    if (purpose === "deleted") this.#refusedDeletes.delete(threadId);
     const entry = this.#entries.get(threadId);
     if (entry !== undefined && entry.watchers <= ownWatchers && !entry.busy) {
       this.#cancelIdle(entry);
       const closed = await this.#closeIfIdle(entry, ownWatchers);
       // A stop this call started is waited for alone: when it fails, this call refuses and does not try it again.
-      if (closed !== undefined) return this.#finishedWithin(closed.stopping, purpose);
+      if (closed !== undefined) return this.#finishedWithin(closed.stopping, purpose, threadId);
     }
     return this.whenGone(threadId, purpose);
   }
 
   /** Waits for a stop to finish, for at most STOP_LIMIT_MS. A stop that fails, or runs past the limit, refuses. */
-  async #finishedWithin(stopping: Promise<void>, purpose: StopPurpose): Promise<void> {
+  async #finishedWithin(
+    stopping: Promise<void>,
+    purpose: StopPurpose,
+    threadId: ThreadId,
+  ): Promise<void> {
     let timeout: unknown;
     const limit = new Promise<never>((_resolve, reject) => {
-      timeout = this.#timer.setTimeout(() => reject(stopRefused(purpose)), STOP_LIMIT_MS);
+      timeout = this.#timer.setTimeout(() => {
+        // A delete that outlasts the limit is refused and its stop goes on: the stop tells the owner (see `stopped`).
+        if (purpose === "deleted") this.#refusedDeletes.add(threadId);
+        reject(stopRefused(purpose));
+      }, STOP_LIMIT_MS);
     });
     try {
       await Promise.race([stopping.catch(() => Promise.reject(stopRefused(purpose))), limit]);
@@ -414,7 +426,8 @@ export class OmpProcessRegistry {
         if (restore !== undefined && this.#closing.get(threadId) === restore) {
           this.#closing.delete(threadId);
         }
-        this.#idleHooks?.stopped(threadId, process);
+        const refusedDelete = this.#refusedDeletes.delete(threadId);
+        this.#idleHooks?.stopped(threadId, process, refusedDelete);
       },
       (error: unknown) => {
         console.error("[omp-app] could not stop an omp process", error);

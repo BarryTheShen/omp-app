@@ -262,6 +262,37 @@ function context(
     health: { status: "ok" },
   };
 }
+
+/**
+ * A context whose stop limit runs out at once: a delete that waits on omp's stop is refused as omp not stopping in time,
+ * and the stop goes on. Other timers never fire, so the idle close cannot run during a test.
+ */
+function contextStopLimitAtOnce(
+  created: FakeProcess[],
+  overrides: Partial<A0PortContext> = {},
+): A0PortContext {
+  return {
+    ...context(created),
+    processRegistry: new OmpProcessRegistry({
+      createProcess: (options: OmpProcessOptions) => {
+        const process = new FakeProcess(options, {
+          threadId: authorityThread,
+          sessionFile: authorityFile,
+        });
+        created.push(process);
+        return process;
+      },
+      timer: {
+        setTimeout: (handler: () => void, delayMs: number) => {
+          if (delayMs === 10 * 1000) handler();
+          return 0;
+        },
+        clearTimeout: () => undefined,
+      },
+    }),
+    ...overrides,
+  };
+}
 type HandlerSet = Readonly<
   Record<string, (args: unknown, context: ServerPortHandlerContext) => unknown>
 >;
@@ -1314,6 +1345,80 @@ describe("A0.7 RpcSessionPort handlers", () => {
 
     gate.resolve();
     await stopping;
+  });
+
+  test("a delete whose stop runs past the limit is refused, and the chat is opened again for the tab that asked once omp has stopped", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = contextStopLimitAtOnce(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("tab"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const gate = Promise.withResolvers<void>();
+    process.stopGate = gate.promise;
+
+    // The tab's delete waits on the stop past its limit: the delete is refused, and omp's stop goes on.
+    await expect(
+      ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1),
+    ).rejects.toMatchObject({
+      appError: { code: "conflict" },
+    });
+    gate.resolve();
+
+    // omp exits; a new omp opens the chat again for the tab, and it answers the tab's next message.
+    for (let turn = 0; turn < 100 && created.length < 2; turn += 1) await Bun.sleep(0);
+    expect(created).toHaveLength(2);
+    await getHandler(handlers, "send")(
+      { threadId: authorityThread, command: { type: "prompt", message: "after the refusal" } },
+      call("tab"),
+    );
+    expect(JSON.stringify(created[1]?.writes)).toContain("after the refusal");
+  });
+
+  test("a refused delete's chat is not opened again while another omp holds it: no omp starts", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = contextStopLimitAtOnce(created, { externalOmp: async () => "running" });
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("tab"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const gate = Promise.withResolvers<void>();
+    process.stopGate = gate.promise;
+    await expect(
+      ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1),
+    ).rejects.toMatchObject({
+      appError: { code: "conflict" },
+    });
+    gate.resolve();
+    for (let turn = 0; turn < 100; turn += 1) await Bun.sleep(0);
+    expect(created).toHaveLength(1);
+    expect(ctx.processRegistry.has(authorityThread)).toBe(false);
+  });
+
+  test("a delete whose stop ends within the limit opens nothing again", async () => {
+    const created: FakeProcess[] = [];
+    const ctx = context(created);
+    const runtime = createA0Runtime(ctx);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet | undefined;
+    if (handlers === undefined) throw new Error("missing the rpc registration");
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("tab"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake process");
+    const gate = Promise.withResolvers<void>();
+    process.stopGate = gate.promise;
+    const deleting = ctx.processRegistry.stopIfUnwatched(authorityThread, "deleted", 1);
+    for (let turn = 0; turn < 100 && !ctx.processRegistry.isStopping(authorityThread); turn += 1) {
+      await Bun.sleep(0);
+    }
+    gate.resolve();
+    await deleting;
+    for (let turn = 0; turn < 100; turn += 1) await Bun.sleep(0);
+    expect(created).toHaveLength(1);
+    expect(ctx.processRegistry.has(authorityThread)).toBe(false);
   });
 
   test("a send to a chat another omp holds, with no omp here, is refused with the sentence and starts no omp", async () => {
