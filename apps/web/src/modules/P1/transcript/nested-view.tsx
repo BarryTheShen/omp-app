@@ -33,7 +33,7 @@ export function NestedAgentTranscript({
 }: NestedAgentTranscriptProps) {
   const transcript = useAgentTranscript(source);
   return (
-    <>
+    <div className="flex w-full min-w-0 flex-col self-stretch">
       <AgentTranscriptBody
         depth={depth}
         parentTaskId={parentTaskId}
@@ -42,6 +42,6 @@ export function NestedAgentTranscript({
         transcript={transcript}
       />
       {controls ? <NestedWorkerControls runtime={source} /> : null}
-    </>
+    </div>
   );
 }

@@ -59,7 +59,7 @@ export function SteerEditor({
 
   return (
     <form
-      className="border-border bg-background flex min-w-0 flex-col gap-2 border-t px-4 py-3"
+      className="border-border bg-background flex w-full min-w-0 flex-col gap-2 border-t px-4 py-3"
       data-slot="p1-steer-editor"
       onSubmit={(event) => {
         event.preventDefault();
@@ -67,7 +67,25 @@ export function SteerEditor({
       }}
     >
       <label className="text-muted-foreground text-xs font-medium" htmlFor={fieldId}>
-        {label === undefined ? "Message to this worker" : `Message to ${label}`}
+        {label === undefined ? (
+          "Message to this worker"
+        ) : (
+          <>
+            Message to{" "}
+            {label.split(".").map((part, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: Segments stay in the worker label's fixed order.
+              <span key={index}>
+                {index > 0 ? (
+                  <>
+                    .
+                    <wbr />
+                  </>
+                ) : null}
+                {part}
+              </span>
+            ))}
+          </>
+        )}
       </label>
       <Textarea
         aria-describedby={describedBy}

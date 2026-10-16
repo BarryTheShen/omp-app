@@ -12,7 +12,7 @@ export function NestedWorkerControls({ runtime }: { readonly runtime: FocusedAge
   const cancel = useNestedCancel(runtime);
   const steer = useSteerEditor({ runtime });
   return (
-    <div className="flex min-w-0 flex-col" data-slot="p1-nested-controls">
+    <div className="flex min-w-0 flex-col self-stretch" data-slot="p1-nested-controls">
       {cancel.control.state === "hidden" ? null : (
         <div className="flex min-w-0 flex-col items-start gap-2 px-4 pt-3">
           <CancelButton control={cancel.control} onCancel={cancel.cancel} title={cancel.title} />
