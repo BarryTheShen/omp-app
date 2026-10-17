@@ -32,9 +32,13 @@ import {
   RECORDED_WORKERS,
   RPC_CREATE_REFUSED_ACTIVE_GOAL,
   recordedWorkerRoster,
+  SYNTHETIC_RECONNECT_STATES,
+  SyntheticReconnectFrameSchema,
+  SyntheticReconnectStateSchema,
 } from ".";
 import goalCapture from "./goal-rpc.capture.jsonl?raw";
 import ratchetCapture from "./ratchet.capture.jsonl?raw";
+import reconnectCapture from "./reconnect.synthetic.jsonl?raw";
 
 function recordedResult(name: string) {
   const found = [...T7_REAL_RESULTS, ...T5_REAL_RESULTS].find((entry) => entry.name === name);
@@ -77,6 +81,96 @@ describe("D8 fixtures are copies of results omp already recorded", () => {
   });
 });
 
+describe("D8 synthetic reconnect fixture", () => {
+  test("validates the invented state constants against every parsed synthetic frame", () => {
+    const frames = reconnectCapture
+      .trim()
+      .split("\n")
+      .map((line) => SyntheticReconnectFrameSchema.parse(JSON.parse(line)));
+    const states = frames
+      .filter((frame) => frame.type === "reconnect_state")
+      .map((frame) => SyntheticReconnectStateSchema.parse(frame.state));
+    expect(states).toEqual(SYNTHETIC_RECONNECT_STATES);
+    expect(states).toHaveLength(3);
+    expect(
+      frames.map((frame) =>
+        frame.type === "connection" ? `connection ${frame.state}` : frame.type,
+      ),
+    ).toEqual([
+      "connection open",
+      "goal_updated",
+      "subagent_lifecycle",
+      "command_result",
+      "reconnect_state",
+      "reconnect_state",
+      "reconnect_state",
+      "connection closed",
+      "connection reconnecting",
+      "goal_updated",
+      "subagent_lifecycle",
+      "command_result",
+      "connection open",
+    ]);
+    expect(frames).toEqual(
+      expect.arrayContaining([
+        {
+          type: "goal_updated",
+          goal: {
+            id: "goal-1",
+            objective: "Measure the reliable response path.",
+            status: "active",
+            tokensUsed: 0,
+            timeUsedSeconds: 0,
+            createdAt: 1,
+            updatedAt: 1,
+          },
+          seq: 2,
+        },
+        {
+          type: "subagent_lifecycle",
+          payload: {
+            id: "worker-1",
+            agent: "worker",
+            agentSource: "bundled",
+            status: "completed",
+            index: 0,
+          },
+          seq: 7,
+        },
+        {
+          type: "command_result",
+          command: "/ratchet improve the answer flow",
+          status: "completed",
+          seq: 8,
+        },
+        { type: "connection", state: "closed", seq: 5 },
+        { type: "connection", state: "reconnecting", afterSeq: 5 },
+      ]),
+    );
+  });
+
+  test("checks the goal and worker frames with the app's own schemas, not a local copy", () => {
+    const lines = reconnectCapture
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const goal = lines.find((frame) => frame.type === "goal_updated");
+    const worker = lines.find((frame) => frame.type === "subagent_lifecycle");
+
+    expect(SyntheticReconnectFrameSchema.safeParse(goal).success).toBe(true);
+    expect(SyntheticReconnectFrameSchema.safeParse(worker).success).toBe(true);
+    expect(
+      SyntheticReconnectFrameSchema.safeParse({ ...goal, goal: { ...goal.goal, tokensUsed: -1 } })
+        .success,
+    ).toBe(false);
+    expect(
+      SyntheticReconnectFrameSchema.safeParse({
+        ...worker,
+        payload: { ...worker.payload, index: -1 },
+      }).success,
+    ).toBe(false);
+  });
+});
 describe("D8 ratchet gateway recording", () => {
   test("captures the full request and kickoff turn in a canonical fixture", () => {
     const parsedFixture = parseFixture(ratchetCapture);
@@ -315,6 +409,8 @@ describe("D8 fixtures are scrubbed", () => {
       capabilities: [GOAL_RPC_AVAILABLE, GOAL_RPC_UNAVAILABLE, OMP_WORKER_CAPABILITIES],
       workers: RECORDED_WORKERS,
       roster: recordedWorkerRoster(),
+      reconnectStates: SYNTHETIC_RECONNECT_STATES,
+      rawSyntheticReconnectFixture: reconnectCapture,
       rawCapture: goalCapture,
       rawRatchetCapture: ratchetCapture,
     });
