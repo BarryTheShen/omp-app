@@ -826,6 +826,27 @@ describe("P4 tree selector model and views", () => {
     expect(model.rows.at(-1)?.entryId).toBe(`deep-entry-${count - 1}`);
   });
 
+  test("offers Fork here for the selected message in the picker", () => {
+    const onFork = vi.fn();
+    const snapshot = treeSnapshot();
+    const state = selectorState({ selectedEntryId: siblingId });
+    const model = createP4TreeSelectorViewModel(snapshot, state);
+    render(
+      <P4TreePickerDialogView
+        actions={staticActions()}
+        activeEntryId={leafId}
+        description="Rewind continues from before the message you mark; Fork copies the conversation up to and including it. Your current conversation is kept."
+        model={model}
+        onCancel={() => undefined}
+        onConfirm={() => undefined}
+        onFork={onFork}
+        title="Choose a message"
+        confirmLabel="Rewind here"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fork here" }));
+    expect(onFork).toHaveBeenCalledOnce();
+  });
   test("composes PanelShell and the app-owned picker with restored focus", async () => {
     const onConfirm = vi.fn();
     function PickerHarness() {

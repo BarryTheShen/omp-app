@@ -1,7 +1,7 @@
-import { readdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest } from "./real-omp";
+import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
 
 const HISTORY_CHORD = "Control+Shift+H";
 const at = Date.UTC(2026, 9, 15, 10, 0);
@@ -109,6 +109,15 @@ async function sessionFiles(agentDir: string): Promise<string[]> {
   }
 }
 
+async function capturePicker(page: Page, name: string): Promise<void> {
+  const picker = page.getByTestId("tree-picker-dialog");
+  const font = await picker.evaluate((element) => getComputedStyle(element).fontFamily);
+  expect(font).not.toMatch(/Times/);
+  await mkdir(screenshots, { recursive: true });
+  await waitForFiniteAnimations(page);
+  await page.screenshot({ path: join(screenshots, name), fullPage: true });
+}
+
 realTest(
   "the real W6 session lists entries, rewinds from an earlier message, keeps its label, and leaves the source intact",
   async ({ realApp }) => {
@@ -123,7 +132,7 @@ realTest(
     const second = tree.getByRole("treeitem", { name: /second W6 message/ });
     await second.click();
     await page.getByRole("button", { name: "Choose a message" }).click();
-    const picker = page.getByRole("dialog", { name: "Choose where to rewind" });
+    const picker = page.getByRole("dialog", { name: "Choose a message" });
     const selected = picker.getByRole("treeitem", { name: /second W6 message/ });
     await selected.click();
     await expect(selected).toHaveAttribute("aria-selected", "true");
@@ -178,6 +187,77 @@ realTest(
     labels = page.getByRole("region", { name: "Labels" });
     await expect(labels.getByText("W6 checkpoint", { exact: true })).toBeVisible();
     await expect(labels.getByText("1 label", { exact: true })).toBeVisible();
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+realTest(
+  "the real W6 session forks from an earlier message, keeps the source and label, and reloads the forked head",
+  async ({ realApp }) => {
+    const page = await realApp.open();
+    const sourceUpdatedAt = await openSeededSession(page);
+    await openHistoryPanel(page);
+
+    const tree = page.getByRole("tree", { name: "Conversation messages" });
+    const second = tree.getByRole("treeitem", { name: /second W6 message/ });
+    await second.click();
+    await page.getByRole("button", { name: "Choose a message" }).click();
+    const picker = page.getByRole("dialog", { name: "Choose a message" });
+    await picker.getByRole("treeitem", { name: /second W6 message/ }).click();
+    const third = picker.getByRole("treeitem", { name: /third W6 message/ });
+    await third.focus();
+    await expect(picker.getByRole("treeitem", { name: /second W6 message/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await capturePicker(page, "p4-6-fork-picker-light.png");
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await capturePicker(page, "p4-6-fork-picker-dark.png");
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await capturePicker(page, "p4-6-fork-picker-narrow.png");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await picker.getByRole("button", { name: "Fork here", exact: true }).click();
+
+    const transcript = page.getByRole("region", { name: "Conversation transcript" });
+    await expect(transcript.getByText("first W6 message", { exact: true })).toBeVisible({
+      timeout: 120_000,
+    });
+    await expect(transcript.getByText("second W6 message", { exact: true })).toBeVisible();
+    await expect(transcript.getByText("third W6 message", { exact: true })).toHaveCount(0);
+    await page.reload();
+
+    const sessions = page.getByRole("listbox", { name: "Session list" });
+    const options = sessions.getByRole("option");
+    await expect(options).toHaveCount(2, { timeout: 60_000 });
+    const source = options.filter({ has: page.locator(`time[datetime="${sourceUpdatedAt}"]`) });
+    await expect(source).toHaveCount(1);
+    await source.click();
+    await expect(transcript.getByText("third W6 message", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
+    await openHistoryPanel(page);
+    const labels = page.getByRole("region", { name: "Labels" });
+    await expect(labels.getByText("W6 checkpoint", { exact: true })).toBeVisible();
+    await expect(labels.getByText("1 label", { exact: true })).toBeVisible();
+
+    await page.reload();
+    await expect(options).toHaveCount(2, { timeout: 60_000 });
+    const forked = options.filter({
+      hasNot: page.locator(`time[datetime="${sourceUpdatedAt}"]`),
+    });
+    await expect(forked).toHaveCount(1);
+    await forked.click();
+    await expect(transcript.getByText("first W6 message", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(transcript.getByText("second W6 message", { exact: true })).toBeVisible();
+    await expect(transcript.getByText("third W6 message", { exact: true })).toHaveCount(0);
+    await openHistoryPanel(page);
+    await expect(
+      page.getByRole("region", { name: "Labels" }).getByText("W6 checkpoint"),
+    ).toBeVisible();
     expect(realApp.problems).toEqual([]);
   },
 );

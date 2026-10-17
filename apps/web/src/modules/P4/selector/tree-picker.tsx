@@ -36,6 +36,8 @@ export interface P4TreePickerDialogViewProps {
   readonly confirmLabel: string;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
+  readonly onFork?: () => void;
+  readonly forkDisabled?: boolean;
 }
 
 /** Opens the app-owned picker in the large modal frame used for scrollable selections. */
@@ -88,6 +90,8 @@ export function P4TreePickerDialogView({
   confirmLabel,
   onCancel,
   onConfirm,
+  onFork,
+  forkDisabled = false,
 }: P4TreePickerDialogViewProps) {
   return (
     <div
@@ -110,6 +114,11 @@ export function P4TreePickerDialogView({
         <Button disabled={!model.canSelect} type="button" onClick={onConfirm}>
           {confirmLabel}
         </Button>
+        {onFork ? (
+          <Button disabled={!model.canSelect || forkDisabled} type="button" onClick={onFork}>
+            Fork here
+          </Button>
+        ) : null}
       </Toolbar>
     </div>
   );

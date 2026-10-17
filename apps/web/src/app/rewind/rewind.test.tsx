@@ -66,20 +66,35 @@ const TREE: readonly TreeNode[] = [
       },
     ],
   },
+  {
+    entry: {
+      type: "branch_summary",
+      id: "e-summary" as EntryId,
+      parentId: null,
+      timestamp: "2026-10-07T10:05:00.000Z",
+      summary: "Saved summary",
+    },
+    children: [],
+  },
 ];
 
 const AVAILABLE: CapabilityMap = {
   "omp.cmd.get_tree": { state: "available", via: "rpc" },
   "omp.cmd.branch": { state: "available", via: "rpc" },
+  "omp.cmd.fork": { state: "available", via: "rpc" },
 };
 
-/** A fake omp: the tree, a branch that always succeeds, and the new session's identity. */
-function fakeOmp(calls: string[]): RpcSessionSend {
+/** A fake omp: the tree, branch and fork commands, and the new session's identity. */
+function fakeOmp(calls: string[], failFork = false): RpcSessionSend {
   const answer = async (args: { command: { type: string; entryId?: string } }) => {
     const { command } = args;
-    calls.push(command.type === "branch" ? `branch ${command.entryId}` : command.type);
+    calls.push(`${command.type}${command.entryId ? ` ${command.entryId}` : ""}`);
     if (command.type === "get_tree") return { tree: TREE, leafId: "e-4" };
     if (command.type === "branch") return { text: "", cancelled: false };
+    if (command.type === "fork") {
+      if (failFork) throw new Error("internal");
+      return { text: "", cancelled: false };
+    }
     if (command.type === "get_state") return { sessionId: "branched-thread" };
     throw new Error(`The fake omp does not answer ${command.type}.`);
   };
@@ -287,12 +302,73 @@ describe("rewind panel", () => {
     await screen.findByRole("tree", { name: "Conversation messages" });
 
     fireEvent.click(screen.getByRole("button", { name: "Choose a message" }));
-    const dialog = await screen.findByRole("dialog", { name: "Choose where to rewind" });
+    const dialog = await screen.findByRole("dialog", { name: "Choose a message" });
     fireEvent.click(within(dialog).getByRole("treeitem", { name: /Run the tests first/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Rewind here" }));
 
     await waitFor(() => expect(switched).toEqual(["branched-thread"]));
     expect(calls).toContain("branch e-3");
+  });
+  test("forks the marked message even after focus moves, then switches to the fork", async () => {
+    const calls: string[] = [];
+    const switched: ThreadId[] = [];
+    const { registry } = renderRewind({
+      send: fakeOmp(calls),
+      switchThread: async (next) => {
+        switched.push(next);
+      },
+    });
+    openFromPalette(registry());
+    await screen.findByRole("tree", { name: "Conversation messages" });
+    fireEvent.click(screen.getByRole("button", { name: "Choose a message" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a message" });
+    const marked = within(dialog).getByRole("treeitem", { name: /Run the tests first/ });
+    fireEvent.click(marked);
+    within(dialog)
+      .getByRole("treeitem", { name: /All tests pass/ })
+      .focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fork here" }));
+    await waitFor(() => expect(switched).toEqual(["branched-thread"]));
+    expect(calls).toContain("fork e-3");
+  });
+
+  test("explains when forking is unavailable and omits the action", async () => {
+    const capabilities = { ...AVAILABLE };
+    delete capabilities["omp.cmd.fork"];
+    const { registry } = renderRewind({ capabilities });
+    openFromPalette(registry());
+    await screen.findByRole("tree", { name: "Conversation messages" });
+    fireEvent.click(screen.getByRole("button", { name: "Choose a message" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a message" });
+    expect(within(dialog).queryByRole("button", { name: "Fork here" })).toBeNull();
+    expect(within(dialog).getByText(/Fork isn't available with this version of omp/)).toBeTruthy();
+  });
+
+  test("shows a safe fork failure message", async () => {
+    const calls: string[] = [];
+    const { registry } = renderRewind({ send: fakeOmp(calls, true) });
+    openFromPalette(registry());
+    await screen.findByRole("tree", { name: "Conversation messages" });
+    fireEvent.click(screen.getByRole("button", { name: "Choose a message" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a message" });
+    fireEvent.click(within(dialog).getByRole("treeitem", { name: /Run the tests first/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fork here" }));
+    expect(await screen.findByText("The conversation couldn't be forked. Try again.")).toBeTruthy();
+    expect(calls).toContain("fork e-3");
+  });
+
+  test("does not fork the marked non-message row", async () => {
+    const calls: string[] = [];
+    const { registry } = renderRewind({ send: fakeOmp(calls) });
+    openFromPalette(registry());
+    await screen.findByRole("tree", { name: "Conversation messages" });
+    fireEvent.click(screen.getByRole("button", { name: "Choose a message" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a message" });
+    fireEvent.click(within(dialog).getByRole("treeitem", { name: /Saved summary/ }));
+    expect(within(dialog).getByRole("button", { name: "Fork here" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(calls.some((call) => call.startsWith("fork"))).toBe(false);
   });
 
   test("switching to another conversation closes the panel", async () => {

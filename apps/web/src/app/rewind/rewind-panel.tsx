@@ -28,9 +28,10 @@ export interface RewindPanelProps {
   readonly onClose: () => void;
 }
 
-const PICKER_TITLE = "Choose where to rewind";
+const PICKER_TITLE = "Choose a message";
 const PICKER_DESCRIPTION =
-  "Continue from before this message in a new branch. The current conversation is kept.";
+  "Rewind continues from before the message you mark; Fork copies the conversation up to and including it. Your current conversation is kept.";
+const FORK_UNAVAILABLE_REASON = "Fork isn't available with this version of omp.";
 
 /**
  * The rewind tree in the right-hand panel. Choosing a message (Enter on the marked one, or the
@@ -61,8 +62,8 @@ export function RewindPanel({
   const tree = useRewindTree(port, threadId, store);
   const [filter, setFilter] = useState<TreeSelectorFilter>({ query: "", showLabels: true });
   const [selectedEntryId, setSelectedEntryId] = useState<EntryId | null>(null);
-  const [rewinding, setRewinding] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [transitioning, setTransitioning] = useState<"rewind" | "fork" | null>(null);
   const state: TreeSelectorState = {
     threadId,
     filter,
@@ -91,16 +92,37 @@ export function RewindPanel({
       return;
     }
     setFailure(null);
-    setRewinding(true);
+    setTransitioning("rewind");
     transitions.branch({ threadId, entryId }).then(
       () => {
         // The thread switch closes this panel; nothing else to publish here.
-        if (mounted.current) setRewinding(false);
+        if (mounted.current) setTransitioning(null);
       },
       (error: unknown) => {
         if (!mounted.current) return;
-        setRewinding(false);
+        setTransitioning(null);
         setFailure(rewindFailureMessage(error));
+      },
+    );
+  };
+
+  const fork = (entryId: EntryId): void => {
+    const snapshot = tree.snapshot;
+    const entry = snapshot === null ? undefined : treeEntry(snapshot.tree, entryId);
+    if (entry?.type !== "message") {
+      setFailure("Choose a message to fork from.");
+      return;
+    }
+    setFailure(null);
+    setTransitioning("fork");
+    transitions.fork({ threadId, entryId }).then(
+      () => {
+        if (mounted.current) setTransitioning(null);
+      },
+      () => {
+        if (!mounted.current) return;
+        setTransitioning(null);
+        setFailure("The conversation couldn't be forked. Try again.");
       },
     );
   };
@@ -155,6 +177,7 @@ export function RewindPanel({
     tree.isLoading,
     tree.snapshot,
   ]);
+  const forkAvailable = transitions.getCapabilities()["omp.cmd.fork"]?.state === "available";
 
   const openPicker = (trigger: HTMLButtonElement): void => {
     openP4TreePickerDialog({
@@ -170,6 +193,15 @@ export function RewindPanel({
             close("programmatic");
             rewind(entryId);
           }}
+          onFork={
+            forkAvailable
+              ? (entryId) => {
+                  close("programmatic");
+                  fork(entryId);
+                }
+              : undefined
+          }
+          forkUnavailableReason={forkAvailable ? undefined : FORK_UNAVAILABLE_REASON}
         />
       ),
     });
@@ -189,9 +221,13 @@ export function RewindPanel({
         <p className="text-danger px-4 py-2 text-xs" role="alert">
           {failure}
         </p>
-      ) : rewinding ? (
+      ) : transitioning === "rewind" ? (
         <p className="text-muted-foreground px-4 py-2 text-xs" role="status">
           Rewinding the conversation…
+        </p>
+      ) : transitioning === "fork" ? (
+        <p className="text-muted-foreground px-4 py-2 text-xs" role="status">
+          Forking the conversation…
         </p>
       ) : null}
       {labels === null ? null : (
@@ -225,10 +261,19 @@ interface RewindPickerProps {
   readonly snapshot: TreeSnapshot | null;
   readonly onCancel: () => void;
   readonly onConfirm: (entryId: EntryId) => void;
+  readonly onFork?: (entryId: EntryId) => void;
+  readonly forkUnavailableReason?: string;
 }
 
-/** The picker dialog for choosing the message to rewind to; its own selection starts where the panel's was. */
-function RewindPicker({ initialState, snapshot, onCancel, onConfirm }: RewindPickerProps) {
+/** The picker starts with the panel's marked message and offers rewind or fork from that selection. */
+function RewindPicker({
+  initialState,
+  snapshot,
+  onCancel,
+  onConfirm,
+  onFork,
+  forkUnavailableReason,
+}: RewindPickerProps) {
   const [state, setState] = useState(initialState);
   const controller = useP4TreeSelectorController({
     snapshot,
@@ -243,10 +288,28 @@ function RewindPicker({ initialState, snapshot, onCancel, onConfirm }: RewindPic
       actions={controller.actions}
       activeEntryId={controller.activeEntryId}
       confirmLabel="Rewind here"
-      description={PICKER_DESCRIPTION}
+      description={
+        forkUnavailableReason === undefined
+          ? PICKER_DESCRIPTION
+          : `${PICKER_DESCRIPTION} ${forkUnavailableReason}`
+      }
       model={controller.viewModel}
       onCancel={onCancel}
+      forkDisabled={
+        onFork !== undefined &&
+        (snapshot === null ||
+          controller.viewModel.selectedEntryId === null ||
+          treeEntry(snapshot.tree, controller.viewModel.selectedEntryId)?.type !== "message")
+      }
       onConfirm={controller.actions.onConfirmSelection}
+      onFork={
+        onFork === undefined
+          ? undefined
+          : () => {
+              const id = controller.viewModel.selectedEntryId;
+              if (controller.viewModel.canSelect && id !== null) onFork(id);
+            }
+      }
       title={PICKER_TITLE}
     />
   );
