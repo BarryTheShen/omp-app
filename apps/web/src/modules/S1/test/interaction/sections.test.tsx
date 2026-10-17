@@ -481,10 +481,22 @@ describe("S1.4 interaction settings sections", () => {
     });
 
     render(<SettingsSection descriptor={APPROVALS_SECTION} snapshot={snapshot} />);
-    expect(screen.getByLabelText("Tool name 1")).toHaveProperty("value", "bash");
-    expect(screen.getByLabelText("Policy 1")).toHaveProperty("value", "allow");
-    expect(screen.getByLabelText("Tool name 2")).toHaveProperty("value", "task");
-    expect(screen.getByLabelText("Policy 2")).toHaveProperty("value", "prompt");
+    expect(screen.getByLabelText("Tool Approval Policies: Tool name 1")).toHaveProperty(
+      "value",
+      "bash",
+    );
+    expect(screen.getByLabelText("Tool Approval Policies: Policy 1")).toHaveProperty(
+      "value",
+      "allow",
+    );
+    expect(screen.getByLabelText("Tool Approval Policies: Tool name 2")).toHaveProperty(
+      "value",
+      "task",
+    );
+    expect(screen.getByLabelText("Tool Approval Policies: Policy 2")).toHaveProperty(
+      "value",
+      "prompt",
+    );
     expect(
       screen.getByText("Source: Saved for all projects · overrides omp's default"),
     ).toBeTruthy();

@@ -25,7 +25,7 @@ realTest(
     await sendPrompt(composer, "Please make_todos for the release.");
     await expect(page.getByText("Write the thing").first()).toBeVisible({ timeout: 90_000 });
 
-    const row = page.getByRole("tablist", { name: "Panels" });
+    const row = page.getByRole("tablist", { name: "Panel tabs" });
     const todo = row.getByRole("tab", { name: "Todo checklist" });
     const context = row.getByRole("tab", { name: "Context" });
     const agents = row.getByRole("tab", { name: "Agents" });

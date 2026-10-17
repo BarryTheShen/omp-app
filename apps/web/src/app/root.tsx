@@ -1642,7 +1642,10 @@ function ActiveThreadReady({
       capabilities,
       admitTurn: (turn) => store?.admitVoiceTurn(turn),
     }),
-    mode: { title: "Input mode", render: () => <ModeIndicator capabilities={capabilities} /> },
+    mode: {
+      title: "Input mode",
+      render: () => <ModeIndicator capabilities={capabilities} />,
+    },
     queue: {
       title: "Queued messages",
       open: queueOpen,
@@ -2586,7 +2589,6 @@ function ConnectedApp({
           <LayoutArea area="header" capabilities={capabilities} surfaces={emptyHeaderSurfaces} />
         }
         leftSidebar={leftSidebar}
-        rightSidebar={<div className="text-muted-foreground p-4 text-sm">No panel selected.</div>}
         transcript={
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex min-h-0 flex-1 flex-col">

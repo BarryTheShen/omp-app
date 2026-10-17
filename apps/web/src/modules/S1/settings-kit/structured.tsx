@@ -1,6 +1,7 @@
 import type { JsonValue } from "@omp-app/contracts";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { InlineError } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -56,13 +57,44 @@ function FieldInput({
   label,
   disabled,
   onChange,
+  onReset,
 }: {
   readonly field: SettingField;
   readonly value: string;
   readonly label: string;
   readonly disabled: boolean;
   readonly onChange: (value: string) => void;
+  readonly onReset: () => void;
 }) {
+  const unrecognized =
+    (field.kind === "boolean" && value !== "true" && value !== "false") ||
+    (field.kind === "enum" &&
+      !(field.options ?? []).some((option) => String(option.value) === value));
+  if (unrecognized) {
+    return (
+      <div className="basis-full">
+        <InlineError
+          actions={
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                onReset();
+              }}
+              disabled={disabled}
+            >
+              {field.kind === "boolean"
+                ? "Turn off"
+                : `Use ${field.options?.[0]?.label ?? "first option"}`}
+            </Button>
+          }
+          message="This field has an unrecognized value."
+          variant="compact"
+        />
+      </div>
+    );
+  }
   if (field.kind === "boolean") {
     return (
       <label className={checkboxRowLook(disabled)}>
@@ -181,6 +213,19 @@ export function StructuredEditor({
   const listRef = useRef<HTMLFieldSetElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
   const focusAfterEdit = useRef<number | "add" | undefined>(undefined);
+  const focusAfterReset = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const resetLabel = focusAfterReset.current;
+    if (resetLabel !== undefined) {
+      focusAfterReset.current = undefined;
+      window.setTimeout(() => {
+        const element = Array.from(
+          listRef.current?.querySelectorAll<HTMLElement>("[aria-label]") ?? [],
+        ).find((candidate) => candidate.getAttribute("aria-label") === resetLabel);
+        element?.focus();
+      }, 0);
+    }
+  });
   useEffect(() => {
     const target = focusAfterEdit.current;
     if (target === undefined) return;
@@ -215,7 +260,7 @@ export function StructuredEditor({
                 disabled={disabled}
                 field={definition}
                 key={field}
-                label={`${definition.label} ${position}`}
+                label={`${control.label}: ${definition.label} ${position}`}
                 value={row.values[field] ?? ""}
                 onChange={(text) =>
                   update(
@@ -226,6 +271,25 @@ export function StructuredEditor({
                     ),
                   )
                 }
+                onReset={() => {
+                  focusAfterReset.current = `${control.label}: ${definition.label} ${position}`;
+                  update(
+                    rows.map((candidate) =>
+                      candidate.id === row.id
+                        ? {
+                            ...candidate,
+                            values: {
+                              ...candidate.values,
+                              [field]:
+                                definition.kind === "boolean"
+                                  ? "false"
+                                  : String(definition.options?.[0]?.value ?? ""),
+                            },
+                          }
+                        : candidate,
+                    ),
+                  );
+                }}
               />
             ))}
             {ordered ? (

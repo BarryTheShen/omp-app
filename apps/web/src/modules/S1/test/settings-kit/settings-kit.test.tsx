@@ -1,5 +1,5 @@
 import type { ConfigEntry, JsonValue } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -247,6 +247,45 @@ describe("S1 settings section", () => {
     expect(screen.getByRole("combobox")).toBeTruthy();
     expect(screen.getByRole("spinbutton")).toBeTruthy();
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
+  });
+
+  test("unrecognized stored values name their recovery choices and return focus to the control", async () => {
+    const malformed: ConfigSnapshot = {
+      ...snapshot,
+      entries: snapshot.entries.map((entry) =>
+        entry.key === "appearance.enabled"
+          ? { ...entry, value: "yes" }
+          : entry.key === "appearance.mode"
+            ? { ...entry, value: "bogus" }
+            : entry,
+      ),
+    };
+    function Harness() {
+      const [staged, setStaged] = useState<StagedSettings>({ snapshot: malformed, edits: {} });
+      return (
+        <SettingsSection
+          descriptor={descriptor}
+          snapshot={malformed}
+          staged={staged}
+          onStage={setStaged}
+        />
+      );
+    }
+
+    render(<Harness />);
+    expect(screen.getAllByText("This setting has an unrecognized value.")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Turn off" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use System" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Turn off" }));
+    const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
+    await waitFor(() => expect(document.activeElement).toBe(checkbox));
+    expect(checkbox.checked).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Use System" }));
+    const mode = screen.getByRole("combobox", { name: "Mode" }) as HTMLSelectElement;
+    await waitFor(() => expect(document.activeElement).toBe(mode));
+    expect(mode.value).toBe("system");
   });
 
   test("keeps the unconfigured source label unchanged", () => {
@@ -596,7 +635,9 @@ describe("S1 structured settings", () => {
     };
     render(<SettingsSection descriptor={modelDescriptor} snapshot={modelSnapshot} />);
     expect(screen.getByPlaceholderText("provider/model, provider/model")).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: "Model selector 1" })).toBeTruthy();
+    expect(
+      screen.getByRole("textbox", { name: "Agent Model Overrides: Model selector 1" }),
+    ).toBeTruthy();
   });
 
   test("edits a map in place: add, change, remove, and blocks Save while a row is wrong", async () => {
@@ -623,12 +664,19 @@ describe("S1 structured settings", () => {
     }
     render(<Harness />);
     const save = () => screen.getByRole("button", { name: "Save changes" });
-    expect(screen.getByLabelText("Provider name 1")).toHaveProperty("value", "openai");
+    expect(screen.getByLabelText("Max In-Flight Requests: Provider name 1")).toHaveProperty(
+      "value",
+      "openai",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
-    fireEvent.change(screen.getByLabelText("Request limit 2"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Max In-Flight Requests: Request limit 2"), {
+      target: { value: "2" },
+    });
     expect(screen.getByRole("alert").textContent).toBe("Enter a provider name.");
     expect(save()).toHaveProperty("disabled", true);
-    fireEvent.change(screen.getByLabelText("Provider name 2"), { target: { value: "anthropic" } });
+    fireEvent.change(screen.getByLabelText("Max In-Flight Requests: Provider name 2"), {
+      target: { value: "anthropic" },
+    });
     expect(screen.queryByRole("alert")).toBeNull();
     expect(stagedValues.at(-1)).toEqual({ openai: 4, anthropic: 2 });
     expect(save()).toHaveProperty("disabled", false);
@@ -636,8 +684,11 @@ describe("S1 structured settings", () => {
     expect(stagedValues.at(-1)).toEqual({ anthropic: 2 });
     // Cancel drops the rows being edited and shows the stored value again.
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByLabelText("Provider name 1")).toHaveProperty("value", "openai");
-    expect(screen.queryByLabelText("Provider name 2")).toBeNull();
+    expect(screen.getByLabelText("Max In-Flight Requests: Provider name 1")).toHaveProperty(
+      "value",
+      "openai",
+    );
+    expect(screen.queryByLabelText("Max In-Flight Requests: Provider name 2")).toBeNull();
   });
 
   test("moves ordered rows and stages the new order", () => {

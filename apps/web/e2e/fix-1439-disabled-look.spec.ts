@@ -69,7 +69,10 @@ async function reachApprovalConflict(page: Page, agentDir: string): Promise<Loca
   await settings.getByRole("button", { name: "Interaction", exact: true }).click();
   await page.getByRole("option", { name: "Tool Approval", exact: true }).click();
   const mode = settings.getByRole("combobox", { name: "Tool Approval", exact: true });
-  const policy = settings.getByRole("combobox", { name: "Policy 1", exact: true });
+  const policy = settings.getByRole("combobox", {
+    name: "Tool Approval Policies: Policy 1",
+    exact: true,
+  });
   await expect(mode).toBeEnabled({ timeout: 30_000 });
   await expectLooksEnabled([mode, policy]);
   await mode.selectOption("write");
@@ -198,7 +201,10 @@ realTest(
     await page.setViewportSize({ width: 1280, height: 1100 });
     const settings = await reachApprovalConflict(page, realApp.agentDir);
     const mode = settings.getByRole("combobox", { name: "Tool Approval", exact: true });
-    const policy = settings.getByRole("combobox", { name: "Policy 1", exact: true });
+    const policy = settings.getByRole("combobox", {
+      name: "Tool Approval Policies: Policy 1",
+      exact: true,
+    });
     await expect(mode).toBeDisabled();
     await expect(policy).toBeDisabled();
     await settle(page);

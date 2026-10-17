@@ -166,7 +166,7 @@ function PanelArea({ panels }: { readonly panels: ListedPanels }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-layout-area="panels">
       <div
-        aria-label="Panels"
+        aria-label="Panel tabs"
         className="border-border flex flex-wrap gap-1 border-b px-2 py-1"
         role="tablist"
       >

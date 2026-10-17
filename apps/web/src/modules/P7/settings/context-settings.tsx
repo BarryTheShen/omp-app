@@ -761,7 +761,7 @@ function CompactionMethodOrderSetting({
           return (
             <div className="flex flex-wrap items-center gap-2" key={method}>
               <label className="sr-only" htmlFor={`p7-method-${index}`}>
-                Method {index + 1}
+                {control.label}: Method {index + 1}
               </label>
               <select
                 className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 min-w-0 flex-1 basis-full rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2 md:basis-auto md:min-w-40"

@@ -813,9 +813,12 @@ describe("the compaction method order and the list fields", () => {
   test("choosing a method that is already in the order swaps the two", async () => {
     const store = fakeStore(withDefaults(COMPACTION_SECTION, []));
     const section = await renderSection(store, COMPACTION_SECTION);
-    fireEvent.change(within(section).getByRole("combobox", { name: "Method 1" }), {
-      target: { value: "handoff" },
-    });
+    fireEvent.change(
+      within(section).getByRole("combobox", { name: "Compaction Method Order: Method 1" }),
+      {
+        target: { value: "handoff" },
+      },
+    );
     fireEvent.click(within(section).getByRole("button", { name: "Save changes" }));
     await within(section).findByText("Applied");
 

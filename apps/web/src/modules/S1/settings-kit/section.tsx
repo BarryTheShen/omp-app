@@ -1,6 +1,14 @@
 import type { ConfigEntry } from "@omp-app/contracts";
 import { cn } from "cn";
-import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { InlineError, Section, SettingRow, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -219,6 +227,32 @@ function SettingControlRow({
   const unsetSecret = () => onSecretAction?.(control.key, "unset");
   const secretActionLabel = secret?.isSet ? "Replace…" : "Set…";
   const invalid = validation !== undefined && !validation.valid;
+  const firstEnumOption = control.kind === "enum" ? control.options?.[0] : undefined;
+  const enumMatchesOption =
+    control.kind === "enum" &&
+    effectiveValue !== undefined &&
+    (control.options ?? []).some((option) => String(option.value) === String(effectiveValue));
+  const unrecognized =
+    !control.secret &&
+    !control.readOnly &&
+    effectiveValue !== undefined &&
+    ((control.kind === "boolean" && typeof effectiveValue !== "boolean") ||
+      (control.kind === "enum" &&
+        firstEnumOption !== undefined &&
+        !enumMatchesOption &&
+        !validate(control, { secret: false, value: effectiveValue }, snapshot).valid));
+  const resetLabel =
+    control.kind === "boolean" ? "Turn off" : `Use ${firstEnumOption?.label ?? "first option"}`;
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+  const returnFocusAfterReset = useRef(false);
+  const setInputRef = useCallback((input: HTMLInputElement | HTMLSelectElement | null) => {
+    inputRef.current = input;
+    if (input && returnFocusAfterReset.current) {
+      returnFocusAfterReset.current = false;
+      input.focus();
+    }
+  }, []);
+
   // What the person typed, kept so that a value the setting does not accept stays in the field under its error
   // message: such a value is never staged, so the field would otherwise jump back to the last good value. Cancel
   // bumps the token, which drops it.
@@ -247,7 +281,30 @@ function SettingControlRow({
       layout="stacked"
       notice={unsaved ? "Not saved" : undefined}
     >
-      {control.secret ? (
+      {unrecognized ? (
+        <InlineError
+          actions={
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                returnFocusAfterReset.current = true;
+                if (control.kind === "boolean") {
+                  onStage({ secret: false, value: false });
+                } else if (firstEnumOption) {
+                  onStage({ secret: false, value: firstEnumOption.value });
+                }
+              }}
+              disabled={disabled}
+            >
+              {resetLabel}
+            </Button>
+          }
+          message="This setting has an unrecognized value."
+          variant="compact"
+        />
+      ) : control.secret ? (
         <div className="flex flex-wrap items-center gap-2">
           <span
             className="bg-muted text-muted-foreground rounded-md px-2.5 py-1.5 text-sm"
@@ -297,6 +354,7 @@ function SettingControlRow({
         <ControlInput
           control={control}
           value={fieldText}
+          setFocusRef={setInputRef}
           disabled={disabled}
           onValue={(next) => {
             setTyped({ token: resetToken, text: next });
@@ -443,16 +501,19 @@ function ControlInput({
   value,
   disabled,
   onValue,
+  setFocusRef,
 }: {
   readonly control: ScalarSettingControl;
   readonly value: string;
   readonly disabled: boolean;
   readonly onValue: (value: string) => void;
+  readonly setFocusRef: (element: HTMLInputElement | HTMLSelectElement | null) => void;
 }) {
   if (control.kind === "boolean") {
     return (
       <label className={checkboxRowLook(disabled)}>
         <input
+          ref={setFocusRef}
           aria-label={control.label}
           type="checkbox"
           checked={value === "true"}
@@ -466,6 +527,7 @@ function ControlInput({
   if (control.kind === "enum" && control.options) {
     return (
       <select
+        ref={setFocusRef}
         aria-label={control.label}
         className={cn(
           "border-input bg-background text-foreground transition-colors focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-lg border px-2.5 text-sm outline-none focus-visible:ring-2",

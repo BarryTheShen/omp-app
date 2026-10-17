@@ -529,7 +529,9 @@ export type StructuredResult =
 /** The input text that shows a field's stored value. */
 function fieldDraft(field: SettingField, value: JsonValue | undefined): string {
   if (value === undefined || value === null) return "";
-  if (field.kind === "boolean") return value === true ? "true" : "false";
+  if (field.kind === "boolean") {
+    return value === true ? "true" : value === false ? "false" : String(value);
+  }
   if (field.kind === "list") {
     if (typeof value === "string") return value;
     if (!Array.isArray(value)) return "";

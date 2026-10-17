@@ -89,8 +89,8 @@ test("renders complete voice and speech settings with provenance in light mode",
   await expect(page.getByTestId("live.voice-provenance")).toContainText(
     "Source: Saved for all projects",
   );
-  await expect(page.getByLabel("Provider name 1")).toHaveValue("openai");
-  await expect(page.getByLabel("Request limit 1")).toHaveValue("4");
+  await expect(page.getByLabel("Max In-Flight Requests: Provider name 1")).toHaveValue("openai");
+  await expect(page.getByLabel("Max In-Flight Requests: Request limit 1")).toHaveValue("4");
   await expect(page.getByText("i5-playground-revision")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("secret-value");
   await assertStyled(page);
@@ -103,8 +103,8 @@ test("renders complete voice and speech settings with provenance in light mode",
   const providerLimits = providerSection.locator('[data-slot="s1-structured-control"]');
   await expect(providerSection.getByText("Max In-Flight Requests")).toBeVisible();
   await providerLimits.getByRole("button", { name: "Add provider" }).click();
-  await providerLimits.getByLabel("Provider name 2").fill("anthropic");
-  await providerLimits.getByLabel("Request limit 2").fill("2");
+  await providerLimits.getByLabel("Max In-Flight Requests: Provider name 2").fill("anthropic");
+  await providerLimits.getByLabel("Max In-Flight Requests: Request limit 2").fill("2");
   await expect(providerLimits.getByRole("button", { name: "Remove anthropic" })).toBeVisible();
   await expect(providerSection.getByRole("button", { name: "Save changes" })).toBeEnabled();
   await expect(page.locator("body")).not.toContainText('{"openai"');

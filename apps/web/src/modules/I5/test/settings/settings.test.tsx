@@ -189,8 +189,12 @@ describe("I5 settings panel", () => {
     expect(screen.getByRole("heading", { name: "Speech" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Services" })).toBeTruthy();
     expect(screen.queryByText("i5-revision-1")).toBeNull();
-    expect((screen.getByLabelText("Provider name 1") as HTMLInputElement).value).toBe("openai");
-    expect((screen.getByLabelText("Request limit 1") as HTMLInputElement).value).toBe("4");
+    expect(
+      (screen.getByLabelText("Max In-Flight Requests: Provider name 1") as HTMLInputElement).value,
+    ).toBe("openai");
+    expect(
+      (screen.getByLabelText("Max In-Flight Requests: Request limit 1") as HTMLInputElement).value,
+    ).toBe("4");
     expect(screen.queryByDisplayValue('{"openai":4}')).toBeNull();
     expect(screen.getByTestId("live.voice-provenance").textContent).toContain(
       "Source: Saved for all projects",

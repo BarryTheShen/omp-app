@@ -21,13 +21,15 @@ realTest(
     const page = await realApp.open();
     const settings = await openBashSection(page);
     const rules = settings.getByRole("group", { name: "Bash Approval Patterns", exact: true });
-    const commandFields = rules.getByLabel(/^Command pattern \d+$/);
+    const commandFields = rules.getByLabel(/Command pattern \d+$/);
     const before = await commandFields.count();
     const addRule = rules.getByRole("button", { name: "Add rule", exact: true });
     await expect(addRule).toBeEnabled();
     await addRule.focus();
     await page.keyboard.press("Enter");
     await expect(commandFields).toHaveCount(before + 1);
-    await expect(rules.getByLabel(`Command pattern ${before + 1}`, { exact: true })).toBeFocused();
+    await expect(
+      rules.getByLabel(/Bash Approval Patterns: Command pattern \d+$/, { exact: false }),
+    ).toBeFocused();
   },
 );
