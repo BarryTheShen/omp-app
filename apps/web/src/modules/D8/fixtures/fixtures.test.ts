@@ -1,5 +1,6 @@
-import { checkScrubbed } from "@omp-app/contracts";
+import { checkScrubbed, RpcSessionEvent } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { z } from "zod";
 import { T5_REAL_RESULTS } from "../../T5/fixtures/real-results";
 import { T7_REAL_RESULTS } from "../../T7/fixtures/real-results";
 import {
@@ -8,6 +9,7 @@ import {
   D8_AP6_CAPABILITIES,
   GoalRpcResultSchema,
   GoalSchema,
+  GoalUpdatedEventSchema,
 } from "../contract";
 import { parseTokenBudget } from "../guided/interview";
 import {
@@ -24,10 +26,13 @@ import {
   RECORDED_CREATE_REFUSED,
   RECORDED_GOAL_CREATED,
   RECORDED_GOAL_DROPPED,
+  RECORDED_GOAL_RPC,
+  RECORDED_GOAL_UPDATED,
   RECORDED_WORKERS,
   RPC_CREATE_REFUSED_ACTIVE_GOAL,
   recordedWorkerRoster,
 } from ".";
+import goalCapture from "./goal-rpc.capture.jsonl?raw";
 
 /** The recorded entry with this name, from the results T5 and T7 already record on main. */
 function recordedResult(name: string) {
@@ -68,6 +73,69 @@ describe("D8 fixtures are copies of results omp already recorded", () => {
         details: { progress: expect.arrayContaining([expect.objectContaining(started.value)]) },
       },
     });
+  });
+});
+
+describe("D8 goal RPC recording", () => {
+  test("compares every typed goal constant against the raw RPC frame it records", () => {
+    const frames = goalCapture
+      .trim()
+      .split("\n")
+      .map((line) => z.record(z.string(), z.unknown()).parse(JSON.parse(line)));
+    const frameWithId = (id: string) => {
+      const frame = frames.find((candidate) => candidate.id === id);
+      if (frame === undefined) throw new Error(`no captured frame ${id}`);
+      return frame;
+    };
+    const responseFor = (id: string) => frameWithId(id).data;
+    for (const [id, expected] of Object.entries({
+      "goal-create": RECORDED_GOAL_RPC.create,
+      "goal-get": RECORDED_GOAL_RPC.get,
+      "goal-pause": RECORDED_GOAL_RPC.pause,
+      "goal-resume": RECORDED_GOAL_RPC.resume,
+      "goal-get-2": RECORDED_GOAL_RPC.afterAbort,
+      "goal-drop": RECORDED_GOAL_RPC.drop,
+      "goal-get-3": RECORDED_GOAL_RPC.afterDrop,
+    })) {
+      const result = responseFor(id);
+      expect(result).toEqual(expected);
+      expect(GoalRpcResultSchema.parse(result)).toEqual(expected);
+    }
+    const abortResponse = frameWithId("abort");
+    expect(abortResponse).toEqual({
+      id: "abort",
+      type: "response",
+      command: "abort",
+      success: true,
+    });
+    const promptResult = frames.find((frame) => frame.type === "prompt_result");
+    const parsedPromptResult = RpcSessionEvent.parse({
+      kind: "prompt_result",
+      event: promptResult,
+    });
+    if (parsedPromptResult.kind !== "prompt_result") {
+      throw new Error("captured prompt result did not parse as a prompt-result event");
+    }
+    expect(parsedPromptResult.event).toMatchObject({
+      id: "prompt",
+      agentInvoked: true,
+      status: "aborted",
+      sessionSettled: true,
+    });
+    const sessionSettled = frames.find((frame) => frame.type === "session_settled");
+    const parsedSessionSettled = RpcSessionEvent.parse({
+      kind: "session_settled",
+      event: sessionSettled,
+    });
+    if (parsedSessionSettled.kind !== "session_settled") {
+      throw new Error("captured settlement did not parse as a session-settled event");
+    }
+    expect(parsedSessionSettled.event).toEqual({ type: "session_settled" });
+    const rawUpdates = frames.filter((frame) => frame.type === "goal_updated");
+    expect(rawUpdates).toEqual(RECORDED_GOAL_UPDATED);
+    for (const event of rawUpdates) {
+      expect(GoalUpdatedEventSchema.parse(event)).toBeDefined();
+    }
   });
 });
 
@@ -135,7 +203,6 @@ describe("D8 fixtures match the contract schemas", () => {
       continuationStatus(RECORDED_GOAL_DROPPED.value, CONTINUATION_MODE_SETTINGS.withRpc),
     ).toBeNull();
   });
-
   test("a budget-limited goal does not say omp keeps working on it (#1693)", () => {
     const budgetLimited = GoalSchema.parse({
       ...RECORDED_GOAL_CREATED.value,
@@ -164,12 +231,15 @@ describe("D8 fixtures are scrubbed", () => {
         RECORDED_GOAL_DROPPED,
         RECORDED_CREATE_REFUSED,
         RPC_CREATE_REFUSED_ACTIVE_GOAL,
+        RECORDED_GOAL_RPC,
+        RECORDED_GOAL_UPDATED,
       ],
       guided: [GUIDED_INTERVIEW_SUCCEEDED, GUIDED_INTERVIEW_CANCELLED, GUIDED_INTERVIEW_REFUSED],
       ap6: AP6_UNAVAILABLE_FIXTURES,
       capabilities: [GOAL_RPC_AVAILABLE, GOAL_RPC_UNAVAILABLE, OMP_WORKER_CAPABILITIES],
       workers: RECORDED_WORKERS,
       roster: recordedWorkerRoster(),
+      rawCapture: goalCapture,
     });
     expect(checkScrubbed(everything)).toEqual([]);
   });
