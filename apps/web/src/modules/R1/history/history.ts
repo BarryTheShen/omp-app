@@ -135,6 +135,8 @@ export class SelectedThreadHistoryController {
   private offResync: (() => void) | undefined;
   private loader: SessionHistoryLoader | undefined;
   private stopRefetchWatch: (() => void) | undefined;
+  /** The kept chat whose initial history must be retried after omp restarts. */
+  private historyRetryThread: ThreadId | undefined;
   /** The chat whose open lost the connection, opened again once the connection is back (see `reopenFailedOpen`). */
   private failedOpen: ThreadId | undefined;
   // Counts the requests that change the chat on screen (an open or a close): see `open`.
@@ -335,6 +337,16 @@ export class SelectedThreadHistoryController {
     }
   }
 
+  /** Retries the selected thread's initial history after a failed restart-triggered load. */
+  public retryHistory(): Promise<void> {
+    const threadId = this.state.threadId;
+    const loader = this.loader;
+    if (threadId === undefined || this.state.store === undefined || loader === undefined) {
+      return Promise.resolve();
+    }
+    return this.retryInitialHistory(threadId, loader);
+  }
+
   /**
    * Brings the open thread up to date after a command omp saved without a turn: a `!` command, or a
    * compaction. No `session_settled` arrives for those to refresh the transcript. The refresh
@@ -363,6 +375,7 @@ export class SelectedThreadHistoryController {
   }
 
   private async closeNow(keepShown = false): Promise<void> {
+    this.historyRetryThread = undefined;
     // A chat whose turn is still running is kept and watched until the turn ends (issue 935): the list must learn of the
     // row it writes even though the chat is no longer open.
     const running = this.state.store?.getSnapshot().prompt.streaming === true;
@@ -519,6 +532,7 @@ export class SelectedThreadHistoryController {
       await this.recordOpenQuestions(threadId, store);
       await this.recordStateFrames(threadId, store);
       await loader.loadInitial();
+      this.historyRetryThread = undefined;
       this.stopRefetchWatch = loader.watchNeedsRefetch();
       this.commit({
         threadId,
@@ -540,7 +554,8 @@ export class SelectedThreadHistoryController {
         this.state.store === shownStore &&
         this.subscription !== undefined
       ) {
-        this.commit({ isLoading: false });
+        if (this.state.threadId !== undefined) this.historyRetryThread = this.state.threadId;
+        this.commit({ isLoading: false, error: failure.appError });
         return shownStore;
       }
       // A dropped connection leaves the chat closed: the chat is opened again once the connection is back (issue 1617).
@@ -583,6 +598,54 @@ export class SelectedThreadHistoryController {
     });
   }
 
+  private retryHistoryAfterRestart(
+    threadId: ThreadId,
+    loader: SessionHistoryLoader,
+  ): Promise<void> {
+    if (this.historyRetryThread !== threadId) return Promise.resolve();
+    return this.retryInitialHistory(threadId, loader);
+  }
+
+  private async retryInitialHistory(
+    threadId: ThreadId,
+    loader: SessionHistoryLoader,
+  ): Promise<void> {
+    if (
+      this.state.threadId !== threadId ||
+      this.state.store === undefined ||
+      this.loader !== loader
+    ) {
+      return;
+    }
+    this.historyRetryThread = undefined;
+    this.commit({ isLoading: true, error: null });
+    try {
+      await loader.loadInitial();
+      if (
+        this.state.threadId !== threadId ||
+        this.state.store === undefined ||
+        this.loader !== loader
+      ) {
+        return;
+      }
+      this.historyRetryThread = undefined;
+      this.stopRefetchWatch = loader.watchNeedsRefetch();
+      this.commit({ isLoading: false, error: null });
+    } catch (error) {
+      const failure = asFailure(error, "Reloading the chat history failed");
+      if (failure.appError.code === "cancelled") return;
+      if (
+        this.state.threadId !== threadId ||
+        this.state.store === undefined ||
+        this.loader !== loader
+      ) {
+        return;
+      }
+      if (failure.appError.code === "omp_exited") this.historyRetryThread = threadId;
+      this.commit({ isLoading: false, error: failure.appError });
+    }
+  }
+
   private async attachSubscription(
     threadId: ThreadId,
     store: OmpRuntimeStore,
@@ -609,6 +672,14 @@ export class SelectedThreadHistoryController {
         if (store.getSnapshot().lastSeq === 0) store.resetSequence(seq - 1);
       }
       store.ingest(payload, seq, replayed);
+      if (
+        payload.kind === "process" &&
+        payload.status === "ready" &&
+        this.historyRetryThread === threadId &&
+        this.loader !== undefined
+      ) {
+        void this.retryHistoryAfterRestart(threadId, this.loader);
+      }
       // A turn that was still running when this chat was opened again: the app is told when it ends.
       if (turnEnded(payload) && this.reopenedWhileRunning === threadId) {
         this.reopenedWhileRunning = undefined;

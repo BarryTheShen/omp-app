@@ -36,7 +36,10 @@ function createRpc(
   questions: readonly OpenQuestionRecord[] = [],
   holdFirstStateRead?: Promise<void>,
   historyFailure?: () => AppFailure | undefined,
+  holdHistoryRead?: Promise<void>,
+  holdHistoryReadAt = 1,
 ): RpcSessionClient {
+  let historyReads = 0;
   let stateReads = 0;
   const send = async (
     args: {
@@ -55,8 +58,11 @@ function createRpc(
         }
         return { sessionId: args.threadId };
       case "get_entries": {
+        historyReads += 1;
         const failure = historyFailure?.();
         if (failure) throw failure;
+        if (holdHistoryRead && historyReads === holdHistoryReadAt)
+          await untilAborted(holdHistoryRead, options?.signal);
         return { entries: [], leafId: null };
       }
       default:
@@ -1243,7 +1249,7 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     expect(controller.getSnapshot()).toMatchObject({
       threadId: threadOne,
       isLoading: false,
-      error: null,
+      error: { code: "omp_exited", message: "omp exited (signal SIGKILL)" },
     });
     expect(controller.getSnapshot().store).toBe(store);
     const subscription = subscriptions[0];
@@ -1260,6 +1266,305 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     expect(store.getSnapshot().error).toMatchObject({
       code: "omp_exited",
       message: "omp exited (signal SIGKILL)",
+    });
+  });
+  test("reloads initial history when omp restarts after stopping during the first history read", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    let historyReads = 0;
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () => {
+        historyReads += 1;
+        return historyReads === 1
+          ? new AppFailure({
+              code: "omp_exited",
+              message: "omp exited (signal SIGKILL)",
+              retryable: true,
+            })
+          : undefined;
+      },
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+
+    const store = await controller.openExisting(threadOne);
+    const subscription = subscriptions[0];
+    if (!subscription) throw new Error("history subscription did not attach");
+    subscription.listeners[0]?.(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    subscription.listeners[0]?.({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+
+    await vi.waitFor(() => expect(historyReads).toBe(2));
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      store,
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  test("retries history only when the restarted process is ready", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const heldHistoryRead = Promise.withResolvers<void>();
+    let historyReads = 0;
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () => {
+        historyReads += 1;
+        return historyReads === 1
+          ? new AppFailure({
+              code: "omp_exited",
+              message: "omp exited (signal SIGKILL)",
+              retryable: true,
+            })
+          : undefined;
+      },
+      heldHistoryRead.promise,
+      2,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    const listener = subscriptions[0]?.listeners[0];
+    if (!listener) throw new Error("history event listener did not attach");
+    listener(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    listener({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    expect(historyReads).toBe(1);
+    listener({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
+    await vi.waitFor(() => expect(historyReads).toBe(2));
+    heldHistoryRead.resolve();
+  });
+  test("re-arms history after a second omp exit during the retry", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    let historyReads = 0;
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () => {
+        historyReads += 1;
+        return historyReads <= 2
+          ? new AppFailure({
+              code: "omp_exited",
+              message: "omp exited (signal SIGKILL)",
+              retryable: true,
+            })
+          : undefined;
+      },
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    const subscription = subscriptions[0];
+    if (!subscription) throw new Error("history subscription did not attach");
+    const send = subscription.listeners[0];
+    if (!send) throw new Error("history event listener did not attach");
+
+    send(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    send({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    await vi.waitFor(() => expect(historyReads).toBe(2));
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      store,
+      isLoading: false,
+      error: { code: "omp_exited" },
+    });
+
+    send(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      4,
+    );
+    send({ kind: "process", status: "ready" } as RpcSessionEvent, 5);
+    await vi.waitFor(() => expect(historyReads).toBe(3));
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      store,
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  test("lets the person retry a visible history-load failure", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    let historyReads = 0;
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () => {
+        historyReads += 1;
+        if (historyReads === 1) {
+          return new AppFailure({
+            code: "omp_exited",
+            message: "omp exited (signal SIGKILL)",
+            retryable: true,
+          });
+        }
+        return historyReads === 2
+          ? new AppFailure({
+              code: "permission",
+              message: "The earlier messages could not be read.",
+              retryable: true,
+            })
+          : undefined;
+      },
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    const subscription = subscriptions[0];
+    if (!subscription) throw new Error("history subscription did not attach");
+    const send = subscription.listeners[0];
+    if (!send) throw new Error("history event listener did not attach");
+
+    send(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    send({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    await vi.waitFor(() => expect(historyReads).toBe(2));
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      store,
+      isLoading: false,
+      error: { code: "permission", message: "The earlier messages could not be read." },
+    });
+
+    await controller.retryHistory();
+    expect(historyReads).toBe(3);
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      store,
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  test("ignores a cancelled history retry when the chat closes", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const heldHistoryRead = Promise.withResolvers<void>();
+    let historyReads = 0;
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () => {
+        historyReads += 1;
+        return historyReads === 1
+          ? new AppFailure({
+              code: "omp_exited",
+              message: "omp exited (signal SIGKILL)",
+              retryable: true,
+            })
+          : undefined;
+      },
+      heldHistoryRead.promise,
+      2,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+
+    await controller.openExisting(threadOne);
+    const retry = controller.retryHistory();
+    await vi.waitFor(() => expect(historyReads).toBe(2));
+    expect(controller.getSnapshot().isLoading).toBe(true);
+    await controller.close();
+    await retry;
+
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: undefined,
+      store: undefined,
+      isLoading: false,
+      error: null,
+    });
+  });
+  test("ignores a cancelled history retry when refreshAfterCommand supersedes it", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const heldHistoryRead = Promise.withResolvers<void>();
+    let historyReads = 0;
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () => {
+        historyReads += 1;
+        return historyReads === 1
+          ? new AppFailure({
+              code: "omp_exited",
+              message: "omp exited (signal SIGKILL)",
+              retryable: true,
+            })
+          : undefined;
+      },
+      heldHistoryRead.promise,
+      2,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+
+    await controller.openExisting(threadOne);
+    const listener = subscriptions[0]?.listeners[0];
+    if (!listener) throw new Error("history event listener did not attach");
+    listener({ kind: "process", status: "ready" } as RpcSessionEvent, 2);
+    await vi.waitFor(() => expect(historyReads).toBe(2));
+    const refresh = controller.refreshAfterCommand();
+    await vi.waitFor(() => expect(historyReads).toBe(3));
+    await refresh;
+    await Promise.resolve();
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      error: null,
     });
   });
 });
