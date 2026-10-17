@@ -1,4 +1,4 @@
-import type { AttachmentRef, CapabilityMap } from "@omp-app/contracts";
+import type { AttachmentRef, CapabilityMap, OmpWire } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import type { PromptIntent } from "../../R0/runtime/runtime";
 import {
@@ -44,7 +44,10 @@ export type QueueDraftConflictChoice = "queued" | "existing" | "cancel";
 
 export interface DequeueToEditOptions {
   readonly getDraft: () => DraftRestoreRequest;
-  readonly restoreDraft: (request: DraftRestoreRequest) => void;
+  readonly restoreDraft: (
+    request: DraftRestoreRequest,
+    images?: readonly OmpWire.ImageContent[],
+  ) => void | Promise<void>;
   readonly chooseConflict?: (
     conflict: QueueDraftConflict,
   ) => QueueDraftConflictChoice | Promise<QueueDraftConflictChoice>;
@@ -54,6 +57,7 @@ export interface DequeueToEditResult {
   readonly removed: boolean;
   readonly restored: boolean;
   readonly choice: QueueDraftConflictChoice;
+  readonly imagesDropped: boolean;
 }
 
 function invalidArgs(message: string): AppFailure {
@@ -282,12 +286,25 @@ export async function dequeueToEdit(
       throw invalidArgs("A draft is already being edited; choose which text to keep");
     }
     choice = await options.chooseConflict({ queued, existing });
-    if (choice === "cancel") return { removed: false, restored: false, choice };
+    if (choice === "cancel")
+      return { removed: false, restored: false, choice, imagesDropped: false };
   }
-  controller.adapter.remove(queueItemId);
-  if (choice === "queued") options.restoreDraft(queued);
-  else options.restoreDraft(existing);
-  return { removed: true, restored: true, choice };
+  const removed = await controller.removeForEdit(queueItemId);
+  if (!removed.changed) {
+    throw new AppFailure({
+      code: "conflict",
+      message: "The queued message could not be removed. Try again.",
+      retryable: true,
+    });
+  }
+  if (choice === "queued") await options.restoreDraft(queued, removed.images);
+  else await options.restoreDraft(existing);
+  return {
+    removed: true,
+    restored: true,
+    choice,
+    imagesDropped: removed.imagesDropped === true,
+  };
 }
 
 export { restoreDraft };

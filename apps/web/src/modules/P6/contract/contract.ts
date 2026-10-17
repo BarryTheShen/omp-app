@@ -63,6 +63,8 @@ export interface QueueAdapterController {
   readonly adapter: ExternalThreadQueueAdapter;
   getSnapshot(): QueueAdapterSnapshot;
   subscribe(listener: (snapshot: QueueAdapterSnapshot) => void): () => void;
+  /** Removes an item and returns content that is no longer represented in the queue snapshot. */
+  removeForEdit(queueItemId: string): Promise<QueueMutationResult>;
   dispose(): void;
 }
 
@@ -268,6 +270,27 @@ export function createQueueAdapter(
       "Editing queued messages is unavailable for this omp runtime",
     );
   };
+  const removeForEdit = async (id: string): Promise<QueueMutationResult> => {
+    const item = findItem(id);
+    if (!item) throw notFound("The queued message is no longer present");
+    if (item.status === "sent") {
+      throw new AppFailure({
+        code: "conflict",
+        message:
+          "omp already sent this steering message into the reply; it cannot be returned to the message box.",
+        retryable: false,
+      });
+    }
+    const result = await port.remove({ lane: item.lane, message: item.message });
+    if (!result.changed) {
+      throw new AppFailure({
+        code: "conflict",
+        message: "omp did not remove this message. It may already be part of the reply.",
+        retryable: false,
+      });
+    }
+    return result;
+  };
   const remove = (id: string): void => {
     const item = findItem(id);
     if (!item) {
@@ -339,6 +362,7 @@ export function createQueueAdapter(
         if (listeners.size === 0) disconnect();
       };
     },
+    removeForEdit,
     dispose() {
       disconnect();
       listeners.clear();

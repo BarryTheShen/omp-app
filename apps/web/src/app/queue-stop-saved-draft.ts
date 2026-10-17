@@ -3,8 +3,8 @@ import type { createAttachmentBlobStore } from "@/modules/U2/attachments/blob-st
 import type { DraftStoreAdapter } from "@/modules/U2/drafts";
 import {
   composeRestoredDraft,
+  imageFiles,
   restoredCount,
-  restoredQueueImages,
   restoredQueueText,
 } from "./queue-stop-restore";
 
@@ -18,14 +18,14 @@ export function imageUploadTo(
   return async (file) => (await blobs.put({ id: crypto.randomUUID(), file })).ref;
 }
 
-/** Stores each restored image. One that cannot be stored is counted, and the others still come back. */
-export async function storeRestoredImages(
-  restored: OmpWire.AbortAndRestoreQueueResult,
+/** Stores each returned image. One that cannot be stored is counted, and the others still come back. */
+export async function storeQueueImages(
+  images: readonly OmpWire.ImageContent[],
   upload: ImageUpload,
 ): Promise<{ readonly refs: AttachmentRef[]; readonly lost: number }> {
   const refs: AttachmentRef[] = [];
   let lost = 0;
-  for (const file of restoredQueueImages(restored)) {
+  for (const file of imageFiles(images)) {
     try {
       refs.push(await upload(file));
     } catch {
@@ -33,6 +33,17 @@ export async function storeRestoredImages(
     }
   }
   return { refs, lost };
+}
+/** Stores images withdrawn by Stop through the same durable attachment path as a removed queue item. */
+export function storeRestoredImages(
+  restored: OmpWire.AbortAndRestoreQueueResult,
+  upload: ImageUpload,
+): Promise<{ readonly refs: AttachmentRef[]; readonly lost: number }> {
+  const images = [
+    ...restored.steering.flatMap((message) => message.images ?? []),
+    ...restored.followUp.flatMap((message) => message.images ?? []),
+  ];
+  return storeQueueImages(images, upload);
 }
 
 /** One chat's saved draft, and how the images of a restored message are stored. */

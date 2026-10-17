@@ -1,7 +1,7 @@
 import { AttachmentRef, Draft, DraftScope, type OmpWire } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { DraftStoreAdapter } from "@/modules/U2/drafts";
-import { restoreStoppedQueueIntoSavedDraft } from "./queue-stop-saved-draft";
+import { restoreStoppedQueueIntoSavedDraft, storeQueueImages } from "./queue-stop-saved-draft";
 
 const scope = DraftScope.parse({ kind: "thread", threadId: "thread-saved-draft" });
 const IMAGE: OmpWire.ImageContent = { type: "image", data: "aGVsbG8=", mimeType: "image/png" };
@@ -40,6 +40,32 @@ const restored: OmpWire.AbortAndRestoreQueueResult = {
   steering: [{ text: "steer" }],
   followUp: [{ text: "follow", images: [IMAGE] }],
 };
+
+describe("storeQueueImages", () => {
+  test("uploads each returned queued image and counts images that omp omitted or storage refused", async () => {
+    const uploaded: { readonly name: string; readonly type: string; readonly bytes: number[] }[] =
+      [];
+    const result = await storeQueueImages([IMAGE], async (file) => {
+      uploaded.push({
+        name: file.name,
+        type: file.type,
+        bytes: [...new Uint8Array(await file.arrayBuffer())],
+      });
+      return ref("queued-image");
+    });
+    expect(uploaded).toEqual([
+      { name: "queued-image-1.png", type: "image/png", bytes: [104, 101, 108, 108, 111] },
+    ]);
+    expect(result).toEqual({ refs: [ref("queued-image")], lost: 0 });
+
+    const omitted = await storeQueueImages([], async () => ref("unused"));
+    expect(omitted).toEqual({ refs: [], lost: 0 });
+    const refused = await storeQueueImages([IMAGE], async () => {
+      throw new Error("storage refused");
+    });
+    expect(refused).toEqual({ refs: [], lost: 1 });
+  });
+});
 
 describe("restoreStoppedQueueIntoSavedDraft", () => {
   test("puts the stopped text ahead of the saved text, and the images ahead of the saved attachments", async () => {

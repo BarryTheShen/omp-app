@@ -135,6 +135,29 @@ describe("R0.5 QueueController", () => {
     ]);
     expect(controller.getSnapshot().followUp).toEqual([]);
   });
+  test("returns restored images and the transport-omission marker only for a removed message", async () => {
+    const image = { type: "image", data: "aGVsbG8=", mimeType: "image/png" } as const;
+    const store = makeStore();
+    let response: unknown = { removed: true, images: [image] };
+    const send: RpcSessionSend = async () => response as never;
+    const controller = createQueueController({ store, send, capabilities });
+
+    await expect(controller.remove({ lane: "followUp", message: "with image" })).resolves.toEqual({
+      changed: true,
+      images: [image],
+    });
+    response = { removed: true, imagesDropped: true };
+    await expect(controller.remove({ lane: "followUp", message: "large image" })).resolves.toEqual({
+      changed: true,
+      imagesDropped: true,
+    });
+    response = { removed: false, imagesDropped: true, images: [image] };
+    await expect(controller.remove({ lane: "followUp", message: "already gone" })).resolves.toEqual(
+      {
+        changed: false,
+      },
+    );
+  });
 
   test("preserves a not_found mutation failure for a message omp already dequeued", async () => {
     const store = makeStore();

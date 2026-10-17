@@ -63,6 +63,10 @@ export interface QueueModeChanges {
 
 export interface QueueMutationResult {
   readonly changed: boolean;
+  /** Returned only when a queued message was removed; the composer can restore these images. */
+  readonly images?: readonly OmpWire.ImageContent[];
+  /** omp omitted the images because the full removal response exceeded its transport limit. */
+  readonly imagesDropped?: boolean;
 }
 
 export type QueueListener = (snapshot: QueueSnapshot) => void;
@@ -237,7 +241,14 @@ export class QueueController implements QueuePort {
         },
         { signal: item.signal },
       );
-      return { changed: isRecord(result) && result.removed === true };
+      const removed = isRecord(result) && result.removed === true;
+      if (!removed) return { changed: false };
+      const response = result as OmpWire.RemoveQueuedMessageResult;
+      return {
+        changed: true,
+        ...(response.images ? { images: response.images } : {}),
+        ...(response.imagesDropped ? { imagesDropped: true } : {}),
+      };
     } catch (error) {
       throw asFailure(error, "Removing the queued message failed");
     }

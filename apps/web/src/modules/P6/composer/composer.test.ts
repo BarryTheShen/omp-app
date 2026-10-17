@@ -1,3 +1,4 @@
+import type { OmpWire } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import {
   createQueueAdapter,
@@ -24,7 +25,16 @@ const snapshot: QueueSnapshot = {
   isStreaming: true,
 };
 
-function queueController(current: QueueSnapshot = snapshot) {
+function queueController(
+  current: QueueSnapshot = snapshot,
+  removeResult: {
+    changed: boolean;
+    images?: readonly OmpWire.ImageContent[];
+    imagesDropped?: boolean;
+  } = {
+    changed: true,
+  },
+) {
   const calls: string[] = [];
   const port = {
     getSnapshot: () => current,
@@ -36,7 +46,7 @@ function queueController(current: QueueSnapshot = snapshot) {
     submit: async () => undefined,
     remove: async ({ message }: { message: string }) => {
       calls.push(message);
-      return { changed: true };
+      return removeResult;
     },
     promote: async () => ({ changed: true }),
     setModes: async () => undefined,
@@ -124,11 +134,87 @@ describe("P6 composer queue policy", () => {
     const result = await dequeueToEdit(controller, id, {
       getDraft: () => ({ text: "new text already typed", attachmentRefs: [] }),
       chooseConflict: () => "queued",
-      restoreDraft: (request) => restored.push(request.text),
+      restoreDraft: (request) => {
+        restored.push(request.text);
+      },
     });
-    expect(result).toEqual({ removed: true, restored: true, choice: "queued" });
+    expect(result).toEqual({
+      removed: true,
+      restored: true,
+      choice: "queued",
+      imagesDropped: false,
+    });
     expect(calls).toEqual(["queued text"]);
     expect(restored).toEqual(["queued text"]);
+  });
+  test("dequeue-to-edit restores returned images alongside queued text", async () => {
+    const image: OmpWire.ImageContent = { type: "image", data: "aGVsbG8=", mimeType: "image/png" };
+    const { controller } = queueController(snapshot, { changed: true, images: [image] });
+    const id = controller.getSnapshot().items[0]?.id;
+    if (!id) throw new Error("missing queue id");
+    const restored: unknown[] = [];
+    const result = await dequeueToEdit(controller, id, {
+      getDraft: () => ({ text: "", attachmentRefs: [] }),
+      restoreDraft: (request, images) => {
+        restored.push({ text: request.text, images });
+      },
+    });
+    expect(result).toEqual({
+      removed: true,
+      restored: true,
+      choice: "queued",
+      imagesDropped: false,
+    });
+    expect(restored).toEqual([{ text: "queued text", images: [image] }]);
+  });
+
+  test("dequeue-to-edit reports omitted images while restoring text", async () => {
+    const { controller } = queueController(snapshot, { changed: true, imagesDropped: true });
+    const id = controller.getSnapshot().items[0]?.id;
+    if (!id) throw new Error("missing queue id");
+    const restored: unknown[] = [];
+    const result = await dequeueToEdit(controller, id, {
+      getDraft: () => ({ text: "", attachmentRefs: [] }),
+      restoreDraft: (request, images) => {
+        restored.push({ text: request.text, images });
+      },
+    });
+    expect(result.imagesDropped).toBe(true);
+    expect(restored).toEqual([{ text: "queued text", images: undefined }]);
+  });
+
+  test("dequeue-to-edit refuses and restores nothing when omp removed nothing", async () => {
+    const { controller } = queueController(snapshot, { changed: false });
+    const id = controller.getSnapshot().items[0]?.id;
+    if (!id) throw new Error("missing queue id");
+    const restoreDraft = vi.fn();
+    await expect(
+      dequeueToEdit(controller, id, {
+        getDraft: () => ({ text: "", attachmentRefs: [] }),
+        restoreDraft,
+      }),
+    ).rejects.toMatchObject({ appError: { code: "conflict" } });
+    expect(restoreDraft).not.toHaveBeenCalled();
+  });
+
+  test("dequeue-to-edit does not trust a controller that reports nothing changed", async () => {
+    const { controller } = queueController();
+    const id = controller.getSnapshot().items[0]?.id;
+    if (!id) throw new Error("missing queue id");
+    const restoreDraft = vi.fn();
+    const unchanged = { ...controller, removeForEdit: async () => ({ changed: false }) };
+    await expect(
+      dequeueToEdit(unchanged, id, {
+        getDraft: () => ({ text: "", attachmentRefs: [] }),
+        restoreDraft,
+      }),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "conflict",
+        message: "The queued message could not be removed. Try again.",
+      },
+    });
+    expect(restoreDraft).not.toHaveBeenCalled();
   });
 
   test("dequeue cancel keeps an existing draft and never removes the queue item", async () => {
@@ -143,7 +229,12 @@ describe("P6 composer queue policy", () => {
         restore.count += 1;
       },
     });
-    expect(result).toEqual({ removed: false, restored: false, choice: "cancel" });
+    expect(result).toEqual({
+      removed: false,
+      restored: false,
+      choice: "cancel",
+      imagesDropped: false,
+    });
     expect(calls).toEqual([]);
     expect(restore.count).toBe(0);
   });

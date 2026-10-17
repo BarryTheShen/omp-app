@@ -1,7 +1,9 @@
+import type { OmpWire } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import {
   createQueueAdapter,
   P6_QUEUE_CAPABILITIES,
+  type QueueMutationResult,
   type QueuePort,
   type QueueSnapshot,
 } from "@/modules/P6/contract";
@@ -10,7 +12,10 @@ import { MemoryPreferenceStore, ShortcutRegistry } from "@/shortcuts/registry";
 import { QUEUE_DEQUEUE_MESSAGES, registerQueueDequeueShortcut } from "./queue-dequeue-shortcut";
 
 /** A queue whose remove calls are recorded, so a test can see what left the queue. */
-function queueOf(queued: Partial<QueueSnapshot>) {
+function queueOf(
+  queued: Partial<QueueSnapshot>,
+  removeResult: QueueMutationResult = { changed: true },
+) {
   const removed: string[] = [];
   let snapshot: QueueSnapshot = {
     steering: [],
@@ -30,7 +35,7 @@ function queueOf(queued: Partial<QueueSnapshot>) {
     subscribe: () => () => undefined,
     remove: async ({ message }: { message: string }) => {
       removed.push(message);
-      return { changed: true };
+      return removeResult;
     },
   } as unknown as QueuePort;
   return {
@@ -50,10 +55,15 @@ function queueOf(queued: Partial<QueueSnapshot>) {
 function setup(
   queued: Partial<QueueSnapshot>,
   boxText = "",
-  options: { readonly leaveAfterCheck?: boolean; readonly restoreFails?: boolean } = {},
+  options: {
+    readonly leaveAfterCheck?: boolean;
+    readonly restoreFails?: boolean;
+    readonly removeResult?: QueueMutationResult;
+  } = {},
 ) {
-  const { controller, removed, leaveQueue } = queueOf(queued);
+  const { controller, removed, leaveQueue } = queueOf(queued, options.removeResult);
   const restored: string[] = [];
+  const restoredImages: (readonly OmpWire.ImageContent[] | undefined)[] = [];
   const notify = vi.fn();
   const fail = vi.fn();
   const registry = new ShortcutRegistry([...P6_SHORTCUT_DESCRIPTORS], {
@@ -66,16 +76,17 @@ function setup(
       if (options.leaveAfterCheck === true) leaveQueue();
       return { text: boxText, attachmentRefs: [] };
     },
-    restore: (request) => {
+    restore: (request, images) => {
       if (options.restoreFails === true) throw new Error("The message box is gone");
       restored.push(request.text);
+      restoredImages.push(images);
     },
     notify,
     fail,
   });
   const press = () =>
     registry.dispatch(new KeyboardEvent("keydown", { key: "ArrowUp", altKey: true }), "composer");
-  return { press, restored, removed, notify, fail };
+  return { press, restored, restoredImages, removed, notify, fail };
 }
 
 describe("Alt+Up brings the last queued message back into the box", () => {
@@ -127,6 +138,31 @@ describe("Alt+Up brings the last queued message back into the box", () => {
     expect(notify).toHaveBeenCalledWith(QUEUE_DEQUEUE_MESSAGES.alreadySent);
     expect(restored).toEqual([]);
     expect(removed).toEqual([]);
+  });
+
+  test("passes removed images to the composer restore callback", async () => {
+    const images: OmpWire.ImageContent[] = [
+      { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+    ];
+    const { press, restored, restoredImages, notify } = setup({ followUp: ["picture"] }, "", {
+      removeResult: { changed: true, images },
+    });
+    press();
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledWith(QUEUE_DEQUEUE_MESSAGES.restored));
+    expect(restored).toEqual(["picture"]);
+    expect(restoredImages).toEqual([images]);
+  });
+
+  test("says the images were too large when omp omitted them from the successful removal", async () => {
+    const { press, restored, restoredImages, notify } = setup({ followUp: ["large picture"] }, "", {
+      removeResult: { changed: true, imagesDropped: true },
+    });
+    press();
+    await vi.waitFor(() =>
+      expect(notify).toHaveBeenCalledWith(QUEUE_DEQUEUE_MESSAGES.imagesDropped),
+    );
+    expect(restored).toEqual(["large picture"]);
+    expect(restoredImages).toEqual([undefined]);
   });
 
   test("when the message leaves the queue after the check, says so in the header and changes nothing", async () => {

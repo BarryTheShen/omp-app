@@ -98,6 +98,18 @@ describe("P6 QueuePort adapter", () => {
     expect(controller.adapter.items).toHaveLength(1);
     controller.dispose();
   });
+  test("keeps steering messages already sent into the reply non-removable", () => {
+    const fixture = portFixture(
+      { ...idleSnapshot, liveSteered: 1 },
+      { ...available(P6_QUEUE_CAPABILITIES.remove) },
+    );
+    const controller = createQueueAdapter(fixture.port);
+    expect(controller.getSnapshot().steerItems.map((item) => item.canRemove)).toEqual([
+      false,
+      true,
+    ]);
+    controller.dispose();
+  });
 
   test("delegates enqueue and steer through R0 admission with text and images", async () => {
     const fixture = portFixture(

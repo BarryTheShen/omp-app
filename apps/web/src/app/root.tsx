@@ -240,6 +240,7 @@ import {
 import {
   imageUploadTo,
   restoreStoppedQueueIntoSavedDraft,
+  storeQueueImages,
   storeRestoredImages,
 } from "./queue-stop-saved-draft";
 import { saveTextFile } from "./save-file";
@@ -1358,8 +1359,20 @@ function ActiveThreadReady({
     [attachmentManager, draftController],
   );
   const restoreQueued = useCallback(
-    (request: DraftRestoreRequest) => setEditorText(request.text),
-    [setEditorText],
+    async (request: DraftRestoreRequest, images: readonly OmpWire.ImageContent[] = []) => {
+      const { refs, lost } = await storeQueueImages(images, uploadRestoredImage);
+      const attachmentRefs = [...refs, ...attachmentManager.toDraftRefs()];
+      draftController.setDraft(request.text, attachmentRefs);
+      await attachmentManager.restore(attachmentRefs);
+      if (lost > 0) {
+        setCommandError(
+          lost === 1
+            ? "A queued image could not be stored in the message box."
+            : "Some queued images could not be stored in the message box.",
+        );
+      }
+    },
+    [attachmentManager, draftController, uploadRestoredImage],
   );
   useQueueDequeueShortcut({
     queue: queueAdapter,

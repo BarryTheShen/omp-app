@@ -30,16 +30,20 @@ export function composeRestoredDraft(restoredText: string, draftText: string): s
   return [restoredText, draftText].filter((part) => part.trim() !== "").join("\n\n");
 }
 
-/** Each restored image as a file, in message order. omp sends only the bytes, so the app names the files. */
-export function restoredQueueImages(restored: OmpWire.AbortAndRestoreQueueResult): File[] {
-  const images = withdrawnInOrder(restored).flatMap((message) => message.images ?? []);
+/** Each returned image as a file. omp sends only the bytes, so the app names the files. */
+export function imageFiles(images: readonly OmpWire.ImageContent[]): File[] {
   return images.map((image, index) => imageFile(image, index + 1));
 }
-
 function imageFile(image: OmpWire.ImageContent, number: number): File {
   const bytes = Uint8Array.from(atob(image.data), (character) => character.charCodeAt(0));
   const extension = image.mimeType.split("/")[1] ?? "png";
   return new File([bytes], `queued-image-${number}.${extension}`, { type: image.mimeType });
+}
+
+/** Each image from a Stop result as a file, in message order. */
+export function restoredQueueImages(restored: OmpWire.AbortAndRestoreQueueResult): File[] {
+  const images = withdrawnInOrder(restored).flatMap((message) => message.images ?? []);
+  return imageFiles(images);
 }
 
 /** The notice after Stop, in plain words, for an answer that withdrew something. */
