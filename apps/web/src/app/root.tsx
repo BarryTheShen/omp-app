@@ -2050,6 +2050,16 @@ function ConnectedApp({
     () => controller?.getSnapshot() ?? EMPTY_HISTORY,
     () => controller?.getSnapshot() ?? EMPTY_HISTORY,
   );
+  // Keep the last open chat during the brief empty-history gap while a New chat replaces it, so its composer remains
+  // mounted and can receive a prompt typed during the opening.
+  const lastReadyHistory = useRef<SelectedThreadHistoryState>(EMPTY_HISTORY);
+  if (history.store && history.threadId) lastReadyHistory.current = history;
+  const displayedHistory =
+    history.store && history.threadId
+      ? history
+      : newChat.state === "opening" && newChatFrom !== null
+        ? lastReadyHistory.current
+        : EMPTY_HISTORY;
   useEffect(() => {
     // Reopen the thread this browser had open in this folder (cleared when the folder changes). A chat nobody has
     // sent to has no file after a restart, so the folder's new chat opens in its place.
@@ -2167,13 +2177,18 @@ function ConnectedApp({
     void catalog.list({ filter: current.filter, limit: 50 }).catch(() => undefined);
   }, [catalog, connection.state]);
   const activeCapabilities = useMemo(
-    () => (history.capabilities ? { ...capabilities, ...history.capabilities } : capabilities),
-    [capabilities, history.capabilities],
+    () =>
+      displayedHistory.capabilities
+        ? { ...capabilities, ...displayedHistory.capabilities }
+        : capabilities,
+    [capabilities, displayedHistory.capabilities],
   );
-  const title = useSessionTitle(catalog, history.threadId);
+  const title = useSessionTitle(catalog, displayedHistory.threadId);
   const selectFolder = (nextFolder: FolderPath): void => {
     if (nextFolder === folder) return;
     void controller?.close();
+    setNewChat({ state: "idle" });
+    setNewChatFrom(null);
     setFolderError(null);
     setOpenFailure(null);
     setFolderText(nextFolder);
@@ -2274,7 +2289,8 @@ function ConnectedApp({
     (status: NewChatStatus): void => {
       setNewChat(status);
       if (status.state === "opening") {
-        setNewChatFrom(controller?.getSnapshot().threadId ?? null);
+        const shownThreadId = controller?.getSnapshot().threadId;
+        if (shownThreadId !== undefined) setNewChatFrom(shownThreadId);
         for (const release of newChatHolds.current.splice(0)) release();
         newChatHolds.current.push(controller?.holdSwitch() ?? (() => undefined));
         newChatTicketRef.current?.settle("not-opened");
@@ -2513,7 +2529,7 @@ function ConnectedApp({
     connection: connectionSurface,
     watchNotice: watchSurface,
   };
-  if (history.store && history.threadId) {
+  if (displayedHistory.store && displayedHistory.threadId) {
     return (
       <LargePasteMenuProvider client={client} folder={folder} settingsClosed={settingsClosed}>
         <ActiveThreadContent
@@ -2521,9 +2537,11 @@ function ConnectedApp({
           catalog={catalog}
           client={client}
           folder={folder}
-          history={history}
+          history={displayedHistory}
           newChatStarting={
-            newChatFrom !== null && newChat.state === "opening" && history.threadId === newChatFrom
+            newChatFrom !== null &&
+            newChat.state === "opening" &&
+            displayedHistory.threadId === newChatFrom
           }
           resumePlace={resumePlace}
           connectionSurface={connectionSurface}
