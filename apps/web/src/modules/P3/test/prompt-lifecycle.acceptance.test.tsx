@@ -1,6 +1,5 @@
-// The completed and aborted prompt_result frames and the session_settled frame are recorded (packages/omp-rpc/fixtures:
-// prompt-stream:38, abort:23-24). The pending frame is the documented shape (rpc-types.ts:239-244 at omp v18.8.9). The provider error
-// frame is a stand-in: no recording has one (fixtures/omp-branch.ts).
+// The completed, aborted and provider-error prompt_result frames plus session_settled are recorded under packages/omp-rpc/fixtures.
+// The pending frame remains the documented shape (rpc-types.ts:239-244 at omp v18.8.9).
 import type { RpcSessionEvent } from "@omp-app/contracts";
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
@@ -8,7 +7,7 @@ import { OmpRuntimeStore } from "@/modules/R0/store";
 import {
   promptAborted,
   promptCompleted,
-  promptErrorStandIn,
+  promptErrorRecorded,
   promptPending,
   SESSION_SETTLED,
   SOURCE_CHAT,
@@ -68,11 +67,12 @@ describe("acceptance: a prompt's result and the session's settling are separate 
   test("a prompt_result error is an omp_error carrying the frame's message and retryable flag", () => {
     const store = new OmpRuntimeStore({ threadId: SOURCE_CHAT });
 
-    receive(store, "prompt_result", promptErrorStandIn("req-2"), 1);
+    receive(store, "prompt_result", promptErrorRecorded(), 1);
 
     expect(store.getSnapshot().error).toMatchObject({
       code: "omp_error",
-      message: "stand-in provider message",
+      message:
+        "503 fake provider retry failure\nfake provider retry failure (type=server_error param=service_unavailable)",
       retryable: true,
     });
   });

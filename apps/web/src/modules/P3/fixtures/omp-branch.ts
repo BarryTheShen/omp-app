@@ -1,12 +1,6 @@
 /**
- * Values P3's branch, edit and regenerate tests send to or read from omp. Each value is one of:
- *   - a frame recorded on main: `packages/omp-rpc/fixtures/<name>.fixture.jsonl`, written by omp 18.6.1 in scripted
- *     fake-model runs (`"version":"18.6.1"` in each file). `recordedFrame` reads one row, whose `line` holds the frame
- *     as an escaped JSON string;
- *   - a shape taken from omp v18.8.9 source, cited beside it as `packages/...:line` (`git show v18.8.9:<path>`), with no
- *     recording of its own; or
- *   - a stand-in, marked "stand-in": no recording or source line establishes its value.
- * Session ids, entry ids and text are scrubbed fixture values; the shapes are omp's.
+ * Values P3's branch, edit and regenerate tests send to or read from omp. Recorded wire values come from committed files in
+ * `packages/omp-rpc/fixtures/`; synthetic source values and deliberate test seams are marked beside them.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -36,21 +30,13 @@ export const SOURCE_CHAT = ThreadIdSchema.parse("fixture-source-chat");
 /** The chat omp opens for a branch: the `sessionId` that `get_state` reports after `branch`. */
 export const BRANCHED_CHAT = ThreadIdSchema.parse("fixture-branched-chat");
 
-/** A user message with text and an image; its assistant answer is its child. */
-export const USER_WITH_IMAGE = EntryIdSchema.parse("fixture-user-text-image");
 export const ASSISTANT_ANSWER = EntryIdSchema.parse("fixture-assistant-answer");
-/** A user message with text only, on the current branch. */
-export const USER_TEXT_ONLY = EntryIdSchema.parse("fixture-user-text");
-/** A user message on a branch the current chat no longer shows. */
-export const ABANDONED_USER = EntryIdSchema.parse("fixture-user-abandoned");
-export const BRANCH_SUMMARY_ENTRY = EntryIdSchema.parse("fixture-branch-summary");
-
 const WHEN = "2026-10-05T00:00:00.000Z";
 const LATER = "2026-10-05T00:00:01.000Z";
 
 /**
- * Stand-in image bytes: base64 of "image-bytes". No recording carries an image. The shape is omp's `ImageContent`,
- * `packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts:27-33` at v18.8.9.
+ * Fake image bytes recorded in the P3 message fixture. The value is base64 of "image-bytes"; the shape is omp's
+ * `ImageContent`, `packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts:27-33` at v18.8.9.
  */
 export const PNG_BASE64 = "aW1hZ2UtYnl0ZXM=";
 
@@ -60,19 +46,20 @@ export const PNG_IMAGE: OmpWire.ImageContent = {
   mimeType: "image/png",
 };
 
-/**
- * The `branch` response data, `{ text, cancelled }` (`packages/coding-agent/src/modes/rpc/rpc-types.ts:540` at v18.8.9).
- * `rpc-mode.ts:882-885` builds it from `session.branch`, whose `text` is the selected user message's text
- * (`agent-session.ts:11706`). It carries no images: `agent-session.ts:11707` reads them for the caller of `branch()`,
- * and `rpc-mode.ts:885` does not send them.
- */
-export const BRANCH_ACCEPTED: OmpWire.BranchResult = { text: "Explain", cancelled: false };
+/** The recorded `branch` response from `p3-branch.fixture.jsonl:32`. */
+const BranchResponseRecord = z.object({
+  type: z.literal("response"),
+  command: z.literal("branch"),
+  success: z.literal(true),
+  data: z.object({ text: z.string(), cancelled: z.boolean() }),
+});
+function recordedBranchResult(recording: string, line: number): OmpWire.BranchResult {
+  return BranchResponseRecord.parse(recordedFrame(recording, line)).data;
+}
 
-/**
- * A branch a hook cancelled: the same shape with `cancelled: true`, which `agent-session.ts:11709`
- * (`cancelled: !completed`) produces and `rpc-mode.ts:885` returns.
- */
-export const BRANCH_CANCELLED: OmpWire.BranchResult = { text: "Explain", cancelled: true };
+export const BRANCH_ACCEPTED = recordedBranchResult("p3-branch", 32);
+/** The recorded hook-cancelled `branch` response from `p3-branch-cancelled.fixture.jsonl:30`. */
+export const BRANCH_CANCELLED = recordedBranchResult("p3-branch-cancelled", 30);
 
 /**
  * The `get_state` answer the app reads after a branch. Only `sessionId` is read: `SessionState.sessionId` at
@@ -83,18 +70,27 @@ export const BRANCH_CANCELLED: OmpWire.BranchResult = { text: "Explain", cancell
 export const STATE_AFTER_BRANCH: { readonly sessionId: string } = { sessionId: BRANCHED_CHAT };
 
 /**
- * The `get_branch_messages` result: `{ messages: [{ entryId, text }] }`, `rpc-types.ts:547` (v18.8.9). omp lists every
- * user message with non-empty text across the whole session, text only (`agent-session.ts:12386-12401`), from
- * `sessionManager.getEntries()` (`session-manager.ts:3722-3724`), so an image-only message is absent and a message on an
- * abandoned branch is present. `rpc-mode.ts:2398-2400` sends the list. The rows are the fixture's own values.
+ * The recorded get_branch_messages response is at p3-branch-messages.fixture.jsonl:95. It contains the two text-bearing
+ * rows still on the branch after the rewind; the image-only user message is omitted. The separate image-only recording
+ * (p3-branch-image.fixture.jsonl:30) records an empty list. This fixture does not cover listing an abandoned row.
  */
-export const BRANCH_MESSAGES: OmpWire.GetBranchMessagesResult = {
-  messages: [
-    { entryId: String(USER_TEXT_ONLY), text: "Earlier question" },
-    { entryId: String(USER_WITH_IMAGE), text: "Explain" },
-    { entryId: String(ABANDONED_USER), text: "Question on an abandoned branch" },
-  ],
-};
+const BranchMessagesResponseRecord = z.object({
+  type: z.literal("response"),
+  command: z.literal("get_branch_messages"),
+  success: z.literal(true),
+  data: z.object({ messages: z.array(z.object({ entryId: z.string(), text: z.string() })) }),
+});
+export const BRANCH_MESSAGES = BranchMessagesResponseRecord.parse(
+  recordedFrame("p3-branch-messages", 95),
+).data;
+function recordedBranchMessageId(text: string): EntryId {
+  const message = BRANCH_MESSAGES.messages.find((row) => row.text === text);
+  if (!message) throw new Error(`p3-branch-messages recording has no ${JSON.stringify(text)} row`);
+  return EntryIdSchema.parse(message.entryId);
+}
+/** Recorded entry IDs for the text-only and text-plus-image rows used by P3's store fixtures. */
+export const USER_TEXT_ONLY = recordedBranchMessageId("Earlier question");
+export const USER_WITH_IMAGE = recordedBranchMessageId("Explain");
 
 /**
  * A `prompt_result` frame: `RpcPromptResultFrame` (`rpc-types.ts:232-245` at v18.8.9). Its `status` is `RpcPromptStatus`
@@ -107,6 +103,15 @@ const PromptResultRecord = z.object({
   agentInvoked: z.boolean(),
   status: z.enum(["completed", "aborted", "error"]),
   sessionSettled: z.boolean(),
+  error: z
+    .object({
+      message: z.string(),
+      provider: z.string(),
+      model: z.string(),
+      retryable: z.boolean(),
+      httpStatus: z.number(),
+    })
+    .optional(),
 });
 
 /** A `prompt_result` frame; `error` is set only with `status: "error"` (`rpc-types.ts:218-226`). */
@@ -144,20 +149,9 @@ export function promptPending(id: string): PromptResultFrame {
   };
 }
 
-/**
- * A provider failure. Stand-in: no recording has a `prompt_result` with `status: "error"`. The status and the `error`
- * object are `rpc-types.ts:212` and `:218-226`; the message and the `retryable` flag are the fixture's own values, not
- * omp's text. Issue 1692 records a real error frame.
- */
-export function promptErrorStandIn(id: string): PromptResultFrame {
-  return {
-    type: "prompt_result",
-    id,
-    agentInvoked: true,
-    status: "error",
-    sessionSettled: true,
-    error: { message: "stand-in provider message", retryable: true },
-  };
+/** The recorded provider failure from `p3-provider-error.fixture.jsonl:41`. */
+export function promptErrorRecorded(): PromptResultFrame {
+  return recordedPromptResult("p3-provider-error", 41);
 }
 
 /** The frame once the session is done with every tracked job: `abort.fixture.jsonl:24`. */
@@ -239,11 +233,27 @@ export function storedAssistant(id: EntryIdLike, parentId: EntryIdLike) {
   };
 }
 
-/**
- * omp's `branch_summary` session entry: `fromId` and `summary` on the base (`session-entries.ts:70-75`), at
- * `session-entries.ts:148-156` (v18.8.9). The app turns a non-empty summary into a message (`R0/store/store.ts:735-747`);
- * omp's own context skips an empty one (`session-context.ts:415-416`).
- */
+/** The recorded `branch_summary` session entry and its ids are read from `p3-branch-summary.fixture.jsonl:34`. */
+const BranchSummaryEntryRecord = z.object({
+  type: z.literal("branch_summary"),
+  id: z.string(),
+  parentId: z.string(),
+  timestamp: z.string(),
+  fromId: z.string(),
+  summary: z.string(),
+});
+const EntriesResponseRecord = z.object({ data: z.object({ entries: z.array(z.unknown()) }) });
+const RECORDED_BRANCH_SUMMARY = BranchSummaryEntryRecord.parse(
+  EntriesResponseRecord.parse(recordedFrame("p3-branch-summary", 34)).data.entries.find(
+    (entry): entry is { type: string } =>
+      typeof entry === "object" &&
+      entry !== null &&
+      "type" in entry &&
+      entry.type === "branch_summary",
+  ),
+);
+export const BRANCH_SUMMARY_ENTRY = EntryIdSchema.parse(RECORDED_BRANCH_SUMMARY.id);
+export const BRANCH_SUMMARY_FROM_ID = EntryIdSchema.parse(RECORDED_BRANCH_SUMMARY.fromId);
 export function storedBranchSummary(
   id: EntryIdLike,
   parentId: EntryIdLike,
@@ -260,9 +270,8 @@ export function storedBranchSummary(
   };
 }
 
-/** The summary text a branch summary carries (the fixture's own Markdown, no file list). */
-export const BRANCH_SUMMARY_TEXT =
-  "## Goal\n\nKeep the original conversation.\n\n- The new chat starts from an earlier message.";
+/** The recorded branch summary text, preserved through the P3 summary renderer. */
+export const BRANCH_SUMMARY_TEXT = RECORDED_BRANCH_SUMMARY.summary;
 
 /**
  * The `branchSummary` wire message: `{ role, summary, fromId, timestamp }`, `wire/rpc-wire.generated.ts:193-198` at

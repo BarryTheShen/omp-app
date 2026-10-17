@@ -1,25 +1,30 @@
-// The branch_summary entry is omp v18.8.9's (session-entries.ts:148-156); its message is packages/coding-agent/src/modes/rpc/wire/rpc-wire.generated.ts:193-198.
-// No recording holds a branch summary, so the entries here are the fixture's own, in that shape.
+// The branch_summary entry is recorded in packages/omp-rpc/fixtures/p3-branch-summary.fixture.jsonl:34; its wire message
+// shape is omp v18.8.9's session-entries.ts:148-156 and rpc-wire.generated.ts:193-198.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { convertMessage } from "@/modules/R0/runtime";
 import { OmpRuntimeStore } from "@/modules/R0/store";
 import {
   BRANCH_SUMMARY_ENTRY,
+  BRANCH_SUMMARY_FROM_ID,
   BRANCH_SUMMARY_TEXT,
   branchSummaryMessage,
   SOURCE_CHAT,
   storedBranchSummary,
   storedUserText,
-  USER_TEXT_ONLY,
 } from "../fixtures/omp-branch";
 import { BranchSummaryDivider } from "../summary";
 
 afterEach(cleanup);
 
 const entries = [
-  storedUserText(USER_TEXT_ONLY, null, "Earlier question"),
-  storedBranchSummary(BRANCH_SUMMARY_ENTRY, USER_TEXT_ONLY, USER_TEXT_ONLY, BRANCH_SUMMARY_TEXT),
+  storedUserText(BRANCH_SUMMARY_FROM_ID, null, "Earlier question"),
+  storedBranchSummary(
+    BRANCH_SUMMARY_ENTRY,
+    BRANCH_SUMMARY_FROM_ID,
+    BRANCH_SUMMARY_FROM_ID,
+    BRANCH_SUMMARY_TEXT,
+  ),
 ];
 
 /** The branch summary's message in a chat's store: omp's `branchSummary` message, as the store holds it. */
@@ -39,7 +44,7 @@ describe("acceptance: a branch summary renders as a divider and keeps fromId", (
     const reloaded = new OmpRuntimeStore({ threadId: SOURCE_CHAT });
     reloaded.pairEndedMessages(entries, BRANCH_SUMMARY_ENTRY);
 
-    const expected = branchSummaryMessage(USER_TEXT_ONLY, BRANCH_SUMMARY_TEXT);
+    const expected = branchSummaryMessage(BRANCH_SUMMARY_FROM_ID, BRANCH_SUMMARY_TEXT);
     expect(summaryMessageOf(opened)).toEqual(expected);
     expect(summaryMessageOf(reloaded)).toEqual(expected);
 
@@ -53,7 +58,7 @@ describe("acceptance: a branch summary renders as a divider and keeps fromId", (
     const { container } = render(<BranchSummaryDivider message={expected} />);
     expect(
       container.querySelector("[data-p3-branch-summary-divider]")?.getAttribute("data-from-id"),
-    ).toBe(String(USER_TEXT_ONLY));
+    ).toBe(String(BRANCH_SUMMARY_FROM_ID));
     fireEvent.click(screen.getByText("Branch summary"));
     expect(screen.getByRole("heading", { name: "Goal" })).toBeTruthy();
     expect(screen.getByText("Keep the original conversation.")).toBeTruthy();
@@ -63,8 +68,13 @@ describe("acceptance: a branch summary renders as a divider and keeps fromId", (
     const store = new OmpRuntimeStore({ threadId: SOURCE_CHAT });
     store.pairEndedMessages(
       [
-        storedUserText(USER_TEXT_ONLY, null, "Earlier question"),
-        storedBranchSummary(BRANCH_SUMMARY_ENTRY, USER_TEXT_ONLY, USER_TEXT_ONLY, ""),
+        storedUserText(BRANCH_SUMMARY_FROM_ID, null, "Earlier question"),
+        storedBranchSummary(
+          BRANCH_SUMMARY_ENTRY,
+          BRANCH_SUMMARY_FROM_ID,
+          BRANCH_SUMMARY_FROM_ID,
+          "",
+        ),
       ],
       BRANCH_SUMMARY_ENTRY,
     );

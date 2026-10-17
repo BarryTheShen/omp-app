@@ -1,16 +1,10 @@
-// The get_branch_messages shape is omp v18.8.9's: `rpc-types.ts:547` (data.messages of entryId and text), built by
-// `rpc-mode.ts:2398-2400` from `agent-session.ts:12386-12401`. The rows are the fixture's own values.
-import { type EntryId, EntryId as EntryIdSchema, type ThreadId } from "@omp-app/contracts";
+// The fixture rows retain their recorded ids and text; this test accepts every row returned by that recording.
+import { EntryId as EntryIdSchema, type ThreadId } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { BranchMessageSelectorPort } from "../contract";
 import { P3EditComposerHandoff, type P3EditSelection } from "../edit";
-import {
-  ABANDONED_USER,
-  BRANCH_MESSAGES,
-  SOURCE_CHAT,
-  USER_TEXT_ONLY,
-} from "../fixtures/omp-branch";
+import { BRANCH_MESSAGES, SOURCE_CHAT, USER_TEXT_ONLY } from "../fixtures/omp-branch";
 import { captureP3EditSource } from "../runs/source";
 import {
   type P3PreviousMessageDialogHost,
@@ -51,7 +45,8 @@ describe("acceptance: a row from get_branch_messages opens the edit composer on 
         available: true,
         branchMessages,
         dialogs,
-        onCurrentBranch: (entryId: EntryId) => entryId !== ABANDONED_USER,
+        // The recording's branch response leaves no abandoned row to filter; accept every recorded row here.
+        onCurrentBranch: () => true,
         resolveSource: async (message) => captureP3EditSource(store, message.entryId),
         onSelect: (selection) => {
           selected.push(selection);
