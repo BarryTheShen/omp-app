@@ -86,3 +86,30 @@ realTest(
     await page.screenshot({ path: join(screenshots, "fix-980-stopped-starting-narrow.png") });
   },
 );
+
+realTest("real omp: Restart omp recovers and accepts another message", async ({ realApp }) => {
+  const page = await realApp.open({
+    beforeLoad: (target) =>
+      target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
+  });
+  const composer = await startChat(page);
+  await sendPrompt(composer, "hello");
+  await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
+
+  const previous = realApp.ompProcesses();
+  expect(previous).toHaveLength(1);
+  for (const pid of previous) process.kill(pid, "SIGKILL");
+
+  await expect(banner(page).locator("p")).toHaveText([HEADING, FIRST_STOP], { timeout: 30_000 });
+  await banner(page).getByRole("button", { name: "Restart omp" }).click();
+  await freshOmpPid(realApp, previous);
+  await expect(banner(page)).toHaveCount(0, { timeout: 60_000 });
+
+  await sendPrompt(composer, "hello after restart");
+  await expect(page.getByText("hello after restart", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
+  await expect(banner(page)).toHaveCount(0);
+  expect(realApp.problems).toEqual([]);
+});

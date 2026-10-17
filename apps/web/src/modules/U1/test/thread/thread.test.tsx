@@ -198,6 +198,114 @@ describe("ThreadShell states", () => {
     expect(retry).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: "Restart omp" })).toBeTruthy();
   });
+  test("keeps the banner mounted with Restarting while omp starts", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    const answer = Promise.withResolvers<void>();
+    renderThread(store, { onRestartOmp: () => answer.promise });
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
+    store.ingest({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
+    await screen.findByRole("button", { name: "Restarting…" });
+    expect(screen.getByRole("alert").textContent).toContain("omp exited (signal SIGKILL)");
+    expect(screen.getByText("The conversation could not continue.")).toBeTruthy();
+    answer.resolve();
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
+    expect(store.getSnapshot().process.status).toBe("ready");
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+  test("clears a process failure when omp becomes ready again", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "process",
+        status: "error",
+        error: { code: "permission", message: "The runtime was blocked", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    renderThread(store, { onRetry: vi.fn() });
+    expect(screen.getByRole("alert")).toBeTruthy();
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+  test("clears the source failure after a rejected restart recovers", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    const restart = vi.fn(async () => {
+      throw new AppFailure({
+        code: "timeout",
+        message: "The restart timed out",
+        retryable: true,
+      });
+    });
+    renderThread(store, { onRestartOmp: restart, onRetry: vi.fn() });
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
+    expect(await screen.findByText("The restart timed out", { exact: true })).toBeTruthy();
+    expect(screen.getByText("The conversation could not continue.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Restart omp" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 3);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  test("clears a stopped omp banner when it starts again without a button click", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    renderThread(store, { onRestartOmp: vi.fn(async () => undefined) });
+    expect(screen.getByRole("alert")).toBeTruthy();
+    store.ingest({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  test("does not carry one chat's restarting failure into another chat", async () => {
+    const failed = readyStore();
+    failed.ingest(
+      {
+        kind: "process",
+        status: "exited",
+        error: { code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true },
+      } as RpcSessionEvent,
+      2,
+    );
+    const other = new OmpRuntimeStore({ threadId: "other-thread" as ThreadId });
+    expect(other.getSnapshot().process.status).toBe("starting");
+    const restart = Promise.withResolvers<void>();
+    const view = renderThread(failed, { onRestartOmp: () => restart.promise });
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
+    failed.ingest({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
+    await screen.findByRole("button", { name: "Restarting…" });
+    expect(screen.getByRole("alert").textContent).toContain("omp exited (signal SIGKILL)");
+
+    view.rerender(<RuntimeThread props={{}} store={other} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Restarting…" })).toBeNull();
+  });
 
   test("puts a stopped omp's notice in the footer, after the last message", async () => {
     const store = readyStore();

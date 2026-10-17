@@ -11,12 +11,13 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
-import type { AppError, DescriptorId } from "@omp-app/contracts";
+import type { DescriptorId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import {
   createContext,
   type ReactNode,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -207,7 +208,9 @@ function RuntimeError({
         <p className="text-sm font-medium">
           {error.heading ?? "The conversation could not continue."}
         </p>
-        {showDetail && <p className="mt-1 text-sm">{detail}</p>}
+        {showDetail && !(stopped && retryError !== undefined) && (
+          <p className="mt-1 text-sm">{detail}</p>
+        )}
         {action !== undefined && retryError?.retryable !== false && (
           <button
             className="border-danger/40 bg-danger-surface-foreground/10 mt-3 rounded-md border px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-wait disabled:opacity-60"
@@ -239,7 +242,7 @@ function lastAnswerRefusedKey(snapshot: RuntimeSnapshot): boolean {
 }
 
 /** The failure the footer shows, or null: a refused key that the transcript's last answer already says is not said again. */
-function footerFailure(snapshot: RuntimeSnapshot): AppError | null {
+function footerFailure(snapshot: RuntimeSnapshot): ChatFailure | null {
   const error = snapshot.error ?? snapshot.process.error;
   // A refused key is said once: under the answer that stopped, when the transcript has that answer.
   const shownUnderAnswer =
@@ -250,17 +253,35 @@ function footerFailure(snapshot: RuntimeSnapshot): AppError | null {
 /** The failure notice and its Restart omp or Retry button. It sits in the thread's footer, where the reader is. */
 function RuntimeFailure({ snapshot, onRetry, onRestartOmp }: RuntimeFailureProps) {
   const error = footerFailure(snapshot);
-  if (error === null) return null;
+  const [restartSourceError, setRestartSourceError] = useState<ChatFailure | null>(null);
+  useEffect(() => {
+    if (
+      snapshot.process.status === "ready" ||
+      snapshot.process.status === "running" ||
+      (error !== null && error !== restartSourceError)
+    ) {
+      setRestartSourceError(null);
+    }
+  }, [error, restartSourceError, snapshot.process.status]);
+  const recovered =
+    (snapshot.process.status === "ready" || snapshot.process.status === "running") &&
+    error?.heading !== "An extension reported an error";
+  const visibleError = recovered ? error : (error ?? restartSourceError);
+  if (visibleError === null) return null;
+  const restart = async (): Promise<void> => {
+    setRestartSourceError(visibleError);
+    await onRestartOmp?.();
+  };
+  const answers = snapshot.messageOrder.map((key) => snapshot.messages[key]?.message);
   // A provider failure that the most recent failed answer already says is not said again here;
   // the banner keeps its heading.
-  const answers = snapshot.messageOrder.map((key) => snapshot.messages[key]?.message);
-  const showDetail = !failureShownUnderAnswer(error, latestErroredAnswer(answers));
+  const showDetail = !failureShownUnderAnswer(visibleError, latestErroredAnswer(answers));
   return (
     <RuntimeError
-      error={error}
+      error={visibleError}
       showDetail={showDetail}
       onRetry={onRetry}
-      onRestartOmp={onRestartOmp}
+      onRestartOmp={onRestartOmp === undefined ? undefined : restart}
     />
   );
 }
@@ -682,7 +703,12 @@ export function ThreadShell({
                 className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 flex-col border-t border-border bg-background"
                 data-slot="u1-thread-footer"
               >
-                <RuntimeFailure snapshot={snapshot} onRetry={onRetry} onRestartOmp={onRestartOmp} />
+                <RuntimeFailure
+                  key={snapshot.threadId}
+                  snapshot={snapshot}
+                  onRetry={onRetry}
+                  onRestartOmp={onRestartOmp}
+                />
                 <div className="flex items-center justify-between gap-(--space-md) px-6 py-2">
                   <RuntimeSettledStatus snapshot={snapshot} />
                   {footer}
