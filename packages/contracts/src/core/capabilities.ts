@@ -50,6 +50,37 @@ export const CapabilityKey: z.ZodType<CapabilityKey> = z.union([
   z.templateLiteral(["upstream.", z.string().regex(FEATURE_NAME)]),
 ]);
 
+/**
+ * The shared reasons for D8's unavailable upstream operations. The browser and
+ * server both publish these exact strings so a capability's detail cannot drift.
+ *
+ * omp v18.8.9:
+ * - `--goal` seeds a fresh CLI session (`packages/coding-agent/src/cli/flag-tables.ts:146-149,374-387`).
+ * - RPC goal operations are get/create/resume/pause/drop; create rejects an already active goal
+ *   (`packages/coding-agent/src/modes/rpc/rpc-goal.ts:21-27,250`).
+ * - Loop and vibe are `handleTui`-only (`packages/coding-agent/src/slash-commands/builtin-modes.ts:358-371,414-434`);
+ *   tan is `handleTui`-only (`packages/coding-agent/src/slash-commands/builtin-lifecycle.ts:451-459`).
+ */
+export const D8_AP6_UNAVAILABLE_REASONS = {
+  "upstream.goal-launch":
+    "omp can only open a chat with a goal already set from its terminal. Open the chat first, then set the goal.",
+  "upstream.goal-update":
+    "omp cannot change an active goal or its budget from here. Drop the goal and set a new one instead.",
+  "upstream.loop":
+    "The app cannot repeat a prompt automatically; use loop controls in omp's terminal.",
+  "upstream.tan-dispatch":
+    "Start a side-task worker from omp's terminal; the app cannot start one here.",
+  "upstream.vibe-worker":
+    "Start persistent workers from omp's terminal; the app cannot start them here.",
+} as const satisfies Record<
+  | "upstream.goal-launch"
+  | "upstream.goal-update"
+  | "upstream.loop"
+  | "upstream.tan-dispatch"
+  | "upstream.vibe-worker",
+  string
+>;
+
 export const CapabilityState = z.enum(["available", "fallback", "unavailable"]);
 export type CapabilityState = z.infer<typeof CapabilityState>;
 

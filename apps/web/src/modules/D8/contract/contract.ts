@@ -1,5 +1,5 @@
 import type { CapabilityKey, PortCallOptions, ThreadId } from "@omp-app/contracts";
-import { AppFailure } from "@omp-app/contracts";
+import { AppFailure, D8_AP6_UNAVAILABLE_REASONS } from "@omp-app/contracts";
 import { z } from "zod";
 
 const OptionalText = z.string().optional();
@@ -82,6 +82,14 @@ export const D8_AP6_CAPABILITIES = {
 } as const satisfies Record<string, CapabilityKey>;
 
 export type D8Ap6Capability = (typeof D8_AP6_CAPABILITIES)[keyof typeof D8_AP6_CAPABILITIES];
+/** D8 field names mapped to the shared, server/browser capability detail strings. */
+export const AP6_UNAVAILABLE_REASONS = {
+  goalLaunch: D8_AP6_UNAVAILABLE_REASONS["upstream.goal-launch"],
+  goalUpdate: D8_AP6_UNAVAILABLE_REASONS["upstream.goal-update"],
+  loop: D8_AP6_UNAVAILABLE_REASONS["upstream.loop"],
+  tanDispatch: D8_AP6_UNAVAILABLE_REASONS["upstream.tan-dispatch"],
+  vibeWorker: D8_AP6_UNAVAILABLE_REASONS["upstream.vibe-worker"],
+} as const satisfies Record<keyof typeof D8_AP6_CAPABILITIES, string>;
 
 /** What omp does with an open goal once a turn ends, as a plain sentence. */
 export interface ContinuationStatus {
@@ -172,14 +180,6 @@ export interface WorkerPort {
   ): Promise<WorkerObservation>;
   stop(threadId: ThreadId, workerId: string, options?: PortCallOptions): Promise<void>;
 }
-
-export const AP6_UNAVAILABLE_REASONS = {
-  goalLaunch: "Goal launch flags require a typed startup goal seam from omp.",
-  goalUpdate: "Editing an active goal or budget requires a typed goal-update seam.",
-  loop: "Loop continuation requires a typed loop lifecycle seam; prompts are not resubmitted locally.",
-  tanDispatch: "Tan dispatch requires a typed upstream worker command.",
-  vibeWorker: "Persistent vibe workers require a typed upstream worker lifecycle.",
-} as const satisfies Record<keyof typeof D8_AP6_CAPABILITIES, string>;
 
 export function unavailableAutonomy(capability: D8Ap6Capability, message: string): AppFailure {
   return new AppFailure({ code: "unavailable", message, retryable: false, capability });

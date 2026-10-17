@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { CapabilityMap, FolderPath, OMP_COMMAND_NAMES } from "@omp-app/contracts";
+import {
+  CapabilityMap,
+  D8_AP6_UNAVAILABLE_REASONS,
+  FolderPath,
+  OMP_COMMAND_NAMES,
+} from "@omp-app/contracts";
 import {
   type CapabilityProbeResult,
   capabilitiesForProtocol,
@@ -140,6 +145,15 @@ describe("probeCapabilities", () => {
       via: "upstream",
       detail: "Reconnect this MCP server in the omp terminal; this app cannot reconnect it.",
     });
+    for (const key of Object.keys(D8_AP6_UNAVAILABLE_REASONS) as Array<
+      keyof typeof D8_AP6_UNAVAILABLE_REASONS
+    >) {
+      expect(result.capabilities[key]).toEqual({
+        state: "unavailable",
+        via: "upstream",
+        detail: D8_AP6_UNAVAILABLE_REASONS[key],
+      });
+    }
     for (const key of [
       "host.config",
       "host.workspace-state",

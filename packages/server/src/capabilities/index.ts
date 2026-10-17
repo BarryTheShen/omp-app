@@ -5,6 +5,7 @@ import {
   type CapabilityKey,
   CapabilityMap,
   type CapabilityStatus,
+  D8_AP6_UNAVAILABLE_REASONS,
   FolderPath,
   OMP_COMMAND_NAMES,
   type OmpCommand,
@@ -370,6 +371,9 @@ function addCapability(
 const PROBE_PLACEHOLDER_KEY = ["omp", "app", "capability", "probe"].join("-");
 function addUnavailableUpstreamCapabilities(map: Record<string, CapabilityStatus>): void {
   addCapability(map, "upstream.mcp-reconnect", MCP_RECONNECT_UNAVAILABLE);
+  for (const [key, detail] of Object.entries(D8_AP6_UNAVAILABLE_REASONS)) {
+    addCapability(map, key as CapabilityKey, { state: "unavailable", via: "upstream", detail });
+  }
 }
 
 function isolatedProbeEnvironment(

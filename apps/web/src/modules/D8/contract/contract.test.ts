@@ -61,7 +61,7 @@ describe("D8 autonomy contracts", () => {
 
   test("keeps the AP6 capabilities unavailable with their reasons", () => {
     expect(D8_AP6_CAPABILITIES.loop).toBe("upstream.loop");
-    expect(AP6_UNAVAILABLE_REASONS.loop).toContain("not resubmitted");
+    expect(AP6_UNAVAILABLE_REASONS.loop).toContain("cannot repeat a prompt");
     expect(
       unavailableAutonomy(D8_AP6_CAPABILITIES.vibeWorker, AP6_UNAVAILABLE_REASONS.vibeWorker)
         .appError,
