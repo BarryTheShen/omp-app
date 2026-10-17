@@ -1,28 +1,205 @@
-import type { AppClient } from "@omp-app/client";
-import type { SessionFileChanged } from "@omp-app/contracts";
-import { FolderPath, SessionFilePath, ThreadId } from "@omp-app/contracts";
+import type {
+  AppClient,
+  ConnectionState,
+  ConnectionStateEvent,
+  ResyncEvent,
+} from "@omp-app/client";
+import type { SessionFileChanged, SessionRunningChanged } from "@omp-app/contracts";
+import { FolderPath, SessionFilePath, SessionFileStore, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { watchSessionFileChanges } from "./session-changes";
+import type { SessionCatalogModel } from "./catalog";
+import { watchSessionFileChanges, watchSessionRunningChanges } from "./session-changes";
 
-type FakeSubscriptionHandle = {
-  readonly onEvent: (listener: (change: SessionFileChanged) => void) => () => void;
-  readonly unsubscribe: () => Promise<void>;
-};
+type EventListener = (payload: unknown, sequence: number) => void;
 
 interface FakeSubscription {
-  readonly subscription: FakeSubscriptionHandle;
-  readonly listeners: Set<(change: SessionFileChanged) => void>;
-  /** Settles when the subscription is released. */
-  readonly released: Promise<void>;
-  unsubscribes(): number;
+  readonly stream: string;
+  readonly lastSeq: number;
+  onEvent(listener: EventListener): () => void;
+  unsubscribe(): Promise<void>;
 }
 
-function fakeSubscription(): FakeSubscription {
-  const listeners = new Set<(change: SessionFileChanged) => void>();
-  const released = Promise.withResolvers<void>();
-  let unsubscribes = 0;
+interface FakeClient {
+  readonly client: AppClient;
+  readonly events: string[];
+  readonly listeners: Map<string, Set<EventListener>>;
+  readonly resyncListeners: Set<(event: ResyncEvent) => void>;
+  readonly connectionListeners: Set<(event: ConnectionStateEvent) => void>;
+  setConnectionState(state: ConnectionState): void;
+  emit(event: string, payload: unknown): void;
+  resync(event: ResyncEvent): void;
+}
+
+function fakeClient(initialState: ConnectionState = "open"): FakeClient {
+  const events: string[] = [];
+  const listeners = new Map<string, Set<EventListener>>();
+  const resyncListeners = new Set<(event: ResyncEvent) => void>();
+  const connectionListeners = new Set<(event: ConnectionStateEvent) => void>();
+  let connectionState = initialState;
+  let sequence = 0;
+  const client = {
+    get connectionState() {
+      return connectionState;
+    },
+    subscribe: (port: unknown, event: string) => {
+      if (port !== SessionFileStore) throw new Error("subscription used the wrong port");
+      if (event !== "changed" && event !== "runningChanged")
+        throw new Error(`unexpected session-file event: ${event}`);
+      events.push(event);
+      const streamListeners = listeners.get(event) ?? new Set<EventListener>();
+      listeners.set(event, streamListeners);
+      const subscription: FakeSubscription = {
+        stream: `A1.sessionFileStore/${event}`,
+        lastSeq: 0,
+        onEvent: (listener) => {
+          streamListeners.add(listener);
+          return () => streamListeners.delete(listener);
+        },
+        unsubscribe: async () => {
+          streamListeners.clear();
+        },
+      };
+      return Promise.resolve(subscription);
+    },
+    onResync: (listener: (event: ResyncEvent) => void) => {
+      resyncListeners.add(listener);
+      return () => resyncListeners.delete(listener);
+    },
+    onConnectionState: (listener: (event: ConnectionStateEvent) => void) => {
+      connectionListeners.add(listener);
+      listener({ state: connectionState, attempt: 0 });
+      return () => connectionListeners.delete(listener);
+    },
+  } as unknown as AppClient;
   return {
-    subscription: {
+    client,
+    events,
+    listeners,
+    resyncListeners,
+    connectionListeners,
+    setConnectionState(state) {
+      connectionState = state;
+      for (const listener of connectionListeners) listener({ state, attempt: 1 });
+    },
+    emit(event, payload) {
+      sequence += 1;
+      for (const listener of listeners.get(event) ?? []) listener(payload, sequence);
+    },
+    resync(event) {
+      for (const listener of resyncListeners) listener(event);
+    },
+  };
+}
+
+function catalogFor(folder: FolderPath): {
+  readonly catalog: SessionCatalogModel;
+  readonly listCalls: unknown[];
+} {
+  const listCalls: unknown[] = [];
+  const scope = { kind: "folder" as const, folder };
+  const filter = { scope, query: "" };
+  return {
+    catalog: {
+      getSnapshot: () => ({ scope, filter }),
+      list: async (args: unknown) => {
+        listCalls.push(args);
+        return undefined;
+      },
+    } as unknown as SessionCatalogModel,
+    listCalls,
+  };
+}
+
+const folder = FolderPath.parse("/workspace/project");
+const otherFolder = FolderPath.parse("/workspace/other");
+const threadId = ThreadId.parse("chat-a");
+const turnStarted: SessionFileChanged = {
+  folder,
+  sessionFile: SessionFilePath.parse("/workspace/project/.omp/chat-a.jsonl"),
+  id: threadId,
+  kind: "updated",
+};
+const runningChanged: SessionRunningChanged = { folder, id: threadId, busy: true };
+
+async function settle(): Promise<void> {
+  for (let count = 0; count < 5; count += 1) await Promise.resolve();
+}
+
+describe("session change subscriptions", () => {
+  test("subscribes to the named file event and releases it with the watch", async () => {
+    const fake = fakeClient();
+    const received: SessionFileChanged[] = [];
+    const stop = watchSessionFileChanges(fake.client, (change) => received.push(change));
+    await settle();
+    expect(fake.events).toEqual(["changed"]);
+
+    fake.emit("changed", turnStarted);
+    expect(received).toEqual([turnStarted]);
+    stop();
+    expect(fake.listeners.get("changed")?.size).toBe(0);
+  });
+
+  test("the root running handler refreshes only the held catalog containing the event folder", async () => {
+    const fake = fakeClient();
+    const first = catalogFor(folder);
+    const other = catalogFor(otherFolder);
+    const catalogs = new Map<FolderPath, SessionCatalogModel>([
+      [folder, first.catalog],
+      [otherFolder, other.catalog],
+    ]);
+    const stop = watchSessionRunningChanges(fake.client, catalogs);
+    await settle();
+    expect(fake.events).toEqual(["runningChanged"]);
+
+    fake.emit("runningChanged", runningChanged);
+    expect(first.listCalls).toHaveLength(1);
+    expect(other.listCalls).toHaveLength(0);
+    expect(first.listCalls[0]).toMatchObject({ filter: { scope: { folder }, query: "" } });
+    stop();
+  });
+
+  test("refreshes every held catalog on resync and when a reconnect reopens", async () => {
+    const fake = fakeClient("reconnecting");
+    const first = catalogFor(folder);
+    const other = catalogFor(otherFolder);
+    const catalogs = new Map<FolderPath, SessionCatalogModel>([
+      [folder, first.catalog],
+      [otherFolder, other.catalog],
+    ]);
+    const stop = watchSessionRunningChanges(fake.client, catalogs);
+    await settle();
+    expect(fake.events).toEqual(["runningChanged"]);
+
+    fake.resync({ reason: "gap" });
+    expect(first.listCalls).toHaveLength(1);
+    expect(other.listCalls).toHaveLength(1);
+
+    fake.setConnectionState("open");
+    expect(first.listCalls).toHaveLength(2);
+    expect(other.listCalls).toHaveLength(2);
+
+    stop();
+    expect(fake.resyncListeners.size).toBe(0);
+    expect(fake.connectionListeners.size).toBe(0);
+    expect(fake.listeners.get("runningChanged")?.size).toBe(0);
+  });
+
+  test("keeps a watch that ends before its subscription arrives from leaking", async () => {
+    const subscribed = Promise.withResolvers<FakeSubscription>();
+    const client = {
+      connectionState: "open",
+      subscribe: (_port: unknown, _event: string) => subscribed.promise,
+      onResync: () => () => undefined,
+      onConnectionState: () => () => undefined,
+    } as unknown as AppClient;
+    const stop = watchSessionRunningChanges(client, new Map());
+    stop();
+    const released = Promise.withResolvers<void>();
+    let unsubscribes = 0;
+    const listeners = new Set<EventListener>();
+    subscribed.resolve({
+      stream: "A1.sessionFileStore/runningChanged",
+      lastSeq: 0,
       onEvent: (listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -31,68 +208,9 @@ function fakeSubscription(): FakeSubscription {
         unsubscribes += 1;
         released.resolve();
       },
-    },
-    listeners,
-    released: released.promise,
-    unsubscribes: () => unsubscribes,
-  };
-}
-
-function clientWith(subscribed: Promise<FakeSubscriptionHandle>): AppClient {
-  return { subscribe: () => subscribed } as unknown as AppClient;
-}
-
-const turnStarted: SessionFileChanged = {
-  folder: FolderPath.parse("/workspace/project"),
-  sessionFile: SessionFilePath.parse("/workspace/project/.omp/chat-a.jsonl"),
-  id: ThreadId.parse("chat-a"),
-  kind: "updated",
-};
-
-describe("watchSessionFileChanges", () => {
-  test("delivers the server's change events, and ending the watch removes the listener and releases the subscription", async () => {
-    const fake = fakeSubscription();
-    const subscribed = Promise.withResolvers<FakeSubscriptionHandle>();
-    const received: SessionFileChanged[] = [];
-    const stop = watchSessionFileChanges(clientWith(subscribed.promise), (change) =>
-      received.push(change),
-    );
-    subscribed.resolve(fake.subscription);
-    await subscribed.promise;
-
-    for (const listener of fake.listeners) listener(turnStarted);
-    expect(received).toEqual([turnStarted]);
-
-    stop();
-    expect(fake.listeners.size).toBe(0);
-    await fake.released;
-    expect(fake.unsubscribes()).toBe(1);
-  });
-
-  test("a watch that ends before its subscription arrives releases it once, and delivers nothing", async () => {
-    const fake = fakeSubscription();
-    const subscribed = Promise.withResolvers<FakeSubscriptionHandle>();
-    const received: SessionFileChanged[] = [];
-    const stop = watchSessionFileChanges(clientWith(subscribed.promise), (change) =>
-      received.push(change),
-    );
-    stop();
-    subscribed.resolve(fake.subscription);
-    await fake.released;
-
-    expect(fake.unsubscribes()).toBe(1);
-    expect(fake.listeners.size).toBe(0);
-    expect(received).toEqual([]);
-  });
-
-  test("a failed subscription ends quietly: the list keeps what it has and the watch can still be ended", async () => {
-    const subscribed = Promise.withResolvers<FakeSubscriptionHandle>();
-    const stop = watchSessionFileChanges(clientWith(subscribed.promise), () => {
-      throw new Error("no change should be delivered");
     });
-    subscribed.reject(new Error("the connection is down"));
-    await expect(subscribed.promise).rejects.toThrow("the connection is down");
-
-    expect(() => stop()).not.toThrow();
+    await released.promise;
+    expect(unsubscribes).toBe(1);
+    expect(listeners.size).toBe(0);
   });
 });

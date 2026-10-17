@@ -42,6 +42,7 @@ import {
   SessionPinListResult,
   SessionPinSetArgs,
   SessionPinStore,
+  SessionRunningChanged,
   SnapshotRecord,
   ToolsAvailabilityResult,
   WorkspaceState,
@@ -243,6 +244,9 @@ describe("A1 SessionFileStore and session pins", () => {
       }).success,
     ).toBe(true);
     expect(SessionFileChanged.safeParse({ folder, sessionFile, id: threadId }).success).toBe(false);
+    expect(SessionRunningChanged.safeParse({ folder, id: threadId, busy: true }).success).toBe(
+      true,
+    );
   });
 
   test("pin list/set use a revision and reject missing CAS", () => {

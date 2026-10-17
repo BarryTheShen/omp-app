@@ -6,6 +6,7 @@ import {
   SessionFileChanged,
   SessionFilePath,
   SessionFileStore,
+  SessionRunningChanged,
   ThreadId,
 } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
@@ -68,13 +69,25 @@ function mapSession(file: InternalSessionFile): ContractSessionFile {
 }
 
 /**
- * A chat's turn starting or settling changes what the list shows for it, so the `changed` event tells clients to
- * re-read that chat's file. The process registry knows a chat only by its id, so the file is found from the id.
+ * A chat's turn starting or settling changes what the list shows. The running-list event carries the process registry's
+ * folder even before omp writes a session file; the file event then tells clients to re-read that file when it exists.
  */
 function sessionTurnBindings(context: A1PortContext): readonly A1EventBinding[] {
   const busy = context.processBusy;
   if (busy === undefined) return [];
   return [
+    {
+      event: "runningChanged",
+      subscribe: (listener) =>
+        busy.onBusyChange((threadId, isBusy) => {
+          const payload = SessionRunningChanged.safeParse({
+            folder: busy.folderOf(threadId),
+            id: threadId,
+            busy: isBusy,
+          });
+          if (payload.success) listener(payload.data);
+        }),
+    },
     {
       event: "changed",
       subscribe: (listener) =>

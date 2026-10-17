@@ -166,6 +166,50 @@ describe("OmpProcessRegistry", () => {
     expect(created).toHaveLength(1);
   });
 
+  test("reports busy changes after the registry updates state and exposes the process folder", () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 10,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const thread = ThreadId.parse("thread-folder");
+    expect(registry.folderOf(thread)).toBeUndefined();
+    registry.acquire(options(thread, "/workspace/folder"));
+    expect(registry.folderOf(thread)).toBe("/workspace/folder");
+    const statesAtNotification: Array<boolean | undefined> = [];
+    registry.onBusyChange((id, _busy) => statesAtNotification.push(registry.busyOf(id)));
+
+    registry.setBusy(thread, true);
+
+    expect(statesAtNotification).toEqual([true]);
+  });
+
+  test("a throwing busy listener cannot prevent other listeners or change the registry state", () => {
+    const timer = new ManualTimer();
+    const registry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 10,
+      createProcess: (processOptions) => new StubProcess(processOptions),
+    });
+    const thread = ThreadId.parse("thread-listener-throws");
+    registry.acquire(options(thread, "/workspace/listener"));
+    const heard: boolean[] = [];
+    registry.onBusyChange(() => {
+      throw new Error("listener failed");
+    });
+    registry.onBusyChange((_id, busy) => heard.push(busy));
+
+    expect(() => registry.setBusy(thread, true)).not.toThrow();
+    expect(registry.busyOf(thread)).toBe(true);
+    expect(heard).toEqual([true]);
+  });
+
   test("reports each change of the busy mark once, and an exit ends the turn without an idle close", () => {
     const timer = new ManualTimer();
     const created: StubProcess[] = [];

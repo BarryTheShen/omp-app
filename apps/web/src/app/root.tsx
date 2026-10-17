@@ -108,7 +108,10 @@ import { createQueueController, type QueueController } from "@/modules/R0/action
 import { type StoppedQueue, useOmpRuntime } from "@/modules/R0/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
-import { watchSessionFileChanges } from "@/modules/R1/catalog/session-changes";
+import {
+  watchSessionFileChanges,
+  watchSessionRunningChanges,
+} from "@/modules/R1/catalog/session-changes";
 import {
   createSelectedThreadHistoryController,
   type SelectedThreadHistoryController,
@@ -2145,14 +2148,17 @@ function ConnectedApp({
     if (connection.state !== "connected" || !controller) return;
     void controller.reopenFailedOpen().catch(() => undefined);
   }, [connection.state, controller]);
-  // A chat's turn starting or settling changes its row. The server names the chat, and each open folder's list reads it again.
-  useEffect(
-    () =>
-      watchSessionFileChanges(client, (change) => {
-        for (const list of catalogCache.models.values()) void list.reconcile(change);
-      }),
-    [catalogCache, client],
-  );
+  // The file-less running-list event updates only catalogs containing its folder and re-reads held catalogs after resync.
+  useEffect(() => {
+    const stopFileChanges = watchSessionFileChanges(client, (change) => {
+      for (const list of catalogCache.models.values()) void list.reconcile(change);
+    });
+    const stopRunningChanges = watchSessionRunningChanges(client, catalogCache.models);
+    return () => {
+      stopFileChanges();
+      stopRunningChanges();
+    };
+  }, [catalogCache, client]);
   // A list that failed while the connection was down is loaded again once the app is back.
   useEffect(() => {
     if (connection.state !== "connected" || catalog === null) return;

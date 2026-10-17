@@ -182,6 +182,14 @@ export const SessionFileChanged = z.strictObject({
 });
 export type SessionFileChanged = z.infer<typeof SessionFileChanged>;
 
+/** A process registry turn changed for a chat whose session file may not exist yet. */
+export const SessionRunningChanged = z.strictObject({
+  folder: FolderPath,
+  id: ThreadId,
+  busy: z.boolean(),
+});
+export type SessionRunningChanged = z.infer<typeof SessionRunningChanged>;
+
 /**
  * Deletes one chat: its session file and the artifacts directory beside it. `folder` is the chat's folder, and only a
  * file that this folder's listing returns can be deleted. The server refuses (conflict) a chat omp holds or runs a turn
@@ -247,6 +255,10 @@ export const SessionFileStore = definePort({
   events: {
     changed: {
       payload: SessionFileChanged,
+      capability: "host.session-files",
+    },
+    runningChanged: {
+      payload: SessionRunningChanged,
       capability: "host.session-files",
     },
   },

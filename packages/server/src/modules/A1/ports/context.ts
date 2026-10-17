@@ -47,9 +47,10 @@ export interface A1PortContext {
   readonly readHostMetadata?: typeof readHostMetadata;
   readonly watchStreamActivity: A1StreamActivity;
   readonly publish: A1EventPublisher;
-  /** Reports when a chat's omp starts or settles a turn (the registry's busy mark); the chat's list entry re-reads. */
+  /** Reports when a chat's omp starts or settles a turn and supplies its folder before a session file exists. */
   readonly processBusy?: {
     onBusyChange(listener: (threadId: ThreadId, busy: boolean) => void): () => void;
+    folderOf: (threadId: ThreadId) => string | undefined;
   };
   /** The session file of a chat that is open now. A new chat's file is named before omp writes it to disk. */
   readonly openSessionFile: (threadId: ThreadId) => SessionFilePath | undefined;

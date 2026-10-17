@@ -265,6 +265,11 @@ export class OmpProcessRegistry {
     return this.#entries.get(threadId)?.busy;
   }
 
+  /** The folder registered for a thread, including a first turn before omp writes its session file. */
+  folderOf(threadId: ThreadId): string | undefined {
+    return this.#entries.get(threadId)?.folder;
+  }
+
   /** The threads whose turn runs now in a folder, in the order their processes were started. */
   busyIn(folder: string): readonly ThreadId[] {
     return [...this.#entries.values()]
@@ -291,9 +296,14 @@ export class OmpProcessRegistry {
   }
 
   #notifyBusy(threadId: ThreadId, busy: boolean): void {
-    for (const listener of this.#busyListeners) listener(threadId, busy);
+    for (const listener of this.#busyListeners) {
+      try {
+        listener(threadId, busy);
+      } catch {
+        // A busy-state observer must not break process lifecycle updates or other observers.
+      }
+    }
   }
-
   get(threadId: ThreadId): OmpProcess | undefined {
     return this.#entries.get(threadId)?.process;
   }

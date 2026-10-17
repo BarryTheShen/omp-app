@@ -10,10 +10,10 @@ async function settle(): Promise<void> {
 
 type BusyListener = (threadId: ThreadId, busy: boolean) => void;
 
-describe("the session file port publishes a chat's turn flips as changed", () => {
-  test("each flip publishes the chat's file, found from its id", async () => {
+describe("the session file port publishes turn and running-list changes", () => {
+  test("each flip publishes the file change and the folder running change", async () => {
     const threadId = ThreadId.parse("chat-turn");
-    const hooks: { notify?: BusyListener } = {};
+    const hooks: BusyListener[] = [];
     const published: unknown[] = [];
     const context = {
       sessionFileStore: {
@@ -24,9 +24,10 @@ describe("the session file port publishes a chat's turn flips as changed", () =>
       },
       processBusy: {
         onBusyChange: (listener: BusyListener) => {
-          hooks.notify = listener;
+          hooks.push(listener);
           return () => undefined;
         },
+        folderOf: () => "/workspace/app",
       },
       publish: (_stream: unknown, payload: unknown) => {
         published.push(payload);
@@ -36,22 +37,32 @@ describe("the session file port publishes a chat's turn flips as changed", () =>
     } as unknown as A1PortContext;
     createSessionFileStoreRegistration(context);
 
-    hooks.notify?.(threadId, true);
+    for (const listener of hooks) listener(threadId, true);
     await settle();
-    hooks.notify?.(threadId, false);
+    for (const listener of hooks) listener(threadId, false);
     await settle();
 
-    const file = {
-      folder: "/workspace/app",
-      sessionFile: "/workspace/app/.omp/chat-turn.jsonl",
-      id: threadId,
-      kind: "updated",
-    };
-    expect(published).toEqual([file, file]);
+    expect(published).toEqual([
+      { folder: "/workspace/app", id: threadId, busy: true },
+      {
+        folder: "/workspace/app",
+        sessionFile: "/workspace/app/.omp/chat-turn.jsonl",
+        id: threadId,
+        kind: "updated",
+      },
+      { folder: "/workspace/app", id: threadId, busy: false },
+      {
+        folder: "/workspace/app",
+        sessionFile: "/workspace/app/.omp/chat-turn.jsonl",
+        id: threadId,
+        kind: "updated",
+      },
+    ]);
   });
 
-  test("a chat whose file cannot be read publishes nothing, and the flip does not fail", async () => {
-    const hooks: { notify?: BusyListener } = {};
+  test("a file-less chat still publishes its folder running change", async () => {
+    const threadId = ThreadId.parse("chat-gone");
+    const hooks: BusyListener[] = [];
     const published: unknown[] = [];
     const context = {
       sessionFileStore: {
@@ -61,9 +72,10 @@ describe("the session file port publishes a chat's turn flips as changed", () =>
       },
       processBusy: {
         onBusyChange: (listener: BusyListener) => {
-          hooks.notify = listener;
+          hooks.push(listener);
           return () => undefined;
         },
+        folderOf: () => "/workspace/app",
       },
       publish: (_stream: unknown, payload: unknown) => {
         published.push(payload);
@@ -73,9 +85,33 @@ describe("the session file port publishes a chat's turn flips as changed", () =>
     } as unknown as A1PortContext;
     createSessionFileStoreRegistration(context);
 
-    hooks.notify?.(ThreadId.parse("chat-gone"), true);
+    for (const listener of hooks) listener(threadId, true);
     await settle();
 
+    expect(published).toEqual([{ folder: "/workspace/app", id: threadId, busy: true }]);
+  });
+  test("an invalid folder event is dropped without throwing through the process registry", () => {
+    const threadId = ThreadId.parse("chat-invalid-folder");
+    const hooks: BusyListener[] = [];
+    const published: unknown[] = [];
+    const context = {
+      sessionFileStore: { findSession: async (): Promise<undefined> => undefined },
+      processBusy: {
+        onBusyChange: (listener: BusyListener) => {
+          hooks.push(listener);
+          return () => undefined;
+        },
+        folderOf: () => "relative-folder",
+      },
+      publish: (_stream: unknown, payload: unknown) => {
+        published.push(payload);
+        return undefined;
+      },
+      watchStreamActivity: () => () => undefined,
+    } as unknown as A1PortContext;
+    createSessionFileStoreRegistration(context);
+
+    expect(() => hooks[0]?.(threadId, true)).not.toThrow();
     expect(published).toEqual([]);
   });
 });

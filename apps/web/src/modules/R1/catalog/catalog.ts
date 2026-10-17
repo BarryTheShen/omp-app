@@ -142,9 +142,13 @@ function folderRoots(scope: SessionScope, git: GitState | null): readonly Folder
   return [...new Set(roots)];
 }
 
+export function sessionFolderInScope(scope: SessionScope, folder: FolderPath): boolean {
+  if (scope.kind === "folder") return folder === scope.folder;
+  return folder === scope.repositoryRoot || folder.startsWith(`${scope.repositoryRoot}/`);
+}
+
 function changedInScope(scope: SessionScope, session: SessionMetadata): boolean {
-  if (scope.kind === "folder") return session.cwd === scope.folder;
-  return session.cwd === scope.repositoryRoot || session.cwd.startsWith(`${scope.repositoryRoot}/`);
+  return sessionFolderInScope(scope, session.cwd);
 }
 
 /**
@@ -567,11 +571,7 @@ export class SessionCatalogModel {
   }
 
   private eventInScope(change: SessionFileChanged): boolean {
-    if (this.snapshot.scope.kind === "folder") return change.folder === this.snapshot.scope.folder;
-    return (
-      change.folder === this.snapshot.scope.repositoryRoot ||
-      change.folder.startsWith(`${this.snapshot.scope.repositoryRoot}/`)
-    );
+    return sessionFolderInScope(this.snapshot.scope, change.folder);
   }
 
   private requireSessionFile(threadId: ThreadId): SessionFilePath {
