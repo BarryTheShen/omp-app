@@ -93,6 +93,17 @@ describe("D1 model settings sections", () => {
     expect(modelSettingsSections[0]?.controls.map((control) => control.key)).toContain(
       "defaultThinkingLevel",
     );
+    expect(modelSettingsSections[0]?.controls.map((control) => control.key)).toContain(
+      "expandThinkingBlocks",
+    );
+    expect(
+      modelSettingsSections[0]?.controls.find((control) => control.key === "expandThinkingBlocks"),
+    ).toMatchObject({
+      label: "Expand Thinking Blocks",
+      description: expect.stringMatching(/^Terminal only\. /),
+      kind: "boolean",
+      apply: "live",
+    });
     expect(modelSettingsSections[1]?.controls.map((control) => control.key)).toEqual(
       expect.arrayContaining([
         "topP",

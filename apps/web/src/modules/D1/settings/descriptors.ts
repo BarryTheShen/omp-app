@@ -247,6 +247,12 @@ export const modelThinkingSection = section("D1.modelThinking", "Thinking", [
     "live",
   ),
   booleanControl(
+    "expandThinkingBlocks",
+    "Expand Thinking Blocks",
+    "Terminal only. This app does not use this setting.",
+    "live",
+  ),
+  booleanControl(
     "proseOnlyThinking",
     "Prose Only Thinking",
     "Omit code blocks from thinking summaries.",
