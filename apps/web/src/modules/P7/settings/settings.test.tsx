@@ -42,6 +42,7 @@ const EXPECTED_KEYS: Readonly<Record<string, readonly string[]>> = {
     "workspace.additionalDirectories",
     "contextPromotion.enabled",
     "extendedContext",
+    "contextFiles.extra",
   ],
   "context/Compaction": [
     "compaction.enabled",

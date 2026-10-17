@@ -241,6 +241,35 @@ function validateStringList(value: SettingValue): ValidationResult {
     ? { valid: true }
     : invalid("Each entry must be plain text.");
 }
+const BUILTIN_CONTEXT_FILE_NAMES: ReadonlySet<string> = new Set([
+  "agents.md",
+  "claude.md",
+  "gemini.md",
+  "copilot-instructions.md",
+]);
+
+function validateContextFileNames(value: SettingValue): ValidationResult {
+  const candidate = plain(value);
+  if (!Array.isArray(candidate)) return invalid("Enter a list of extra context filenames.");
+  for (const item of candidate) {
+    if (typeof item !== "string") return invalid("Each extra context filename must be text.");
+    const name = item.trim();
+    if (name.length === 0) return invalid("Extra context filenames cannot be empty.");
+    if (BUILTIN_CONTEXT_FILE_NAMES.has(name.toLowerCase())) {
+      return invalid("Do not list a built-in context filename.");
+    }
+    if (
+      name === "." ||
+      name === ".." ||
+      name.includes("/") ||
+      name.includes("\\") ||
+      name.includes("\0")
+    ) {
+      return invalid("Enter filenames only, not paths.");
+    }
+  }
+  return { valid: true };
+}
 
 const COMPACTION_METHODS: Readonly<Record<string, true>> = {
   remote: true,
@@ -349,6 +378,13 @@ const GENERAL_SETTINGS: readonly SettingControl[] = [
     "extendedContext",
     "Extended Context",
     "Use larger context windows when a model supports them. Higher limits may cost more.",
+  ),
+  settingControl(
+    "contextFiles.extra",
+    "Extra Context Files",
+    "list",
+    validateContextFileNames,
+    "Extra instruction filenames loaded beside AGENTS.md. Enter filenames only, not paths. Start a new session to load changes.",
   ),
 ];
 

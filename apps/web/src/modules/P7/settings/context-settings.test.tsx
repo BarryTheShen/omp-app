@@ -943,7 +943,9 @@ describe("the compaction method order and the list fields", () => {
       { target: { value: "one\n\n  two words  \n" } },
     );
 
-    expect(within(section).getByText("One entry per line. Blank lines are ignored.")).toBeTruthy();
+    expect(
+      within(section).getAllByText("One entry per line. Blank lines are ignored."),
+    ).toHaveLength(2);
     fireEvent.click(within(section).getByRole("button", { name: "Save changes" }));
     await within(section).findByText("Applied");
     expect(store.state.writes.at(-1)?.value).toEqual({
