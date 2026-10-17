@@ -2,7 +2,7 @@ import type { ConfigEntry } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { ConfigSnapshot, SettingControl, SettingValue } from "../../../S1/settings-kit";
 import { S3_SETTINGS_SECTIONS } from "../../sections";
-import { TOOLS_SETTINGS_SECTIONS } from "../../tools";
+import { TOOLS_SETTING_DEFAULTS, TOOLS_SETTINGS_SECTIONS } from "../../tools";
 
 const snapshot: ConfigSnapshot = { folder: null, revision: "revision-1", entries: [] };
 function snapshotWithValues(values: Readonly<Record<string, number>>): ConfigSnapshot {
@@ -467,6 +467,11 @@ describe("S3 Tools and Tasks sections", () => {
     expect(control("task.maxConcurrency").apply).toBe("reload");
     expect(control("task.maxRuntimeMs").apply).toBe("session");
     expect(control("task.prewalk").apply).toBe("session");
+  });
+
+  test("the Computer Display description names the default value omp shows", () => {
+    const description = control("computer.display").description ?? "";
+    expect(description).toContain(`(${TOOLS_SETTING_DEFAULTS["computer.display"]})`);
   });
 });
 

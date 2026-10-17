@@ -410,9 +410,9 @@ describe("S3.5 ConfigStore fixtures and gate proof", () => {
     expect(OMP_V18_8_9_DEFAULT_REGISTRY_EXTRACT["computer.display"]).toBe("active");
   });
 
-  test("uses v18.8.9 defaults and leaves the known stale computer display out", () => {
+  test("uses every v18.8.9 registry default, including Computer Display", () => {
     const defaults = S3_PROVENANCE_FIXTURES.filter((fixture) => fixture.source === "default");
-    expect(S3_DEFAULT_EVIDENCE_GAPS).toEqual(["computer.display"]);
+    expect(S3_DEFAULT_EVIDENCE_GAPS).toEqual([]);
     for (const fixture of defaults) {
       expect(fixture.valueKind).toBe("omp-default");
       const section = S3_SETTINGS_SECTIONS.find((candidate) => candidate.id === fixture.sectionId);

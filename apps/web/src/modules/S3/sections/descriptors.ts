@@ -515,17 +515,17 @@ const toolsComputer: readonly SettingControl[] = [
   described(
     text("computer.display", "text", "live"),
     "Computer Display",
-    "Capture all displays or choose one by its native display identifier.",
+    "Which display to capture: the active window's display (active), every display (all), or one display by its native identifier.",
   ),
   described(
     number("computer.maxWidth", 1, 16_384, "live"),
     "Computer Screenshot Width (pixels)",
-    "Maximum width of a combined desktop screenshot.",
+    "Maximum width of a screenshot.",
   ),
   described(
     number("computer.maxHeight", 1, 16_384, "live"),
     "Computer Screenshot Height (pixels)",
-    "Maximum height of a combined desktop screenshot.",
+    "Maximum height of a screenshot.",
   ),
 ];
 

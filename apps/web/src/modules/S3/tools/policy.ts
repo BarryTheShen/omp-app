@@ -121,8 +121,8 @@ export const TOOLS_SETTING_DEFAULTS = {
   "browser.idleCloseSec": 1800,
   // string undefined; packages/coding-agent/src/tools/browser/settings.ts:127-131.
   "browser.screenshotDir": undefined,
-  // string "all"; packages/coding-agent/src/tools/settings.ts:631-635.
-  "computer.display": "all",
+  // string "active"; omp v18.8.9 packages/coding-agent/src/tools/settings.ts:631-640.
+  "computer.display": "active",
   // number 3840; packages/coding-agent/src/tools/settings.ts:643-647.
   "computer.maxWidth": 3840,
   // number 2400; packages/coding-agent/src/tools/settings.ts:655-659.

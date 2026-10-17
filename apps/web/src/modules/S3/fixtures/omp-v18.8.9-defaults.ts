@@ -4,9 +4,7 @@ import type { JsonValue } from "@omp-app/contracts";
  * Normalized extract of the `default` literals in omp v18.8.9's S3-owned registry registrations.
  * The source registries are `packages/coding-agent/src/tools/settings.ts`, `tools/browser/settings.ts`,
  * `ida/settings.ts`, `extensibility/settings.ts`, `task/settings.ts`, `goals/settings.ts` and
- * `plan-mode/settings.ts`. `computer.display` is `"active"` at `tools/settings.ts:632-636` in this
- * tag; the S3 table still says v18.6.1's `"all"`, so S3.5 intentionally does not publish that
- * stale value as a v18.8.9 default fixture (tracked separately).
+ * `plan-mode/settings.ts`. `computer.display` is `"active"` at `tools/settings.ts:631-640`.
  */
 export const OMP_V18_8_9_DEFAULT_REGISTRY_EXTRACT = {
   "todo.enabled": true,
@@ -116,5 +114,5 @@ export const OMP_V18_8_9_DEFAULT_REGISTRY_EXTRACT = {
   "task.prewalk": false,
 } satisfies Readonly<Record<string, JsonValue | undefined>>;
 
-/** The v18.8.9 source default is known, but the S3 evidence table is stale; keep it out of default fixtures. */
-export const S3_DEFAULT_EVIDENCE_GAPS = ["computer.display"] as const;
+/** All S3 default literals now match the v18.8.9 registry extract. */
+export const S3_DEFAULT_EVIDENCE_GAPS = [] as const;
