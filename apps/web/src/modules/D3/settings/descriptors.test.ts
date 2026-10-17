@@ -104,6 +104,17 @@ const OMP_PROVIDER_SETTINGS = [
       "Send text you type while a GPT-6 response streams into that response over the Codex WebSocket instead of waiting for the next tool boundary.",
   },
   {
+    key: "providers.muse-code.storeResponses",
+    kind: "boolean",
+    defaultValue: false,
+    options: [],
+    apply: "live",
+    registrySource: "session/settings.ts:1128-1139",
+    boundarySource: "session/settings.ts:1143; session/settings-stream-fn.ts:136-138",
+    description:
+      "When using Muse Code, store responses on Meta's servers so a disconnected turn can resume instead of running again. Prompts and outputs are stored on Meta. Environment settings can override this choice.",
+  },
+  {
     key: "providers.cacheRetention",
     kind: "enum",
     defaultValue: "auto",
@@ -235,7 +246,7 @@ describe("provider setting descriptors", () => {
 
   test("uses redacted typed controls and the live/restart boundaries from the registry", () => {
     const controls = PROVIDER_SETTINGS_SECTIONS.flatMap(({ controls: values }) => values);
-    expect(controls).toHaveLength(14);
+    expect(controls).toHaveLength(15);
     expect(controls.every((control) => control.secret === false)).toBe(true);
     expect(controls.find((control) => control.key === "provider.appendOnlyContext")?.kind).toBe(
       "enum",
@@ -251,6 +262,13 @@ describe("provider setting descriptors", () => {
     expect(controls.find((control) => control.key === "providers.openaiLiveSteering")?.apply).toBe(
       "live",
     );
+    expect(
+      controls.find((control) => control.key === "providers.muse-code.storeResponses"),
+    ).toMatchObject({
+      kind: "boolean",
+      defaultValue: false,
+      apply: "live",
+    });
     expect(controls.find((control) => control.key === "telemetry.otlpExportEnabled")?.apply).toBe(
       "restart",
     );
@@ -273,6 +291,17 @@ describe("provider setting descriptors", () => {
       valid: true,
     });
     expect(fireworks.validate({ secret: false, value: "turbo" }, {} as never)).toMatchObject({
+      valid: false,
+    });
+  });
+  test("validates Muse Code stored responses as a boolean", () => {
+    const control = section("providers/Protocol").controls.find(
+      (candidate) => candidate.key === "providers.muse-code.storeResponses",
+    );
+    if (!control) throw new Error("Missing Muse Code stored responses setting.");
+    expect(control.validate({ secret: false, value: false }, {} as never)).toEqual({ valid: true });
+    expect(control.validate({ secret: false, value: true }, {} as never)).toEqual({ valid: true });
+    expect(control.validate({ secret: false, value: "true" }, {} as never)).toMatchObject({
       valid: false,
     });
   });

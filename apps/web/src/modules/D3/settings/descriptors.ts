@@ -307,6 +307,17 @@ export const PROVIDER_SETTINGS_SECTIONS: readonly ProviderSettingsSectionDescrip
         "live",
         evidence(true, "session/settings.ts:1088-1100", "session/settings-stream-fn.ts:166"),
       ),
+      booleanControl(
+        "providers.muse-code.storeResponses",
+        "Muse Code stored responses",
+        "When using Muse Code, store responses on Meta's servers so a disconnected turn can resume instead of running again. Prompts and outputs are stored on Meta. Environment settings can override this choice.",
+        "live",
+        evidence(
+          false,
+          "session/settings.ts:1128-1139",
+          "session/settings.ts:1143; session/settings-stream-fn.ts:136-138",
+        ),
+      ),
       enumControl(
         "providers.cacheRetention",
         "Prompt cache retention",

@@ -17,6 +17,44 @@ const INVISIBLE_TO_THE_EXTRACTOR: Readonly<Record<string, string>> = {
   "magicKeywords.jevify":
     "generated in omp's magic-keyword loop; absent from literal register calls",
 };
+/** These enum values are identifier-valued in omp, so the literal-register extractor omits them. */
+const IDENTIFIER_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
+  // omp v18.9.1 tiny/device.ts:74-94
+  "providers.tinyModelDevice": [
+    "default",
+    "gpu",
+    "cpu",
+    "mlx",
+    "metal",
+    "webgpu",
+    "cuda",
+    "dml",
+    "coreml",
+    "auto",
+    "wasm",
+    "webnn",
+    "webnn-gpu",
+    "webnn-cpu",
+    "webnn-npu",
+  ],
+  // omp v18.9.1 tiny/dtype.ts:49-68
+  "providers.tinyModelDtype": [
+    "default",
+    "q4",
+    "q4f16",
+    "q8",
+    "fp16",
+    "fp32",
+    "int8",
+    "uint8",
+    "bnb4",
+    "q2",
+    "q2f16",
+    "q1",
+    "q1f16",
+    "auto",
+  ],
+};
 
 /** These controls intentionally use a different shape than omp's persisted setting registration. */
 const DESIGN_DIFFERENCES: Readonly<Record<string, string>> = {
@@ -105,9 +143,10 @@ describe("settings descriptors match omp's v18.9.1 registration", () => {
         continue;
       }
       const actual = optionValues(control);
-      if (JSON.stringify(actual) !== JSON.stringify(source.values)) {
+      const expected = IDENTIFIER_ENUM_VALUES[control.key] ?? source.values;
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         mismatches.push(
-          `${control.key}: options ${JSON.stringify(actual)} != ${JSON.stringify(source.values)}`,
+          `${control.key}: options ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`,
         );
       }
     }
