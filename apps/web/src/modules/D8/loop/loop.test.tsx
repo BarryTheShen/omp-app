@@ -1,5 +1,5 @@
 import type { CapabilityMap } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { LOOP_UNAVAILABLE_REASON, loopGate } from "./gate";
 import { loopSpecFromForm } from "./spec";
@@ -115,6 +115,174 @@ describe("LoopControls", () => {
     expect(props.onPause).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Stop loop" }));
     expect(props.onStop).toHaveBeenCalledOnce();
+  });
+
+  test("a failed start does not focus a later unrelated run", async () => {
+    const onStart = vi.fn(async () => {
+      throw new Error("start failed");
+    });
+    const props: LoopControlsProps = {
+      gate: { state: "available" },
+      run: "idle",
+      onPause: () => undefined,
+      onResume: () => undefined,
+      onStart,
+      onStop: () => undefined,
+    };
+    const { rerender } = render(<LoopControls {...props} />);
+    fireEvent.change(screen.getByLabelText("Count"), { target: { value: "3" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Start loop" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert").textContent).toBe("The loop could not be started.");
+
+    rerender(
+      <LoopControls
+        gate={{ state: "available" }}
+        onPause={() => undefined}
+        onResume={() => undefined}
+        onStart={onStart}
+        onStop={() => undefined}
+        run="running"
+      />,
+    );
+
+    expect(document.activeElement).not.toBe(screen.getByRole("button", { name: "Pause loop" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("a start that resolves while idle focuses Pause when the run starts later", async () => {
+    const onStart = vi.fn(async () => undefined);
+    const props: LoopControlsProps = {
+      gate: { state: "available" },
+      run: "idle",
+      onPause: () => undefined,
+      onResume: () => undefined,
+      onStart,
+      onStop: () => undefined,
+    };
+    const { rerender } = render(<LoopControls {...props} />);
+    fireEvent.change(screen.getByLabelText("Count"), { target: { value: "3" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Start loop" }));
+      await Promise.resolve();
+    });
+    rerender(<LoopControls {...props} run="running" />);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Pause loop" }));
+  });
+
+  test("a rejected Stop clears focus for a later passive finish", async () => {
+    const onStop = vi.fn(async () => {
+      throw new Error("stop failed");
+    });
+    const outside = document.createElement("input");
+    document.body.appendChild(outside);
+    const props: LoopControlsProps = {
+      gate: { state: "available" },
+      run: "running",
+      onPause: () => undefined,
+      onResume: () => undefined,
+      onStart: () => undefined,
+      onStop,
+    };
+    const { rerender } = render(<LoopControls {...props} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop loop" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert").textContent).toBe("The loop could not be stopped.");
+    outside.focus();
+    rerender(<LoopControls {...props} run="idle" />);
+    expect(document.activeElement).toBe(outside);
+    expect(screen.queryByRole("alert")).toBeNull();
+    outside.remove();
+  });
+
+  test("a successful Stop retry clears the prior error", async () => {
+    const onStop = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("stop failed"))
+      .mockResolvedValue(undefined);
+    const props: LoopControlsProps = {
+      gate: { state: "available" },
+      run: "running",
+      onPause: () => undefined,
+      onResume: () => undefined,
+      onStart: () => undefined,
+      onStop,
+    };
+    render(<LoopControls {...props} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop loop" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("alert").textContent).toBe("The loop could not be stopped.");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop loop" }));
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("stopping a loop focuses Start loop instead of the removed action", () => {
+    const props: LoopControlsProps = {
+      gate: { state: "available" },
+      run: "running",
+      onPause: vi.fn(),
+      onResume: vi.fn(),
+      onStart: vi.fn(),
+      onStop: vi.fn(),
+    };
+    const { rerender } = render(<LoopControls {...props} />);
+    const pause = screen.getByRole("button", { name: "Pause loop" });
+    pause.focus();
+    fireEvent.click(screen.getByRole("button", { name: "Stop loop" }));
+
+    rerender(<LoopControls {...props} run="idle" />);
+
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Start loop" }));
+  });
+
+  test("a loop that finishes on its own keeps focus in an outside field", () => {
+    const props: LoopControlsProps = {
+      gate: { state: "available" },
+      run: "running",
+      onPause: () => undefined,
+      onResume: () => undefined,
+      onStart: () => undefined,
+      onStop: () => undefined,
+    };
+    const outside = document.createElement("input");
+    document.body.appendChild(outside);
+    const { rerender } = render(<LoopControls {...props} />);
+    outside.focus();
+
+    rerender(<LoopControls {...props} run="idle" />);
+
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
+
+  test("a paused loop that finishes on its own keeps focus in an outside field", () => {
+    const props: LoopControlsProps = {
+      gate: { state: "available" },
+      run: "paused",
+      onPause: () => undefined,
+      onResume: () => undefined,
+      onStart: () => undefined,
+      onStop: () => undefined,
+    };
+    const outside = document.createElement("input");
+    document.body.appendChild(outside);
+    const { rerender } = render(<LoopControls {...props} />);
+    outside.focus();
+
+    rerender(<LoopControls {...props} run="idle" />);
+
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
   });
 
   test("a paused loop offers resume and stop", () => {

@@ -10,10 +10,10 @@ export type LoopRunState = "idle" | "running" | "paused";
 export interface LoopControlsProps {
   readonly gate: LoopGate;
   readonly run: LoopRunState;
-  readonly onStart: (spec: LoopSpec) => void;
+  readonly onStart: (spec: LoopSpec) => void | Promise<void>;
   readonly onPause: () => void;
   readonly onResume: () => void;
-  readonly onStop: () => void;
+  readonly onStop: () => void | Promise<void>;
 }
 
 const MODE_OPTIONS: ReadonlyArray<{ readonly value: LoopConditionMode; readonly label: string }> = [
@@ -30,14 +30,20 @@ const EMPTY_FORM: LoopForm = { count: "", minutes: "", command: "", mode: "until
 export function LoopControls({ gate, run, onStart, onPause, onResume, onStop }: LoopControlsProps) {
   const headingId = useId();
   const focusAfterStart = useRef(false);
+  const focusAfterStop = useRef(false);
+  const previousRun = useRef(run);
   const [form, setForm] = useState<LoopForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const firstActionRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (run !== "idle" && focusAfterStart.current) {
-      firstActionRef.current?.focus();
-      focusAfterStart.current = false;
-    }
+    if (previousRun.current === run) return;
+    const started = previousRun.current === "idle" && run !== "idle";
+    if (started && focusAfterStart.current) firstActionRef.current?.focus();
+    focusAfterStart.current = false;
+    if (run === "idle" && focusAfterStop.current) firstActionRef.current?.focus();
+    focusAfterStop.current = false;
+    setFormError(null);
+    previousRun.current = run;
   }, [run]);
 
   if (gate.state === "unavailable") {
@@ -63,10 +69,18 @@ export function LoopControls({ gate, run, onStart, onPause, onResume, onStop }: 
       return;
     }
     setFormError(null);
-    onStart(result.spec);
     focusAfterStart.current = true;
+    try {
+      const start = onStart(result.spec);
+      void Promise.resolve(start).catch(() => {
+        focusAfterStart.current = false;
+        setFormError("The loop could not be started.");
+      });
+    } catch (error) {
+      focusAfterStart.current = false;
+      throw error;
+    }
   };
-
   const setField = (field: keyof LoopForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
     setFormError(null);
@@ -124,24 +138,40 @@ export function LoopControls({ gate, run, onStart, onPause, onResume, onStop }: 
           </fieldset>
           {formError ? <InlineError message={formError} /> : null}
           <Toolbar ariaLabel="Loop actions">
-            <Button type="submit">Start loop</Button>
+            <Button ref={firstActionRef} type="submit">
+              Start loop
+            </Button>
           </Toolbar>
         </form>
       ) : (
-        <Toolbar ariaLabel="Loop actions">
-          {run === "running" ? (
-            <Button ref={firstActionRef} onClick={onPause} type="button" variant="outline">
-              Pause loop
+        <div className="flex flex-col gap-3">
+          <Toolbar ariaLabel="Loop actions">
+            {run === "running" ? (
+              <Button ref={firstActionRef} onClick={onPause} type="button" variant="outline">
+                Pause loop
+              </Button>
+            ) : (
+              <Button ref={firstActionRef} onClick={onResume} type="button" variant="outline">
+                Resume loop
+              </Button>
+            )}
+            <Button
+              onClick={() => {
+                setFormError(null);
+                focusAfterStop.current = true;
+                void Promise.resolve(onStop()).catch(() => {
+                  focusAfterStop.current = false;
+                  setFormError("The loop could not be stopped.");
+                });
+              }}
+              type="button"
+              variant="destructive"
+            >
+              Stop loop
             </Button>
-          ) : (
-            <Button ref={firstActionRef} onClick={onResume} type="button" variant="outline">
-              Resume loop
-            </Button>
-          )}
-          <Button onClick={onStop} type="button" variant="destructive">
-            Stop loop
-          </Button>
-        </Toolbar>
+          </Toolbar>
+          {formError ? <InlineError message={formError} /> : null}
+        </div>
       )}
     </Section>
   );
