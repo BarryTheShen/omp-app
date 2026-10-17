@@ -117,6 +117,11 @@ export interface A0PortContext {
 function modelArgs(model: ModelChoice | undefined): string[] {
   return model === undefined ? [] : ["--model", `${model.provider}/${model.modelId}`];
 }
+function hasSessionFile(context: A0PortContext, sessionFile: SessionFilePath): Promise<boolean> {
+  return context.sessionFileExists
+    ? context.sessionFileExists(sessionFile)
+    : Bun.file(sessionFile).exists();
+}
 
 interface ViewerPreference {
   readonly level: "off" | "progress" | "events";
@@ -812,9 +817,7 @@ export class RpcSessionPortRuntime {
     // The server's own repair: one caller giving up must not leave it half done.
     const signal = new AbortController().signal;
     const { threadId, folderPath, sessionFile } = entry.bootstrap;
-    const sessionFileExists =
-      this.#context.sessionFileExists ?? ((file: SessionFilePath) => Bun.file(file).exists());
-    if (!(await sessionFileExists(sessionFile))) {
+    if (!(await hasSessionFile(this.#context, sessionFile))) {
       throw new AppFailure({
         code: "omp_exited",
         message:
@@ -1027,6 +1030,9 @@ export class RpcSessionPortRuntime {
       if (existing !== undefined) return existing.bootstrap;
       const resolved = await this.#context.resolveThread(args.threadId, call.signal);
       if (resolved === undefined) throw notFound(`Thread ${args.threadId} was not found`);
+      if (!(await hasSessionFile(this.#context, resolved.sessionFile))) {
+        throw notFound(`Session file not found: ${resolved.sessionFile}`);
+      }
       return {
         ...resolved,
         args: ["--resume", resolved.sessionFile, ...modelArgs(args.model)],

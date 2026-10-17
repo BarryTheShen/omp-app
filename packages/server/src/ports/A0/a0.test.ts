@@ -504,11 +504,19 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(latestCreated[0]?.args).toEqual(["--continue"]);
 
     const resumeCreated: FakeProcess[] = [];
-    const resumeHandlers = handlersFor(context(resumeCreated), 0);
+    const checkedFiles: SessionFilePath[] = [];
+    const resumeContext: A0PortContext = {
+      ...context(resumeCreated),
+      sessionFileExists: async (sessionFile) => {
+        checkedFiles.push(sessionFile);
+        return true;
+      },
+    };
+    const resumeHandlers = handlersFor(resumeContext, 0);
     await getHandler(resumeHandlers, "open")({ threadId: authorityThread }, call("resume"));
+    expect(checkedFiles).toEqual([authorityFile]);
     expect(resumeCreated[0]?.args).toEqual(["--resume", authorityFile]);
   });
-
   test("opening a chat with a model the person picked passes it to omp as --model", async () => {
     const created: FakeProcess[] = [];
     const handlers = handlersFor(context(created), 0);
@@ -681,6 +689,90 @@ describe("A0.7 RpcSessionPort handlers", () => {
       getHandler(handlers, "open")({ threadId: authorityThread }, call("unknown")),
     ).rejects.toMatchObject({ appError: { code: "not_found" } });
     expect(created).toHaveLength(0);
+  });
+  test("does not launch omp when the resolved session file is missing", async () => {
+    const created: FakeProcess[] = [];
+    const missingFile = SessionFilePath.parse("/workspace/a0-7/.omp/deleted.jsonl");
+    const missingContext: A0PortContext = {
+      ...context(created),
+      resolveThread: async (threadId) => ({
+        ...bootstrap,
+        threadId,
+        sessionFile: missingFile,
+      }),
+      sessionFileExists: async (sessionFile) => sessionFile !== missingFile,
+    };
+    const handlers = handlersFor(missingContext, 0);
+
+    await expect(
+      getHandler(handlers, "open")({ threadId: authorityThread }, call("missing-file")),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "not_found",
+        message: `Session file not found: ${missingFile}`,
+      },
+    });
+    expect(created).toHaveLength(0);
+    expect(missingContext.processRegistry.has(authorityThread)).toBe(false);
+  });
+
+  test("two opens of one saved chat at the same moment start omp once", async () => {
+    const created: FakeProcess[] = [];
+    const handlers = handlersFor(context(created), 0);
+
+    await Promise.all([
+      getHandler(handlers, "open")({ threadId: authorityThread }, call("one")),
+      getHandler(handlers, "open")({ threadId: authorityThread }, call("two")),
+    ]);
+
+    expect(created).toHaveLength(1);
+    expect(created[0]?.args).toEqual(["--resume", authorityFile]);
+  });
+
+  test("two opens at the same moment of a chat whose file is gone both fail and start no omp", async () => {
+    const created: FakeProcess[] = [];
+    const missingFile = SessionFilePath.parse("/workspace/a0-7/.omp/deleted-twice.jsonl");
+    const missingContext: A0PortContext = {
+      ...context(created),
+      resolveThread: async (threadId) => ({
+        ...bootstrap,
+        threadId,
+        sessionFile: missingFile,
+      }),
+      sessionFileExists: async () => false,
+    };
+    const handlers = handlersFor(missingContext, 0);
+
+    const settled = await Promise.allSettled([
+      getHandler(handlers, "open")({ threadId: authorityThread }, call("one")),
+      getHandler(handlers, "open")({ threadId: authorityThread }, call("two")),
+    ]);
+
+    expect(settled.map((outcome) => outcome.status)).toEqual(["rejected", "rejected"]);
+    expect(created).toHaveLength(0);
+    expect(missingContext.processRegistry.has(authorityThread)).toBe(false);
+  });
+
+  test("an open cancelled while its session file is being checked starts no omp", async () => {
+    const created: FakeProcess[] = [];
+    const check = Promise.withResolvers<boolean>();
+    const slowContext: A0PortContext = {
+      ...context(created),
+      sessionFileExists: () => check.promise,
+    };
+    const handlers = handlersFor(slowContext, 0);
+    const controller = new AbortController();
+    const opened = getHandler(handlers, "open")(
+      { threadId: authorityThread },
+      { ...call("tab"), signal: controller.signal },
+    );
+
+    controller.abort("connection_closed");
+    check.resolve(true);
+
+    await expect(opened).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    expect(created).toHaveLength(0);
+    expect(slowContext.processRegistry.has(authorityThread)).toBe(false);
   });
 
   test("rekeys after branch: the new id opens the same process", async () => {
