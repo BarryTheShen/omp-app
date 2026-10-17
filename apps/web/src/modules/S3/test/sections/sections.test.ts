@@ -102,6 +102,7 @@ const EXPECTED_KEYS = [
     "goal.statusInFooter",
     "goal.continuationModes",
     "title.refreshOnReplan",
+    "title.generator",
     "plan.enabled",
     "plan.defaultOnStartup",
     "plan.autosave",

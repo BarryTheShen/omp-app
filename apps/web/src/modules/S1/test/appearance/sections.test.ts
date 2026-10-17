@@ -13,7 +13,7 @@ import {
   THEME_SETTINGS_SECTION,
 } from "../../appearance";
 
-// omp v18.6.1 defaults: modes/settings.ts:58-331 and 360-685; task/settings.ts:442-447.
+// omp v18.9.1 defaults: modes/settings.ts:58-331 and 360-685; task/settings.ts:442-447; utils/title-settings.ts:7-43.
 const DEFAULT_VALUES: Readonly<Record<string, JsonValue>> = {
   "theme.dark": "titanium",
   "theme.light": "light",
@@ -33,6 +33,7 @@ const DEFAULT_VALUES: Readonly<Record<string, JsonValue>> = {
   "terminal.programStatus": true,
   "tui.textSizing": false,
   "tui.renderMermaid": true,
+  "title.icons": "nf+emoji",
   "tui.renderSvg": true,
   "tui.autoGraph": "always",
   "tui.reactions": true,
@@ -77,6 +78,7 @@ const EXPECTED_KEYS = {
     "terminal.programStatus",
     "tui.textSizing",
     "tui.renderMermaid",
+    "title.icons",
     "tui.renderSvg",
     "tui.autoGraph",
     "tui.reactions",
@@ -121,6 +123,7 @@ const EXPECTED_KINDS: Readonly<Record<string, SettingControl["kind"]>> = {
   "terminal.programStatus": "boolean",
   "tui.textSizing": "boolean",
   "tui.renderMermaid": "boolean",
+  "title.icons": "enum",
   "tui.renderSvg": "boolean",
   "tui.autoGraph": "enum",
   "tui.reactions": "boolean",
@@ -170,7 +173,7 @@ describe("S1.3 appearance sections", () => {
       "appearance/Display",
       "appearance/Images",
     ]);
-    expect(keys).toHaveLength(42);
+    expect(keys).toHaveLength(43);
     expect(new Set(keys).size).toBe(keys.length);
     expect([...keys].sort()).toEqual([...expected].sort());
     expect(S1_APPEARANCE_SECTIONS.flatMap((descriptor) => descriptor.inventory)).toEqual([
@@ -191,7 +194,12 @@ describe("S1.3 appearance sections", () => {
         expect(setting.kind).toBe(EXPECTED_KINDS[setting.key]);
         expect(setting.secret).toBe(false);
         expect(setting.apply).toBe("live");
-        expect(setting.description).toMatch(/^Terminal only\. /);
+        if (setting.key === "title.icons") {
+          // Session titles are made for app chats too, so this one control must not say "Terminal only."
+          expect(setting.description).not.toMatch(/Terminal only/);
+        } else {
+          expect(setting.description).toMatch(/^Terminal only\. /);
+        }
         const value = DEFAULT_VALUES[setting.key];
         if (value === undefined) throw new Error(`Missing omp v18.6.1 default for ${setting.key}.`);
         expect(setting.validate({ secret: false, value }, snapshot)).toEqual({ valid: true });
@@ -234,7 +242,7 @@ describe("S1.3 appearance sections", () => {
     expect(themeEntry.value).toBe("titanium");
   });
 
-  test("uses the v18.6.1 enum values for status, display and symbols", () => {
+  test("uses the omp enum values for status, display and symbols", () => {
     const snapshot = defaultSnapshot(STATUS_LINE_SETTINGS_SECTION);
     const expected = {
       "statusLine.preset": ["default", "minimal", "compact", "full", "nerd", "ascii", "custom"],
@@ -264,6 +272,16 @@ describe("S1.3 appearance sections", () => {
       "ascii",
     ]);
     expect(snapshot.entries).toHaveLength(7);
+  });
+  test("keeps Title Icons live and relevant to app-generated session titles", () => {
+    const icons = enumControl("title.icons");
+    expect(icons.apply).toBe("live");
+    expect(icons.description).not.toMatch(/Terminal only/);
+    expect(icons.options?.map((option) => option.label)).toEqual([
+      "Nerd Font + Emoji",
+      "Emoji",
+      "Boring",
+    ]);
   });
 });
 

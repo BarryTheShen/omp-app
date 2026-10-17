@@ -380,6 +380,7 @@ describe("S3.5 ConfigStore fixtures and gate proof", () => {
     });
     expect(countDifferences.map((difference) => difference.id)).toEqual([
       "S5.tasks-isolation",
+      "S5.tasks-modes",
       "S5.tasks-subagents",
       "S5.tools-execution",
     ]);

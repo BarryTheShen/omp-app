@@ -90,6 +90,7 @@ export const OMP_V18_8_9_DEFAULT_REGISTRY_EXTRACT = {
   "goal.statusInFooter": true,
   "goal.continuationModes": ["interactive"],
   "title.refreshOnReplan": true,
+  "title.generator": "fork",
   "plan.enabled": true,
   "plan.defaultOnStartup": false,
   "plan.autosave": false,

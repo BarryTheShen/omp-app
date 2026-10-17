@@ -844,6 +844,11 @@ const tasksModes: readonly SettingControl[] = [
     "Refresh generated session titles after todo replanning unless the user set the title.",
   ),
   described(
+    enumSetting("title.generator", ["fork", "tiny"], "live", { fork: "Fork", tiny: "Tiny" }),
+    "Title Generator",
+    "Names an untitled session from the user's messages. Fork uses an extra request for a side turn on this session's model, reads its prompt cache, and adds the card icon. Tiny uses only the small title model and creates plain titles without a card.",
+  ),
+  described(
     bool("plan.enabled", "session"),
     "Plan Mode",
     "Enable read-only exploration and planning before changes are made.",

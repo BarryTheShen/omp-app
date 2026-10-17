@@ -15,6 +15,7 @@ const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
  * omp v18.6.1 appearance registrations: `packages/coding-agent/src/modes/settings.ts:58-331`
  * (Theme, Composer, Status Line, Images), `:360-685` (Display), and
  * `packages/coding-agent/src/task/settings.ts:442-447` (the resolved-model badge).
+ * omp v18.9.1 session-title registrations: `packages/coding-agent/src/utils/title-settings.ts:7-43`.
  * These settings affect omp's terminal; ConfigStore supplies effective defaults and provenance.
  */
 
@@ -42,6 +43,7 @@ const HYPERLINK_MODES = ["off", "auto", "always"] as const;
 const SHIMMER_MODES = ["classic", "kitt", "disabled"] as const;
 const PINNED_AGENT_MODES = ["off", "collapsed", "full"] as const;
 const RESIZE_SCROLLBACK_MODES = ["append", "rebuild", "preserve"] as const;
+const TITLE_ICONS = ["nf+emoji", "emoji", "boring"] as const;
 
 function plain(value: SettingValue): JsonValue | undefined {
   return value.secret ? undefined : value.value;
@@ -86,6 +88,7 @@ function control(
   validate: ScalarSettingControl["validate"],
   options?: readonly SettingOption[],
   description?: string,
+  terminalOnly = true,
 ): ScalarSettingControl {
   return {
     key,
@@ -95,7 +98,7 @@ function control(
     validate,
     apply: "live",
     ...(options === undefined ? {} : { options }),
-    description: terminalDescription(description),
+    description: terminalOnly ? terminalDescription(description) : description,
   };
 }
 
@@ -109,6 +112,7 @@ function enumControl(
   values: readonly string[],
   labels: Readonly<Record<string, string>> = {},
   description?: string,
+  terminalOnly = true,
 ): ScalarSettingControl {
   return control(
     key,
@@ -117,6 +121,7 @@ function enumControl(
     validateEnum(values),
     settingOptions(values, labels),
     description,
+    terminalOnly,
   );
 }
 
@@ -291,6 +296,18 @@ export const DISPLAY_SETTINGS_SECTION = section(
       "tui.renderMermaid",
       "Render Mermaid Diagrams",
       "Render Mermaid fenced code blocks as ASCII diagrams",
+    ),
+    enumControl(
+      "title.icons",
+      "Title Icons",
+      TITLE_ICONS,
+      {
+        "nf+emoji": "Nerd Font + Emoji",
+        emoji: "Emoji",
+        boring: "Boring",
+      },
+      "The icon and short code at the start of new generated or renamed session titles. Nerd Font + Emoji uses a Nerd Font glyph where one can be shown, otherwise an emoji; Emoji always uses the emoji; Boring leaves the title plain.",
+      false,
     ),
     booleanControl(
       "tui.renderSvg",

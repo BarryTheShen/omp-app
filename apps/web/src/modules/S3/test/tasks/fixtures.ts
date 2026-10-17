@@ -186,6 +186,13 @@ export const TASK_SETTING_EVIDENCE = [
     source: "packages/coding-agent/src/goals/settings.ts:41-44",
   },
   {
+    key: "title.generator",
+    ompType: "enum",
+    controlKind: "enum",
+    defaultValue: "fork",
+    source: "packages/coding-agent/src/utils/title-settings.ts:34-54 @v18.9.1",
+  },
+  {
     key: "plan.enabled",
     ompType: "boolean",
     controlKind: "boolean",

@@ -174,4 +174,16 @@ describe("S3 Tasks settings", () => {
     expect(enumControl("worktree.onStart").apply).toBe("restart");
     expect(enumControl("worktree.onExit").apply).toBe("restart");
   });
+  test("registers omp's title generator in Tasks > Modes with its exact choices", () => {
+    const control = controlFor("title.generator");
+    if (control.kind !== "enum") throw new Error("Title Generator must be an enum.");
+    expect(control.label).toBe("Title Generator");
+    expect(control.apply).toBe("live");
+    // Fork costs an extra model request, so the text has to tell the two choices apart.
+    expect(control.description).toMatch(/Fork[\s\S]*extra request[\s\S]*Tiny/);
+    expect(control.options).toEqual([
+      { value: "fork", label: "Fork" },
+      { value: "tiny", label: "Tiny" },
+    ]);
+  });
 });

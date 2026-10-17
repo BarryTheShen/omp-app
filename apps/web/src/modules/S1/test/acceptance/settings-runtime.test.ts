@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { SETTINGS_SECTIONS } from "@/registry";
 import { stageContextSetting } from "../../../P7/settings/stage-context-setting";
 import { SHELL_EVAL_RUNTIMES_SECTION } from "../../../S2/sections";
-import { THEME_SETTINGS_SECTION } from "../../appearance";
+import { DISPLAY_SETTINGS_SECTION, THEME_SETTINGS_SECTION } from "../../appearance";
 import { S1_SETTINGS_SECTIONS } from "../../descriptors";
 import {
   S1_CONFIG_LIST_FIXTURE,
@@ -308,6 +308,27 @@ describe("S1.5 ConfigStore fixture and grammar gate", () => {
       value: { secret: false, value: "custom-theme" },
     });
     expect(runtime.getSnapshot().applyStatus).toBe("applied");
+  });
+
+  test("round-trips a session title setting through the live ConfigStore runtime", async () => {
+    const state = fakeConfig();
+    const runtime = runtimeFor(state, DISPLAY_SETTINGS_SECTION);
+    await runtime.read();
+    expect(runtime.stage("title.icons", { secret: false, value: "boring" }).ok).toBe(true);
+    await runtime.save();
+    expect(state.writes[0]).toMatchObject({
+      key: "title.icons",
+      layer: "project",
+      value: { secret: false, value: "boring" },
+    });
+    await runtime.read();
+    const snapshot = runtime.getSnapshot().config;
+    if (!snapshot) throw new Error("Title settings fixture did not reload.");
+    expect(entryFor(snapshot, "title.icons")).toMatchObject({
+      key: "title.icons",
+      value: "boring",
+      source: "project",
+    });
   });
   test("keeps stages refused during a save and applies both values after it finishes", async () => {
     const state = fakeConfig();
