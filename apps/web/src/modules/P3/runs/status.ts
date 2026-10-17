@@ -24,6 +24,8 @@ export type P3SentState = P3RunRecord & {
   readonly phase: "sent";
   /** The new chat omp opened for the run. */
   readonly threadId: ThreadId;
+  /** Whether omp has sent session_settled after the prompt result. */
+  readonly settled: boolean;
   readonly workspaceGuarantee: WorkspaceGuarantee;
   readonly externalChanges: readonly string[];
   readonly partialFailure: string | null;

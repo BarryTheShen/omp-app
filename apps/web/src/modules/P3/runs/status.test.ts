@@ -16,6 +16,7 @@ const sent: P3RunState = {
   ...record,
   phase: "sent",
   threadId: ThreadIdSchema.parse("branch-of-source"),
+  settled: true,
   workspaceGuarantee: "not-managed",
   externalChanges: [],
   partialFailure: null,

@@ -5,6 +5,7 @@ import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { OmpRuntimeStore } from "@/modules/R0/store";
 import {
+  BRANCHED_CHAT,
   promptAborted,
   promptCompleted,
   promptErrorRecorded,
@@ -27,18 +28,24 @@ function receive(
   store.ingest({ kind, event } as unknown as RpcSessionEvent, seq);
 }
 
-describe("acceptance: a prompt's result and the session's settling are separate facts", () => {
-  test("a prompt_result that leaves background work open is not a settled session, and session_settled is", () => {
-    const store = new OmpRuntimeStore({ threadId: SOURCE_CHAT });
+function receiveOmp(store: OmpRuntimeStore, event: unknown, seq: number): void {
+  store.ingest({ kind: "omp", event } as unknown as RpcSessionEvent, seq);
+}
 
-    receive(store, "prompt_result", promptPending("req-1"), 1);
+describe("acceptance: a prompt's result and the session's settling are separate facts", () => {
+  test("agent_end then prompt_result leaves background work unsettled until session_settled", () => {
+    const store = new OmpRuntimeStore({ threadId: SOURCE_CHAT });
+    receiveOmp(store, { type: "agent_start" }, 1);
+    receiveOmp(store, { type: "agent_end" }, 2);
+
+    receive(store, "prompt_result", promptPending("req-1"), 3);
     expect(store.getSnapshot().prompt).toMatchObject({
       admitted: true,
       sessionSettled: false,
       promptResult: { status: "completed", sessionSettled: false },
     });
 
-    receive(store, "session_settled", SESSION_SETTLED, 2);
+    receive(store, "session_settled", SESSION_SETTLED, 4);
     expect(store.getSnapshot().prompt).toMatchObject({ sessionSettled: true, streaming: false });
   });
 
@@ -77,14 +84,129 @@ describe("acceptance: a prompt's result and the session's settling are separate 
     });
   });
 
-  test.skip("the run keeps an edit pending until session_settled, not prompt_result (spec §5.4 and §7.7; store.ts:1575 clears streaming at prompt_result; follow-up #1689)", async () => {
+  test("the edit notice stays pending after prompt_result and settles on session_settled", async () => {
     const run = renderRun();
 
     await act(async () => {
       await run.handlers.onEdit(editAppend(String(USER_WITH_IMAGE), "Explain again"));
     });
-    receive(run.store, "prompt_result", promptPending("req-3"), 1);
+    const branchStore = run.stores.get(String(BRANCHED_CHAT));
+    if (!branchStore) throw new Error("the branched chat store was not created");
+    branchStore.applySessionState({ isSettled: true });
+    expect(run.runs.status.getSnapshot()).toMatchObject({
+      phase: "sent",
+      threadId: BRANCHED_CHAT,
+      settled: false,
+    });
+    await act(async () => {
+      receiveOmp(branchStore, { type: "agent_start" }, 1);
+      receiveOmp(branchStore, { type: "agent_end" }, 2);
+      receive(branchStore, "prompt_result", promptPending("req-3"), 3);
+    });
+    expect(branchStore.getSnapshot().prompt).toMatchObject({
+      sessionSettled: false,
+      promptResult: { sessionSettled: false },
+    });
+    expect(run.runs.status.getSnapshot()).toMatchObject({
+      phase: "sent",
+      threadId: BRANCHED_CHAT,
+      settled: false,
+    });
 
-    expect(run.store.getSnapshot().prompt).toMatchObject({ streaming: true });
+    await act(async () => receive(branchStore, "session_settled", SESSION_SETTLED, 4));
+    expect(run.runs.status.getSnapshot()).toMatchObject({
+      phase: "sent",
+      threadId: BRANCHED_CHAT,
+      settled: true,
+    });
+  });
+
+  test("an omp exit before the response leaves the sent notice pending", async () => {
+    const run = renderRun();
+    await act(async () => {
+      await run.handlers.onEdit(editAppend(String(USER_WITH_IMAGE), "Explain again"));
+    });
+    const branchStore = run.stores.get(String(BRANCHED_CHAT));
+    if (!branchStore) throw new Error("the branched chat store was not created");
+
+    await act(async () => {
+      branchStore.ingest({ kind: "process", status: "exited" } as RpcSessionEvent, 1);
+    });
+    expect(branchStore.getSnapshot().process.status).toBe("exited");
+    expect(run.runs.status.getSnapshot()).toMatchObject({
+      phase: "sent",
+      threadId: BRANCHED_CHAT,
+      settled: false,
+    });
+  });
+
+  test("a settled state from the original chat cannot settle the branched run", async () => {
+    const run = renderRun();
+    await act(async () => {
+      await run.handlers.onEdit(editAppend(String(USER_WITH_IMAGE), "Explain again"));
+    });
+    const branchStore = run.stores.get(String(BRANCHED_CHAT));
+    if (!branchStore) throw new Error("the branched chat store was not created");
+
+    await run.open(SOURCE_CHAT);
+    const originalStore = run.stores.get(String(SOURCE_CHAT));
+    if (!originalStore) throw new Error("the original chat store was not created");
+    await act(async () => {
+      originalStore.applySessionState({ isSettled: true });
+      receiveOmp(originalStore, { type: "agent_start" }, 1);
+      receiveOmp(originalStore, { type: "agent_end" }, 2);
+      receive(originalStore, "prompt_result", promptPending("req-wrong-store"), 3);
+      receive(originalStore, "session_settled", SESSION_SETTLED, 4);
+    });
+    expect(run.runs.status.getSnapshot()).toMatchObject({
+      phase: "sent",
+      threadId: BRANCHED_CHAT,
+      settled: false,
+    });
+  });
+
+  test("an omp exit after the prompt was admitted settles the sent notice", async () => {
+    const run = renderRun();
+    await act(async () => {
+      await run.handlers.onEdit(editAppend(String(USER_WITH_IMAGE), "Explain again"));
+    });
+    const branchStore = run.stores.get(String(BRANCHED_CHAT));
+    if (!branchStore) throw new Error("the branched chat store was not created");
+
+    await act(async () => {
+      receiveOmp(branchStore, { type: "agent_start" }, 1);
+      branchStore.ingest({ kind: "process", status: "exited" } as RpcSessionEvent, 2);
+    });
+    expect(branchStore.getSnapshot().prompt.admitted).toBe(true);
+    expect(run.runs.status.getSnapshot()).toMatchObject({
+      phase: "sent",
+      threadId: BRANCHED_CHAT,
+      settled: true,
+    });
+  });
+
+  test("a run that settled before its status read sent settles when the status arrives", async () => {
+    const run = renderRun();
+    await act(async () => {
+      await run.handlers.onEdit(editAppend(String(USER_WITH_IMAGE), "Explain again"));
+    });
+    const branchStore = run.stores.get(String(BRANCHED_CHAT));
+    if (!branchStore) throw new Error("the branched chat store was not created");
+    const sentState = run.runs.status.getSnapshot();
+    if (sentState.phase !== "sent") throw new Error("the edit was not sent");
+
+    await act(async () => {
+      run.runs.status.set({ ...sentState, phase: "sending" });
+      receive(branchStore, "prompt_result", promptPending("req-early"), 1);
+      receive(branchStore, "session_settled", SESSION_SETTLED, 2);
+    });
+    expect(run.runs.status.getSnapshot().phase).toBe("sending");
+
+    await act(async () => run.runs.status.set(sentState));
+    expect(run.runs.status.getSnapshot()).toMatchObject({
+      phase: "sent",
+      threadId: BRANCHED_CHAT,
+      settled: true,
+    });
   });
 });

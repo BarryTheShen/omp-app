@@ -29,6 +29,13 @@ function editNotice(page: Page) {
     .filter({ hasText: "Sent in this new chat, branched from the original." });
 }
 
+/** The notice while the edited chat has not reported that its run is settled. */
+function pendingEditNotice(page: Page) {
+  return page.getByRole("status").filter({
+    hasText: "Waiting for the edited message to finish in this chat.",
+  });
+}
+
 /** Opens a chat, sends a prompt, and edits that prompt to `text`; the edit opens a new chat. */
 async function editFirstMessageTo(page: Page, text: string): Promise<void> {
   const composer = await startChat(page);
@@ -119,8 +126,13 @@ realTest(
     await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible({
       timeout: 120_000,
     });
-    await expect(editNotice(page)).toBeVisible({ timeout: 60_000 });
-
+    await expect(pendingEditNotice(page)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("textbox", { name: "Message input" })).toBeEnabled();
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "fix-1376-notice-pending.png"),
+      fullPage: true,
+    });
     const composer = page.getByRole("textbox", { name: "Message input" });
     await composer.fill("follow later please");
     await composer.press("Control+Enter");

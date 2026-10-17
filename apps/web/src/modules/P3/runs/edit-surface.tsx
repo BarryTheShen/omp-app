@@ -155,7 +155,7 @@ export function P3EditSurface({ store, runs, target, onClose }: P3EditSurfacePro
   }, [state, onClose, runs, target]);
 
   if (target === null) return null;
-  // While the edit is sent, focus and Cancel wait with the editor: it closes once the run settles.
+  // The editor closes when its edit is sent; P3's notice owns the text while the new chat is pending.
   const restoreFocus = (): void => {
     if (pending.current !== null) return;
     if (target.trigger.isConnected) target.trigger.focus();

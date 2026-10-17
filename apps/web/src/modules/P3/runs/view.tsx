@@ -37,6 +37,17 @@ function SentNotice({
   const where = inNewChat
     ? "in this new chat, branched from the original"
     : "in a new chat branched from this one";
+  if (!state.settled) {
+    const pending = state.kind === "edit" ? "edited message" : "new answer";
+    const pendingSentence = inNewChat
+      ? `Waiting for the ${pending} to finish in this chat.`
+      : `The ${pending} was sent in a new chat branched from this one. Its final answer is not available here yet.`;
+    return (
+      <div className="flex flex-col gap-1" role="status">
+        <p>{pendingSentence}</p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-1" role="status">
       <p>

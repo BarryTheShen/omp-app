@@ -133,7 +133,7 @@ describe("P3 edit surface", () => {
     });
   });
 
-  test("an edit that is sent closes the editor", async () => {
+  test("an edit closes when the new chat is sent, before it settles", async () => {
     const onClose = vi.fn();
     const runs = createP3Runs();
     render(
@@ -150,18 +150,17 @@ describe("P3 edit surface", () => {
     sendReplacement(composer, "Explain again");
 
     act(() => runs.status.set({ phase: "sending", ...EDIT }));
-    expect(onClose).not.toHaveBeenCalled();
     act(() =>
       runs.status.set({
         phase: "sent",
         ...EDIT,
         threadId: NEW_CHAT,
+        settled: false,
         workspaceGuarantee: "not-managed",
         externalChanges: [],
         partialFailure: null,
       }),
     );
-
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -295,39 +294,6 @@ describe("P3 edit surface", () => {
       }),
     );
 
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-  });
-
-  test("Cancel waits while the edit is sent, and the editor closes once the run settles", async () => {
-    const onClose = vi.fn();
-    const runs = createP3Runs();
-    render(
-      <Harness
-        onClose={onClose}
-        onEdit={() => undefined}
-        runs={runs}
-        store={storeWithUserMessage("Explain")}
-        target={{ entryId: userEntry, trigger: rowTrigger() }}
-      />,
-    );
-    const composer = screen.getByRole("textbox", { name: "Edit message" });
-    await waitFor(() => expect(composer).toHaveProperty("value", "Explain"));
-    sendReplacement(composer, "Explain again");
-    act(() => runs.status.set({ phase: "sending", ...EDIT }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel edit" }));
-    expect(onClose).not.toHaveBeenCalled();
-
-    act(() =>
-      runs.status.set({
-        phase: "sent",
-        ...EDIT,
-        threadId: NEW_CHAT,
-        workspaceGuarantee: "not-managed",
-        externalChanges: [],
-        partialFailure: null,
-      }),
-    );
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 

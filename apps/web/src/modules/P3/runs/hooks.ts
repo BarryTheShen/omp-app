@@ -1,5 +1,5 @@
 import type { RpcSessionSend, ThreadId } from "@omp-app/contracts";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { createOmpBranchingController } from "@/modules/R0/branching";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import type { EditRunDecorator } from "../contract";
@@ -24,7 +24,7 @@ export interface P3RunHooksOptions {
 /** The edit and regenerate handlers for one open chat, bound to that chat's store and send. */
 export function useP3RunHandlers(options: P3RunHooksOptions): P3RunHandlers {
   const { store, send, switchChat, runs, decorator } = options;
-  return useMemo(() => {
+  const handlers = useMemo(() => {
     const branching = createOmpBranchingController({
       store,
       send,
@@ -42,4 +42,25 @@ export function useP3RunHandlers(options: P3RunHooksOptions): P3RunHandlers {
     const run = createP3EditRun({ branching, handoff: runs.handoff, decorator });
     return createP3RunHandlers({ store, run, handoff: runs.handoff, status: runs.status });
   }, [decorator, runs, send, store, switchChat]);
+
+  useEffect(() => {
+    const syncSettled = (): void => {
+      const state = runs.status.getSnapshot();
+      const snapshot = store.getSnapshot();
+      if (state.phase !== "sent" || state.threadId !== snapshot.threadId) return;
+      const prompt = snapshot.prompt;
+      const settled =
+        (prompt.sessionSettled && prompt.promptResult !== null) ||
+        (snapshot.process.status === "exited" && prompt.admitted);
+      if (!state.settled && settled) runs.status.set({ ...state, settled });
+    };
+    syncSettled();
+    const unsubscribeStore = store.subscribe(syncSettled);
+    const unsubscribeStatus = runs.status.subscribe(syncSettled);
+    return () => {
+      unsubscribeStore();
+      unsubscribeStatus();
+    };
+  }, [runs.status, store]);
+  return handlers;
 }

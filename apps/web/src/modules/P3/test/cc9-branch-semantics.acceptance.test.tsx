@@ -1,11 +1,16 @@
 // The P5 decorator reports below are the contract's shapes (contract.ts:61-68). P5 is not mounted and omp reports no
 // workspace fields, so these are inputs this test writes, not omp output.
 
-import type { ThreadId } from "@omp-app/contracts";
+import type { RpcSessionEvent, ThreadId } from "@omp-app/contracts";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { EditRunDecorator, EditRunResult } from "../contract";
-import { BRANCHED_CHAT, USER_WITH_IMAGE } from "../fixtures/omp-branch";
+import {
+  BRANCHED_CHAT,
+  promptPending,
+  SESSION_SETTLED,
+  USER_WITH_IMAGE,
+} from "../fixtures/omp-branch";
 import type { P3RunState, P3SentState } from "../runs/status";
 import { P3RunStatusView } from "../runs/view";
 import { editAppend, renderRun } from "./run-harness";
@@ -37,6 +42,28 @@ async function editImageMessage(decorator?: EditRunDecorator): Promise<P3SentSta
   const run = renderRun(decorator === undefined ? {} : { decorator });
   await act(async () => {
     await run.handlers.onEdit(editAppend(String(USER_WITH_IMAGE), "Explain again"));
+  });
+  const state = run.runs.status.getSnapshot();
+  if (state.phase !== "sent") throw new Error(`expected a sent run, got ${state.phase}`);
+  const sentStore = run.stores.get(String(state.threadId));
+  if (!sentStore) throw new Error("the sent chat store was not created");
+  await act(async () => {
+    sentStore.ingest(
+      { kind: "omp", event: { type: "agent_start" } } as unknown as RpcSessionEvent,
+      1,
+    );
+    sentStore.ingest(
+      { kind: "omp", event: { type: "agent_end" } } as unknown as RpcSessionEvent,
+      2,
+    );
+    sentStore.ingest(
+      { kind: "prompt_result", event: promptPending("req-cc9") } as unknown as RpcSessionEvent,
+      3,
+    );
+    sentStore.ingest(
+      { kind: "session_settled", event: SESSION_SETTLED } as unknown as RpcSessionEvent,
+      4,
+    );
   });
   return sentOf(run.runs.status.getSnapshot());
 }

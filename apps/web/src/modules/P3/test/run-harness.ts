@@ -64,6 +64,7 @@ export interface RunOptions {
 
 export interface RunHarness {
   readonly store: OmpRuntimeStore;
+  readonly stores: Map<string, OmpRuntimeStore>;
   readonly handlers: P3RunHandlers;
   readonly runs: P3Runs;
   /** Every command the app sent to omp, in order. */
@@ -72,8 +73,9 @@ export interface RunHarness {
   readonly opened: string[];
   /** The runtime of each chat that mounted, by thread id. */
   readonly chats: Map<string, ChatRuntime>;
-  /** Mounts a chat's runtime, as a chat does when it opens. */
   mount(threadId: ThreadId): ChatRuntime;
+  /** Opens another chat, as the app does when a person follows a chat link. */
+  open(threadId: ThreadId): Promise<void>;
 }
 
 /** A recording prompt runtime; `failures` are raised by the attempts that come first. */
@@ -157,36 +159,53 @@ export function sourceStore(): OmpRuntimeStore {
  */
 export function renderRun(options: RunOptions = {}): RunHarness {
   const store = options.store ?? sourceStore();
+  const activeStores = new Map([[String(store.getSnapshot().threadId), store]]);
   const transport = ompTransport(options);
   const runs = createP3Runs(
     options.mountTimeoutMs === undefined ? {} : { mountTimeoutMs: options.mountTimeoutMs },
   );
   const opened: string[] = [];
   const chats = new Map<string, ChatRuntime>();
+  let rerender: ((props: { readonly store: OmpRuntimeStore }) => void) | undefined;
   const mount = (threadId: ThreadId): ChatRuntime => {
     const runtime = chatRuntime(options.promptFailures);
     chats.set(String(threadId), runtime);
     runs.handoff.attach(threadId, runtime);
     return runtime;
   };
-  // The app's switchChat: switching to the new chat mounts its runtime once its history has loaded. It is called on
-  // every branch, even one whose id already names the chat (main's `useP3RunHandlers` contract).
+  // The app's switchChat: switching to the new chat loads a distinct runtime store before its prompt can settle.
   const switchChat = async (threadId: ThreadId): Promise<void> => {
     opened.push(String(threadId));
     if (options.openFails) throw options.openFails;
+    const nextStore = new OmpRuntimeStore({ threadId });
+    activeStores.set(String(threadId), nextStore);
+    rerender?.({ store: nextStore });
     if (options.mountsNewChat === false) return;
     mount(threadId);
   };
-  const { result } = renderHook(() =>
-    useP3RunHandlers({
-      store,
-      send: transport.send,
-      switchChat,
-      runs,
-      decorator: options.decorator,
-    }),
+  const hook = renderHook(
+    ({ store: currentStore }: { readonly store: OmpRuntimeStore }) =>
+      useP3RunHandlers({
+        store: currentStore,
+        send: transport.send,
+        switchChat,
+        runs,
+        decorator: options.decorator,
+      }),
+    { initialProps: { store } },
   );
-  return { store, handlers: result.current, runs, sent: transport.sent, opened, chats, mount };
+  rerender = hook.rerender;
+  return {
+    store,
+    stores: activeStores,
+    handlers: hook.result.current,
+    runs,
+    sent: transport.sent,
+    opened,
+    chats,
+    mount,
+    open: (threadId) => switchChat(threadId),
+  };
 }
 
 /**

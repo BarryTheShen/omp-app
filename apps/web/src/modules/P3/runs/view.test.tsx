@@ -22,6 +22,7 @@ const sent: P3SentState = {
   ...record,
   phase: "sent",
   threadId: newChat,
+  settled: true,
   workspaceGuarantee: "not-managed",
   externalChanges: [],
   partialFailure: null,
@@ -54,6 +55,44 @@ describe("P3RunStatusView", () => {
     expect(screen.getByText("Sent in this new chat, branched from the original.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open the original chat" }));
     expect(onOpenSource).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps the sent notice pending until the chat settles", () => {
+    render(
+      <P3RunStatusView
+        canRetry={false}
+        onDismiss={() => undefined}
+        onOpenSource={() => undefined}
+        onRetry={() => undefined}
+        openError={null}
+        showOpenSource
+        state={{ ...sent, settled: false }}
+      />,
+    );
+
+    expect(screen.getByText("Waiting for the edited message to finish in this chat.")).toBeTruthy();
+    expect(screen.queryByText("Sent in this new chat, branched from the original.")).toBeNull();
+  });
+
+  test("the original chat does not claim an unobserved branch is still running", () => {
+    render(
+      <P3RunStatusView
+        canRetry={false}
+        onDismiss={() => undefined}
+        onOpenSource={() => undefined}
+        onRetry={() => undefined}
+        openError={null}
+        showOpenSource={false}
+        state={{ ...sent, settled: false }}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "The edited message was sent in a new chat branched from this one. Its final answer is not available here yet.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/still running/)).toBeNull();
   });
 
   test("in the original chat the same notice says the new chat branched from this one", () => {

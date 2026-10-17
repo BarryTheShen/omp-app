@@ -52,6 +52,7 @@ function recordOf(state: P3RunRecord): P3RunRecord {
 function sentFields(result: EditRunResult): Omit<P3SentState, keyof P3RunRecord | "phase"> {
   return {
     threadId: result.threadId,
+    settled: result.settled,
     workspaceGuarantee: result.workspaceGuarantee ?? "not-managed",
     externalChanges: result.externalChanges ?? [],
     partialFailure: result.partialFailure ?? null,
