@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { AppFailure, ThreadId } from "@omp-app/contracts";
+import { readFile } from "node:fs/promises";
+import { AppFailure, parseFixture, ThreadId } from "@omp-app/contracts";
 import { type RpcDuplex, RpcSession, type RpcSessionTimer } from "@omp-app/omp-rpc";
+import { RECORDED_RATCHET_GATEWAY } from "../../../../../../apps/web/src/modules/D8/fixtures/ratchet";
 import {
   type CommandParserContext,
   createOmpCommandGateway,
@@ -165,6 +167,120 @@ describe("OmpCommandGatewayService", () => {
       sessionUpdates: [],
       configUpdates: [],
     });
+  });
+
+  test("replays the recorded ratchet turn through A1 and returns at prompt_result", async () => {
+    const captureText = await readFile(
+      new URL(
+        "../../../../../../apps/web/src/modules/D8/fixtures/ratchet.capture.jsonl",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const capture = parseFixture(captureText);
+    if (!capture.ok) throw new Error(capture.error.message);
+    expect(capture.value.header).toMatchObject({
+      scenario: "d8-ratchet-kickoff",
+      omp: { version: "18.8.9", protocolVersion: 2 },
+      provider: { kind: "fake-openai" },
+    });
+    const recordedFrames = capture.value.frames.map(({ dir, line }) => ({
+      dir,
+      frame: JSON.parse(line) as Frame,
+    }));
+    const rawRequest = recordedFrames.find(
+      ({ dir, frame }) => dir === "stdin" && frame.type === "prompt",
+    )?.frame;
+    if (typeof rawRequest?.message !== "string" || typeof rawRequest.id !== "string") {
+      throw new Error("the ratchet capture has no prompt request");
+    }
+    const commandsFrame = recordedFrames.find(
+      ({ dir, frame }) => dir === "stdout" && frame.type === "available_commands_update",
+    )?.frame;
+    if (!Array.isArray(commandsFrame?.commands)) {
+      throw new Error("the ratchet capture has no available command list");
+    }
+    const availableNames = commandsFrame.commands.map((entry) => {
+      if (typeof entry !== "object" || entry === null || !("name" in entry)) {
+        throw new Error("the ratchet command list contains an invalid entry");
+      }
+      if (typeof entry.name !== "string") {
+        throw new Error("the ratchet command list contains an invalid name");
+      }
+      return entry.name;
+    });
+    const stdoutFrames = recordedFrames
+      .filter(({ dir }) => dir === "stdout")
+      .map(({ frame }) => frame);
+    const ready = stdoutFrames.find((frame) => frame.type === "ready");
+    if (ready === undefined) throw new Error("the ratchet capture has no ready frame");
+    const promptResult = stdoutFrames.find((frame) => frame.type === "prompt_result");
+    const lateSessionSettled = stdoutFrames.find((frame) => frame.type === "session_settled");
+    if (promptResult === undefined || lateSessionSettled === undefined) {
+      throw new Error("the ratchet capture is missing a settlement frame");
+    }
+    const capturedOutputs = stdoutFrames.filter((frame) => frame.type === "command_output");
+    const capturedSessionUpdates = stdoutFrames.filter(
+      (frame) => frame.type === "session_info_update",
+    );
+    const capturedConfigUpdates = stdoutFrames.filter((frame) => frame.type === "config_update");
+    expect(capturedOutputs).toEqual([]);
+    expect(capturedSessionUpdates).toEqual([]);
+    expect(capturedConfigUpdates).toEqual([]);
+
+    const duplex = new FakeDuplex();
+    const timer = new ManualTimer();
+    const session = new RpcSession(duplex, { timer });
+    const sessionStart = session.start();
+    duplex.emit(ready);
+    await flush();
+    const negotiation = writesAfter(duplex, 0)[0];
+    if (negotiation?.type !== "negotiate_protocol") {
+      throw new Error("the v2-ready capture did not trigger protocol negotiation");
+    }
+    duplex.emit({
+      type: "response",
+      id: negotiation.id,
+      command: "negotiate_protocol",
+      success: true,
+      data: { protocolVersion: 2 },
+    });
+    await sessionStart;
+    expect(session.protocolVersion).toBe(2);
+    const gateway = new OmpCommandGatewayService({ resolveSession: () => session });
+    try {
+      const future = gateway.run({ threadId, command: rawRequest.message });
+      const afterAvailability = await answerAvailability(
+        duplex,
+        duplex.writes.length,
+        availableNames,
+      );
+      const promptWrite = writesAfter(duplex, afterAvailability)[0];
+      if (promptWrite?.type !== "prompt") throw new Error("expected a prompt write");
+      expect(promptWrite.message).toBe(rawRequest.message);
+
+      for (const frame of stdoutFrames) {
+        if (frame.type === "ready" || frame.type === "session_settled") continue;
+        duplex.emit(frame.id === rawRequest.id ? { ...frame, id: promptWrite.id } : frame);
+        if (frame.type === "prompt_result") break;
+        await flush();
+      }
+      const result = await future;
+      expect(result).toEqual(RECORDED_RATCHET_GATEWAY);
+      expect(result).toMatchObject({
+        command: rawRequest.message,
+        status: "completed",
+        agentInvoked: true,
+        promptSettled: true,
+        sessionSettled: false,
+      });
+      expect(result.outputs).toEqual([]);
+      expect(result.sessionUpdates).toEqual([]);
+      expect(result.configUpdates).toEqual([]);
+      duplex.emit(lateSessionSettled);
+    } finally {
+      await session.close();
+    }
   });
 
   test("a prompt response without data (omp's real reply to an idle /fresh) completes and crashes nothing", async () => {

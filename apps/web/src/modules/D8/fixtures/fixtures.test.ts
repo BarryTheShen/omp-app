@@ -1,4 +1,4 @@
-import { checkScrubbed, RpcSessionEvent } from "@omp-app/contracts";
+import { checkScrubbed, parseFixture, RpcSessionEvent } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import { T5_REAL_RESULTS } from "../../T5/fixtures/real-results";
@@ -28,13 +28,14 @@ import {
   RECORDED_GOAL_DROPPED,
   RECORDED_GOAL_RPC,
   RECORDED_GOAL_UPDATED,
+  RECORDED_RATCHET_GATEWAY,
   RECORDED_WORKERS,
   RPC_CREATE_REFUSED_ACTIVE_GOAL,
   recordedWorkerRoster,
 } from ".";
 import goalCapture from "./goal-rpc.capture.jsonl?raw";
+import ratchetCapture from "./ratchet.capture.jsonl?raw";
 
-/** The recorded entry with this name, from the results T5 and T7 already record on main. */
 function recordedResult(name: string) {
   const found = [...T7_REAL_RESULTS, ...T5_REAL_RESULTS].find((entry) => entry.name === name);
   if (found === undefined) throw new Error(`no recorded result named ${name}`);
@@ -73,6 +74,80 @@ describe("D8 fixtures are copies of results omp already recorded", () => {
         details: { progress: expect.arrayContaining([expect.objectContaining(started.value)]) },
       },
     });
+  });
+});
+
+describe("D8 ratchet gateway recording", () => {
+  test("captures the full request and kickoff turn in a canonical fixture", () => {
+    const parsedFixture = parseFixture(ratchetCapture);
+    if (!parsedFixture.ok) throw new Error(parsedFixture.error.message);
+    expect(parsedFixture.value.header).toMatchObject({
+      scenario: "d8-ratchet-kickoff",
+      omp: { version: "18.8.9", mode: "rpc-ui", protocolVersion: 2 },
+      provider: { kind: "fake-openai" },
+    });
+    const frames: Array<Record<string, unknown> & { readonly dir: "stdin" | "stdout" }> =
+      parsedFixture.value.frames.map(({ dir, line }) => ({
+        ...z.record(z.string(), z.unknown()).parse(JSON.parse(line)),
+        dir,
+      }));
+    const request = frames.find((frame) => frame.dir === "stdin" && frame.type === "prompt");
+    const command = z.string().parse(request?.message);
+    expect(command).toMatch(/^\/ratchet /u);
+    const stdoutFrames = frames
+      .filter((frame) => frame.dir === "stdout")
+      .map(({ dir: _dir, ...frame }) => frame);
+    expect(stdoutFrames.find((frame) => frame.type === "ready")).toMatchObject({
+      protocolVersion: 1,
+      supportedProtocolVersions: expect.arrayContaining([1, 2]),
+    });
+    const response = stdoutFrames.find(
+      (frame) => frame.type === "response" && frame.command === "prompt",
+    );
+    expect(response).toMatchObject({ success: true });
+    expect(stdoutFrames.find((frame) => frame.type === "prompt_result")).toMatchObject({
+      agentInvoked: true,
+    });
+    expect(stdoutFrames.find((frame) => frame.type === "session_settled")).toBeDefined();
+
+    const kickoffMessage = (type: "message_start" | "message_end") => {
+      const frame = stdoutFrames.find((item) => {
+        if (item.type !== type || typeof item.message !== "object" || item.message === null)
+          return false;
+        return "role" in item.message && item.message.role === "user";
+      });
+      return z
+        .object({
+          role: z.literal("user"),
+          content: z.array(z.object({ type: z.literal("text"), text: z.string() })),
+        })
+        .passthrough()
+        .parse(frame?.message);
+    };
+    const kickoffStart = kickoffMessage("message_start");
+    const kickoffEnd = kickoffMessage("message_end");
+    expect(kickoffStart).toEqual(kickoffEnd);
+    const kickoffText = kickoffStart.content[0]?.text;
+    expect(kickoffText).toContain("`/ratchet`: build");
+    expect(kickoffText).toContain(
+      `<ratchet-request>\n${command.slice("/ratchet ".length)}\n</ratchet-request>`,
+    );
+
+    const promptResult = RpcSessionEvent.parse({
+      kind: "prompt_result",
+      event: stdoutFrames.find((frame) => frame.type === "prompt_result"),
+    });
+    expect(promptResult.kind).toBe("prompt_result");
+    if (promptResult.kind === "prompt_result") {
+      expect(promptResult.event).toMatchObject({
+        agentInvoked: true,
+        status: "completed",
+        sessionSettled: true,
+      });
+    }
+    expect(stdoutFrames.findIndex((frame) => frame.type === "session_settled")).toBeGreaterThan(
+      stdoutFrames.findIndex((frame) => frame.type === "prompt_result"),
+    );
   });
 });
 
@@ -234,12 +309,14 @@ describe("D8 fixtures are scrubbed", () => {
         RECORDED_GOAL_RPC,
         RECORDED_GOAL_UPDATED,
       ],
+      ratchet: [RECORDED_RATCHET_GATEWAY, ratchetCapture],
       guided: [GUIDED_INTERVIEW_SUCCEEDED, GUIDED_INTERVIEW_CANCELLED, GUIDED_INTERVIEW_REFUSED],
       ap6: AP6_UNAVAILABLE_FIXTURES,
       capabilities: [GOAL_RPC_AVAILABLE, GOAL_RPC_UNAVAILABLE, OMP_WORKER_CAPABILITIES],
       workers: RECORDED_WORKERS,
       roster: recordedWorkerRoster(),
       rawCapture: goalCapture,
+      rawRatchetCapture: ratchetCapture,
     });
     expect(checkScrubbed(everything)).toEqual([]);
   });
