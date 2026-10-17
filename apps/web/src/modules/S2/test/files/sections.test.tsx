@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ComponentType } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { SettingsRuntime } from "../../../S1/runtime";
+import { SETTINGS_CONFLICT_DESCRIPTION, SETTINGS_CONFLICT_HEADING } from "../../../S1/settings-kit";
 import {
   FilesEditingSection,
   FilesReadingSection,
@@ -58,6 +59,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
       ["edit.fuzzyMatch", "revision-2"],
     ]);
     expect(runtime.getSnapshot().applyStatus).toBe("applied");
+    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
   });
 
   test("keeps invalid bounds local and never sends them to ConfigStore", async () => {
@@ -172,6 +174,72 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(runtime.getSnapshot().phase).toBe("ready"));
     expect(state.writes.map((write) => write.expectedRevision)).toEqual(["revision-external"]);
+  });
+
+  test("hides a stale Applied pill when a later edit enters conflict", async () => {
+    const { runtime, state } = createFilesRuntime(FILES_READING_SECTION);
+    runtimes.push(runtime);
+    render(<FilesHarness runtime={runtime} Section={FilesReadingSection} />);
+    await screen.findByRole("heading", { name: "Reading" });
+
+    runtime.stage("read.defaultLimit", { secret: false, value: 500 });
+    await runtime.save();
+    await waitFor(() => expect(runtime.getSnapshot().phase).toBe("ready"));
+    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
+
+    runtime.stage("read.defaultLimit", { secret: false, value: 600 });
+    publishFilesChange(
+      state,
+      { key: "read.defaultLimit", secret: false, value: 700, source: "global", overrides: [] },
+      "revision-conflict-after-apply",
+    );
+    await waitFor(() => expect(runtime.getSnapshot().phase).toBe("conflict"));
+    expect(screen.queryByText("Applied", { exact: true })).toBeNull();
+    expect(screen.getAllByText(SETTINGS_CONFLICT_HEADING, { exact: true })).toHaveLength(1);
+  });
+
+  test("all Files conflicts use one shared heading, sentence, and pair of choices", async () => {
+    const cases = [
+      {
+        descriptor: FILES_EDITING_SECTION,
+        Section: FilesEditingSection,
+        key: "edit.fuzzyMatch",
+        local: true,
+        remote: false,
+      },
+      {
+        descriptor: FILES_READING_SECTION,
+        Section: FilesReadingSection,
+        key: "read.defaultLimit",
+        local: 500,
+        remote: 200,
+      },
+      {
+        descriptor: FILES_READ_SUMMARIES_SECTION,
+        Section: FilesReadSummariesSection,
+        key: "read.summarize.enabled",
+        local: true,
+        remote: false,
+      },
+    ] as const;
+    for (const { descriptor, Section, key, local, remote } of cases) {
+      const { runtime, state } = createFilesRuntime(descriptor);
+      runtimes.push(runtime);
+      const rendered = render(<FilesHarness runtime={runtime} Section={Section} />);
+      await screen.findByRole("heading", { name: descriptor.title });
+      expect(runtime.stage(key, { secret: false, value: local }).ok).toBe(true);
+      publishFilesChange(
+        state,
+        { key, secret: false, value: remote, source: "global", overrides: [] },
+        `revision-external-${key}`,
+      );
+      await waitFor(() => expect(runtime.getSnapshot().phase).toBe("conflict"));
+      expect(screen.getAllByText(SETTINGS_CONFLICT_HEADING, { exact: true })).toHaveLength(1);
+      expect(screen.getByText(SETTINGS_CONFLICT_DESCRIPTION, { exact: true })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Reload latest" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Keep my edits" })).toBeTruthy();
+      rendered.unmount();
+    }
   });
 
   test("stale CAS saves reload the current value before another write", async () => {

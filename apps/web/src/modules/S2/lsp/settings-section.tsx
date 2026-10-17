@@ -8,7 +8,7 @@ import {
 } from "../../S1/runtime";
 import {
   type ApplyBoundary,
-  type ApplyStatus,
+  applyStatusLabel,
   CONFLICT_BUTTON_LABELS,
   type PreviewResult,
   SETTINGS_CONFLICT_DESCRIPTION,
@@ -54,26 +54,11 @@ function phaseLabel(phase: SettingsRuntimeSnapshot["phase"]): string | undefined
     case "saving":
       return "Saving…";
     case "conflict":
-      return "Conflict — choose how to continue";
+      return undefined;
     case "error":
       return "Settings unavailable";
     default:
       return undefined;
-  }
-}
-
-function applyStatusLabel(status: ApplyStatus): string {
-  switch (status) {
-    case "session-only":
-      return "Session only";
-    case "reload-required":
-      return "Reload required";
-    case "restart-required":
-      return "Restart required";
-    case "unsupported":
-      return "Unavailable";
-    default:
-      return "Applied";
   }
 }
 
@@ -175,9 +160,11 @@ export function RuntimeSettingsSection({
           disabled={disabled}
           validation={{ ...snapshot.validation, ...localValidation }}
           applyStatus={
-            snapshot.applyStatus
-              ? applyStatusLabel(snapshot.applyStatus)
-              : phaseLabel(snapshot.phase)
+            snapshot.phase === "conflict"
+              ? undefined
+              : snapshot.applyStatus
+                ? applyStatusLabel(snapshot.applyStatus)
+                : phaseLabel(snapshot.phase)
           }
           onStage={onStage}
           onPreview={onPreview}

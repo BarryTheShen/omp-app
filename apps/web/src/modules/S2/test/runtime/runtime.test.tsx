@@ -15,6 +15,8 @@ import { SettingsRuntime } from "../../../S1/runtime";
 import {
   type ConfigChangeSource,
   type ConfigStoreClient,
+  SETTINGS_CONFLICT_DESCRIPTION,
+  SETTINGS_CONFLICT_HEADING,
   type SettingControl,
   type SettingsSectionDescriptor,
   secretSummary,
@@ -457,11 +459,42 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
       value: 60_000,
     });
     expect(state.writes[0]?.expectedRevision).toBe("revision-1");
+    render(<ShellBashSection runtime={runtime} />);
+    expect(screen.getAllByText(SETTINGS_CONFLICT_HEADING, { exact: true })).toHaveLength(1);
+    expect(screen.getByText(SETTINGS_CONFLICT_DESCRIPTION, { exact: true })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reload latest" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Keep my edits" })).toBeTruthy();
 
     runtime.resolveConflict("keep-mine");
     await runtime.save();
     expect(state.writes[1]?.expectedRevision).toBe("revision-external");
     expect(runtime.getSnapshot().phase).toBe("ready");
+  });
+  test("hides a stale Applied pill when a later edit enters conflict", async () => {
+    const { runtime, state } = createFakeRuntime(SHELL_BASH_SECTION);
+    await runtime.read();
+    render(<ShellBashSection runtime={runtime} />);
+    const first = runtime.stage("bash.direnvLoadTimeoutMs", { secret: false, value: 45_000 });
+    expect(first.ok).toBe(true);
+    await runtime.save();
+    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
+
+    const second = runtime.stage("bash.direnvLoadTimeoutMs", { secret: false, value: 50_000 });
+    expect(second.ok).toBe(true);
+    publishChange(
+      state,
+      {
+        key: "bash.direnvLoadTimeoutMs",
+        secret: false,
+        value: 60_000,
+        source: "global",
+        overrides: [],
+      },
+      "revision-external",
+    );
+    await waitFor(() => expect(runtime.getSnapshot().phase).toBe("conflict"));
+    expect(screen.queryByText("Applied", { exact: true })).toBeNull();
+    expect(screen.getAllByText(SETTINGS_CONFLICT_HEADING, { exact: true })).toHaveLength(1);
   });
   test("conflict banner lists the remote effective setting row", async () => {
     const { runtime } = createFakeRuntime(FILES_LSP_SECTION);
@@ -490,6 +523,15 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     render(<FilesLspSection runtime={conflictRuntime} />);
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Shared Language Servers: On · Source: omp's default");
+  });
+
+  test("uses the shared reload-required apply-status label", async () => {
+    const { runtime } = createFakeRuntime(FILES_LSP_SECTION);
+    await runtime.read();
+    render(<FilesLspSection runtime={runtime} />);
+    expect(runtime.stage("lsp.lazy", { secret: false, value: false }).ok).toBe(true);
+    await runtime.save();
+    expect(await screen.findByText("Reload required", { exact: true })).toBeTruthy();
   });
 
   test("changed events reconcile effective values and conflict with staged edits", async () => {

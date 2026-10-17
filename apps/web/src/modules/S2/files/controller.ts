@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { ConflictChoice, SettingsRuntime, SettingsRuntimeSnapshot } from "../../S1/runtime";
 import { useSettingsRuntime } from "../../S1/runtime";
 import type {
-  ApplyStatus,
   ConfigSnapshot,
   PreviewResult,
   SettingsConflictRow,
@@ -10,7 +9,7 @@ import type {
   StagedSettings,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { settingsConflictRows } from "../../S1/settings-kit";
+import { applyStatusLabel, settingsConflictRows } from "../../S1/settings-kit";
 import { FILES_READ_SUMMARIES_SECTION } from "../sections";
 
 const SUMMARY_DEPENDENT_KEYS: Readonly<Record<string, true>> = {
@@ -80,26 +79,11 @@ function phaseLabel(phase: SettingsRuntimeSnapshot["phase"]): string | undefined
     case "saving":
       return "Saving…";
     case "conflict":
-      return "Conflict — choose how to continue";
+      return undefined;
     case "error":
       return "Settings unavailable";
     default:
       return undefined;
-  }
-}
-
-function applyStatusLabel(status: ApplyStatus): string {
-  switch (status) {
-    case "session-only":
-      return "Session only";
-    case "reload-required":
-      return "Reload required";
-    case "restart-required":
-      return "Restart required";
-    case "unsupported":
-      return "Unsupported";
-    default:
-      return "Applied";
   }
 }
 
@@ -178,9 +162,12 @@ function sectionState(
         };
   }
 
-  const applyStatus = snapshot.applyStatus
-    ? applyStatusLabel(snapshot.applyStatus)
-    : phaseLabel(snapshot.phase);
+  const applyStatus =
+    snapshot.phase === "conflict"
+      ? undefined
+      : snapshot.applyStatus
+        ? applyStatusLabel(snapshot.applyStatus)
+        : phaseLabel(snapshot.phase);
   const conflict = conflictView(snapshot);
   return {
     kind: "ready",
