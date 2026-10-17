@@ -16,6 +16,7 @@ import { D6_REPORT_PALETTE_COMMANDS } from "../modules/D6/reports";
 import { D7_EXECUTION_MODES_COMMAND } from "../modules/D7/modes/descriptors";
 import { I1_MCP_SERVER_DESCRIPTORS } from "../modules/I1/servers/descriptors";
 import { I1_SETTINGS_SECTIONS } from "../modules/I1/settings/descriptors";
+import { I2_SETTINGS_SECTIONS } from "../modules/I2/settings";
 import { I5_SETTINGS_SECTIONS } from "../modules/I5/settings";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
 import { P1_AGENT_HUB_DESCRIPTORS } from "../modules/P1/hub/descriptors";
@@ -77,17 +78,18 @@ export const TOOL_RENDERERS: readonly ToolRegistryDescriptor[] = [
 
 /**
  * Every settings section the app offers, once each: S1 (appearance, interaction), S2 (files, LSP,
- * shell), S3 (tools, tasks), I5 (speech, providers), I1 (MCP) and D1 (model). The Settings screen
- * reads this one list; no screen or module concatenates section lists of its own. The order is not
- * presentation: the screen decides its own grouping and order. A section belongs here when its
- * module merges (one import, one spread), and the ownership test fails when two sections claim one
- * omp key.
+ * shell), S3 (tools, tasks), I5 (speech, providers), I1 (MCP), I2 (plugins and Skills) and D1
+ * (model). The Settings screen reads this one list; no screen or module concatenates section lists of
+ * its own. The order is not presentation: the screen decides its own grouping and order. A section
+ * belongs here when its module merges (one import, one spread), and the ownership test fails when two
+ * sections claim one omp key.
  */
 export const SETTINGS_SECTIONS: readonly SettingsSectionDescriptor[] = [
   ...S1_SETTINGS_SECTIONS,
   ...S2_SETTINGS_SECTIONS,
   ...S3_SETTINGS_SECTIONS,
   ...I5_SETTINGS_SECTIONS,
+  ...I2_SETTINGS_SECTIONS,
   ...I1_SETTINGS_SECTIONS,
   ...modelSettingsSections,
 ];
