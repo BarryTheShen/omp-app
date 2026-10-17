@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import type { ConfigSnapshot, SettingControl, SettingValue } from "../../../S1/settings-kit";
+import type {
+  ConfigSnapshot,
+  ScalarSettingControl,
+  SettingControl,
+  SettingValue,
+} from "../../../S1/settings-kit";
 import { S3_SETTINGS_SECTIONS, TASKS_ISOLATION_SECTION } from "../../sections";
 import { TASK_SETTINGS_SECTIONS } from "../../tasks";
 import { TASK_SETTING_EVIDENCE } from "./fixtures";
@@ -19,6 +24,11 @@ function controlFor(key: string): SettingControl {
     if (control.key === key) return control;
   }
   throw new Error(`Missing Tasks setting ${key}`);
+}
+function enumControl(key: string): ScalarSettingControl {
+  const control = controlFor(key);
+  if (control.kind !== "enum") throw new Error(`Expected enum Tasks setting ${key}`);
+  return control;
 }
 
 function valid(control: SettingControl, value: SettingValue) {
@@ -131,6 +141,8 @@ describe("S3 Tasks settings", () => {
       "isolation.backend",
       "worktree.clone",
       "worktree.cleanSource",
+      "worktree.onStart",
+      "worktree.onExit",
       "task.isolation.apply",
       "task.isolation.merge",
       "task.isolation.commits",
@@ -146,5 +158,20 @@ describe("S3 Tasks settings", () => {
     expect(controlFor("worktree.cleanSource").description).toContain("Destructive");
     expect(controlFor("task.isolation.apply").description).toContain("Destructive");
     expect(TASKS_ISOLATION_SECTION.requires).toEqual(["host.config"]);
+    expect(controlFor("worktree.onStart").description).toContain("Used by omp's terminal only.");
+    expect(controlFor("worktree.onExit").description).toContain("Used by omp's terminal only.");
+    expect(enumControl("worktree.onStart").options?.map((option) => option.value)).toEqual([
+      "off",
+      "ask",
+      "create",
+    ]);
+    expect(enumControl("worktree.onExit").options?.map((option) => option.value)).toEqual([
+      "keep",
+      "ask",
+      "remove",
+    ]);
+    // Like the other isolation controls in this section, a saved change applies when omp restarts.
+    expect(enumControl("worktree.onStart").apply).toBe("restart");
+    expect(enumControl("worktree.onExit").apply).toBe("restart");
   });
 });

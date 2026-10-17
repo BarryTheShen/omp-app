@@ -37,6 +37,8 @@ export type IsolationSettingKey =
   | "isolation.backend"
   | "worktree.clone"
   | "worktree.cleanSource"
+  | "worktree.onStart"
+  | "worktree.onExit"
   | "task.isolation.apply"
   | "task.isolation.merge"
   | "task.isolation.commits"
@@ -63,6 +65,8 @@ const ISOLATION_SETTING_KEYS: readonly IsolationSettingKey[] = [
   "isolation.backend",
   "worktree.clone",
   "worktree.cleanSource",
+  "worktree.onStart",
+  "worktree.onExit",
   "task.isolation.apply",
   "task.isolation.merge",
   "task.isolation.commits",

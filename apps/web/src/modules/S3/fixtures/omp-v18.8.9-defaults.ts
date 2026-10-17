@@ -80,6 +80,8 @@ export const OMP_V18_8_9_DEFAULT_REGISTRY_EXTRACT = {
   "isolation.backend": "auto",
   "worktree.clone": true,
   "worktree.cleanSource": false,
+  "worktree.onStart": "off",
+  "worktree.onExit": "keep",
   "task.isolation.apply": true,
   "task.isolation.merge": "patch",
   "task.isolation.commits": "generic",

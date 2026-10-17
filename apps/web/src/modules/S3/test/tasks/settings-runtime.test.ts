@@ -53,6 +53,16 @@ const isolationEdits: readonly {
     label: "Clean Source Checkout When Creating a Worktree",
     value: true,
   },
+  {
+    key: "worktree.onStart",
+    label: "Worktree on Start",
+    value: "ask",
+  },
+  {
+    key: "worktree.onExit",
+    label: "Worktree on Exit",
+    value: "remove",
+  },
   { key: "task.isolation.apply", label: "Automatically Apply Isolated Task Changes", value: false },
   { key: "task.isolation.merge", label: "Isolation Merge Strategy", value: "branch" },
   { key: "task.isolation.commits", label: "Isolation Commit Message Style", value: "ai" },

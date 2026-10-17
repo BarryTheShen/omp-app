@@ -221,7 +221,7 @@ describe("S3 typed ConfigStore handoffs", () => {
   });
 
   test("keeps the expected source/type/default table complete and citation-bearing", () => {
-    expect(TASK_SETTING_EVIDENCE).toHaveLength(46);
+    expect(TASK_SETTING_EVIDENCE).toHaveLength(48);
     for (const setting of TASK_SETTING_EVIDENCE) {
       expect(setting.key.length).toBeGreaterThan(0);
       expect(setting.source).toMatch(/\.ts:\d/);

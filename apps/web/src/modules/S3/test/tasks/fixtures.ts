@@ -116,6 +116,20 @@ export const TASK_SETTING_EVIDENCE = [
     source: "packages/coding-agent/src/task/settings.ts:87-91",
   },
   {
+    key: "worktree.onStart",
+    ompType: "enum",
+    controlKind: "enum",
+    defaultValue: "off",
+    source: "packages/coding-agent/src/task/settings.ts:103-120 @v18.9.1",
+  },
+  {
+    key: "worktree.onExit",
+    ompType: "enum",
+    controlKind: "enum",
+    defaultValue: "keep",
+    source: "packages/coding-agent/src/task/settings.ts:122-144 @v18.9.1",
+  },
+  {
     key: "task.isolation.apply",
     ompType: "boolean",
     controlKind: "boolean",

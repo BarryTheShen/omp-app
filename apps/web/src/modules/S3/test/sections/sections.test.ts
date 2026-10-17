@@ -90,6 +90,8 @@ const EXPECTED_KEYS = [
     "isolation.backend",
     "worktree.clone",
     "worktree.cleanSource",
+    "worktree.onStart",
+    "worktree.onExit",
     "task.isolation.apply",
     "task.isolation.merge",
     "task.isolation.commits",

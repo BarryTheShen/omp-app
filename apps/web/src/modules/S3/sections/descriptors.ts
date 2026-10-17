@@ -14,9 +14,9 @@ import { numberRangeWords, settingOptions } from "../../S1/settings-kit";
 /**
  * Keys mirror omp v18.6.1's UI registrations in tools/settings.ts, tools/browser/settings.ts,
  * ida/settings.ts, task/settings.ts, goals/settings.ts, plan-mode/settings.ts and
- * extensibility/settings.ts. Per-key type/default citations are in `test/tasks/fixtures.ts`;
- * ConfigStore provenance stays in the typed S1-backed snapshots, with Tools citations in
- * `../tools/policy.ts`.
+ * extensibility/settings.ts. The worktree lifecycle keys follow `task/settings.ts:103-144 @v18.9.1`.
+ * Per-key type/default citations are in `test/tasks/fixtures.ts`; ConfigStore provenance stays in
+ * the typed S1-backed snapshots, with Tools citations in `../tools/policy.ts`.
  */
 
 const HOST_CONFIG = ["host.config"] as const;
@@ -789,6 +789,16 @@ const tasksIsolation: readonly SettingControl[] = [
     bool("worktree.cleanSource", "restart"),
     "Clean Source Checkout When Creating a Worktree",
     "Destructive: creating an isolated copy may reset tracked changes and remove untracked files from the source after copying them. Saving only updates configuration.",
+  ),
+  described(
+    enumSetting("worktree.onStart", ["off", "ask", "create"], "restart"),
+    "Worktree on Start",
+    "Whether fresh interactive sessions start in a new linked worktree. Used by omp's terminal only. Saving only updates configuration.",
+  ),
+  described(
+    enumSetting("worktree.onExit", ["keep", "ask", "remove"], "restart"),
+    "Worktree on Exit",
+    "What to do on exit with worktrees created since omp started. Used by omp's terminal only. Saving only updates configuration.",
   ),
   described(
     bool("task.isolation.apply", "restart"),
