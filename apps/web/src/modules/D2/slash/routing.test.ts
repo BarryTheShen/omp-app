@@ -251,10 +251,9 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
 
   test("every name that only omp's terminal runs is refused by the app, and nothing runs", async () => {
     const names = [
-      "clear",
+      "btw",
       "delete",
       "resume",
-      "btw",
       "tan",
       "omfg",
       "cleanse",
@@ -298,6 +297,11 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
     }
   });
 
+  test("refuses btw when no app command is registered", async () => {
+    expect(await refusalOf("/btw what changed?")).toBe(
+      "/btw only runs in omp's terminal, so nothing was sent.",
+    );
+  });
   test("the refusal names the app's own control where one exists", async () => {
     expect(await refusalOf("/clear")).toBe(
       "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",

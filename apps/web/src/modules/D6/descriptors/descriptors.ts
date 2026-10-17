@@ -1,9 +1,10 @@
-import type {
-  CapabilityKey,
-  CommandDescriptor,
-  Descriptor,
-  DialogDescriptor,
-  PanelDescriptor,
+import {
+  type CapabilityKey,
+  type CommandDescriptor,
+  type Descriptor,
+  type DialogDescriptor,
+  ompCommandCapability,
+  type PanelDescriptor,
 } from "@omp-app/contracts";
 
 /** Capabilities used by D6's gateway-backed diagnostics and local fallback surfaces. */
@@ -14,6 +15,11 @@ export const D6_CAPABILITIES = {
 
 const GATEWAY = D6_CAPABILITIES.commandGateway;
 const FALLBACK = D6_CAPABILITIES.fallback;
+export const D6_BTW_CAPABILITIES: CapabilityKey[] = [
+  ompCommandCapability("btw"),
+  ompCommandCapability("btw_cancel"),
+  ompCommandCapability("get_btw_history"),
+];
 
 /** C1 rows not already owned by D6.3's palette commands. */
 export const D6_COMMAND_DESCRIPTORS = [
@@ -139,7 +145,7 @@ export const D6_OPERATION_COMMAND_DESCRIPTORS = [
     owner: "D6",
     title: "Open side questions",
     covers: ["C3.btw"],
-    requires: [FALLBACK],
+    requires: D6_BTW_CAPABILITIES,
   },
   {
     kind: "command",
@@ -174,7 +180,7 @@ export const D6_PANEL_DESCRIPTORS = [
     owner: "D6",
     title: "Side questions",
     covers: ["C3.btw-side-panel"],
-    requires: [FALLBACK],
+    requires: D6_BTW_CAPABILITIES,
   },
   {
     kind: "panel",

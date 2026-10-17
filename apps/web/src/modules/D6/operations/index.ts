@@ -1,4 +1,12 @@
 export {
+  BtwRpcController,
+  type BtwRpcControllerOptions,
+  type BtwRpcSource,
+  btwSlashCommand,
+  createBtwRpcController,
+} from "./btw-rpc";
+export { type BtwRpcPanelProps, btwRpcViews } from "./btw-rpc-panel";
+export {
   BTW_STATUS_LABEL,
   type BtwPanelModel,
   type BtwTurn,

@@ -3100,9 +3100,9 @@
     "group": "C3",
     "name": "btw",
     "kind": "command",
-    "rpc": "terminal-only",
+    "rpc": "RPC",
     "ui": "side panel",
-    "source": "src/slash-commands/builtin-lifecycle.ts:311-321; src/modes/components/btw-panel.ts:33-144"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/coding-agent/src/modes/rpc/rpc-btw.ts:1-252; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/coding-agent/src/modes/rpc/rpc-mode.ts:2580-2589; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/coding-agent/src/modes/rpc/wire/commands.ts:355-373; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/coding-agent/src/modes/rpc/wire/frames.ts:106-113"
   },
   {
     "id": "C3.cleanse",
@@ -3667,9 +3667,9 @@
     "group": "C3",
     "name": "btw side panel",
     "kind": "dialog",
-    "rpc": "terminal-only",
+    "rpc": "RPC",
     "ui": "side panel",
-    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/packages/tui/src/overlays/btw-history-panel.ts:35-55,160-210,349-450"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/coding-agent/src/modes/rpc/rpc-btw.ts:1-252; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/coding-agent/src/modes/rpc/wire/frames.ts:106-113; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/overlays/btw-history-panel.ts:35-56,161-211,356-457"
   },
   {
     "id": "C3.cleanse-progress-panel",

@@ -33,20 +33,6 @@ export const D6_FALLBACK_FIXTURES: readonly D6FallbackFixture[] = [
     limitations: ["The app cannot open a terminal report here."],
   },
   {
-    inventoryId: "C3.btw",
-    title: "Side questions",
-    capability: D6_CAPABILITIES.fallback,
-    reason: "Side-question actions are not connected in this app build.",
-    limitations: ["The app cannot change omp's side-question history yet."],
-  },
-  {
-    inventoryId: "C3.btw-side-panel",
-    title: "Side-question history",
-    capability: D6_CAPABILITIES.fallback,
-    reason: "Side-question history is a local view for now.",
-    limitations: ["This view does not change omp."],
-  },
-  {
     inventoryId: "C3.cleanse",
     title: "Cleanse",
     capability: D6_CAPABILITIES.fallback,

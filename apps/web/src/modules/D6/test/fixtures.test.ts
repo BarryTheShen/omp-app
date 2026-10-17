@@ -41,7 +41,7 @@ describe("D6 scrubbed and fallback fixtures", () => {
   });
 
   test("fallback fixture copy is complete and scrubbed", () => {
-    expect(D6_FALLBACK_FIXTURES).toHaveLength(12);
+    expect(D6_FALLBACK_FIXTURES).toHaveLength(10);
     expect(checkScrubbed(JSON.stringify(D6_FALLBACK_FIXTURES))).toEqual([]);
     for (const fixture of D6_FALLBACK_FIXTURES) {
       expect(fixture.reason).not.toMatch(

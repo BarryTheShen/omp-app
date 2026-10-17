@@ -1,27 +1,41 @@
 import {
+  type CapabilityKey,
   type Descriptor,
   type InventoryId,
   NAMESPACE_OWNERSHIP,
   validateRegistry,
 } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { D6_CAPABILITIES, D6_DESCRIPTORS, D6_PANEL_DESCRIPTORS } from "../descriptors";
+import {
+  D6_BTW_CAPABILITIES,
+  D6_CAPABILITIES,
+  D6_DESCRIPTORS,
+  D6_PANEL_DESCRIPTORS,
+} from "../descriptors";
 import { D6_FALLBACK_FIXTURES } from "../fixtures";
 import { D6_REPORT_PALETTE_COMMANDS } from "../reports";
 import { D6_FALLBACK_ROWS, D6_OWNED_ROWS } from "./owned-rows";
 
 const D6_REGISTRY: readonly Descriptor[] = [...D6_REPORT_PALETTE_COMMANDS, ...D6_DESCRIPTORS];
+const D6_BTW_ROWS = new Set<InventoryId>(["C3.btw", "C3.btw-side-panel"]);
+
+function requiredCapabilities(row: InventoryId): readonly CapabilityKey[] {
+  if (D6_BTW_ROWS.has(row)) return D6_BTW_CAPABILITIES;
+  return D6_FALLBACK_ROWS.includes(row)
+    ? [D6_CAPABILITIES.fallback]
+    : [D6_CAPABILITIES.commandGateway];
+}
+
+function hasRequiredCapabilities(descriptor: Descriptor, row: InventoryId): boolean {
+  return requiredCapabilities(row).every((capability) => descriptor.requires.includes(capability));
+}
 
 function gateState(descriptors: readonly Descriptor[], rows: readonly InventoryId[]) {
   const covered = descriptors.flatMap((descriptor) => descriptor.covers);
   const c1Count = rows.filter((row) => row.startsWith("C1.")).length;
   const c3Count = rows.filter((row) => row.startsWith("C3.")).length;
   const capabilitiesValid = descriptors.every((descriptor) =>
-    descriptor.covers.every((row) =>
-      descriptor.requires.includes(
-        D6_FALLBACK_ROWS.includes(row) ? D6_CAPABILITIES.fallback : D6_CAPABILITIES.commandGateway,
-      ),
-    ),
+    descriptor.covers.every((row) => hasRequiredCapabilities(descriptor, row)),
   );
   return {
     countsValid: c1Count === 19 && c3Count === 10,
@@ -107,6 +121,16 @@ describe("CC12: D6 owns every diagnostic and operational row exactly once", () =
     );
     expect(
       gateState([...D6_REPORT_PALETTE_COMMANDS, ...changedRequires], D6_OWNED_ROWS)
+        .capabilitiesValid,
+    ).toBe(false);
+    const changedBtwRequires = D6_DESCRIPTORS.map(
+      (descriptor): Descriptor =>
+        descriptor.id === "D6.btw"
+          ? { ...descriptor, requires: [D6_CAPABILITIES.fallback] }
+          : descriptor,
+    );
+    expect(
+      gateState([...D6_REPORT_PALETTE_COMMANDS, ...changedBtwRequires], D6_OWNED_ROWS)
         .capabilitiesValid,
     ).toBe(false);
   });
