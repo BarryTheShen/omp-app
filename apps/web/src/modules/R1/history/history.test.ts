@@ -38,6 +38,7 @@ function createRpc(
   historyFailure?: () => AppFailure | undefined,
   holdHistoryRead?: Promise<void>,
   holdHistoryReadAt = 1,
+  closed: ThreadId[] = [],
 ): RpcSessionClient {
   let historyReads = 0;
   let stateReads = 0;
@@ -81,7 +82,10 @@ function createRpc(
     setSubagentSubscription: async () => ({ level: "off" }),
     setEventFilter: async () => ({ events: null }),
     restart: async () => null,
-    close: async () => null,
+    close: async (args: { readonly threadId: ThreadId }) => {
+      closed.push(args.threadId);
+      return null;
+    },
   } as unknown as RpcSessionClient;
 }
 
@@ -460,6 +464,161 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(second).not.toBe(first);
     expect(controller.getSnapshot().store).toBe(second);
     expect(emptied).toEqual([]);
+  });
+
+  test("switching from one chat to another keeps the current store mounted until the new chat loads", async () => {
+    const opened: OpenThreadArgs[] = [];
+    const next = Promise.withResolvers<unknown>();
+    const subscriptions: SubscriptionRecord[] = [];
+    let switching = false;
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc((args) => {
+          opened.push(args);
+          return switching
+            ? next.promise
+            : { threadId: threadOne, sessionFile: null, capabilities: {} };
+        }),
+        subscriptions,
+      ),
+      folder,
+    });
+    const first = await controller.openExisting(threadOne);
+    const emptyStates: number[] = [];
+    controller.subscribe((state) => {
+      if (state.store === undefined) emptyStates.push(emptyStates.length);
+    });
+    switching = true;
+    const picked = controller.pickExisting(threadTwo);
+    await vi.waitFor(() => expect(opened).toHaveLength(2));
+    expect(controller.getSnapshot().store).toBe(first);
+    expect(controller.getSnapshot().isLoading).toBe(true);
+    expect(subscriptions).toHaveLength(1);
+    expect(emptyStates).toEqual([]);
+    next.resolve({ threadId: threadTwo, sessionFile: null, capabilities: {} });
+    const second = await picked;
+    expect(second).not.toBe(first);
+    expect(controller.getSnapshot().isLoading).toBe(false);
+    expect(controller.getSnapshot().store).toBe(second);
+    expect(subscriptions).toHaveLength(2);
+    expect(subscriptions[0]?.unsubscribed).toBe(true);
+    expect(subscriptions[1]?.unsubscribed).toBe(false);
+  });
+  test("a failed switch keeps the current chat subscribed and usable", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc((args) => {
+          if ("threadId" in args && args.threadId === threadTwo)
+            throw new AppFailure({
+              code: "internal",
+              message: "The selected chat could not be opened.",
+              retryable: true,
+            });
+          return { threadId: threadOne, sessionFile: null, capabilities: {} };
+        }),
+        subscriptions,
+      ),
+      folder,
+    });
+    const first = await controller.openExisting(threadOne);
+    await expect(controller.openExisting(threadTwo)).rejects.toThrow(
+      "The selected chat could not be opened.",
+    );
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      store: first,
+      isLoading: false,
+      error: null,
+    });
+    expect(subscriptions).toHaveLength(1);
+  });
+
+  test("a switch from a chat on screen is flagged while it is pending, and a first open or a new chat never is", async () => {
+    const flagged: string[] = [];
+    const gate = Promise.withResolvers<unknown>();
+    let hold = false;
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc((args) => {
+          if (hold) return gate.promise;
+          return {
+            threadId: "threadId" in args ? args.threadId : threadOne,
+            sessionFile: null,
+            capabilities: {},
+          };
+        }),
+        [],
+      ),
+      folder,
+    });
+    controller.subscribe((state) => {
+      if (state.isSwitching) flagged.push(state.store === undefined ? "no chat" : "chat on screen");
+    });
+    await controller.openExisting(threadOne);
+    expect(flagged).toEqual([]);
+
+    hold = true;
+    const picked = controller.pickExisting(threadTwo);
+    await vi.waitFor(() => expect(controller.getSnapshot().isSwitching).toBe(true));
+    expect(controller.getSnapshot().store).toBeDefined();
+    gate.resolve({ threadId: threadTwo, sessionFile: null, capabilities: {} });
+    await picked;
+    expect(controller.getSnapshot().isSwitching).toBe(false);
+    expect(flagged.every((entry) => entry === "chat on screen")).toBe(true);
+
+    hold = false;
+    const flaggedBeforeNew = flagged.length;
+    await controller.openNew();
+    expect(flagged).toHaveLength(flaggedBeforeNew);
+    expect(controller.getSnapshot().isSwitching).toBe(false);
+  });
+
+  test("a switch whose history load fails after the new chat opened ends both views and lets the new chat go", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const closed: ThreadId[] = [];
+    let failing = false;
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(
+        createRpc(
+          (args) => ({
+            threadId: "threadId" in args ? args.threadId : threadOne,
+            sessionFile: null,
+            capabilities: {},
+          }),
+          [],
+          [],
+          undefined,
+          () =>
+            failing
+              ? new AppFailure({
+                  code: "internal",
+                  message: "The history could not be read.",
+                  retryable: true,
+                })
+              : undefined,
+          undefined,
+          1,
+          closed,
+        ),
+        subscriptions,
+      ),
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    failing = true;
+    await expect(controller.pickExisting(threadTwo)).rejects.toThrow(
+      "The history could not be read.",
+    );
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: undefined,
+      store: undefined,
+      isLoading: false,
+      isSwitching: false,
+      error: { message: "The history could not be read." },
+    });
+    expect(subscriptions.map((record) => record.unsubscribed)).toEqual([true, true]);
+    expect(closed).toContain(threadTwo);
   });
 
   test("reopening the chat on screen asks omp for it again, as a reconnect does: its store is new", async () => {

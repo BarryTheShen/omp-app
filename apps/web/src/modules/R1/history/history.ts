@@ -36,6 +36,7 @@ export interface SelectedThreadHistoryState {
   readonly store: OmpRuntimeStore | undefined;
   readonly capabilities: CapabilityMap | undefined;
   readonly isLoading: boolean;
+  readonly isSwitching: boolean;
   readonly error: AppError | null;
   /** The open chat was started as new (`openNew`): it has no messages yet, so its text is the folder's new-chat draft. */
   readonly openedNew: boolean;
@@ -125,6 +126,7 @@ export class SelectedThreadHistoryController {
     store: undefined,
     capabilities: undefined,
     isLoading: false,
+    isSwitching: false,
     error: null,
     openedNew: false,
   });
@@ -188,8 +190,9 @@ export class SelectedThreadHistoryController {
     if (model !== undefined) return this.openWithModel(threadId, model);
     const pending = this.pendingOpen;
     if (pending !== undefined && pending.threadId === threadId) return pending.open;
-    // A chat whose watch the server refused is opened again in place: it stays on screen until the new open is loaded.
-    const keepShown = this.watchRefused && this.state.threadId === threadId;
+    // Keep the current transcript mounted while a sidebar selection opens another chat: the sessions list lives in the
+    // same shell and must not remount its rows for the duration of the switch.
+    const keepShown = this.state.store !== undefined && this.state.threadId !== undefined;
     const open = this.open({ threadId }, keepShown).catch((error: unknown) => {
       // omp refuses a chat whose saved model is gone. The model remembered for the chat, if any, opens it.
       const picked =
@@ -462,7 +465,6 @@ export class SelectedThreadHistoryController {
     // fails is recorded for a reopen only while its ticket is the latest: a later pick or close came after it.
     this.requests += 1;
     const ticket = this.requests;
-    this.failedOpen = undefined;
     this.pendingOpens += 1;
     const settle = this.openSettler();
     return this.serialize(() => this.openNow(args, settle, ticket, keepShown)).finally(settle);
@@ -487,16 +489,26 @@ export class SelectedThreadHistoryController {
   ): Promise<OmpRuntimeStore> {
     const openedNew = "start" in args && args.start === "new";
     const closesAtStart = this.closes;
-    // The thread this open names: a dropped connection leaves it to be opened again (see `reopenFailedOpen`).
     const requested = "threadId" in args ? args.threadId : undefined;
-    await this.closeNow(keepShown);
-    if (!keepShown) this.commit({ isLoading: true, error: null });
+    if (!keepShown) {
+      await this.closeNow();
+      this.commit({ isLoading: true, isSwitching: false, error: null });
+    } else {
+      this.commit({ isLoading: true, isSwitching: true, error: null });
+    }
     // The subscription a watch held on this chat, if the open took the chat over. Let go only after the open subscribes.
     let watchHold: EventSubscription | undefined;
-    // The chat's store once it is committed on screen: a failure after that point keeps the chat (see the catch).
     let shownStore: OmpRuntimeStore | undefined;
+    // Set once the new chat is open on omp and the chat on screen has been let go: from then on a failure ends both views.
+    let openedId: ThreadId | undefined;
+    let oldReleased = false;
     try {
       const result = await this.rpc.open(args);
+      openedId = result.threadId;
+      if (keepShown) {
+        await this.closeNow(true);
+        oldReleased = true;
+      }
       const threadId = result.threadId;
       // A chat left while its turn ran, and opened again now: this open takes over that chat's watch.
       watchHold = this.takeOverTurnWatch(threadId);
@@ -520,11 +532,7 @@ export class SelectedThreadHistoryController {
         // The chat is on screen: a send that waited for it may go now, though its history still loads below.
         settle();
       }
-      // From here the composer takes text, so a reload or a restart must already find this chat: its id is saved now,
-      // not after the history has loaded. Otherwise text typed in a new chat is lost when the app restarts in that window.
-      // Not when a close was asked for while this open was pending: the chat is closed, and saving its id would
-      // reopen it after a folder switch (`selectFolder` clears the saved id and closes the chat).
-      if (this.closes === closesAtStart) this.options.onThreadIdChange?.(threadId);
+      if (!keepShown && this.closes === closesAtStart) this.options.onThreadIdChange?.(threadId);
       // The chat's stream starts at its first event the server still holds (afterSeq 0): the events omp sent before this
       // browser subscribed, such as a startup notice or the process becoming ready, reach the store in order. The history
       // load below reads what omp wrote to the session file.
@@ -539,13 +547,26 @@ export class SelectedThreadHistoryController {
         store,
         capabilities: result.capabilities,
         isLoading: false,
+        isSwitching: false,
         error: null,
         openedNew,
       });
-      settle();
+      if (keepShown && this.closes === closesAtStart) this.options.onThreadIdChange?.(threadId);
+      this.failedOpen = undefined;
       return store;
     } catch (error) {
       const failure = asFailure(error, "Opening the selected thread failed");
+      if (
+        keepShown &&
+        !oldReleased &&
+        this.state.store !== undefined &&
+        this.state.threadId !== undefined
+      ) {
+        if (failure.appError.code === "unavailable" && ticket === this.requests)
+          this.failedOpen = requested;
+        this.commit({ isLoading: false, isSwitching: false, error: null });
+        throw failure;
+      }
       // omp stopped while the chat was on screen, its history still loading: the chat stays, and its subscription carries
       // omp's exit to the chat's banner. Closing it here dropped that exit and the chat with it (issue 1707).
       if (
@@ -561,8 +582,11 @@ export class SelectedThreadHistoryController {
       // A dropped connection leaves the chat closed: the chat is opened again once the connection is back (issue 1617).
       if (failure.appError.code === "unavailable" && ticket === this.requests)
         this.failedOpen = requested;
+      // The chat on screen was let go when the new chat opened, so the failure ends both views, as a failed open does. The
+      // cleanup reads the chat it lets go from the state, so the state names the new chat first.
+      if (oldReleased) this.commit({ threadId: openedId, store: undefined });
       await this.closeNow();
-      this.commit({ isLoading: false, error: failure.appError });
+      this.commit({ isLoading: false, isSwitching: false, error: failure.appError });
       throw failure;
     } finally {
       // The watch's hold goes once the open holds the chat, so the stream never drops in between.

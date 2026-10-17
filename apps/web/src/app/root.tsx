@@ -276,6 +276,7 @@ const EMPTY_HISTORY: SelectedThreadHistoryState = {
   store: undefined,
   capabilities: undefined,
   isLoading: false,
+  isSwitching: false,
   error: null,
   openedNew: false,
 };
@@ -1514,7 +1515,11 @@ function ActiveThreadReady({
     reason: connection.reason,
   };
   // While the app reconnects the chat stays on screen: the composer keeps the text and says it cannot send yet.
-  const sendBlockedReason = connection.state === "connected" ? undefined : SEND_BLOCKED_TEXT;
+  const sendBlockedReason = history.isSwitching
+    ? "Opening session… omp is starting. This can take a few seconds."
+    : connection.state === "connected"
+      ? undefined
+      : SEND_BLOCKED_TEXT;
   // What a refused-key notice in the transcript can do: open the model list, open sign-in, and read each
   // provider's sign-in. Built once per open chat; a view only calls these.
   const credentialActions = useMemo<CredentialActions>(

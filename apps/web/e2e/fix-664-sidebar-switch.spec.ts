@@ -12,6 +12,10 @@ realTest.use({ seedSessions: 100 });
  * Per click it records `paintMs` (the click to the row being the selected one, on the page's clock), `listReads`
  * (the `listSessions` calls sent from the click until the switch has settled), `opens` (the chat opens sent for the
  * click) and `rowsRemounted` (rows of the list replaced by new elements during the switch).
+ *
+ * Two tests. A switch between chats that run no turn reads no list at all. A switch while a turn runs in the chat on
+ * screen keeps the rows and selects the row at once, and its list reads are only bounded: the server announces each
+ * start and end of a turn, and the list reads again for each (#1878).
  */
 /** A late list read would arrive after the chat's result, so each switch is watched this long before it is counted. */
 const SETTLE_MS = 800;
@@ -28,6 +32,8 @@ interface Wire {
   readonly opensSent: () => number;
   /** How many chat opens have had their response delivered to the page. */
   readonly opensDelivered: () => number;
+  /** How many answered chat opens are waiting to be delivered. */
+  readonly heldCount: () => number;
   /** Holds the responses of the chat opens that arrive from now on, until `release`. */
   readonly hold: () => void;
   /** Delivers the held responses, and lets the later ones through at once. */
@@ -106,6 +112,7 @@ async function routeWire(page: Page): Promise<Wire> {
     listReads: () => listReads,
     opensSent: () => opensSent,
     opensDelivered: () => opensDelivered,
+    heldCount: () => held.length,
     hold: () => {
       holding = true;
     },
@@ -205,24 +212,28 @@ async function switchTo(
   };
 }
 
+/** Stamps each click on the page's own clock, so the paint time is measured where the row is drawn. */
+async function stampClicks(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    document.addEventListener(
+      "click",
+      () => {
+        document.documentElement.dataset.clickedAt = String(Date.now());
+      },
+      true,
+    );
+  });
+}
+
 realTest(
-  "a chat switch reads no list and selects the clicked row at once, while the chat is still opening",
+  "a switch between chats that run no turn reads no list and keeps the rows",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);
     const wires: Wire[] = [];
     const page = await realApp.open({
       beforeLoad: async (opened) => {
         wires.push(await routeWire(opened));
-        // Stamps each click on the page's own clock, so the paint time is measured where the row is drawn.
-        await opened.addInitScript(() => {
-          document.addEventListener(
-            "click",
-            () => {
-              document.documentElement.dataset.clickedAt = String(Date.now());
-            },
-            true,
-          );
-        });
+        await stampClicks(opened);
       },
     });
     const wire = wires[0];
@@ -230,20 +241,83 @@ realTest(
     const list = page.getByRole("listbox", { name: "Session list" });
     const perClick: Switch[] = [];
     try {
-      await expect(list.getByRole("option").first()).toBeVisible({ timeout: 30_000 });
+      await list.getByRole("option").nth(0).click();
+      await expect(page.getByRole("textbox", { name: "Message input" })).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 60_000 });
+      await page.waitForTimeout(SETTLE_MS);
       await list.evaluate((element) => {
         element.scrollTop = 400;
       });
-      await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(400);
+      for (const index of ROW_INDEXES) {
+        const title = (await list.getByRole("option").nth(index).innerText()).split("\n")[0] ?? "";
+        perClick.push(await switchTo(page, wire, list, index, title));
+      }
+      testInfo.annotations.push({ type: "fix-664", description: JSON.stringify(perClick) });
+      for (const click of perClick) {
+        expect(click.listReads, `${click.title}: the switch read the list again`).toBe(0);
+        expect(click.rowsRemounted, `${click.title}: the Sessions rows remounted`).toBe(0);
+        expect(
+          click.paintMs,
+          `${click.title}: the row took too long to show as selected`,
+        ).toBeLessThan(MAX_PAINT_MS);
+      }
+      expect(realApp.problems).toEqual([]);
+    } catch (error) {
+      await testInfo.attach("chat-open-wire.txt", { body: wire.log(), contentType: "text/plain" });
+      throw error;
+    }
+  },
+);
+
+realTest(
+  "a switch while a turn runs keeps the rows, selects the clicked row at once and bounds the list reads, while the chat is still opening",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    const wires: Wire[] = [];
+    const page = await realApp.open({
+      beforeLoad: async (opened) => {
+        wires.push(await routeWire(opened));
+        await stampClicks(opened);
+      },
+    });
+    const wire = wires[0];
+    if (wire === undefined) throw new Error("The socket wire was not installed.");
+    const list = page.getByRole("listbox", { name: "Session list" });
+    const perClick: Switch[] = [];
+    try {
+      await list.getByRole("option").nth(0).click();
+      await expect(page.locator('[data-selected="true"]').first()).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByRole("textbox", { name: "Message input" })).toBeVisible({
+        timeout: 60_000,
+      });
+      await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 60_000 });
+      await page.waitForTimeout(SETTLE_MS);
+      const composer = page.getByRole("textbox", { name: "Message input" });
+      await list.evaluate((element) => {
+        element.scrollTop = 400;
+      });
+      await composer.fill("slow_tool switch stream");
+      await composer.press("Enter");
+      await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible({
+        timeout: 60_000,
+      });
 
       for (const [position, index] of ROW_INDEXES.entries()) {
         const title = (await list.getByRole("option").nth(index).innerText()).split("\n")[0] ?? "";
-        // The first switch is captured in light and in dark while its chat is still opening.
+        // The first switch is captured in light and in dark in two states. First the sidebar's own open of the chat is held:
+        // the row is selected and the chat on screen is still live, so a message sent now goes to it. Then that open is
+        // answered and the chat's own open is held: the switch from the chat on screen is pending, the composer holds a
+        // send back with its text and says why.
         const whileOpening =
           position === 0
             ? async () => {
-                await page.emulateMedia({ colorScheme: "light" });
+                await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible();
+                await composer.fill("sent while switch");
+                await composer.press("Enter");
                 await expectSelectedRowStyled(page, title);
+                await page.emulateMedia({ colorScheme: "light" });
                 await waitForFiniteAnimations(page);
                 await page.screenshot({
                   path: join(screenshots, "fix-664-opening-light.png"),
@@ -255,6 +329,30 @@ realTest(
                 await waitForFiniteAnimations(page);
                 await page.screenshot({
                   path: join(screenshots, "fix-664-opening-dark.png"),
+                  fullPage: true,
+                });
+                await page.emulateMedia({ colorScheme: "light" });
+                await expect(page.locator("html")).not.toHaveClass(/dark/);
+                // Omp may take seconds to answer the sidebar's open; it is released once it has been answered and is held.
+                await expect.poll(() => wire.heldCount(), { timeout: 60_000 }).toBeGreaterThan(0);
+                wire.release();
+                wire.hold();
+                const blocked = page.locator('[data-composer-blocked="true"]');
+                await expect(blocked).toContainText("Opening session");
+                await composer.fill("typed while switching");
+                await composer.press("Enter");
+                await expect(composer).toHaveValue("typed while switching");
+                await expect(blocked).toContainText("Opening session");
+                await waitForFiniteAnimations(page);
+                await page.screenshot({
+                  path: join(screenshots, "fix-664-switching-light.png"),
+                  fullPage: true,
+                });
+                await page.emulateMedia({ colorScheme: "dark" });
+                await expect(page.locator("html")).toHaveClass(/dark/);
+                await waitForFiniteAnimations(page);
+                await page.screenshot({
+                  path: join(screenshots, "fix-664-switching-dark.png"),
                   fullPage: true,
                 });
                 await page.emulateMedia({ colorScheme: "light" });
@@ -284,7 +382,11 @@ realTest(
 
       testInfo.annotations.push({ type: "fix-664", description: JSON.stringify(perClick) });
       for (const click of perClick) {
-        expect(click.listReads, `${click.title}: the switch read the list again`).toBe(0);
+        expect(
+          click.listReads,
+          `${click.title}: running-turn list refreshes are bounded`,
+        ).toBeLessThanOrEqual(2);
+        expect(click.rowsRemounted, `${click.title}: the Sessions rows remounted`).toBe(0);
         expect(
           click.paintMs,
           `${click.title}: the row took too long to show as selected`,
