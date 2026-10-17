@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { definePort } from "../../core/envelope";
 import { ThreadId } from "../../core/ids";
+import type { OmpWire } from "../../core/omp";
 import { Timestamp } from "./shared";
 
 export const PLAN_DOCUMENT_STATUSES = [
@@ -14,6 +15,17 @@ export const PLAN_DOCUMENT_STATUSES = [
 export const PlanDocumentStatus = z.enum(PLAN_DOCUMENT_STATUSES);
 export type PlanDocumentStatus = z.infer<typeof PlanDocumentStatus>;
 
+/** Persisted execution effort; shares omp's six supported wire values and D1's EffortLevel. */
+export const PLAN_MODEL_TIERS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly OmpWire.Effort[];
+export const PlanModelTier = z.enum(PLAN_MODEL_TIERS);
+export type PlanModelTier = z.infer<typeof PlanModelTier>;
 export const PlanDocumentId = z
   .string()
   .min(1)
@@ -46,6 +58,7 @@ export const PlanDocumentInput = z.strictObject({
   sections: z.array(PlanSection).max(2_000),
   annotations: z.array(PlanAnnotation).max(2_000),
   status: PlanDocumentStatus,
+  modelTier: PlanModelTier.nullable().optional(),
 });
 export type PlanDocumentInput = z.infer<typeof PlanDocumentInput>;
 
@@ -63,6 +76,7 @@ export const PlanRevision = z.strictObject({
   sections: z.array(PlanSection).max(2_000),
   annotations: z.array(PlanAnnotation).max(2_000),
   status: PlanDocumentStatus,
+  modelTier: PlanModelTier.nullable().optional(),
 });
 export type PlanRevision = z.infer<typeof PlanRevision>;
 

@@ -57,6 +57,77 @@ describe("createPlanDocumentStore", () => {
     expect(await containsSessionFile(appDataDir)).toBe(false);
   });
 
+  test("preserves tier-less legacy plans and stores model tier in current document, revisions and JSON export", async () => {
+    const appDataDir = await temporaryDirectory();
+    const store = createPlanDocumentStore({ appDataDir });
+    const threadId = ThreadId.parse("thread-model-tier");
+    const legacy = await store.save({
+      document: documentInput(threadId, "legacy"),
+      expectedRevision: 0,
+    });
+    if (legacy.document === null) throw new Error("Expected legacy plan to be saved.");
+    expect(legacy.document).not.toHaveProperty("modelTier");
+
+    const withTier = await store.save({
+      document: { ...documentInput(threadId, "tiered"), modelTier: "high" },
+      expectedRevision: legacy.document.revision,
+    });
+    if (withTier.document === null) throw new Error("Expected tiered plan to be saved.");
+
+    const updated = await store.save({
+      document: { ...documentInput(threadId, "updated"), modelTier: "max" },
+      expectedRevision: withTier.document.revision,
+    });
+    if (updated.document === null) throw new Error("Expected updated plan to be saved.");
+    const loaded = await store.load({ threadId });
+
+    expect(loaded.document?.modelTier).toBe("max");
+    expect(updated.revisions).toHaveLength(2);
+    expect(updated.revisions[0]?.modelTier).toBe("high");
+    expect(updated.revisions[1]).not.toHaveProperty("modelTier");
+
+    const exported = await store.export({ documentId: updated.document.id, format: "json" });
+    expect(JSON.parse(exported.text)).toMatchObject({ modelTier: "max" });
+  });
+
+  test("accepts a cleared model tier and rejects an unknown tier as invalid_args", async () => {
+    const store = createPlanDocumentStore({ appDataDir: await temporaryDirectory() });
+    const threadId = ThreadId.parse("thread-cleared-tier");
+    const saved = await store.save({
+      document: { ...documentInput(threadId, "no tier"), modelTier: null },
+      expectedRevision: 0,
+    });
+    expect((await store.load({ threadId })).document?.modelTier).toBeNull();
+    expect(saved.document?.modelTier).toBeNull();
+
+    const invalid = {
+      ...documentInput(threadId, "unknown"),
+      modelTier: "turbo",
+    } as unknown as PlanDocumentInput;
+    const error = await store
+      .save({ document: invalid, expectedRevision: 1 })
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(AppFailure);
+    expect((error as AppFailure).appError.code).toBe("invalid_args");
+  });
+
+  test("accepts each of the six effort values omp defines as a model tier", async () => {
+    // omp's `Effort` wire type (rpc-wire.generated.ts) and D1's `EffortLevel` are these six, in this order.
+    const efforts = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+    const store = createPlanDocumentStore({ appDataDir: await temporaryDirectory() });
+    const threadId = ThreadId.parse("thread-every-tier");
+    let revision = 0;
+    for (const tier of efforts) {
+      const saved = await store.save({
+        document: { ...documentInput(threadId, `tier ${tier}`), modelTier: tier },
+        expectedRevision: revision,
+      });
+      expect(saved.document?.modelTier).toBe(tier);
+      expect((await store.load({ threadId })).document?.modelTier).toBe(tier);
+      revision = saved.document?.revision ?? revision;
+    }
+  });
+
   test("keeps bounded previous document snapshots and emits scoped changes", async () => {
     const appDataDir = await temporaryDirectory();
     const store = createPlanDocumentStore({ appDataDir, maxHistory: 2 });

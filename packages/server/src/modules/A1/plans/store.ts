@@ -246,6 +246,7 @@ function snapshotRevision(document: PlanDocument, savedAt: string): PlanRevision
     sections: document.sections,
     annotations: document.annotations,
     status: document.status,
+    ...(document.modelTier === undefined ? {} : { modelTier: document.modelTier }),
   };
 }
 
