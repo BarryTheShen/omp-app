@@ -280,7 +280,7 @@ describe("S1.5 ConfigStore fixture and grammar gate", () => {
     ).toMatchObject({ valid: false });
   });
 
-  test("previews without writing, then saves one live key with its expected revision", async () => {
+  test("stages without writing, then saves one live key with its expected revision", async () => {
     const state = fakeConfig();
     const runtime = runtimeFor(state, THEME_SETTINGS_SECTION);
     await runtime.read();
@@ -289,10 +289,7 @@ describe("S1.5 ConfigStore fixture and grammar gate", () => {
     const startingValue = entryFor(startingSnapshot, "theme.dark");
 
     expect(runtime.stage("theme.dark", { secret: false, value: "custom-theme" }).ok).toBe(true);
-    expect(runtime.preview("theme.dark")).toMatchObject({
-      ok: true,
-      patch: { key: "theme.dark", value: "custom-theme" },
-    });
+    expect(runtime.preview("theme.dark")).toEqual({ ok: true, patch: null });
     expect(state.writes).toHaveLength(0);
     runtime.cancel();
     expect(state.writes).toHaveLength(0);

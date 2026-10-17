@@ -512,6 +512,53 @@ export function provenanceLabel(entry: ConfigEntry): string {
       : "";
   return `${source}${overrides}`;
 }
+export type SettingsConflictRow = {
+  readonly key: string;
+  readonly label: string;
+  readonly value: string;
+};
+
+function conflictValue(
+  control: SettingControl | undefined,
+  entry: ConfigEntry | undefined,
+): string {
+  if (!entry) return "Unavailable";
+  if (entry.secret) return entry.isSet ? "Set" : "Not set";
+  if (!control) return "Unavailable";
+  if (control.kind === "boolean" && typeof entry.value === "boolean") {
+    return entry.value ? "On" : "Off";
+  }
+  if (control.kind === "enum") {
+    return (
+      control.options?.find((option) => {
+        if (JSON.stringify(option.value) === JSON.stringify(entry.value)) return true;
+        return (
+          typeof option.value === "string" &&
+          typeof entry.value === "number" &&
+          Number(option.value) === entry.value
+        );
+      })?.label ?? "Other value"
+    );
+  }
+  return JSON.stringify(entry.value) ?? "Unavailable";
+}
+
+export function settingsConflictRows(
+  descriptor: SettingsSectionDescriptor,
+  remote: ConfigSnapshot,
+  changedKeys: readonly string[],
+): readonly SettingsConflictRow[] {
+  return changedKeys.map((key) => {
+    const control = descriptor.controls.find((candidate) => candidate.key === key);
+    const entry = effectiveEntry(remote, key);
+    const source = entry ? provenanceLabel(entry) : "Not configured";
+    return {
+      key,
+      label: control?.label ?? "Setting",
+      value: `${conflictValue(control, entry)} · Source: ${source}`,
+    };
+  });
+}
 
 export function secretSummary(
   entry: ConfigEntry,

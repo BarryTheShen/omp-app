@@ -1,5 +1,11 @@
+import { ConflictBanner } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
-import { SettingsSection } from "../../S1/settings-kit";
+import {
+  CONFLICT_BUTTON_LABELS,
+  SETTINGS_CONFLICT_DESCRIPTION,
+  SETTINGS_CONFLICT_HEADING,
+  SettingsSection,
+} from "../../S1/settings-kit";
 import type { FilesSettingsActions, FilesSettingsViewState } from "./controller";
 
 export type FilesSettingsSectionProps = {
@@ -57,44 +63,16 @@ function FilesSettingsSectionView({ state, actions }: FilesSettingsSectionProps)
         onCancel={actions.onCancel}
       />
       {state.conflict ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
-        >
-          <div className="text-warning-foreground">
-            <p>
-              Another change arrived. Review the current effective values, then reload them or keep
-              your edits and save again.
-            </p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {state.conflict.rows.map((row) => (
-                <li key={row.label}>
-                  <strong>{row.label}:</strong> {row.value} · Source: {row.provenance}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <span className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => actions.onResolveConflict("reload")}
-            >
-              Reload
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => actions.onResolveConflict("keep-mine")}
-            >
-              Keep mine
-            </Button>
-          </span>
-        </div>
-      ) : null}
-      {state.error ? (
+        <ConflictBanner
+          description={SETTINGS_CONFLICT_DESCRIPTION}
+          heading={SETTINGS_CONFLICT_HEADING}
+          keepMineLabel={CONFLICT_BUTTON_LABELS.keepMine}
+          onKeepMine={() => actions.onResolveConflict("keep-mine")}
+          onReload={() => actions.onResolveConflict("reload")}
+          reloadLabel={CONFLICT_BUTTON_LABELS.reload}
+          rows={state.conflict.rows}
+        />
+      ) : state.error ? (
         <p role="alert" className="text-sm text-destructive">
           {state.error} Your edits remain staged; review them and try Save changes again.
         </p>

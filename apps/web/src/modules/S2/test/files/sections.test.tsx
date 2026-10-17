@@ -152,7 +152,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     await waitFor(() => expect(screen.getAllByRole("spinbutton")).toHaveLength(5));
   });
 
-  test("external changes show the new effective value before Keep mine and CAS retry", async () => {
+  test("external changes show the new effective value before Keep my edits and CAS retry", async () => {
     const { runtime, state } = createFilesRuntime(FILES_READING_SECTION);
     runtimes.push(runtime);
     render(<FilesHarness runtime={runtime} Section={FilesReadingSection} />);
@@ -168,7 +168,7 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
       "Default Read Limit: 200 · Source: Saved for all projects",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Keep mine" }));
+    fireEvent.click(screen.getByRole("button", { name: "Keep my edits" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(runtime.getSnapshot().phase).toBe("ready"));
     expect(state.writes.map((write) => write.expectedRevision)).toEqual(["revision-external"]);

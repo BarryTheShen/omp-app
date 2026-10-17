@@ -463,6 +463,34 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     expect(state.writes[1]?.expectedRevision).toBe("revision-external");
     expect(runtime.getSnapshot().phase).toBe("ready");
   });
+  test("conflict banner lists the remote effective setting row", async () => {
+    const { runtime } = createFakeRuntime(FILES_LSP_SECTION);
+    await runtime.read();
+    const snapshot = runtime.getSnapshot();
+    if (!snapshot.config || !snapshot.staged) throw new Error("LSP fixture did not load.");
+    const remote = {
+      ...snapshot.config,
+      entries: snapshot.config.entries.map((entry) =>
+        entry.key === "lsp.shared" ? { ...entry, value: true } : entry,
+      ),
+    };
+    const conflictSnapshot = {
+      ...snapshot,
+      phase: "conflict" as const,
+      conflict: {
+        local: snapshot.staged,
+        remote,
+        changedKeys: ["lsp.shared"],
+      },
+    };
+    const conflictRuntime = {
+      getSnapshot: () => conflictSnapshot,
+      subscribe: () => () => undefined,
+    } as unknown as SettingsRuntime;
+    render(<FilesLspSection runtime={conflictRuntime} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Shared Language Servers: On · Source: omp's default");
+  });
 
   test("changed events reconcile effective values and conflict with staged edits", async () => {
     const { runtime, state } = createFakeRuntime(SHELL_EVAL_RUNTIMES_SECTION);

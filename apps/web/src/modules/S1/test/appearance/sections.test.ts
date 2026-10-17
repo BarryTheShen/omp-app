@@ -182,6 +182,7 @@ describe("S1.3 appearance sections", () => {
         expect(setting.kind).toBe(EXPECTED_KINDS[setting.key]);
         expect(setting.secret).toBe(false);
         expect(setting.apply).toBe("live");
+        expect(setting.description).toMatch(/^Terminal only\. /);
         const value = DEFAULT_VALUES[setting.key];
         if (value === undefined) throw new Error(`Missing omp v18.6.1 default for ${setting.key}.`);
         expect(setting.validate({ secret: false, value }, snapshot)).toEqual({ valid: true });
@@ -194,7 +195,7 @@ describe("S1.3 appearance sections", () => {
     }
   });
 
-  test("keeps dynamic OMP names editable and stages previews without persisting values", () => {
+  test("keeps dynamic OMP names editable without app previews", () => {
     const snapshot = defaultSnapshot(THEME_SETTINGS_SECTION);
     const theme = THEME_SETTINGS_SECTION.controls.find((setting) => setting.key === "theme.dark");
     const shape = COMPOSER_SETTINGS_SECTION.controls.find(
@@ -211,10 +212,14 @@ describe("S1.3 appearance sections", () => {
         defaultSnapshot(COMPOSER_SETTINGS_SECTION),
       ),
     ).toEqual({ valid: true });
-    expect(theme.preview?.({ secret: false, value: "custom-omp-theme" }, snapshot)).toEqual({
-      key: "theme.dark",
-      value: "custom-omp-theme",
-    });
+    expect(theme.preview).toBeUndefined();
+    expect(shape.preview).toBeUndefined();
+    expect(theme.description).toBe(
+      "Terminal only. Theme used when the terminal has a dark background",
+    );
+    expect(shape.description).toBe(
+      "Terminal only. Visual layout of the input editor and status line",
+    );
     const themeEntry = snapshot.entries.find((entry) => entry.key === "theme.dark");
     if (!themeEntry || themeEntry.secret) throw new Error("Missing effective theme entry.");
     expect(themeEntry.value).toBe("titanium");

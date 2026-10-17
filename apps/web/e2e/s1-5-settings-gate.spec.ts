@@ -86,10 +86,11 @@ test("S1 settings retain keyboard, focus, reduced motion and 200% zoom behavior"
   });
   await lightPage.goto(`/${PAGE_NAME}.html`);
   await expect(lightPage.getByRole("heading", { name: "Appearance" })).toBeVisible();
-  await expect(lightPage.locator("[data-appearance-preview]")).toHaveAttribute(
-    "data-palette",
-    "light",
-  );
+  await expect(
+    lightPage.getByText("These settings change omp's terminal only. This app does not use them.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expectBackgroundToken(lightPage, "oklch(0.9791 0 0)");
   const reducedMotionDuration = await lightPage.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--duration-base").trim(),
@@ -112,12 +113,17 @@ test("S1 settings retain keyboard, focus, reduced motion and 200% zoom behavior"
     reducedMotion: "reduce",
     viewport: { width: 1280, height: 960 },
   });
-  await darkPage.addInitScript(() => document.documentElement.classList.add("dark"));
+  await darkPage.addInitScript(() => {
+    document.documentElement.classList.add("dark");
+    window.localStorage.setItem("omp-app.theme", "dark");
+  });
   await darkPage.goto(`/${PAGE_NAME}.html`);
-  await expect(darkPage.locator("[data-appearance-preview]")).toHaveAttribute(
-    "data-palette",
-    "dark",
-  );
+  await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
+  await expect(
+    darkPage.getByText("These settings change omp's terminal only. This app does not use them.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expectBackgroundToken(darkPage, "oklch(0.2096 0.0166 268.85)");
   await waitForAnimations(darkPage);
   await darkPage.screenshot({

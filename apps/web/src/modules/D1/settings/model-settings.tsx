@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { InlineError, Section, Toolbar } from "@/components/blocks";
+import { ConflictBanner, InlineError } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import {
   applyStatusLabel,
@@ -11,6 +11,7 @@ import {
   type SettingsSectionDescriptor,
   type StagedSettings,
   settingLabels,
+  settingsConflictRows,
   UnsavedSettingsNotice,
 } from "@/modules/S1/settings-kit";
 import { type SettingsRuntime, useSettingsRuntime } from "../../S1/runtime";
@@ -127,32 +128,19 @@ export function ModelSettingsSection({ descriptor, runtime }: ModelSettingsSecti
         onCancel={() => runtime.cancel()}
       />
       {snapshot.phase === "conflict" && snapshot.conflict ? (
-        <div role="alert">
-          <Section
-            heading={SETTINGS_CONFLICT_HEADING}
-            headingLevel={3}
-            description={SETTINGS_CONFLICT_DESCRIPTION}
-          >
-            <Toolbar ariaLabel="Conflict actions" alignment="start">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => runtime.resolveConflict("reload")}
-              >
-                {CONFLICT_BUTTON_LABELS.reload}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => runtime.resolveConflict("keep-mine")}
-              >
-                {CONFLICT_BUTTON_LABELS.keepMine}
-              </Button>
-            </Toolbar>
-          </Section>
-        </div>
+        <ConflictBanner
+          description={SETTINGS_CONFLICT_DESCRIPTION}
+          heading={SETTINGS_CONFLICT_HEADING}
+          keepMineLabel={CONFLICT_BUTTON_LABELS.keepMine}
+          onKeepMine={() => runtime.resolveConflict("keep-mine")}
+          onReload={() => runtime.resolveConflict("reload")}
+          reloadLabel={CONFLICT_BUTTON_LABELS.reload}
+          rows={settingsConflictRows(
+            descriptor,
+            snapshot.conflict.remote,
+            snapshot.conflict.changedKeys,
+          )}
+        />
       ) : unsavedLabels.length > 0 ? (
         <UnsavedSettingsNotice labels={unsavedLabels} reason={snapshot.error?.message ?? ""} />
       ) : snapshot.error ? (

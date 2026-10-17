@@ -254,15 +254,18 @@ describe("the generic settings panel after a save omp refuses because the settin
       entry.key === "completion.notify" ? { ...entry, value: "off" } : entry,
     );
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(await screen.findByRole("button", { name: "Keep my edits" })).toBeTruthy();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Completion Notification: Off · Source: Saved for all projects",
+    );
     return state;
   }
 
-  test("offers only Reload latest and Keep my edits, with no Retry and no second refusal", async () => {
+  test("offers only Reload latest and Keep my edits in the shared conflict banner", async () => {
     const state = await refusedSave();
     expect(screen.getByRole("button", { name: "Reload latest" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Settings changed elsewhere");
     expect(screen.queryByText("The settings changed elsewhere.")).toBeNull();
     expect(state.writes).toEqual([]);
   });

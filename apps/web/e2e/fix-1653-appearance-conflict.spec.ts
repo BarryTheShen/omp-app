@@ -38,6 +38,7 @@ async function reachAppearanceConflict(
   }
   await expect(conflictHeading).toBeVisible({ timeout: 15_000 });
   await expect(conflict).toContainText(CONFLICT_DESCRIPTION);
+  await expect(conflict).toContainText(`Composer Shape: "${outsideValue}"`);
   await expect(section.getByText(CONFLICT, { exact: true })).toHaveCount(1);
   await expect(shape).toBeDisabled();
   await expect(save).toBeDisabled();

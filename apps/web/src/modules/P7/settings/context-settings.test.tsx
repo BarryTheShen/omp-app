@@ -651,7 +651,9 @@ describe("a save keeps the other sections in step with omp", () => {
     });
 
     const alert = await within(section).findByRole("alert");
-    expect(alert.textContent).toContain("Settings changed elsewhere");
+    expect(alert.textContent).toContain(
+      "Compaction Threshold: 80 percent · Source: Saved for all projects · overrides omp's default",
+    );
     expect(
       (within(section).getByRole("button", { name: "Save changes" }) as HTMLButtonElement).disabled,
     ).toBe(true);

@@ -10,7 +10,6 @@ import type {
   SettingsSectionDescriptor,
 } from "../../../S1/settings-kit";
 import { COMPOSER_SETTINGS_SECTION } from "../../appearance";
-import { APP_THEME_PREVIEW_NOTE } from "../../appearance/descriptors";
 
 type FakeConfig = {
   entries: ConfigEntry[];
@@ -93,14 +92,12 @@ function AppearanceSettingsHarness({
   client,
   appearanceSections,
   initialSectionId,
-  previewPalette,
   applyThemePreview,
   applyStatus,
 }: {
   readonly client: ConfigStoreClient;
   readonly appearanceSections?: readonly SettingsSectionDescriptor[];
   readonly initialSectionId?: string;
-  readonly previewPalette?: "light" | "dark";
   readonly applyThemePreview?: boolean;
   readonly applyStatus?: ApplyStatus;
 }) {
@@ -112,7 +109,6 @@ function AppearanceSettingsHarness({
     folder: null,
     initialSectionId,
     layer: "global",
-    previewPalette,
   });
   const viewModel =
     applyStatus === undefined || model.activeSection === undefined
@@ -137,7 +133,7 @@ describe("S1.3 appearance settings surface", () => {
     fireEvent.change(screen.getByLabelText("omp theme name"), {
       target: { value: "custom-dark" },
     });
-    expect(screen.getByText(APP_THEME_PREVIEW_NOTE)).toBeTruthy();
+    expect(screen.queryByText(/preview/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Use this theme name" }));
 
     const save = await screen.findByRole("button", { name: "Save changes" });
@@ -174,7 +170,6 @@ describe("S1.3 appearance settings surface", () => {
         applyThemePreview={false}
         client={fakeClient(state)}
         initialSectionId={COMPOSER_SETTINGS_SECTION.id}
-        previewPalette="light"
       />,
     );
 
@@ -186,12 +181,17 @@ describe("S1.3 appearance settings surface", () => {
     expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
 
     fireEvent.change(shape, { target: { value: "mine again" } });
+    fireEvent.change(screen.getByLabelText("Search settings"), {
+      target: { value: "generation" },
+    });
+    expect(screen.queryByRole("textbox", { name: "Composer Shape" })).toBeNull();
     state.entries = state.entries.map((entry) =>
       entry.key === "composer.shape" ? { ...entry, value: "theirs" } : entry,
     );
     state.revision = "revision-external";
-    await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(save);
+    const conflictSave = screen.getByRole("button", { name: "Save changes" });
+    await waitFor(() => expect((conflictSave as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(conflictSave);
 
     expect(await screen.findByRole("heading", { name: "Settings changed elsewhere" })).toBeTruthy();
     expect(
@@ -203,7 +203,9 @@ describe("S1.3 appearance settings surface", () => {
     expect(screen.getByRole("button", { name: "Reload latest" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Keep my edits" })).toBeTruthy();
     expect(screen.getAllByRole("heading", { name: "Settings changed elsewhere" })).toHaveLength(1);
-    expect(screen.queryByText("Applied", { exact: true })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain(
+      'Composer Shape: "theirs" · Source: Saved for all projects',
+    );
   });
 
   test("uses the shared plain words for an unavailable apply status", async () => {
@@ -219,7 +221,6 @@ describe("S1.3 appearance settings surface", () => {
         applyStatus="unsupported"
         client={fakeClient(state)}
         initialSectionId={COMPOSER_SETTINGS_SECTION.id}
-        previewPalette="light"
       />,
     );
 
@@ -242,7 +243,7 @@ describe("S1.3 appearance settings surface", () => {
     expect(screen.queryByText("temporary ConfigStore failure")).toBeNull();
   });
 
-  test("previews inline-image choice and restores the committed preview on cancel", async () => {
+  test("focusing and cancelling the image selector does not write settings", async () => {
     const state: FakeConfig = {
       entries: [...DEFAULT_ENTRIES],
       revision: "revision-1",
@@ -255,9 +256,8 @@ describe("S1.3 appearance settings surface", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Images" }));
     fireEvent.click(screen.getByRole("button", { name: "Show images selector…" }));
     fireEvent.focus(screen.getByRole("button", { name: "No" }));
-    expect(screen.getByText("Image placeholder")).toBeTruthy();
+    expect(state.writes).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByRole("img", { name: "Inline image preview" })).toBeTruthy();
     expect(state.writes).toHaveLength(0);
   });
   test("supports a registry-filtered embedded surface without changing the app palette", async () => {
@@ -274,14 +274,56 @@ describe("S1.3 appearance settings surface", () => {
         applyThemePreview={false}
         client={fakeClient(state)}
         initialSectionId={COMPOSER_SETTINGS_SECTION.id}
-        previewPalette="dark"
       />,
     );
 
     expect(await screen.findByRole("tab", { name: "Composer" })).toBeTruthy();
     expect(screen.queryByText("Dark Theme")).toBeNull();
-    expect(screen.getByLabelText("Appearance preview").getAttribute("data-palette")).toBe("dark");
+    expect(
+      screen.getByText("Terminal only. Visual layout of the input editor and status line"),
+    ).toBeTruthy();
     expect(document.documentElement.classList.contains("dark")).toBe(wasDark);
+  });
+
+  test("does not apply a document theme preview by default", async () => {
+    const state: FakeConfig = {
+      entries: [...DEFAULT_ENTRIES],
+      revision: "revision-1",
+      writes: [],
+      failNextList: false,
+    };
+    const wasDark = document.documentElement.classList.contains("dark");
+    document.documentElement.classList.remove("dark");
+    render(<AppearanceSettingsHarness client={fakeClient(state)} />);
+
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Choose dark theme…" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Titanium (dark)" }));
+      expect(document.documentElement.classList.contains("dark")).toBe(false);
+    } finally {
+      document.documentElement.classList.toggle("dark", wasDark);
+    }
+  });
+  test("applies an opted-in theme preview only after selection", async () => {
+    const state: FakeConfig = {
+      entries: [...DEFAULT_ENTRIES],
+      revision: "revision-1",
+      writes: [],
+      failNextList: false,
+    };
+    const wasDark = document.documentElement.classList.contains("dark");
+    document.documentElement.classList.remove("dark");
+    render(<AppearanceSettingsHarness applyThemePreview client={fakeClient(state)} />);
+
+    try {
+      fireEvent.click(await screen.findByRole("button", { name: "Choose dark theme…" }));
+      await screen.findByRole("button", { name: "Titanium (dark)" });
+      expect(document.documentElement.classList.contains("dark")).toBe(false);
+      fireEvent.click(screen.getByRole("button", { name: "Titanium (dark)" }));
+      await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true));
+    } finally {
+      document.documentElement.classList.toggle("dark", wasDark);
+    }
   });
 
   test("the section tabs move focus and selection with the arrow, Home and End keys", async () => {
@@ -328,10 +370,9 @@ describe("S1.3 appearance settings surface", () => {
     render(<AppearanceSettingsHarness client={fakeClient(state)} />);
 
     expect(
-      await screen.findByText(
+      await screen.findAllByText(
         "These settings change omp's terminal only. This app does not use them.",
       ),
-    ).toBeTruthy();
-    expect(await screen.findByRole("heading", { name: "Terminal preview" })).toBeTruthy();
+    ).toHaveLength(1);
   });
 });

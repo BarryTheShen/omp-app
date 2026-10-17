@@ -364,6 +364,57 @@ export function Toolbar({ ariaLabel, alignment = "start", children }: ToolbarPro
   );
 }
 
+export interface ConflictRow {
+  readonly key: string;
+  readonly label: string;
+  readonly value: ReactNode;
+}
+
+export interface ConflictBannerProps {
+  readonly heading: string;
+  readonly description: string;
+  readonly reloadLabel: string;
+  readonly keepMineLabel: string;
+  readonly rows: readonly ConflictRow[];
+  readonly onReload: () => void;
+  readonly onKeepMine: () => void;
+}
+
+/** One settings conflict banner, shared by every ConfigStore-backed settings surface. */
+export function ConflictBanner({
+  heading,
+  description,
+  reloadLabel,
+  keepMineLabel,
+  rows,
+  onReload,
+  onKeepMine,
+}: ConflictBannerProps) {
+  return (
+    <div role="alert">
+      <Section heading={heading} headingLevel={3} description={description}>
+        {rows.length > 0 ? (
+          <ul className="mb-3 flex flex-col gap-1 text-sm">
+            {rows.map((row) => (
+              <li key={row.key}>
+                <strong>{row.label}:</strong> {row.value}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <Toolbar ariaLabel="Conflict actions" alignment="start">
+          <Button type="button" size="sm" variant="outline" onClick={onReload}>
+            {reloadLabel}
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={onKeepMine}>
+            {keepMineLabel}
+          </Button>
+        </Toolbar>
+      </Section>
+    </div>
+  );
+}
+
 export interface NoticeProps {
   readonly message: string;
   readonly tone?: "neutral" | "danger";

@@ -1,7 +1,6 @@
-import { Section, Toolbar } from "@/components/blocks";
+import { ConflictBanner } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AppearancePreview } from "../appearance/preview";
 import { ShowImagesSelector, ThemeSelector } from "../appearance/selectors";
 import {
   applyStatusLabel,
@@ -25,6 +24,13 @@ export type AppearanceSettingsViewProps = {
   /** Hide the standalone page heading when this view is embedded in another settings surface. */
   readonly showHeader?: boolean;
 };
+function TerminalOnlySettingsNote() {
+  return (
+    <p className="text-muted-foreground text-sm">
+      These settings change omp's terminal only. This app does not use them.
+    </p>
+  );
+}
 
 /** The tab an arrow, Home or End key moves to; wraps at either end. Undefined for other keys. */
 function appearanceTabTarget(key: string, index: number, count: number): number | undefined {
@@ -64,36 +70,20 @@ function ActiveSectionView({
         }
         unsavedKeys={section.unsavedKeys}
         onStage={(staged) => actions.onStage(section.descriptor.id, staged)}
-        onPreview={actions.onPreview}
         onSecretAction={actions.onSecretAction}
         onCommit={() => actions.onCommit(section.descriptor.id)}
         onCancel={() => actions.onCancel(section.descriptor.id)}
       />
       {section.conflict ? (
-        <div role="alert">
-          <Section
-            heading={SETTINGS_CONFLICT_HEADING}
-            headingLevel={3}
-            description={SETTINGS_CONFLICT_DESCRIPTION}
-          >
-            <Toolbar ariaLabel="Conflict actions" alignment="start">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => actions.onConflictChoice(section.descriptor.id, "reload")}
-              >
-                {CONFLICT_BUTTON_LABELS.reload}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => actions.onConflictChoice(section.descriptor.id, "keep-mine")}
-              >
-                {CONFLICT_BUTTON_LABELS.keepMine}
-              </Button>
-            </Toolbar>
-          </Section>
-        </div>
+        <ConflictBanner
+          description={SETTINGS_CONFLICT_DESCRIPTION}
+          heading={SETTINGS_CONFLICT_HEADING}
+          keepMineLabel={CONFLICT_BUTTON_LABELS.keepMine}
+          onKeepMine={() => actions.onConflictChoice(section.descriptor.id, "keep-mine")}
+          onReload={() => actions.onConflictChoice(section.descriptor.id, "reload")}
+          reloadLabel={CONFLICT_BUTTON_LABELS.reload}
+          rows={section.conflictRows}
+        />
       ) : section.unsavedLabels.length > 0 ? (
         <UnsavedSettingsNotice labels={section.unsavedLabels} reason={section.error ?? ""} />
       ) : section.error ? (
@@ -135,11 +125,10 @@ export function AppearanceSettingsView({
           settingKey={model.selector.key}
           value={model.selector.value}
           onValueChange={actions.onThemeValueChange}
-          onPreview={actions.onThemePreview}
           onSelect={actions.onThemeSelect}
           onCancel={actions.onCancelSelector}
         />
-        <AppearancePreview model={model.preview} />
+        <TerminalOnlySettingsNote />
         {model.actionError ? (
           <p className="text-destructive text-sm" role="alert">
             {model.actionError}
@@ -160,11 +149,10 @@ export function AppearanceSettingsView({
         </Button>
         <ShowImagesSelector
           value={model.selector.value}
-          onPreview={actions.onImagesPreview}
           onSelect={actions.onImagesSelect}
           onCancel={actions.onCancelSelector}
         />
-        <AppearancePreview model={model.preview} />
+        <TerminalOnlySettingsNote />
         {model.actionError ? (
           <p className="text-destructive text-sm" role="alert">
             {model.actionError}
@@ -292,7 +280,6 @@ export function AppearanceSettingsView({
             </Button>
           ) : null}
           <ActiveSectionView section={model.activeSection} actions={actions} />
-          <AppearancePreview model={model.preview} />
         </div>
       )}
     </section>

@@ -1,12 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { AppearanceThemeKey } from "./preview";
+
+export type AppearanceThemeKey = "theme.dark" | "theme.light";
 
 export type ThemeSelectorProps = {
   readonly settingKey: AppearanceThemeKey;
   readonly value: string;
   readonly onValueChange: (value: string) => void;
-  readonly onPreview: (value: string) => void;
   readonly onSelect: (value: string) => void;
   readonly onCancel: () => void;
 };
@@ -16,7 +16,6 @@ export function ThemeSelector({
   settingKey,
   value,
   onValueChange,
-  onPreview,
   onSelect,
   onCancel,
 }: ThemeSelectorProps) {
@@ -29,7 +28,7 @@ export function ThemeSelector({
           {title}
         </h2>
         <p className="text-muted-foreground text-sm">
-          Preview a bundled browser palette or enter any omp theme name to save it for the terminal.
+          Choose a bundled omp theme or enter any omp theme name to save it for the terminal.
         </p>
       </header>
       <fieldset className="flex flex-wrap gap-2 border-0 p-0">
@@ -39,8 +38,6 @@ export function ThemeSelector({
             key={theme}
             type="button"
             variant={value === theme ? "default" : "outline"}
-            onFocus={() => onPreview(theme)}
-            onMouseEnter={() => onPreview(theme)}
             onClick={() => onSelect(theme)}
           >
             {theme === "titanium" ? "Titanium (dark)" : "Light"}
@@ -56,10 +53,6 @@ export function ThemeSelector({
           value={value}
           onChange={(event) => {
             onValueChange(event.target.value);
-            if (event.target.value.trim()) onPreview(event.target.value);
-          }}
-          onFocus={() => {
-            if (value.trim()) onPreview(value);
           }}
           placeholder="Theme name"
         />
@@ -78,17 +71,12 @@ export function ThemeSelector({
 
 export type ShowImagesSelectorProps = {
   readonly value: boolean;
-  readonly onPreview: (value: boolean) => void;
+
   readonly onSelect: (value: boolean) => void;
   readonly onCancel: () => void;
 };
 
-export function ShowImagesSelector({
-  value,
-  onPreview,
-  onSelect,
-  onCancel,
-}: ShowImagesSelectorProps) {
+export function ShowImagesSelector({ value, onSelect, onCancel }: ShowImagesSelectorProps) {
   return (
     <section aria-labelledby="show-images-selector-title" className="space-y-4">
       <header className="space-y-1">
@@ -105,8 +93,6 @@ export function ShowImagesSelector({
           type="button"
           variant={value ? "default" : "outline"}
           aria-pressed={value}
-          onFocus={() => onPreview(true)}
-          onMouseEnter={() => onPreview(true)}
           onClick={() => onSelect(true)}
         >
           Yes
@@ -115,8 +101,6 @@ export function ShowImagesSelector({
           type="button"
           variant={!value ? "default" : "outline"}
           aria-pressed={!value}
-          onFocus={() => onPreview(false)}
-          onMouseEnter={() => onPreview(false)}
           onClick={() => onSelect(false)}
         >
           No

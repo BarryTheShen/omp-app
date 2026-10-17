@@ -7,8 +7,9 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { SETTING_SECTIONS as OMP_SETTING_SECTIONS, SETTING_TABS } from "@omp-app/contracts";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ConflictBanner,
   EmptyState,
   InlineError,
   ListRow,
@@ -25,7 +26,6 @@ import {
   type ContextSettingsScope,
   P7_CONTEXT_SETTINGS_SECTIONS,
 } from "@/modules/P7/settings";
-import type { BrowserPalette } from "@/modules/S1/appearance/preview";
 import {
   createConfigChangeSource,
   createConfigStoreClient,
@@ -49,11 +49,11 @@ import {
   type StagedSettings,
   saveLocationText,
   settingLabels,
+  settingsConflictRows,
   UnsavedSettingsNotice,
   type ValidationResult,
 } from "@/modules/S1/settings-kit";
 import { SETTINGS_SECTIONS } from "@/registry";
-import { DARK_QUERY, resolveTheme, useThemePreference } from "@/theme";
 import { ExtensionCenterSection, extensionCenterAvailable } from "./extension-center-section";
 import { ProviderLoginSection, providerLoginAvailable } from "./provider-login-section";
 import { layerFolder } from "./settings-scope";
@@ -93,23 +93,6 @@ const TAB_LABELS: Readonly<Record<SettingTab, string>> = {
   providers: "Providers",
 };
 const TERMINAL_THEME_SECTION_ID = "S1.appearanceTheme";
-
-function subscribeToSystemTheme(listener: () => void): () => void {
-  if (typeof window.matchMedia !== "function") return () => undefined;
-  const query = window.matchMedia(DARK_QUERY);
-  query.addEventListener("change", listener);
-  return () => query.removeEventListener("change", listener);
-}
-
-function systemPrefersDark(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia(DARK_QUERY).matches;
-}
-
-function useAppPalette(): BrowserPalette {
-  const preference = useThemePreference();
-  const prefersDark = useSyncExternalStore(subscribeToSystemTheme, systemPrefersDark, () => false);
-  return resolveTheme(preference, prefersDark);
-}
 
 function sectionParts(descriptor: SettingsSectionDescriptor): {
   readonly tab: string;
@@ -406,36 +389,25 @@ function SettingsRuntimeEditor({
         }}
       />
       {snapshot.conflict ? (
-        <Section
-          heading={SETTINGS_CONFLICT_HEADING}
-          headingLevel={3}
+        <ConflictBanner
           description={SETTINGS_CONFLICT_DESCRIPTION}
-        >
-          <Toolbar ariaLabel="Conflict actions">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setActionError(null);
-                runtime.resolveConflict("reload");
-              }}
-            >
-              {CONFLICT_BUTTON_LABELS.reload}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setActionError(null);
-                runtime.resolveConflict("keep-mine");
-              }}
-            >
-              {CONFLICT_BUTTON_LABELS.keepMine}
-            </Button>
-          </Toolbar>
-        </Section>
+          heading={SETTINGS_CONFLICT_HEADING}
+          keepMineLabel={CONFLICT_BUTTON_LABELS.keepMine}
+          onKeepMine={() => {
+            setActionError(null);
+            runtime.resolveConflict("keep-mine");
+          }}
+          onReload={() => {
+            setActionError(null);
+            runtime.resolveConflict("reload");
+          }}
+          reloadLabel={CONFLICT_BUTTON_LABELS.reload}
+          rows={settingsConflictRows(
+            descriptor,
+            snapshot.conflict.remote,
+            snapshot.conflict.changedKeys,
+          )}
+        />
       ) : null}
       {/* In a conflict the choice above is the only action, so the refusal is not repeated here. Retry re-reads omp's
           values and would drop staged edits, so it is offered only when nothing is staged. */}
@@ -523,7 +495,6 @@ function AppearanceSettingsPanel({
     () => createConfigChangeSource(client, scopeFolder),
     [client, scopeFolder],
   );
-  const previewPalette = useAppPalette();
   const { model, actions } = useAppearanceSettingsController({
     appearanceSections,
     applyThemePreview: false,
@@ -532,7 +503,6 @@ function AppearanceSettingsPanel({
     folder: scopeFolder,
     initialSectionId: appearanceSections[0]?.id,
     layer,
-    previewPalette,
   });
   useEffect(() => {
     const active = model.activeSection;

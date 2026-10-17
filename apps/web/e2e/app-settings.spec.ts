@@ -54,8 +54,7 @@ realTest("opens core settings and renders light, dark, and narrow layouts", asyn
     page.getByText("These settings change omp's terminal only. This app does not use them.", {
       exact: true,
     }),
-  ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Terminal preview", exact: true })).toBeVisible();
+  ).toHaveCount(1);
   const appearanceTabs = page
     .getByRole("tablist", { name: "Appearance sections", exact: true })
     .getByRole("tab");

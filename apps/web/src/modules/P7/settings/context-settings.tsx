@@ -8,7 +8,7 @@ import {
   type JsonValue,
 } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EmptyState, InlineError, Section, SettingRow, Toolbar } from "@/components/blocks";
+import { ConflictBanner, EmptyState, InlineError, SettingRow } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,6 +43,7 @@ import {
   SettingsSection,
   saveLocationText,
   settingLabels,
+  settingsConflictRows,
   UnsavedSettingsNotice,
 } from "../../S1/settings-kit";
 import {
@@ -622,32 +623,15 @@ function ContextSettingsSectionView({
         onCancel={actions.onCancel}
       />
       {state.conflict ? (
-        <div role="alert">
-          <Section
-            description={SETTINGS_CONFLICT_DESCRIPTION}
-            heading={SETTINGS_CONFLICT_HEADING}
-            headingLevel={3}
-          >
-            <Toolbar ariaLabel="Conflict actions" alignment="start">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => actions.onConflictChoice("reload")}
-              >
-                {CONFLICT_BUTTON_LABELS.reload}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => actions.onConflictChoice("keep-mine")}
-              >
-                {CONFLICT_BUTTON_LABELS.keepMine}
-              </Button>
-            </Toolbar>
-          </Section>
-        </div>
+        <ConflictBanner
+          description={SETTINGS_CONFLICT_DESCRIPTION}
+          heading={SETTINGS_CONFLICT_HEADING}
+          keepMineLabel={CONFLICT_BUTTON_LABELS.keepMine}
+          onKeepMine={() => actions.onConflictChoice("keep-mine")}
+          onReload={() => actions.onConflictChoice("reload")}
+          reloadLabel={CONFLICT_BUTTON_LABELS.reload}
+          rows={settingsConflictRows(descriptor, state.conflict.remote, state.conflict.changedKeys)}
+        />
       ) : unsavedLabels.length > 0 ? (
         <UnsavedSettingsNotice labels={unsavedLabels} reason={state.error?.message ?? ""} />
       ) : state.error ? (

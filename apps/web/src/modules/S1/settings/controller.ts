@@ -1,18 +1,12 @@
 import type { ConfigWriteLayer, FolderPath, JsonValue } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   IMAGES_SETTINGS_SECTION,
   S1_APPEARANCE_SECTIONS,
   THEME_SETTINGS_SECTION,
 } from "../appearance";
-import {
-  type AppearancePreviewModel,
-  type AppearanceThemeKey,
-  type BrowserPalette,
-  composerPreviewNote,
-  previewOmpTheme,
-} from "../appearance/preview";
+import type { AppearanceThemeKey } from "../appearance/selectors";
 import type { ConflictChoice, SettingsRuntimeConflict, SettingsRuntimeSnapshot } from "../runtime";
 import { SettingsRuntime } from "../runtime";
 import type {
@@ -20,13 +14,12 @@ import type {
   ConfigChangeSource,
   ConfigSnapshot,
   ConfigStoreClient,
-  PreviewResult,
+  SettingsConflictRow,
   SettingsSectionDescriptor,
-  SettingValue,
   StagedSettings,
   ValidationResult,
 } from "../settings-kit";
-import { settingLabels } from "../settings-kit";
+import { settingLabels, settingsConflictRows } from "../settings-kit";
 
 export type AppearanceSettingsControllerOptions = {
   readonly client: ConfigStoreClient;
@@ -38,8 +31,6 @@ export type AppearanceSettingsControllerOptions = {
   readonly appearanceSections?: readonly SettingsSectionDescriptor[];
   /** The first section selected when the view opens. */
   readonly initialSectionId?: string;
-  /** The app palette for previews when the terminal theme section is not shown. */
-  readonly previewPalette?: BrowserPalette;
   /** Keep the legacy terminal-theme preview behavior for the standalone S1 surface. */
   readonly applyThemePreview?: boolean;
 };
@@ -57,6 +48,7 @@ export type AppearanceSettingsActiveSectionModel = {
   readonly validation: Readonly<Record<string, ValidationResult>>;
   readonly disabled: boolean;
   readonly conflict: SettingsRuntimeConflict | null;
+  readonly conflictRows: readonly SettingsConflictRow[];
   readonly applyStatus: ApplyStatus | null;
   readonly error?: string;
   /** Keys of the last save that omp did not write, marked on their rows. */
@@ -80,7 +72,6 @@ export type AppearanceSettingsViewModel = {
   readonly emptyMessage?: string;
   readonly actionError?: string;
   readonly layer: ConfigWriteLayer;
-  readonly preview: AppearancePreviewModel;
 };
 
 export type AppearanceSettingsActions = {
@@ -90,13 +81,10 @@ export type AppearanceSettingsActions = {
   readonly onOpenThemeSelector: (key: AppearanceThemeKey) => void;
   readonly onOpenImagesSelector: () => void;
   readonly onThemeValueChange: (value: string) => void;
-  readonly onThemePreview: (value: string) => void;
   readonly onThemeSelect: (value: string) => void;
-  readonly onImagesPreview: (value: boolean) => void;
   readonly onImagesSelect: (value: boolean) => void;
   readonly onCancelSelector: () => void;
   readonly onStage: (sectionId: string, staged: StagedSettings) => void;
-  readonly onPreview: (key: string, result: PreviewResult) => void;
   readonly onCommit: (sectionId: string) => void;
   readonly onCancel: (sectionId: string) => void;
   readonly onRetrySection: (sectionId: string) => void;
@@ -127,47 +115,26 @@ function findSectionRuntime(
   );
 }
 
-function effectiveValue(
-  snapshot: SettingsRuntimeSnapshot | undefined,
+function valueFromSections(
+  snapshots: readonly SettingsRuntimeSnapshot[],
   key: string,
-  previewValues: Readonly<Record<string, JsonValue>>,
 ): JsonValue | undefined {
-  if (Object.hasOwn(previewValues, key)) return previewValues[key];
+  const snapshot = snapshots.find((candidate) =>
+    candidate.descriptor.controls.some((control) => control.key === key),
+  );
   const staged = snapshot?.staged?.edits[key];
   if (staged && !staged.secret) return staged.value;
   const entry = snapshot?.config?.entries.find((candidate) => candidate.key === key);
   return entry && !entry.secret ? entry.value : undefined;
 }
 
-function valueFromSections(
-  snapshots: readonly SettingsRuntimeSnapshot[],
-  key: string,
-  previewValues: Readonly<Record<string, JsonValue>>,
-): JsonValue | undefined {
-  const snapshot = snapshots.find((candidate) =>
-    candidate.descriptor.controls.some((control) => control.key === key),
-  );
-  return effectiveValue(snapshot, key, previewValues);
-}
-
 function stringSetting(
   snapshots: readonly SettingsRuntimeSnapshot[],
   key: string,
-  previewValues: Readonly<Record<string, JsonValue>>,
   fallback: string,
 ): string {
-  const value = valueFromSections(snapshots, key, previewValues);
+  const value = valueFromSections(snapshots, key);
   return typeof value === "string" ? value : fallback;
-}
-
-function booleanSetting(
-  snapshots: readonly SettingsRuntimeSnapshot[],
-  key: string,
-  previewValues: Readonly<Record<string, JsonValue>>,
-  fallback: boolean,
-): boolean {
-  const value = valueFromSections(snapshots, key, previewValues);
-  return typeof value === "boolean" ? value : fallback;
 }
 
 function browserPrefersDark(): boolean {
@@ -175,52 +142,6 @@ function browserPrefersDark(): boolean {
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-color-scheme: dark)").matches === true
   );
-}
-
-function previewModel(
-  snapshots: readonly SettingsRuntimeSnapshot[],
-  previewValues: Readonly<Record<string, JsonValue>>,
-  activeThemeKey?: AppearanceThemeKey,
-  previewPalette?: BrowserPalette,
-): AppearancePreviewModel {
-  const preferredThemeKey: AppearanceThemeKey =
-    activeThemeKey ?? (browserPrefersDark() ? "theme.dark" : "theme.light");
-  const themeName = stringSetting(
-    snapshots,
-    preferredThemeKey,
-    previewValues,
-    preferredThemeKey === "theme.dark" ? "titanium" : "light",
-  );
-  const theme =
-    activeThemeKey || previewPalette === undefined
-      ? previewOmpTheme(preferredThemeKey, themeName)
-      : { palette: previewPalette };
-  const composerShape = stringSetting(snapshots, "composer.shape", previewValues, "band");
-  return {
-    palette: theme.palette,
-    themeNote: theme.note,
-    composerShape,
-    composerNote: composerPreviewNote(composerShape),
-    statusLinePreset: stringSetting(snapshots, "statusLine.preset", previewValues, "default"),
-    statusLineSeparator: stringSetting(
-      snapshots,
-      "statusLine.separator",
-      previewValues,
-      "powerline-thin",
-    ),
-    contextLine: stringSetting(snapshots, "statusLine.contextLine", previewValues, "embedded"),
-    hideToolActivity: booleanSetting(snapshots, "display.hideToolActivity", previewValues, false),
-    showTokenUsage: booleanSetting(snapshots, "display.showTokenUsage", previewValues, false),
-    showTurnTime: booleanSetting(snapshots, "display.showTurnTime", previewValues, false),
-    showCacheMissMarker: booleanSetting(snapshots, "display.cacheMissMarker", previewValues, false),
-    showCompactedHistory: booleanSetting(
-      snapshots,
-      "display.collapseCompacted",
-      previewValues,
-      true,
-    ),
-    showImages: booleanSetting(snapshots, "terminal.showImages", previewValues, true),
-  };
 }
 
 function useRuntimeSnapshots(
@@ -253,13 +174,6 @@ function stageNext(
   }
 }
 
-function previewPatchValue(result: PreviewResult): JsonValue | undefined {
-  if (!result.ok || !result.patch) return undefined;
-  const value = result.patch.value;
-  if (typeof value === "object" && value !== null && "secret" in value) return undefined;
-  return value;
-}
-
 export function useAppearanceSettingsController({
   client,
   changes,
@@ -268,8 +182,7 @@ export function useAppearanceSettingsController({
   onSecretAction,
   appearanceSections = S1_APPEARANCE_SECTIONS,
   initialSectionId = appearanceSections[0]?.id ?? THEME_SETTINGS_SECTION.id,
-  previewPalette,
-  applyThemePreview = true,
+  applyThemePreview = false,
 }: AppearanceSettingsControllerOptions): {
   readonly model: AppearanceSettingsViewModel;
   readonly actions: AppearanceSettingsActions;
@@ -281,8 +194,9 @@ export function useAppearanceSettingsController({
   const [activeSectionId, setActiveSectionId] = useState<string>(initialSectionId);
   const [search, setSearch] = useState("");
   const [selector, setSelector] = useState<SelectorState | undefined>();
-  const [previewValues, setPreviewValues] = useState<Readonly<Record<string, JsonValue>>>({});
-  const [activeThemeKey, setActiveThemeKey] = useState<AppearanceThemeKey | undefined>();
+  const [themePreview, setThemePreview] = useState<
+    { readonly key: AppearanceThemeKey; readonly value: string } | undefined
+  >();
   const originalDarkClass = useRef<boolean | undefined>(undefined);
   const snapshots = useRuntimeSnapshots(runtimes);
 
@@ -328,13 +242,15 @@ export function useAppearanceSettingsController({
   const loaded =
     snapshots.length === appearanceSections.length &&
     snapshots.every((snapshot) => snapshot.config !== null);
-  const preview = previewModel(snapshots, previewValues, activeThemeKey, previewPalette);
-
   useEffect(() => {
-    if (applyThemePreview && loaded && typeof document !== "undefined") {
-      document.documentElement.classList.toggle("dark", preview.palette === "dark");
-    }
-  }, [applyThemePreview, loaded, preview.palette]);
+    if (!applyThemePreview || !loaded || typeof document === "undefined") return;
+    const themeKey = themePreview?.key ?? (browserPrefersDark() ? "theme.dark" : "theme.light");
+    const themeName =
+      themePreview?.value ??
+      stringSetting(snapshots, themeKey, themeKey === "theme.dark" ? "titanium" : "light");
+    const isDark = themeName === "titanium" || (themeName !== "light" && themeKey === "theme.dark");
+    document.documentElement.classList.toggle("dark", isDark);
+  }, [applyThemePreview, loaded, snapshots, themePreview]);
 
   const visibleDescriptors = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -355,52 +271,12 @@ export function useAppearanceSettingsController({
   const activeSnapshot = snapshots.find(({ descriptor }) => descriptor.id === activeDescriptor?.id);
 
   function currentSetting(key: string): JsonValue | undefined {
-    return valueFromSections(snapshots, key, previewValues);
+    return valueFromSections(snapshots, key);
   }
 
   function clearPreview(descriptor: SettingsSectionDescriptor): void {
-    setPreviewValues((current) => {
-      const next = { ...current };
-      for (const control of descriptor.controls) delete next[control.key];
-      return next;
-    });
-    if (descriptor.id === THEME_SETTINGS_SECTION.id) setActiveThemeKey(undefined);
+    if (descriptor.id === THEME_SETTINGS_SECTION.id) setThemePreview(undefined);
     setActionError(undefined);
-  }
-
-  const setPreviewResult = useCallback((key: string, result: PreviewResult) => {
-    if (!result.ok) {
-      setActionError(result.validation.message);
-      return;
-    }
-    const value = previewPatchValue(result);
-    if (value === undefined) {
-      setPreviewValues((current) => {
-        if (!(key in current)) return current;
-        const next = { ...current };
-        delete next[key];
-        return next;
-      });
-      if (key === "theme.dark" || key === "theme.light") setActiveThemeKey(undefined);
-      return;
-    }
-    setActionError(undefined);
-    setPreviewValues((current) => ({ ...current, [key]: value }));
-    if (key === "theme.dark" || key === "theme.light") setActiveThemeKey(key);
-  }, []);
-
-  function previewControlValue(key: string, value: JsonValue): void {
-    const section = findSectionRuntime(runtimes, key);
-    const control = section?.descriptor.controls.find((candidate) => candidate.key === key);
-    const snapshot = section?.runtime.getSnapshot().config;
-    if (!control || !snapshot) return;
-    const setting: SettingValue = { secret: false, value };
-    const validation = control.validate(setting, snapshot);
-    if (!validation.valid) {
-      setActionError(validation.message);
-      return;
-    }
-    setPreviewResult(key, { ok: true, patch: control.preview?.(setting, snapshot) ?? null });
   }
 
   function openThemeSelector(key: AppearanceThemeKey): void {
@@ -425,7 +301,13 @@ export function useAppearanceSettingsController({
       setActionError(result.validation.message);
       return;
     }
-    setPreviewResult(key, section.runtime.preview(key));
+    if (
+      applyThemePreview &&
+      (key === "theme.dark" || key === "theme.light") &&
+      typeof value === "string"
+    ) {
+      setThemePreview({ key, value });
+    }
     setSelector(undefined);
     setActiveSectionId(section.descriptor.id);
   }
@@ -503,6 +385,13 @@ export function useAppearanceSettingsController({
               activeSnapshot.phase === "saving" ||
               activeSnapshot.phase === "conflict",
             conflict: activeSnapshot.conflict,
+            conflictRows: activeSnapshot.conflict
+              ? settingsConflictRows(
+                  activeDescriptor,
+                  activeSnapshot.conflict.remote,
+                  activeSnapshot.conflict.changedKeys,
+                )
+              : [],
             applyStatus: activeSnapshot.applyStatus,
             error: activeSnapshot.error?.message,
             unsavedKeys: activeSnapshot.unsavedKeys,
@@ -535,7 +424,6 @@ export function useAppearanceSettingsController({
         : undefined,
     actionError,
     layer,
-    preview,
   };
 
   const actions: AppearanceSettingsActions = {
@@ -548,13 +436,9 @@ export function useAppearanceSettingsController({
       setActionError(undefined);
     },
     onThemeValueChange: changeThemeValue,
-    onThemePreview: (value) => {
-      if (selector?.kind === "theme") previewControlValue(selector.key, value);
-    },
     onThemeSelect: (value) => {
       if (selector?.kind === "theme") selectValue(selector.key, value);
     },
-    onImagesPreview: (value) => previewControlValue("terminal.showImages", value),
     onImagesSelect: (value) => selectValue("terminal.showImages", value),
     onCancelSelector: cancelSelector,
     onStage: (sectionId, staged) => {
@@ -563,7 +447,6 @@ export function useAppearanceSettingsController({
       setActionError(undefined);
       stageNext(section.runtime, section.descriptor, staged);
     },
-    onPreview: (key, result) => setPreviewResult(key, result),
     onCommit: (sectionId) => void saveSection(sectionId),
     onCancel: cancelSection,
     onRetrySection: (sectionId) => {

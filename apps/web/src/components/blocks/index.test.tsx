@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Button } from "@/components/ui/button";
 import {
+  ConflictBanner,
   EmptyState,
   InlineError,
   ListRow,
@@ -135,6 +136,33 @@ test("Toolbar groups controls with a caller-provided accessible name", () => {
   const toolbar = screen.getByRole("group", { name: "Section actions" });
   expect(toolbar.querySelectorAll("button").length).toBe(2);
   expect(toolbar.className).toContain("justify-end");
+});
+
+test("ConflictBanner shares rows, labels, and both explicit resolution actions", () => {
+  const reload = vi.fn();
+  const keepMine = vi.fn();
+  render(
+    <ConflictBanner
+      description="Review the latest values."
+      heading="Settings changed elsewhere"
+      keepMineLabel="Keep my edits"
+      onKeepMine={keepMine}
+      onReload={reload}
+      reloadLabel="Reload latest"
+      rows={[
+        { key: "theme.dark", label: "Theme", value: "Dark · Source: omp's default" },
+        { key: "theme.light", label: "Theme", value: "Light · Source: Saved for this project" },
+      ]}
+    />,
+  );
+
+  const alert = screen.getByRole("alert");
+  expect(alert.textContent).toContain("Theme: Dark · Source: omp's default");
+  expect(alert.textContent).toContain("Theme: Light · Source: Saved for this project");
+  fireEvent.click(screen.getByRole("button", { name: "Reload latest" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep my edits" }));
+  expect(reload).toHaveBeenCalledOnce();
+  expect(keepMine).toHaveBeenCalledOnce();
 });
 
 test("EmptyState renders a title, hint, and optional action", () => {

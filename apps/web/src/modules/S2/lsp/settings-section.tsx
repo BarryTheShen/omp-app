@@ -1,5 +1,5 @@
-import type { ConfigEntry } from "@omp-app/contracts";
 import { useEffect, useState } from "react";
+import { ConflictBanner } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import {
   type SettingsRuntime,
@@ -9,11 +9,14 @@ import {
 import {
   type ApplyBoundary,
   type ApplyStatus,
+  CONFLICT_BUTTON_LABELS,
   type PreviewResult,
-  provenanceLabel,
+  SETTINGS_CONFLICT_DESCRIPTION,
+  SETTINGS_CONFLICT_HEADING,
   SettingsSection,
   type SettingsSectionDescriptor,
   type StagedSettings,
+  settingsConflictRows,
   type ValidationResult,
 } from "../../S1/settings-kit";
 
@@ -82,12 +85,6 @@ function changedEdits(
   return Object.entries(after.edits).filter(
     ([key, value]) => JSON.stringify(previous[key]) !== JSON.stringify(value),
   );
-}
-
-function effectiveValue(entry: ConfigEntry | undefined): string {
-  if (!entry) return "Unavailable";
-  if (entry.secret) return entry.isSet ? "Set" : "Not set";
-  return JSON.stringify(entry.value);
 }
 
 export function SettingsApplyReport({
@@ -221,53 +218,19 @@ export function RuntimeSettingsSection({
       )}
 
       {snapshot.phase === "conflict" && snapshot.conflict ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm"
-        >
-          <div className="text-warning-foreground">
-            <p>
-              Another change arrived. Review the current effective values, then reload them or keep
-              your edits and save again.
-            </p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {snapshot.conflict.changedKeys.map((key) => {
-                const entry = snapshot.conflict?.remote.entries.find(
-                  (candidate) => candidate.key === key,
-                );
-                return (
-                  <li key={key}>
-                    <strong>
-                      {descriptor.controls.find((control) => control.key === key)?.label ??
-                        "Setting"}
-                      :
-                    </strong>{" "}
-                    {effectiveValue(entry)}
-                    {entry ? ` · Source: ${provenanceLabel(entry)}` : ""}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-          <span className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => runtime.resolveConflict("reload")}
-            >
-              Reload
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => runtime.resolveConflict("keep-mine")}
-            >
-              Keep mine
-            </Button>
-          </span>
-        </div>
+        <ConflictBanner
+          description={SETTINGS_CONFLICT_DESCRIPTION}
+          heading={SETTINGS_CONFLICT_HEADING}
+          keepMineLabel={CONFLICT_BUTTON_LABELS.keepMine}
+          onKeepMine={() => runtime.resolveConflict("keep-mine")}
+          onReload={() => runtime.resolveConflict("reload")}
+          reloadLabel={CONFLICT_BUTTON_LABELS.reload}
+          rows={settingsConflictRows(
+            descriptor,
+            snapshot.conflict.remote,
+            snapshot.conflict.changedKeys,
+          )}
+        />
       ) : null}
 
       {snapshot.error && snapshot.phase !== "conflict" && config ? (

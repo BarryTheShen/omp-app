@@ -1,4 +1,3 @@
-import type { ConfigEntry } from "@omp-app/contracts";
 import { useEffect, useMemo, useState } from "react";
 import type { ConflictChoice, SettingsRuntime, SettingsRuntimeSnapshot } from "../../S1/runtime";
 import { useSettingsRuntime } from "../../S1/runtime";
@@ -6,11 +5,12 @@ import type {
   ApplyStatus,
   ConfigSnapshot,
   PreviewResult,
+  SettingsConflictRow,
   SettingsSectionDescriptor,
   StagedSettings,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { effectiveEntry, provenanceLabel } from "../../S1/settings-kit";
+import { settingsConflictRows } from "../../S1/settings-kit";
 import { FILES_READ_SUMMARIES_SECTION } from "../sections";
 
 const SUMMARY_DEPENDENT_KEYS: Readonly<Record<string, true>> = {
@@ -23,9 +23,9 @@ const SUMMARY_DEPENDENT_KEYS: Readonly<Record<string, true>> = {
 };
 
 export type FilesConflictRow = {
+  readonly key: string;
   readonly label: string;
   readonly value: string;
-  readonly provenance: string;
 };
 
 export type FilesConflictViewModel = {
@@ -113,12 +113,6 @@ function changedEdits(
   );
 }
 
-function visibleValue(entry: ConfigEntry | undefined): string {
-  if (!entry) return "Unavailable";
-  if (entry.secret) return entry.isSet ? "Set" : "Not set";
-  return JSON.stringify(entry.value);
-}
-
 function summaryEnabled(snapshot: SettingsRuntimeSnapshot): boolean {
   const staged = snapshot.staged?.edits["read.summarize.enabled"];
   if (staged?.secret === false) return staged.value === true;
@@ -153,16 +147,11 @@ function displayedDescriptor(snapshot: SettingsRuntimeSnapshot): SettingsSection
 function conflictView(snapshot: SettingsRuntimeSnapshot): FilesConflictViewModel | undefined {
   const conflict = snapshot.conflict;
   if (!conflict) return undefined;
-  const rows = conflict.changedKeys.map((key) => {
-    const entry = effectiveEntry(conflict.remote, key);
-    const label =
-      snapshot.descriptor.controls.find((control) => control.key === key)?.label ?? "Setting";
-    return {
-      label,
-      value: visibleValue(entry),
-      provenance: entry ? provenanceLabel(entry) : "not configured",
-    };
-  });
+  const rows: readonly SettingsConflictRow[] = settingsConflictRows(
+    snapshot.descriptor,
+    conflict.remote,
+    conflict.changedKeys,
+  );
   return { rows };
 }
 

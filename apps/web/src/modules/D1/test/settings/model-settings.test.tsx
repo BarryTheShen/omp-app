@@ -1,5 +1,5 @@
 import { AppFailure } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import type {
   ConfigSnapshot,
@@ -142,9 +142,15 @@ describe("D1 model settings sections", () => {
     render(
       <ModelSettingsSection descriptor={descriptor} runtime={runtime(descriptor, "conflict")} />,
     );
-    expect(screen.getByRole("button", { name: "Reload latest" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Keep my edits" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Reload latest" }));
+    const conflict = screen
+      .getAllByRole("alert")
+      .find((candidate) => candidate.textContent?.includes("Settings changed elsewhere"));
+    if (!conflict) throw new Error("Conflict alert was not rendered.");
+    expect(conflict.textContent).toContain("Thinking Level:");
+    expect(conflict.textContent).toContain("Source: Saved for all projects");
+    expect(within(conflict).getByRole("button", { name: "Reload latest" })).toBeTruthy();
+    expect(within(conflict).getByRole("button", { name: "Keep my edits" })).toBeTruthy();
+    fireEvent.click(within(conflict).getByRole("button", { name: "Reload latest" }));
   });
 
   test("says a session-only and an unsupported change in the words the other settings tabs use", () => {

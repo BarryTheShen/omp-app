@@ -15,13 +15,8 @@ const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
  * omp v18.6.1 appearance registrations: `packages/coding-agent/src/modes/settings.ts:58-331`
  * (Theme, Composer, Status Line, Images), `:360-685` (Display), and
  * `packages/coding-agent/src/task/settings.ts:442-447` (the resolved-model badge).
- * Theme/composer choices are runtime-provided by omp; the app accepts any setting name and previews
- * only the palettes and shapes bundled here. ConfigStore supplies effective defaults and provenance.
+ * These settings affect omp's terminal; ConfigStore supplies effective defaults and provenance.
  */
-export const APP_THEME_PREVIEW_NOTE =
-  "The app uses omp's default titanium and light colors; other omp themes apply in the terminal.";
-export const APP_COMPOSER_PREVIEW_NOTE =
-  "The app can preview its bundled composer styles; extension composer shapes apply in omp's terminal.";
 
 const STATUS_LINE_PRESETS = [
   "default",
@@ -78,8 +73,10 @@ function validateEnum(values: readonly string[]) {
   };
 }
 
-function previewValue(key: string): ScalarSettingControl["preview"] {
-  return (value) => (value.secret ? null : { key, value: value.value });
+const TERMINAL_ONLY = "Terminal only.";
+
+function terminalDescription(description: string | undefined): string {
+  return description === undefined ? TERMINAL_ONLY : `${TERMINAL_ONLY} ${description}`;
 }
 
 function control(
@@ -89,7 +86,6 @@ function control(
   validate: ScalarSettingControl["validate"],
   options?: readonly SettingOption[],
   description?: string,
-  preview?: ScalarSettingControl["preview"],
 ): ScalarSettingControl {
   return {
     key,
@@ -99,18 +95,12 @@ function control(
     validate,
     apply: "live",
     ...(options === undefined ? {} : { options }),
-    ...(description === undefined ? {} : { description }),
-    ...(preview === undefined ? {} : { preview }),
+    description: terminalDescription(description),
   };
 }
 
-function booleanControl(
-  key: string,
-  label: string,
-  description?: string,
-  preview?: ScalarSettingControl["preview"],
-): ScalarSettingControl {
-  return control(key, label, "boolean", validateBoolean, undefined, description, preview);
+function booleanControl(key: string, label: string, description?: string): ScalarSettingControl {
+  return control(key, label, "boolean", validateBoolean, undefined, description);
 }
 
 function enumControl(
@@ -119,7 +109,6 @@ function enumControl(
   values: readonly string[],
   labels: Readonly<Record<string, string>> = {},
   description?: string,
-  preview?: ScalarSettingControl["preview"],
 ): ScalarSettingControl {
   return control(
     key,
@@ -128,17 +117,11 @@ function enumControl(
     validateEnum(values),
     settingOptions(values, labels),
     description,
-    preview,
   );
 }
 
-function textControl(
-  key: string,
-  label: string,
-  description: string,
-  preview?: ScalarSettingControl["preview"],
-): ScalarSettingControl {
-  return control(key, label, "text", validateText, undefined, description, preview);
+function textControl(key: string, label: string, description: string): ScalarSettingControl {
+  return control(key, label, "text", validateText, undefined, description);
 }
 
 function section(
@@ -157,24 +140,28 @@ export const THEME_SETTINGS_SECTION = section(
   "Theme",
   ["S1.appearance-theme"],
   [
-    textControl(
-      "theme.dark",
-      "Dark Theme",
-      "The omp theme for dark mode in the terminal. Any installed omp theme name can be saved.",
-      previewValue("theme.dark"),
-    ),
+    textControl("theme.dark", "Dark Theme", "Theme used when the terminal has a dark background"),
     textControl(
       "theme.light",
       "Light Theme",
-      "The omp theme for light mode in the terminal. Any installed omp theme name can be saved.",
-      previewValue("theme.light"),
+      "Theme used when the terminal has a light background",
     ),
-    enumControl("symbolPreset", "Symbol Preset", ["unicode", "nerd", "ascii"], {
-      unicode: "Unicode",
-      nerd: "Nerd Font",
-      ascii: "ASCII",
-    }),
-    booleanControl("colorBlindMode", "Color-Blind Mode"),
+    enumControl(
+      "symbolPreset",
+      "Symbol Preset",
+      ["unicode", "nerd", "ascii"],
+      {
+        unicode: "Unicode",
+        nerd: "Nerd Font",
+        ascii: "ASCII",
+      },
+      "Glyph set for icons and symbols (Unicode, Nerd Font, or ASCII)",
+    ),
+    booleanControl(
+      "colorBlindMode",
+      "Color-Blind Mode",
+      "Use blue instead of green for diff additions",
+    ),
   ],
 );
 
@@ -187,10 +174,13 @@ export const COMPOSER_SETTINGS_SECTION = section(
     textControl(
       "composer.shape",
       "Composer Shape",
-      "The omp composer shape. Built-in shapes can be previewed; shapes from extensions can still be set by name.",
-      previewValue("composer.shape"),
+      "Visual layout of the input editor and status line",
     ),
-    booleanControl("composer.tokenRate", "Generation Rate"),
+    booleanControl(
+      "composer.tokenRate",
+      "Generation Rate",
+      "Show a live generation tok/s readout: on the working row next to the session title, or in the native composer bar right after the thinking level, where the last reading stays between turns. Estimated from streamed deltas and corrected by the provider's billed output count as each message completes.",
+    ),
   ],
 );
 
@@ -213,8 +203,7 @@ export const STATUS_LINE_SETTINGS_SECTION = section(
         ascii: "ASCII",
         custom: "Custom",
       },
-      undefined,
-      previewValue("statusLine.preset"),
+      "Pre-built status line configurations",
     ),
     enumControl(
       "statusLine.separator",
@@ -229,8 +218,7 @@ export const STATUS_LINE_SETTINGS_SECTION = section(
         none: "None",
         ascii: "ASCII",
       },
-      undefined,
-      previewValue("statusLine.separator"),
+      "Style of separators between segments",
     ),
     enumControl(
       "statusLine.contextLine",
@@ -242,13 +230,28 @@ export const STATUS_LINE_SETTINGS_SECTION = section(
         annotated: "Annotated",
         embedded: "Embedded",
       },
-      undefined,
-      previewValue("statusLine.contextLine"),
+      "How the line between the left and right segments reflects context usage (box composer only)",
     ),
-    booleanControl("statusLine.sessionAccent", "Session Accent"),
-    booleanControl("statusLine.transparent", "Transparent Status Line"),
-    booleanControl("statusLine.compactThinkingLevel", "Compact Thinking Level"),
-    booleanControl("statusLine.showHookStatus", "Show Hook Status"),
+    booleanControl(
+      "statusLine.sessionAccent",
+      "Session Accent",
+      "Use the session name color for the editor border and status line gap",
+    ),
+    booleanControl(
+      "statusLine.transparent",
+      "Transparent Status Line",
+      "Use the terminal's default background for the status line instead of the theme's `statusLineBg`. Powerline end caps are dropped because they need a contrasting fill to bridge into the surrounding terminal.",
+    ),
+    booleanControl(
+      "statusLine.compactThinkingLevel",
+      "Compact Thinking Level",
+      "Show the thinking level as a single icon on the model name instead of a separate ` · <level>` suffix; in Tern's composer, as the model chip's icon instead of a separate chip (click the icon to cycle it).",
+    ),
+    booleanControl(
+      "statusLine.showHookStatus",
+      "Show Hook Status",
+      "Display hook status messages below the status line",
+    ),
   ],
 );
 
@@ -258,80 +261,152 @@ export const DISPLAY_SETTINGS_SECTION = section(
   "Display",
   ["S1.appearance-display"],
   [
-    enumControl("tui.resizeScrollback", "Resize Scrollback", RESIZE_SCROLLBACK_MODES, {
-      append: "Append",
-      rebuild: "Rebuild",
-      preserve: "Preserve",
-    }),
-    booleanControl("terminal.showProgress", "Native Terminal Progress"),
-    booleanControl("tui.textSizing", "Large Headings (Kitty)"),
-    booleanControl("tui.renderMermaid", "Render Mermaid Diagrams"),
-    booleanControl("tui.reactions", "Agent Reactions"),
-    booleanControl("tui.codexResetFireworks", "Codex Reset Fireworks"),
-    booleanControl("tui.titleState", "Terminal Title Run State"),
-    enumControl("tui.titleSpinner", "Terminal Title Spinner", TITLE_SPINNERS, {
-      braille: "Braille",
-      pulse: "Pulse",
-      dots: "Dots",
-      line: "Line",
-    }),
-    enumControl("tui.hyperlinks", "Terminal Hyperlinks", HYPERLINK_MODES, {
-      off: "Off",
-      auto: "Auto",
-      always: "Always",
-    }),
-    booleanControl("tui.mouse", "Mouse Click-to-Focus"),
-    booleanControl("tui.tight", "Tight Layout"),
-    enumControl("display.shimmer", "Shimmer", SHIMMER_MODES, {
-      classic: "Classic",
-      kitt: "KITT Scanner",
-      disabled: "Disabled",
-    }),
-    enumControl("display.pinnedAgents", "Pinned Agents", PINNED_AGENT_MODES, {
-      off: "Off",
-      collapsed: "Collapsed",
-      full: "Full",
-    }),
-    booleanControl("display.subagentLivePreview", "Subagent Live Preview"),
+    enumControl(
+      "tui.resizeScrollback",
+      "Resize Scrollback",
+      RESIZE_SCROLLBACK_MODES,
+      {
+        append: "Append",
+        rebuild: "Rebuild",
+        preserve: "Preserve",
+      },
+      "How a settled terminal resize refreshes transcript rows retained in terminal scrollback",
+    ),
+    booleanControl(
+      "terminal.showProgress",
+      "Native Terminal Progress",
+      "Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running (always on in Tern)",
+    ),
+    booleanControl(
+      "tui.textSizing",
+      "Large Headings (Kitty)",
+      "Render Markdown H1 headings at 2x scale using Kitty's OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default.",
+    ),
+    booleanControl(
+      "tui.renderMermaid",
+      "Render Mermaid Diagrams",
+      "Render Mermaid fenced code blocks as ASCII diagrams",
+    ),
+    booleanControl(
+      "tui.reactions",
+      "Agent Reactions",
+      "Invite the agent to react to your message with an emoji badge on its bubble",
+    ),
+    booleanControl(
+      "tui.codexResetFireworks",
+      "Codex Reset Fireworks",
+      "Celebrate unscheduled Codex weekly usage resets and newly banked saved resets with a top-third fireworks overlay that remains until Escape",
+    ),
+    booleanControl(
+      "tui.titleState",
+      "Terminal Title Run State",
+      "Show the agent run state in the terminal title's separator — an animated spinner while working (a static ':' under WSL), '>' when it's your turn, '!' when the agent is waiting on you",
+    ),
+    enumControl(
+      "tui.titleSpinner",
+      "Terminal Title Spinner",
+      TITLE_SPINNERS,
+      {
+        braille: "Braille",
+        pulse: "Pulse",
+        dots: "Dots",
+        line: "Line",
+      },
+      "Glyph set for the working-state spinner in the terminal title — braille sweep, filling moon, single-dot cycle, or ASCII-safe line",
+    ),
+    enumControl(
+      "tui.hyperlinks",
+      "Terminal Hyperlinks",
+      HYPERLINK_MODES,
+      {
+        off: "Off",
+        auto: "Auto",
+        always: "Always",
+      },
+      "Wrap paths and URLs in OSC 8 hyperlinks for terminal-native click-to-open (auto: detect support; off: never; always: unconditional)",
+    ),
+    booleanControl(
+      "tui.mouse",
+      "Mouse Click-to-Focus",
+      "Capture mouse clicks in the main session so live subagent cards and HUD rows focus on click, with a hover highlight on the target. Native text selection becomes Shift+drag and wheel scroll becomes Shift+wheel while on",
+    ),
+    booleanControl(
+      "tui.tight",
+      "Tight Layout",
+      "Remove the 1-character horizontal padding from the left and right of the terminal output",
+    ),
+    enumControl(
+      "display.shimmer",
+      "Shimmer",
+      SHIMMER_MODES,
+      {
+        classic: "Classic",
+        kitt: "KITT Scanner",
+        disabled: "Disabled",
+      },
+      "Animation style for working/loading messages",
+    ),
+    enumControl(
+      "display.pinnedAgents",
+      "Pinned Agents",
+      PINNED_AGENT_MODES,
+      {
+        off: "Off",
+        collapsed: "Collapsed",
+        full: "Full",
+      },
+      "Pinned live-agent jump list above the editor (off hides it; collapsed shows a few rows with an expander; full lists all)",
+    ),
+    booleanControl(
+      "display.subagentLivePreview",
+      "Subagent Live Preview",
+      "Show each pinned subagent's current (or most recent) tool call beneath its row",
+    ),
     booleanControl(
       "display.smoothStreaming",
       "Smooth Streaming",
-      undefined,
-      previewValue("display.smoothStreaming"),
+      "Reveal assistant text and streamed tool input smoothly while chunks arrive",
     ),
     booleanControl(
       "display.hideToolActivity",
       "Hide Tool Activity",
-      undefined,
-      previewValue("display.hideToolActivity"),
+      "Hide model-initiated tool calls and results from the transcript",
     ),
     booleanControl(
       "display.showTokenUsage",
       "Show Token Usage",
-      undefined,
-      previewValue("display.showTokenUsage"),
+      "Show per-turn token usage on assistant messages",
     ),
     booleanControl(
       "display.showTurnTime",
       "Show Turn Time",
-      undefined,
-      previewValue("display.showTurnTime"),
+      "Show the total prompt-to-yield time (including tool calls) on assistant message usage rows",
     ),
     booleanControl(
       "display.cacheMissMarker",
       "Cache Miss Marker",
-      undefined,
-      previewValue("display.cacheMissMarker"),
+      "Show a divider after an assistant turn whose request lost (missed) the prompt cache",
     ),
     booleanControl(
       "display.collapseCompacted",
       "Collapse Compacted History",
-      undefined,
-      previewValue("display.collapseCompacted"),
+      "Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point",
     ),
-    booleanControl("showHardwareCursor", "Show Hardware Cursor"),
-    booleanControl("tui.imeSafeCursor", "IME-Safe Prompt Layout"),
-    booleanControl("task.showResolvedModelBadge", "Show Resolved Model Badge"),
+    booleanControl(
+      "showHardwareCursor",
+      "Show Hardware Cursor",
+      "Show terminal cursor for IME support",
+    ),
+    booleanControl(
+      "tui.imeSafeCursor",
+      "IME-Safe Prompt Layout",
+      "Move the prompt's bottom border to a separate row so macOS IME preedit cannot displace it",
+    ),
+    booleanControl(
+      "task.showResolvedModelBadge",
+      "Show Resolved Model Badge",
+      "Display the actual model ID used by each subagent in the task widget status line",
+    ),
   ],
 );
 
@@ -344,11 +419,18 @@ export const IMAGES_SETTINGS_SECTION = section(
     booleanControl(
       "terminal.showImages",
       "Show Inline Images",
-      "Show images inline or as placeholders in omp's terminal.",
-      previewValue("terminal.showImages"),
+      "Render images inline in the terminal",
     ),
-    booleanControl("images.autoResize", "Auto-Resize Images"),
-    booleanControl("images.blockImages", "Block Images"),
+    booleanControl(
+      "images.autoResize",
+      "Auto-Resize Images",
+      "Resize large images to 2000x2000 max for better model compatibility",
+    ),
+    booleanControl(
+      "images.blockImages",
+      "Block Images",
+      "Prevent images from being sent to LLM providers",
+    ),
   ],
 );
 

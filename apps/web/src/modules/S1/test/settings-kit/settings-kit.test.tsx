@@ -21,6 +21,7 @@ import {
   type SettingsSectionDescriptor,
   type StagedSettings,
   secretSummary,
+  settingsConflictRows,
   stage,
   structuredDrafts,
   structuredValue,
@@ -207,7 +208,31 @@ describe("S1 settings grammar", () => {
     expect(secretSummary(entry)).toEqual({ isSecret: true, isSet: true, source: "global" });
     expect("value" in entry).toBe(false);
   });
+  test("builds conflict rows keyed by setting and keeps secret values private", () => {
+    const rows = settingsConflictRows(descriptor, snapshot, [
+      "appearance.enabled",
+      "appearance.mode",
+      "provider.apiKey",
+    ]);
 
+    expect(rows).toEqual([
+      {
+        key: "appearance.enabled",
+        label: "Enabled",
+        value: "On · Source: omp's default",
+      },
+      {
+        key: "appearance.mode",
+        label: "Mode",
+        value: "System · Source: Saved for all projects · overrides omp's default",
+      },
+      {
+        key: "provider.apiKey",
+        label: "API key",
+        value: "Set · Source: Saved for all projects",
+      },
+    ]);
+  });
   test("uses plain English for every source and overridden layer", () => {
     const entry = expectValue(
       snapshot.entries.find((candidate) => candidate.key === "provider.apiKey"),

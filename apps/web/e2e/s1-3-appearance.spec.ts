@@ -45,24 +45,19 @@ function buildPlaygroundPage(): void {
   );
 }
 
-async function expectBackgroundToken(page: Page, background: string, token: string): Promise<void> {
-  const root = page.locator("[data-s1-appearance-settings]");
-  await expect(root).toBeVisible();
-  await expect(root.locator("[data-appearance-preview]")).toBeVisible();
-  await expect
-    .poll(() => root.evaluate((element) => getComputedStyle(element).backgroundColor))
-    .toBe(background);
+async function expectBackgroundToken(page: Page, token: string): Promise<void> {
+  await expect(
+    page.getByText("These settings change omp's terminal only. This app does not use them.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect
     .poll(() =>
-      root.evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim()),
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
+      ),
     )
     .toBe(token);
-}
-async function expectSampleImage(page: Page): Promise<void> {
-  const sampleImage = page.getByRole("img", { name: "Inline image preview" });
-  await expect(sampleImage).toBeVisible();
-  await expect(sampleImage).toHaveCSS("max-height", "160px");
-  await expect(page.getByText("Sample image")).toBeVisible();
 }
 
 async function waitForAnimations(page: Page): Promise<void> {
@@ -80,7 +75,7 @@ test.beforeAll(() => {
   buildPlaygroundPage();
 });
 
-test("appearance settings previews, commits, and fits narrow screens in both palettes", async ({
+test("appearance settings commit terminal values and fit narrow screens in both palettes", async ({
   browser,
 }) => {
   const lightPage = await browser.newPage({
@@ -88,13 +83,7 @@ test("appearance settings previews, commits, and fits narrow screens in both pal
     viewport: { width: 1280, height: 960 },
   });
   await lightPage.goto(`/${PAGE_NAME}.html`);
-  await expect(lightPage.getByRole("heading", { name: "Appearance" })).toBeVisible();
-  await expect(lightPage.locator("[data-appearance-preview]")).toHaveAttribute(
-    "data-palette",
-    "light",
-  );
-  await expectBackgroundToken(lightPage, "oklch(0.9791 0 0)", "oklch(97.91% 0 0)");
-  await expectSampleImage(lightPage);
+  await expectBackgroundToken(lightPage, "oklch(97.91% 0 0)");
   await waitForAnimations(lightPage);
   await lightPage.screenshot({
     path: join(SCREENSHOT_ROOT, "s1-3-appearance-light.png"),
@@ -105,18 +94,14 @@ test("appearance settings previews, commits, and fits narrow screens in both pal
     colorScheme: "dark",
     viewport: { width: 1280, height: 960 },
   });
-  await darkPage.addInitScript(() => document.documentElement.classList.add("dark"));
+  await darkPage.addInitScript(() => {
+    document.documentElement.classList.add("dark");
+    window.localStorage.setItem("omp-app.theme", "dark");
+  });
   await darkPage.goto(`/${PAGE_NAME}.html`);
-  await expect(darkPage.locator("[data-appearance-preview]")).toHaveAttribute(
-    "data-palette",
-    "dark",
-  );
-  await expectBackgroundToken(
-    darkPage,
-    "oklch(0.2096 0.0166 268.85)",
-    "oklch(20.96% .0166 268.85)",
-  );
-  await expectSampleImage(darkPage);
+  await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
+  await expectBackgroundToken(darkPage, "oklch(20.96% .0166 268.85)");
+  await expect(darkPage.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await waitForAnimations(darkPage);
   await darkPage.screenshot({
     path: join(SCREENSHOT_ROOT, "s1-3-appearance-dark.png"),
@@ -126,22 +111,19 @@ test("appearance settings previews, commits, and fits narrow screens in both pal
   await lightPage.getByRole("button", { name: "Choose dark theme…" }).click();
   await lightPage.getByLabel("OMP theme name").fill("custom-dark");
   await expect(
-    lightPage.getByText(
-      "The app uses omp's default titanium and light colors; other omp themes apply in the terminal.",
-    ),
+    lightPage.getByText("These settings change omp's terminal only. This app does not use them.", {
+      exact: true,
+    }),
   ).toBeVisible();
   await lightPage.getByRole("button", { name: "Use this theme name" }).click();
+  await expect
+    .poll(() => lightPage.evaluate(() => document.documentElement.classList.contains("dark")))
+    .toBe(false);
   await lightPage.getByRole("button", { name: "Save changes" }).click();
   await expect(lightPage.getByText("Applied")).toBeVisible();
 
-  await lightPage.getByRole("tab", { name: "Images" }).click();
-  await lightPage.getByRole("button", { name: "Show images selector…" }).click();
-  await lightPage.getByRole("button", { name: "No" }).focus();
-  await expect(lightPage.getByText("Image placeholder")).toBeVisible();
-  await lightPage.getByRole("button", { name: "Yes" }).focus();
-  await expectSampleImage(lightPage);
   await lightPage.setViewportSize({ width: 390, height: 844 });
-  await expectBackgroundToken(lightPage, "oklch(0.9791 0 0)", "oklch(97.91% 0 0)");
+  await expectBackgroundToken(lightPage, "oklch(97.91% 0 0)");
   const dimensions = await lightPage.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,
@@ -154,7 +136,11 @@ test("appearance settings previews, commits, and fits narrow screens in both pal
   });
 
   await lightPage.getByRole("button", { name: "Cancel" }).click();
-  await expect(lightPage.getByRole("img", { name: "Inline image preview" })).toBeVisible();
+  await expect(
+    lightPage.getByText("These settings change omp's terminal only. This app does not use them.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await lightPage.close();
   await darkPage.close();
 });
