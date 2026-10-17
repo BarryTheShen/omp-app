@@ -25,6 +25,7 @@
     "immer": "^11.1.21",
     "katex": "^0.16.47",
     "lucide-react": "^1.52.0",
+    "mermaid": "^12.2.0",
     "micromark-util-character": "^2.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

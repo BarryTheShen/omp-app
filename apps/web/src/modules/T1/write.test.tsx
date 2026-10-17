@@ -1,11 +1,24 @@
 import { AppFailure } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { WriteCard } from "./write";
 
-afterEach(() => cleanup());
+const mermaidHarness = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  render: vi.fn(async (_id: string, source: string) => {
+    if (source.includes("INVALID_MERMAID")) throw new Error("parse failed");
+    return { svg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${source}</text></svg>` };
+  }),
+}));
+
+vi.mock("mermaid", () => ({ default: mermaidHarness }));
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 function rawProps(
   args: unknown,
@@ -37,7 +50,174 @@ function props(
   return rawProps(args, result, status, isError);
 }
 
+function pause(milliseconds: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, milliseconds);
+  return promise;
+}
+
 describe("WriteCard", () => {
+  test("renders a bounded Mermaid diagram from an mmd target while retaining raw source", async () => {
+    const source = "flowchart LR\n  Start --> Finish";
+    render(
+      <WriteCard
+        rendererProps={props(
+          { path: "docs/plan.mmd", content: source },
+          { resolvedPath: "docs/plan.mmd" },
+        )}
+      />,
+    );
+    expandToolCards();
+
+    expect(await screen.findByText("Rendering Mermaid diagram…")).toBeTruthy();
+    const preview = await screen.findByRole("img", {
+      name: "docs/plan.mmd Mermaid diagram preview",
+    });
+    expect(preview.getAttribute("data-testid")).toBe("t1-write-mermaid-preview");
+    expect(screen.getByText("flowchart LR")).toBeTruthy();
+    expect(screen.getByText("Start --> Finish")).toBeTruthy();
+    expect(document.querySelector("[data-slot='t1-write-mermaid-preview'] svg")).toBeNull();
+    expect(mermaidHarness.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        securityLevel: "strict",
+        htmlLabels: false,
+        startOnLoad: false,
+        // A `%%{init}%%` line in a diagram must not be able to change these.
+        secure: expect.arrayContaining(["secure", "securityLevel", "htmlLabels"]),
+      }),
+    );
+  });
+
+  test("updates a valid partial Mermaid preview as a streaming write grows", async () => {
+    const initial = "flowchart LR\n  Start --> Middle";
+    const { rerender } = render(
+      <WriteCard
+        rendererProps={props({ path: "docs/stream.mermaid", content: initial }, undefined, {
+          type: "running",
+        })}
+      />,
+    );
+    expandToolCards();
+    const firstPreview = await screen.findByRole("img", {
+      name: "docs/stream.mermaid Mermaid diagram preview",
+    });
+    const firstSource = firstPreview.querySelector("img")?.getAttribute("src");
+
+    const complete = `${initial}\n  Middle --> Finish`;
+    rerender(
+      <WriteCard
+        rendererProps={props({ path: "docs/stream.mermaid", content: complete }, undefined, {
+          type: "running",
+        })}
+      />,
+    );
+    await waitFor(() => expect(mermaidHarness.render).toHaveBeenCalledTimes(2));
+    const updatedPreview = await screen.findByRole("img", {
+      name: "docs/stream.mermaid Mermaid diagram preview",
+    });
+    expect(updatedPreview.querySelector("img")?.getAttribute("src")).not.toBe(firstSource);
+    expect(screen.getByText("Middle --> Finish")).toBeTruthy();
+  });
+
+  test("a slow render of old content does not replace the diagram of newer content", async () => {
+    const older = Promise.withResolvers<{ svg: string }>();
+    mermaidHarness.render.mockImplementationOnce(() => older.promise);
+    const { rerender } = render(
+      <WriteCard
+        rendererProps={props(
+          { path: "docs/slow.mmd", content: "flowchart LR\n  Old --> One" },
+          undefined,
+          { type: "running" },
+        )}
+      />,
+    );
+    expandToolCards();
+    await waitFor(() => expect(mermaidHarness.render).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <WriteCard
+        rendererProps={props(
+          { path: "docs/slow.mmd", content: "flowchart LR\n  New --> Two" },
+          undefined,
+          { type: "running" },
+        )}
+      />,
+    );
+    const preview = await screen.findByRole("img", {
+      name: "docs/slow.mmd Mermaid diagram preview",
+    });
+    const current = preview.querySelector("img")?.getAttribute("src");
+    expect(decodeURIComponent(current ?? "")).toContain("New --> Two");
+
+    older.resolve({
+      svg: '<svg xmlns="http://www.w3.org/2000/svg"><text>Old --> One</text></svg>',
+    });
+    await pause(100);
+    const after = screen.getByRole("img", { name: "docs/slow.mmd Mermaid diagram preview" });
+    expect(after.querySelector("img")?.getAttribute("src")).toBe(current);
+  });
+
+  test("shows raw Mermaid source when syntax is invalid", async () => {
+    const source = "INVALID_MERMAID";
+    render(
+      <WriteCard
+        rendererProps={props(
+          { path: "docs/broken.mmd", content: source },
+          { resolvedPath: "docs/broken.mmd" },
+        )}
+      />,
+    );
+    expandToolCards();
+
+    expect(
+      await screen.findByText("Mermaid preview unavailable; the raw source is shown."),
+    ).toBeTruthy();
+    expect(screen.getByText(source)).toBeTruthy();
+    expect(screen.queryByTestId("t1-write-mermaid-preview")).toBeNull();
+  });
+
+  test("omits an oversized Mermaid preview while keeping bounded source and fallback", async () => {
+    const source = `flowchart LR\n${"  A --> B\n".repeat(2_000)}`;
+    render(
+      <WriteCard
+        rendererProps={props(
+          { path: "docs/large.mmd", content: source },
+          { resolvedPath: "docs/large.mmd" },
+        )}
+      />,
+    );
+    expandToolCards();
+
+    expect(
+      await screen.findByText(
+        "Mermaid preview omitted for large source; use the raw source or artifact.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Source preview shortened; 1986 lines omitted")).toBeTruthy();
+    expect(mermaidHarness.render).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("t1-write-mermaid-preview")).toBeNull();
+  });
+
+  test("keeps Mermaid-looking content in ordinary text files as code", async () => {
+    const source = "flowchart LR\n  Start --> Finish";
+    render(
+      <WriteCard
+        rendererProps={props(
+          { path: "docs/plan.txt", content: source },
+          { resolvedPath: "docs/plan.txt" },
+        )}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.getByText("flowchart LR")).toBeTruthy();
+    expect(screen.queryByText("Rendering Mermaid diagram…")).toBeNull();
+    expect(screen.queryByTestId("t1-write-mermaid-preview")).toBeNull();
+    // The preview renders 80 ms after the content settles: wait longer than that.
+    await pause(200);
+    expect(mermaidHarness.render).not.toHaveBeenCalled();
+  });
+
   test("keeps a streamed source preview stable with line numbers and bounded expansion", () => {
     const content = Array.from(
       { length: 24 },

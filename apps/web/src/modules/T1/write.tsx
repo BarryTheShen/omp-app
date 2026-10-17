@@ -1,5 +1,5 @@
 import { AppError as AppErrorSchema, AppFailure } from "@omp-app/contracts";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { fileLanguageLabel } from "../U1/markdown/code-language";
 import { CodeView } from "../U1/markdown/code-view";
@@ -26,6 +26,8 @@ import {
 const MAX_SOURCE_LINES = 16;
 const MAX_SOURCE_CHARACTERS = 8_000;
 const MAX_SVG_PREVIEW_CHARACTERS = 64_000;
+const MAX_MERMAID_PREVIEW_CHARACTERS = 16_000;
+const MAX_MERMAID_EDGES = 200;
 const MAX_DIAGNOSTICS = 8;
 
 export interface WriteCardProps {
@@ -125,6 +127,7 @@ function WriteBody({
   const language = fileLanguageLabel(displayTarget, content);
   const lineCount = lineCountFor(content);
   const preview = useMemo(() => sourcePreview(content, expanded), [content, expanded]);
+  const isMermaid = isMermaidTarget(displayTarget);
   const svg = isSvg(displayTarget, content);
   const artifactId = outputMeta?.artifactId ?? outputMeta?.truncation?.artifactId;
   const artifactElidedBytes =
@@ -202,6 +205,7 @@ function WriteBody({
           content={content}
           expanded={expanded}
           language={language}
+          mermaid={isMermaid}
           onCopy={copySource}
           onExpand={() => setExpanded(true)}
           preview={preview}
@@ -234,10 +238,148 @@ function WriteBody({
   );
 }
 
+type MermaidPreviewState =
+  | { readonly kind: "empty" }
+  | { readonly kind: "loading" }
+  | { readonly kind: "rendered"; readonly dataUrl: string }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "too-large" };
+
+/**
+ * Render only Mermaid source from Mermaid file targets. Strict Mermaid security settings plus an
+ * image data URL keep generated markup out of the live document; raw source always remains below.
+ */
+function MermaidPreview({
+  content,
+  target,
+}: {
+  readonly content: string;
+  readonly target: string;
+}) {
+  const diagramId = `t1-mermaid-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const [dark, setDark] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
+  );
+  const [state, setState] = useState<MermaidPreviewState>({ kind: "empty" });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => setDark(root.classList.contains("dark")));
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let current = true;
+    if (content.trim() === "") {
+      setState({ kind: "empty" });
+      return () => {
+        current = false;
+      };
+    }
+    if (content.length > MAX_MERMAID_PREVIEW_CHARACTERS) {
+      setState({ kind: "too-large" });
+      return () => {
+        current = false;
+      };
+    }
+
+    setState({ kind: "loading" });
+    const timeout = setTimeout(() => {
+      void (async () => {
+        try {
+          const { default: mermaid } = await import("mermaid");
+          mermaid.initialize({
+            darkMode: dark,
+            fontFamily: "Public Sans, sans-serif",
+            htmlLabels: false,
+            maxEdges: MAX_MERMAID_EDGES,
+            maxTextSize: MAX_MERMAID_PREVIEW_CHARACTERS,
+            secure: [
+              "secure",
+              "securityLevel",
+              "startOnLoad",
+              "maxTextSize",
+              "maxEdges",
+              "suppressErrorRendering",
+              "htmlLabels",
+            ],
+            securityLevel: "strict",
+            startOnLoad: false,
+            suppressErrorRendering: true,
+            theme: dark ? "dark" : "default",
+          });
+          const rendered = await mermaid.render(diagramId, content);
+          if (current) setState({ kind: "rendered", dataUrl: svgDataUrl(rendered.svg) });
+        } catch {
+          if (current) setState({ kind: "invalid" });
+        }
+      })();
+    }, 80);
+    return () => {
+      current = false;
+      clearTimeout(timeout);
+    };
+  }, [content, dark, diagramId]);
+
+  if (state.kind === "empty") return null;
+  if (state.kind === "loading") {
+    return (
+      <p
+        className="border-border bg-muted/40 rounded-lg border px-3 py-2 text-xs text-muted-foreground"
+        data-slot="t1-write-mermaid-loading"
+        role="status"
+      >
+        Rendering Mermaid diagram…
+      </p>
+    );
+  }
+  if (state.kind === "too-large") {
+    return (
+      <p
+        className="border-border bg-muted/40 rounded-lg border px-3 py-2 text-xs text-muted-foreground"
+        data-slot="t1-write-mermaid-oversized"
+        role="status"
+      >
+        Mermaid preview omitted for large source; use the raw source or artifact.
+      </p>
+    );
+  }
+  if (state.kind === "invalid") {
+    return (
+      <p
+        className="border-border bg-muted/40 rounded-lg border px-3 py-2 text-xs text-muted-foreground"
+        data-slot="t1-write-mermaid-error"
+        role="status"
+      >
+        Mermaid preview unavailable; the raw source is shown.
+      </p>
+    );
+  }
+  return (
+    <div
+      className="border-border/60 bg-muted relative inline-flex max-h-96 max-w-full items-center overflow-auto rounded border p-3"
+      data-slot="t1-write-mermaid-preview"
+      data-testid="t1-write-mermaid-preview"
+      role="img"
+      aria-label={`${target} Mermaid diagram preview`}
+    >
+      <img
+        alt=""
+        className="max-h-80 max-w-full object-contain"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        src={state.dataUrl}
+      />
+    </div>
+  );
+}
+
 function SourcePreview({
   content,
   expanded,
   language,
+  mermaid: isMermaid,
   onCopy,
   onExpand,
   preview,
@@ -247,6 +389,7 @@ function SourcePreview({
   readonly content: string;
   readonly expanded: boolean;
   readonly language: string;
+  readonly mermaid: boolean;
   readonly onCopy: () => Promise<void>;
   readonly onExpand: () => void;
   readonly preview: SourcePreviewValue;
@@ -256,6 +399,7 @@ function SourcePreview({
   const imagePreview = svg && content.length <= MAX_SVG_PREVIEW_CHARACTERS;
   return (
     <div className="flex min-w-0 flex-col gap-2" data-slot="t1-write-source">
+      {isMermaid && <MermaidPreview content={content} target={target} />}
       {imagePreview && (
         <div
           className="border-border/60 bg-muted relative inline-flex max-w-full items-center overflow-hidden rounded border p-3"
@@ -651,6 +795,10 @@ function deviceName(xdev: unknown): string {
   return "Device call";
 }
 
+function isMermaidTarget(target: string): boolean {
+  const path = target.toLowerCase().split(/[?#]/, 1)[0] ?? "";
+  return path.endsWith(".mmd") || path.endsWith(".mermaid");
+}
 function isSvg(target: string, content: string): boolean {
   return (
     target.toLowerCase().split(/[?#]/, 1)[0]?.endsWith(".svg") === true ||
