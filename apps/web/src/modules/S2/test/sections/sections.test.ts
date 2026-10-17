@@ -39,6 +39,7 @@ const EXPECTED_KEYS = [
   "bash.enabled",
   "bash.allowCompoundCommands",
   "bash.autoBackground.enabled",
+  "bash.gitGuard",
   "bash.patterns",
   "bashInterceptor.enabled",
   "bash.direnv",
@@ -144,6 +145,19 @@ describe("S2 Files and Shell sections", () => {
     expect(validate("python.interpreter", { secret: false, value: "\0" })).toMatchObject({
       valid: false,
       code: "path",
+    });
+  });
+
+  test("describes Git Guard as a live, default-off boolean control", () => {
+    const guard = control("bash.gitGuard");
+    expect(guard.kind).toBe("boolean");
+    expect(guard.apply).toBe("live");
+    expect(guard.description).toContain("Refuse git commands");
+    expect(validate("bash.gitGuard", { secret: false, value: false })).toEqual({ valid: true });
+    expect(validate("bash.gitGuard", { secret: false, value: true })).toEqual({ valid: true });
+    expect(validate("bash.gitGuard", { secret: false, value: "true" })).toMatchObject({
+      valid: false,
+      code: "boolean",
     });
   });
 

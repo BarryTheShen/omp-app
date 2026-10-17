@@ -18,6 +18,7 @@ export const OMP_DEFAULTS: Readonly<Record<string, JsonValue>> = {
   "bash.enabled": true,
   "bash.allowCompoundCommands": false,
   "bash.autoBackground.enabled": true,
+  "bash.gitGuard": false,
   "bash.patterns": [],
   "bashInterceptor.enabled": false,
   "bash.direnv": "auto",

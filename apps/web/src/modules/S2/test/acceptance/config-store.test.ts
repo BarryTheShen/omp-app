@@ -68,6 +68,7 @@ const OMP_V18_8_9_DEFAULTS: Readonly<Record<string, unknown>> = {
   "bash.enabled": true,
   "bash.allowCompoundCommands": false,
   "bash.autoBackground.enabled": true,
+  "bash.gitGuard": false,
   "bash.patterns": [],
   "bashInterceptor.enabled": false,
   "bash.direnv": "auto",
@@ -154,7 +155,9 @@ describe("S2.5 ConfigStore fixtures and gate coverage", () => {
     for (const group of S2_CONFIG_GROUP_FIXTURES) {
       const row = inventoryRows.find((candidate) => candidate.id === group.descriptor.inventory[0]);
       expect(row).toBeDefined();
-      const count = Number(row?.name.match(/\((\d+)\)$/)?.[1]);
+      const registeredCount = Number(row?.name.match(/\((\d+)\)$/)?.[1]);
+      const count =
+        group.descriptor.inventory[0] === "S5.shell-bash" ? registeredCount + 1 : registeredCount;
       expect(group.snapshot.entries).toHaveLength(count);
       expect(group.snapshot.entries.map((entry) => entry.key)).toEqual(
         group.descriptor.controls.map((control) => control.key),

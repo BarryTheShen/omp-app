@@ -108,6 +108,13 @@ const DEFAULTS: readonly DefaultFixture[] = [
     citation: "exec/settings.ts:107-118; main.ts:246-254; tools/bash.ts:603,1142-1147",
   },
   {
+    key: "bash.gitGuard",
+    value: false,
+    source: "default",
+    kind: "boolean",
+    citation: "exec/settings.ts:120-131",
+  },
+  {
     key: "bash.patterns",
     value: [],
     source: "default",

@@ -50,6 +50,7 @@ const LSP_ROWS: readonly KeyRow[] = [
 const BASH_ROWS: readonly KeyRow[] = [
   ["bash.enabled", "enabled", false],
   ["bash.allowCompoundCommands", "allowCompoundCommands", true],
+  ["bash.gitGuard", "gitGuard", true],
   ["bash.autoBackground.enabled", "autoBackground", false],
   ["bash.patterns", "approvalRules", [{ match: "git push *", approval: "deny" }]],
   ["bashInterceptor.enabled", "interceptor", true],
@@ -119,6 +120,7 @@ describe("S2.4 typed policy handoffs", () => {
       values: {
         enabled: true,
         allowCompoundCommands: false,
+        gitGuard: false,
         autoBackground: true,
         approvalRules: [],
         interceptor: false,

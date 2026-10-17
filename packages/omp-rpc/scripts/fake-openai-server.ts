@@ -636,6 +636,12 @@ function reply(request: Request): Reply {
       args: { command: "ls /nonexistent-omp-fixture" },
       thinking: "I should run a command that fails.",
     };
+  if (prompt.includes("run_git_stash"))
+    return {
+      tool: "bash",
+      args: { command: "git stash" },
+      thinking: "I should try the requested Git stash command.",
+    };
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
   if (prompt.includes("read_image"))

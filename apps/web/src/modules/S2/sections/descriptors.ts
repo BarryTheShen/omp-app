@@ -389,6 +389,12 @@ const shellBash: readonly SettingControl[] = [
   booleanControl("bash.enabled", "Bash", "live"),
   booleanControl("bash.allowCompoundCommands", "Allow Compound Commands", "live"),
   booleanControl("bash.autoBackground.enabled", "Bash Auto-Background", "live"),
+  booleanControl(
+    "bash.gitGuard",
+    "Git Guard",
+    "live",
+    "Refuse git commands that discard or move shared work in the bash tool: stash, reset --hard or to another commit, and checkout/switch/restore outside a merge or rebase conflict.",
+  ),
   bashPatternsControl,
   booleanControl("bashInterceptor.enabled", "Bash Interceptor", "live"),
   enumControl("bash.direnv", "direnv Auto-Load", ["auto", "off"], "live"),

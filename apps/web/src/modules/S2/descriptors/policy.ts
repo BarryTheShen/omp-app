@@ -48,6 +48,7 @@ export type FilesLspPolicySnapshot = {
 export type ShellBashPolicy = {
   readonly enabled: boolean;
   readonly allowCompoundCommands: boolean;
+  readonly gitGuard: boolean;
   readonly autoBackground: boolean;
   /** Ordered: the first rule whose pattern matches decides; omp drops a rule with an empty pattern. */
   readonly approvalRules: readonly BashApprovalRule[];
@@ -148,6 +149,7 @@ export function selectShellBashPolicy(snapshot: ConfigSnapshot): ShellBashPolicy
     revision: snapshot.revision,
     values: {
       enabled: policyValue(SHELL_BASH_SECTION, snapshot, "bash.enabled", booleanSchema),
+      gitGuard: policyValue(SHELL_BASH_SECTION, snapshot, "bash.gitGuard", booleanSchema),
       allowCompoundCommands: policyValue(
         SHELL_BASH_SECTION,
         snapshot,
