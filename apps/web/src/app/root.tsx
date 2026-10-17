@@ -750,6 +750,11 @@ function ActiveThreadReady({
   });
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
+  useEffect(() => {
+    if (threadId === undefined) return;
+    setCommandStatus(null);
+    setCommandError(null);
+  }, [threadId]);
   const [diagnosticPanel, setDiagnosticPanel] = useState<"reports" | "security" | null>(null);
   const [diagnosticPanelOpen, setDiagnosticPanelOpen] = useState(false);
   const [diagnosticPanelReveal, setDiagnosticPanelReveal] = useState(0);
