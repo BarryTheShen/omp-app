@@ -75,16 +75,19 @@ async function failureOf(call: PromiseLike<unknown>): Promise<AppError> {
   }
   throw new Error("expected the call to fail");
 }
-
 describe("omp_exited failures the package creates are said in plain words", () => {
-  test("omp stops after it is ready: a command still waiting fails, and the message has no internal word", async () => {
+  test("a transport close produces omp's plain exit sentence", async () => {
     const duplex = new ScriptedDuplex();
     const session = await readySession(duplex);
     const waiting = failureOf(session.send({ type: "get_state" }));
     duplex.closeFromPeer(new Error("stream ended"));
 
     const appError = await waiting;
-    expect(appError).toMatchObject({ code: "omp_exited", retryable: true });
+    expect(appError).toMatchObject({
+      code: "omp_exited",
+      retryable: true,
+      message: "omp stopped unexpectedly. Try again.",
+    });
     expect(appError.message).not.toMatch(INTERNAL_WORDS);
   });
 

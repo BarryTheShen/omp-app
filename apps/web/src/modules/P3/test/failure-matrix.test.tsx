@@ -128,23 +128,38 @@ describe("failure matrix: the message the person sees, and what the run keeps", 
     expect(run.runs.status.getSnapshot()).toMatchObject({ phase: "sent", threadId: BRANCHED_CHAT });
   });
 
-  test("omp stops during the branch: the failure is retryable, and the source message and its text are kept", async () => {
-    const run = renderRun({
-      branch: [failure("omp_exited", "test stand-in: omp stopped during the branch", true)],
-    });
+  test.each([
+    { when: "before omp accepts the branch", branched: false, retryable: true },
+    { when: "before omp accepts the branch", branched: false, retryable: false },
+    { when: "after omp accepts the branch", branched: true, retryable: true },
+    { when: "after omp accepts the branch", branched: true, retryable: false },
+  ])(
+    "omp_exited $when remains plain and preserves retryable=$retryable",
+    async ({ branched, retryable }) => {
+      const message = "omp stopped unexpectedly. Try again.";
+      const run = branched
+        ? renderRun({
+            branch: [BRANCH_ACCEPTED],
+            getState: failure("omp_exited", message, retryable),
+          })
+        : renderRun({ branch: [failure("omp_exited", message, retryable)] });
 
-    await editFromSource(run);
+      await editFromSource(run);
+      const failed = failedOf(run);
+      showNotice(run, failed.chatThreadId);
 
-    expect(failedOf(run)).toMatchObject({
-      message: "test stand-in: omp stopped during the branch",
-      retryable: true,
-      branched: false,
-      chatThreadId: SOURCE_CHAT,
-      sourceEntryId: USER_WITH_IMAGE,
-      replacement: { text: EDIT_TEXT },
-    });
-    expect(run.opened).toEqual([]);
-  });
+      expect(failed).toMatchObject({
+        message,
+        retryable,
+        branched,
+        chatThreadId: SOURCE_CHAT,
+      });
+      expect(failed.message).not.toMatch(/RPC|transport|typed|omp_exited/i);
+      expect(screen.getByText(message, { exact: true })).toBeTruthy();
+      if (retryable) expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+      else expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    },
+  );
 
   test("the chat changed while omp branched: the failure is retryable, and nothing is sent past the branch", async () => {
     const run = renderRun({
