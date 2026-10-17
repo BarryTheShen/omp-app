@@ -237,7 +237,7 @@ export const modelThinkingSection = section("D1.modelThinking", "Thinking", [
   enumControl(
     "defaultThinkingLevel",
     "Thinking Level",
-    ["auto", "inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max"],
+    ["minimal", "low", "medium", "high", "xhigh", "max", "auto"],
     "Default reasoning depth for thinking-capable models.",
   ),
   booleanControl(
