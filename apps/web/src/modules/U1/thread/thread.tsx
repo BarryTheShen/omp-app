@@ -130,7 +130,7 @@ interface RuntimeFailureProps {
   readonly onRetry?: () => Promise<void> | void;
   readonly onRestartOmp?: () => Promise<void> | void;
 }
-
+const FOCUSABLE_REGION_PROPS = { tabIndex: 0 } as const;
 function RuntimeError({
   error,
   showDetail,
@@ -200,16 +200,30 @@ function RuntimeError({
   return (
     <div className="px-6 pt-3">
       <div
-        aria-live="assertive"
-        className="border-danger bg-danger-surface text-danger-surface-foreground rounded-lg border p-4"
+        className="border-danger bg-danger-surface text-danger-surface-foreground flex max-h-[40dvh] flex-col rounded-lg border p-4"
         data-slot="u1-thread-error"
-        role="alert"
       >
-        <p className="text-sm font-medium">
+        <p
+          aria-describedby={showDetail ? "failure-details" : undefined}
+          aria-live="assertive"
+          className="text-sm font-medium"
+          role="alert"
+        >
           {error.heading ?? "The conversation could not continue."}
         </p>
         {showDetail && !(stopped && retryError !== undefined) && (
-          <p className="mt-1 text-sm">{detail}</p>
+          <section
+            aria-label="Failure details"
+            className="mt-1 min-h-0 flex-1 overflow-y-auto rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            id="failure-details"
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") event.currentTarget.scrollBy({ top: 40 });
+              if (event.key === "ArrowUp") event.currentTarget.scrollBy({ top: -40 });
+            }}
+            {...FOCUSABLE_REGION_PROPS}
+          >
+            <p className="text-sm wrap-anywhere">{detail}</p>
+          </section>
         )}
         {action !== undefined && retryError?.retryable !== false && (
           <button

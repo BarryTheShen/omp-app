@@ -26,6 +26,7 @@ function toolCallsOf(
 
 /** `long_loop` makes the model run this many bash steps in one turn before it answers. */
 const LOOP_STEPS = 60;
+const LONG_PROVIDER_ERROR = "The fake provider rejected this request. ".repeat(60);
 
 function text(content: unknown): string {
   if (typeof content === "string") return content;
@@ -386,6 +387,17 @@ function reply(request: Request): Reply {
         solutionSpace: "one tiny task: fail",
       },
       thinking: "I should start one child task that fails.",
+    };
+  if (prompt.includes("runtime_failure_long"))
+    return {
+      text: "A partial answer arrived before the provider failed.",
+      streamed: true,
+      streamFailure: LONG_PROVIDER_ERROR,
+    };
+  if (prompt.includes("provider_failure_long")) return { failure: LONG_PROVIDER_ERROR };
+  if (prompt.includes("auth_probe_long"))
+    return {
+      unauthorized: `Invalid API key. ${LONG_PROVIDER_ERROR}`,
     };
   if (prompt.includes("auth_probe")) return { unauthorized: "Invalid API key" };
   if (prompt.includes("fail_probe_child"))

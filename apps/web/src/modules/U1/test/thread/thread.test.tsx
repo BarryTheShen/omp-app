@@ -171,7 +171,10 @@ describe("ThreadShell states", () => {
     const retry = vi.fn();
     renderThread(store, { onRetry: retry });
 
-    expect(screen.getByRole("alert").textContent).toContain("The runtime was blocked");
+    expect(screen.getByRole("alert").textContent).toContain("The conversation could not continue.");
+    expect(screen.getByRole("region", { name: "Failure details" }).textContent).toContain(
+      "The runtime was blocked",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledOnce();
   });
@@ -190,7 +193,10 @@ describe("ThreadShell states", () => {
     const retry = vi.fn();
     renderThread(store, { onRestartOmp: restart, onRetry: retry });
 
-    expect(screen.getByRole("alert").textContent).toContain("omp exited (signal SIGKILL)");
+    expect(screen.getByRole("alert").textContent).toContain("The conversation could not continue.");
+    expect(screen.getByRole("region", { name: "Failure details" }).textContent).toContain(
+      "omp exited (signal SIGKILL)",
+    );
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
 
@@ -214,7 +220,9 @@ describe("ThreadShell states", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
     store.ingest({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
     await screen.findByRole("button", { name: "Restarting…" });
-    expect(screen.getByRole("alert").textContent).toContain("omp exited (signal SIGKILL)");
+    expect(screen.getByRole("region", { name: "Failure details" }).textContent).toContain(
+      "omp exited (signal SIGKILL)",
+    );
     expect(screen.getByText("The conversation could not continue.")).toBeTruthy();
     answer.resolve();
     store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
@@ -300,7 +308,9 @@ describe("ThreadShell states", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restart omp" }));
     failed.ingest({ kind: "process", status: "starting" } as RpcSessionEvent, 3);
     await screen.findByRole("button", { name: "Restarting…" });
-    expect(screen.getByRole("alert").textContent).toContain("omp exited (signal SIGKILL)");
+    expect(screen.getByRole("region", { name: "Failure details" }).textContent).toContain(
+      "omp exited (signal SIGKILL)",
+    );
 
     view.rerender(<RuntimeThread props={{}} store={other} />);
     expect(screen.queryByRole("alert")).toBeNull();

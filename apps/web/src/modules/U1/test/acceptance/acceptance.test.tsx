@@ -113,7 +113,10 @@ describe("U1 acceptance", () => {
     const retry = vi.fn();
     render(<AcceptanceThread fixture={fixture} onRetry={retry} />);
 
-    expect(screen.getByRole("alert").textContent).toContain("The runtime was blocked");
+    expect(screen.getByRole("alert").textContent).toContain("The conversation could not continue.");
+    expect(screen.getByRole("region", { name: "Failure details" }).textContent).toContain(
+      "The runtime was blocked",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledOnce();
   });
