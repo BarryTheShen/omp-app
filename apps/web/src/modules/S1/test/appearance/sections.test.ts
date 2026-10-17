@@ -30,8 +30,11 @@ const DEFAULT_VALUES: Readonly<Record<string, JsonValue>> = {
   "statusLine.showHookStatus": true,
   "tui.resizeScrollback": "rebuild",
   "terminal.showProgress": false,
+  "terminal.programStatus": true,
   "tui.textSizing": false,
   "tui.renderMermaid": true,
+  "tui.renderSvg": true,
+  "tui.autoGraph": "always",
   "tui.reactions": true,
   "tui.codexResetFireworks": false,
   "tui.titleState": true,
@@ -71,8 +74,11 @@ const EXPECTED_KEYS = {
   display: [
     "tui.resizeScrollback",
     "terminal.showProgress",
+    "terminal.programStatus",
     "tui.textSizing",
     "tui.renderMermaid",
+    "tui.renderSvg",
+    "tui.autoGraph",
     "tui.reactions",
     "tui.codexResetFireworks",
     "tui.titleState",
@@ -112,8 +118,11 @@ const EXPECTED_KINDS: Readonly<Record<string, SettingControl["kind"]>> = {
   "statusLine.showHookStatus": "boolean",
   "tui.resizeScrollback": "enum",
   "terminal.showProgress": "boolean",
+  "terminal.programStatus": "boolean",
   "tui.textSizing": "boolean",
   "tui.renderMermaid": "boolean",
+  "tui.renderSvg": "boolean",
+  "tui.autoGraph": "enum",
   "tui.reactions": "boolean",
   "tui.codexResetFireworks": "boolean",
   "tui.titleState": "boolean",
@@ -161,7 +170,7 @@ describe("S1.3 appearance sections", () => {
       "appearance/Display",
       "appearance/Images",
     ]);
-    expect(keys).toHaveLength(39);
+    expect(keys).toHaveLength(42);
     expect(new Set(keys).size).toBe(keys.length);
     expect([...keys].sort()).toEqual([...expected].sort());
     expect(S1_APPEARANCE_SECTIONS.flatMap((descriptor) => descriptor.inventory)).toEqual([

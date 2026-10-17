@@ -278,6 +278,11 @@ export const DISPLAY_SETTINGS_SECTION = section(
       "Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running (always on in Tern)",
     ),
     booleanControl(
+      "terminal.programStatus",
+      "Program Status (OSC 7501)",
+      "Report whether the agent is working, waiting on you, done, or failed over OSC 7501, for terminal tab indicators and agent inboxes",
+    ),
+    booleanControl(
       "tui.textSizing",
       "Large Headings (Kitty)",
       "Render Markdown H1 headings at 2x scale using Kitty's OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default.",
@@ -286,6 +291,22 @@ export const DISPLAY_SETTINGS_SECTION = section(
       "tui.renderMermaid",
       "Render Mermaid Diagrams",
       "Render Mermaid fenced code blocks as ASCII diagrams",
+    ),
+    booleanControl(
+      "tui.renderSvg",
+      "Render SVG Figures",
+      "Invite the agent to draw diagrams and charts as SVG, rendered inline as images on terminals that show graphics",
+    ),
+    enumControl(
+      "tui.autoGraph",
+      "Auto-Graph Tables",
+      ["smart", "always", "off"],
+      {
+        smart: "Smart",
+        always: "Always",
+        off: "Off",
+      },
+      "Draw a chart under numeric tables in the agent's answers, in your theme's colors, on terminals that show graphics",
     ),
     booleanControl(
       "tui.reactions",

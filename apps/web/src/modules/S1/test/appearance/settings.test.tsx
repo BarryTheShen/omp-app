@@ -9,7 +9,7 @@ import type {
   ConfigStoreClient,
   SettingsSectionDescriptor,
 } from "../../../S1/settings-kit";
-import { COMPOSER_SETTINGS_SECTION } from "../../appearance";
+import { COMPOSER_SETTINGS_SECTION, DISPLAY_SETTINGS_SECTION } from "../../appearance";
 
 type FakeConfig = {
   entries: ConfigEntry[];
@@ -26,6 +26,9 @@ const DEFAULT_ENTRIES: readonly ConfigEntry[] = [
   { key: "terminal.showImages", secret: false, value: true, source: "default", overrides: [] },
   { key: "images.autoResize", secret: false, value: true, source: "default", overrides: [] },
   { key: "images.blockImages", secret: false, value: false, source: "default", overrides: [] },
+  { key: "terminal.programStatus", secret: false, value: true, source: "default", overrides: [] },
+  { key: "tui.renderSvg", secret: false, value: true, source: "default", overrides: [] },
+  { key: "tui.autoGraph", secret: false, value: "always", source: "default", overrides: [] },
 ];
 
 const changes: ConfigChangeSource = { subscribe: () => () => {} };
@@ -148,6 +151,32 @@ describe("S1.3 appearance settings surface", () => {
     const savedTheme = state.entries.find((entry) => entry.key === "theme.dark");
     if (!savedTheme || savedTheme.secret) throw new Error("Expected a saved theme value.");
     expect(savedTheme.value).toBe("custom-dark");
+  });
+
+  test("includes the omp Display settings in the Appearance section", () => {
+    const controls = DISPLAY_SETTINGS_SECTION.controls;
+    expect(controls.map((control) => control.key)).toContain("terminal.programStatus");
+    expect(controls.map((control) => control.key)).toContain("tui.renderSvg");
+    expect(controls.map((control) => control.key)).toContain("tui.autoGraph");
+    expect(controls.find((control) => control.key === "terminal.programStatus")).toMatchObject({
+      label: "Program Status (OSC 7501)",
+      apply: "live",
+    });
+    expect(controls.find((control) => control.key === "tui.renderSvg")).toMatchObject({
+      label: "Render SVG Figures",
+      apply: "live",
+    });
+    expect(controls.find((control) => control.key === "tui.autoGraph")).toMatchObject({
+      label: "Auto-Graph Tables",
+      apply: "live",
+    });
+    const autoGraph = controls.find((control) => control.key === "tui.autoGraph");
+    if (autoGraph?.kind !== "enum") throw new Error("Missing auto-graph enum control.");
+    expect(autoGraph.options).toEqual([
+      { value: "smart", label: "Smart" },
+      { value: "always", label: "Always" },
+      { value: "off", label: "Off" },
+    ]);
   });
 
   test("a conflict uses the shared card without a lingering apply status", async () => {
