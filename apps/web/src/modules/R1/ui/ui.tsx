@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createdSince, ENTER_FADE, LEAVE_FADE, LEAVE_MS } from "@/lib/motion";
+import { ENTER_FADE, LEAVE_FADE, LEAVE_MS } from "@/lib/motion";
 import { type Presence, useEnteringItems, usePresentItems } from "@/lib/presence";
 import { useCapabilityStatus } from "@/registry-core";
 import type { SessionCatalogModel } from "../catalog";
@@ -268,13 +268,13 @@ export function SessionCatalogSidebar({
     return () => document.removeEventListener("pointerdown", closeFromOutside);
   }, [menuSessionId]);
 
-  // A session created after the list first loaded is new: it fades in once. The rows the load lists are history. The
-  // catalog keeps the moment its list first loaded, so a sidebar drawn again still judges by it.
-  const loadedAt = catalog.firstLoadedAt;
+  // Presence tracks whether this session row joined the already-loaded list, so its entrance fade is not recomputed from
+  // the session timestamp on every catalog update.
   const presentSessions = usePresentItems(
     snapshot.sessions,
     (session: SessionMetadata) => session.id,
     LEAVE_MS,
+    snapshot.isLoaded && !snapshot.isLoading,
   );
   // A chat whose turn runs with no session file yet has a row in its folder until the list holds its file.
   const runningChats = useMemo(
@@ -736,7 +736,7 @@ export function SessionCatalogSidebar({
                     className={
                       leaving
                         ? `group relative mb-1 ${LEAVE_FADE}`
-                        : createdSince(Date.parse(session.createdAt), loadedAt)
+                        : presence.entering
                           ? `group relative mb-1 ${ENTER_FADE}`
                           : "group relative mb-1"
                     }

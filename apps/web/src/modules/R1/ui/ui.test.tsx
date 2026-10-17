@@ -1771,3 +1771,46 @@ describe("SessionCatalogSidebar running chats", () => {
     await waitFor(() => expect(opened).toEqual(["first-reply"]));
   });
 });
+
+describe("SessionCatalogSidebar entrance fade", () => {
+  const fadesIn = (row: Element): boolean => row.className.includes("starting:opacity-0");
+  const rowOf = (title: string): Element => {
+    const row = [...document.querySelectorAll('[data-slot="r1-session-row"]')].find((candidate) =>
+      candidate.textContent?.includes(title),
+    );
+    if (!row) throw new Error(`No row shows ${title}.`);
+    return row;
+  };
+
+  test("the rows a load lists never fade in, a chat that joins afterwards fades in once, and a later update replays nothing", async () => {
+    const files = [session("old", "2026-10-01T00:00:00.000Z", "Old chat")];
+    const catalog = modelWithSessions(files);
+    renderSidebar({ catalog });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
+    expect(fadesIn(rowOf("Old chat"))).toBe(false);
+
+    const fresh = session("fresh", "2026-10-04T00:00:00.000Z", "Fresh chat");
+    files.push(fresh);
+    await act(async () => {
+      await catalog.reconcile({
+        folder,
+        sessionFile: fresh.sessionFile,
+        id: fresh.id,
+        kind: "created",
+      });
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    expect(fadesIn(rowOf("Fresh chat"))).toBe(true);
+    expect(fadesIn(rowOf("Old chat"))).toBe(false);
+
+    const joined = session("joined", "2026-10-05T00:00:00.000Z", "Joined by a refresh");
+    files.push(joined);
+    await act(async () => {
+      await catalog.list({ filter: { scope, query: "" }, limit: 50 });
+    });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
+    expect(fadesIn(rowOf("Joined by a refresh"))).toBe(true);
+    expect(fadesIn(rowOf("Fresh chat"))).toBe(false);
+    expect(fadesIn(rowOf("Old chat"))).toBe(false);
+  });
+});

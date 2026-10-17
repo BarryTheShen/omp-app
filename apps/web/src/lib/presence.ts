@@ -89,15 +89,22 @@ export function usePresentItems<T>(
   items: readonly T[],
   keyOf: (item: T) => string,
   leaveMs: number,
+  armed = true,
 ): readonly Presence<T>[] {
   const [state, setState] = useState(() => ({
     source: items,
+    armed,
     shown: mergePresence<T>(null, items, keyOf, true),
   }));
   let shown = state.shown;
-  if (state.source !== items) {
-    shown = mergePresence(state.shown, items, keyOf, !prefersReducedMotion());
-    setState({ source: items, shown });
+  if (state.source !== items || state.armed !== armed) {
+    shown = mergePresence(
+      state.armed && armed ? state.shown : null,
+      items,
+      keyOf,
+      !prefersReducedMotion(),
+    );
+    setState({ source: items, armed, shown });
   }
 
   const timers = useRef(new Map<string, number>());

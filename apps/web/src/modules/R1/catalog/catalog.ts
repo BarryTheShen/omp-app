@@ -174,8 +174,6 @@ export class SessionCatalogModel {
   private readonly reconcileBegun = new Map<ThreadId, number>();
   private updateCount = 0;
   private pins: ReadonlySet<ThreadId> = new Set();
-  /** When the list first loaded (epoch ms), or null before it has. Kept here, not in the sidebar that draws the list. */
-  private loadedAt: number | null = null;
 
   public constructor(options: CatalogModelOptions) {
     this.options = options;
@@ -200,14 +198,6 @@ export class SessionCatalogModel {
 
   public getSnapshot(): CatalogSnapshot {
     return this.snapshot;
-  }
-
-  /**
-   * When the list first loaded (epoch ms), or null before. The sidebar is drawn apart by the chat view and the empty view,
-   * so it can be drawn again; rows created since this moment are new to it whichever sidebar draws them.
-   */
-  public get firstLoadedAt(): number | null {
-    return this.loadedAt;
   }
 
   public subscribe(listener: (snapshot: CatalogSnapshot) => void): () => void {
@@ -590,7 +580,6 @@ export class SessionCatalogModel {
   }
 
   private commit(patch: Partial<CatalogSnapshot>): void {
-    if (patch.isLoaded === true && this.loadedAt === null) this.loadedAt = Date.now();
     const next = { ...this.snapshot, ...patch };
     if (next.sessions !== this.snapshot.sessions) next.sessions = Object.freeze([...next.sessions]);
     this.snapshot = Object.freeze(next);

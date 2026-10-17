@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
-import { mergePresence, type Presence, useEnteringItems } from "./presence";
+import { mergePresence, type Presence, useEnteringItems, usePresentItems } from "./presence";
 
 type Row = { readonly id: string };
 const key = (row: Row): string => row.id;
@@ -70,5 +70,19 @@ describe("useEnteringItems", () => {
 
     rerender({ items: [{ id: "a" }, { id: "b" }, { id: "c" }], armed: true });
     expect(labels(result.current)).toEqual(["a", "b", "c+"]);
+  });
+});
+describe("usePresentItems armed state", () => {
+  test("rows loaded while the catalog is unarmed do not enter, but later rows do", () => {
+    const { result, rerender } = renderHook(
+      ({ items, armed }: { readonly items: readonly Row[]; readonly armed: boolean }) =>
+        usePresentItems(items, key, 200, armed),
+      { initialProps: { items: [] as Row[], armed: false } },
+    );
+    rerender({ items: [{ id: "a" }], armed: true });
+    expect(labels(result.current)).toEqual(["a"]);
+
+    rerender({ items: [{ id: "a" }, { id: "b" }], armed: true });
+    expect(labels(result.current)).toEqual(["a", "b+"]);
   });
 });

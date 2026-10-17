@@ -27,18 +27,6 @@ export const LEAVE_MS = 200;
  */
 export const NOTICE_SETTLE_MS = 2000;
 
-/** Server creation times have one-second precision (truncated), so a chat created just after the load can read up to a second earlier. */
-export const CREATED_TIME_PRECISION_MS = 1000;
-
-/**
- * Whether a row was created at or after the moment the list first loaded (`since`, epoch ms; null before the load). A
- * row created after the load is new and fades in once; a row listed by the load (history, a reload) was created before
- * it and does not. Unlike a time window, this does not depend on when the row is drawn.
- */
-export function createdSince(epochMs: number, since: number | null): boolean {
-  return since !== null && Number.isFinite(epochMs) && epochMs >= since - CREATED_TIME_PRECISION_MS;
-}
-
 /** Whether a time (epoch ms) is recent enough to fade in. A time in the future is not recent. */
 export function isRecent(epochMs: number | undefined, now: number = Date.now()): boolean {
   if (epochMs === undefined || !Number.isFinite(epochMs)) return false;
