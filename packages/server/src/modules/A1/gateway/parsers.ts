@@ -1,5 +1,6 @@
 import { AppFailure, DumpReport, type DumpScope, HttpsUrl, ShareResult } from "@omp-app/contracts";
 import type { CommandParserContext, OmpCommandGatewayService } from "./gateway";
+import { registerMemoryParser } from "./memory-parsers";
 import { registerModeChangeParsers } from "./mode-parsers";
 import { parseSessionDeleteReply } from "./session-delete-parser";
 import { registerToolsParser } from "./tools-parsers";
@@ -159,4 +160,5 @@ export function registerOmpCommandParsers(gateway: OmpCommandGatewayService): vo
   registerModeChangeParsers(gateway);
   gateway.registerCommandParser("session", parseSessionDeleteReply);
   registerToolsParser(gateway);
+  registerMemoryParser(gateway);
 }

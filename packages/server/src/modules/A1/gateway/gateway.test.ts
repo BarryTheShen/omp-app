@@ -595,13 +595,13 @@ describe("OmpCommandGatewayService", () => {
     );
   });
 
-  test("the app's gateway already has the typed /share, /dump and /tools parsers registered", () => {
+  test("the app's gateway already has typed /share, /dump, /session, /tools and /memory parsers registered", () => {
     const gateway = createOmpCommandGateway({
       resolveSession: () => {
         throw new Error("not used in this test");
       },
     });
-    for (const name of ["share", "dump", "tools"]) {
+    for (const name of ["share", "dump", "session", "tools", "memory"]) {
       expect(() => gateway.registerCommandParser(name, () => "again")).toThrow(
         new RegExp(`Duplicate command parser registration for ${name}`),
       );
