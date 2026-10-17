@@ -499,11 +499,14 @@ export class SelectedThreadHistoryController {
     // The subscription a watch held on this chat, if the open took the chat over. Let go only after the open subscribes.
     let watchHold: EventSubscription | undefined;
     let shownStore: OmpRuntimeStore | undefined;
+    let openedCapabilities: CapabilityMap | undefined;
+    let openedStore: OmpRuntimeStore | undefined;
     // Set once the new chat is open on omp and the chat on screen has been let go: from then on a failure ends both views.
     let openedId: ThreadId | undefined;
     let oldReleased = false;
     try {
       const result = await this.rpc.open(args);
+      openedCapabilities = result.capabilities;
       openedId = result.threadId;
       if (keepShown) {
         await this.closeNow(true);
@@ -518,6 +521,7 @@ export class SelectedThreadHistoryController {
         this.options.createLoader?.(threadId, this.rpc, store) ??
         this.defaultLoader(threadId, store);
       this.loader = loader;
+      openedStore = store;
       // A chat reopened in place keeps its transcript on screen until the new open has its history (no flash).
       if (!keepShown) {
         this.commit({
@@ -578,6 +582,26 @@ export class SelectedThreadHistoryController {
         if (this.state.threadId !== undefined) this.historyRetryThread = this.state.threadId;
         this.commit({ isLoading: false, error: failure.appError });
         return shownStore;
+      }
+      if (
+        oldReleased &&
+        failure.appError.code === "omp_exited" &&
+        this.subscription !== undefined &&
+        openedId !== undefined &&
+        openedStore !== undefined
+      ) {
+        this.historyRetryThread = openedId;
+        this.commit({
+          threadId: openedId,
+          store: openedStore,
+          capabilities: openedCapabilities,
+          isLoading: false,
+          isSwitching: false,
+          error: failure.appError,
+          openedNew,
+        });
+        if (this.closes === closesAtStart) this.options.onThreadIdChange?.(openedId);
+        return openedStore;
       }
       // A dropped connection leaves the chat closed: the chat is opened again once the connection is back (issue 1617).
       if (failure.appError.code === "unavailable" && ticket === this.requests)

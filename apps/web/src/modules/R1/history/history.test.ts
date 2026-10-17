@@ -102,6 +102,7 @@ function fakeClient(
   subscriptions: SubscriptionRecord[],
   replayed: readonly RpcSessionEvent[] = [],
   failSubscriptionAt?: number,
+  subscriptionFailure: Error = new Error("The connection dropped"),
 ): AppClient {
   let subscribeCount = 0;
   return {
@@ -112,7 +113,7 @@ function fakeClient(
     onResync: () => () => {},
     subscribe: async (_port: unknown, _event: unknown, options?: SubscribeOptions) => {
       subscribeCount += 1;
-      if (subscribeCount === failSubscriptionAt) throw new Error("The connection dropped");
+      if (subscribeCount === failSubscriptionAt) throw subscriptionFailure;
       const record: SubscriptionRecord = { options, listeners: [], unsubscribed: false };
       subscriptions.push(record);
       // Like the real client, the onEvent listener is attached before the request, and the events the server replays
@@ -1426,6 +1427,118 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
       code: "omp_exited",
       message: "omp exited (signal SIGKILL)",
     });
+  });
+  /** Chat one is on screen; omp exits while the history of the chat picked next loads (its history read is the second). */
+  function switchWhereTheNewChatStops() {
+    const subscriptions: SubscriptionRecord[] = [];
+    const saved: ThreadId[] = [];
+    const reads = { count: 0 };
+    const rpc = createRpc(
+      (args) => ({
+        threadId: "threadId" in args ? args.threadId : threadOne,
+        sessionFile: null,
+        capabilities: {},
+      }),
+      [],
+      [],
+      undefined,
+      () => {
+        reads.count += 1;
+        return reads.count === 2
+          ? new AppFailure({
+              code: "omp_exited",
+              message: "omp exited (signal SIGKILL)",
+              retryable: true,
+            })
+          : undefined;
+      },
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+      onThreadIdChange: (threadId) => {
+        if (threadId !== undefined) saved.push(threadId);
+      },
+    });
+    return { controller, subscriptions, saved, reads };
+  }
+  test("a switch whose new chat stops during its history load keeps that chat on screen with the error, and Try again reloads it", async () => {
+    const { controller, subscriptions, saved, reads } = switchWhereTheNewChatStops();
+    await controller.openExisting(threadOne);
+    const switched = await controller.openExisting(threadTwo);
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadTwo,
+      store: switched,
+      error: { code: "omp_exited", message: "omp exited (signal SIGKILL)" },
+      isLoading: false,
+      isSwitching: false,
+    });
+    // The chat that was left lets go its subscription and the new chat keeps its own, so omp's exit reaches the banner.
+    expect(subscriptions.map((record) => record.unsubscribed)).toEqual([true, false]);
+    // The app is told the new chat, so a reload opens it and not the chat that was left.
+    expect(saved).toEqual([threadOne, threadTwo]);
+    await controller.retryHistory();
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadTwo,
+      store: switched,
+      isLoading: false,
+      error: null,
+    });
+    expect(reads.count).toBe(3);
+  });
+  test("the restarted omp's ready event reloads the history of a switched chat that stopped", async () => {
+    const { controller, subscriptions, reads } = switchWhereTheNewChatStops();
+    await controller.openExisting(threadOne);
+    const switched = await controller.openExisting(threadTwo);
+    const listener = subscriptions[1]?.listeners[0];
+    if (!listener) throw new Error("the switched chat did not subscribe");
+    listener({ kind: "process", status: "ready" } as RpcSessionEvent, 2);
+    await vi.waitFor(() => expect(reads.count).toBe(3));
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadTwo,
+      store: switched,
+      isLoading: false,
+      error: null,
+    });
+  });
+  test("a switch whose new chat cannot subscribe because omp exited ends both views and lets the new chat go", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const closed: ThreadId[] = [];
+    const rpc = createRpc(
+      (args) => ({
+        threadId: "threadId" in args ? args.threadId : threadOne,
+        sessionFile: null,
+        capabilities: {},
+      }),
+      [],
+      [],
+      undefined,
+      undefined,
+      undefined,
+      1,
+      closed,
+    );
+    const exit = new AppFailure({
+      code: "omp_exited",
+      message: "omp exited (signal SIGKILL)",
+      retryable: true,
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions, [], 2, exit),
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    await expect(controller.openExisting(threadTwo)).rejects.toMatchObject({
+      appError: { code: "omp_exited" },
+    });
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: undefined,
+      store: undefined,
+      isLoading: false,
+      isSwitching: false,
+      error: { code: "omp_exited" },
+    });
+    expect(closed).toContain(threadTwo);
   });
   test("reloads initial history when omp restarts after stopping during the first history read", async () => {
     const subscriptions: SubscriptionRecord[] = [];

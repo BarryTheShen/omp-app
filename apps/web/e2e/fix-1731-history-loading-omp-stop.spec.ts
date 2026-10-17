@@ -97,6 +97,120 @@ realTest(
     expect(realApp.problems).toEqual([]);
   },
 );
+realTest(
+  "recovers a chat picked from the sidebar when omp stops during its history load, with no reload and no restart",
+  async ({ realApp }) => {
+    let holdNextEntries = false;
+    let releaseHeldEntries: (() => void) | undefined;
+    const page = await realApp.open({
+      beforeLoad: async (target) => {
+        await target.routeWebSocket(/\/ws\?/, (socket: WebSocketRoute) => {
+          const server = socket.connectToServer();
+          socket.onMessage((message) => {
+            if (holdNextEntries && asksForEntries(message)) {
+              holdNextEntries = false;
+              releaseHeldEntries = () => server.send(message);
+              return;
+            }
+            server.send(message);
+          });
+          server.onMessage((message) => socket.send(message));
+        });
+      },
+    });
+    const transcript = page.getByRole("region", { name: "Conversation transcript" });
+    const firstComposer = await startChat(page);
+    await sendPrompt(firstComposer, "ping");
+    await expect(transcript.getByText("pong", { exact: true })).toHaveCount(1, {
+      timeout: 120_000,
+    });
+    await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
+    const firstProcess = realApp.ompProcesses()[0];
+    if (firstProcess === undefined) throw new Error("the first chat's omp process is not running");
+
+    const secondComposer = await startChat(page);
+    await sendPrompt(secondComposer, "ping second");
+    await expect(transcript.getByText("pong", { exact: true })).toHaveCount(1, {
+      timeout: 120_000,
+    });
+    await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
+    const sessionList = page.getByRole("listbox", { name: "Session list" });
+    await expect(sessionList.getByRole("option")).toHaveCount(2, { timeout: 60_000 });
+    const firstChatRow = sessionList.getByRole("option").nth(1);
+    const firstChatTitle = (await firstChatRow.innerText()).split("\n")[0]?.trim() ?? "";
+    if (firstChatTitle === "") throw new Error("the first chat's sidebar row has no title");
+    await expect(firstChatRow).toContainText(firstChatTitle);
+    await expect.poll(() => realApp.ompProcesses().length, { timeout: 30_000 }).toBe(2);
+    expect(realApp.ompProcesses()).toContain(firstProcess);
+
+    holdNextEntries = true;
+    // Session rows are newest first, so the second row is the first chat. Its process was captured before New chat
+    // opened the second process; that comparison keeps the process stopped below from belonging to the chat on screen.
+    await firstChatRow.click();
+    await expect(
+      page.locator('[role="listbox"][aria-label="Session list"] [data-selected="true"]'),
+    ).toContainText(firstChatTitle);
+    await expect.poll(() => releaseHeldEntries !== undefined, { timeout: 60_000 }).toBe(true);
+    expect(realApp.ompProcesses()).toContain(firstProcess);
+    await expect(transcript.getByText("ping second", { exact: true })).toHaveCount(1);
+
+    process.kill(firstProcess, "SIGSTOP");
+    releaseHeldEntries?.();
+    // Give the WebSocket forwarding turn time to reach the server while the picked chat's omp is stopped.
+    await waitMs(1_000);
+    process.kill(firstProcess, "SIGKILL");
+
+    const banner = errorBanner(page);
+    const bannerWasVisible = await banner
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (bannerWasVisible) {
+      await page.emulateMedia({ colorScheme: "light" });
+      await waitForFiniteAnimations(page);
+      await page.screenshot({
+        path: join(screenshots, "fix-1731-history-switch-exit-banner-light.png"),
+        fullPage: true,
+      });
+    }
+    const selectedRow = page.locator(
+      '[role="listbox"][aria-label="Session list"] [data-selected="true"]',
+    );
+    await expect(selectedRow).toContainText(firstChatTitle, { timeout: 30_000 });
+    const pickedUserBubble = transcript
+      .locator('[data-message-surface="user-bubble"]')
+      .filter({ hasText: /^\s*ping\s*$/ });
+    const pickedAssistantRow = pickedUserBubble.locator(
+      'xpath=following::div[@data-role="assistant"][1]',
+    );
+    await expect(pickedAssistantRow.getByText("pong", { exact: true })).toHaveCount(1, {
+      timeout: 120_000,
+    });
+    await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByText("No messages yet.")).toHaveCount(0);
+
+    await page.emulateMedia({ colorScheme: "light" });
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "fix-1731-history-switch-recovered-light.png"),
+      fullPage: true,
+    });
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "fix-1731-history-switch-recovered-dark.png"),
+      fullPage: true,
+    });
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "fix-1731-history-switch-recovered-390.png"),
+      fullPage: true,
+    });
+    expect(realApp.problems).toEqual([]);
+  },
+);
 
 realTest("shows and retries a history load failure in an open chat", async ({ realApp }) => {
   let failEntries = false;
