@@ -20,10 +20,12 @@ const EXPECTED_SERVICE_KEYS = [
   "live.voice",
   "stt.language",
   "tts.localVoice",
+  "tts.localSpeed",
   "speech.enabled",
   "speech.mode",
   "speech.enhanced",
   "speech.voice",
+  "speech.speed",
   "providers.maxInFlightRequests",
   "providers.openai-codex.codeMode",
   "providers.openai-codex.codeModeDirectTools",
@@ -104,7 +106,7 @@ describe("I5 settings descriptors", () => {
     expect(INTERACTION_SPEECH_SECTION.inventory).toEqual(["S3.interaction-speech"]);
     expect(PROVIDERS_SERVICES_SECTION.inventory).toEqual(["S5.providers-services"]);
     expect(I5_SETTING_KEYS).toEqual([EXPECTED_SPEECH_KEYS, EXPECTED_SERVICE_KEYS]);
-    expect(PROVIDERS_SERVICES_SECTION.controls).toHaveLength(25);
+    expect(PROVIDERS_SERVICES_SECTION.controls).toHaveLength(27);
     expect(PROVIDERS_SERVICES_SECTION.requires).toEqual(["host.config"]);
   });
 
@@ -160,6 +162,26 @@ describe("I5 settings descriptors", () => {
         snapshot,
       ),
     ).toEqual({ valid: true });
+    expect(
+      requireControl("tts.localSpeed").validate({ secret: false, value: 0.5 }, snapshot),
+    ).toEqual({ valid: true });
+    expect(
+      requireControl("tts.localSpeed").validate({ secret: false, value: 0.4 }, snapshot),
+    ).toMatchObject({ valid: false, code: "range" });
+    expect(
+      requireControl("speech.speed").validate({ secret: false, value: 1.25 }, snapshot),
+    ).toEqual({ valid: true });
+    expect(
+      requireControl("speech.speed").validate({ secret: false, value: 2.5 }, snapshot),
+    ).toEqual({ valid: true });
+    expect(
+      requireControl("speech.speed").validate({ secret: false, value: 2.6 }, snapshot),
+    ).toMatchObject({ valid: false, code: "range" });
+    expect(
+      requireControl("tts.localSpeed").validate({ secret: false, value: 2.6 }, snapshot),
+    ).toMatchObject({ valid: false, code: "range" });
+    expect(requireControl("tts.localSpeed").label).toBe("Local TTS Speed");
+    expect(requireControl("speech.speed").label).toBe("Speech Vocalization Speed");
   });
 
   test("marks live, session, reload and restart apply boundaries", () => {
@@ -171,6 +193,9 @@ describe("I5 settings descriptors", () => {
     expect(control("speech.enhanced")?.apply).toBe("session");
     expect(control("providers.fetch")?.apply).toBe("reload");
     expect(control("searxng.endpoint")?.apply).toBe("restart");
+    // The speech voice settings of the same section apply live; the two speed settings follow them.
+    expect(control("tts.localSpeed")?.apply).toBe("live");
+    expect(control("speech.speed")?.apply).toBe("live");
   });
 
   test("keeps secret ConfigStore entries write-only", () => {
@@ -199,7 +224,9 @@ describe("I5 settings panel", () => {
     expect(screen.getByTestId("live.voice-provenance").textContent).toContain(
       "Source: Saved for all projects",
     );
-    expect(screen.getByText("Local TTS Voice")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Local TTS Voice" })).toBeTruthy();
+    expect(screen.getByRole("spinbutton", { name: "Local TTS Speed" })).toBeTruthy();
+    expect(screen.getByRole("spinbutton", { name: "Speech Vocalization Speed" })).toBeTruthy();
     expect(screen.queryByText("searxng.token")).toBeNull();
   });
 

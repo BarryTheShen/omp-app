@@ -167,7 +167,8 @@ const numberControl = (
   maximum: number,
   description: string,
   apply: SettingControl["apply"] = "reload",
-) => control(key, "number", numberValidator(minimum, maximum), apply, description);
+  integer = true,
+) => control(key, "number", numberValidator(minimum, maximum, integer), apply, description);
 
 const textControl = (key: string, description: string, apply: SettingControl["apply"] = "reload") =>
   control(key, "text", textValidator, apply, description);
@@ -221,10 +222,12 @@ const SETTING_LABELS: Readonly<Record<string, string>> = {
   "stt.language": "Speech Language",
   "live.voice": "Live Voice",
   "tts.localVoice": "Local TTS Voice",
+  "tts.localSpeed": "Local TTS Speed",
   "speech.enabled": "Speech Vocalization",
   "speech.mode": "Speech Vocalization Mode",
   "speech.enhanced": "Enhanced Speech Rewriting",
   "speech.voice": "Speech Vocalization Voice",
+  "speech.speed": "Speech Vocalization Speed",
   "providers.maxInFlightRequests": "Max In-Flight Requests",
   "providers.openai-codex.codeMode": "Codex Code Mode",
   "providers.openai-codex.codeModeDirectTools": "Codex Code Mode Direct Tools",
@@ -261,6 +264,14 @@ const providerServiceControls: readonly SettingControl[] = [
     "Kokoro voice used by the local on-device text-to-speech backend.",
     "live",
   ),
+  numberControl(
+    "tts.localSpeed",
+    0.5,
+    2.5,
+    "Speaking rate of the local TTS backend. 1 is normal.",
+    "live",
+    false,
+  ),
   booleanControl(
     "speech.enabled",
     "Speak assistant output aloud through the local speech backend.",
@@ -280,6 +291,14 @@ const providerServiceControls: readonly SettingControl[] = [
     TTS_VOICE_VALUES,
     "Kokoro voice used for speech vocalization.",
     "live",
+  ),
+  numberControl(
+    "speech.speed",
+    0.5,
+    2.5,
+    "Speaking rate when reading the assistant's output aloud. 1 is normal.",
+    "live",
+    false,
   ),
   providerLimitsControl,
   enumControl(

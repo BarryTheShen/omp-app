@@ -143,16 +143,11 @@ describe("I5 W5 gate", () => {
     });
   });
 
-  test("the app registers the settings omp v18.8.9 shows, except two known gaps and one extra", () => {
+  test("the app registers every settings key omp v18.8.9 shows, plus one intentional extra", () => {
     const registered = I5_SETTINGS_SECTIONS.flatMap((section) =>
       section.controls.map((control) => control.key),
     );
-    // Not in the app yet (research/omp-changes-18.6.1-to-18.9.1.md, S4): omp 18.8.7 added the speech speed settings.
-    // When someone adds them to the I5 sections this fails, and the two keys leave this list.
-    expect(OMP_V18_8_9_UI_SETTING_KEYS.filter((key) => !registered.includes(key))).toEqual([
-      "tts.localSpeed",
-      "speech.speed",
-    ]);
+    expect(OMP_V18_8_9_UI_SETTING_KEYS.filter((key) => !registered.includes(key))).toEqual([]);
     // omp registers stt.language without a settings ui; the app lists it with the services.
     expect(registered.filter((key) => !OMP_V18_8_9_UI_SETTING_KEYS.includes(key))).toEqual([
       "stt.language",
