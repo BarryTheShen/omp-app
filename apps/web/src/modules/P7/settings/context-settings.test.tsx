@@ -742,15 +742,6 @@ describe("stored values and menus", () => {
 
     expect(store.state.writes.at(-1)?.value).toEqual({ secret: false, value: 50 });
   });
-
-  test("the three idle compaction keys say the app ignores them", async () => {
-    const store = fakeStore(withDefaults(COMPACTION_SECTION, []));
-    const section = await renderSection(store, COMPACTION_SECTION);
-
-    expect(
-      within(section).getAllByText(/Only omp's terminal uses this for now; the app ignores it\./),
-    ).toHaveLength(3);
-  });
 });
 
 describe("the compaction method order and the list fields", () => {

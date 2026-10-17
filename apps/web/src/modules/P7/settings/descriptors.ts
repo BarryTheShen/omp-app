@@ -87,39 +87,6 @@ const COMPACTION_TOKEN_OPTIONS = settingOptions(COMPACTION_TOKEN_VALUES, {
   "500000": "500,000 tokens",
 });
 
-const IDLE_THRESHOLD_VALUES = [
-  "100000",
-  "200000",
-  "300000",
-  "400000",
-  "500000",
-  "600000",
-  "700000",
-  "800000",
-  "900000",
-] as const;
-const IDLE_THRESHOLD_OPTIONS = settingOptions(IDLE_THRESHOLD_VALUES, {
-  "100000": "100,000 tokens",
-  "200000": "200,000 tokens",
-  "300000": "300,000 tokens",
-  "400000": "400,000 tokens",
-  "500000": "500,000 tokens",
-  "600000": "600,000 tokens",
-  "700000": "700,000 tokens",
-  "800000": "800,000 tokens",
-  "900000": "900,000 tokens",
-});
-
-const IDLE_DELAY_VALUES = ["60", "120", "300", "600", "1800", "3600"] as const;
-const IDLE_DELAY_OPTIONS = settingOptions(IDLE_DELAY_VALUES, {
-  "60": "1 minute",
-  "120": "2 minutes",
-  "300": "5 minutes",
-  "600": "10 minutes",
-  "1800": "30 minutes",
-  "3600": "1 hour",
-});
-
 const SNAPCOMPACT_PROMPT_VALUES = ["none", "agents-md", "all"] as const;
 const SNAPCOMPACT_PROMPT_OPTIONS = settingOptions(SNAPCOMPACT_PROMPT_VALUES, {
   none: "None",
@@ -383,11 +350,6 @@ const GENERAL_SETTINGS: readonly SettingControl[] = [
     "Extended Context",
     "Use larger context windows when a model supports them. Higher limits may cost more.",
   ),
-  booleanControl(
-    "branchSummary.enabled",
-    "Branch Summaries",
-    "Ask for a summary when you leave one conversation branch for another. Only omp's terminal uses this for now; the app ignores it.",
-  ),
 ];
 
 const COMPACTION_SETTINGS: readonly SettingControl[] = [
@@ -435,23 +397,6 @@ const COMPACTION_SETTINGS: readonly SettingControl[] = [
     "compaction.asyncEnabled",
     "Async Compaction",
     "Prepare a summary in the background as context approaches its threshold.",
-  ),
-  booleanControl(
-    "compaction.idleEnabled",
-    "Idle Compaction",
-    "Compact the context while omp is idle and above the token threshold. Only omp's terminal uses this for now; the app ignores it.",
-  ),
-  numberChoiceControl(
-    "compaction.idleThresholdTokens",
-    "Idle Compaction Threshold",
-    IDLE_THRESHOLD_OPTIONS,
-    "Choose the token count above which idle compaction can start. Only omp's terminal uses this for now; the app ignores it.",
-  ),
-  numberChoiceControl(
-    "compaction.idleTimeoutSeconds",
-    "Idle Compaction Delay",
-    IDLE_DELAY_OPTIONS,
-    "Choose how long a session must be idle before compaction begins. Only omp's terminal uses this for now; the app ignores it.",
   ),
   booleanControl(
     "compaction.supersedeReads",
@@ -610,7 +555,5 @@ export const P7_CONTEXT_SETTINGS_SECTIONS: readonly SettingsSectionDescriptor[] 
 export const P7_CONTEXT_NUMERIC_SETTINGS: readonly string[] = [
   "compaction.thresholdPercent",
   "compaction.thresholdTokens",
-  "compaction.idleThresholdTokens",
-  "compaction.idleTimeoutSeconds",
   "ttsr.repeatGap",
 ];

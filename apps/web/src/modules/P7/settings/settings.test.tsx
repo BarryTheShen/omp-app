@@ -42,7 +42,6 @@ const EXPECTED_KEYS: Readonly<Record<string, readonly string[]>> = {
     "workspace.additionalDirectories",
     "contextPromotion.enabled",
     "extendedContext",
-    "branchSummary.enabled",
   ],
   "context/Compaction": [
     "compaction.enabled",
@@ -53,9 +52,6 @@ const EXPECTED_KEYS: Readonly<Record<string, readonly string[]>> = {
     "compaction.handoffSaveToDisk",
     "compaction.remoteStreamingV2Enabled",
     "compaction.asyncEnabled",
-    "compaction.idleEnabled",
-    "compaction.idleThresholdTokens",
-    "compaction.idleTimeoutSeconds",
     "compaction.supersedeReads",
     "compaction.dropUseless",
     "compaction.experimentalContextManagement",
@@ -216,6 +212,15 @@ describe("P7 context settings sections", () => {
         expect(control.apply).toBe("live");
       }
     }
+  });
+  test("does not offer branch summaries or idle compaction controls the app cannot run", () => {
+    const keys = P7_CONTEXT_SETTINGS_SECTIONS.flatMap((section) =>
+      section.controls.map((control) => control.key),
+    );
+    expect(keys).not.toContain("branchSummary.enabled");
+    expect(keys).not.toContain("compaction.idleEnabled");
+    expect(keys).not.toContain("compaction.idleThresholdTokens");
+    expect(keys).not.toContain("compaction.idleTimeoutSeconds");
   });
 
   test("validates numeric choices and ordered compaction methods without exposing raw option codes", () => {
