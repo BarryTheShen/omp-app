@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, test } from "vitest";
 import { createQueueController } from "../../R0/actions/actions";
 import { OmpRuntimeStore } from "../../R0/store/store";
+import { QueueLaneBar } from "../bar";
 import { queueSubmitPolicy } from "../composer";
 import { createQueueAdapter, P6_QUEUE_CAPABILITIES } from "../contract";
 import { P6_DESCRIPTORS } from "../descriptors";
@@ -76,14 +77,14 @@ function draft(text: string) {
   return { text, images: [], attachmentRefs: [] };
 }
 
-function harness(state: P6GetStateFixture = P6_GET_STATE_STREAMING) {
+function harness(state: P6GetStateFixture = P6_GET_STATE_STREAMING, removeAccepted = true) {
   const store = new OmpRuntimeStore({ threadId: state.sessionId as ThreadId });
   store.applySessionState(state);
   const commands: unknown[] = [];
   const send: RpcSessionSend = async ({ command }) => {
     commands.push(command);
     if (command.type === "remove_queued_message") {
-      return { removed: true } as never;
+      return { removed: removeAccepted } as never;
     }
     if (command.type === "promote_queued_message") {
       return { promoted: true } as never;
@@ -117,10 +118,11 @@ describe("P6 CC2/CC6 acceptance gate", () => {
     }
 
     for (const fixture of Object.values(P6_QUEUE_FIXTURES)) {
-      expect(fixture.getState.queuedMessages).toEqual({
+      expect(fixture.getState.queuedMessages).toMatchObject({
         steering: expect.any(Array),
         followUp: expect.any(Array),
       });
+      expect(fixture.getState.queuedMessages?.liveSteered ?? 0).toEqual(expect.any(Number));
       for (const event of fixture.queueUpdates) {
         expect(event.type).toBe("queue_update");
         expect(event.steering).toEqual(expect.any(Array));
@@ -130,6 +132,7 @@ describe("P6 CC2/CC6 acceptance gate", () => {
     expect(P6_GET_STATE_STREAMING.queuedMessages).toEqual({
       steering: P6_QUEUE_UPDATE_STREAMING.steering,
       followUp: P6_QUEUE_UPDATE_STREAMING.followUp,
+      liveSteered: P6_QUEUE_UPDATE_STREAMING.liveSteered,
     });
     expect(P6_MUTATION_FIXTURES).toMatchObject({
       removeAccepted: { removed: true },
@@ -251,6 +254,70 @@ describe("P6 CC2/CC6 acceptance gate", () => {
     state.ingestQueue(P6_QUEUE_UPDATE_CLEARED, 2);
     state.store.applySessionState(P6_GET_STATE_CLEARED);
     expect(state.adapter.getSnapshot()).toMatchObject({ items: [], steerItems: [] });
+    state.adapter.dispose();
+  });
+
+  test("marks live-steered chips as sent and leaves Remove on the remaining steering items", async () => {
+    const state = harness();
+    state.ingestQueue(
+      {
+        ...P6_QUEUE_UPDATE_STREAMING,
+        steering: [...P6_QUEUE_UPDATE_STREAMING.steering, "steer the next tool"],
+        liveSteered: 1,
+      },
+      1,
+    );
+    render(<QueueLaneBar controller={state.adapter} />);
+
+    const sent = screen.getByText("steer the running turn").closest("li");
+    expect(sent?.getAttribute("data-queue-status")).toBe("sent");
+    expect(
+      screen.queryByRole("button", {
+        name: "Remove steering message: steer the running turn",
+      }),
+    ).toBeNull();
+    expect(screen.getByText("Sent")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Remove steering message: steer the next tool" }),
+    ).toBeTruthy();
+    expect(
+      state.adapter
+        .getSnapshot()
+        .steerItems.map(({ prompt, status, canRemove }) => [prompt, status, canRemove]),
+    ).toEqual([
+      ["steer the running turn", "sent", false],
+      ["steer the next tool", "queued", true],
+    ]);
+    const liveItem = state.adapter.getSnapshot().steerItems[0];
+    if (!liveItem) throw new Error("missing live-steered message");
+    state.adapter.adapter.remove(liveItem.id);
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "omp already sent this steering message into the reply.",
+    );
+    expect(state.commands).not.toContainEqual(
+      expect.objectContaining({ type: "remove_queued_message" }),
+    );
+    state.adapter.dispose();
+  });
+
+  test("a refused removal keeps the message queued and reports the refusal", async () => {
+    const state = harness(P6_GET_STATE_STREAMING, false);
+    render(<QueueLaneBar controller={state.adapter} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove follow-up message: summarize after yield" }),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "omp did not remove this message. It may already be part of the reply.",
+    );
+    expect(state.adapter.getSnapshot().items.map(({ prompt }) => prompt)).toEqual([
+      "summarize after yield",
+    ]);
+    expect(state.commands).toContainEqual({
+      type: "remove_queued_message",
+      message: "summarize after yield",
+      queue: "followUp",
+    });
     state.adapter.dispose();
   });
 

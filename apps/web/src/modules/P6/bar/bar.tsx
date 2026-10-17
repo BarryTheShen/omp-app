@@ -56,24 +56,28 @@ function LaneItem({
           <ArrowUpIcon aria-hidden="true" />
         </Button>
       )}
-      <Button
-        aria-label={removeLabel}
-        className="shrink-0"
-        disabled={disabled || !item.canRemove}
-        size="icon-sm"
-        title={
-          disabled
-            ? disabledReason
-            : item.canRemove
-              ? "Remove queued message"
-              : "Removing queued messages is unavailable"
-        }
-        type="button"
-        variant="ghost"
-        onClick={onRemove}
-      >
-        <XIcon aria-hidden="true" />
-      </Button>
+      {item.status === "sent" ? (
+        <span className="text-muted-foreground flex h-7 shrink-0 items-center text-xs">Sent</span>
+      ) : (
+        <Button
+          aria-label={removeLabel}
+          className="shrink-0"
+          disabled={disabled || !item.canRemove}
+          size="icon-sm"
+          title={
+            disabled
+              ? disabledReason
+              : item.canRemove
+                ? "Remove queued message"
+                : "Removing queued messages is unavailable"
+          }
+          type="button"
+          variant="ghost"
+          onClick={onRemove}
+        >
+          <XIcon aria-hidden="true" />
+        </Button>
+      )}
     </li>
   );
 }

@@ -9,12 +9,13 @@ import {
 import { QueueLaneBar } from "./bar";
 
 const initialSnapshot: QueueSnapshot = {
-  steering: ["Fix the failing test"],
+  steering: ["Fix the failing test", "Steer the next tool"],
   followUp: ["Summarize the changes after yield"],
   steeringMode: "all",
   followUpMode: "one-at-a-time",
   interruptMode: "wait",
   isStreaming: true,
+  liveSteered: 1,
 };
 
 function createFixturePort(): QueuePort {

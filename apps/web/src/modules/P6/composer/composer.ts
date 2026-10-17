@@ -266,6 +266,14 @@ export async function dequeueToEdit(
       retryable: false,
     });
   const queued = restoreDraft(item.prompt, []);
+  if (item.status === "sent") {
+    throw new AppFailure({
+      code: "conflict",
+      message:
+        "omp already sent this steering message into the reply; it cannot be returned to the message box.",
+      retryable: false,
+    });
+  }
   const existing = options.getDraft();
   const hasExisting = existing.text.length > 0 || existing.attachmentRefs.length > 0;
   let choice: QueueDraftConflictChoice = "queued";

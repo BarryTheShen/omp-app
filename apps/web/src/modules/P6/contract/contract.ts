@@ -29,7 +29,7 @@ export const P6_QUEUE_CAPABILITIES = {
   edit: "upstream.queue-edit" as CapabilityKey,
 } as const;
 
-export type QueueItemStatus = "queued";
+export type QueueItemStatus = "queued" | "sent";
 
 export interface QueueItemView extends QueueItemState {
   readonly lane: QueueLane;
@@ -50,6 +50,7 @@ export interface QueueAdapterSnapshot {
   readonly capabilities: CapabilityMap;
   readonly lastError?: AppFailure;
 }
+type LocatedQueueItem = QueueItemReference & { readonly status: QueueItemStatus };
 
 export type QueueAdapterErrorHandler = (error: AppFailure) => void;
 
@@ -138,14 +139,17 @@ function viewItems(
   lane: QueueLane,
   messages: readonly string[],
   capabilities: CapabilityMap,
+  liveSteered = 0,
 ): readonly QueueItemView[] {
   const occurrences = new Map<string, number>();
-  return messages.map((message) => {
+  return messages.map((message, index) => {
     const occurrence = occurrences.get(message) ?? 0;
     occurrences.set(message, occurrence + 1);
+    const sent = lane === "steering" && index < liveSteered;
     return {
       ...queueItem(lane, message, occurrence),
-      canRemove: hasCapability(capabilities, P6_QUEUE_CAPABILITIES.remove),
+      status: sent ? "sent" : "queued",
+      canRemove: !sent && hasCapability(capabilities, P6_QUEUE_CAPABILITIES.remove),
       canPromote: lane === "followUp" && hasCapability(capabilities, P6_QUEUE_CAPABILITIES.promote),
     };
   });
@@ -174,7 +178,7 @@ export function createQueueAdapter(
     const capabilities = port.getCapabilities();
     return {
       items: viewItems("followUp", snapshot.followUp, capabilities),
-      steerItems: viewItems("steering", snapshot.steering, capabilities),
+      steerItems: viewItems("steering", snapshot.steering, capabilities, snapshot.liveSteered ?? 0),
       liveSteered: snapshot.liveSteered ?? 0,
       steeringMode: snapshot.steeringMode,
       followUpMode: snapshot.followUpMode,
@@ -184,17 +188,23 @@ export function createQueueAdapter(
       ...(lastError ? { lastError } : {}),
     };
   };
-  const findItem = (id: string): QueueItemReference | undefined => {
+  const findItem = (id: string): LocatedQueueItem | undefined => {
     const snapshot = port.getSnapshot();
     for (const [lane, messages] of [
       ["steering", snapshot.steering],
       ["followUp", snapshot.followUp],
     ] as const) {
       const occurrences = new Map<string, number>();
-      for (const message of messages) {
+      for (const [index, message] of messages.entries()) {
         const occurrence = occurrences.get(message) ?? 0;
         occurrences.set(message, occurrence + 1);
-        if (itemId(lane, message, occurrence) === id) return { lane, message };
+        if (itemId(lane, message, occurrence) === id) {
+          return {
+            lane,
+            message,
+            status: lane === "steering" && index < (snapshot.liveSteered ?? 0) ? "sent" : "queued",
+          };
+        }
       }
     }
     return undefined;
@@ -267,7 +277,32 @@ export function createQueueAdapter(
       );
       return;
     }
-    void port.remove(item).catch((error) => report(error, "Removing the queued message failed"));
+    if (item.status === "sent") {
+      report(
+        new AppFailure({
+          code: "conflict",
+          message: "omp already sent this steering message into the reply.",
+          retryable: false,
+        }),
+        "Removing the queued message failed",
+      );
+      return;
+    }
+    void port
+      .remove({ lane: item.lane, message: item.message })
+      .then((result) => {
+        if (!result.changed) {
+          report(
+            new AppFailure({
+              code: "conflict",
+              message: "omp did not remove this message. It may already be part of the reply.",
+              retryable: false,
+            }),
+            "Removing the queued message failed",
+          );
+        }
+      })
+      .catch((error) => report(error, "Removing the queued message failed"));
   };
   const adapter = Object.defineProperties({} as ExternalThreadQueueAdapter, {
     items: { enumerable: true, get: () => getSnapshot().items },

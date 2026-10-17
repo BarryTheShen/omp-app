@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   createQueueAdapter,
   P6_QUEUE_CAPABILITIES,
@@ -24,10 +24,10 @@ const snapshot: QueueSnapshot = {
   isStreaming: true,
 };
 
-function queueController() {
+function queueController(current: QueueSnapshot = snapshot) {
   const calls: string[] = [];
   const port = {
-    getSnapshot: () => snapshot,
+    getSnapshot: () => current,
     getCapabilities: () => ({
       [P6_QUEUE_CAPABILITIES.remove]: { state: "available" as const, via: "rpc" as const },
       [P6_QUEUE_CAPABILITIES.followUp]: { state: "available" as const, via: "rpc" as const },
@@ -146,5 +146,31 @@ describe("P6 composer queue policy", () => {
     expect(result).toEqual({ removed: false, restored: false, choice: "cancel" });
     expect(calls).toEqual([]);
     expect(restore.count).toBe(0);
+  });
+  test("does not put a live-steered message back into the draft", async () => {
+    const { controller, calls } = queueController({
+      ...snapshot,
+      steering: ["sent live steering"],
+      followUp: [],
+      liveSteered: 1,
+    });
+    const item = controller.getSnapshot().steerItems[0];
+    if (!item) throw new Error("missing live steering item");
+    const restoreDraft = vi.fn();
+
+    await expect(
+      dequeueToEdit(controller, item.id, {
+        getDraft: () => ({ text: "", attachmentRefs: [] }),
+        restoreDraft,
+      }),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "conflict",
+        message:
+          "omp already sent this steering message into the reply; it cannot be returned to the message box.",
+      },
+    });
+    expect(calls).toEqual([]);
+    expect(restoreDraft).not.toHaveBeenCalled();
   });
 });

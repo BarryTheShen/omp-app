@@ -87,10 +87,11 @@ export const P6_FIXTURE_COVERAGE = [
 }>;
 
 /**
- * The fields below are the real `get_state` queue projection. The wire's queuedMessages member is
- * intentionally kept as `{ steering: string[]; followUp: string[] }`, not an app-specific item
- * object. Evidence: `.data/ref/omp-v18.6.1/docs_rpc.md:384-449` and
- * `packages/contracts/src/omp-wire/rpc-wire.generated.ts:417-421,456-477`.
+ * The fields below are omp's `get_state` queue projection. omp 18.9 adds `liveSteered` to the
+ * queuedMessages object and `queue_update` event; it counts leading steering messages already sent
+ * into the reply, which cannot be removed. Evidence: omp v18.9.1
+ * `packages/coding-agent/src/modes/rpc/wire/state.ts:42-56` and
+ * `packages/coding-agent/src/modes/rpc/rpc-mode.ts:704-716`.
  */
 export type P6GetStateFixture = Pick<
   OmpWire.SessionState,
@@ -119,6 +120,7 @@ export const P6_GET_STATE_STREAMING: P6GetStateFixture = {
   queuedMessages: {
     steering: ["steer the running turn"],
     followUp: ["summarize after yield"],
+    liveSteered: 1,
   },
 };
 
@@ -126,6 +128,7 @@ export const P6_QUEUE_UPDATE_STREAMING: OmpWire.QueueUpdateEvent = {
   type: "queue_update",
   steering: ["steer the running turn"],
   followUp: ["summarize after yield"],
+  liveSteered: 1,
 };
 
 export const P6_GET_STATE_DUPLICATE_TEXT: P6GetStateFixture = {
