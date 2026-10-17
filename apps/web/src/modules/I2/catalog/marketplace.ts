@@ -38,7 +38,9 @@ export type MarketplaceRequest =
       readonly operation: "install";
       readonly threadId: ThreadId;
       readonly name: string;
-      readonly marketplace?: string;
+      readonly marketplace: string;
+      readonly scope: "user" | "project";
+      readonly force: boolean;
     }
   | { readonly operation: "installed"; readonly threadId: ThreadId }
   | { readonly operation: "list"; readonly threadId: ThreadId }
@@ -47,22 +49,25 @@ export type MarketplaceRequest =
       readonly operation: "uninstall";
       readonly threadId: ThreadId;
       readonly name: string;
-      readonly marketplace?: string;
+      readonly marketplace: string;
+      readonly scope: "user" | "project";
     }
   | { readonly operation: "update"; readonly threadId: ThreadId; readonly marketplace?: string }
   | {
       readonly operation: "upgrade";
       readonly threadId: ThreadId;
-      readonly name?: string;
-      readonly marketplace?: string;
+      readonly name: string;
+      readonly marketplace: string;
+      readonly scope: "user" | "project";
     }
+  | { readonly operation: "upgrade"; readonly threadId: ThreadId }
   | { readonly operation: "plugins-list"; readonly threadId: ThreadId }
   | {
       readonly operation: "plugins-enable" | "plugins-disable";
       readonly threadId: ThreadId;
       readonly name: string;
-      readonly marketplace?: string;
-      readonly scope?: "user" | "project";
+      readonly marketplace: string;
+      readonly scope: "user" | "project";
     }
   | { readonly operation: "reload-plugins"; readonly threadId: ThreadId };
 
@@ -78,6 +83,7 @@ export interface MarketplaceResult {
   readonly promptSettled: boolean;
   readonly sessionSettled: boolean;
   readonly outputs: readonly MarketplaceOutput[];
+  readonly failure?: { readonly message: string };
   readonly sessionUpdates: readonly CommandRunResult["sessionUpdates"][number][];
   readonly configUpdates: readonly CommandRunResult["configUpdates"][number][];
 }
@@ -105,17 +111,9 @@ function token(value: string, label: string): string {
   return trimmed;
 }
 
-function pluginTarget(name: string, marketplace: string | undefined): string {
+function pluginTarget(name: string, marketplace: string): string {
   const normalizedName = token(name, "Plugin name");
-  if (normalizedName.includes("@") && marketplace !== undefined) {
-    throw invalid("Plugin name must not include a marketplace when marketplace is supplied.");
-  }
-  return token(
-    marketplace === undefined
-      ? normalizedName
-      : `${normalizedName}@${token(marketplace, "Marketplace")}`,
-    "Plugin target",
-  );
+  return token(`${normalizedName}@${token(marketplace, "Marketplace")}`, "Plugin target");
 }
 
 function commandFor(request: MarketplaceRequest): string {
@@ -127,7 +125,7 @@ function commandFor(request: MarketplaceRequest): string {
     case "help":
       return "/marketplace help";
     case "install":
-      return `/marketplace install ${pluginTarget(request.name, request.marketplace)}`;
+      return `/marketplace install --scope ${request.scope}${request.force ? " --force" : ""} ${pluginTarget(request.name, request.marketplace)}`;
     case "installed":
       return "/marketplace installed";
     case "list":
@@ -135,18 +133,19 @@ function commandFor(request: MarketplaceRequest): string {
     case "remove":
       return `/marketplace remove ${token(request.marketplace, "Marketplace")}`;
     case "uninstall":
-      return `/marketplace uninstall ${pluginTarget(request.name, request.marketplace)}`;
+      return `/marketplace uninstall --scope ${request.scope} ${pluginTarget(request.name, request.marketplace)}`;
     case "update":
       return `/marketplace update${request.marketplace === undefined ? "" : ` ${token(request.marketplace, "Marketplace")}`}`;
     case "upgrade":
-      return `/marketplace upgrade${request.name === undefined ? "" : ` ${pluginTarget(request.name, request.marketplace)}`}`;
+      if ("name" in request) {
+        return `/marketplace upgrade --scope ${request.scope} ${pluginTarget(request.name, request.marketplace)}`;
+      }
+      return "/marketplace upgrade";
     case "plugins-list":
       return "/plugins list";
     case "plugins-enable":
-    case "plugins-disable": {
-      const scope = request.scope === undefined ? "" : ` --scope ${request.scope}`;
-      return `/plugins ${request.operation === "plugins-enable" ? "enable" : "disable"} ${pluginTarget(request.name, request.marketplace)}${scope}`;
-    }
+    case "plugins-disable":
+      return `/plugins ${request.operation === "plugins-enable" ? "enable" : "disable"} ${pluginTarget(request.name, request.marketplace)} --scope ${request.scope}`;
     case "reload-plugins":
       return "/reload-plugins";
   }
@@ -160,6 +159,22 @@ function safeOutputText(value: string): string | undefined {
   return sanitizeCatalogText(redacted, MAX_OUTPUT_TEXT);
 }
 
+/**
+ * The shapes omp gives a refused marketplace or plugin command: `Marketplace error:` and `Plugin error:` for a failure
+ * the command threw (`slash-commands/builtin-marketplace.ts`), and the parsers' own messages and usage hints
+ * (`slash-commands/marketplace-install-parser.ts`).
+ */
+const REFUSAL =
+  /^(?:Usage: \/|(?:Marketplace|Plugin) error: |Invalid plugin ID format:|Invalid --scope value:|--scope requires a value|Unknown flag:|Unexpected argument:|Plugin ".+" (?:is|was) )/i;
+
+function failureText(outputs: readonly MarketplaceOutput[]): string | undefined {
+  const text = outputs
+    .map((output) => output.text.trim())
+    .filter(Boolean)
+    .join("\n");
+  return REFUSAL.test(text) ? text : undefined;
+}
+
 function safeResult(operation: MarketplaceOperation, result: CommandRunResult): MarketplaceResult {
   const outputs = result.outputs.slice(0, MAX_OUTPUTS).flatMap((output) => {
     const text = safeOutputText(output.text);
@@ -167,6 +182,7 @@ function safeResult(operation: MarketplaceOperation, result: CommandRunResult): 
       ? []
       : [{ text, ...(output.emittedAt === undefined ? {} : { emittedAt: output.emittedAt }) }];
   });
+  const failure = failureText(outputs);
   const sessionUpdates = result.sessionUpdates.slice(0, MAX_UPDATES).map((update) =>
     Object.freeze({
       ...update,
@@ -181,6 +197,7 @@ function safeResult(operation: MarketplaceOperation, result: CommandRunResult): 
     promptSettled: result.promptSettled,
     sessionSettled: result.sessionSettled,
     outputs: Object.freeze(outputs),
+    ...(failure === undefined ? {} : { failure: { message: failure } }),
     sessionUpdates: Object.freeze(sessionUpdates),
     configUpdates: Object.freeze(configUpdates),
   });

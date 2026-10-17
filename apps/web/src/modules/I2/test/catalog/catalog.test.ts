@@ -222,6 +222,8 @@ describe("I2 marketplace command adapter", () => {
       threadId,
       name: "demo",
       marketplace: "community",
+      scope: "project",
+      force: true,
     });
     await marketplace.run({
       operation: "plugins-disable",
@@ -230,11 +232,29 @@ describe("I2 marketplace command adapter", () => {
       marketplace: "community",
       scope: "project",
     });
+    await marketplace.run({
+      operation: "uninstall",
+      threadId,
+      name: "demo",
+      marketplace: "community",
+      scope: "user",
+    });
+    await marketplace.run({
+      operation: "upgrade",
+      threadId,
+      name: "demo",
+      marketplace: "community",
+      scope: "project",
+    });
+    await marketplace.run({ operation: "upgrade", threadId });
     const result = await marketplace.run({ operation: "reload-plugins", threadId });
 
     expect(commands).toEqual([
-      "/marketplace install demo@community",
+      "/marketplace install --scope project --force demo@community",
       "/plugins disable demo@community --scope project",
+      "/marketplace uninstall --scope user demo@community",
+      "/marketplace upgrade --scope project demo@community",
+      "/marketplace upgrade",
       "/reload-plugins",
     ]);
     expect(result.outputs).toEqual([{ text: "ok output" }]);
@@ -254,10 +274,24 @@ describe("I2 marketplace command adapter", () => {
     );
     const marketplace = createMarketplacePort(client);
     await expect(
-      marketplace.run({ operation: "install", threadId, name: "   " }),
+      marketplace.run({
+        operation: "install",
+        threadId,
+        name: "   ",
+        marketplace: "community",
+        scope: "user",
+        force: false,
+      }),
     ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
     await expect(
-      marketplace.run({ operation: "install", threadId, name: "--help" }),
+      marketplace.run({
+        operation: "install",
+        threadId,
+        name: "name",
+        marketplace: "bad id",
+        scope: "user",
+        force: false,
+      }),
     ).rejects.toMatchObject({ appError: { code: "invalid_args" } });
     expect(calls).toBe(0);
 
@@ -271,6 +305,34 @@ describe("I2 marketplace command adapter", () => {
         capability: "host.command-gateway",
       },
     });
+  });
+  test("classifies omp refusal sentences but leaves ordinary output successful", async () => {
+    const sentences = [
+      "Usage: /marketplace install [--force] [--scope user|project] <name@marketplace>",
+      'Invalid plugin ID format: "name". Expected "name@marketplace".',
+      'Plugin "name@market" is installed in both user and project scope. Use --scope user or --scope project.',
+      'Marketplace error: Plugin "name@market" is installed in both user and project scope. Use --scope user or --scope project.',
+      "Plugin error: Plugin is not installed.",
+      'Invalid --scope value: "global". Must be "user" or "project".',
+      '--scope requires a value: "user" or "project".',
+      'Unknown flag: "-x". Usage: /marketplace install [--force] [--scope user|project] <name@marketplace>',
+      'Unexpected argument: "extra". Usage: /marketplace install [--force] [--scope user|project] <name@marketplace>',
+    ];
+    for (const sentence of sentences) {
+      const marketplace = createMarketplacePort(
+        fakeClient({}, { run: async () => commandResult({ outputs: [{ text: sentence }] }) }),
+      );
+      const result = await marketplace.run({ operation: "list", threadId });
+      expect(result.failure?.message).toBe(sentence);
+    }
+
+    const ordinary = createMarketplacePort(
+      fakeClient(
+        {},
+        { run: async () => commandResult({ outputs: [{ text: "Everything completed." }] }) },
+      ),
+    );
+    expect((await ordinary.run({ operation: "list", threadId })).failure).toBeUndefined();
   });
 
   test("exposes capability gates for terminal-only skills and auth gateway paths", () => {
