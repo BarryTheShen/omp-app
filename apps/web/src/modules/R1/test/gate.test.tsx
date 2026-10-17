@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AppClient, AppClientSubscription, SubscribeOptions } from "@omp-app/client";
 import type {
   Fixture,
@@ -15,13 +15,13 @@ import type {
   ThreadId,
 } from "@omp-app/contracts";
 import { AppFailure, parseFixture, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
+import type { RpcDuplex } from "@omp-app/omp-rpc";
+import { RpcSession } from "@omp-app/omp-rpc";
+import { FixtureSession } from "@omp-app/omp-rpc/fixtures";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ShortcutRegistryProvider } from "@/shortcuts";
-import { FixtureSession } from "../../../../../../packages/omp-rpc/src/fixtures";
-import type { RpcDuplex } from "../../../../../../packages/omp-rpc/src/session";
-import { RpcSession } from "../../../../../../packages/omp-rpc/src/session";
 import type { DialogHost } from "../../U4/contract/dialog-host";
 import { SessionActionsController } from "../actions";
 import { SessionCatalogModel } from "../catalog";
@@ -35,7 +35,6 @@ import {
   R1_HISTORY_STATE,
   R1_IMPORT_RESULT,
   R1_NATIVE_SESSION_FILES,
-  R1_NATIVE_SESSION_FILES_BY_FOLDER,
   R1_OPEN_CAPABILITIES,
   R1_PIN_LIST,
   R1_REPLAY_SCENARIO,
@@ -88,14 +87,7 @@ function createCatalogFixtureClients(options: { readonly paged: boolean }): Cata
     sessionFiles: {
       async listSessions(args) {
         listCalls.push(args);
-        let sessions = R1_NATIVE_SESSION_FILES_BY_FOLDER[args.folder] ?? [];
-        if (args.folder === R1_FIXTURE_REPOSITORY) {
-          sessions = R1_NATIVE_SESSION_FILES.filter(
-            (session) =>
-              session.cwd === R1_FIXTURE_REPOSITORY ||
-              session.cwd.startsWith(`${R1_FIXTURE_REPOSITORY}/`),
-          );
-        }
+        const sessions = R1_NATIVE_SESSION_FILES;
         if (options.paged && args.folder === R1_FIXTURE_FOLDER) {
           if (args.cursor === undefined) {
             return { sessions: sessions.slice(0, 2), nextCursor: "folder-page-2" };
@@ -219,10 +211,10 @@ function createHistoryClient(
 }
 
 function loadReplayFixture(): Fixture {
-  const text = readFileSync(
-    resolve(process.cwd(), "../../packages/omp-rpc/fixtures/prompt-stream.fixture.jsonl"),
-    "utf8",
+  const fixturePath = fileURLToPath(
+    import.meta.resolve("@omp-app/omp-rpc/fixtures/prompt-stream.fixture.jsonl"),
   );
+  const text = readFileSync(fixturePath, "utf8");
   const parsed = parseFixture(text);
   if (!parsed.ok) throw new Error(`${R1_REPLAY_SCENARIO}: ${parsed.error.message}`);
   return parsed.value;
@@ -261,7 +253,7 @@ async function replayPromptToSubscriptions(
 afterEach(cleanup);
 
 describe("R1 native catalog fixture", () => {
-  test("keeps folder and project scope boundaries while preserving native metadata", async () => {
+  test("requests folder and project roots while preserving native metadata", async () => {
     const folderClients = createCatalogFixtureClients({ paged: true });
     const folderCatalog = new SessionCatalogModel({
       scope: folderScope,
@@ -313,18 +305,15 @@ describe("R1 native catalog fixture", () => {
       R1_THREAD_IDS.warning,
       R1_THREAD_IDS.active,
       R1_THREAD_IDS.worktree,
+      R1_THREAD_IDS.unrelated,
       R1_THREAD_IDS.untitled,
       R1_THREAD_IDS.repository,
     ]);
-    expect(projectPage.sessions.map((session) => session.id)).not.toContain(
-      R1_THREAD_IDS.unrelated,
-    );
     expect(projectClients.listCalls.map((call) => call.folder)).toEqual([
       R1_FIXTURE_REPOSITORY,
       R1_FIXTURE_WORKTREE,
     ]);
   });
-
   test("reconciles an updated native header and never resurrects a removed id", async () => {
     const clients = createCatalogFixtureClients({ paged: false });
     const original = R1_NATIVE_SESSION_FILES.find((session) => session.id === R1_THREAD_IDS.active);
@@ -391,7 +380,10 @@ describe("R1 remote adapter and typed native actions", () => {
     expect(page.threads.map((thread) => thread.remoteId)).toEqual([
       R1_THREAD_IDS.warning,
       R1_THREAD_IDS.active,
+      R1_THREAD_IDS.worktree,
+      R1_THREAD_IDS.unrelated,
       R1_THREAD_IDS.untitled,
+      R1_THREAD_IDS.repository,
     ]);
     expect(page.threads[0]).toMatchObject({
       status: "regular",

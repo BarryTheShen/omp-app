@@ -33,6 +33,22 @@ import {
 } from "../fixtures";
 import { QueueModeSelector } from "../modes";
 
+const EXPECTED_FIXTURE_LABELS = {
+  "P5.promote-queued-message": ["queue-mutations", "promote-result"],
+  "P5.queue": ["queue-composer", "local-queue-command"],
+  "P5.remove-queued-message": ["queue-mutations", "remove-result"],
+  "P5.follow-up-queue-mode": ["queue-modes", "all-and-one-at-a-time"],
+  "P5.interrupt-mode": ["queue-modes", "immediate-and-wait"],
+  "P5.steering-queue-mode": ["queue-modes", "all-and-one-at-a-time"],
+  "P5.queue-mode-selector-component": ["queue-modes", "session-scoped-selector"],
+  "P5.dequeue-queued-message": ["queue-composer", "restore-draft"],
+  "P5.follow-up-on-ctrl-enter-ctrl-q": ["queue-composer", "follow-up-chords"],
+  "P5.queue-shorthand-and-queued-lists": ["queue-composer", "shorthand-and-sequential-list"],
+  "P5.steer-on-enter-while-streaming": ["queue-composer", "streaming-enter-steer"],
+  "P5.app-message-dequeue": ["queue-composer", "alt-up-descriptor"],
+  "P5.app-message-followup": ["queue-composer", "ctrl-enter-descriptor"],
+  "P5.queued-steering-follow-up-bar": ["queue-bar", "two-lane-authoritative-snapshot"],
+} as const;
 afterEach(cleanup);
 
 const capabilities = {
@@ -93,6 +109,12 @@ describe("P6 CC2/CC6 acceptance gate", () => {
     expect(fixtureRows).toHaveLength(P6_INVENTORY_ROWS.length);
     expect(new Set(fixtureRows).size).toBe(P6_INVENTORY_ROWS.length);
     expect([...fixtureRows].sort()).toEqual([...P6_INVENTORY_ROWS].sort());
+    expect(Object.keys(EXPECTED_FIXTURE_LABELS).sort()).toEqual([...P6_INVENTORY_ROWS].sort());
+    for (const fixture of P6_FIXTURE_COVERAGE) {
+      expect([fixture.scenario, fixture.proof]).toEqual(
+        EXPECTED_FIXTURE_LABELS[fixture.inventoryId as keyof typeof EXPECTED_FIXTURE_LABELS],
+      );
+    }
 
     for (const fixture of Object.values(P6_QUEUE_FIXTURES)) {
       expect(fixture.getState.queuedMessages).toEqual({

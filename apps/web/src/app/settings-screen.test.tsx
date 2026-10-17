@@ -127,6 +127,30 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test("explains unavailable Git and Power settings", () => {
+  const state = notificationsConfig([]);
+  render(
+    <SettingsScreen
+      client={fakeAppClient(state)}
+      capabilities={CAPABILITIES}
+      folder={null}
+      onClose={() => undefined}
+      threadId={null}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Interaction" }));
+
+  const gitMessage = "Git settings are not built into this app yet.";
+  const powerMessage = "Power settings are not built into this app yet.";
+  const renderedGitMessage = screen.getByText(gitMessage);
+  const renderedPowerMessage = screen.getByText(powerMessage);
+  expect(renderedGitMessage.textContent).toBe(gitMessage);
+  expect(renderedPowerMessage.textContent).toBe(powerMessage);
+  expect(renderedGitMessage.closest("[hidden]")).toBeNull();
+  expect(renderedPowerMessage.closest("[hidden]")).toBeNull();
+});
+
 describe("the generic settings panel after a save omp refuses in part", () => {
   test("names the setting omp did not save, marks its row, and offers neither Retry nor Applied", async () => {
     const state = notificationsConfig(["error.notify"]);

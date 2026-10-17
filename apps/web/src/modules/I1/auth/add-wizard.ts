@@ -314,6 +314,7 @@ export async function runMcpAddWizard({
     );
     if (!confirmed) return { status: "cancelled" };
 
+    // A cancelled add may already be saved; the caller must re-list servers before retrying.
     const added = await servers.add(addArgs, portCallOptions);
     if (added.server === null) {
       throw new AppFailure({

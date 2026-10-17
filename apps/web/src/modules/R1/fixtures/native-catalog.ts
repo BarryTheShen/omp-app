@@ -267,22 +267,6 @@ export const R1_NATIVE_SESSION_FILES: readonly SessionFile[] = Object.freeze([
   },
 ]);
 
-export const R1_NATIVE_SESSION_FILES_BY_FOLDER: Readonly<Record<string, readonly SessionFile[]>> =
-  Object.freeze({
-    [R1_FIXTURE_FOLDER]: R1_NATIVE_SESSION_FILES.filter(
-      (session) => session.cwd === R1_FIXTURE_FOLDER,
-    ),
-    [R1_FIXTURE_WORKTREE]: R1_NATIVE_SESSION_FILES.filter(
-      (session) => session.cwd === R1_FIXTURE_WORKTREE,
-    ),
-    [R1_FIXTURE_REPOSITORY]: R1_NATIVE_SESSION_FILES.filter(
-      (session) => session.cwd === R1_FIXTURE_REPOSITORY,
-    ),
-    [R1_FIXTURE_UNRELATED]: R1_NATIVE_SESSION_FILES.filter(
-      (session) => session.cwd === R1_FIXTURE_UNRELATED,
-    ),
-  });
-
 export const R1_PIN_LIST: SessionPinListResult = {
   pins: [{ sessionId: R1_THREAD_IDS.warning, pinned: true }],
   revision: "pins-r7",

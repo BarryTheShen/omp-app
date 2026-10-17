@@ -169,8 +169,8 @@ function unavailableReason(
     return state !== "available" && state !== "fallback";
   });
   if (missing === undefined) return undefined;
-  if (missing === "host.git") return "Git settings are unavailable for this workspace.";
-  if (missing === "host.power") return "Power settings are unavailable on this device.";
+  if (missing === "host.git") return "Git settings are not built into this app yet.";
+  if (missing === "host.power") return "Power settings are not built into this app yet.";
   switch (capabilities[missing]?.via) {
     case "upstream":
       return "This setting needs a newer version of omp.";
@@ -563,15 +563,9 @@ export function SettingsScreen({
   }, []);
   const configStatus = capabilities["host.config"]?.state;
   const configAvailable = configStatus === "available" || configStatus === "fallback";
-  // A section the host or omp cannot serve is left out, not listed disabled.
-  const sections = useMemo(
-    () =>
-      SETTINGS_GROUPS[activeTab].filter(
-        (descriptor) => unavailableReason(descriptor, capabilities) === undefined,
-      ),
-    [activeTab, capabilities],
-  );
-  // The tabs with a section to show. A tab whose sections are all unavailable is left out.
+  // Keep unavailable settings visible in the section list so their reason is clear, but do not let them open an editor.
+  const sections = useMemo(() => SETTINGS_GROUPS[activeTab], [activeTab]);
+  // A tab without any available section is left out.
   const shownTabs = TAB_ORDER.filter((tab) =>
     SETTINGS_GROUPS[tab].some(
       (descriptor) => unavailableReason(descriptor, capabilities) === undefined,
@@ -584,7 +578,10 @@ export function SettingsScreen({
   }, [normalizedSearch, sections]);
   const selectedId = selectedSections[activeTab];
   const activeSection =
-    visibleSections.find((section) => section.id === selectedId) ?? visibleSections[0];
+    visibleSections.find(
+      (section) =>
+        section.id === selectedId && unavailableReason(section, capabilities) === undefined,
+    ) ?? visibleSections.find((section) => unavailableReason(section, capabilities) === undefined);
   const hasDirtySections = dirtySections.size > 0;
   // Tells the overlay whether closing now would lose edits, so an outside press can ask first. The last
   // value sent is remembered, so a new callback on each render does not send the same value again.
@@ -738,10 +735,13 @@ export function SettingsScreen({
                   ) : (
                     <div role="listbox" aria-label={`${TAB_LABELS[activeTab]} settings sections`}>
                       {visibleSections.map((descriptor) => {
+                        const reason = unavailableReason(descriptor, capabilities);
                         return (
                           <ListRow
                             key={descriptor.id}
                             title={descriptor.title}
+                            detail={reason}
+                            disabled={reason !== undefined}
                             selected={activeSection?.id === descriptor.id}
                             onSelect={() => selectSection(descriptor)}
                           />
