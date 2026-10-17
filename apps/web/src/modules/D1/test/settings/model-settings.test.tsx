@@ -102,14 +102,22 @@ describe("D1 model settings sections", () => {
     expect(modelSettingsSections[2]?.controls.map((control) => control.key)).not.toContain(
       "modelRoleStorage",
     );
-    expect(modelSettingsSections[3]?.controls.map((control) => control.key)).toContain(
-      "retry.modelFallback",
+    expect(modelSettingsSections[3]?.controls.map((control) => control.key)).toEqual(
+      expect.arrayContaining(["retry.modelFallback", "retry.fallbackChains"]),
     );
     expect(modelSettingsSections[4]?.controls.map((control) => control.key)).toEqual([
       "prewalk.enabled",
     ]);
     expect(modelSettingsSections[5]?.controls.map((control) => control.key)).toEqual([
       "images.describeForTextModels",
+      "images.urls.enabled",
+      "images.urls.backends",
+      "images.urls.command",
+      "images.urls.publicBaseUrl",
+      "images.urls.ttlHours",
+      "images.urls.bindHost",
+      "images.urls.sshTarget",
+      "images.urls.sshRemotePort",
     ]);
   });
 

@@ -1,6 +1,8 @@
 import type {
   ConfigSnapshot,
+  MapSettingControl,
   SettingControl,
+  SettingField,
   SettingsSectionDescriptor,
   SettingValue,
 } from "@/modules/S1/settings-kit";
@@ -124,6 +126,69 @@ function listControl(
         ? valid()
         : { valid: false, code: "list", message: "Enter a comma-separated list." },
     apply,
+  };
+}
+function textControl(
+  key: string,
+  label: string,
+  description: string,
+  apply: SettingControl["apply"] = "restart",
+): SettingControl {
+  return {
+    key,
+    label,
+    description,
+    kind: "text",
+    secret: false,
+    validate: (value: SettingValue) =>
+      !value.secret && typeof value.value === "string"
+        ? valid()
+        : { valid: false, code: "text", message: "Enter text." },
+    apply,
+  };
+}
+
+function fallbackChainsControl(): MapSettingControl {
+  const value: SettingField = {
+    label: "Fallback selectors",
+    kind: "list",
+    placeholder: "provider/model",
+  };
+  return {
+    key: "retry.fallbackChains",
+    label: "Retry Fallback Chains",
+    description:
+      "Map a role, model selector, or provider wildcard to an ordered list of fallback selectors. Bare entries inherit the failed turn's thinking level.",
+    kind: "map",
+    secret: false,
+    keyLabel: "Role or model selector",
+    keyPlaceholder: "default or provider/model",
+    value,
+    addLabel: "Add fallback chain",
+    emptyLabel: "No retry fallback chains",
+    validate: (value) => {
+      if (
+        value.secret ||
+        typeof value.value !== "object" ||
+        value.value === null ||
+        Array.isArray(value.value)
+      )
+        return {
+          valid: false,
+          code: "record",
+          message: "Enter fallback selectors by role or model.",
+        };
+      const invalid = Object.entries(value.value).some(
+        ([key, fallbacks]) =>
+          key.trim().length === 0 ||
+          !Array.isArray(fallbacks) ||
+          fallbacks.some((item) => typeof item !== "string" || item.trim().length === 0),
+      );
+      return invalid
+        ? { valid: false, code: "record", message: "Each fallback chain needs selectors in order." }
+        : valid();
+    },
+    apply: "live",
   };
 }
 
@@ -368,6 +433,7 @@ export const modelRetryFallbackSection = section("D1.modelRetryFallback", "Retry
     "Anthropic Server-Side Fallback",
     "Opt into Anthropic server-side model fallback.",
   ),
+  fallbackChainsControl(),
 ]);
 
 export const modelPrewalkSection = section("D1.modelPrewalk", "Prewalk", [
@@ -386,8 +452,57 @@ export const modelVisionSection = section("D1.modelVision", "Vision", [
     "Describe images when the active model cannot accept images.",
     "session",
   ),
+  booleanControl(
+    "images.urls.enabled",
+    "Serve Images as URLs",
+    "Publish outgoing images through the configured backend chain and send URL-fetching providers short URLs instead of inline base64.",
+    "live",
+  ),
+  listControl(
+    "images.urls.backends",
+    "Image URL Backends",
+    "Ordered destinations tried when publishing images for provider access.",
+    "live",
+  ),
+  textControl(
+    "images.urls.command",
+    "Image Upload Command",
+    "Argv template for the command backend; {file} is the image path and {mime}/{ext} are optional.",
+    "live",
+  ),
+  textControl(
+    "images.urls.publicBaseUrl",
+    "Image URL Public Base",
+    "Externally reachable base URL fronting the blob server.",
+    "live",
+  ),
+  numberControl(
+    "images.urls.ttlHours",
+    "Image URL Lifetime (hours)",
+    "Serving window for locally hosted image URLs; 0 keeps links alive while the broker runs.",
+    { minimum: 0, integer: true },
+    "live",
+  ),
+  textControl(
+    "images.urls.bindHost",
+    "Image URL Bind Host",
+    "Host the blob server binds to; loopback for tunnels, 0.0.0.0 for direct serving.",
+    "live",
+  ),
+  textControl(
+    "images.urls.sshTarget",
+    "Image URL SSH Target",
+    "user@host destination for the SSH reverse forward.",
+    "live",
+  ),
+  numberControl(
+    "images.urls.sshRemotePort",
+    "Image URL SSH Remote Port",
+    "Remote listen port of the SSH reverse forward.",
+    { minimum: 1, maximum: 65535, integer: true },
+    "live",
+  ),
 ]);
-
 export const modelSettingsSections = [
   modelThinkingSection,
   modelSamplingSection,
