@@ -148,4 +148,38 @@ describe("a typed /session delete publishes the removal the sidebar's own delete
       await rm(root, { recursive: true, force: true });
     }
   });
+  test("a typed delete from the holder during its omp stop is refused as finishing before omp runs", async () => {
+    await mkdir(WORKTREE_DATA, { recursive: true });
+    const root = await mkdtemp(path.join(WORKTREE_DATA, "gateway-delete-stopping-"));
+    try {
+      const cwd = "/workspace/app";
+      const store = new SessionFileStore({
+        sessionsRoot: path.join(root, "sessions"),
+        home: root,
+        tempRoot: path.join(root, "tmp"),
+        serverStopping: () => true,
+        views: {
+          viewsOf: () => 1,
+          watcherCount: () => 1,
+          releaseViews: async () => undefined,
+        },
+      });
+      const file = await writeChat(store, cwd, "chat-stopping");
+      const published: Published[] = [];
+      let ompRan = false;
+      const run = deleteHandler(store, published, async () => {
+        ompRan = true;
+      });
+
+      await expect(run("chat-stopping")).resolves.toEqual({
+        outcome: "refused",
+        reason: "finishing",
+      });
+      expect(ompRan).toBe(false);
+      expect(published).toEqual([]);
+      await access(file);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

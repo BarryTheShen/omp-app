@@ -717,6 +717,28 @@ describe("SessionFileStore.checkOmpDelete and finishOmpDelete (a delete omp runs
       await rm(root, { recursive: true, force: true });
     }
   });
+  test("the check refuses a stopping chat when the caller holds its only view", async () => {
+    const root = await makeTempRoot();
+    try {
+      const cwd = "/workspace/app";
+      const file = path.join(storeFor(root).bucketPath(cwd), "2026-10-10_chat-stopping.jsonl");
+      await writeSession(file, "chat-stopping", cwd);
+      const views = {
+        viewsOf: () => 1,
+        watcherCount: () => 1,
+        releaseViews: async () => undefined,
+      };
+      const store = storeFor(root, { serverStopping: () => true, views });
+
+      expect(await store.checkOmpDelete("chat-stopping", { connectionId: "app" })).toEqual({
+        outcome: "refused",
+        reason: "finishing",
+      });
+      expect(await exists(file)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
   test("the finish stops the chat's omp with the caller's own view counted, then removes the file omp wrote back", async () => {
     const root = await makeTempRoot();

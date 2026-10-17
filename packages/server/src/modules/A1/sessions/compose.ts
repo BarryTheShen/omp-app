@@ -12,6 +12,7 @@ export interface ServerChats {
   watched(threadId: ThreadId): boolean;
   busyOf(threadId: ThreadId): boolean | undefined;
   busyIn(folder: string): readonly ThreadId[];
+  isStopping(threadId: ThreadId): boolean;
   stopIfUnwatched(threadId: ThreadId, purpose: "deleted", ownWatchers: number): Promise<void>;
 }
 
@@ -47,8 +48,9 @@ export function createServerSessionFileStore(options: {
   return new SessionFileStore({
     sessionsRoot: options.sessionsRoot,
     home: options.home,
-    leaseProbe: options.leaseProbe,
     serverOwnsSession: (sessionId) => options.chats.has(ThreadId.parse(sessionId)),
+    leaseProbe: options.leaseProbe,
+    serverStopping: (sessionId) => options.chats.isStopping(ThreadId.parse(sessionId)),
     serverWatches: (sessionId) => options.chats.watched(ThreadId.parse(sessionId)),
     stopUnwatched: (sessionId, ownViews) =>
       options.chats.stopIfUnwatched(ThreadId.parse(sessionId), "deleted", ownViews),

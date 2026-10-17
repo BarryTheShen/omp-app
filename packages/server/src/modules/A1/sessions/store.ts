@@ -612,10 +612,11 @@ export class SessionFileStore {
   }
 
   /**
-   * The checks a `/session delete` omp runs itself gets before omp runs: the chat's turn does not run, and no other view
-   * holds it. omp writes a chat back once its file is gone, so a chat another view could still write must not be deleted
-   * at all; the sidebar's own delete makes the same refusals (`deleteSession`). A refusal comes back with its reason, so
-   * the person reads it in the header. The file is undefined when the chat has none on disk: omp's own reply says so.
+   * The checks a `/session delete` omp runs itself gets before omp runs: the registry is not already stopping the chat,
+   * the chat's turn does not run, and no other view holds it. omp writes a chat back once its file is gone, so it must not
+   * be deleted while another view could still write it. The sidebar's own delete makes the same refusals (`deleteSession`).
+   * A refusal comes back with its reason, so the person reads it in the header. The file is undefined when the chat has
+   * none on disk: omp's own reply says so.
    */
   async checkOmpDelete(
     sessionId: string,
@@ -626,6 +627,9 @@ export class SessionFileStore {
   > {
     const file = await this.findSession(sessionId);
     if (file === undefined) return { outcome: "clear", file: undefined };
+    if (this.#options.serverStopping?.(file.id) === true) {
+      return { outcome: "refused", reason: "finishing" };
+    }
     if (file.turn === "running") return { outcome: "refused", reason: "running" };
     const views = this.#options.views;
     if (

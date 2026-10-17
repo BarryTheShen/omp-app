@@ -192,6 +192,8 @@ export interface SessionFileStoreOptions {
   readonly ownersRoot?: string;
   readonly serverSessionIds?: ReadonlySet<string> | (() => ReadonlySet<string>);
   readonly serverOwnsSession?: (sessionId: string, sessionFile: string) => boolean;
+  /** Whether this server's process registry is currently stopping the chat's omp. */
+  readonly serverStopping?: (sessionId: string) => boolean;
   /** Whether a view holds the chat open. A chat the server keeps only for omp's idle time is not watched. */
   readonly serverWatches?: (sessionId: string) => boolean;
   /**
