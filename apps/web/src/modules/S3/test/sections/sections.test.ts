@@ -1,9 +1,20 @@
+import type { ConfigEntry } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { ConfigSnapshot, SettingControl, SettingValue } from "../../../S1/settings-kit";
 import { S3_SETTINGS_SECTIONS } from "../../sections";
 import { TOOLS_SETTINGS_SECTIONS } from "../../tools";
 
 const snapshot: ConfigSnapshot = { folder: null, revision: "revision-1", entries: [] };
+function snapshotWithValues(values: Readonly<Record<string, number>>): ConfigSnapshot {
+  const entries: ConfigEntry[] = Object.entries(values).map(([key, value]) => ({
+    key,
+    secret: false,
+    value,
+    source: "global",
+    overrides: [],
+  }));
+  return { folder: null, revision: "revision-1", entries };
+}
 
 const EXPECTED_KEYS = [
   [
@@ -126,8 +137,8 @@ function control(key: string): SettingControl {
   return found;
 }
 
-function validate(key: string, value: SettingValue) {
-  return control(key).validate(value, snapshot);
+function validate(key: string, value: SettingValue, config: ConfigSnapshot = snapshot) {
+  return control(key).validate(value, config);
 }
 
 const LIVE_TOOLS_SETTINGS = [
@@ -372,6 +383,78 @@ describe("S3 Tools and Tasks sections", () => {
     expect(validate("goal.continuationModes", { secret: false, value: ["interactive"] })).toEqual({
       valid: true,
     });
+  });
+
+  test("enforces GitHub TTL ordering and output head/tail spill limits", () => {
+    const github = snapshotWithValues({
+      "github.cache.softTtlSec": 10,
+      "github.cache.hardTtlSec": 20,
+    });
+    expect(validate("github.cache.softTtlSec", { secret: false, value: 10 }, github)).toEqual({
+      valid: true,
+    });
+    expect(validate("github.cache.softTtlSec", { secret: false, value: 21 }, github)).toMatchObject(
+      {
+        valid: false,
+        code: "relationship",
+      },
+    );
+    expect(validate("github.cache.hardTtlSec", { secret: false, value: 9 }, github)).toMatchObject({
+      valid: false,
+      code: "relationship",
+    });
+    expect(validate("github.cache.hardTtlSec", { secret: false, value: 20 }, github)).toEqual({
+      valid: true,
+    });
+
+    const output = snapshotWithValues({
+      "tools.artifactSpillThreshold": 50,
+      "tools.artifactTailBytes": 20,
+      "tools.artifactHeadBytes": 20,
+    });
+    expect(validate("tools.artifactHeadBytes", { secret: false, value: 30 }, output)).toEqual({
+      valid: true,
+    });
+    expect(validate("tools.artifactHeadBytes", { secret: false, value: 31 }, output)).toMatchObject(
+      {
+        valid: false,
+        code: "relationship",
+      },
+    );
+    expect(validate("tools.artifactTailBytes", { secret: false, value: 31 }, output)).toMatchObject(
+      {
+        valid: false,
+        code: "relationship",
+      },
+    );
+    expect(
+      validate("tools.artifactSpillThreshold", { secret: false, value: 39 }, output),
+    ).toMatchObject({
+      valid: false,
+      code: "relationship",
+    });
+  });
+
+  test("accepts omp tilde worktree bases and refuses bare relative paths", () => {
+    for (const base of [
+      "",
+      "/workspace/projects",
+      "~",
+      "~/omp-worktrees",
+      "~\\omp-worktrees",
+      "C:\\omp-worktrees",
+      "\\\\server\\share\\omp-worktrees",
+    ]) {
+      expect(validate("worktree.base", { secret: false, value: base }), base).toEqual({
+        valid: true,
+      });
+    }
+    for (const base of ["relative/projects", "~someone/omp-worktrees"]) {
+      expect(validate("worktree.base", { secret: false, value: base }), base).toMatchObject({
+        valid: false,
+        code: "path",
+      });
+    }
   });
 
   test("marks tool/task runtime boundaries explicitly", () => {

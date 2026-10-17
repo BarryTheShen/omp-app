@@ -253,7 +253,7 @@ export const S3_CONFLICT_FIXTURES: readonly S3ConflictFixture[] = [
     localRevision: PROJECT_REVISION_FIXTURE,
     remoteRevision: "s3-tools-remote-revision" as Revision,
     key: "tools.artifactTailBytes",
-    localValue: 512,
+    localValue: 0,
     remoteValue: 1_024,
   },
   {

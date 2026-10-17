@@ -51,7 +51,11 @@ type SettingControlBase = {
   readonly label: string;
   readonly description?: string;
   readonly secret: boolean;
-  readonly validate: (value: SettingValue, snapshot: ConfigSnapshot) => ValidationResult;
+  readonly validate: (
+    value: SettingValue,
+    snapshot: ConfigSnapshot,
+    context?: SettingValidationContext,
+  ) => ValidationResult;
   readonly apply: ApplyBoundary;
   readonly preview?: (value: SettingValue, snapshot: ConfigSnapshot) => PreviewPatch | null;
   /** Shown but not editable in the app; `reason` says, in plain English, where to change it. */
@@ -121,6 +125,11 @@ export type ConfigSnapshot = {
 
 export type StagedSettings = {
   readonly snapshot: ConfigSnapshot;
+  readonly edits: Readonly<Record<string, SettingValue>>;
+};
+
+export type SettingValidationContext = {
+  readonly phase: "stage" | "commit";
   readonly edits: Readonly<Record<string, SettingValue>>;
 };
 
@@ -256,13 +265,14 @@ export function stage(
       validation: { valid: false, code: "read-only", message: control.readOnly.reason },
     };
   }
-  const validation = validate(control, value, state.snapshot);
+  const edits = { ...state.edits, [key]: value };
+  const validation = validate(control, value, state.snapshot, { phase: "stage", edits });
   if (!validation.valid) return { ok: false, validation };
   return {
     ok: true,
     state: Object.freeze({
       snapshot: state.snapshot,
-      edits: Object.freeze({ ...state.edits, [key]: value }),
+      edits: Object.freeze(edits),
     }),
   };
 }
@@ -275,13 +285,14 @@ export function validate(
   control: SettingControl,
   value: SettingValue,
   snapshot: ConfigSnapshot,
+  context?: SettingValidationContext,
 ): ValidationResult {
-  if (control.secret === value.secret) return checkValue(control, value, snapshot);
+  if (control.secret === value.secret) return checkValue(control, value, snapshot, context);
   const hidden = snapshot.entries.some((entry) => entry.key === control.key && entry.secret);
   if (value.secret && !control.secret && hidden) {
     return value.action === "unset"
       ? { valid: true }
-      : checkValue(control, { secret: false, value: value.value }, snapshot);
+      : checkValue(control, { secret: false, value: value.value }, snapshot, context);
   }
   return {
     valid: false,
@@ -294,9 +305,10 @@ function checkValue(
   control: SettingControl,
   value: SettingValue,
   snapshot: ConfigSnapshot,
+  context?: SettingValidationContext,
 ): ValidationResult {
   try {
-    const result = control.validate(value, snapshot);
+    const result = control.validate(value, snapshot, context);
     return result.valid ? result : { ...result, message: result.message || "Invalid value" };
   } catch {
     return { valid: false, code: "validator-error", message: "The value could not be validated." };
@@ -316,7 +328,10 @@ export function preview(
       validation: { valid: false, code: "unknown-key", message: `No staged value for ${key}` },
     };
   }
-  const validation = validate(control, value, state.snapshot);
+  const validation = validate(control, value, state.snapshot, {
+    phase: "stage",
+    edits: state.edits,
+  });
   if (!validation.valid) return { ok: false, validation };
   try {
     return { ok: true, patch: control.preview?.(value, state.snapshot) ?? null };
@@ -357,7 +372,10 @@ export async function commit(
     return value ? [{ control, value }] : [];
   });
   for (const { control, value } of writes) {
-    const validation = validate(control, value, state.snapshot);
+    const validation = validate(control, value, state.snapshot, {
+      phase: "commit",
+      edits: state.edits,
+    });
     if (!validation.valid)
       throw new AppFailure({ code: "invalid_args", message: validation.message, retryable: false });
   }

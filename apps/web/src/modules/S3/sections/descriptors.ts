@@ -1,9 +1,11 @@
 import type { JsonValue } from "@omp-app/contracts";
 import type {
+  ConfigSnapshot,
   MapSettingControl,
   ScalarSettingControl,
   SettingControl,
   SettingsSectionDescriptor,
+  SettingValidationContext,
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
@@ -19,7 +21,11 @@ import { numberRangeWords, settingOptions } from "../../S1/settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const;
 
-type Validator = (value: SettingValue) => ValidationResult;
+type Validator = (
+  value: SettingValue,
+  snapshot: ConfigSnapshot,
+  context?: SettingValidationContext,
+) => ValidationResult;
 type UndescribedScalarSettingControl = Omit<ScalarSettingControl, "label" | "description">;
 
 function plain(value: SettingValue): JsonValue | undefined {
@@ -64,6 +70,88 @@ function numberValidator(minimum: number, maximum: number, integer = true): Vali
           message: `Enter ${numberRangeWords(integer, minimum, maximum)}.`,
         };
   };
+}
+
+function snapshotNumber(
+  snapshot: ConfigSnapshot,
+  key: string,
+  context?: SettingValidationContext,
+): number | undefined {
+  const edit = context?.edits[key];
+  if (edit !== undefined) {
+    return !edit.secret && typeof edit.value === "number" ? edit.value : undefined;
+  }
+  const entry = snapshot.entries.find((candidate) => candidate.key === key);
+  return entry && !entry.secret && typeof entry.value === "number" ? entry.value : undefined;
+}
+
+function relationalNumberValidator(
+  _key: string,
+  minimum: number,
+  maximum: number,
+  relation: (
+    candidate: number,
+    snapshot: ConfigSnapshot,
+    context?: SettingValidationContext,
+  ) => boolean,
+  message: string,
+): Validator {
+  const base = numberValidator(minimum, maximum);
+  return (value, snapshot, context) => {
+    const result = base(value, snapshot);
+    if (!result.valid) return result;
+    const candidate = plain(value);
+    if (typeof candidate !== "number") return { valid: false, code: "range", message };
+    if (context?.phase === "stage") return { valid: true };
+    return relation(candidate, snapshot, context)
+      ? { valid: true }
+      : { valid: false, code: "relationship", message };
+  };
+}
+
+function absoluteWorktreeBaseValidator(value: SettingValue): ValidationResult {
+  const candidate = plain(value);
+  if (typeof candidate !== "string" || candidate.includes("\0")) {
+    return { valid: false, code: "path", message: "Enter an absolute path or leave it empty." };
+  }
+  if (
+    candidate.length === 0 ||
+    candidate.startsWith("/") ||
+    candidate.startsWith("\\\\") ||
+    candidate === "~" ||
+    candidate.startsWith("~/") ||
+    candidate.startsWith("~\\") ||
+    /^[A-Za-z]:[\\/]/.test(candidate)
+  ) {
+    return { valid: true };
+  }
+  return { valid: false, code: "path", message: "Enter an absolute path or leave it empty." };
+}
+
+function artifactLimitValidator(key: string): Validator {
+  return relationalNumberValidator(
+    key,
+    0,
+    1_048_576,
+    (candidate, snapshot, context) => {
+      const spill =
+        key === "tools.artifactSpillThreshold"
+          ? candidate
+          : snapshotNumber(snapshot, "tools.artifactSpillThreshold", context);
+      const tail =
+        key === "tools.artifactTailBytes"
+          ? candidate
+          : snapshotNumber(snapshot, "tools.artifactTailBytes", context);
+      const head =
+        key === "tools.artifactHeadBytes"
+          ? candidate
+          : snapshotNumber(snapshot, "tools.artifactHeadBytes", context);
+      return (
+        spill === undefined || tail === undefined || head === undefined || head + tail <= spill
+      );
+    },
+    "Artifact head and tail sizes must fit within the spill threshold.",
+  );
 }
 function enumValidator(values: readonly string[]): Validator {
   return (value) =>
@@ -448,32 +536,75 @@ const toolsGithub: readonly SettingControl[] = [
     "Cache rendered issue and pull-request views so repeated reads are faster.",
   ),
   described(
-    duration("github.cache.softTtlSec", 2_592_000, "live"),
+    control(
+      "github.cache.softTtlSec",
+      "duration",
+      "live",
+      relationalNumberValidator(
+        "github.cache.softTtlSec",
+        0,
+        2_592_000,
+        (candidate, snapshot, context) => {
+          const hard = snapshotNumber(snapshot, "github.cache.hardTtlSec", context);
+          return hard === undefined || candidate <= hard;
+        },
+        "GitHub cache soft TTL must not exceed the hard TTL.",
+      ),
+    ),
     "GitHub Cache Soft TTL (seconds)",
-    "Return cached issue and pull-request views directly within this window.",
+    "Return cached issue and pull-request views directly within this window. This app requires the soft TTL to stay at or below the hard TTL.",
   ),
   described(
-    duration("github.cache.hardTtlSec", 31_536_000, "live"),
+    control(
+      "github.cache.hardTtlSec",
+      "duration",
+      "live",
+      relationalNumberValidator(
+        "github.cache.hardTtlSec",
+        0,
+        31_536_000,
+        (candidate, snapshot, context) => {
+          const soft = snapshotNumber(snapshot, "github.cache.softTtlSec", context);
+          return soft === undefined || candidate >= soft;
+        },
+        "GitHub cache hard TTL must not be below the soft TTL.",
+      ),
+    ),
     "GitHub Cache Hard TTL (seconds)",
-    "After the soft window, serve cached output and refresh it in the background; after this window, discard it.",
+    "After the soft window, serve cached output and refresh it in the background; after this window, discard it. This app requires the hard TTL to stay at or above the soft TTL.",
   ),
 ];
 
 const toolsOutputLimits: readonly SettingControl[] = [
   described(
-    number("tools.artifactSpillThreshold", 0, 1_048_576),
+    control(
+      "tools.artifactSpillThreshold",
+      "number",
+      "live",
+      artifactLimitValidator("tools.artifactSpillThreshold"),
+    ),
     "Artifact Spill Threshold (KB)",
-    "Save tool output as an artifact when it exceeds this size; keep the tail inline.",
+    "Save tool output as an artifact when it exceeds this size; keep the tail inline. This app requires head and tail to fit within this spill threshold.",
   ),
   described(
-    number("tools.artifactTailBytes", 0, 1_048_576),
+    control(
+      "tools.artifactTailBytes",
+      "number",
+      "live",
+      artifactLimitValidator("tools.artifactTailBytes"),
+    ),
     "Artifact Tail Size (KB)",
-    "Amount of the output tail kept inline when the rest is saved as an artifact.",
+    "Amount of the output tail kept inline when the rest is saved as an artifact. This app requires head and tail to fit within the spill threshold.",
   ),
   described(
-    number("tools.artifactHeadBytes", 0, 1_048_576),
+    control(
+      "tools.artifactHeadBytes",
+      "number",
+      "live",
+      artifactLimitValidator("tools.artifactHeadBytes"),
+    ),
     "Artifact Head Size (KB)",
-    "Amount of the output beginning kept inline alongside the tail; 0 keeps only the tail.",
+    "Amount of the output beginning kept inline alongside the tail; 0 keeps only the tail. This app requires head and tail to fit within the spill threshold.",
   ),
   described(
     number("tools.outputMaxColumns", 0, 65_536),
@@ -675,9 +806,9 @@ const tasksIsolation: readonly SettingControl[] = [
     "Choose generic or AI-written commit messages for future nested-repository changes. Saving only updates configuration and does not create a commit.",
   ),
   described(
-    text("worktree.base", "path", "restart"),
+    control("worktree.base", "path", "restart", absoluteWorktreeBaseValidator),
     "Worktree Base Directory",
-    "Choose where future omp-managed project copies are stored. An unset value uses omp's default. Saving does not create or change a copy.",
+    "Choose where future omp-managed project copies are stored. Use an absolute path or a path beginning with ~; omp ignores bare relative paths. An unset value uses omp's default. Saving does not create or change a copy.",
   ),
 ];
 
