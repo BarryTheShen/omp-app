@@ -688,7 +688,7 @@ function editTarget(args: EditToolArgs | undefined, details: EditToolDetails | u
     details?.path ??
     args?.path ??
     args?.file_path ??
-    patchTarget(args?.patch) ??
+    patchTarget(args?.patch ?? args?.input) ??
     moveTarget(details) ??
     "edit"
   );
@@ -720,20 +720,29 @@ function operationFor(
   args: EditToolArgs | undefined,
   details: EditToolDetails | undefined,
 ): string | undefined {
-  return details?.op ?? args?.op ?? patchOperation(args?.patch);
+  return details?.op ?? args?.op ?? patchFileHeader(args?.patch ?? args?.input)?.operation;
 }
 function patchTarget(patch: string | undefined): string | undefined {
   if (patch === undefined) return undefined;
-  const match = /^\*\*\* (?:Update|Add|Delete) File:\s*(.+)$/m.exec(patch);
-  return match?.[1]?.trim() || undefined;
+  const paths = [...patch.matchAll(/^\*\*\* (?:Update|Add|Delete) File:\s*(.+)$/gm)].flatMap(
+    (match) => {
+      const path = match[1]?.trim();
+      return path === undefined || path.length === 0 ? [] : [path];
+    },
+  );
+  if (paths.length === 1) return paths[0];
+  return paths.length > 1 ? `${paths.length} files` : undefined;
 }
 
-function patchOperation(patch: string | undefined): string | undefined {
+function patchFileHeader(
+  patch: string | undefined,
+): { readonly path: string; readonly operation: "create" | "delete" | "update" } | undefined {
   if (patch === undefined) return undefined;
-  if (/^\*\*\* Add File:/m.test(patch)) return "create";
-  if (/^\*\*\* Delete File:/m.test(patch)) return "delete";
-  if (/^\*\*\* Update File:/m.test(patch)) return "update";
-  return undefined;
+  const match = /^\*\*\* (Update|Add|Delete) File:\s*(.+)$/m.exec(patch);
+  const path = match?.[2]?.trim();
+  if (match === null || !path) return undefined;
+  const operation = match[1] === "Add" ? "create" : match[1] === "Delete" ? "delete" : "update";
+  return { path, operation };
 }
 
 function operationLabel(operation: string | undefined): string {

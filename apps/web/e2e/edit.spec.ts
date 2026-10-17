@@ -55,12 +55,23 @@ test("renders edit and apply_patch diffs in light, dark and narrow layouts", asy
     "background-color",
     /^(rgb|oklch)/,
   );
-  await expect(page.getByTestId("t1-edit-card")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "edit: Complete" })).toBeVisible();
   await expect(page.getByRole("button", { name: "apply_patch: Complete" })).toBeVisible();
+  await expect(page.getByTestId("t1-edit-card")).toHaveCount(4);
+  await expect(page.getByTestId("t1-ast-edit-card-ast-failed")).toHaveCount(1);
   await openAllToolCards(page);
   await expect(page.getByText("patch: Review generated export")).toBeVisible();
   await expect(page.getByText("Streaming preview")).toBeVisible();
+  await expect(page.getByRole("button", { name: "apply_patch: Error" })).toContainText("2 files");
+  await expect(page.getByText("Apply failed")).toBeVisible();
+  await expect(page.getByText("Structural edit failed")).toBeVisible();
+  await expect(
+    page.getByText("Failed to find expected lines in src/components/main.ts:", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText("No files were modified — sections apply atomically.")).toBeVisible();
+  await expect(
+    page.getByText("Duplicate rewrite pattern: legacyCall($A)", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByTestId("t1-edit-diff-code")).toHaveCount(3);
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: "../../.data/screenshots/t1.3-edit-light.png", fullPage: true });
@@ -77,7 +88,14 @@ test("renders edit and apply_patch diffs in light, dark and narrow layouts", asy
     /^(rgb|oklch)/,
   );
   await openAllToolCards(darkPage);
-  await expect(darkPage.getByText("patch: Review generated export")).toBeVisible();
+  await expect(darkPage.getByRole("button", { name: "edit: Complete" })).toBeVisible();
+  await expect(darkPage.getByRole("button", { name: "apply_patch: Complete" })).toBeVisible();
+  await expect(
+    darkPage.getByText("No files were modified — sections apply atomically."),
+  ).toBeVisible();
+  await expect(
+    darkPage.getByText("Duplicate rewrite pattern: legacyCall($A)", { exact: true }),
+  ).toBeVisible();
   await expect(darkPage.getByTestId("t1-edit-diff-code")).toHaveCount(3);
   await waitForFiniteAnimations(darkPage);
   await darkPage.screenshot({ path: "../../.data/screenshots/t1.3-edit-dark.png", fullPage: true });
@@ -88,7 +106,12 @@ test("renders edit and apply_patch diffs in light, dark and narrow layouts", asy
     "background-color",
     /^(rgb|oklch)/,
   );
-  await expect(page.getByText("patch: Review generated export")).toBeVisible();
+  await expect(page.getByRole("button", { name: "edit: Complete" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "apply_patch: Complete" })).toBeVisible();
+  await expect(page.getByText("No files were modified — sections apply atomically.")).toBeVisible();
+  await expect(
+    page.getByText("Duplicate rewrite pattern: legacyCall($A)", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByTestId("t1-edit-diff-code")).toHaveCount(3);
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: "../../.data/screenshots/t1.3-edit-narrow.png", fullPage: true });

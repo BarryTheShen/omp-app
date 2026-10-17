@@ -125,6 +125,7 @@ export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRen
 export const AstEditToolRenderer: ToolRenderer = (props) => <AstEditCard rendererProps={props} />;
 
 function summaryText(details: AstEditToolDetails | undefined, phase: string): string {
+  if (phase === "error") return "Structural edit failed";
   if (details === undefined)
     return phase === "running" ? "Scanning structural matches" : "Raw result";
   const replacements = details.totalReplacements ?? 0;

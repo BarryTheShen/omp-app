@@ -1,9 +1,13 @@
 import { createRoot } from "react-dom/client";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
+import { AstEditCard } from "./ast-edit";
 import { EditCard } from "./edit";
 
 /** omp's real result is `{ content: [{ type: "text", text }], details }`; a string is raw text from a call that is still streaming. */
 function envelope(result: unknown): unknown {
+  if (typeof result === "object" && result !== null && "content" in result && "details" in result) {
+    return result;
+  }
   return typeof result === "string"
     ? result
     : { content: [{ type: "text", text: "" }], details: result };
@@ -15,6 +19,7 @@ function props(
   result: unknown,
   args: unknown,
   status: ToolRendererProps["status"] = { type: "complete" },
+  isError = false,
 ): ToolRendererProps {
   return {
     type: "tool-call",
@@ -23,6 +28,7 @@ function props(
     args,
     argsText: JSON.stringify(args),
     result: envelope(result),
+    isError,
     status,
   } as unknown as ToolRendererProps;
 }
@@ -81,6 +87,46 @@ function EditPlayground() {
               patch: "*** Begin Patch\n*** Update File: src/a.ts",
               edits: [{ path: "src/a.ts" }, { path: "src/b.ts" }],
             },
+          )}
+        />
+        <EditCard
+          rendererProps={props(
+            "apply-failed",
+            "apply_patch",
+            {
+              content: [
+                {
+                  type: "text",
+                  text: "[src/components/main.ts]: Failed to find expected lines in src/components/main.ts:\nold\nNo files were modified — sections apply atomically.",
+                },
+              ],
+              details: {},
+            },
+            {
+              input:
+                "*** Begin Patch\n*** Update File: src/components/main.ts\n@@\n-old\n+new\n*** Add File: src/generated.ts\n+export const value = 1;\n*** End Patch",
+            },
+            { type: "complete" },
+            true,
+          )}
+        />
+        <AstEditCard
+          rendererProps={props(
+            "ast-failed",
+            "ast_edit",
+            {
+              content: [{ type: "text", text: "Duplicate rewrite pattern: legacyCall($A)" }],
+              details: {},
+            },
+            {
+              ops: [
+                { pat: "legacyCall($A)", out: "modernCall($A)" },
+                { pat: "legacyCall($A)", out: "modernCall($A)" },
+              ],
+              paths: ["src"],
+            },
+            { type: "complete" },
+            true,
           )}
         />
         <EditCard
