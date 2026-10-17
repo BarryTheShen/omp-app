@@ -93,8 +93,17 @@ describe("D1 model settings sections", () => {
     expect(modelSettingsSections[0]?.controls.map((control) => control.key)).toContain(
       "defaultThinkingLevel",
     );
-    expect(modelSettingsSections[1]?.controls.map((control) => control.key)).toContain(
-      "temperature",
+    expect(modelSettingsSections[1]?.controls.map((control) => control.key)).toEqual(
+      expect.arrayContaining([
+        "topP",
+        "topK",
+        "temperature",
+        "minP",
+        "presencePenalty",
+        "repetitionPenalty",
+        "textVerbosity",
+        "tier.advisor",
+      ]),
     );
     expect(modelSettingsSections[0]?.controls.map((control) => control.key)).toContain(
       "modelRoleStorage",
@@ -119,6 +128,51 @@ describe("D1 model settings sections", () => {
       "images.urls.sshTarget",
       "images.urls.sshRemotePort",
     ]);
+  });
+  test("sampling tier controls pin omp's registered values and validation", () => {
+    const sampling = modelSettingsSections[1];
+    if (!sampling) throw new Error("missing sampling section");
+    const controlValues = (key: string): readonly unknown[] => {
+      const control = sampling.controls.find((candidate) => candidate.key === key);
+      if (control?.kind !== "enum") throw new Error(`missing enum setting ${key}`);
+      return control.options?.map((option) => option.value) ?? [];
+    };
+    // omp v18.9.1 packages/coding-agent/src/config/service-tier.ts:15-25,67-76.
+    expect(controlValues("tier.openai")).toEqual([
+      "none",
+      "auto",
+      "default",
+      "flex",
+      "scale",
+      "priority",
+      "ultrafast",
+    ]);
+    expect(controlValues("tier.anthropic")).toEqual(["none", "priority"]);
+    expect(controlValues("tier.google")).toEqual(["none", "flex", "priority"]);
+    const inheritValues = [
+      "inherit",
+      "none",
+      "auto",
+      "default",
+      "flex",
+      "scale",
+      "priority",
+      "ultrafast",
+    ];
+    expect(controlValues("tier.subagent")).toEqual(inheritValues);
+    expect(controlValues("tier.advisor")).toEqual(inheritValues);
+
+    const advisor = sampling.controls.find((control) => control.key === "tier.advisor");
+    if (advisor?.kind !== "enum") throw new Error("missing advisor tier options");
+    expect(advisor.apply).toBe("restart");
+    const snapshot: ConfigSnapshot = { folder: null, revision: "r", entries: [] };
+    expect(advisor.validate({ secret: false, value: "priority" }, snapshot)).toEqual({
+      valid: true,
+    });
+    expect(advisor.validate({ secret: false, value: "standard" }, snapshot)).toMatchObject({
+      valid: false,
+      code: "enum",
+    });
   });
 
   test("renders all six sections and offers explicit conflict choices", () => {

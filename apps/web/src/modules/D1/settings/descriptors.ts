@@ -9,6 +9,32 @@ import type {
 import { settingOptions } from "@/modules/S1/settings-kit";
 
 const valid = () => ({ valid: true as const });
+/**
+ * omp v18.9.1 `packages/coding-agent/src/config/service-tier.ts:15-25,67-76` is the
+ * source of truth for these values. Keep the family lists separate because each provider
+ * realizes a different subset; subagents and advisors use the inherit-capable list.
+ */
+const SERVICE_TIER_OPENAI_VALUES = [
+  "none",
+  "auto",
+  "default",
+  "flex",
+  "scale",
+  "priority",
+  "ultrafast",
+] as const;
+const SERVICE_TIER_ANTHROPIC_VALUES = ["none", "priority"] as const;
+const SERVICE_TIER_GOOGLE_VALUES = ["none", "flex", "priority"] as const;
+const SERVICE_TIER_INHERIT_VALUES = [
+  "inherit",
+  "none",
+  "auto",
+  "default",
+  "flex",
+  "scale",
+  "priority",
+  "ultrafast",
+] as const;
 
 function booleanControl(
   key: string,
@@ -320,26 +346,32 @@ export const modelSamplingSection = section("D1.modelSampling", "Sampling", [
   enumControl(
     "tier.openai",
     "Service Tier — OpenAI",
-    ["none", "default", "priority", "flex"],
+    SERVICE_TIER_OPENAI_VALUES,
     "OpenAI request processing tier.",
   ),
   enumControl(
     "tier.anthropic",
     "Service Tier — Anthropic",
-    ["none", "standard", "priority"],
+    SERVICE_TIER_ANTHROPIC_VALUES,
     "Anthropic request processing tier.",
   ),
   enumControl(
     "tier.google",
     "Service Tier — Google",
-    ["none", "standard", "priority"],
+    SERVICE_TIER_GOOGLE_VALUES,
     "Google request processing tier.",
   ),
   enumControl(
     "tier.subagent",
     "Service Tier — Subagent",
-    ["inherit", "none", "standard", "priority"],
+    SERVICE_TIER_INHERIT_VALUES,
     "Processing tier for spawned agents.",
+  ),
+  enumControl(
+    "tier.advisor",
+    "Service Tier — Advisor",
+    SERVICE_TIER_INHERIT_VALUES,
+    "Processing tier for the advisor model.",
   ),
 ]);
 
