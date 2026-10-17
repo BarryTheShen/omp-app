@@ -2,6 +2,7 @@ import { z } from "zod";
 import { definePort } from "../../core/envelope";
 import { ThreadId } from "../../core/ids";
 import { Timestamp } from "./shared";
+import { ToolsAvailabilityArgs, ToolsAvailabilityResult } from "./tools-availability";
 
 /** A slash command as typed by the user, including its leading `/`. */
 export const SlashCommand = z
@@ -272,6 +273,11 @@ export const OmpCommandGateway = definePort({
     run: {
       args: CommandRunArgs,
       result: CommandRunResult,
+      capability: "host.command-gateway",
+    },
+    tools: {
+      args: ToolsAvailabilityArgs,
+      result: ToolsAvailabilityResult,
       capability: "host.command-gateway",
     },
     share: {

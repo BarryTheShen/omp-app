@@ -14,6 +14,7 @@ import {
   SessionFileStore,
   ShareResult,
   streamKey,
+  ToolsAvailabilityResult,
 } from "@omp-app/contracts";
 import type { PortRegistration } from "../../../registry/ports";
 import type { A1PortContext } from "./context";
@@ -70,6 +71,13 @@ export function createOmpCommandGatewayRegistration(context: A1PortContext): Por
         const stop = backgroundJobStopOf(args.command, result);
         if (stop !== undefined) await context.backgroundJobStopStore.record(args.threadId, stop);
         return result;
+      },
+      tools: async (args, handlerContext): Promise<ToolsAvailabilityResult> => {
+        const { data } = await context.ompCommandGateway.runWithParser<ToolsAvailabilityResult>(
+          { threadId: args.threadId, command: "/tools" },
+          { signal: handlerContext.signal },
+        );
+        return typedReply(data, (value) => ToolsAvailabilityResult.parse(value), "/tools");
       },
       backgroundJobStops: async (args) => ({
         stops: [...(await context.backgroundJobStopStore.list(args.threadId))],

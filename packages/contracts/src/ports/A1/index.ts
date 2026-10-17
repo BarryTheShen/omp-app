@@ -18,6 +18,7 @@ export * from "./session-file-store";
 export * from "./session-import";
 export * from "./session-pin-store";
 export * from "./shared";
+export * from "./tools-availability";
 export * from "./url-catalog";
 export * from "./usage-limits";
 export * from "./workspace-state";

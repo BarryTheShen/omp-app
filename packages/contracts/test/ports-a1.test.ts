@@ -43,6 +43,7 @@ import {
   SessionPinSetArgs,
   SessionPinStore,
   SnapshotRecord,
+  ToolsAvailabilityResult,
   WorkspaceState,
   WorkspaceStatePort,
 } from "../src/ports/A1";
@@ -520,6 +521,21 @@ describe("A1 OmpCommandGateway", () => {
     expect(CommandOutputEvent.safeParse({ threadId, output: { text: "Renamed" } }).success).toBe(
       true,
     );
+  });
+
+  test("accepts typed /tools availability rows and rejects an unknown state", () => {
+    expect(
+      ToolsAvailabilityResult.safeParse({
+        tools: [
+          { tool: "read", state: "available" },
+          { tool: "ast_edit", state: "fallback" },
+          { tool: "vision", state: "unknown" },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      ToolsAvailabilityResult.safeParse({ tools: [{ tool: "bash", state: "partial" }] }).success,
+    ).toBe(false);
   });
 });
 describe("A1 provider errors", () => {

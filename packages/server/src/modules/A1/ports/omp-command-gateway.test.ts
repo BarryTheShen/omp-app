@@ -110,6 +110,30 @@ describe("OmpCommandGateway typed share and dump handlers", () => {
     expect(commands).toEqual(["/dump anon"]);
   });
 
+  describe("OmpCommandGateway typed tools handler", () => {
+    test("runs /tools and returns its parsed availability rows", async () => {
+      const { handlers, commands } = handlersAnswering(() => ({
+        tools: [
+          { tool: "ast_edit", state: "fallback" },
+          { tool: "debug", state: "fallback" },
+          { tool: "lsp", state: "fallback" },
+          { tool: "read", state: "available" },
+        ],
+      }));
+      const tools = handlers.tools;
+      if (tools === undefined) throw new Error("the tools handler is not registered");
+      await expect(tools({ threadId }, handlerContext())).resolves.toEqual({
+        tools: [
+          { tool: "ast_edit", state: "fallback" },
+          { tool: "debug", state: "fallback" },
+          { tool: "lsp", state: "fallback" },
+          { tool: "read", state: "available" },
+        ],
+      });
+      expect(commands).toEqual(["/tools"]);
+    });
+  });
+
   test("a command with no parser (raw frames) is never returned as a typed reply", async () => {
     const raw = {
       command: "/share",

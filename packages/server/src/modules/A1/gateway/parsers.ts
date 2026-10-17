@@ -2,6 +2,7 @@ import { AppFailure, DumpReport, type DumpScope, HttpsUrl, ShareResult } from "@
 import type { CommandParserContext, OmpCommandGatewayService } from "./gateway";
 import { registerModeChangeParsers } from "./mode-parsers";
 import { parseSessionDeleteReply } from "./session-delete-parser";
+import { registerToolsParser } from "./tools-parsers";
 
 /*
  * Typed parsers for the `/share` and `/dump` replies of omp v18.6.1 (issue #793), and for the `/dump anon` report of
@@ -151,10 +152,11 @@ export function parseDumpReply(context: CommandParserContext): DumpReport {
   return DumpReport.parse({ scope, text, empty });
 }
 
-/** Registers the `/share` and `/dump` parsers on a gateway; `createOmpCommandGateway` calls this. */
+/** Registers typed parsers for every command family whose output has a stable omp-owned shape. */
 export function registerOmpCommandParsers(gateway: OmpCommandGatewayService): void {
   gateway.registerCommandParser("share", parseShareReply);
   gateway.registerCommandParser("dump", parseDumpReply);
   registerModeChangeParsers(gateway);
   gateway.registerCommandParser("session", parseSessionDeleteReply);
+  registerToolsParser(gateway);
 }
