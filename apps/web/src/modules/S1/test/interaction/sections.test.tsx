@@ -25,7 +25,7 @@ import {
 
 afterEach(() => cleanup());
 
-// omp v18.6.1 defaults: modes/settings.ts:29-50, 694-1216; tools/settings.ts:294-333;
+// omp v18.9.1 defaults: modes/settings.ts:29-50, 694-1216; tools/settings.ts:294-333;
 // collab/settings.ts:9-69; commands/settings.ts:8-55; session/settings.ts:37-56, 1011-1035;
 // packages/wire/src/index.ts:426,429. Defaults stay in A1 ConfigStore at runtime.
 const DEFAULT_VALUES: Readonly<Record<string, JsonValue>> = {
@@ -38,6 +38,7 @@ const DEFAULT_VALUES: Readonly<Record<string, JsonValue>> = {
   "tui.vimModeDisplay": "text",
   "loop.mode": "prompt",
   "loop.conditionTimeoutMs": 30_000,
+  "composer.predictions": false,
   "composer.recallClearedDrafts": true,
   doubleEscapeAction: "rewind",
   "input.bareExitOnEmptySession": true,
@@ -89,6 +90,7 @@ const EXPECTED_KEYS = {
     "tui.vimModeDisplay",
     "loop.mode",
     "loop.conditionTimeoutMs",
+    "composer.predictions",
     "composer.recallClearedDrafts",
     "doubleEscapeAction",
     "input.bareExitOnEmptySession",
@@ -149,6 +151,7 @@ const EXPECTED_KINDS: Readonly<Record<string, SettingControl["kind"]>> = {
   "tui.vimModeDisplay": "enum",
   "loop.mode": "enum",
   "loop.conditionTimeoutMs": "number",
+  "composer.predictions": "boolean",
   "composer.recallClearedDrafts": "boolean",
   doubleEscapeAction: "enum",
   "input.bareExitOnEmptySession": "boolean",
@@ -201,6 +204,7 @@ const APPLY_BOUNDARIES: Readonly<Record<string, SettingControl["apply"]>> = {
   "tui.vimModeDisplay": "live",
   "loop.mode": "live",
   "loop.conditionTimeoutMs": "live",
+  "composer.predictions": "live",
   "composer.recallClearedDrafts": "live",
   doubleEscapeAction: "live",
   "input.bareExitOnEmptySession": "live",
@@ -283,7 +287,7 @@ function interactionDefaults() {
 }
 
 describe("S1.4 interaction settings sections", () => {
-  test("claims all nine owned rows and every v18.6.1 Interaction key exactly once", () => {
+  test("claims all nine owned rows and every v18.9.1 Interaction key exactly once", () => {
     const descriptors = S1_INTERACTION_SECTIONS;
     const keys = descriptors.flatMap((descriptor) =>
       descriptor.controls.map((setting) => setting.key),
@@ -292,7 +296,7 @@ describe("S1.4 interaction settings sections", () => {
     const sections = new Set(descriptors.map((descriptor) => descriptor.section));
 
     expect(sections.size).toBe(9);
-    expect(keys).toHaveLength(49);
+    expect(keys).toHaveLength(50);
     expect(new Set(keys).size).toBe(keys.length);
     expect([...keys].sort()).toEqual([...ownedKeys].sort());
     expect(descriptors.flatMap((descriptor) => descriptor.inventory)).toEqual([
@@ -340,6 +344,7 @@ describe("S1.4 interaction settings sections", () => {
       vimModeDisplay: "text",
       loopMode: "prompt",
       loopConditionTimeoutMs: 30_000,
+      composerPredictions: false,
       recallClearedDrafts: true,
       doubleEscapeAction: "rewind",
       bareExitOnEmptySession: true,

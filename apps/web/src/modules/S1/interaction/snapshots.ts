@@ -244,6 +244,12 @@ export function projectInputSettings(
       "loop.conditionTimeoutMs",
       numberValue,
     ),
+    composerPredictions: projectSetting(
+      snapshot,
+      INPUT_SETTINGS_SECTION,
+      "composer.predictions",
+      booleanValue,
+    ),
     recallClearedDrafts: projectSetting(
       snapshot,
       INPUT_SETTINGS_SECTION,

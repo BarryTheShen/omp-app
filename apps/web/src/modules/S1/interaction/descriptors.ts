@@ -255,13 +255,13 @@ function section(
 }
 
 /**
- * Keys, defaults, and enums follow omp v18.6.1. ConfigStore supplies each effective default and its
- * provenance rather than duplicating defaults here. Source registrations: modes/settings.ts:694-989
- * (Input), 29-50 (Auto Resume/Git), 991-1088 (Startup & Updates), and 1105-1216 (Magic Keywords /
- * Notifications); modes/magic-keywords.ts:47-100; tools/settings.ts:294-333 (Approvals);
- * collab/settings.ts:9-69 and commands/settings.ts:8-55 (Collab); session/settings.ts:37-56 (Power)
- * and 1011-1035 (Agent). The tree-filter and word-completion enums are
- * pi-tui/overlays/tree-selector.ts:12 and pi-tui/prompt/word-completion.ts:8.
+ * Keys, defaults, and enums follow omp v18.9.1. ConfigStore supplies each effective default and its
+ * provenance rather than duplicating defaults here. Source registrations: modes/settings.ts:694-1012
+ * (Input and Composer Predictions), 29-50 (Auto Resume/Git), 991-1088 (Startup & Updates), and
+ * 1105-1216 (Magic Keywords / Notifications); modes/magic-keywords.ts:47-100;
+ * tools/settings.ts:294-333 (Approvals); collab/settings.ts:9-69 and commands/settings.ts:8-55
+ * (Collab); session/settings.ts:37-56, 1011-1035 (Power and Agent). The tree-filter and word-
+ * completion enums are pi-tui/overlays/tree-selector.ts:12 and pi-tui/prompt/word-completion.ts:8.
  */
 export const INPUT_SETTINGS_SECTION = section(
   "S1.interactionInput",
@@ -296,6 +296,12 @@ export const INPUT_SETTINGS_SECTION = section(
       reset: "Reset",
     }),
     numberControl("loop.conditionTimeoutMs", "Loop Condition Timeout (ms)", 0, Number.MAX_VALUE),
+    booleanControl(
+      "composer.predictions",
+      "Composer Predictions",
+      "live",
+      "Terminal only. After a completed turn, omp's terminal can show a predicted next message as ghost text; this uses one extra billed request per turn. Chats in this app do not use predictions.",
+    ),
     booleanControl("composer.recallClearedDrafts", "Recall Cleared Drafts"),
     enumControl("doubleEscapeAction", "Double-Escape Action", ["rewind", "tree", "none"], "live", {
       rewind: "Rewind",
