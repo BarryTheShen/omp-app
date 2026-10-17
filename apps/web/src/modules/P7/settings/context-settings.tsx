@@ -50,6 +50,7 @@ import {
   P7_CONTEXT_NUMERIC_SETTINGS,
   P7_CONTEXT_SETTINGS_SECTIONS,
 } from "./descriptors";
+import { stageContextSetting } from "./stage-context-setting";
 
 export type ContextSettingsScope =
   | { readonly layer: "global"; readonly folder?: null }
@@ -241,7 +242,7 @@ async function rebaseStagedSection(
     );
     return "changed";
   }
-  for (const [key, value] of Object.entries(edits)) runtime.stage(key, value);
+  for (const [key, value] of Object.entries(edits)) stageContextSetting(runtime, key, value);
   return "rebased";
 }
 
@@ -548,7 +549,7 @@ function ContextSettingsSectionController({
       }
     },
     onCustomStage: (key, value) => {
-      runtime.stage(key, value);
+      stageContextSetting(runtime, key, value);
     },
   };
 
@@ -908,7 +909,7 @@ function stageVisibleControls(
   for (const control of descriptor.controls) {
     const value = staged.edits[control.key];
     if (!value || sameSettingValue(existing[control.key], value)) continue;
-    runtime.stage(control.key, normalizeSettingValue(control, value));
+    stageContextSetting(runtime, control.key, normalizeSettingValue(control, value));
   }
 }
 

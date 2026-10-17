@@ -2,6 +2,7 @@ import type { ConfigChanged, ConfigEntry, ConfigWriteResult, Revision } from "@o
 import { AppFailure, ConfigWriteArgs } from "@omp-app/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { SETTINGS_SECTIONS } from "@/registry";
+import { stageContextSetting } from "../../../P7/settings/stage-context-setting";
 import { SHELL_EVAL_RUNTIMES_SECTION } from "../../../S2/sections";
 import { THEME_SETTINGS_SECTION } from "../../appearance";
 import { S1_SETTINGS_SECTIONS } from "../../descriptors";
@@ -34,6 +35,7 @@ type FakeConfig = {
   writes: ConfigWriteArgs[];
   listFolders: Array<string | null>;
   listeners: Set<(change: ConfigChanged) => void>;
+  writeGate?: Promise<void>;
   conflictNextWrite: boolean;
   /** Environment variables that supply a written key's value, by key: the write then reports that source. */
   environmentKeys?: Readonly<Record<string, string>>;
@@ -82,6 +84,7 @@ function fakeClient(state: FakeConfig): ConfigStoreClient {
     async write(input): Promise<ConfigWriteResult> {
       const args = ConfigWriteArgs.parse(input);
       state.writes.push(args);
+      if (state.writeGate) await state.writeGate;
       const previousRevision = state.revision;
       if (state.conflictNextWrite) {
         state.conflictNextWrite = false;
@@ -308,6 +311,33 @@ describe("S1.5 ConfigStore fixture and grammar gate", () => {
       value: { secret: false, value: "custom-theme" },
     });
     expect(runtime.getSnapshot().applyStatus).toBe("applied");
+  });
+  test("keeps stages refused during a save and applies both values after it finishes", async () => {
+    const state = fakeConfig();
+    const gate = Promise.withResolvers<void>();
+    state.writeGate = gate.promise;
+    const runtime = runtimeFor(state, THEME_SETTINGS_SECTION);
+    await runtime.read();
+    expect(runtime.stage("theme.dark", { secret: false, value: "custom-theme" }).ok).toBe(true);
+    const saving = runtime.save();
+    await Promise.resolve();
+    expect(runtime.getSnapshot().phase).toBe("saving");
+
+    const first = { secret: false as const, value: "during-save-dark" };
+    const second = { secret: false as const, value: "during-save-light" };
+    stageContextSetting(runtime, "theme.dark", first);
+    stageContextSetting(runtime, "theme.light", second);
+    expect(runtime.getSnapshot().phase).toBe("saving");
+    expect(state.writes[0]?.value).toEqual({ secret: false, value: "custom-theme" });
+
+    gate.resolve();
+    await saving;
+    await Promise.resolve();
+    expect(runtime.getSnapshot().phase).toBe("editing");
+    expect(runtime.getSnapshot().staged?.edits).toEqual({
+      "theme.dark": first,
+      "theme.light": second,
+    });
   });
 
   test("reports restart-required apply status from the same runtime", async () => {

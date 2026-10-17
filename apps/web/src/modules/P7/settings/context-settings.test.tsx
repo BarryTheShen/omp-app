@@ -20,17 +20,122 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import type { SettingsRuntime } from "../../S1/runtime";
 import type {
   ConfigStoreClient,
   ScalarSettingControl,
   SettingControl,
+  SettingValue,
 } from "../../S1/settings-kit";
 import { ContextSettings } from "./context-settings";
 import { DEFAULT_COMPACTION_METHOD_ORDER, P7_CONTEXT_NUMERIC_SETTINGS } from "./descriptors";
 import { P7_CONTEXT_SETTINGS_SECTIONS } from "./index";
+import { stageContextSetting } from "./stage-context-setting";
 
 afterEach(cleanup);
+
+describe("stageContextSetting", () => {
+  test("keeps edits refused during a save and stages them when the save finishes", async () => {
+    let phase: "saving" | "ready" = "saving";
+    const listeners = new Set<() => void>();
+    const attempted: Array<readonly [string, SettingValue]> = [];
+    const stage = vi.fn((key: string, value: SettingValue) => {
+      attempted.push([key, value]);
+      if (phase === "saving") {
+        return {
+          ok: false as const,
+          validation: {
+            valid: false as const,
+            code: "not-ready" as const,
+            message: "Settings are saving. Try again in a moment.",
+          },
+        };
+      }
+      return { ok: true as const };
+    });
+    const fail = vi.fn();
+    const runtime = {
+      fail,
+      getSnapshot: () => ({ phase }),
+      stage,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    } as unknown as SettingsRuntime;
+    const first = { secret: false as const, value: "first" };
+    const second = { secret: false as const, value: "second" };
+
+    stageContextSetting(runtime, "context.window", first);
+    stageContextSetting(runtime, "context.rules", second);
+    expect(fail).not.toHaveBeenCalled();
+    expect(attempted).toEqual([
+      ["context.window", first],
+      ["context.rules", second],
+    ]);
+
+    phase = "ready";
+    for (const listener of [...listeners]) listener();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(attempted).toEqual([
+      ["context.window", first],
+      ["context.rules", second],
+      ["context.window", first],
+      ["context.rules", second],
+    ]);
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  test("reports a not-ready refusal outside saving as retryable unavailable", () => {
+    const fail = vi.fn();
+    const runtime = {
+      fail,
+      getSnapshot: () => ({ phase: "loading" }),
+      stage: vi.fn(() => ({
+        ok: false as const,
+        validation: {
+          valid: false as const,
+          code: "not-ready" as const,
+          message: "Settings are still loading.",
+        },
+      })),
+    } as unknown as SettingsRuntime;
+
+    stageContextSetting(runtime, "context.window", { secret: false, value: "loading" });
+
+    expect(fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appError: expect.objectContaining({
+          code: "unavailable",
+          message: "Settings are still loading.",
+          retryable: true,
+        }),
+      }),
+    );
+  });
+
+  test("leaves a validation refusal on the runtime field state", () => {
+    const fail = vi.fn();
+    const runtime = {
+      fail,
+      getSnapshot: () => ({ phase: "editing" }),
+      stage: vi.fn(() => ({
+        ok: false as const,
+        validation: {
+          valid: false as const,
+          code: "invalid-value",
+          message: "That value is not valid.",
+        },
+      })),
+    } as unknown as SettingsRuntime;
+
+    stageContextSetting(runtime, "context.window", { secret: false, value: "invalid" });
+
+    expect(fail).not.toHaveBeenCalled();
+  });
+});
 
 const COMPACTION_SECTION = "P7.contextCompaction";
 const GENERAL_SECTION = "P7.contextGeneral";
