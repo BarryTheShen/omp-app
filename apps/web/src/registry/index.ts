@@ -20,7 +20,7 @@ import { I2_SETTINGS_SECTIONS } from "../modules/I2/settings";
 import { I5_SETTINGS_SECTIONS } from "../modules/I5/settings";
 import { N1_DESCRIPTORS } from "../modules/N1/descriptors";
 import { P1_AGENT_HUB_DESCRIPTORS } from "../modules/P1/hub/descriptors";
-import { P3_MESSAGE_DESCRIPTORS } from "../modules/P3/descriptors";
+import { P3_DIALOG_DESCRIPTORS, P3_MESSAGE_DESCRIPTORS } from "../modules/P3/descriptors";
 import { P3_SHORTCUT_DESCRIPTORS } from "../modules/P3/shortcuts/descriptors";
 import { P4_DESCRIPTORS } from "../modules/P4/contract";
 import { P6_DESCRIPTORS } from "../modules/P6";
@@ -121,6 +121,7 @@ export const DESCRIPTORS: readonly Descriptor[] = [
   ...D6_REPORT_PALETTE_COMMANDS,
   ...N1_DESCRIPTORS,
   ...P3_MESSAGE_DESCRIPTORS,
+  ...P3_DIALOG_DESCRIPTORS,
   ...P4_DESCRIPTORS,
   ...P6_DESCRIPTORS,
   ...I1_MCP_SERVER_DESCRIPTORS,

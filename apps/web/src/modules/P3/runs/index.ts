@@ -1,4 +1,4 @@
-export { P3EditSurface, type P3EditTarget } from "./edit-surface";
+export { P3EditSurface, type P3EditTarget, p3EditTargetFromSelection } from "./edit-surface";
 export { createP3RunHandlers, type P3RunHandlers } from "./handlers";
 export { type P3RunHooksOptions, useP3RunHandlers } from "./hooks";
 export { P3MessageActions } from "./message-actions";

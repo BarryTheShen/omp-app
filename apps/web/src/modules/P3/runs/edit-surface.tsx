@@ -13,7 +13,16 @@ import type { P3RunState } from "./status";
 /** The message being edited, and the row button that opened the editor, which focus returns to on cancel. */
 export interface P3EditTarget {
   readonly entryId: EntryId;
-  readonly trigger: HTMLButtonElement;
+  readonly trigger: HTMLButtonElement | null;
+}
+export function p3EditTargetFromSelection(
+  selection: P3EditSelection,
+  activeElement: Element | null,
+): P3EditTarget {
+  return {
+    entryId: selection.editSource.entryId,
+    trigger: activeElement instanceof HTMLButtonElement ? activeElement : null,
+  };
 }
 
 export interface P3EditSurfaceProps {
@@ -158,7 +167,7 @@ export function P3EditSurface({ store, runs, target, onClose }: P3EditSurfacePro
   // The editor closes when its edit is sent; P3's notice owns the text while the new chat is pending.
   const restoreFocus = (): void => {
     if (pending.current !== null) return;
-    if (target.trigger.isConnected) target.trigger.focus();
+    if (target.trigger?.isConnected) target.trigger.focus();
   };
   const cancel = (): void => {
     if (pending.current === null) onClose();

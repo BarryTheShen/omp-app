@@ -7,6 +7,7 @@ import {
   type CapabilityMap,
   type DescriptorId,
   DraftScope,
+  EntryId,
   FolderPath,
   type HostCallId,
   HostMetadataPort,
@@ -92,9 +93,15 @@ import {
   P3MessageActions,
   P3RunStatusSurface,
   type P3Runs,
+  p3EditTargetFromSelection,
   storedEntryId,
   useP3RunHandlers,
 } from "@/modules/P3/runs";
+import { captureP3EditSource } from "@/modules/P3/runs/source";
+import {
+  PreviousMessageSelectorView,
+  useP3PreviousMessageSelectorController,
+} from "@/modules/P3/selector";
 import { BranchSummaryRow, branchSummaryOfRow } from "@/modules/P3/summary";
 import { QueueLaneBar, useQueueOpen } from "@/modules/P6/bar/bar";
 import { resolveQueueSubmitPolicy } from "@/modules/P6/composer/composer";
@@ -846,6 +853,41 @@ function ActiveThreadReady({
     [overlay, threadId],
   );
   useDisposeWhenReplaced(dialogHost);
+  const branchMessages = useMemo(
+    () => ({
+      list: async (requestThreadId: ThreadId, signal?: AbortSignal) => {
+        const result = (await rpc.send(
+          { threadId: requestThreadId, command: { type: "get_branch_messages" } },
+          { signal },
+        )) as OmpWire.GetBranchMessagesResult;
+        return result.messages.map((message) => ({
+          entryId: EntryId.parse(message.entryId),
+          text: message.text,
+        }));
+      },
+    }),
+    [rpc],
+  );
+  const selectorController = useP3PreviousMessageSelectorController({
+    available:
+      capabilities["omp.cmd.get_branch_messages"]?.state === "available" && branchAvailable,
+    branchMessages,
+    dialogs: dialogHost,
+    threadId,
+    onCurrentBranch: (entryId) => {
+      const snapshot = store.getSnapshot();
+      let current = snapshot.transcript.head;
+      while (current !== null) {
+        if (current === entryId) return true;
+        current = snapshot.transcript.entries[current]?.parentId ?? null;
+      }
+      return false;
+    },
+    resolveSource: async (message) => captureP3EditSource(store, message.entryId),
+    onSelect: (selection) => {
+      setEditing(p3EditTargetFromSelection(selection, document.activeElement));
+    },
+  });
   useCopyFromChat({
     threadId,
     store,
@@ -1753,6 +1795,10 @@ function ActiveThreadReady({
       notify={setCommandStatus}
       fail={setCommandError}
     >
+      <PreviousMessageSelectorView
+        actions={selectorController.actions}
+        viewModel={selectorController.viewModel}
+      />
       <ComposerHistory store={store}>
         <DraftComposer
           capabilities={capabilities}

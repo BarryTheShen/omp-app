@@ -12,7 +12,8 @@ import {
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { OmpRuntimeStore } from "@/modules/R0/store";
-import { P3EditSurface, type P3EditTarget } from "./edit-surface";
+import type { P3EditSelection } from "../edit";
+import { P3EditSurface, type P3EditTarget, p3EditTargetFromSelection } from "./edit-surface";
 import { createP3Runs, type P3Runs } from "./runs";
 import { sourceThread, storeWithUserMessage, userEntry } from "./test-support";
 
@@ -51,6 +52,23 @@ function rowTrigger(): HTMLButtonElement {
   trigger.focus();
   return trigger;
 }
+test("keeps the selected entry when focus is in the composer or on the page body", () => {
+  const selection = { editSource: { entryId: userEntry } } as P3EditSelection;
+  const composer = document.createElement("textarea");
+  document.body.append(composer);
+  composer.focus();
+  expect(p3EditTargetFromSelection(selection, document.activeElement)).toMatchObject({
+    entryId: userEntry,
+    trigger: null,
+  });
+
+  document.body.tabIndex = -1;
+  document.body.focus();
+  expect(p3EditTargetFromSelection(selection, document.activeElement)).toMatchObject({
+    entryId: userEntry,
+    trigger: null,
+  });
+});
 
 const NEW_CHAT = ThreadIdSchema.parse("branch-of-source");
 const EDIT = {
