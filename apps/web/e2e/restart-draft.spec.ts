@@ -11,9 +11,6 @@ import {
 } from "./real-omp";
 
 realTest.setTimeout(300_000);
-// omp-app comes back on the same port, so the same tab is still on the same origin after the restart.
-realTest.use({ serverPort: Number(process.env.E2E_PORT ?? 4173) + 10 });
-
 const DRAFT = "draft that must survive the restart";
 
 function composer(page: Page): Locator {

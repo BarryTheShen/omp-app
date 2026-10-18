@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   expect,
@@ -82,22 +82,19 @@ function recordBlockFrames(finalRow: string): Promise<BlockFrame[]> {
 }
 
 /**
- * What the frames of one streamed block must show: one code view on every frame, the block passing through
- * several texts, no plain frame once it has colours (including the frame a transcript row remounts it), completed
- * lines keeping their colours, and a last frame that is the whole block with every line coloured.
+ * The sampled-frame checks below prove retained colours and the final block. The held-reply test proves non-empty
+ * growth deterministically before release; these ordinary streamed tests keep their relaxed frame assertions because
+ * browser scheduling can skip intermediate DOM snapshots.
  */
 function expectBlockStreamedWithColours(
   frames: readonly BlockFrame[],
   rows: readonly string[],
 ): void {
-  expect(frames.length).toBeGreaterThan(10);
   expect(new Set(frames.map((frame) => frame.views))).toEqual(new Set([1]));
-
-  // The reply arrived in pieces: the block passed through several different texts.
-  const texts = new Set(
-    frames.map((frame) => frame.rows.map((row) => row.text.trimEnd()).join("\n")),
-  );
-  expect(texts.size).toBeGreaterThan(4);
+  const finalText = rows.join("\n");
+  expect(
+    frames.some((frame) => frame.rows.map((row) => row.text.trimEnd()).join("\n") !== finalText),
+  ).toBe(true);
 
   // The block never turns plain once it has colours, including on the frame a transcript row remounts it.
   const firstColoured = frames.findIndex((frame) => frame.state === "highlighted");
@@ -183,5 +180,45 @@ realTest(
         .join("\n") ?? "";
     expect(lastText.length).toBeGreaterThan(2_048);
     expectBlockStreamedWithColours(frames, LONG_BLOCK_ROWS);
+  },
+);
+realTest(
+  "a held code stream has a coloured non-empty prefix before it is released",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await sendPrompt(composer, "stream_held: show the held streamed block");
+
+    await expect
+      .poll(
+        () =>
+          page
+            .locator("[data-code-view]")
+            .first()
+            .evaluate((view, expected) => {
+              const text = Array.from(view.querySelectorAll("code > span.block"), (row) =>
+                (row.textContent ?? "").trimEnd(),
+              ).join("\n");
+              return (
+                text.length > 0 &&
+                text !== expected &&
+                expected.startsWith(text) &&
+                view.querySelector("[data-code-token]") !== null
+              );
+            }, LONG_BLOCK_ROWS.join("\n")),
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+
+    const sampling = page.evaluate(recordBlockFrames, LONG_FINAL_ROW);
+    void sampling.catch(() => undefined);
+    await writeFile(join(realApp.agentDir, "release-held-reply"), "");
+    await expect(page.locator("p", { hasText: "Here is the long streamed block:" })).toBeVisible({
+      timeout: 120_000,
+    });
+    const frames = await sampling;
+    expectBlockStreamedWithColours(frames, LONG_BLOCK_ROWS);
+    expect(realApp.problems).toEqual([]);
   },
 );
