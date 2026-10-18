@@ -22,15 +22,15 @@ function launch(id: string, toolCallId: string, jobId: string, at: number) {
   });
 }
 
-/** omp's notice that a job's result was delivered into the chat, written at `at` (ms). It carries no job status. */
-function delivered(id: string, jobId: string, at: number) {
+/** omp's notice that a job's result was delivered into the chat, written at `at`. */
+function delivered(id: string, jobId: string, at: number, status?: string) {
   return message(id, {
     role: "custom",
     customType: "async-result",
     content: "<system-notice>...</system-notice>",
     display: true,
     timestamp: at,
-    details: { jobs: [{ jobId, type: "bash" }] },
+    details: { jobs: [{ jobId, type: "bash", ...(status === undefined ? {} : { status }) }] },
   });
 }
 
@@ -62,6 +62,48 @@ describe("background job views", () => {
         process("ready", 50),
       ),
     ).toEqual({ call_a: { kind: "finished", jobId: "bg_1" } });
+  });
+  test("a delivered failed job is failed, not finished", () => {
+    expect(
+      viewsOf(
+        [launch("1", "call_a", "bg_1", 100), delivered("2", "bg_1", 200, "failed")],
+        process("ready", 50),
+      ),
+    ).toEqual({ call_a: { kind: "failed", jobId: "bg_1" } });
+  });
+  test("a delivered cancelled job is cancelled, not finished", () => {
+    expect(
+      viewsOf(
+        [launch("1", "call_a", "bg_1", 100), delivered("2", "bg_1", 200, "cancelled")],
+        process("ready", 50),
+      ),
+    ).toEqual({ call_a: { kind: "cancelled", jobId: "bg_1" } });
+  });
+
+  test("an unknown delivered status stays finished", () => {
+    expect(
+      viewsOf(
+        [launch("1", "call_a", "bg_1", 100), delivered("2", "bg_1", 200, "paused")],
+        process("ready", 50),
+      ),
+    ).toEqual({ call_a: { kind: "finished", jobId: "bg_1" } });
+  });
+
+  test("a failed delivery wins over an ended process and later deliveries", () => {
+    expect(
+      viewsOf(
+        [
+          launch("1", "call_a", "bg_1", 100),
+          launch("2", "call_b", "bg_2", 110),
+          delivered("3", "bg_1", 200, "failed"),
+          delivered("4", "bg_2", 210, "completed"),
+        ],
+        process("exited", 50),
+      ),
+    ).toEqual({
+      call_a: { kind: "failed", jobId: "bg_1" },
+      call_b: { kind: "finished", jobId: "bg_2" },
+    });
   });
 
   test("a job with no result, launched by the process that runs now, is running", () => {

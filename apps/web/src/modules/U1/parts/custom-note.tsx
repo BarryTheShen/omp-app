@@ -121,7 +121,7 @@ export function describeCustomMessage(source: CustomNoteSource): CustomNoteView 
       };
     }
     case "async-result": {
-      // omp v18.8.9 sends typed job metadata without a separate display result (`packages/coding-agent/src/session/async-job-delivery.ts:50-64,127-149`);
+      // omp v18.9.1 sends typed job metadata with status (`packages/coding-agent/src/session/async-job-delivery.ts:51-65`);
       // its model-facing template is `packages/coding-agent/src/prompts/tools/async-result.md:4`; show a plain status line.
       const jobs = field(details, "jobs");
       if (Array.isArray(jobs) && jobs.length > 0) {
@@ -129,6 +129,7 @@ export function describeCustomMessage(source: CustomNoteSource): CustomNoteView 
           const type = field(job, "type");
           const label = field(job, "label");
           const jobId = field(job, "jobId");
+          const status = field(job, "status");
           const durationMs = field(job, "durationMs");
           const cleanLabel = typeof label === "string" ? label.replace(/\s+/g, " ").trim() : "";
           const kind = type === "bash" ? "command" : type === "task" ? "task" : "job";
@@ -145,7 +146,9 @@ export function describeCustomMessage(source: CustomNoteSource): CustomNoteView 
                   return ` · ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
                 })()
               : "";
-          return `${name} finished${duration}.`;
+          const outcome =
+            status === "failed" ? "failed" : status === "cancelled" ? "was cancelled" : "finished";
+          return `${name} ${outcome}${duration}.`;
         });
         return {
           heading: lines.join(" · "),

@@ -12,6 +12,8 @@ import type { ProcessState, RuntimeMessage } from "./store";
 export type BackgroundJobView =
   | { readonly kind: "running"; readonly jobId: string }
   | { readonly kind: "finished"; readonly jobId: string }
+  | { readonly kind: "failed"; readonly jobId: string }
+  | { readonly kind: "cancelled"; readonly jobId: string }
   | { readonly kind: "ended"; readonly jobId: string }
   | { readonly kind: "unknown"; readonly jobId: string };
 
@@ -26,10 +28,9 @@ interface Launch {
 const AsyncLaunch = z.looseObject({
   async: z.looseObject({ jobId: z.string(), state: z.string() }),
 });
-
-/** omp's `details.jobs` on an `async-result` message: the jobs whose results it delivered. */
+/** omp v18.9.1 `packages/coding-agent/src/session/async-job-delivery.ts` includes each delivered job's status. */
 const DeliveredJobs = z.looseObject({
-  jobs: z.array(z.looseObject({ jobId: z.string() })),
+  jobs: z.array(z.looseObject({ jobId: z.string(), status: z.string().optional() })),
 });
 
 /** The process states in which an omp process may still run a background job. */
@@ -52,7 +53,7 @@ export function backgroundJobViews(
 ): ReadonlyMap<string, BackgroundJobView> {
   const launches: Launch[] = [];
   const awaiting = new Map<string, Launch>();
-  const delivered = new Set<string>();
+  const delivered = new Map<string, string | undefined>();
   for (const key of order) {
     const message = messages[key]?.message;
     if (message?.role === "toolResult") {
@@ -69,14 +70,14 @@ export function backgroundJobViews(
       for (const job of deliveredJobsOf(message.details)) {
         const launch = awaiting.get(job.jobId);
         if (launch === undefined) continue;
-        delivered.add(launch.toolCallId);
+        delivered.set(launch.toolCallId, job.status ?? "completed");
         awaiting.delete(job.jobId);
       }
     }
   }
   const views = new Map<string, BackgroundJobView>();
   for (const launch of launches) {
-    views.set(launch.toolCallId, viewOf(launch, delivered.has(launch.toolCallId), process));
+    views.set(launch.toolCallId, viewOf(launch, delivered.get(launch.toolCallId), process));
   }
   return views;
 }
@@ -117,14 +118,22 @@ function launchOf(
   return parsed.success ? { toolCallId, jobId: parsed.data.async.jobId, at } : undefined;
 }
 
-function deliveredJobsOf(details: unknown): readonly { readonly jobId: string }[] {
+function deliveredJobsOf(
+  details: unknown,
+): readonly { readonly jobId: string; readonly status?: string }[] {
   const parsed = DeliveredJobs.safeParse(details);
   return parsed.success ? parsed.data.jobs : [];
 }
 
-function viewOf(launch: Launch, finished: boolean, process: ProcessState): BackgroundJobView {
+function viewOf(
+  launch: Launch,
+  deliveredStatus: string | undefined,
+  process: ProcessState,
+): BackgroundJobView {
   const { jobId } = launch;
-  if (finished) return { kind: "finished", jobId };
+  if (deliveredStatus === "failed") return { kind: "failed", jobId };
+  if (deliveredStatus === "cancelled") return { kind: "cancelled", jobId };
+  if (deliveredStatus !== undefined) return { kind: "finished", jobId };
   if (LIVE[process.status] !== true) return { kind: "ended", jobId };
   if (process.startedAt === undefined) return { kind: "unknown", jobId };
   return launch.at >= process.startedAt ? { kind: "running", jobId } : { kind: "ended", jobId };

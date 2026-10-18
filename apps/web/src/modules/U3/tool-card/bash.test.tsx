@@ -825,6 +825,32 @@ describe("a command omp moved to the background", () => {
     expect(screen.queryByRole("button", { name: /^Stop background job/ })).toBeNull();
     expect(screen.queryByText(/Running in the background/)).toBeNull();
   });
+  test("says a delivered failed job failed, with no Stop", () => {
+    render(
+      <BackgroundJobCommandContext.Provider value={vi.fn(async (_command: string) => [])}>
+        <ChatJobs view={{ kind: "failed", jobId: "bg_1" }}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    expect(screen.getByText("Background job bg_1 failed.", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Failed", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Stop background job/ })).toBeNull();
+  });
+  test("says a delivered cancelled job was cancelled, with no Stop", () => {
+    render(
+      <BackgroundJobCommandContext.Provider value={vi.fn(async (_command: string) => [])}>
+        <ChatJobs view={{ kind: "cancelled", jobId: "bg_1" }}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    expect(screen.getByText("Background job bg_1 cancelled.", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Cancelled", { exact: true })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Stop background job/ })).toBeNull();
+  });
 
   test("says omp stopped before a job's result came back, once its process has ended", () => {
     const run = vi.fn(async (_command: string) => ["Cancelled background job bg_1."]);

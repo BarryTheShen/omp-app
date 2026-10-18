@@ -80,6 +80,22 @@ describe("describeCustomMessage", () => {
     expect(view.body).toBe("Model-facing text.");
     expect(view.bodyInDetails).toBe(true);
   });
+  test("uses delivered failed, cancelled and completed statuses in background notes", () => {
+    const view = describeCustomMessage({
+      customType: "async-result",
+      details: {
+        jobs: [
+          { type: "bash", label: "false", status: "failed", durationMs: 5 },
+          { type: "bash", label: "stop", status: "cancelled", durationMs: 5 },
+          { type: "bash", label: "true", status: "completed", durationMs: 5 },
+        ],
+      },
+      text: "<system-notice>Results.</system-notice>",
+    });
+    expect(view.heading).toBe(
+      "false failed · 0 seconds. · stop was cancelled · 0 seconds. · true finished · 0 seconds.",
+    );
+  });
 
   test("a kind with no heading shows its text alone, and a message without the details it expects still shows", () => {
     expect(

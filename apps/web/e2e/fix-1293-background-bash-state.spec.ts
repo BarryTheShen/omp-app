@@ -147,3 +147,93 @@ realTest(
     await expect(reloaded.getByRole("status")).toHaveText("Stopped background job bg_1.");
   },
 );
+
+const FAILED_DELIVERY_ENTRIES = [
+  {
+    type: "message",
+    message: {
+      role: "user",
+      content: [{ type: "text", text: "Run the failing background command." }],
+      timestamp: Date.UTC(2026, 9, 3, 12, 0, 0),
+    },
+  },
+  {
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [
+        {
+          type: "toolCall",
+          id: "call_failed_background",
+          name: "bash",
+          arguments: { command: "false", async: true },
+        },
+      ],
+      stopReason: "toolUse",
+      timestamp: Date.UTC(2026, 9, 3, 12, 0, 1),
+    },
+  },
+  {
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolCallId: "call_failed_background",
+      toolName: "bash",
+      content: [
+        {
+          type: "text",
+          text: "Backgrounded as job bg_1; its output will be added to the conversation when it finishes.",
+        },
+      ],
+      details: { async: { state: "running", jobId: "bg_1", type: "bash" } },
+      isError: false,
+      timestamp: Date.UTC(2026, 9, 3, 12, 0, 1),
+    },
+  },
+  {
+    type: "custom_message",
+    customType: "async-result",
+    content:
+      "<system-notice>Background job false failed.\n\nCommand exited with code 1.</system-notice>",
+    display: true,
+    attribution: "agent",
+    details: {
+      meta: { source: { type: "report", value: "background job delivery" } },
+      jobs: [{ jobId: "bg_1", type: "bash", status: "failed", label: "false", durationMs: 5 }],
+    },
+    timestamp: "2026-10-03T12:00:02.000Z",
+  },
+  {
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "The background command failed." }],
+      stopReason: "stop",
+      timestamp: Date.UTC(2026, 9, 3, 12, 0, 3),
+    },
+  },
+] as const;
+
+realTest.describe("failed background delivery", () => {
+  realTest.use({ seedEntries: { entries: FAILED_DELIVERY_ENTRIES } });
+
+  realTest(
+    "a delivered failed background job says Failed in light and dark, with no Stop",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(180_000);
+      const page = await realApp.open();
+      await page.setViewportSize(DESKTOP);
+      await page.getByRole("listbox", { name: "Session list" }).getByRole("option").first().click();
+      const card = bashCard(page, "false");
+      await expect(card).toBeVisible({ timeout: 60_000 });
+      await openToolCard(card);
+      await expect(card.getByText("Failed", { exact: true })).toBeVisible();
+      await expect(card).toContainText("Background job bg_1 failed.");
+      await expect(page.getByText("false failed · 0 seconds.", { exact: true })).toBeVisible();
+      await expect(card.getByRole("button", { name: /^Stop background job/ })).toHaveCount(0);
+      await capture(page, `fix-1472-failed-light-${testInfo.retry}.png`, false);
+      await capture(page, `fix-1472-failed-dark-${testInfo.retry}.png`, true);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+});

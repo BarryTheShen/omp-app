@@ -48,6 +48,8 @@ function backgroundChip(
 ): ToolCardOutcome {
   if (stop?.status === "stopped") return { label: "Stopped", phase: "unrecorded" };
   if (stop?.status === "finished") return { label: "Finished", phase: "unrecorded" };
+  if (view?.kind === "failed") return { label: "Failed", phase: "error" };
+  if (view?.kind === "cancelled") return { label: "Cancelled", phase: "unrecorded" };
   if (view?.kind === "finished") return { label: "Finished", phase: "unrecorded" };
   if (view?.kind === "ended") return { label: "Ended", phase: "unrecorded" };
   return BACKGROUND_OUTCOME;
@@ -663,6 +665,8 @@ function backgroundNoteOf(
 ): string {
   if (running)
     return `Running in the background as job ${jobId}. Its output is added to the conversation when it finishes.`;
+  if (view?.kind === "failed") return `Background job ${jobId} failed.`;
+  if (view?.kind === "cancelled") return `Background job ${jobId} cancelled.`;
   if (view?.kind === "finished") return `Background job ${jobId} finished.`;
   if (view?.kind === "ended")
     return `Background job ${jobId}. omp stopped before its result came back.`;
