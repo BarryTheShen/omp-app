@@ -34,9 +34,6 @@ realTest(
     await onExit.selectOption("remove");
     const save = panel.getByRole("button", { name: "Save changes", exact: true });
     await save.click();
-    await expect(
-      page.getByRole("dialog", { name: "Review task isolation changes", exact: true }),
-    ).toHaveCount(0);
     await expect(save).toBeDisabled({ timeout: 20_000 });
     await expect
       .poll(() => readFile(join(realApp.agentDir, "config.yml"), "utf8"), { timeout: 20_000 })

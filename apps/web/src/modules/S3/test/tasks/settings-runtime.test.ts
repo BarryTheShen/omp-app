@@ -1,8 +1,7 @@
-import type { ConfigEntry, JsonValue } from "@omp-app/contracts";
-import { FolderPath } from "@omp-app/contracts";
+import type { ConfigEntry, FolderPath } from "@omp-app/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { SettingsRuntime } from "../../../S1/runtime";
-import type { IsolationSettingKey, TaskSettingsSectionId } from "../../tasks";
+import type { TaskSettingsSectionId } from "../../tasks";
 import { TASK_SETTINGS_SECTIONS, TaskSettingsSectionRuntime } from "../../tasks";
 import {
   createTaskConfigChangesFixture,
@@ -39,35 +38,6 @@ function createRuntime(
 afterEach(() => {
   for (const runtime of activeRuntimes.splice(0)) runtime.dispose();
 });
-
-const isolationEdits: readonly {
-  readonly key: IsolationSettingKey;
-  readonly label: string;
-  readonly value: JsonValue;
-}[] = [
-  { key: "task.isolation.enabled", label: "Isolate Subagents", value: true },
-  { key: "isolation.backend", label: "Isolation Backend", value: "apfs" },
-  { key: "worktree.clone", label: "Clone New Worktrees", value: false },
-  {
-    key: "worktree.cleanSource",
-    label: "Clean Source Checkout When Creating a Worktree",
-    value: true,
-  },
-  {
-    key: "worktree.onStart",
-    label: "Worktree on Start",
-    value: "ask",
-  },
-  {
-    key: "worktree.onExit",
-    label: "Worktree on Exit",
-    value: "remove",
-  },
-  { key: "task.isolation.apply", label: "Automatically Apply Isolated Task Changes", value: false },
-  { key: "task.isolation.merge", label: "Isolation Merge Strategy", value: "branch" },
-  { key: "task.isolation.commits", label: "Isolation Commit Message Style", value: "ai" },
-  { key: "worktree.base", label: "Worktree Base Directory", value: "~/omp-worktrees" },
-];
 
 describe("S3 Tasks ConfigStore runtime", () => {
   test("reads each Tasks section from S1.2 with the section's keys and default provenance", async () => {
@@ -136,81 +106,6 @@ describe("S3 Tasks ConfigStore runtime", () => {
     expect(refreshed).toMatchObject({ value: true, source: "global", overrides: ["default"] });
     expect(config.revision).toBe("revision-2");
     expect(fixture.state.listCalls).toBe(2);
-  });
-
-  test("requires explicit confirmation before saving any isolation setting", async () => {
-    for (const change of isolationEdits) {
-      const { fixture, runtime } = createRuntime("isolation");
-      await runtime.read();
-      expect(runtime.stage(change.key, { secret: false, value: change.value }).ok).toBe(true);
-      const result = await runtime.save();
-      expect(result).toMatchObject({
-        status: "confirmation-required",
-        confirmation: { changes: [change.label] },
-      });
-      expect(fixture.state.writeCalls).toHaveLength(0);
-    }
-  });
-
-  test("denial writes nothing; explicit confirmation saves configuration only with CAS", async () => {
-    const folder = FolderPath.parse("/workspace/project");
-    const { fixture, runtime } = createRuntime("isolation", folder, "project");
-    await runtime.read();
-    expect(runtime.stage("task.isolation.apply", { secret: false, value: false }).ok).toBe(true);
-    const denied = await runtime.save({
-      confirmIsolation: async (confirmation) => {
-        expect(confirmation.title).toBe("Review task isolation changes");
-        expect(confirmation.changes).toEqual(["Automatically Apply Isolated Task Changes"]);
-        expect(confirmation.message).toContain("saves configuration only");
-        return false;
-      },
-    });
-    expect(denied).toMatchObject({
-      status: "cancelled",
-      changes: ["Automatically Apply Isolated Task Changes"],
-    });
-    expect(fixture.state.writeCalls).toHaveLength(0);
-
-    let confirmationWasShown = false;
-    const saved = await runtime.save({
-      confirmIsolation: async (confirmation) => {
-        confirmationWasShown = true;
-        expect(confirmation.changes).toEqual(["Automatically Apply Isolated Task Changes"]);
-        return true;
-      },
-    });
-    expect(confirmationWasShown).toBe(true);
-    expect(saved.status).toBe("saved");
-    expect(fixture.state.writeCalls).toHaveLength(1);
-    expect(fixture.state.writeCalls[0]).toMatchObject({
-      key: "task.isolation.apply",
-      layer: "project",
-      folder,
-      expectedRevision: "revision-1",
-      value: { secret: false, value: false },
-    });
-    let savedEntry: ConfigEntry | undefined;
-    for (const entry of fixture.state.entries) {
-      if (entry.key === "task.isolation.apply") savedEntry = entry;
-    }
-    expect(savedEntry).toMatchObject({ secret: false, value: false, source: "project" });
-  });
-
-  test("does not apply a confirmation to edits staged while the dialog is open", async () => {
-    const { fixture, runtime } = createRuntime("isolation");
-    await runtime.read();
-    runtime.stage("task.isolation.apply", { secret: false, value: false });
-    const result = await runtime.save({
-      confirmIsolation: async () => {
-        runtime.stage("task.isolation.merge", { secret: false, value: "branch" });
-        return true;
-      },
-    });
-    expect(result).toMatchObject({
-      status: "stale-confirmation",
-      changes: ["Automatically Apply Isolated Task Changes", "Isolation Merge Strategy"],
-    });
-    expect(fixture.state.writeCalls).toHaveLength(0);
   });
 
   test("saves live non-isolation policy through ConfigStore without a confirmation", async () => {

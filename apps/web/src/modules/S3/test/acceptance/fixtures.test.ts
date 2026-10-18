@@ -703,7 +703,7 @@ describe("S3.5 ConfigStore fixtures and gate proof", () => {
         const store = taskStoreFor(state, section);
         await store.read();
         expect(store.stage(fixture.key, { secret: false, value: fixture.value }).ok).toBe(true);
-        const result = await store.save({ confirmIsolation: async () => true });
+        const result = await store.save();
         expect(result.status).toBe("saved");
         if (result.status === "saved") expect(result.result.status).toBe(fixture.expected);
       }
