@@ -654,7 +654,7 @@ describe("createAppClient", () => {
     expect(server.connections).toHaveLength(1);
     expect(states.at(-1)).toMatchObject({
       state: "closed",
-      error: { code: "permission", message: "Launch token is not valid" },
+      error: { code: "permission", message: "Launch token is not valid", retryable: false },
       refusal: "invalid",
     });
     client.dispose();
@@ -668,7 +668,7 @@ describe("createAppClient", () => {
     await eventually(() => client.connectionState === "closed");
     expect(states.at(-1)).toMatchObject({
       state: "closed",
-      error: { code: "permission", message: "Launch link has expired" },
+      error: { code: "permission", message: "Launch link has expired", retryable: false },
       refusal: "expired",
     });
     client.dispose();
@@ -708,7 +708,7 @@ describe("createAppClient", () => {
     const call = settle(app.capabilities({}));
     await eventually(() => call.settled);
     expect(call.error).toMatchObject({
-      appError: { code: "permission", message: "Launch token is not valid" },
+      appError: { code: "permission", message: "Launch token is not valid", retryable: false },
     });
     client.dispose();
   });
@@ -723,7 +723,11 @@ describe("createAppClient", () => {
     await eventually(() => client.connectionState === "closed");
     expect(states.at(-1)).toMatchObject({
       state: "closed",
-      error: { code: "permission", message: "This page address is not allowed to reach omp-app" },
+      error: {
+        code: "permission",
+        message: "This page address is not allowed to reach omp-app",
+        retryable: false,
+      },
       refusal: "origin",
     });
     const sameStream = settle(client.subscribe(EventPort, "updated", { scope: "thread-1" }));
@@ -732,11 +736,12 @@ describe("createAppClient", () => {
       appError: {
         code: "permission",
         message: "This page address is not allowed to reach omp-app",
+        retryable: false,
       },
     });
     const otherStream = settle(client.subscribe(EventPort, "updated", { scope: "thread-2" }));
     await eventually(() => otherStream.settled);
-    expect(otherStream.error).toMatchObject({ appError: { code: "permission" } });
+    expect(otherStream.error).toMatchObject({ appError: { code: "permission", retryable: false } });
     client.dispose();
   });
 
