@@ -36,7 +36,7 @@ export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRen
       >
         <section
           aria-label={`${status} staged action`}
-          className={`ms-2 border-s-2 border-border/70 bg-card py-2 pe-4 ps-4 text-foreground ${statusTone(status)}`}
+          className={`py-2 text-foreground ${statusTone(status)}`}
           data-status={status}
           data-testid={`t7-resolve-status-${state.toolCallId}`}
         >

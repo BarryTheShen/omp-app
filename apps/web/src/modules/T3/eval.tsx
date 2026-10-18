@@ -47,10 +47,7 @@ export function EvalCard({ rendererProps }: EvalCardProps) {
         state={state}
         summary={summaryFor(language, details, state.phase)}
       >
-        <div
-          className="border-border/70 bg-card mt-1 flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:p-4"
-          data-slot="t3-eval-details"
-        >
+        <div className="flex min-w-0 flex-col gap-3 py-2" data-slot="t3-eval-details">
           <EvalHeader details={details} language={language} />
           <EvalCells
             cells={details?.cells}

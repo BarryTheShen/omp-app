@@ -60,10 +60,7 @@ function WaitBody({
     return isError || text === "" ? null : <TextOutput testId="t5-wait-text" text={text} />;
   }
   return (
-    <section
-      className="ms-2 flex min-w-0 flex-col gap-3 rounded-lg border border-border/70 p-3"
-      data-slot="t5-wait-details"
-    >
+    <section className="flex min-w-0 flex-col gap-3 py-2" data-slot="t5-wait-details">
       {waited !== undefined && <MessageBlock message={waited} />}
       {jobs.length > 0 && <JobRows jobs={jobs} stops={stops} />}
       {agents.length > 0 && <AgentRows agents={agents} />}

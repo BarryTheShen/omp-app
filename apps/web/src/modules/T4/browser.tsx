@@ -52,7 +52,7 @@ export function BrowserToolCard(rendererProps: ToolRendererProps) {
         state={state}
         summary={browserSummary(action, name, url)}
       >
-        <section className="ms-2 flex min-w-0 flex-col gap-3 py-2 ps-4" data-browser-content>
+        <section className="flex min-w-0 flex-col gap-3 py-2" data-browser-content>
           {url && url.length > 64 && safeRetrievalUrl(url) && (
             <a
               className="text-primary truncate text-xs underline underline-offset-2"

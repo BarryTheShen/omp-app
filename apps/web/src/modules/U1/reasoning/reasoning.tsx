@@ -1,5 +1,4 @@
 import { groupPartByType, type MessagePrimitive } from "@assistant-ui/react";
-import { BrainIcon, ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -61,18 +60,21 @@ function ThoughtTrigger({
     <CollapsibleTrigger
       aria-label={label}
       className={cn(
-        "group/trigger text-muted-foreground hover:text-foreground flex max-w-[75%] items-center gap-2 py-1.5 text-sm transition-[color,scale] active:scale-[0.98]",
-        active && "shimmer motion-reduce:animate-none",
+        "group/trigger my-1 flex w-full min-w-0 items-baseline gap-2 text-start font-mono text-trace outline-none [font-variant-ligatures:none] focus-visible:underline",
+        active && "animate-pulse",
       )}
       data-u1-reasoning-trigger
       data-slot="reasoning-trigger"
     >
-      <BrainIcon aria-hidden="true" className="size-4 shrink-0" />
-      <span className="inline-block leading-none tabular-nums">{label}</span>
-      <ChevronRightIcon
+      <span
         aria-hidden="true"
-        className="size-4 shrink-0 transition-transform duration-(--duration-base) motion-reduce:transition-none group-data-panel-open/trigger:rotate-90"
-      />
+        className="inline-block shrink-0 text-muted-foreground/50 transition-transform duration-(--duration-base) motion-reduce:transition-none group-data-panel-open/trigger:rotate-90"
+      >
+        &gt;
+      </span>
+      <span className="min-w-0 truncate text-muted-foreground group-hover/trigger:text-foreground">
+        {label}
+      </span>
     </CollapsibleTrigger>
   );
 }
@@ -81,10 +83,11 @@ export function HiddenThinkingPulse() {
   return (
     <span
       aria-label="Thinking"
-      className="text-muted-foreground inline-flex min-w-20 animate-pulse items-center py-1.5 text-sm motion-reduce:animate-none"
+      className="my-1 flex w-full min-w-0 items-baseline gap-2 font-mono text-trace text-muted-foreground animate-pulse [font-variant-ligatures:none]"
       data-u1-thinking-pulse
       role="status"
     >
+      <span aria-hidden="true" className="text-muted-foreground/50 before:content-['>']" />
       Thinking
     </span>
   );
@@ -100,7 +103,11 @@ export function ReasoningDisclosure({
   return (
     <ReasoningRoot className="mb-3" data-u1-reasoning-group streaming={streaming} variant="ghost">
       <ThoughtTrigger active={streaming} durationSeconds={durationSeconds} />
-      <ReasoningContent aria-busy={streaming} className="data-closed:hidden" data-u1-reasoning-body>
+      <ReasoningContent
+        aria-busy={streaming}
+        className="border-foreground/10 ms-[0.3125rem] border-s ps-4 data-closed:hidden"
+        data-u1-reasoning-body
+      >
         <ReasoningText>{children}</ReasoningText>
       </ReasoningContent>
     </ReasoningRoot>

@@ -50,10 +50,7 @@ export function GithubCard({ rendererProps }: GithubCardProps) {
           </summary>
           <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">{model.rawPreview}</pre>
         </details>
-        <div
-          className="border-border/70 bg-card mt-1 flex min-w-0 flex-col gap-3 rounded-lg border p-3 sm:p-4"
-          data-slot="t4-github-details"
-        >
+        <div className="flex min-w-0 flex-col gap-3 py-2" data-slot="t4-github-details">
           <GithubHeader
             args={args}
             details={details}

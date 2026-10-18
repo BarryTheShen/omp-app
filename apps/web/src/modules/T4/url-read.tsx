@@ -50,10 +50,7 @@ export function T4ReadUrlRenderer({
         state={state}
         summary={title}
       >
-        <section
-          className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4"
-          data-slot="t4-url-read-body"
-        >
+        <section className="flex min-w-0 flex-col gap-3 py-2" data-slot="t4-url-read-body">
           <header className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
             <span className="font-medium" data-url-title>
               {title}

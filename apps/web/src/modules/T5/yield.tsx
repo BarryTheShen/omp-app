@@ -52,7 +52,7 @@ function YieldCard({ rendererProps }: YieldCardProps) {
         {details !== undefined && reportsSubmission(details) ? (
           <YieldDetailsView details={details} item={item} />
         ) : state.phase === "running" || state.phase === "partial" ? (
-          <p className="text-muted-foreground ms-2 mt-2 text-xs">Waiting for submitted output.</p>
+          <p className="text-muted-foreground mt-2 text-xs">Waiting for submitted output.</p>
         ) : null}
       </ToolCard>
     </div>
@@ -77,10 +77,7 @@ function YieldDetailsView({
     return { label, key: `${label}-${occurrence}` };
   });
   return (
-    <section
-      className="border-border/70 bg-card ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4 pe-3 text-sm"
-      data-slot="t5-yield-details"
-    >
+    <section className="flex min-w-0 flex-col gap-3 py-2 text-sm" data-slot="t5-yield-details">
       {/* A workpool item is one of several submissions: its number says which one. Its type is the item's id. */}
       {item !== undefined ? (
         <section data-slot="t5-yield-item">

@@ -146,10 +146,7 @@ function WriteBody({
   };
 
   return (
-    <section
-      className="ms-2 flex min-w-0 flex-col gap-2 border-s-2 border-border/70 py-2 ps-4"
-      data-slot="t1-write-body"
-    >
+    <section className="flex min-w-0 flex-col gap-2 py-2" data-slot="t1-write-body">
       <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span
           className="min-w-0 max-w-full truncate font-mono"

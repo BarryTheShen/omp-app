@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, openToolCard, realTest, screenshots } from "./real-omp";
+import { expect, openToolCard, realTest, screenshots, sendPrompt, startChat } from "./real-omp";
 
 const AT = Date.UTC(2026, 8, 1, 12, 0, 0);
 const USAGE = {
@@ -112,6 +112,42 @@ realTest(
     const showAll = page.getByRole("button", { name: "Show all 20 lines" });
     const card = page.getByTestId("tool-card-call_numbers");
     await expect(thinking).toBeVisible();
+
+    const reasoningMarker = thinking.locator(":scope > span").first();
+    const reasoningLabel = thinking.locator(":scope > span").nth(1);
+    await expect(thinking).toHaveCSS("font-family", /JetBrains Mono/);
+    await expect(thinking).toHaveCSS("font-size", "12px");
+    await expect(reasoningMarker).toHaveText(">");
+    await expect(reasoningMarker).toHaveCSS("rotate", "none");
+    await expect(reasoningMarker).toHaveCSS("transform", "none");
+    await thinking.click();
+    await expect(reasoningMarker).toHaveCSS("rotate", "90deg");
+    await expect(reasoningMarker).toHaveCSS("transform", "none");
+    await thinking.click();
+    await expect(reasoningMarker).toHaveCSS("rotate", "none");
+    await thinking.click();
+    await expect(reasoningMarker).toHaveCSS("rotate", "90deg");
+    const mutedColor = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.className = "text-muted-foreground";
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    await expect(reasoningLabel).toHaveCSS("color", mutedColor);
+    const reasoningBody = page.locator("[data-u1-reasoning-body]").first();
+    await expect(reasoningBody).toHaveCSS("border-left-width", "1px");
+    await expect(reasoningBody).toHaveCSS("padding-left", "16px");
+    const railColor = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.className = "border border-foreground/10";
+      document.body.append(probe);
+      const color = getComputedStyle(probe).borderLeftColor;
+      probe.remove();
+      return color;
+    });
+    await expect(reasoningBody).toHaveCSS("border-left-color", railColor);
     await page.screenshot({ path: join(screenshots, "fix-739-light.png") });
 
     // Alt+T shows or hides the thinking block; the chord reads the same on every platform.
@@ -169,6 +205,31 @@ realTest(
     await composer.press("Alt+t");
     await expect(thinking).toBeVisible();
     await expect(composer).toHaveValue("kept");
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+realTest(
+  "a streaming reasoning disclosure keeps its marker rotated only while open",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const page = await realApp.open({
+      beforeLoad: (target) =>
+        target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "light")),
+    });
+    const composer = await startChat(page);
+    await sendPrompt(composer, "Please stream_reasoning and answer.");
+    const thinking = page.getByRole("button", { name: /^Thought/ });
+    await expect(thinking).toBeVisible({ timeout: 45_000 });
+    await expect(thinking).toHaveCSS("animation-name", "pulse");
+    const marker = thinking.locator(":scope > span").first();
+    await expect(thinking).toHaveAttribute("aria-expanded", "true");
+    await expect(marker).toHaveCSS("rotate", "90deg");
+    await expect(marker).toHaveCSS("transform", "none");
+    await thinking.click();
+    await expect(thinking).toHaveAttribute("aria-expanded", "false");
+    await expect(marker).toHaveCSS("rotate", "none");
+    await expect(marker).toHaveCSS("transform", "none");
     expect(realApp.problems).toEqual([]);
   },
 );

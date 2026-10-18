@@ -37,7 +37,7 @@ export function CheckpointCard({ rendererProps }: { readonly rendererProps: Tool
         summary={summary}
       >
         {!decoded.ok && state.phase === "success" && (
-          <p className="text-muted-foreground ms-2 py-1 text-xs">Checkpoint details unavailable.</p>
+          <p className="text-muted-foreground py-1 text-xs">Checkpoint details unavailable.</p>
         )}
       </ToolCard>
     </div>
@@ -74,10 +74,10 @@ export function RewindCard({ rendererProps }: { readonly rendererProps: ToolRend
         summary={summary}
       >
         {!decoded.ok && state.phase === "success" && (
-          <p className="text-muted-foreground ms-2 py-1 text-xs">Rewind details unavailable.</p>
+          <p className="text-muted-foreground py-1 text-xs">Rewind details unavailable.</p>
         )}
         {showReport && (
-          <div className="ms-2 min-w-0 py-1 text-sm" data-testid="t7-rewind-report">
+          <div className="min-w-0 py-1 text-sm" data-testid="t7-rewind-report">
             <MarkdownContent text={body} variant="compact" />
           </div>
         )}

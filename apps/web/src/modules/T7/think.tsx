@@ -29,7 +29,7 @@ export function ThinkCard({ rendererProps }: { readonly rendererProps: ToolRende
         state={state}
         summary={summary}
       >
-        <p className="text-muted-foreground ms-2 py-1 text-xs">The content stays private.</p>
+        <p className="text-muted-foreground py-1 text-xs">The content stays private.</p>
       </ToolCard>
     </div>
   );

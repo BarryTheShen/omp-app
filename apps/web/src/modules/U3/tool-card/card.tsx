@@ -21,28 +21,30 @@ const rememberedDisclosure = new Map<string, boolean>();
 type VisualState = {
   readonly label: string;
   readonly tone: "info" | "success" | "warning" | "danger" | "muted";
-  readonly icon: typeof Icons.info;
 };
 
 const VISUAL_BY_PHASE: Record<ToolCardPhase, VisualState> = {
-  running: { label: "Running", tone: "info", icon: Icons.loading },
-  partial: { label: "Streaming", tone: "info", icon: Icons.loading },
-  success: { label: "Complete", tone: "success", icon: Icons.success },
-  error: { label: "Error", tone: "danger", icon: Icons.error },
-  cancelled: { label: "Cancelled", tone: "muted", icon: Icons.warning },
-  unrecorded: { label: "Finished", tone: "muted", icon: Icons.info },
+  running: { label: "Running", tone: "info" },
+  partial: { label: "Streaming", tone: "info" },
+  success: { label: "Complete", tone: "success" },
+  error: { label: "Error", tone: "danger" },
+  cancelled: { label: "Cancelled", tone: "muted" },
+  unrecorded: { label: "Finished", tone: "muted" },
 };
 
 /** A call omp has not started yet (ToolCardState.queued): its run is active, and it waits for its turn. */
-const QUEUED_VISUAL: VisualState = { label: "Waiting", tone: "muted", icon: Icons.loading };
-
+const QUEUED_VISUAL: VisualState = { label: "Waiting", tone: "muted" };
 const TONE_CLASSES: Record<VisualState["tone"], string> = {
-  info: "border-info/30 bg-info-surface text-info-surface-foreground",
-  success: "border-success/30 bg-success-surface text-success-surface-foreground",
+  info: "text-info",
+  success: "text-muted-foreground/50",
+  warning: "text-warning",
+  danger: "text-destructive",
+  muted: "text-muted-foreground/50",
+};
+const ERROR_TONE_CLASSES = {
   warning: "border-warning/30 bg-warning-surface text-warning-surface-foreground",
   danger: "border-danger/30 bg-danger-surface text-danger-surface-foreground",
-  muted: "border-border bg-muted text-muted-foreground",
-};
+} as const;
 
 /** What the call's work came to, for its chip: the words to show, in the colours of the phase they stand for. */
 export interface ToolCardOutcome {
@@ -155,7 +157,6 @@ export function ToolCard({
   };
 
   if (policy.tools === "hidden") return null;
-  const Icon = status.icon;
   return (
     <Collapsible
       className={cn("group/tool-card @container/tool-card w-full min-w-0", className)}
@@ -170,64 +171,70 @@ export function ToolCard({
         aria-controls={contentId}
         aria-expanded={open}
         aria-label={`${state.label}: ${status.label}`}
-        className="group/tool-card-trigger flex w-full min-w-0 flex-wrap items-center gap-x-2 rounded-lg px-2 py-1.5 text-start text-sm outline-none transition-colors hover:bg-muted/70 focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="group/tool-card-trigger my-1 flex w-full min-w-0 items-baseline gap-2 text-start font-mono text-trace outline-none [font-variant-ligatures:none] focus-visible:underline"
         data-slot="u3-tool-card-trigger"
       >
-        <Icon
+        <span
           aria-hidden="true"
           className={cn(
-            "size-4 shrink-0",
-            status.tone === "info" && "animate-spin motion-reduce:animate-none",
+            state.phase === "error" ? "text-destructive" : TONE_CLASSES[status.tone],
+            open && "rotate-90",
           )}
           data-slot="u3-tool-card-icon"
-        />
-        <span className="min-w-0 truncate font-medium text-foreground">{state.label}</span>
+        >
+          &gt;
+        </span>
         <span
           className={cn(
-            // Under 20rem (a narrow side panel), the summary takes its own line under the label, chip and chevron,
-            // indented to the label and set off by a small gap; from 20rem it sits between the label and the chip, as
-            // before. An empty summary takes no line under 20rem.
-            "order-5 min-w-0 basis-full ps-6 pt-1 text-xs empty:hidden @xs/tool-card:order-2 @xs/tool-card:flex-1 @xs/tool-card:ps-0 @xs/tool-card:pt-0 @xs/tool-card:empty:block",
-            // A call with no result says so in full, so its one line wraps rather than being cut off.
-            state.phase === "unrecorded" ? "break-words" : "truncate",
-            summaryTone ?? "text-muted-foreground",
+            "min-w-0 truncate",
+            state.phase === "error"
+              ? "text-destructive"
+              : "text-muted-foreground group-hover/tool-card-trigger:text-foreground",
+            (state.phase === "running" || state.phase === "partial") && "animate-pulse",
+          )}
+        >
+          {state.label}
+        </span>
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-muted-foreground",
+            state.phase === "unrecorded" && "break-words",
+            summaryTone,
           )}
           title={summary}
         >
           {summary}
         </span>
         <span
-          className={cn(
-            "order-3 shrink-0 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium leading-tight",
-            TONE_CLASSES[status.tone],
-          )}
+          className={`ms-auto shrink-0 text-meta ${
+            state.phase === "error" || status.tone === "danger"
+              ? "text-destructive"
+              : status.tone === "info"
+                ? "text-info"
+                : status.tone === "warning"
+                  ? "text-warning"
+                  : "text-muted-foreground"
+          }`}
           data-slot="u3-tool-card-status"
           data-testid={`tool-state-chip-${state.phase}`}
         >
           {status.label}
         </span>
-        <Icons.chevronDown
-          aria-hidden="true"
-          className={cn(
-            "order-4 size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none",
-            open && "rotate-180",
-          )}
-        />
       </CollapsibleTrigger>
       <CollapsibleContent
-        className="-mx-1 grid grid-rows-[1fr] px-1 transition-[grid-template-rows] duration-(--duration-base) ease-(--ease-standard) group-data-[instant-toggle]/tool-card:transition-none data-[ending-style]:grid-rows-[0fr] data-[starting-style]:grid-rows-[0fr] motion-reduce:transition-none"
+        className="grid grid-rows-[1fr] transition-[grid-template-rows] duration-(--duration-base) ease-(--ease-standard) data-[ending-style]:grid-rows-[0fr] data-[starting-style]:grid-rows-[0fr] motion-reduce:transition-none"
         id={contentId}
         data-slot="u3-tool-card-content"
         ref={contentRef}
       >
-        <div className="-mx-1 min-h-0 overflow-hidden px-1">
-          <div className="border-border/70 ms-2 flex min-w-0 flex-col gap-3 border-s-2 py-2 ps-4">
+        <div className="min-h-0 overflow-hidden">
+          <div className="border-foreground/10 ms-[0.3125rem] flex min-w-0 flex-col gap-3 border-s py-2 ps-4">
             {state.error !== undefined && (
               <div
                 aria-live="assertive"
                 className={cn(
-                  "rounded-lg border p-3 text-sm",
-                  state.timedOut ? TONE_CLASSES.warning : TONE_CLASSES.danger,
+                  "rounded-surface border p-3 text-sm",
+                  state.timedOut ? ERROR_TONE_CLASSES.warning : ERROR_TONE_CLASSES.danger,
                 )}
                 data-slot="u3-tool-card-error"
                 role="alert"

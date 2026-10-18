@@ -180,7 +180,7 @@ function ScreenList({
   readonly screens: readonly VibeScreen[];
 }) {
   return (
-    <section aria-label={label} className="ms-2 min-w-0 rounded-lg border border-border/70 p-3">
+    <section aria-label={label} className="min-w-0">
       <ul className="flex min-w-0 flex-col gap-3">
         {screens.map((screen) => (
           <ScreenRow key={screen.id} screen={screen} />
@@ -214,12 +214,12 @@ export const VibeSendRenderer: ToolRenderer = (props) => {
   const worker = send?.id ?? (message.success ? message.data.session : undefined);
   return (
     <VibeCard call={call} summary={sendSummary(call.state, send)} testId="send">
-      <section className="ms-2 flex min-w-0 flex-col gap-2 rounded-lg border border-border/70 p-3">
+      <section className="flex min-w-0 flex-col gap-2 py-2">
         {worker !== undefined && <Fact label="Worker" value={worker} />}
         {send !== undefined && <Fact label="Delivered as" value={DELIVERY_LABEL[send.mode]} />}
         {send?.jobId !== undefined && <Fact label="Turn job" value={send.jobId} />}
         {message.success && (
-          <blockquote className="min-w-0 whitespace-pre-wrap break-words border-s-2 border-border ps-3 text-sm">
+          <blockquote className="min-w-0 whitespace-pre-wrap break-words text-sm">
             {message.data.message}
           </blockquote>
         )}
@@ -288,7 +288,7 @@ export const VibeWaitRenderer: ToolRenderer = (props) => {
     <VibeCard call={call} summary={waitSummary(call.state, wait)} testId="wait">
       {screens.length > 0 && <ScreenList label="Watched vibe workers" screens={screens} />}
       {settled.length > 0 && (
-        <ul aria-label="Settled turns" className="ms-2 flex min-w-0 flex-col gap-1">
+        <ul aria-label="Settled turns" className="flex min-w-0 flex-col gap-1">
           {settled.map((turn) => (
             <li
               className="flex flex-wrap items-center gap-2 text-sm"
@@ -345,7 +345,7 @@ export const VibeKillRenderer: ToolRenderer = (props) => {
   return (
     <VibeCard call={call} summary={killSummary(call.state, killed, worker)} testId="kill">
       {worker !== undefined && (
-        <section className="ms-2 flex min-w-0 flex-col gap-2 rounded-lg border border-border/70 p-3">
+        <section className="flex min-w-0 flex-col gap-2 py-2">
           <Fact label="Worker" value={worker} />
           {killed !== undefined && (
             <p className="text-sm">

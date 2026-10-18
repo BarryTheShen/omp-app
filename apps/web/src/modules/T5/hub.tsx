@@ -79,10 +79,7 @@ function HubBody({
   return (
     <>
       {hasStructure && (
-        <section
-          className="ms-2 flex min-w-0 flex-col gap-3 rounded-lg border border-border/70 p-3"
-          data-slot="t5-hub-details"
-        >
+        <section className="flex min-w-0 flex-col gap-3 py-2" data-slot="t5-hub-details">
           {details?.waited ? <MessageBlock message={details.waited} /> : null}
           {receipts.length > 0 && <RecipientRows receipts={receipts} />}
           {jobs.length > 0 && <JobRows jobs={jobs} stops={stops} />}

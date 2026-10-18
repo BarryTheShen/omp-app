@@ -78,7 +78,7 @@ export function AstGrepCard({ rendererProps }: { readonly rendererProps: ToolRen
         summaryClassName="text-muted-foreground font-mono"
       >
         {hasSection && (
-          <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
+          <div className="min-w-0 py-2 text-sm">
             {shownGroups.length > 0 && (
               <ul className="flex flex-col gap-2" data-testid="t2-ast-grep-matches">
                 {shownGroups.map((group) => (

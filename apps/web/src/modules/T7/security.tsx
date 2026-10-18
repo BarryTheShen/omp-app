@@ -72,7 +72,7 @@ export function SecurityScanCard({ rendererProps }: { readonly rendererProps: To
         summary={oneLine(scanSummary(args, details), 96)}
       >
         {!decoded.ok && state.phase === "success" && (
-          <p className="text-muted-foreground ms-2 py-1 text-xs">Scan details unavailable.</p>
+          <p className="text-muted-foreground py-1 text-xs">Scan details unavailable.</p>
         )}
         {details !== undefined && (
           <ScanDetails details={details} toolFailed={state.phase === "error"} />
@@ -102,7 +102,7 @@ function ScanDetails({
   });
 
   return (
-    <div className="text-muted-foreground ms-2 flex min-w-0 flex-col gap-1 py-1 text-xs">
+    <div className="text-muted-foreground flex min-w-0 flex-col gap-1 py-1 text-xs">
       {plan !== undefined && <p>Scan plan is ready to start.</p>}
       {operation !== undefined &&
         (operation.phase !== undefined || operation.findingCount !== undefined) && (

@@ -30,17 +30,15 @@ function state(phase: ToolCardPhase, id = `tool-${phase}`): ToolCardState {
 
 describe("ToolCard state grammar", () => {
   test.each([
-    ["running", "Running", "bg-info-surface"],
-    ["partial", "Streaming", "bg-info-surface"],
-    ["success", "Complete", "bg-success-surface"],
-    ["error", "Error", "bg-danger-surface"],
-    ["cancelled", "Cancelled", "bg-muted"],
-    ["unrecorded", "Finished", "bg-muted"],
-  ] as const)("renders %s with its tokenized chip", (phase, label, surface) => {
+    ["running", "Running"],
+    ["partial", "Streaming"],
+    ["success", "Complete"],
+    ["error", "Error"],
+    ["cancelled", "Cancelled"],
+    ["unrecorded", "Finished"],
+  ] as const)("renders %s with its quiet status word", (phase, label) => {
     render(<ToolCard state={state(phase)} />);
-    const chip = screen.getByTestId(`tool-state-chip-${phase}`);
-    expect(chip.textContent).toContain(label);
-    expect(chip.className).toContain(surface);
+    expect(screen.getByTestId(`tool-state-chip-${phase}`).textContent).toContain(label);
   });
 
   test("has an accessible disclosure button and toggles with Enter and Space", () => {
@@ -214,13 +212,10 @@ describe("ToolCard state grammar", () => {
     expect(onCopy).toHaveBeenCalledWith(lines, "result");
   });
 
-  test("a summary in a narrow card takes its own line, so it is not squeezed to a few letters", () => {
+  test("a summary remains available alongside the tool name", () => {
     render(<ToolCard state={state("success", "narrow-summary")} summary="Result submitted" />);
-    expect(screen.getByText("Result submitted").className).toContain("basis-full");
-    expect(screen.getByText("Result submitted").className).toContain("@xs/tool-card:flex-1");
-    expect(screen.getByRole("button", { name: "Run bash: Complete" }).className).toContain(
-      "flex-wrap",
-    );
+    expect(screen.getByText("Result submitted")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run bash: Complete" })).toBeTruthy();
   });
 
   test("does not echo raw JSON arguments when no renderer summary is supplied", () => {
@@ -279,7 +274,6 @@ describe("ToolCard outcome", () => {
     );
     const chip = container.querySelector("[data-slot='u3-tool-card-status']");
     expect(chip?.textContent).toBe("Failed");
-    expect(chip?.className).toContain("bg-danger-surface");
     expect(screen.queryByText("Complete")).toBeNull();
   });
 });

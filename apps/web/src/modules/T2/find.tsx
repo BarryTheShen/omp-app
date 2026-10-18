@@ -54,7 +54,7 @@ export function FindCard({ rendererProps }: { readonly rendererProps: ToolRender
         summary={summary}
       >
         {hasSection && (
-          <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
+          <div className="min-w-0 py-2 text-sm">
             {shownHits.length > 0 && (
               <ul className="flex flex-col gap-2" data-testid="t2-find-hits">
                 {shownHits.map((row) => (

@@ -35,7 +35,7 @@ export function LearnRenderer(props: ToolRendererProps) {
   return (
     <div data-t6-memory-card data-t6-tool="learn">
       <ToolCard rawResult={JSON.stringify(model.raw)} state={state} summary={summary}>
-        <div className="text-muted-foreground ms-2 py-1 text-xs">
+        <div className="text-muted-foreground py-1 text-xs">
           {model.memory.length > 0 ? (
             <p className="text-foreground">{model.memory}</p>
           ) : (

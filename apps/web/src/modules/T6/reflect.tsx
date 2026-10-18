@@ -13,7 +13,7 @@ export function ReflectRenderer(props: ToolRendererProps) {
   return (
     <div data-t6-memory-card data-t6-tool="reflect">
       <ToolCard rawResult={model.answer.text} state={state} summary={summary}>
-        <div className="border-border/60 bg-background ms-2 mt-1 rounded-md border px-3 py-2 text-sm">
+        <div className="py-2 text-sm">
           {model.noInformation ? (
             <p className="text-muted-foreground">No relevant information found.</p>
           ) : model.answer.text.length === 0 ? (

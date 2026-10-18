@@ -108,15 +108,9 @@ function TaskBody({
     return isError || text === "" ? null : <TextOutput testId="t5-task-text" text={text} />;
   }
   return (
-    <section
-      className="flex min-w-0 flex-col gap-3 rounded-lg border border-border/70 py-3"
-      data-slot="t5-task-details"
-    >
+    <section className="flex min-w-0 flex-col gap-3 py-2" data-slot="t5-task-details">
       {details.async !== undefined && (
-        <div
-          className="flex min-w-0 flex-wrap items-center gap-2 px-3 text-xs"
-          data-slot="t5-task-job"
-        >
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs" data-slot="t5-task-job">
           <StatusChip value={jobState(details, subagents) ?? details.async.state} />
           <span className="min-w-0 break-all text-muted-foreground">
             Background job {details.async.jobId}
@@ -151,7 +145,7 @@ function TaskSubagentTranscripts({
   const controls = useContext(WorkerTranscriptScope);
   return (
     <section className="flex min-w-0 flex-col gap-2" data-slot="t5-task-transcripts">
-      <h3 className="px-3 text-xs font-medium text-muted-foreground">Worker transcripts</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Worker transcripts</h3>
       {subagents.map(({ agent, source }) => {
         const name = agent.description?.trim() || agent.id;
         return (
@@ -188,7 +182,7 @@ function AgentProgressRows({
 }) {
   const note = showingNote(progress.length);
   return (
-    <section className="flex min-w-0 flex-col gap-1 px-3" data-slot="t5-task-progress">
+    <section className="flex min-w-0 flex-col gap-1" data-slot="t5-task-progress">
       <h3 className="text-xs font-medium text-muted-foreground">Agents</h3>
       {note !== undefined && <p className="text-xs text-muted-foreground">{note}</p>}
       <ul className="grid gap-2 text-xs">
@@ -247,7 +241,7 @@ function AgentCounts({ agent }: { readonly agent: AgentProgress }) {
 function AgentResultRows({ results }: { readonly results: readonly TaskResult[] }) {
   const note = showingNote(results.length);
   return (
-    <section className="flex min-w-0 flex-col gap-1 px-3" data-slot="t5-task-results">
+    <section className="flex min-w-0 flex-col gap-1" data-slot="t5-task-results">
       <h3 className="text-xs font-medium text-muted-foreground">Results</h3>
       {note !== undefined && <p className="text-xs text-muted-foreground">{note}</p>}
       <ul className="grid gap-2 text-xs">

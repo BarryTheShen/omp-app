@@ -39,7 +39,7 @@ export function AstEditCard({ rendererProps }: { readonly rendererProps: ToolRen
         summary={summary}
       >
         {args.ok && (
-          <div className="border-border/70 bg-muted/20 mt-1 rounded-lg border p-3 text-sm">
+          <div className="text-sm">
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span data-testid="t1-ast-edit-pattern">
                 Pattern: {formatPattern(args.value.ops)}

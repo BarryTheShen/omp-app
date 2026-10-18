@@ -108,7 +108,7 @@ function JsonTree({
       <summary className="cursor-pointer text-muted-foreground">
         {label}: {Array.isArray(value) ? "array" : "object"}
       </summary>
-      <div className="border-border/70 ms-2 mt-1 space-y-1 border-s-2 ps-2">
+      <div className="mt-1 space-y-1">
         {entries.map(([key, child]) => (
           <JsonTree depth={depth + 1} key={key} label={key} value={child} />
         ))}

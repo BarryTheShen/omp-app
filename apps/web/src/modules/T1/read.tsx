@@ -170,10 +170,7 @@ function ReadBody({
     .join(" · ");
   const diagnostics = diagnosticMessages(details);
   return (
-    <section
-      className="ms-2 flex min-w-0 flex-col gap-2 border-s-2 border-border/70 py-2 ps-4"
-      data-slot="t1-read-body"
-    >
+    <section className="flex min-w-0 flex-col gap-2 py-2" data-slot="t1-read-body">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span className="min-w-0 truncate font-mono" title={target}>
           {middleEllipsis(target)}

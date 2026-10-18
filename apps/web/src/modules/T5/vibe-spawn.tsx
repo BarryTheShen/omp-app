@@ -36,7 +36,7 @@ export const VibeSpawnRenderer: ToolRenderer = (props) => {
         state={state}
         summary={summary}
       >
-        <section className="border-border/70 ms-2 flex min-w-0 flex-col gap-2 border-s-2 py-2 ps-4">
+        <section className="flex min-w-0 flex-col gap-2 py-2">
           {spawned !== undefined && (
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               {spawned.cli !== undefined && <span>CLI: {spawned.cli}</span>}

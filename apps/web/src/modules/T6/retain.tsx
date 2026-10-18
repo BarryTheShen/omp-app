@@ -89,7 +89,7 @@ export function RetainRenderer(props: ToolRendererProps) {
         summaryClassName={partial ? "text-warning font-medium" : undefined}
       >
         {!failedCall && (
-          <ul className="text-muted-foreground ms-2 space-y-1 py-1 ps-5 text-xs">
+          <ul className="text-muted-foreground space-y-1 py-1 ps-5 text-xs">
             {model.items.length === 0 ? (
               <li>No memory items returned.</li>
             ) : (
@@ -133,17 +133,17 @@ export function RetainRenderer(props: ToolRendererProps) {
           </ul>
         )}
         {unindexedFailures.length > model.items.length && (
-          <p className="text-danger ms-2 text-xs">
+          <p className="text-danger text-xs">
             {unindexedFailures.length - model.items.length} additional memory failures returned.
           </p>
         )}
         {model.status === "queued" && (
-          <p className="text-muted-foreground ms-2 text-xs">
+          <p className="text-muted-foreground text-xs">
             The memory operation is queued; storage is not confirmed yet.
           </p>
         )}
         {model.malformed && !failedCall && (
-          <p className="text-muted-foreground ms-2 text-xs">Some memory details were malformed.</p>
+          <p className="text-muted-foreground text-xs">Some memory details were malformed.</p>
         )}
       </ToolCard>
     </div>

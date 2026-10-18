@@ -114,7 +114,7 @@ function MatchFile({ file, pattern }: { readonly file: GrepFileMatch; readonly p
     return leftLine - rightLine || Number(left.isContext) - Number(right.isContext);
   });
   return (
-    <li className="border-border/70 min-w-0 border-s rounded-(--radius) px-(--space-sm) py-(--space-xs)">
+    <li className="min-w-0 rounded-(--radius) px-(--space-sm) py-(--space-xs)">
       {link ? (
         <a className="text-info truncate text-sm underline-offset-2 hover:underline" href={link}>
           {fileLabel(file)}

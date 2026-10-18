@@ -142,7 +142,7 @@ export function LateDiagnosticsCard({
   return (
     <div data-testid={`t2-late-diagnostics-${identity}`}>
       <ToolCard rawResult={raw} state={state} summary={summaryOf(groups)}>
-        <div className="border-border/70 bg-card ms-2 flex flex-col gap-3 border-s-2 py-2 ps-4 pe-4 text-sm">
+        <div className="flex flex-col gap-3 py-2 text-sm">
           {late && (
             <p className="text-muted-foreground text-xs">
               Reported after the edit or write finished.

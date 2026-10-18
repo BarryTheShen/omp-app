@@ -33,7 +33,7 @@ export function GlobCard({ rendererProps }: { readonly rendererProps: ToolRender
   return (
     <div data-testid={`t2-glob-card-${state.toolCallId}`}>
       <ToolCard className={hideRawDetails} rawResult={rawResult} state={state} summary={summary}>
-        <div className="border-border/70 bg-card ms-2 border-s-2 py-2 ps-4 pe-4 text-sm">
+        <div className="py-2 text-sm">
           {args.ok && (
             <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
               {patternFromArgs(rendererProps.args) && (
