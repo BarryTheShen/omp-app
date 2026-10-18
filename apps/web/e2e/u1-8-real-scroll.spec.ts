@@ -28,7 +28,7 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /Run the long job/ })
       .click();
-
+    await expect(page.getByText("All 60 steps are done.")).toBeAttached({ timeout: 60_000 });
     const viewport = page.getByRole("region", { name: "Messages" });
     await expect(viewport).toHaveAttribute("aria-live", "off");
     await expect(viewport).toHaveAttribute("tabindex", "0");
@@ -55,14 +55,22 @@ realTest(
         )
         .toBeGreaterThanOrEqual(3);
     };
+    /** Lazy rows can change the measured bottom after one scroll; settle the viewport, then scroll again if needed. */
+    const landAtBottom = async () => {
+      while ((await remainingScroll()) >= 80) {
+        await viewport.evaluate((element) =>
+          element.scrollTo({ top: element.scrollHeight, behavior: "instant" }),
+        );
+        await settled();
+      }
+    };
     const composer = page.getByRole("textbox", { name: "Message input" });
     const jump = page.getByRole("button", { name: "Jump to latest message" });
 
-    await expect(page.getByText("All 60 steps are done.")).toBeAttached({ timeout: 60_000 });
-    // A card starts as one line. Open the steps, so the turn is as tall as the reader scrolls through it.
+    // A card starts as one line. Open the steps, then repeatedly land at the real bottom as lazy rows settle.
     await openAllToolCards(page);
-    await expect.poll(remainingScroll).toBeLessThan(80);
-
+    await waitForFiniteAnimations(page);
+    await landAtBottom();
     // Sending from far up shows the newest message. The reader gets there with the wheel: a script's scroll is put back
     // while a pressed card's place is held, as the browser's own scrolls are (issue 1165).
     await viewport.hover();
@@ -143,11 +151,36 @@ realTest(
         )
         .toBeGreaterThanOrEqual(3);
     };
+    const settled = async () => {
+      let previous = "";
+      let same = 0;
+      await expect
+        .poll(
+          async () => {
+            const now = await viewport.evaluate(
+              (element) => `${Math.round(element.scrollTop)}/${element.scrollHeight}`,
+            );
+            same = now === previous ? same + 1 : 0;
+            previous = now;
+            return same;
+          },
+          { intervals: [300], timeout: 20_000 },
+        )
+        .toBeGreaterThanOrEqual(3);
+    };
+    const landAtBottom = async () => {
+      while ((await remainingScroll()) >= 80) {
+        await viewport.evaluate((element) =>
+          element.scrollTo({ top: element.scrollHeight, behavior: "instant" }),
+        );
+        await settled();
+      }
+    };
     await expect(page.getByText("All 60 steps are done.")).toBeAttached({ timeout: 60_000 });
-    // Open the steps, so the turn is as tall as a person scrolls through it.
+    // Open the steps, then repeatedly land at the real bottom as lazy rows settle.
     await openAllToolCards(page);
-    await expect.poll(remainingScroll).toBeLessThan(80);
-
+    await waitForFiniteAnimations(page);
+    await landAtBottom();
     await viewport.press("Home");
     await settledScrollTop();
     expect(await scrollTop()).toBe(0);
