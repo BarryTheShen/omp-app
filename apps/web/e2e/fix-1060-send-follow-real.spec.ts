@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
+import { expect, realTest, screenshots } from "./real-omp";
 
 /**
  * #1060: a reader who scrolls up in a long chat and sends a message sees the new message and omp's reply, and
@@ -74,7 +74,6 @@ async function sendFromFarUp(page: Page, shot: string): Promise<void> {
   await expect(thread.getByText("pong", { exact: true }).last()).toBeInViewport();
   await expect(jump).toHaveCount(0);
 
-  await waitForFiniteAnimations(page);
   await mkdir(screenshots, { recursive: true });
   await page.screenshot({ path: join(screenshots, shot), animations: "disabled" });
 }

@@ -66,7 +66,7 @@ realTest(
       await expectNoHorizontalOverflow(page);
       await waitForFiniteAnimations(page);
       await page.screenshot({ path: join(screenshots, "d4-4-share-question-narrow.png") });
-      await page.getByRole("button", { name: "Deny", exact: true }).click();
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(page.getByText("Nothing was shared.", { exact: true })).toBeVisible();
       expect(stub.requests).toEqual([]);
       expect(realApp.problems).toEqual([]);
@@ -135,7 +135,7 @@ realTest(
       await expectStylesLoaded(page);
       await waitForFiniteAnimations(page);
       await page.screenshot({ path: join(screenshots, "d4-4-share-question-dark.png") });
-      await page.getByRole("button", { name: "Deny", exact: true }).click();
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(page.getByText("Nothing was shared.", { exact: true })).toBeVisible();
       expect(stub.requests).toEqual([]);
       expect(realApp.problems).toEqual([]);

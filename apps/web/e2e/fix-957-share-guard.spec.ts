@@ -20,7 +20,7 @@ realTest(
         // The question is modal, so each form is answered before the next is sent.
         await expectShareQuestion(page, stub.url);
         expect(stub.requests).toEqual([]);
-        await page.getByRole("button", { name: "Deny", exact: true }).click();
+        await page.getByRole("button", { name: "Cancel", exact: true }).click();
         await expect(page.getByText("Nothing was shared.", { exact: true })).toBeVisible();
         await expect(composer).toHaveValue("");
       }

@@ -49,10 +49,10 @@ realTest(
     await expect(wait).toBeVisible({ timeout: 120_000 });
     await openToolCard(wait);
     await expect(wait.locator("li")).toHaveCount(3, { timeout: 120_000 });
-    // The third job, later-done, ends on its own after the card was made, so the card still lists it as running. Its
-    // id depends on the order omp starts the calls in, so its notice is found by its command instead.
+    // The completion notice has a visible plain summary; omp's full message stays behind "Full message".
+    // Its generated job id depends on launch order, so match the command label instead.
     await expect(
-      page.getByText(/Background job bg_\d+ has completed/).filter({ hasText: "later-done" }),
+      page.locator('[data-slot="u1-custom-note-heading"]').filter({ hasText: "later-done" }),
     ).toBeVisible({ timeout: 180_000 });
 
     await wait.getByRole("button", { name: "Stop all background jobs" }).click();

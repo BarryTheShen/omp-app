@@ -23,7 +23,7 @@ async function expectStylesLoaded(page: Page): Promise<void> {
 
 async function runLongCommand(page: Page): Promise<void> {
   const composer = await startChat(page);
-  await sendPrompt(composer, "!seq 1 300");
+  await sendPrompt(composer, `!seq 1 300; printf '%s\\n' '${"x".repeat(1_500)}'`);
   await expect(page.locator(RUN)).toBeVisible({ timeout: 60_000 });
 }
 
@@ -44,11 +44,11 @@ realTest(
     await expect(run).toHaveJSProperty("open", true);
     await expect(arrow).toHaveCSS("rotate", "90deg");
 
-    const command = page.getByRole("region", { name: "Command" });
+    const command = page.getByRole("group", { name: "Command" });
     await command.focus();
     await expect(command).toBeFocused();
 
-    const output = page.getByRole("region", { name: "Output" });
+    const output = page.getByRole("group", { name: "Output" });
     await output.focus();
     await expect(output).toBeFocused();
     expect(await output.evaluate((element) => element.scrollTop)).toBe(0);
@@ -83,7 +83,7 @@ realTest("the bash card fits a 390 px phone", async ({ realApp }, testInfo) => {
   const page = await realApp.open();
   await runLongCommand(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("region", { name: "Output" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Output" })).toBeVisible();
   const fits = await page.evaluate(
     () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
   );

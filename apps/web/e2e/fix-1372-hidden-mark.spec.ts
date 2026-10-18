@@ -14,13 +14,13 @@ function answerTo(page: Page, tag: string) {
   return page.getByText(new RegExp(`^count-\\d+ ${tag}$`));
 }
 
-/** Opens the rewind picker from the command palette, then its "Choose where to rewind" dialog. */
+/** Opens the rewind picker from the command palette, then its "Choose a message" dialog. */
 async function openPicker(page: Page) {
   await page.keyboard.press("Control+K");
   await page.getByRole("combobox", { name: "Search commands" }).fill("Conversation tree");
   await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "Choose a message" }).click();
-  return page.getByRole("dialog", { name: "Choose where to rewind" });
+  return page.getByRole("dialog", { name: "Choose a message" });
 }
 
 realTest(

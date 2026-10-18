@@ -17,7 +17,7 @@ export const SHARE_QUESTION = "Share this chat as a link?";
 /** The id the stub gives every upload. */
 export const SHARE_LINK_ID = "0123456789abcdef";
 
-const TLS_DIR = resolve(APP_ROOT, ".data/share-stub-tls");
+const TLS_DIR = resolve(APP_ROOT, `.data/share-stub-tls-${process.pid}`);
 const TLS_KEY_FILE = join(TLS_DIR, "key.pem");
 /** The test certificate's path. omp trusts it through NODE_EXTRA_CA_CERTS. */
 export const TLS_CERT_FILE = join(TLS_DIR, "cert.pem");
