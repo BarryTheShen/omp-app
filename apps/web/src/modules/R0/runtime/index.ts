@@ -15,6 +15,7 @@ export {
   createOmpRuntime,
   OmpRuntimeController,
   promptFromAppend,
+  retryRecoveryNote,
   strippedToolCallsCount,
   useOmpRuntime,
 } from "./runtime";

@@ -352,6 +352,73 @@ describe("U1.3 standalone parts", () => {
     expect(answerText?.innerHTML).toBe("soft one\nsoft two");
     expect(answerText?.querySelector("br")).toBeNull();
   });
+  test("renders one recovered retry note only under the recovered assistant row", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "user-one",
+          parentId: null,
+          timestamp: "2026-10-18T00:00:00.000Z",
+          message: {
+            ...assistantMessage("user", [{ type: "text", text: "First question" }]),
+            timestamp: 1_759_600_000_000,
+          },
+        },
+        {
+          type: "message",
+          id: "retry-answer",
+          parentId: "user-one",
+          timestamp: "2026-10-18T00:00:01.000Z",
+          message: {
+            ...assistantMessage("assistant", [{ type: "text", text: "Recovered answer" }]),
+            retryRecovery: {
+              kind: "auto-retry",
+              status: "recovered",
+              attempt: 1,
+              recoveredAt: "2026-10-18T00:00:02.000Z",
+              recovery: "wait",
+              note: "rate-limited; waited; retried",
+              supersededBy: {
+                timestamp: "2026-10-18T00:00:03.000Z",
+                provider: "fake",
+                model: "fake-model",
+              },
+            },
+          },
+        },
+        {
+          type: "message",
+          id: "user-two",
+          parentId: "retry-answer",
+          timestamp: "2026-10-18T00:00:04.000Z",
+          message: {
+            ...assistantMessage("user", [{ type: "text", text: "Second question" }]),
+            timestamp: 1_759_600_000_004,
+          },
+        },
+        {
+          type: "message",
+          id: "normal-answer",
+          parentId: "user-two",
+          timestamp: "2026-10-18T00:00:05.000Z",
+          message: {
+            ...assistantMessage("assistant", [{ type: "text", text: "Normal answer" }]),
+          },
+        },
+      ],
+      "normal-answer" as never,
+    );
+    render(<RuntimeThread store={store} />);
+    expect(document.querySelectorAll('[data-ending="retry-recovery"]')).toHaveLength(1);
+    const recoveredRow = screen
+      .getByText("Recovered answer")
+      .closest('[data-slot="u1-message-row"]');
+    const normalRow = screen.getByText("Normal answer").closest('[data-slot="u1-message-row"]');
+    expect(recoveredRow?.querySelector('[data-ending="retry-recovery"]')).not.toBeNull();
+    expect(normalRow?.querySelector('[data-ending="retry-recovery"]')).toBeNull();
+  });
   test("renders the validated elided-call count under an assistant row, including singular, never for a user row", () => {
     const store = new OmpRuntimeStore({ threadId });
     store.pairEndedMessages(

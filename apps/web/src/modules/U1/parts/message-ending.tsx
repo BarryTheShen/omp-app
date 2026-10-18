@@ -69,6 +69,18 @@ export function failureShownUnderAnswer(error: AppError | null, answer: unknown)
   );
 }
 
+export function RetryRecoveryNote({ note }: { readonly note: string }) {
+  return (
+    <p
+      className="text-muted-foreground mt-2 text-sm"
+      data-ending="retry-recovery"
+      data-slot="u1-message-ending"
+    >
+      {note}
+    </p>
+  );
+}
+
 export function StrippedToolCallsNote({ count }: { readonly count: number }) {
   return (
     <p

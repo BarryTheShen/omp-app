@@ -451,6 +451,13 @@ function fallbackMessage(id: string): ThreadMessageLike {
   } as unknown as ThreadMessageLike;
 }
 
+/** The retry note is omp's typed recovery field (`turn-recovery.ts:973-1000` in v18.9.1). */
+export function retryRecoveryNote(value: unknown): string | undefined {
+  if (!isRecord(value) || value.status !== "recovered" || typeof value.note !== "string")
+    return undefined;
+  return value.note.length > 0 ? value.note : undefined;
+}
+
 /** omp v18.9.1 marks transcript turns with dangling calls as `strippedToolCalls` while rebuilding context (`session-context.ts:703-728`). */
 export function strippedToolCallsCount(value: unknown): number | undefined {
   let count: number | undefined;
@@ -477,6 +484,7 @@ function convertRecord(
   // The store key: the persisted entry's key once history returns the message (`entry:<thread>:<entry>`), else its live
   // key. The reading place and the entry ids use it; the row's id can stay the key of the streamed copy (issue 1047).
   const storeKey = runtime?.key ?? id;
+  const retryRecovery = retryRecoveryNote(message.retryRecovery);
   const strippedToolCalls = strippedToolCallsCount(message);
   const metadata = {
     custom: {
@@ -494,6 +502,9 @@ function convertRecord(
             ompTurnTtftMs:
               view === undefined ? nonNegativeFiniteNumber(message.ttft) : view.ompTurnTtftMs,
             ompPreviousUsage: view?.previousAssistantUsage ?? null,
+            ...(retryRecovery === undefined
+              ? {}
+              : { ompRetryRecovery: { status: "recovered", note: retryRecovery } }),
             ...(strippedToolCalls === undefined ? {} : { ompStrippedToolCalls: strippedToolCalls }),
           }
         : {}),

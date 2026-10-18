@@ -25,6 +25,7 @@ import {
   convertMessage,
   createOmpRuntime,
   type RuntimeMessageView,
+  retryRecoveryNote,
   stoppedToolCallIds,
   strippedToolCallsCount,
   useOmpRuntime,
@@ -1068,7 +1069,14 @@ describe("R0.3 assistant-ui runtime", () => {
         kind: "auto-retry",
         status: "recovered",
         attempt: 1,
+        recoveredAt: "2026-10-18T00:00:01.000Z",
+        recovery: "wait",
         note: "error; retried",
+        supersededBy: {
+          timestamp: "2026-10-18T00:00:02.000Z",
+          provider: "fake",
+          model: "fake-model",
+        },
       },
     };
     const converted = convertMessage(
@@ -1076,8 +1084,23 @@ describe("R0.3 assistant-ui runtime", () => {
         retried as unknown as OmpMessage,
         "entry:runtime-test-thread:retried",
       ) as RuntimeMessageView["record"],
-    ) as { status?: unknown };
-    expect(converted.status).toEqual({ type: "complete", reason: "unknown" });
+    );
+    const message = converted as ThreadMessageLike;
+    expect(message.status).toEqual({ type: "complete", reason: "unknown" });
+    expect(message.metadata?.custom?.ompRetryRecovery).toEqual({
+      status: "recovered",
+      note: "error; retried",
+    });
+    expect(retryRecoveryNote({ status: "recovered", note: "rate-limited; waited; retried" })).toBe(
+      "rate-limited; waited; retried",
+    );
+    expect(retryRecoveryNote({ status: "superseded", note: "error; retried" })).toBeUndefined();
+    expect(retryRecoveryNote({ status: "recovered", note: "" })).toBeUndefined();
+  });
+
+  test("ignores recovered markers whose note is missing or not text", () => {
+    expect(retryRecoveryNote({ status: "recovered" })).toBeUndefined();
+    expect(retryRecoveryNote({ status: "recovered", note: 42 })).toBeUndefined();
   });
   test("carries omp's stripped tool-call count into assistant metadata", () => {
     expect(strippedToolCallsCount({ strippedToolCalls: 2 })).toBe(2);
