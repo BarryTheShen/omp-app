@@ -151,7 +151,7 @@ function createRuntime(state: FakeState): SettingsRuntime {
 }
 
 describe("I1 Discovery and MCP settings", () => {
-  test("publishes the complete typed section and the v18.6.1 controls", () => {
+  test("publishes the complete typed section and the v18.9.1 controls", () => {
     expect(MCP_SETTINGS_CONFIG).toEqual({
       section: "tools/Discovery & MCP",
       keys: [...MCP_SETTING_KEYS],
@@ -189,8 +189,8 @@ describe("I1 Discovery and MCP settings", () => {
       "mcp.enableProjectConfig": "live",
       "mcp.startupTimeoutMs": "restart",
       "mcp.renderMarkdownResults": "live",
-      "mcp.notifications": "restart",
-      "mcp.notificationDebounceMs": "restart",
+      "mcp.notifications": "live",
+      "mcp.notificationDebounceMs": "live",
       "tools.xdev": "live",
       "tools.xdevDocs": "live",
       "tools.xdevInlineDevices": "live",
@@ -200,6 +200,11 @@ describe("I1 Discovery and MCP settings", () => {
       { value: "builtins", label: "Built-ins Only" },
       { value: "catalog", label: "Catalog Only" },
     ]);
+    expect(
+      scalarControls.find((control) => control.key === "mcp.renderMarkdownResults")?.description,
+    ).toBe(
+      "Terminal only. The app does not use this setting; it only affects omp's terminal renderer.",
+    );
   });
 
   test("reads ConfigStore defaults with provenance and renders their effective values through S1", async () => {

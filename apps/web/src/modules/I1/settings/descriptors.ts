@@ -1,11 +1,11 @@
 import type { JsonValue } from "@omp-app/contracts";
 import type {
   ScalarSettingControl,
-  SettingOption,
   SettingsSectionDescriptor,
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
+import { settingOptions, terminalOnlyDescription } from "../../S1/settings-kit";
 import { McpSettingsSection } from "../contract";
 
 const HOST_CONFIG = ["host.config"] as const;
@@ -89,14 +89,14 @@ function booleanControl(
   );
 }
 
-const docsOptions = [
-  { value: "inline", label: "All Devices" },
-  { value: "builtins", label: "Built-ins Only" },
-  { value: "catalog", label: "Catalog Only" },
-] as const satisfies readonly SettingOption[];
+const docsOptions = settingOptions(["inline", "builtins", "catalog"], {
+  inline: "All Devices",
+  builtins: "Built-ins Only",
+  catalog: "Catalog Only",
+});
 
 /**
- * Keys, kinds and labels follow omp v18.6.1's single Tools / Discovery & MCP settings group:
+ * Keys, kinds and labels follow omp v18.9.1's single Tools / Discovery & MCP settings group:
  * - mcp.enableProjectConfig at packages/coding-agent/src/mcp/settings.ts:10
  * - mcp.startupTimeoutMs at packages/coding-agent/src/mcp/settings.ts:22
  * - mcp.renderMarkdownResults at packages/coding-agent/src/mcp/settings.ts:34
@@ -126,14 +126,16 @@ const controls: readonly ScalarSettingControl[] = [
   booleanControl(
     "mcp.renderMarkdownResults",
     "MCP Markdown Results",
-    "Render non-JSON MCP text results as Markdown in the transcript.",
+    terminalOnlyDescription(
+      "The app does not use this setting; it only affects omp's terminal renderer.",
+    ),
     "live",
   ),
   booleanControl(
     "mcp.notifications",
     "MCP Update Injection",
     "Inject MCP resource updates into the agent conversation.",
-    "restart",
+    "live",
   ),
   settingControl(
     "mcp.notificationDebounceMs",
@@ -141,7 +143,7 @@ const controls: readonly ScalarSettingControl[] = [
     "Wait this many milliseconds after an MCP resource update before injecting it.",
     "number",
     nonNegativeNumberValidator,
-    "restart",
+    "live",
   ),
   booleanControl(
     "tools.xdev",
