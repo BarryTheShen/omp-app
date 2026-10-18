@@ -27,8 +27,10 @@ function renderGoals(options: {
   readonly send: GoalRpcSender;
   readonly capabilities?: CapabilityMap;
   readonly chat?: ThreadId;
+  readonly startReady?: boolean;
 }) {
   const store = new OmpRuntimeStore({ threadId });
+  if (options.startReady !== false) store.ingest({ kind: "process", status: "ready" }, 1);
   const notify = vi.fn<(text: string | null) => void>();
   const fail = vi.fn<(text: string | null) => void>();
   const { result } = renderHook(() =>
@@ -41,7 +43,7 @@ function renderGoals(options: {
       fail,
     }),
   );
-  return { goals: result.current, notify, fail };
+  return { goals: result.current, notify, fail, store };
 }
 
 describe("#1261 the goal commands send through the chat on screen", () => {
@@ -72,6 +74,45 @@ describe("#1261 the goal commands send through the chat on screen", () => {
       threadId,
       command: { type: "goal", op: "create", objective: "Ship the release notes" },
     });
+  });
+  test("waits for a starting chat's omp to become ready before running the typed goal command", async () => {
+    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const { goals, store, notify } = renderGoals({ send, startReady: false });
+    const running = goals.command.run({ args: "Ship the release notes" });
+
+    await Promise.resolve();
+    expect(notify).toHaveBeenLastCalledWith("Waiting for the chat to start…");
+
+    store.ingest({ kind: "process", status: "ready" }, 1);
+    await expect(running).resolves.toEqual({
+      message: "Goal set: Ship the release notes. Status: Active.",
+    });
+    expect(notify).toHaveBeenLastCalledWith(null);
+  });
+  test("a stopped chat refuses the typed goal with a plain message and sends nothing", async () => {
+    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const { goals, store } = renderGoals({ send });
+    store.ingest({ kind: "process", status: "exited" }, 2);
+
+    await expect(goals.command.run({ args: "Ship the release notes" })).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message:
+          "omp stopped before the goal command could run. The text is still in the message box.",
+      },
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test("a running chat can run the typed goal command immediately", async () => {
+    const send = vi.fn<GoalRpcSender>(async () => resultFor(goal));
+    const { goals, store } = renderGoals({ send });
+    store.ingest({ kind: "process", status: "running" }, 2);
+
+    await expect(goals.command.run({ args: "Ship the release notes" })).resolves.toEqual({
+      message: "Goal set: Ship the release notes. Status: Active.",
+    });
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   test("a chat whose omp has no goal command is refused before anything is sent", async () => {

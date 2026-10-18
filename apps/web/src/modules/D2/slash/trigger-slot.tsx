@@ -242,7 +242,11 @@ export function SlashComposerSlot({ providers, onSelect, children }: ComposerTri
     return typed === null || row.getAttribute("data-answers") === typed.query;
   }, []);
   return (
-    <TriggerKeyScope className="relative" isCurrentRow={rowAnswersText}>
+    <TriggerKeyScope
+      className="relative"
+      isCurrentRow={rowAnswersText}
+      submitWhenLoading={(textarea) => /\s/u.test(textarea.value)}
+    >
       {children}
       <SlashPopover provider={provider} onSelect={onSelect} answers={answers} />
     </TriggerKeyScope>

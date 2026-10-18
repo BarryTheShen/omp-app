@@ -24,6 +24,7 @@ import {
   guardedCommandName,
   guardedRoute,
   plainOutputText,
+  routeSlashText,
   type SlashAppCommand,
   type SlashCommandProvider,
   type SlashRoute,
@@ -625,8 +626,10 @@ export function routeSubmit({
   if (intent.mode !== "prompt") return Promise.resolve(null);
   const guarded = guardedRoute(intent.text, appCommands);
   if (guarded !== null) return Promise.resolve(guarded);
-  if (provider === null || hasAttachments) return Promise.resolve(null);
-  if ((intent.images?.length ?? 0) > 0) return Promise.resolve(null);
+  if (hasAttachments || (intent.images?.length ?? 0) > 0) return Promise.resolve(null);
+  const appRoute = routeSlashText(intent.text, [], appCommands);
+  if (provider === null) return Promise.resolve(appRoute?.kind === "app" ? appRoute : null);
+  if (appRoute?.kind === "app") return Promise.resolve(appRoute);
   return provider.route(intent.text);
 }
 

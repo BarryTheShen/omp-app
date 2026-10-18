@@ -123,15 +123,17 @@ export function TriggerKeyScope({
   className,
   children,
   isCurrentRow,
+  submitWhenLoading,
 }: {
   readonly className?: string;
   readonly children: ReactNode;
   /**
-   * Whether a highlighted row answers the text at the caret now. A row still on screen from earlier text is not
-   * chosen, since choosing it would replace what was typed after it. An Enter on it is kept until the list answers,
-   * as an Enter pressed while the list loads is; a Tab is left to the page.
+   * Whether a highlighted row answers the text at the caret now. A row still on screen from earlier text is not chosen,
+   * since choosing it would replace what was typed after it.
    */
   readonly isCurrentRow?: (textarea: HTMLTextAreaElement, row: HTMLElement) => boolean;
+  /** Whether an Enter should pass through while a loading list is open. */
+  readonly submitWhenLoading?: (textarea: HTMLTextAreaElement) => boolean;
 }) {
   const element = useRef<HTMLDivElement>(null);
   const pending = useRef(0);
@@ -140,6 +142,10 @@ export function TriggerKeyScope({
   const rowIsCurrent = useRef(isCurrentRow);
   useLayoutEffect(() => {
     rowIsCurrent.current = isCurrentRow;
+  });
+  const submitWhenLoadingRef = useRef(submitWhenLoading);
+  useLayoutEffect(() => {
+    submitWhenLoadingRef.current = submitWhenLoading;
   });
   const value = useMemo<TriggerKeyScopeValue>(
     () => ({
@@ -175,6 +181,14 @@ export function TriggerKeyScope({
     if (event.key !== "Enter" && event.key !== "Tab") return;
     if (event.shiftKey) return;
     if (!(event.target instanceof HTMLTextAreaElement)) return;
+    const listOpen = event.currentTarget.querySelector('[role="listbox"]') !== null;
+    if (
+      event.key === "Enter" &&
+      pending.current > 0 &&
+      listOpen &&
+      submitWhenLoadingRef.current?.(event.target) === true
+    )
+      return;
     const option = highlightedOption(
       event.target,
       event.currentTarget,
@@ -195,7 +209,6 @@ export function TriggerKeyScope({
       option.click();
       return;
     }
-    const listOpen = event.currentTarget.querySelector('[role="listbox"]') !== null;
     if (event.key === "Enter" && pending.current > 0 && listOpen) {
       event.preventDefault();
       event.stopPropagation();

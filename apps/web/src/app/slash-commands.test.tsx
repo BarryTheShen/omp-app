@@ -87,6 +87,50 @@ describe("D2.3 submit routing in the app", () => {
     ).resolves.toBeNull();
     expect(route).toHaveBeenCalledTimes(1);
   });
+  test("routes a known app command before waiting for the omp slash catalog", async () => {
+    const route = vi.fn(() => new Promise<never>(() => undefined));
+    const provider = { route } as unknown as SlashCommandProvider;
+    const command = {
+      name: "goal",
+      description: "Set a goal",
+      takesArguments: true as const,
+      run: vi.fn(async () => ({})),
+    };
+    await expect(
+      routeSubmit({
+        intent: { ...prompt, text: "/goal stable-goal" },
+        hasAttachments: false,
+        provider,
+        appCommands: [command],
+      }),
+    ).resolves.toEqual({ kind: "app", command, args: "stable-goal" });
+    expect(route).not.toHaveBeenCalled();
+  });
+  test("routes a known app command while the omp slash catalog is unavailable", async () => {
+    const command = {
+      name: "goal",
+      description: "Set a goal",
+      takesArguments: true as const,
+      run: vi.fn(async () => ({})),
+    };
+    await expect(
+      routeSubmit({
+        intent: { ...prompt, text: "/goal stable-goal" },
+        hasAttachments: false,
+        provider: null,
+        appCommands: [command],
+      }),
+    ).resolves.toEqual({ kind: "app", command, args: "stable-goal" });
+  });
+  test("leaves an unknown slash prompt for the model while the omp catalog is unavailable", async () => {
+    await expect(
+      routeSubmit({
+        intent: { ...prompt, text: "/etc/hosts" },
+        hasAttachments: false,
+        provider: null,
+      }),
+    ).resolves.toBeNull();
+  });
 });
 
 describe("D2.3 /new", () => {
