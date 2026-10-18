@@ -565,6 +565,7 @@ describe("S1.4 interaction settings sections", () => {
     expect(JSON.stringify(policies)).not.toContain("value");
 
     const input = defaultSnapshot(INPUT_SETTINGS_SECTION);
+
     expect(control("steeringMode").validate({ secret: false, value: "later" }, input).valid).toBe(
       false,
     );
@@ -574,6 +575,20 @@ describe("S1.4 interaction settings sections", () => {
     expect(
       control("spelling.autocomplete").validate({ secret: false, value: "missing" }, input).valid,
     ).toBe(false);
+  });
+  test("accepts empty optional relay and derived URL settings as omp defaults", () => {
+    const snapshot = defaultSnapshot(COLLAB_SETTINGS_SECTION);
+    for (const key of ["collab.webUrl", "share.serverUrl"]) {
+      expect(control(key).validate({ secret: false, value: "" }, snapshot), key).toEqual({
+        valid: true,
+      });
+    }
+    expect(
+      control("collab.relayUrl").validate({ secret: false, value: "" }, snapshot),
+    ).toMatchObject({
+      valid: false,
+      code: "url",
+    });
   });
 });
 

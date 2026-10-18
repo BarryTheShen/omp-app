@@ -359,6 +359,11 @@ const text = (
 ) => control(key, kind, apply, kind === "path" ? pathValidator : stringValidator);
 const url = (key: string, apply: SettingControl["apply"] = "reload") =>
   control(key, "text", apply, urlValidator);
+const optionalUrl = (key: string, apply: SettingControl["apply"] = "reload") =>
+  control(key, "text", apply, (value) => {
+    if (plain(value) === "") return { valid: true };
+    return urlValidator(value);
+  });
 const array = (key: string, apply: SettingControl["apply"] = "reload") =>
   control(key, "list", apply, arrayValidator);
 function described(
@@ -465,7 +470,7 @@ const toolsGrepBrowser: readonly SettingControl[] = [
     "Number of lines shown after each matching line.",
   ),
   described(
-    url("browser.cdpUrl", "live"),
+    optionalUrl("browser.cdpUrl", "live"),
     "Browser CDP URL",
     "HTTP debugging endpoint used to attach to an existing browser instead of launching one. Browser choices on a tool call take precedence.",
   ),
@@ -475,7 +480,7 @@ const toolsGrepBrowser: readonly SettingControl[] = [
     "Drive your own Chrome tabs through the browser relay. Install the extension once; the relay starts when needed and takes precedence over the browser debugging URL.",
   ),
   described(
-    url("browser.relayUrl", "live"),
+    optionalUrl("browser.relayUrl", "live"),
     "Browser Relay URL",
     "Address of the browser relay service; the default is http://127.0.0.1:9224.",
   ),

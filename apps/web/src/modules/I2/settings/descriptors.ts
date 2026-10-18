@@ -17,6 +17,7 @@ function plainValue(value: SettingValue): JsonValue | undefined {
 
 function validateSkillsRegistryUrl(value: SettingValue): ValidationResult {
   const candidate = plainValue(value);
+  if (candidate === "") return { valid: true };
   if (typeof candidate !== "string" || candidate.includes("\0")) {
     return { valid: false, code: "url", message: "Enter a valid skill registry URL." };
   }

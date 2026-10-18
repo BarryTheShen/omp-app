@@ -36,6 +36,7 @@ describe("I2 Interaction / Skills settings", () => {
     ).toEqual({
       valid: true,
     });
+    expect(control.validate({ secret: false, value: "" }, snapshot)).toEqual({ valid: true });
     expect(control.validate({ secret: false, value: "http://localhost:4173" }, snapshot)).toEqual({
       valid: true,
     });

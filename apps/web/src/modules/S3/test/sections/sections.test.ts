@@ -372,6 +372,15 @@ describe("S3 Tools and Tasks sections", () => {
     expect(validate("browser.cdpUrl", { secret: false, value: "https://127.0.0.1:9222" })).toEqual({
       valid: true,
     });
+    expect(validate("browser.cdpUrl", { secret: false, value: "" })).toEqual({ valid: true });
+    expect(validate("browser.relayUrl", { secret: false, value: "" })).toEqual({ valid: true });
+    expect(
+      validate("dev.autoqaPush.endpoint", { secret: false, value: "" }),
+      "dev.autoqaPush.endpoint keeps its required value",
+    ).toMatchObject({
+      valid: false,
+      code: "url",
+    });
     expect(validate("browser.cdpUrl", { secret: false, value: "not a URL" })).toMatchObject({
       valid: false,
       code: "url",
