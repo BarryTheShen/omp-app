@@ -4,7 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ComponentType } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import type { SettingsRuntime } from "../../../S1/runtime";
-import { SETTINGS_CONFLICT_DESCRIPTION, SETTINGS_CONFLICT_HEADING } from "../../../S1/settings-kit";
+import {
+  SETTINGS_CONFLICT_DESCRIPTION,
+  SETTINGS_CONFLICT_HEADING,
+  type SettingsSectionDescriptor,
+} from "../../../S1/settings-kit";
 import {
   FilesEditingSection,
   FilesReadingSection,
@@ -21,6 +25,7 @@ import {
 import { createFilesRuntime, defaultFilesEntries, publishFilesChange } from "./fixtures";
 
 const runtimes: SettingsRuntime[] = [];
+
 function FilesHarness({
   runtime,
   Section,
@@ -178,25 +183,34 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     expect(state.writes.map((write) => write.expectedRevision)).toEqual(["revision-external"]);
   });
 
-  test("hides a stale Applied pill when a later edit enters conflict", async () => {
-    const { runtime, state } = createFilesRuntime(FILES_READING_SECTION);
+  test("hides a saved reload status when a partial-save remainder enters external conflict", async () => {
+    const descriptor: SettingsSectionDescriptor = {
+      ...FILES_READING_SECTION,
+      controls: FILES_READING_SECTION.controls.map((control) =>
+        control.key === "read.defaultLimit" ? { ...control, apply: "reload" as const } : control,
+      ),
+    };
+    const { runtime, state } = createFilesRuntime(descriptor, undefined, undefined, {
+      refusedWrites: { "read.renderMarkdown": true },
+    });
     runtimes.push(runtime);
     render(<FilesHarness runtime={runtime} Section={FilesReadingSection} />);
     await screen.findByRole("heading", { name: "Reading" });
 
     runtime.stage("read.defaultLimit", { secret: false, value: 500 });
-    await runtime.save();
-    await waitFor(() => expect(runtime.getSnapshot().phase).toBe("ready"));
-    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
+    runtime.stage("read.renderMarkdown", { secret: false, value: true });
+    await expect(runtime.save()).rejects.toMatchObject({
+      appError: { message: "The fake Files store refused this write." },
+    });
+    expect(await screen.findByText("Reload required", { exact: true })).toBeTruthy();
 
-    runtime.stage("read.defaultLimit", { secret: false, value: 600 });
     publishFilesChange(
       state,
-      { key: "read.defaultLimit", secret: false, value: 700, source: "global", overrides: [] },
-      "revision-conflict-after-apply",
+      { key: "read.renderMarkdown", secret: false, value: true, source: "global", overrides: [] },
+      "revision-conflict-after-partial-save",
     );
     await waitFor(() => expect(runtime.getSnapshot().phase).toBe("conflict"));
-    expect(screen.queryByText("Applied", { exact: true })).toBeNull();
+    expect(screen.queryByText("Reload required", { exact: true })).toBeNull();
     expect(screen.getAllByText(SETTINGS_CONFLICT_HEADING, { exact: true })).toHaveLength(1);
   });
 

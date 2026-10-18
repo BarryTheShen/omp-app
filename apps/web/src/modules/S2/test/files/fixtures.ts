@@ -50,8 +50,8 @@ export type FilesFakeStore = {
   writes: ConfigWriteArgs[];
   listeners: Set<(change: ConfigChanged) => void>;
   listError: AppFailure | null;
+  refusedWrites: Readonly<Record<string, true>>;
 };
-
 export function createFilesRuntime(
   descriptor: SettingsSectionDescriptor,
   entries: readonly ConfigEntry[] = defaultFilesEntries(descriptor),
@@ -59,6 +59,7 @@ export function createFilesRuntime(
     folder: null,
     layer: "global",
   },
+  options: { readonly refusedWrites?: Readonly<Record<string, true>> } = {},
 ) {
   const state: FilesFakeStore = {
     revision: "revision-1",
@@ -67,6 +68,7 @@ export function createFilesRuntime(
     writes: [],
     listeners: new Set(),
     listError: null,
+    refusedWrites: options.refusedWrites ?? {},
   };
   const client: ConfigStoreClient = {
     read: async ({ key }) => {
@@ -87,6 +89,13 @@ export function createFilesRuntime(
           code: "conflict",
           message: "Settings changed elsewhere",
           retryable: true,
+        });
+      }
+      if (state.refusedWrites[args.key]) {
+        throw new AppFailure({
+          code: "permission",
+          message: "The fake Files store refused this write.",
+          retryable: false,
         });
       }
       const previousRevision = state.revision;

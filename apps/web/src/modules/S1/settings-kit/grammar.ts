@@ -115,6 +115,8 @@ export type SettingsSectionDescriptor = {
   readonly inventory: readonly InventoryId[];
   readonly controls: readonly SettingControl[];
   readonly requires: readonly CapabilityKey[];
+  /** Optional shared apply-boundary report shown with this section in the app's settings surface. */
+  readonly applyReport?: { readonly note: string };
 };
 
 export type ConfigSnapshot = {

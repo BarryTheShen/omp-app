@@ -10,13 +10,16 @@ import type {
 import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../../S1/settings-kit";
 
 /**
- * Keys and labels mirror omp v18.6.1's registered UI settings:
+ * Keys, labels and defaults mirror omp v18.6.1's registered UI settings:
  * - edit/settings.ts (edit.*)
  * - tools/settings.ts (read.* and read.summarize.*)
  * - lsp/settings.ts (lsp.*)
  * - exec/settings.ts (bash.*, bashInterceptor.*, shellMinimizer.*)
  * - eval/settings.ts (eval.* and python.*)
  *
+ * The S2.3 descriptions and live apply boundaries are checked against omp v18.9.1:
+ * `packages/coding-agent/src/lsp/settings.ts`, `exec/settings.ts`, `eval/settings.ts`,
+ * `sdk.ts:5068-5135`, and `main.ts:2549-2554`.
  * Source snapshot: https://github.com/can1357/oh-my-pi/tree/v18.6.1/packages/coding-agent/src
  */
 
@@ -195,7 +198,7 @@ const bashPatternsControl: RowsSettingControl = {
   key: "bash.patterns",
   label: "Bash Approval Patterns",
   description:
-    "Ordered rules for approving bash commands; the first matching rule wins. Use * as a wildcard.",
+    "Ordered command rules. Each rule has a match pattern and an approval action; the first matching rule wins, and * is the only wildcard.",
   kind: "rows",
   secret: false,
   fields: {
@@ -378,47 +381,156 @@ const filesReadSummaries: readonly SettingControl[] = [
 ];
 
 const filesLsp: readonly SettingControl[] = [
-  booleanControl("lsp.enabled", "LSP", "live"),
-  booleanControl("lsp.lazy", "Lazy LSP Startup", "reload"),
-  booleanControl("lsp.shared", "Shared Language Servers", "live"),
-  booleanControl("lsp.formatOnWrite", "Format on Write", "live"),
-  booleanControl("lsp.diagnosticsOnWrite", "Diagnostics on Write", "live"),
-  booleanControl("lsp.diagnosticsOnEdit", "Diagnostics on Edit", "live"),
-  booleanControl("lsp.diagnosticsDeduplicate", "Deduplicate Diagnostics", "live"),
+  booleanControl(
+    "lsp.enabled",
+    "LSP",
+    "live",
+    "Use language tools to find definitions and references, show diagnostics, and rename symbols.",
+  ),
+  booleanControl(
+    "lsp.lazy",
+    "Lazy LSP Startup",
+    "live",
+    "Start language servers when first needed instead of when a chat opens.",
+  ),
+  booleanControl(
+    "lsp.shared",
+    "Shared Language Servers",
+    "live",
+    "Share one language server per project across omp sessions when possible; otherwise use a separate server for each session.",
+  ),
+  booleanControl(
+    "lsp.formatOnWrite",
+    "Format on Write",
+    "live",
+    "Format supported code files after writing them.",
+  ),
+  booleanControl(
+    "lsp.diagnosticsOnWrite",
+    "Diagnostics on Write",
+    "live",
+    "Show language-tool diagnostics after writing code files.",
+  ),
+  booleanControl(
+    "lsp.diagnosticsOnEdit",
+    "Diagnostics on Edit",
+    "live",
+    "Show language-tool diagnostics after editing code files.",
+  ),
+  booleanControl(
+    "lsp.diagnosticsDeduplicate",
+    "Deduplicate Diagnostics",
+    "live",
+    "Skip diagnostics already shown for a file and show only new or changed ones.",
+  ),
 ];
 
 const shellBash: readonly SettingControl[] = [
-  booleanControl("bash.enabled", "Bash", "live"),
-  booleanControl("bash.allowCompoundCommands", "Allow Compound Commands", "live"),
-  booleanControl("bash.autoBackground.enabled", "Bash Auto-Background", "live"),
+  booleanControl(
+    "bash.enabled",
+    "Bash",
+    "live",
+    "Allow shell commands to run through the Bash tool.",
+  ),
+  booleanControl(
+    "bash.allowCompoundCommands",
+    "Allow Compound Commands",
+    "live",
+    "Check each command joined with &&; unmatched commands use the usual approval rules.",
+  ),
+  booleanControl(
+    "bash.autoBackground.enabled",
+    "Bash Auto-Background",
+    "live",
+    "Run long commands in the background and deliver their results later.",
+  ),
   booleanControl(
     "bash.gitGuard",
     "Git Guard",
     "live",
-    "Refuse git commands that discard or move shared work in the bash tool: stash, reset --hard or to another commit, and checkout/switch/restore outside a merge or rebase conflict.",
+    "Block Git commands that could discard shared work, such as hard resets or restoring files outside a merge conflict.",
   ),
   bashPatternsControl,
-  booleanControl("bashInterceptor.enabled", "Bash Interceptor", "live"),
-  enumControl("bash.direnv", "direnv Auto-Load", ["auto", "off"], "live"),
-  durationControl("bash.direnvLoadTimeoutMs", "direnv Load Timeout (ms)", 600_000, "live"),
-  booleanControl("shellMinimizer.enabled", "Shell Minimizer", "live"),
+  booleanControl(
+    "bashInterceptor.enabled",
+    "Bash Interceptor",
+    "live",
+    "Block shell commands that have dedicated tools.",
+  ),
+  enumControl(
+    "bash.direnv",
+    "direnv Auto-Load",
+    ["auto", "off"],
+    "live",
+    "Load a repository's approved environment before running commands; never run an unapproved .envrc file.",
+  ),
+  durationControl(
+    "bash.direnvLoadTimeoutMs",
+    "direnv Load Timeout (ms)",
+    600_000,
+    "live",
+    "Stop waiting for the repository environment after this many milliseconds; commands still run without it.",
+  ),
+  booleanControl(
+    "shellMinimizer.enabled",
+    "Shell Minimizer",
+    "live",
+    "Compress verbose shell output (git, npm, cargo, etc.) before returning it to the agent.",
+  ),
   enumControl(
     "shellMinimizer.sourceOutlineLevel",
     "Shell Minimizer Source Outline",
     ["default", "aggressive"],
     "live",
+    "Choose how much source-code detail to keep when command output is shortened.",
   ),
 ];
 
 const shellEvalRuntimes: readonly SettingControl[] = [
-  booleanControl("eval.py", "Python Eval Backend", "live"),
-  booleanControl("eval.js", "JavaScript Eval Backend", "live"),
-  booleanControl("eval.autoProvision", "Eval Environment Provisioning", "live"),
-  booleanControl("eval.tools.enabled", "Eval-Defined Tools", "live"),
-  booleanControl("eval.workpool.freshAgents", "Fresh Workpool Agents", "live"),
-  booleanControl("eval.autoBackground.enabled", "Eval Auto-Background", "live"),
-  enumControl("python.kernelMode", "Python Kernel Mode", ["session", "per-call"], "live"),
-  pathControl("python.interpreter", "Python Interpreter", "live"),
+  booleanControl("eval.py", "Python Eval Backend", "live", "Allow evaluation code to run Python."),
+  booleanControl(
+    "eval.js",
+    "JavaScript Eval Backend",
+    "live",
+    "Allow evaluation code to run JavaScript in omp's own runtime.",
+  ),
+  booleanControl(
+    "eval.autoProvision",
+    "Eval Environment Provisioning",
+    "live",
+    "Create the managed JavaScript environment the first time it is needed.",
+  ),
+  booleanControl(
+    "eval.tools.enabled",
+    "Eval-Defined Tools",
+    "live",
+    "Allow evaluation code to define tools that helper agents can use.",
+  ),
+  booleanControl(
+    "eval.workpool.freshAgents",
+    "Fresh Workpool Agents",
+    "live",
+    "Use a new helper for each work item instead of reusing helpers or batching items.",
+  ),
+  booleanControl(
+    "eval.autoBackground.enabled",
+    "Eval Auto-Background",
+    "live",
+    "Run long evaluation tasks in the background and deliver their results later.",
+  ),
+  enumControl(
+    "python.kernelMode",
+    "Python Kernel Mode",
+    ["session", "per-call"],
+    "live",
+    "Keep one Python session for repeated evaluations, or start a fresh session for each call.",
+  ),
+  pathControl(
+    "python.interpreter",
+    "Python Interpreter",
+    "live",
+    "Choose a specific Python executable; when set, automatic discovery is skipped.",
+  ),
 ];
 
 function section(
@@ -427,8 +539,17 @@ function section(
   title: string,
   inventory: SettingsSectionDescriptor["inventory"],
   controls: readonly SettingControl[],
+  applyReport?: SettingsSectionDescriptor["applyReport"],
 ): SettingsSectionDescriptor {
-  return { id, section: sectionName, title, inventory, controls, requires: [...HOST_CONFIG] };
+  return {
+    id,
+    section: sectionName,
+    title,
+    inventory,
+    controls,
+    requires: [...HOST_CONFIG],
+    ...(applyReport ? { applyReport } : {}),
+  };
 }
 
 export const FILES_EDITING_SECTION = section(
@@ -458,6 +579,9 @@ export const FILES_LSP_SECTION = section(
   "LSP",
   ["S5.files-lsp"],
   filesLsp,
+  {
+    note: "Language servers start when first needed if Lazy LSP Startup is on. Turning it off starts them in the background. Shared Language Servers affects new connections; a connected server keeps its current connection. Saving does not interrupt work already running.",
+  },
 );
 export const SHELL_BASH_SECTION = section(
   "S2.shellBash",
@@ -465,6 +589,9 @@ export const SHELL_BASH_SECTION = section(
   "Bash",
   ["S5.shell-bash"],
   shellBash,
+  {
+    note: "Changes apply to each new shell command. Saving does not interrupt a command already running.",
+  },
 );
 export const SHELL_EVAL_RUNTIMES_SECTION = section(
   "S2.shellEvalRuntimes",
@@ -472,6 +599,9 @@ export const SHELL_EVAL_RUNTIMES_SECTION = section(
   "Eval and Runtimes",
   ["S5.shell-eval-runtimes"],
   shellEvalRuntimes,
+  {
+    note: "Python and JavaScript evaluations use these options when they run. Existing Python sessions keep running until they close. For parallel tasks, choose whether to start a new helper for every task.",
+  },
 );
 
 export const S2_SETTINGS_SECTIONS: readonly SettingsSectionDescriptor[] = [

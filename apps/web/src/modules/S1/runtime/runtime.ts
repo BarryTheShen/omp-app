@@ -56,6 +56,8 @@ export type SettingsRuntimeSnapshot = {
   readonly phase: SettingsRuntimePhase;
   readonly conflict: SettingsRuntimeConflict | null;
   readonly error: AppError | null;
+  /** Which operation produced the current error, for accurate shared error headings. */
+  readonly errorOperation?: "refresh" | "save";
   readonly applyStatus: ApplyStatus | null;
   /** The variables that override what the last save wrote, when the environment supplies a written setting. */
   readonly environmentOverride: EnvironmentOverride | null;
@@ -189,8 +191,9 @@ export class SettingsRuntime {
       staged: null,
       validation: {},
       phase: "idle",
-      conflict: null,
       error: null,
+      conflict: null,
+      errorOperation: undefined,
       applyStatus: null,
       environmentOverride: null,
       lastChange: null,
@@ -212,7 +215,7 @@ export class SettingsRuntime {
 
   public async read(): Promise<ConfigSnapshot> {
     const operation = ++this.operation;
-    this.commit({ phase: "loading", error: null, conflict: null });
+    this.commit({ phase: "loading", error: null, errorOperation: undefined, conflict: null });
     try {
       const config = await readSection(this.client, this.descriptor, this.folder);
       if (operation !== this.operation || this.disposed) return config;
@@ -224,6 +227,7 @@ export class SettingsRuntime {
         conflict: null,
         error: null,
         applyStatus: null,
+        errorOperation: undefined,
         environmentOverride: null,
         lastChange: null,
         unsavedKeys: [],
@@ -231,7 +235,8 @@ export class SettingsRuntime {
       return config;
     } catch (error) {
       const failure = asFailure(error, "Reading settings failed.");
-      if (operation === this.operation) this.commit({ phase: "error", error: failure.appError });
+      if (operation === this.operation)
+        this.commit({ phase: "error", error: failure.appError, errorOperation: "refresh" });
       throw failure;
     }
   }
@@ -263,6 +268,9 @@ export class SettingsRuntime {
       phase: inConflict ? "conflict" : "editing",
       error,
       conflict: inConflict ? this.snapshot.conflict : null,
+      errorOperation: error ? this.snapshot.errorOperation : undefined,
+      applyStatus: null,
+      environmentOverride: null,
     });
     return result;
   }
@@ -282,6 +290,9 @@ export class SettingsRuntime {
       phase: "ready",
       conflict: null,
       error: null,
+      errorOperation: undefined,
+      applyStatus: null,
+      environmentOverride: null,
       unsavedKeys: [],
     });
   }
@@ -314,7 +325,7 @@ export class SettingsRuntime {
     }
     const written: string[] = [...earlier];
     this.writing = true;
-    this.commit({ phase: "saving", error: null });
+    this.commit({ phase: "saving", error: null, errorOperation: undefined });
     try {
       const result = await commitSection(this.client, this.descriptor, staged, this.layer, (key) =>
         written.push(key),
@@ -328,8 +339,8 @@ export class SettingsRuntime {
         staged: { snapshot: config, edits: {} },
         validation: {},
         phase: "ready",
-        conflict: null,
         error: null,
+        errorOperation: undefined,
         applyStatus,
         environmentOverride: environmentOverrideOf(config.entries, written),
         lastChange: null,
@@ -361,6 +372,7 @@ export class SettingsRuntime {
                 "Settings changed elsewhere while this save ran, so these were not written. Save again to write them.",
               retryable: true,
             }).appError,
+            errorOperation: "save",
             unsavedKeys: Object.keys(unsaved.edits),
           });
         }
@@ -385,6 +397,7 @@ export class SettingsRuntime {
       phase: choice === "reload" ? "ready" : "editing",
       conflict: null,
       error: null,
+      errorOperation: undefined,
       unsavedKeys: [],
     });
   }
@@ -418,6 +431,7 @@ export class SettingsRuntime {
           phase: "conflict",
           conflict: { local: staged, remote, changedKeys },
           error: null,
+          errorOperation: undefined,
           lastChange: change,
           unsavedKeys: [],
         });
@@ -430,13 +444,20 @@ export class SettingsRuntime {
           phase: Object.keys(edits).length > 0 ? "editing" : "ready",
           conflict: null,
           error: this.snapshot.unsavedKeys.length > 0 ? this.snapshot.error : null,
+          errorOperation:
+            this.snapshot.unsavedKeys.length > 0 ? this.snapshot.errorOperation : undefined,
           lastChange: change,
           unsavedKeys: this.snapshot.unsavedKeys,
         });
       }
     } catch (error) {
       const failure = asFailure(error, "Reading an external settings change failed.");
-      this.commit({ phase: "error", error: failure.appError, lastChange: change });
+      this.commit({
+        phase: "error",
+        error: failure.appError,
+        errorOperation: "refresh",
+        lastChange: change,
+      });
     }
   }
 
@@ -457,6 +478,7 @@ export class SettingsRuntime {
           phase: "editing",
           conflict: null,
           error: null,
+          errorOperation: undefined,
           unsavedKeys: [],
         });
         return true;
@@ -466,12 +488,17 @@ export class SettingsRuntime {
         phase: "conflict",
         conflict: { local, remote, changedKeys },
         error,
+        errorOperation: "save",
         unsavedKeys: [],
       });
       return false;
     } catch (readError) {
       const failure = asFailure(readError, "Reloading settings after a conflict failed.");
-      this.commit({ phase: "error", error: failure.appError });
+      this.commit({
+        phase: "error",
+        error: failure.appError,
+        errorOperation: "save",
+      });
       return false;
     }
   }
@@ -499,6 +526,7 @@ export class SettingsRuntime {
         phase: unsavedKeys.length > 0 ? "editing" : "ready",
         conflict: null,
         error,
+        errorOperation: "save",
         applyStatus,
         environmentOverride: environmentOverrideOf(config.entries, written),
         lastChange: null,
@@ -511,6 +539,7 @@ export class SettingsRuntime {
       this.commit({
         phase: "error",
         error: failure.appError,
+        errorOperation: "save",
         staged: unsaved,
         applyStatus,
         environmentOverride: null,
@@ -520,7 +549,8 @@ export class SettingsRuntime {
   }
 
   public fail(error: AppFailure): void {
-    if (!this.disposed) this.commit({ phase: "error", error: error.appError });
+    if (!this.disposed)
+      this.commit({ phase: "error", error: error.appError, errorOperation: "refresh" });
   }
 
   private commit(patch: Partial<SettingsRuntimeSnapshot>): void {

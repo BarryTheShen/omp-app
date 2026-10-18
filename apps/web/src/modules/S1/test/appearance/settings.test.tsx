@@ -4,11 +4,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, test } from "vitest";
 import { AppearanceSettingsView, useAppearanceSettingsController } from "../../../S1/settings";
 import type {
+  ApplyBoundary,
   ApplyStatus,
   ConfigChangeSource,
+  ConfigSnapshot,
   ConfigStoreClient,
   SettingsSectionDescriptor,
 } from "../../../S1/settings-kit";
+import { SettingsSection } from "../../../S1/settings-kit";
 import { COMPOSER_SETTINGS_SECTION, DISPLAY_SETTINGS_SECTION } from "../../appearance";
 
 type FakeConfig = {
@@ -403,5 +406,33 @@ describe("S1.3 appearance settings surface", () => {
         "These settings change omp's terminal only. This app does not use them.",
       ),
     ).toHaveLength(1);
+  });
+
+  test("reports every apply boundary with the shared status labels", () => {
+    const boundaries: readonly ApplyBoundary[] = [
+      "live",
+      "session",
+      "reload",
+      "restart",
+      "unsupported",
+    ];
+    const descriptor: SettingsSectionDescriptor = {
+      ...DISPLAY_SETTINGS_SECTION,
+      applyReport: { note: "Boundary test note." },
+      controls: DISPLAY_SETTINGS_SECTION.controls.map((control, index) => ({
+        ...control,
+        apply: boundaries[index % boundaries.length] ?? "live",
+      })),
+    };
+    const snapshot: ConfigSnapshot = { folder: null, revision: "revision-1", entries: [] };
+    render(<SettingsSection descriptor={descriptor} snapshot={snapshot} />);
+
+    const report = screen.getByRole("group", { name: "When settings take effect" });
+    expect(report.textContent).toContain("Live:");
+    expect(report.textContent).toContain("This session only:");
+    expect(report.textContent).toContain("Reload required:");
+    expect(report.textContent).toContain("Restart required:");
+    expect(report.textContent).toContain("Unavailable:");
+    expect(report.textContent).toContain("Boundary test note.");
   });
 });

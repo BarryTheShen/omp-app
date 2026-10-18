@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { checkboxRowLook, SELECT_DISABLED_LOOK } from "./control-look";
 import type {
+  ApplyBoundary,
   ConfigSnapshot,
   PreviewResult,
   ScalarSettingControl,
@@ -25,6 +26,7 @@ import type {
   ValidationResult,
 } from "./grammar";
 import {
+  applyStatusLabel,
   effectiveEntry,
   provenanceLabel,
   secretSummary,
@@ -33,6 +35,60 @@ import {
   validate,
 } from "./grammar";
 import { isStructuredControl, ReadOnlyValue, StructuredEditor } from "./structured";
+
+const APPLY_BOUNDARY_REPORT: Record<
+  ApplyBoundary,
+  { readonly label: string; readonly detail: string }
+> = {
+  live: {
+    label: "Live",
+    detail: "New operations use the saved setting; work already underway is not interrupted.",
+  },
+  session: {
+    label: applyStatusLabel("session-only"),
+    detail:
+      "New operations in this session use the saved setting; existing processes keep running.",
+  },
+  reload: {
+    label: applyStatusLabel("reload-required"),
+    detail: "Reload omp to use this setting. Existing work continues unchanged.",
+  },
+  restart: {
+    label: applyStatusLabel("restart-required"),
+    detail: "Restart omp to use this setting; saving does not stop it.",
+  },
+  unsupported: {
+    label: applyStatusLabel("unsupported"),
+    detail: "omp cannot apply this setting yet.",
+  },
+};
+
+function SettingsApplyReport({ descriptor }: { readonly descriptor: SettingsSectionDescriptor }) {
+  if (!descriptor.applyReport) return null;
+  const grouped = new Map<ApplyBoundary, string[]>();
+  for (const control of descriptor.controls) {
+    const labels = grouped.get(control.apply) ?? [];
+    labels.push(control.label);
+    grouped.set(control.apply, labels);
+  }
+  return (
+    <fieldset aria-label="When settings take effect" className="mt-5 text-sm">
+      <legend className="font-medium text-foreground">When changes take effect</legend>
+      <ul className="mt-2 flex flex-col gap-2 text-muted-foreground">
+        {[...grouped].map(([boundary, labels]) => {
+          const report = APPLY_BOUNDARY_REPORT[boundary];
+          return (
+            <li key={boundary}>
+              <strong className="font-medium text-foreground">{report.label}:</strong>{" "}
+              {labels.join(", ")}. {report.detail}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-muted-foreground">{descriptor.applyReport.note}</p>
+    </fieldset>
+  );
+}
 
 export type SettingsSectionProps = {
   readonly descriptor: SettingsSectionDescriptor;
@@ -135,6 +191,7 @@ export function SettingsSection({
         ))}
         {listControls}
       </div>
+      <SettingsApplyReport descriptor={descriptor} />
       <div className="mt-5">
         <Toolbar ariaLabel="Settings actions" alignment="end">
           {onCancel ? (

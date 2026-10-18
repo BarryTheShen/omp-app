@@ -15,6 +15,7 @@ import { SettingsRuntime } from "../../../S1/runtime";
 import {
   type ConfigChangeSource,
   type ConfigStoreClient,
+  environmentOverrideText,
   SETTINGS_CONFLICT_DESCRIPTION,
   SETTINGS_CONFLICT_HEADING,
   type SettingControl,
@@ -35,42 +36,42 @@ type DefaultFixture = {
   readonly citation: string;
 };
 
-// Defaults/types come from the pinned registration; consumer locations justify the live/reload policy.
+// omp v18.9.1 declarations pin defaults/types; tagged consumer locations justify the runtime apply policy.
 const DEFAULTS: readonly DefaultFixture[] = [
   {
     key: "lsp.enabled",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "lsp/settings.ts:8-18; tools/index.ts:751-752; sdk.ts:4988-4993",
+    citation: "lsp/settings.ts:8-18; tools/index.ts:740-742; sdk.ts:5088-5136",
   },
   {
     key: "lsp.lazy",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "lsp/settings.ts:20-31; sdk.ts:4980-4993,5032-5035",
+    citation: "lsp/settings.ts:20-31; sdk.ts:5077-5086,5130-5135; main.ts:2549-2555",
   },
   {
     key: "lsp.shared",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "lsp/settings.ts:33-44; sdk.ts:4968-4976",
+    citation: "lsp/settings.ts:33-44; sdk.ts:5064-5075",
   },
   {
     key: "lsp.formatOnWrite",
     value: false,
     source: "default",
     kind: "boolean",
-    citation: "lsp/settings.ts:46-56; edit/index.ts:172-177; write.ts:486-490",
+    citation: "lsp/settings.ts:46-56; write.ts:501-515",
   },
   {
     key: "lsp.diagnosticsOnWrite",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "lsp/settings.ts:58-68; write.ts:486-490",
+    citation: "lsp/settings.ts:58-68; write.ts:501-515",
   },
   {
     key: "lsp.diagnosticsOnEdit",
@@ -84,133 +85,132 @@ const DEFAULTS: readonly DefaultFixture[] = [
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "lsp/settings.ts:82-92; write.ts:486-492; lsp/deferred-diagnostics.ts:42-45",
+    citation: "lsp/settings.ts:82-92; write.ts:501-515; lsp/deferred-diagnostics.ts:42-45",
   },
   {
     key: "bash.enabled",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "exec/settings.ts:82-92; tools/index.ts:751-752",
+    citation: "exec/settings.ts:82-92; tools/index.ts:740-742",
   },
   {
     key: "bash.allowCompoundCommands",
     value: false,
     source: "default",
     kind: "boolean",
-    citation: "exec/settings.ts:94-105; tools/bash.ts:506-511",
+    citation: "exec/settings.ts:94-105; tools/bash.ts:503-504",
   },
   {
     key: "bash.autoBackground.enabled",
     value: true,
     source: "runtime",
     kind: "boolean",
-    citation: "exec/settings.ts:107-118; main.ts:246-254; tools/bash.ts:603,1142-1147",
+    citation: "exec/settings.ts:107-118; tools/bash.ts:599-600,1139-1147",
   },
   {
     key: "bash.gitGuard",
     value: false,
     source: "default",
     kind: "boolean",
-    citation: "exec/settings.ts:120-131",
+    citation: "exec/settings.ts:120-131; tools/bash.ts:854,1526",
   },
   {
     key: "bash.patterns",
     value: [],
     source: "default",
-    citation: "exec/settings.ts:120-131; tools/bash.ts:237-240,260-271,507-508",
+    citation: "exec/settings.ts:133-144; tools/bash.ts:503-504",
   },
   {
     key: "bashInterceptor.enabled",
     value: false,
     source: "default",
     kind: "boolean",
-    citation: "exec/settings.ts:134-144; tools/bash.ts:996-1002",
+    citation: "exec/settings.ts:147-157; tools/bash.ts:992-1002",
   },
   {
     key: "bash.direnv",
     value: "auto",
     source: "default",
     kind: "enum",
-    citation: "exec/settings.ts:152-164; exec/bash-executor.ts:549-555",
+    citation: "exec/settings.ts:165-177; exec/bash-executor.ts:561-563; tools/bash.ts:1219",
   },
   {
     key: "bash.direnvLoadTimeoutMs",
     value: 30_000,
     source: "default",
     kind: "duration",
-    citation: "exec/settings.ts:166-177; exec/bash-executor.ts:549-554",
+    citation: "exec/settings.ts:179-190; exec/bash-executor.ts:561; tools/bash.ts:1217",
   },
   {
     key: "shellMinimizer.enabled",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "exec/settings.ts:180-190; exec/bash-executor.ts:536",
+    citation: "exec/settings.ts:193-203; exec/bash-executor.ts:542",
   },
   {
     key: "shellMinimizer.sourceOutlineLevel",
     value: "default",
     source: "default",
     kind: "enum",
-    citation: "exec/settings.ts:216-227; exec/bash-executor.ts:301-303,536",
+    citation: "exec/settings.ts:229-240; exec/bash-executor.ts:314",
   },
   {
     key: "eval.py",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "eval/settings.ts:8-19; tools/eval-backends.ts:10-15",
+    citation: "eval/settings.ts:8-19; tools/eval-backends.ts:3-14",
   },
   {
     key: "eval.js",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "eval/settings.ts:21-32; tools/eval-backends.ts:10-15",
+    citation: "eval/settings.ts:21-32; tools/eval-backends.ts:3-14",
   },
   {
     key: "eval.autoProvision",
     value: true,
     source: "default",
     kind: "boolean",
-    citation: "eval/settings.ts:34-45; tools/eval.ts:402-403; eval/js/executor.ts:139",
+    citation: "eval/settings.ts:34-45; tools/eval.ts:398-404; eval/js/executor.ts:139",
   },
   {
     key: "eval.tools.enabled",
     value: true,
     source: "default",
     kind: "boolean",
-    citation:
-      "eval/settings.ts:46-58; task/eval-tools.ts:79-82; session/agent-session.ts:6850-6852",
+    citation: "eval/settings.ts:46-58; task/eval-tools.ts:14-81; session/agent-session.ts:7229",
   },
   {
     key: "eval.workpool.freshAgents",
     value: false,
     source: "default",
     kind: "boolean",
-    citation: "eval/settings.ts:59-69; task/workpool.ts:140-143",
+    citation: "eval/settings.ts:59-69; task/workpool.ts:135-143",
   },
   {
     key: "eval.autoBackground.enabled",
     value: false,
     source: "runtime",
     kind: "boolean",
-    citation: "eval/settings.ts:71-82; main.ts:246-254; tools/eval.ts:397-403,606-607",
+    citation: "eval/settings.ts:71-82; tools/eval.ts:398-404,613-630",
   },
   {
     key: "python.kernelMode",
     value: "session",
     source: "default",
     kind: "enum",
-    citation: "eval/settings.ts:92-103; eval/py/index.ts:50-70; eval/py/executor.ts:599-603",
+    citation: "eval/settings.ts:92-103; eval/py/index.ts:21-35; eval/py/executor.ts:599-603",
   },
   {
     key: "python.interpreter",
     value: "",
     source: "default",
     kind: "path",
-    citation: "eval/settings.ts:105-116; eval/py/index.ts:21-37; eval/py/executor.ts:413-415",
+    citation: "eval/settings.ts:105-116; eval/py/index.ts:21-35",
   },
 ];
 
@@ -224,6 +224,9 @@ type FakeStore = {
   entries: ConfigEntry[];
   writes: ConfigWriteArgs[];
   listeners: Set<(change: ConfigChanged) => void>;
+  listFailures: number;
+  refusedWrites: Readonly<Record<string, true>>;
+  environmentKeys: Readonly<Record<string, string>>;
 };
 
 function createFakeRuntime(
@@ -243,12 +246,19 @@ function createFakeRuntime(
     folder: null,
     layer: "global",
   },
+  options: {
+    readonly refusedWrites?: Readonly<Record<string, true>>;
+    readonly environmentKeys?: Readonly<Record<string, string>>;
+  } = {},
 ) {
   const state: FakeStore = {
     revision: "revision-1",
     entries: entries.map((entry) => ({ ...entry })),
     writes: [],
     listeners: new Set(),
+    listFailures: 0,
+    refusedWrites: options.refusedWrites ?? {},
+    environmentKeys: options.environmentKeys ?? {},
   };
   const client: ConfigStoreClient = {
     read: async ({ key }) => {
@@ -257,7 +267,17 @@ function createFakeRuntime(
         throw new AppFailure({ code: "not_found", message: "Setting missing", retryable: false });
       return entry;
     },
-    list: async () => ({ entries: [...state.entries], revision: state.revision }),
+    list: async () => {
+      if (state.listFailures > 0) {
+        state.listFailures -= 1;
+        throw new AppFailure({
+          code: "unavailable",
+          message: "The settings service is not reachable.",
+          retryable: true,
+        });
+      }
+      return { entries: [...state.entries], revision: state.revision };
+    },
     write: async (args): Promise<ConfigWriteResult> => {
       const value = args.value as ConfigWriteValue;
       state.writes.push(args as unknown as ConfigWriteArgs);
@@ -268,23 +288,33 @@ function createFakeRuntime(
           retryable: true,
         });
       }
+      if (state.refusedWrites[args.key]) {
+        throw new AppFailure({
+          code: "permission",
+          message: "The fake settings store refused this write.",
+          retryable: false,
+        });
+      }
       const previousRevision = state.revision;
       const revision = `revision-${state.writes.length + 1}`;
       state.revision = revision;
+      const environmentVariable = state.environmentKeys[args.key];
       const entry: ConfigEntry = value.secret
         ? {
             key: args.key,
             secret: true,
             isSet: value.action === "set",
-            source: args.layer,
+            source: environmentVariable === undefined ? args.layer : "env",
             overrides: [],
+            ...(environmentVariable === undefined ? {} : { overriddenBy: environmentVariable }),
           }
         : {
             key: args.key,
             secret: false,
             value: value.value,
-            source: args.layer,
+            source: environmentVariable === undefined ? args.layer : "env",
             overrides: [],
+            ...(environmentVariable === undefined ? {} : { overriddenBy: environmentVariable }),
           };
       const index = state.entries.findIndex((candidate) => candidate.key === args.key);
       if (index < 0) state.entries.push(entry);
@@ -331,6 +361,12 @@ afterEach(() => {
 });
 
 describe("S2.3 LSP and Shell ConfigStore settings", () => {
+  test("every S2.3 control has a description and uses omp's live apply boundary", () => {
+    const controls = GROUPS.flatMap((descriptor) => descriptor.controls);
+    expect(controls).toHaveLength(25);
+    expect(controls.every((control) => control.apply === "live")).toBe(true);
+    expect(controls.every((control) => control.description?.trim().length)).toBe(true);
+  });
   test("reads the pinned defaults, value types, effective sources, and revisions through ConfigStore", async () => {
     expect(
       GROUPS.flatMap((descriptor) => descriptor.controls.map((control) => control.key)).sort(),
@@ -477,31 +513,211 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     expect(state.writes[1]?.expectedRevision).toBe("revision-external");
     expect(runtime.getSnapshot().phase).toBe("ready");
   });
-  test("hides a stale Applied pill when a later edit enters conflict", async () => {
-    const { runtime, state } = createFakeRuntime(SHELL_BASH_SECTION);
+  test("hides a saved reload status when a partial-save remainder enters external conflict", async () => {
+    const descriptor: SettingsSectionDescriptor = {
+      ...SHELL_BASH_SECTION,
+      controls: SHELL_BASH_SECTION.controls.map((control) =>
+        control.key === "bash.enabled" ? { ...control, apply: "reload" as const } : control,
+      ),
+    };
+    const { runtime, state } = createFakeRuntime(descriptor, undefined, undefined, {
+      refusedWrites: { "bash.allowCompoundCommands": true },
+    });
     await runtime.read();
     render(<ShellBashSection runtime={runtime} />);
-    const first = runtime.stage("bash.direnvLoadTimeoutMs", { secret: false, value: 45_000 });
-    expect(first.ok).toBe(true);
-    await runtime.save();
-    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
+    runtime.stage("bash.enabled", { secret: false, value: false });
+    runtime.stage("bash.allowCompoundCommands", { secret: false, value: true });
+    await expect(runtime.save()).rejects.toMatchObject({
+      appError: { message: "The fake settings store refused this write." },
+    });
+    expect(await screen.findByText("Reload required", { exact: true })).toBeTruthy();
+    expect(runtime.getSnapshot().unsavedKeys).toEqual(["bash.allowCompoundCommands"]);
 
-    const second = runtime.stage("bash.direnvLoadTimeoutMs", { secret: false, value: 50_000 });
-    expect(second.ok).toBe(true);
     publishChange(
       state,
       {
-        key: "bash.direnvLoadTimeoutMs",
+        key: "bash.allowCompoundCommands",
         secret: false,
-        value: 60_000,
+        value: true,
         source: "global",
         overrides: [],
       },
-      "revision-external",
+      "revision-conflict-after-partial-save",
     );
     await waitFor(() => expect(runtime.getSnapshot().phase).toBe("conflict"));
-    expect(screen.queryByText("Applied", { exact: true })).toBeNull();
+    expect(screen.queryByText("Reload required", { exact: true })).toBeNull();
     expect(screen.getAllByText(SETTINGS_CONFLICT_HEADING, { exact: true })).toHaveLength(1);
+  });
+
+  test("Cancel clears unsaved keys after omp refuses the remaining part of a partial save", async () => {
+    const { runtime } = createFakeRuntime(SHELL_BASH_SECTION, undefined, undefined, {
+      refusedWrites: { "bash.allowCompoundCommands": true },
+    });
+    await runtime.read();
+    render(<ShellBashSection runtime={runtime} />);
+    runtime.stage("bash.enabled", { secret: false, value: false });
+    runtime.stage("bash.allowCompoundCommands", { secret: false, value: true });
+    await expect(runtime.save()).rejects.toMatchObject({
+      appError: { message: "The fake settings store refused this write." },
+    });
+    expect(runtime.getSnapshot().unsavedKeys).toEqual(["bash.allowCompoundCommands"]);
+    runtime.cancel();
+    expect(runtime.getSnapshot().unsavedKeys).toEqual([]);
+  });
+
+  test("a failed partial save keeps the save heading after an earlier external change and failed reread", async () => {
+    const { runtime, state } = createFakeRuntime(SHELL_BASH_SECTION, undefined, undefined, {
+      refusedWrites: { "bash.allowCompoundCommands": true },
+    });
+    await runtime.read();
+    render(<ShellBashSection runtime={runtime} />);
+    const external = state.entries.find((candidate) => candidate.key === "bash.gitGuard");
+    if (!external) throw new Error("Shell fixture did not contain bash.gitGuard.");
+    if (external.secret) throw new Error("Shell fixture returned a secret gitGuard entry.");
+    publishChange(state, { ...external, value: true }, "revision-external-before-save");
+    await waitFor(() =>
+      expect(runtime.getSnapshot().lastChange?.revision).toBe("revision-external-before-save"),
+    );
+
+    state.listFailures = 1;
+    runtime.stage("bash.enabled", { secret: false, value: false });
+    runtime.stage("bash.allowCompoundCommands", { secret: false, value: true });
+    await expect(runtime.save()).rejects.toMatchObject({
+      appError: { message: "The fake settings store refused this write." },
+    });
+
+    expect(await screen.findByText("Could not save changes", { exact: true })).toBeTruthy();
+    expect(screen.queryByText("Could not refresh settings", { exact: true })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "The settings service is not reachable.",
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Your changes are still waiting to be saved.",
+    );
+  });
+
+  test("stage clears a stale conflict after an external refresh failure", async () => {
+    const { runtime, state } = createFakeRuntime(SHELL_BASH_SECTION);
+    await runtime.read();
+    expect(runtime.stage("bash.enabled", { secret: false, value: false }).ok).toBe(true);
+    publishChange(
+      state,
+      { key: "bash.enabled", secret: false, value: false, source: "global", overrides: [] },
+      "revision-first-conflict",
+    );
+    await waitFor(() => expect(runtime.getSnapshot().phase).toBe("conflict"));
+
+    state.listFailures = 1;
+    publishChange(
+      state,
+      { key: "bash.enabled", secret: false, value: true, source: "global", overrides: [] },
+      "revision-refresh-failure",
+    );
+    await waitFor(() => expect(runtime.getSnapshot().phase).toBe("error"));
+
+    expect(runtime.stage("bash.allowCompoundCommands", { secret: false, value: true }).ok).toBe(
+      true,
+    );
+    expect(runtime.getSnapshot().phase).toBe("editing");
+    expect(runtime.getSnapshot().conflict).toBeNull();
+  });
+  test("clears Applied when a new edit is staged and when Cancel is pressed", async () => {
+    const { runtime } = createFakeRuntime(SHELL_BASH_SECTION);
+    await runtime.read();
+    render(<ShellBashSection runtime={runtime} />);
+
+    expect(runtime.stage("bash.direnvLoadTimeoutMs", { secret: false, value: 45_000 }).ok).toBe(
+      true,
+    );
+    await runtime.save();
+    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
+
+    expect(runtime.stage("bash.direnvLoadTimeoutMs", { secret: false, value: 50_000 }).ok).toBe(
+      true,
+    );
+    await waitFor(() => expect(screen.queryByText("Applied", { exact: true })).toBeNull());
+
+    await runtime.save();
+    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
+    runtime.cancel();
+    await waitFor(() => expect(screen.queryByText("Applied", { exact: true })).toBeNull());
+  });
+
+  test("clears an environment override notification after editing and Cancel through the runtime", async () => {
+    const { runtime } = createFakeRuntime(SHELL_EVAL_RUNTIMES_SECTION, undefined, undefined, {
+      environmentKeys: { "eval.py": "PI_PY" },
+    });
+    await runtime.read();
+
+    expect(runtime.stage("eval.py", { secret: false, value: false }).ok).toBe(true);
+    await runtime.save();
+    const firstOverride = runtime.getSnapshot().environmentOverride;
+    if (firstOverride === null || firstOverride === undefined)
+      throw new Error("Saving the environment-backed key did not produce its override notice.");
+    expect(environmentOverrideText(firstOverride)).toBe(
+      "Saved, but omp still uses the environment variable PI_PY until it is removed.",
+    );
+
+    expect(runtime.stage("eval.py", { secret: false, value: true }).ok).toBe(true);
+    expect(runtime.getSnapshot().environmentOverride).toBeNull();
+    await runtime.save();
+    const secondOverride = runtime.getSnapshot().environmentOverride;
+    if (secondOverride === null || secondOverride === undefined)
+      throw new Error("Saving the environment-backed key again did not restore its notice.");
+    expect(environmentOverrideText(secondOverride)).toBe(
+      "Saved, but omp still uses the environment variable PI_PY until it is removed.",
+    );
+
+    runtime.cancel();
+    expect(runtime.getSnapshot().environmentOverride).toBeNull();
+  });
+
+  test("a failed settings read uses the shared Retry block and recovers", async () => {
+    const { runtime, state } = createFakeRuntime(FILES_LSP_SECTION);
+    state.listFailures = 1;
+    render(<FilesLspSection runtime={runtime} />);
+
+    const error = await screen.findByRole("alert");
+    expect(error.textContent).toContain("The settings service is not reachable.");
+    expect(error.textContent).toContain("Could not load settings");
+    await screen.getByRole("button", { name: "Retry" }).click();
+    await screen.findByRole("checkbox", { name: "Lazy LSP Startup" });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("failed external reads use the refresh heading, not the save heading", async () => {
+    const { runtime, state } = createFakeRuntime(FILES_LSP_SECTION);
+    await runtime.read();
+    render(<FilesLspSection runtime={runtime} />);
+    state.listFailures = 1;
+    const entry = state.entries.find((candidate) => candidate.key === "lsp.enabled");
+    if (!entry) throw new Error("LSP fixture did not contain lsp.enabled.");
+    publishChange(state, entry, "revision-external-read-failure");
+    await screen.findByText("Could not refresh settings", { exact: true });
+    expect(screen.queryByText("Could not save changes", { exact: true })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "The settings service is not reachable.",
+    );
+    expect(screen.getByRole("alert").textContent).not.toContain(
+      "Your changes are still waiting to be saved.",
+    );
+  });
+
+  test("a failed external read with staged edits says the edits are still waiting to be saved", async () => {
+    const { runtime, state } = createFakeRuntime(FILES_LSP_SECTION);
+    await runtime.read();
+    render(<FilesLspSection runtime={runtime} />);
+    expect(runtime.stage("lsp.lazy", { secret: false, value: false }).ok).toBe(true);
+    state.listFailures = 1;
+    const entry = state.entries.find((candidate) => candidate.key === "lsp.enabled");
+    if (!entry) throw new Error("LSP fixture did not contain lsp.enabled.");
+    publishChange(state, entry, "revision-external-read-failure-with-edit");
+    await screen.findByText("Could not refresh settings", { exact: true });
+    expect(screen.queryByText("Could not save changes", { exact: true })).toBeNull();
+    const alert = screen.getByRole("alert").textContent ?? "";
+    expect(alert).toContain("The settings service is not reachable.");
+    expect(alert).toContain("Your changes are still waiting to be saved.");
+    expect(alert).not.toContain("Refresh settings");
   });
   test("conflict banner lists the remote effective setting row", async () => {
     const { runtime } = createFakeRuntime(FILES_LSP_SECTION);
@@ -532,13 +748,13 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     expect(alert.textContent).toContain("Shared Language Servers: On · Source: omp's default");
   });
 
-  test("uses the shared reload-required apply-status label", async () => {
+  test("reports Lazy LSP Startup as live and shows Applied after saving", async () => {
     const { runtime } = createFakeRuntime(FILES_LSP_SECTION);
     await runtime.read();
     render(<FilesLspSection runtime={runtime} />);
     expect(runtime.stage("lsp.lazy", { secret: false, value: false }).ok).toBe(true);
     await runtime.save();
-    expect(await screen.findByText("Reload required", { exact: true })).toBeTruthy();
+    expect(await screen.findByText("Applied", { exact: true })).toBeTruthy();
   });
 
   test("changed events reconcile effective values and conflict with staged edits", async () => {
@@ -559,24 +775,46 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     ).toBe("global");
   });
 
-  test("the report groups the live/reload boundaries from the descriptors", async () => {
+  test("the report states the live boundary and plain-English effects", async () => {
     const { runtime } = createFakeRuntime(FILES_LSP_SECTION);
     await runtime.read();
     render(<FilesLspSection runtime={runtime} />);
     const report = screen.getByLabelText("When settings take effect");
-    expect(report.textContent).toContain("Reload required: Lazy LSP Startup");
-    expect(report.textContent).toContain("Live: LSP, Shared Language Servers");
+    expect(report.textContent).toContain(
+      "Live: LSP, Lazy LSP Startup, Shared Language Servers, Format on Write, Diagnostics on Write, Diagnostics on Edit, Deduplicate Diagnostics.",
+    );
+    expect(report.textContent).not.toContain("Reload required");
+    expect(report.textContent).toContain(
+      "New operations use the saved setting; work already underway is not interrupted.",
+    );
     expect(
-      screen.getByText(/already-running ones keep their transport until they exit or go idle/i),
+      screen.getByText(
+        "Language servers start when first needed if Lazy LSP Startup is on. Turning it off starts them in the background. Shared Language Servers affects new connections; a connected server keeps its current connection. Saving does not interrupt work already running.",
+      ),
     ).toBeTruthy();
 
     cleanup();
     const bash = createFakeRuntime(SHELL_BASH_SECTION);
     await bash.runtime.read();
     render(<ShellBashSection runtime={bash.runtime} />);
-    expect(screen.getByLabelText("When settings take effect").textContent).toContain(
-      "Live: Bash, Allow Compound Commands",
+    expect(screen.getByLabelText("When settings take effect").textContent).toContain("Live: Bash");
+    expect(
+      screen.getByText(
+        "Changes apply to each new shell command. Saving does not interrupt a command already running.",
+      ),
+    ).toBeTruthy();
+
+    cleanup();
+    const evalRuntime = createFakeRuntime(SHELL_EVAL_RUNTIMES_SECTION);
+    await evalRuntime.runtime.read();
+    render(<ShellEvalRuntimesSection runtime={evalRuntime.runtime} />);
+    expect(screen.getByLabelText("When settings take effect").textContent).toContain("Live:");
+    const behaviorNote = screen.getByText(
+      "Python and JavaScript evaluations use these options when they run. Existing Python sessions keep running until they close. For parallel tasks, choose whether to start a new helper for every task.",
+      { exact: true },
     );
+    expect(behaviorNote).toBeTruthy();
+    expect(behaviorNote.textContent).not.toMatch(/kernel|workpool/i);
   });
 
   test("section display keeps unexpected secret payloads out of controls", async () => {

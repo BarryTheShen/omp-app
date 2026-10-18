@@ -6,7 +6,7 @@ import {
   type ConfigWriteResult,
   JsonValue,
 } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ConfigStoreClient } from "@/modules/S1/settings-kit";
 import { SettingsScreen } from "./settings-screen";
@@ -239,12 +239,19 @@ describe("the generic settings panel after a save the environment overrides", ()
     });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(
-      await screen.findByText(
-        "Saved, but omp still uses the environment variable PI_NOTIFY_COMPLETION until it is removed.",
-      ),
-    ).toBeTruthy();
+    const notice =
+      "Saved, but omp still uses the environment variable PI_NOTIFY_COMPLETION until it is removed.";
+    expect(await screen.findByText(notice)).toBeTruthy();
     expect(screen.queryByText("Applied")).toBeNull();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Completion Notification" }), {
+      target: { value: "on" },
+    });
+    await waitFor(() => expect(screen.queryByText(notice)).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText(notice)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(notice)).toBeNull();
   });
 });
 
