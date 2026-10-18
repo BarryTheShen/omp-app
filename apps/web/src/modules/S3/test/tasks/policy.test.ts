@@ -1,8 +1,13 @@
-import type { ConfigEntry } from "@omp-app/contracts";
-import { AppFailure, FolderPath } from "@omp-app/contracts";
+import type { ConfigEntry, ConfigListResult, Revision } from "@omp-app/contracts";
+import { FolderPath } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
-import { readTasksPolicySnapshot } from "../../tasks";
-import { createTaskConfigStoreFixture, TASK_SETTING_EVIDENCE } from "./fixtures";
+import type { ConfigStoreClient } from "../../../S1/settings-kit";
+import { createTasksPolicyStore, readTasksPolicySnapshot } from "../../tasks";
+import {
+  createTaskConfigChangesFixture,
+  createTaskConfigStoreFixture,
+  TASK_SETTING_EVIDENCE,
+} from "./fixtures";
 
 function settingIndex(entries: readonly ConfigEntry[], key: string): number {
   for (let position = 0; position < entries.length; position += 1) {
@@ -178,32 +183,34 @@ describe("S3 typed ConfigStore handoffs", () => {
     expect(snapshot.revision).toBe("revision-1");
   });
 
-  test("rejects missing or malformed required values without echoing config data", async () => {
+  test("uses defaults independently when entries are missing, secret, or malformed", async () => {
     const missing = createTaskConfigStoreFixture();
     const retainedEntries: ConfigEntry[] = [];
     for (const entry of missing.state.entries) {
       if (entry.key !== "task.agentAdvisor") retainedEntries.push(entry);
     }
     missing.state.entries = retainedEntries;
-    await expect(readTasksPolicySnapshot(missing.client, null)).rejects.toMatchObject({
-      appError: { code: "unavailable", capability: "host.config" },
+    const missingSnapshot = await readTasksPolicySnapshot(missing.client, null);
+    expect(missingSnapshot.subagents.agentAdvisor).toMatchObject({
+      key: "task.agentAdvisor",
+      value: {},
+      source: "default",
+      overrides: [],
     });
+    expect(missingSnapshot.todos.reminders.value).toBe(true);
 
     const malformedTier = createTaskConfigStoreFixture();
     const tierIndex = settingIndex(malformedTier.state.entries, "task.agentServiceTierOverrides");
     const tierEntry = malformedTier.state.entries[tierIndex];
     if (!tierEntry || tierEntry.secret)
       throw new Error("Default service-tier setting was not listed.");
-    malformedTier.state.entries[tierIndex] = {
-      ...tierEntry,
-      value: { task: "fast" },
-    };
-    await expect(readTasksPolicySnapshot(malformedTier.client, null)).rejects.toBeInstanceOf(
-      AppFailure,
-    );
-    await expect(readTasksPolicySnapshot(malformedTier.client, null)).rejects.toThrow(
-      "The task settings service returned an invalid value.",
-    );
+    malformedTier.state.entries[tierIndex] = { ...tierEntry, value: { task: "fast" } };
+    const malformedSnapshot = await readTasksPolicySnapshot(malformedTier.client, null);
+    expect(malformedSnapshot.subagents.agentServiceTierOverrides).toMatchObject({
+      value: {},
+      source: "default",
+    });
+    expect(malformedSnapshot.subagents.maxConcurrency.value).toBe(32);
 
     const secret = createTaskConfigStoreFixture();
     const badgeIndex = settingIndex(secret.state.entries, "task.showResolvedModelBadge");
@@ -215,9 +222,132 @@ describe("S3 typed ConfigStore handoffs", () => {
       source: "global",
       overrides: [],
     };
-    await expect(readTasksPolicySnapshot(secret.client, null)).rejects.toThrow(
-      "The task settings service did not return the complete policy.",
-    );
+    const secretSnapshot = await readTasksPolicySnapshot(secret.client, null);
+    expect(secretSnapshot.subagents.showResolvedModelBadge).toMatchObject({
+      key: "task.showResolvedModelBadge",
+      value: false,
+      source: "default",
+    });
+  });
+
+  test("matches every typed policy default when ConfigStore lists no entries", async () => {
+    const fixture = createTaskConfigStoreFixture([]);
+    const snapshot = await readTasksPolicySnapshot(fixture.client, null);
+    const values = [
+      snapshot.todos.reminders,
+      snapshot.todos.remindersMax,
+      snapshot.todos.eager,
+      snapshot.todos.clearDelay,
+      snapshot.subagents.eager,
+      snapshot.subagents.batch,
+      snapshot.subagents.speculativeLaunch,
+      snapshot.subagents.enableEffort,
+      snapshot.subagents.maxConcurrency,
+      snapshot.subagents.enableLsp,
+      snapshot.subagents.maxRecursionDepth,
+      snapshot.subagents.maxRuntimeMs,
+      snapshot.subagents.completionProbe,
+      snapshot.subagents.agentIdleTtlMs,
+      snapshot.subagents.softRequestBudget,
+      snapshot.subagents.softRequestBudgetNotice,
+      snapshot.subagents.maxEffort,
+      snapshot.subagents.disabledAgents,
+      snapshot.subagents.prewalk,
+      snapshot.subagents.showResolvedModelBadge,
+      snapshot.subagents.agentModelOverrides,
+      snapshot.subagents.agentServiceTierOverrides,
+      snapshot.subagents.agentCompactionThresholdOverrides,
+      snapshot.subagents.agentPrewalk,
+      snapshot.subagents.agentAdvisor,
+    ];
+    for (const policy of values) {
+      const evidence = TASK_SETTING_EVIDENCE.find((item) => item.key === policy.key);
+      expect(evidence, policy.key).toBeDefined();
+      expect(policy.value, policy.key).toEqual(evidence?.defaultValue);
+      expect(policy.source, policy.key).toBe("default");
+    }
+  });
+
+  test("refreshes the typed policy through the ConfigStore change source", async () => {
+    const fixture = createTaskConfigStoreFixture();
+    const changes = createTaskConfigChangesFixture();
+    const store = createTasksPolicyStore(fixture.client, changes.source, null);
+    const first = await store.read();
+    expect(first.todos.reminders.value).toBe(true);
+    const reminders = fixture.state.entries.find((entry) => entry.key === "todo.reminders");
+    if (!reminders || reminders.secret) throw new Error("Default reminders entry was not listed.");
+    fixture.state.revision = "revision-2";
+    fixture.state.entries[fixture.state.entries.indexOf(reminders)] = {
+      ...reminders,
+      value: false,
+    };
+    const refreshed = Promise.withResolvers<boolean>();
+    const unsubscribe = store.subscribe((snapshot) => {
+      if (snapshot.revision === "revision-2") refreshed.resolve(snapshot.todos.reminders.value);
+    });
+    changes.emit({
+      key: reminders.key,
+      layer: "global",
+      folder: null,
+      revision: "revision-2",
+      entry: { ...reminders, value: false },
+    });
+    await expect(refreshed.promise).resolves.toBe(false);
+    unsubscribe();
+    store.dispose();
+  });
+
+  test("replays the current snapshot to late subscribers and disposes its change stream", async () => {
+    const fixture = createTaskConfigStoreFixture();
+    const changes = createTaskConfigChangesFixture();
+    const store = createTasksPolicyStore(fixture.client, changes.source, null);
+    const snapshot = await store.read();
+    expect(changes.subscriberCount()).toBe(1);
+    let delivered: unknown;
+    const unsubscribe = store.subscribe((next) => {
+      delivered = next;
+    });
+    expect(delivered).toBe(snapshot);
+    unsubscribe();
+    expect(changes.subscriberCount()).toBe(1);
+    store.dispose();
+    expect(changes.subscriberCount()).toBe(0);
+    const reads = fixture.state.listCalls;
+    const reminderEntry = fixture.state.entries.find((entry) => entry.key === "todo.reminders");
+    if (!reminderEntry) throw new Error("Default reminders entry was not listed.");
+    changes.emit({
+      key: "todo.reminders",
+      layer: "global",
+      folder: null,
+      revision: "revision-2",
+      entry: reminderEntry,
+    });
+    await Promise.resolve();
+    expect(fixture.state.listCalls).toBe(reads);
+    await expect(store.read()).rejects.toMatchObject({ appError: { code: "cancelled" } });
+  });
+
+  test("drops an older read that finishes after a newer policy refresh", async () => {
+    const fixture = createTaskConfigStoreFixture([]);
+    const first = Promise.withResolvers<ConfigListResult>();
+    const second = Promise.withResolvers<ConfigListResult>();
+    let calls = 0;
+    const client: ConfigStoreClient = {
+      ...fixture.client,
+      list: async () => {
+        calls += 1;
+        return calls === 1 ? first.promise : second.promise;
+      },
+    };
+    const store = createTasksPolicyStore(client, createTaskConfigChangesFixture().source, null);
+    const older = store.read();
+    await Promise.resolve();
+    const newer = store.read();
+    second.resolve({ entries: [], revision: "revision-2" as Revision });
+    await newer;
+    first.resolve({ entries: [], revision: "revision-1" as Revision });
+    await older;
+    expect(store.getSnapshot()?.revision).toBe("revision-2");
   });
 
   test("keeps the expected source/type/default table complete and citation-bearing", () => {

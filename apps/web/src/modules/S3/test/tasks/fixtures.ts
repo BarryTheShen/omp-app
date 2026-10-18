@@ -481,6 +481,7 @@ export function createTaskConfigStoreFixture(
 
 export interface TaskConfigChangesFixture {
   readonly source: ConfigChangeSource;
+  readonly subscriberCount: () => number;
   emit(change: ConfigChanged): void;
 }
 
@@ -496,6 +497,7 @@ export function createTaskConfigChangesFixture(): TaskConfigChangesFixture {
   };
   return {
     source,
+    subscriberCount: () => listeners.size,
     emit(change) {
       for (const listener of listeners) listener(change);
     },

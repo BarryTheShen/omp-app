@@ -128,6 +128,92 @@ describe("S3 Tasks ConfigStore runtime", () => {
     });
   });
 
+  test("confirms only when destructive isolation settings turn on and lists new values", async () => {
+    const { fixture, runtime } = createRuntime("isolation");
+    await runtime.read();
+    expect(runtime.stage("worktree.cleanSource", { secret: false, value: true }).ok).toBe(true);
+    const pending = await runtime.save();
+    expect(pending.status).toBe("confirmation-required");
+    if (pending.status !== "confirmation-required")
+      throw new Error("Confirmation was not requested.");
+    expect(pending.confirmation.changes).toEqual([
+      "Clean Source Checkout When Creating a Worktree: On",
+    ]);
+    expect(fixture.state.writeCalls).toHaveLength(0);
+    const saved = await runtime.save({ confirmIsolation: async () => true });
+    expect(saved.status).toBe("saved");
+    expect(fixture.state.writeCalls).toHaveLength(1);
+  });
+
+  test("handles both destructive keys, cancellation, safe changes, and stale confirmation", async () => {
+    const combined = createRuntime("isolation");
+    const applyEntry = combined.fixture.state.entries.find(
+      (entry) => entry.key === "task.isolation.apply",
+    );
+    if (!applyEntry || applyEntry.secret) throw new Error("Missing isolation apply setting.");
+    combined.fixture.state.entries[combined.fixture.state.entries.indexOf(applyEntry)] = {
+      ...applyEntry,
+      value: false,
+    };
+    await combined.runtime.read();
+    expect(combined.runtime.stage("worktree.cleanSource", { secret: false, value: true }).ok).toBe(
+      true,
+    );
+    expect(combined.runtime.stage("task.isolation.apply", { secret: false, value: true }).ok).toBe(
+      true,
+    );
+    const pending = await combined.runtime.save();
+    if (pending.status !== "confirmation-required")
+      throw new Error("Confirmation was not requested.");
+    expect(pending.confirmation.changes).toEqual([
+      "Clean Source Checkout When Creating a Worktree: On",
+      "Automatically Apply Isolated Task Changes: On",
+    ]);
+    const cancelled = await combined.runtime.save({ confirmIsolation: async () => false });
+    expect(cancelled.status).toBe("cancelled");
+    expect(combined.fixture.state.writeCalls).toHaveLength(0);
+
+    const safe = createRuntime("isolation");
+    await safe.runtime.read();
+    expect(safe.runtime.stage("worktree.cleanSource", { secret: false, value: false }).ok).toBe(
+      true,
+    );
+    expect(safe.runtime.stage("isolation.backend", { secret: false, value: "btrfs" }).ok).toBe(
+      true,
+    );
+    expect((await safe.runtime.save()).status).toBe("saved");
+    expect(safe.fixture.state.writeCalls).toHaveLength(2);
+
+    const stale = createRuntime("isolation");
+    await stale.runtime.read();
+    expect(stale.runtime.stage("worktree.cleanSource", { secret: false, value: true }).ok).toBe(
+      true,
+    );
+    const staleResult = await stale.runtime.save({
+      confirmIsolation: async () => {
+        stale.runtime.stage("task.isolation.merge", { secret: false, value: "branch" });
+        return true;
+      },
+    });
+    expect(staleResult.status).toBe("stale-confirmation");
+    expect(stale.fixture.state.writeCalls).toHaveLength(0);
+  });
+
+  test("asks before applying an isolated task change on its own", async () => {
+    const { fixture, runtime } = createRuntime("isolation");
+    const applyEntry = fixture.state.entries.find((entry) => entry.key === "task.isolation.apply");
+    if (!applyEntry || applyEntry.secret) throw new Error("Missing isolation apply setting.");
+    fixture.state.entries[fixture.state.entries.indexOf(applyEntry)] = {
+      ...applyEntry,
+      value: false,
+    };
+    await runtime.read();
+    expect(runtime.stage("task.isolation.apply", { secret: false, value: true }).ok).toBe(true);
+    const result = await runtime.save();
+    expect(result.status).toBe("confirmation-required");
+    expect(fixture.state.writeCalls).toHaveLength(0);
+  });
+
   test("saves the typed model map through S1 one-key CAS", async () => {
     const { fixture, runtime } = createRuntime("subagents");
     await runtime.read();

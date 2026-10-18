@@ -311,16 +311,16 @@ export const S3_APPLY_OUTCOME_FIXTURES: readonly S3ApplyOutcomeFixture[] = [
     sectionId: "S3.tasksModes",
     key: "plan.autosave",
     value: true,
-    apply: "reload",
-    expected: "reload-required",
+    apply: "live",
+    expected: "applied",
   },
   {
     target: "tasks",
     sectionId: "S3.tasksIsolation",
     key: "task.isolation.enabled",
     value: true,
-    apply: "restart",
-    expected: "restart-required",
+    apply: "live",
+    expected: "applied",
   },
 ];
 

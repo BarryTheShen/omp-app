@@ -401,6 +401,14 @@ describe("S3 Tools and Tasks sections", () => {
     expect(validate("goal.continuationModes", { secret: false, value: ["interactive"] })).toEqual({
       valid: true,
     });
+    expect(
+      validate("goal.continuationModes", { secret: false, value: ["rpc", "interactive"] }),
+    ).toEqual({
+      valid: true,
+    });
+    expect(
+      validate("goal.continuationModes", { secret: false, value: ["terminal"] }),
+    ).toMatchObject({ valid: false, code: "enum" });
   });
 
   test("enforces GitHub TTL ordering and output head/tail spill limits", () => {
@@ -482,9 +490,34 @@ describe("S3 Tools and Tasks sections", () => {
     expect(control("computer.display").apply).toBe("live");
     expect(control("plan.enabled").apply).toBe("session");
     expect(control("plan.defaultOnStartup").apply).toBe("restart");
-    expect(control("task.maxConcurrency").apply).toBe("reload");
-    expect(control("task.maxRuntimeMs").apply).toBe("session");
-    expect(control("task.prewalk").apply).toBe("session");
+    for (const key of [
+      "task.isolation.enabled",
+      "isolation.backend",
+      "worktree.clone",
+      "worktree.cleanSource",
+      "task.isolation.apply",
+      "task.isolation.merge",
+      "task.isolation.commits",
+      "worktree.base",
+      "goal.continuationModes",
+      "plan.autosave",
+      "plan.autosaveDir",
+      "task.eager",
+      "task.batch",
+      "task.speculativeLaunch",
+      "task.enableEffort",
+      "task.maxConcurrency",
+      "task.enableLsp",
+      "task.maxRecursionDepth",
+      "task.maxRuntimeMs",
+      "task.softRequestBudget",
+      "task.softRequestBudgetNotice",
+      "task.maxEffort",
+      "task.prewalk",
+    ]) {
+      expect(control(key).apply, key).toBe("live");
+    }
+    expect(control("task.completionProbe").apply).toBe("session");
   });
 
   test("the Computer Display description names the default value omp shows", () => {

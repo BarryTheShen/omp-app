@@ -187,10 +187,26 @@ function pathValidator(value: SettingValue): ValidationResult {
     : { valid: false, code: "path", message: "Enter a valid path." };
 }
 
-function arrayValidator(value: SettingValue): ValidationResult {
-  return Array.isArray(plain(value))
-    ? { valid: true }
-    : { valid: false, code: "array", message: "Enter a list." };
+const GOAL_CONTINUATION_MODES = ["interactive", "rpc"] as const;
+
+function goalContinuationModesValidator(value: SettingValue): ValidationResult {
+  const candidate = plain(value);
+  if (
+    !Array.isArray(candidate) ||
+    candidate.some(
+      (item) =>
+        typeof item !== "string" ||
+        !GOAL_CONTINUATION_MODES.includes(item as "interactive" | "rpc"),
+    )
+  ) {
+    return {
+      valid: false,
+      code: "enum",
+      message:
+        "Choose only interactive for omp's terminal, only rpc for the app and other hosts, or both.",
+    };
+  }
+  return { valid: true };
 }
 function stringArrayValidator(value: SettingValue): ValidationResult {
   const candidate = plain(value);
@@ -364,8 +380,6 @@ const optionalUrl = (key: string, apply: SettingControl["apply"] = "reload") =>
     if (plain(value) === "") return { valid: true };
     return urlValidator(value);
   });
-const array = (key: string, apply: SettingControl["apply"] = "reload") =>
-  control(key, "list", apply, arrayValidator);
 function described(
   setting: UndescribedScalarSettingControl,
   label: string,
@@ -774,7 +788,7 @@ const tasksCommandsSkills: readonly SettingControl[] = [
 
 const tasksIsolation: readonly SettingControl[] = [
   described(
-    bool("task.isolation.enabled", "restart"),
+    bool("task.isolation.enabled", "live"),
     "Isolate Subagents",
     "Run subagents in an isolated project copy. This setting controls isolation for future tasks. Saving it does not create or change a copy.",
   ),
@@ -782,18 +796,18 @@ const tasksIsolation: readonly SettingControl[] = [
     enumSetting(
       "isolation.backend",
       ["auto", "apfs", "btrfs", "zfs", "reflink", "overlayfs", "projfs", "block-clone", "rcopy"],
-      "restart",
+      "live",
     ),
     "Isolation Backend",
     "Choose the method for future isolated task copies; available methods depend on the file system. Saving only updates configuration and does not create a copy.",
   ),
   described(
-    bool("worktree.clone", "restart"),
+    bool("worktree.clone", "live"),
     "Clone New Worktrees",
     "Use copy-on-write clones for future managed project copies when supported. Saving does not create one.",
   ),
   described(
-    bool("worktree.cleanSource", "restart"),
+    bool("worktree.cleanSource", "live"),
     "Clean Source Checkout When Creating a Worktree",
     "Destructive: creating an isolated copy may reset tracked changes and remove untracked files from the source after copying them. Saving only updates configuration.",
   ),
@@ -812,22 +826,22 @@ const tasksIsolation: readonly SettingControl[] = [
     ),
   ),
   described(
-    bool("task.isolation.apply", "restart"),
+    bool("task.isolation.apply", "live"),
     "Automatically Apply Isolated Task Changes",
     "Destructive: successful changes from an isolated task may be applied to the parent checkout automatically. Saving only updates configuration.",
   ),
   described(
-    enumSetting("task.isolation.merge", ["patch", "branch"], "restart"),
+    enumSetting("task.isolation.merge", ["patch", "branch"], "live"),
     "Isolation Merge Strategy",
     "Choose whether future isolated results are applied as patches or merged as branches. Saving only updates configuration.",
   ),
   described(
-    enumSetting("task.isolation.commits", ["generic", "ai"], "restart"),
+    enumSetting("task.isolation.commits", ["generic", "ai"], "live"),
     "Isolation Commit Message Style",
     "Choose generic or AI-written commit messages for future nested-repository changes. Saving only updates configuration and does not create a commit.",
   ),
   described(
-    control("worktree.base", "path", "restart", absoluteWorktreeBaseValidator),
+    control("worktree.base", "path", "live", absoluteWorktreeBaseValidator),
     "Worktree Base Directory",
     "Choose where future omp-managed project copies are stored. Use an absolute path or a path beginning with ~; omp ignores bare relative paths. An unset value uses omp's default. Saving does not create or change a copy.",
   ),
@@ -847,9 +861,9 @@ const tasksModes: readonly SettingControl[] = [
     ),
   ),
   described(
-    array("goal.continuationModes", "session"),
+    control("goal.continuationModes", "list", "live", goalContinuationModesValidator),
     "Goal Continuation Modes",
-    "Choose which run modes may continue an active goal automatically between turns.",
+    "Enter interactive for omp's terminal, rpc for the app and other hosts, or both.",
   ),
   described(
     bool("title.refreshOnReplan", "live"),
@@ -872,12 +886,12 @@ const tasksModes: readonly SettingControl[] = [
     terminalOnlyDescription("Automatically enter plan mode at the start of each new session."),
   ),
   described(
-    bool("plan.autosave", "reload"),
+    bool("plan.autosave", "live"),
     "Autosave Plans",
     "Save approved plans to disk automatically when plan mode completes. Used by omp's terminal and editor sessions only.",
   ),
   described(
-    text("plan.autosaveDir", "path", "reload"),
+    text("plan.autosaveDir", "path", "live"),
     "Autosave Directory",
     "Directory for saved plans. Supports ~ and relative paths; an empty value uses the project's default plans directory. Used by omp's terminal and editor sessions only.",
   ),
@@ -983,42 +997,42 @@ const tasksSubagentMaps: readonly MapSettingControl[] = [
 
 const tasksSubagents: readonly SettingControl[] = [
   described(
-    enumSetting("task.eager", ["default", "preferred", "always"], "session"),
+    enumSetting("task.eager", ["default", "preferred", "always"], "live"),
     "Prefer Task Delegation",
     "Choose how strongly the agent should delegate work to subagents.",
   ),
   described(
-    bool("task.batch", "reload"),
+    bool("task.batch", "live"),
     "Batch Task Calls",
     "Use one task call to start one subagent per item, sharing context across the batch.",
   ),
   described(
-    bool("task.speculativeLaunch", "session"),
+    bool("task.speculativeLaunch", "live"),
     "Speculative Task Launch",
     "Start each batch subagent as soon as its task is ready; stop it if the call fails validation or is blocked.",
   ),
   described(
-    bool("task.enableEffort", "reload"),
+    bool("task.enableEffort", "live"),
     "Per-Task Effort",
     "Allow each task call to choose a subagent's reasoning effort.",
   ),
   described(
-    number("task.maxConcurrency", 0, 1_000, "reload"),
+    number("task.maxConcurrency", 0, 1_000, "live"),
     "Max Concurrent Tasks",
     "Maximum number of subagents that may run at once; 0 means unlimited.",
   ),
   described(
-    bool("task.enableLsp", "reload"),
+    bool("task.enableLsp", "live"),
     "LSP in Subagents",
     "Allow subagents to use language-server tools.",
   ),
   described(
-    number("task.maxRecursionDepth", -1, 100, "reload"),
+    number("task.maxRecursionDepth", -1, 100, "live"),
     "Max Task Recursion Depth",
     "Maximum number of nested subagent levels; -1 means unlimited.",
   ),
   described(
-    duration("task.maxRuntimeMs", 86_400_000, "session"),
+    duration("task.maxRuntimeMs", 86_400_000, "live"),
     "Max Subagent Runtime (ms)",
     "Hard time limit for each subagent; 0 disables the limit.",
   ),
@@ -1033,17 +1047,17 @@ const tasksSubagents: readonly SettingControl[] = [
     "How long an idle subagent remains in memory before it is parked; 0 keeps it live until exit.",
   ),
   described(
-    number("task.softRequestBudget", 0, 100_000, "session"),
+    number("task.softRequestBudget", 0, 100_000, "live"),
     "Soft Subagent Request Budget",
     "Ask a subagent to wrap up when it exceeds this request budget; 0 disables the guard.",
   ),
   described(
-    bool("task.softRequestBudgetNotice", "session"),
+    bool("task.softRequestBudgetNotice", "live"),
     "Soft Request Budget Notice",
     "Send one wrap-up notice when a subagent crosses its soft request budget.",
   ),
   described(
-    enumSetting("task.maxEffort", ["minimal", "low", "medium", "high", "xhigh", "max"], "session"),
+    enumSetting("task.maxEffort", ["minimal", "low", "medium", "high", "xhigh", "max"], "live"),
     "Maximum Per-Spawn Effort",
     "Set the highest reasoning effort task calls may request for a subagent.",
   ),
@@ -1054,7 +1068,7 @@ const tasksSubagents: readonly SettingControl[] = [
   ),
   ...tasksSubagentMaps,
   described(
-    bool("task.prewalk", "session"),
+    bool("task.prewalk", "live"),
     "Generic Task Prewalk",
     "Start the bundled generic task agent on its resolved model, then hand off to the lower-cost role at its first edit.",
   ),

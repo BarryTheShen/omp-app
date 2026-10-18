@@ -1,8 +1,8 @@
 import type { AppClient } from "@omp-app/client";
 import type { ConfigValue, FolderPath, Revision } from "@omp-app/contracts";
 import { AppFailure, JsonValue } from "@omp-app/contracts";
-import { createConfigStoreClient } from "../../S1/runtime";
-import type { ConfigSnapshot, ConfigStoreClient } from "../../S1/settings-kit";
+import { createConfigChangeSource, createConfigStoreClient } from "../../S1/runtime";
+import type { ConfigChangeSource, ConfigSnapshot, ConfigStoreClient } from "../../S1/settings-kit";
 import { TASKS_SUBAGENTS_SECTION, TOOLS_TODOS_SECTION } from "../sections";
 
 /** A task setting value and its ConfigStore provenance, refined to the consumer's value type. */
@@ -82,6 +82,33 @@ const TASK_POLICY_KEYS: Record<string, true> = {};
 for (const control of TOOLS_TODOS_SECTION.controls) TASK_POLICY_KEYS[control.key] = true;
 for (const control of TASKS_SUBAGENTS_SECTION.controls) TASK_POLICY_KEYS[control.key] = true;
 for (const key of TASK_POLICY_CONFIG_KEYS) TASK_POLICY_KEYS[key] = true;
+const TASK_POLICY_DEFAULTS = {
+  "todo.reminders": true,
+  "todo.remindersMax": 3,
+  "todo.eager": "default",
+  "tasks.todoClearDelay": 60,
+  "task.eager": "default",
+  "task.batch": true,
+  "task.speculativeLaunch": true,
+  "task.enableEffort": false,
+  "task.maxConcurrency": 32,
+  "task.enableLsp": false,
+  "task.maxRecursionDepth": 2,
+  "task.maxRuntimeMs": 0,
+  "task.completionProbe": true,
+  "task.agentIdleTtlMs": 420_000,
+  "task.softRequestBudget": 200,
+  "task.softRequestBudgetNotice": true,
+  "task.maxEffort": "max",
+  "task.disabledAgents": [],
+  "task.prewalk": false,
+  "task.showResolvedModelBadge": false,
+  "task.agentModelOverrides": {},
+  "task.agentServiceTierOverrides": {},
+  "task.agentCompactionThresholdOverrides": {},
+  "task.agentPrewalk": {},
+  "task.agentAdvisor": {},
+} satisfies Readonly<Record<string, JsonValue>>;
 
 function invalidTaskSettings(): AppFailure {
   return new AppFailure({
@@ -91,24 +118,31 @@ function invalidTaskSettings(): AppFailure {
   });
 }
 
+function defaultEntry(key: string): ConfigValue {
+  const value = TASK_POLICY_DEFAULTS[key as keyof typeof TASK_POLICY_DEFAULTS];
+  if (value === undefined) throw invalidTaskSettings();
+  return { key, secret: false, value, source: "default", overrides: [] };
+}
+
 function settingEntry(snapshot: ConfigSnapshot, key: string): ConfigValue {
-  let entry: ConfigValue | undefined;
   for (const candidate of snapshot.entries) {
-    if (candidate.key === key) {
-      if (candidate.secret) break;
-      entry = candidate;
-      break;
-    }
+    if (candidate.key === key && !candidate.secret) return candidate;
   }
-  if (!entry) {
-    throw new AppFailure({
-      code: "unavailable",
-      message: "The task settings service did not return the complete policy.",
-      retryable: true,
-      capability: "host.config",
-    });
+  return defaultEntry(key);
+}
+
+function readSetting<Value>(
+  snapshot: ConfigSnapshot,
+  key: string,
+  parse: (entry: ConfigValue) => Value,
+): TaskPolicyValue<Value> {
+  const entry = settingEntry(snapshot, key);
+  try {
+    return policyValue(entry, parse(entry));
+  } catch {
+    const fallback = defaultEntry(key);
+    return policyValue(fallback, parse(fallback));
   }
-  return entry;
 }
 
 function policyValue<Value>(entry: ConfigValue, value: Value): TaskPolicyValue<Value> {
@@ -125,58 +159,65 @@ function policyValue<Value>(entry: ConfigValue, value: Value): TaskPolicyValue<V
 }
 
 function booleanSetting(snapshot: ConfigSnapshot, key: string): TaskPolicyValue<boolean> {
-  const entry = settingEntry(snapshot, key);
-  if (typeof entry.value !== "boolean") throw invalidTaskSettings();
-  return policyValue(entry, entry.value);
+  return readSetting(snapshot, key, (entry) => {
+    if (typeof entry.value !== "boolean") throw invalidTaskSettings();
+    return entry.value;
+  });
 }
 
 function numberSetting(snapshot: ConfigSnapshot, key: string): TaskPolicyValue<number> {
-  const entry = settingEntry(snapshot, key);
-  if (typeof entry.value !== "number" || !Number.isFinite(entry.value)) throw invalidTaskSettings();
-  return policyValue(entry, entry.value);
+  return readSetting(snapshot, key, (entry) => {
+    if (typeof entry.value !== "number" || !Number.isFinite(entry.value)) {
+      throw invalidTaskSettings();
+    }
+    return entry.value;
+  });
 }
 
 function eagerSetting(
   snapshot: ConfigSnapshot,
   key: string,
 ): TaskPolicyValue<"default" | "preferred" | "always"> {
-  const entry = settingEntry(snapshot, key);
-  if (entry.value !== "default" && entry.value !== "preferred" && entry.value !== "always") {
-    throw invalidTaskSettings();
-  }
-  return policyValue(entry, entry.value);
+  return readSetting(snapshot, key, (entry) => {
+    if (entry.value !== "default" && entry.value !== "preferred" && entry.value !== "always") {
+      throw invalidTaskSettings();
+    }
+    return entry.value;
+  });
 }
 
 function maxEffortSetting(
   snapshot: ConfigSnapshot,
   key: string,
 ): TaskPolicyValue<"minimal" | "low" | "medium" | "high" | "xhigh" | "max"> {
-  const entry = settingEntry(snapshot, key);
-  if (
-    entry.value !== "minimal" &&
-    entry.value !== "low" &&
-    entry.value !== "medium" &&
-    entry.value !== "high" &&
-    entry.value !== "xhigh" &&
-    entry.value !== "max"
-  ) {
-    throw invalidTaskSettings();
-  }
-  return policyValue(entry, entry.value);
+  return readSetting(snapshot, key, (entry) => {
+    if (
+      entry.value !== "minimal" &&
+      entry.value !== "low" &&
+      entry.value !== "medium" &&
+      entry.value !== "high" &&
+      entry.value !== "xhigh" &&
+      entry.value !== "max"
+    ) {
+      throw invalidTaskSettings();
+    }
+    return entry.value;
+  });
 }
 
 function stringListSetting(
   snapshot: ConfigSnapshot,
   key: string,
 ): TaskPolicyValue<readonly string[]> {
-  const entry = settingEntry(snapshot, key);
-  if (!Array.isArray(entry.value)) throw invalidTaskSettings();
-  const values: string[] = [];
-  for (const item of entry.value) {
-    if (typeof item !== "string") throw invalidTaskSettings();
-    values.push(item);
-  }
-  return policyValue(entry, Object.freeze(values));
+  return readSetting(snapshot, key, (entry) => {
+    if (!Array.isArray(entry.value)) throw invalidTaskSettings();
+    const values: string[] = [];
+    for (const item of entry.value) {
+      if (typeof item !== "string") throw invalidTaskSettings();
+      values.push(item);
+    }
+    return Object.freeze(values);
+  });
 }
 
 function mappedSetting<Value>(
@@ -184,17 +225,18 @@ function mappedSetting<Value>(
   key: string,
   parse: (value: JsonValue) => Value,
 ): TaskPolicyValue<Readonly<Record<string, Value>>> {
-  const entry = settingEntry(snapshot, key);
-  const source = entry.value;
-  if (source === null || typeof source !== "object" || Array.isArray(source)) {
-    throw invalidTaskSettings();
-  }
-  const entries: [string, Value][] = [];
-  for (const [name, value] of Object.entries(source)) {
-    entries.push([name, parse(JsonValue.parse(value))]);
-  }
-  const values: Record<string, Value> = Object.fromEntries(entries);
-  return policyValue(entry, Object.freeze(values));
+  return readSetting(snapshot, key, (entry) => {
+    const source = entry.value;
+    if (source === null || typeof source !== "object" || Array.isArray(source)) {
+      throw invalidTaskSettings();
+    }
+    const entries: [string, Value][] = [];
+    for (const [name, value] of Object.entries(source)) {
+      entries.push([name, parse(JsonValue.parse(value))]);
+    }
+    const values: Record<string, Value> = Object.fromEntries(entries);
+    return Object.freeze(values);
+  });
 }
 
 function parseModelOverride(value: JsonValue): string | readonly string[] {
@@ -297,6 +339,97 @@ export async function readTasksPolicySnapshot(
     agentAdvisor: mappedSetting(snapshot, "task.agentAdvisor", parseAgentOverride),
   });
   return Object.freeze({ folder, revision: snapshot.revision, todos, subagents });
+}
+
+export type TasksPolicyListener = (snapshot: TasksPolicySnapshot) => void;
+
+export interface TasksPolicyStore {
+  readonly getSnapshot: () => TasksPolicySnapshot | undefined;
+  readonly subscribe: (listener: TasksPolicyListener) => () => void;
+  readonly read: () => Promise<TasksPolicySnapshot>;
+  readonly dispose: () => void;
+}
+
+/** Keeps typed task policy handoffs current when A1 reports an external ConfigStore change. */
+class TasksPolicyStoreImpl implements TasksPolicyStore {
+  private readonly listeners = new Set<TasksPolicyListener>();
+  private readonly unsubscribeChanged: () => void;
+  private readonly client: ConfigStoreClient;
+  private readonly folder: FolderPath | null;
+  private readonly onError: ((error: unknown) => void) | undefined;
+  private operation = 0;
+  private current: TasksPolicySnapshot | undefined;
+  private disposed = false;
+
+  public constructor(
+    client: ConfigStoreClient,
+    changes: ConfigChangeSource,
+    folder: FolderPath | null,
+    onError?: (error: unknown) => void,
+  ) {
+    this.client = client;
+    this.folder = folder;
+    this.onError = onError;
+    this.unsubscribeChanged = changes.subscribe(() => {
+      if (this.disposed) return;
+      void this.read().catch((error: unknown) => this.onError?.(error));
+    });
+  }
+
+  public getSnapshot(): TasksPolicySnapshot | undefined {
+    return this.current;
+  }
+
+  public subscribe(listener: TasksPolicyListener): () => void {
+    if (this.disposed) return () => undefined;
+    this.listeners.add(listener);
+    if (this.current !== undefined) listener(this.current);
+    return () => this.listeners.delete(listener);
+  }
+
+  public async read(): Promise<TasksPolicySnapshot> {
+    if (this.disposed)
+      throw new AppFailure({
+        code: "cancelled",
+        message: "The task settings policy store is closed.",
+        retryable: false,
+      });
+    const operation = ++this.operation;
+    const snapshot = await readTasksPolicySnapshot(this.client, this.folder);
+    if (operation !== this.operation) return snapshot;
+    this.current = snapshot;
+    for (const listener of this.listeners) listener(snapshot);
+    return snapshot;
+  }
+
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.unsubscribeChanged();
+    this.listeners.clear();
+  }
+}
+
+/** Creates a live task policy handoff through the same A1 change stream as settings sections. */
+export function createTasksPolicyStore(
+  client: ConfigStoreClient,
+  changes: ConfigChangeSource,
+  folder: FolderPath | null,
+  onError?: (error: unknown) => void,
+): TasksPolicyStore {
+  return new TasksPolicyStoreImpl(client, changes, folder, onError);
+}
+export function createTasksPolicyStoreFromApp(
+  client: AppClient,
+  folder: FolderPath | null,
+  onError?: (error: unknown) => void,
+): TasksPolicyStore {
+  return new TasksPolicyStoreImpl(
+    createConfigStoreClient(client),
+    createConfigChangeSource(client, folder, (error) => onError?.(error)),
+    folder,
+    onError,
+  );
 }
 
 /** Uses the S1.2 adapter for the same A1 ConfigStore read path as the task section runtimes. */
