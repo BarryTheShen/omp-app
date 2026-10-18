@@ -1,6 +1,6 @@
 import type { RealToolResult } from "../../U3/tool-card/real-result";
 
-/** Real `browser` results (from a real session store), with pages, names and values replaced. */
+/** Real browser results from older omp sessions (2026-08-20/29); retained as historical recordings, not v18.9.1 fixtures. */
 export const T4_BROWSER_RESULTS: readonly RealToolResult[] = [
   {
     name: "browser: a page closed, nothing to close",
