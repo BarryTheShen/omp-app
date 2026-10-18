@@ -47,15 +47,35 @@ interface BlockFrame {
   readonly rows: readonly BlockRow[];
 }
 
+/** What the page recorded for one streamed block: every animation frame, and each text the block showed. */
+interface RecordedBlock {
+  readonly frames: BlockFrame[];
+  /** Each distinct text the first code view showed, as each change to the page left it. */
+  readonly texts: readonly string[];
+}
+
 /**
  * Runs in the page. Records the first code view on every animation frame until its final row is coloured
  * and ten frames have passed (or after a long cap, so a stalled reply fails the assertions, not the timeout).
+ * How many texts the frames show depends on how many frames a busy machine paints during the stream, so the
+ * texts are also taken from every change to the page: each piece of the reply that the page renders.
  */
-function recordBlockFrames(finalRow: string): Promise<BlockFrame[]> {
-  return new Promise<BlockFrame[]>((resolve) => {
+function recordBlockFrames(finalRow: string): Promise<RecordedBlock> {
+  return new Promise<RecordedBlock>((resolve) => {
     const frames: BlockFrame[] = [];
+    const texts = new Set<string>();
     let ticks = 0;
     let framesAfterFinal = 0;
+    const observer = new MutationObserver(() => {
+      const view = document.querySelector("[data-code-view]");
+      if (view === null) return;
+      texts.add(
+        Array.from(view.querySelectorAll("code > span.block"), (row) =>
+          (row.textContent ?? "").trimEnd(),
+        ).join("\n"),
+      );
+    });
+    observer.observe(document.body, { childList: true, characterData: true, subtree: true });
     const tick = (): void => {
       ticks += 1;
       const view = document.querySelector("[data-code-view]");
@@ -72,7 +92,8 @@ function recordBlockFrames(finalRow: string): Promise<BlockFrame[]> {
         if (rows.some((row) => row.coloured && row.text === finalRow)) framesAfterFinal += 1;
       }
       if (framesAfterFinal >= 10 || ticks >= 9000) {
-        resolve(frames);
+        observer.disconnect();
+        resolve({ frames, texts: [...texts] });
         return;
       }
       requestAnimationFrame(tick);
@@ -87,7 +108,7 @@ function recordBlockFrames(finalRow: string): Promise<BlockFrame[]> {
  * browser scheduling can skip intermediate DOM snapshots.
  */
 function expectBlockStreamedWithColours(
-  frames: readonly BlockFrame[],
+  { frames, texts }: RecordedBlock,
   rows: readonly string[],
 ): void {
   expect(new Set(frames.map((frame) => frame.views))).toEqual(new Set([1]));
@@ -95,6 +116,9 @@ function expectBlockStreamedWithColours(
   expect(
     frames.some((frame) => frame.rows.map((row) => row.text.trimEnd()).join("\n") !== finalText),
   ).toBe(true);
+
+  // The reply arrived in pieces: the block passed through several different texts, as the page changed.
+  expect(texts.length).toBeGreaterThan(4);
 
   // The block never turns plain once it has colours, including on the frame a transcript row remounts it.
   const firstColoured = frames.findIndex((frame) => frame.state === "highlighted");
@@ -142,9 +166,9 @@ realTest(
     await expect(page.locator("p", { hasText: "Here is the streamed block:" })).toBeVisible({
       timeout: 60_000,
     });
-    const frames = await sampling;
+    const recorded = await sampling;
 
-    expectBlockStreamedWithColours(frames, BLOCK_ROWS);
+    expectBlockStreamedWithColours(recorded, BLOCK_ROWS);
 
     await waitForFiniteAnimations(page);
     await mkdir(screenshots, { recursive: true });
@@ -170,16 +194,16 @@ realTest(
     await expect(page.locator("p", { hasText: "Here is the long streamed block:" })).toBeVisible({
       timeout: 120_000,
     });
-    const frames = await sampling;
+    const recorded = await sampling;
 
     // The block really passed the limit: its last text is longer than 2,048 characters.
     const lastText =
-      frames
+      recorded.frames
         .at(-1)
         ?.rows.map((row) => row.text)
         .join("\n") ?? "";
     expect(lastText.length).toBeGreaterThan(2_048);
-    expectBlockStreamedWithColours(frames, LONG_BLOCK_ROWS);
+    expectBlockStreamedWithColours(recorded, LONG_BLOCK_ROWS);
   },
 );
 realTest(
