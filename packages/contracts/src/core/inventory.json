@@ -96,7 +96,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/modes/components/history-search.ts:150-261; src/modes/controllers/selector-controller.ts:351-369"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/history-search.ts:150-261; src/modes/controllers/selector-controller.ts:351-369"
   },
   {
     "id": "F5.history-search-picker",
@@ -105,7 +105,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/modes/components/history-search.ts:150-261"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/history-search.ts:150-261"
   },
   {
     "id": "F5.external-editor",
@@ -123,7 +123,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "composer feature",
-    "source": "src/modes/components/custom-editor.ts:405-563; src/modes/components/history-search.ts:150-261"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-editor.ts:405-563; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/history-search.ts:150-261"
   },
   {
     "id": "F5.image-paste-and-image-chips",
@@ -132,7 +132,7 @@
     "kind": "composer",
     "rpc": "RPC",
     "ui": "composer feature",
-    "source": "src/modes/controllers/input-controller.ts:476-493,1179-1234; src/modes/components/custom-editor.ts:405-523; src/modes/image-references.ts:1-180"
+    "source": "src/modes/controllers/input-controller.ts:476-493,1179-1234; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-editor.ts:405-523; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/image-references.ts:1-102"
   },
   {
     "id": "F5.large-text-paste-handling",
@@ -141,7 +141,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "composer feature",
-    "source": "src/modes/controllers/input-controller.ts:1810-1888; src/modes/components/custom-editor.ts:465-523"
+    "source": "src/modes/controllers/input-controller.ts:1810-1888; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-editor.ts:465-523"
   },
   {
     "id": "F5.prompt-editor-core",
@@ -150,7 +150,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "composer feature",
-    "source": "src/modes/components/custom-editor.ts:405-563,878-1118; src/modes/utils/hotkeys-markdown.ts:10-44"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-editor.ts:405-563,878-1118; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:10-44"
   },
   {
     "id": "F5.app-clipboard-copyline",
@@ -159,7 +159,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:167-171; src/modes/controllers/input-controller.ts:575-579; src/modes/utils/hotkeys-markdown.ts:44-46"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:167-171; src/modes/controllers/input-controller.ts:575-579; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:44-46"
   },
   {
     "id": "F5.app-clipboard-copyprompt",
@@ -168,7 +168,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:171-175; src/modes/controllers/input-controller.ts:499-506; src/modes/utils/hotkeys-markdown.ts:45-47"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:171-175; src/modes/controllers/input-controller.ts:499-506; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:45-47"
   },
   {
     "id": "F5.app-clipboard-pasteimage",
@@ -177,7 +177,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:43-49,158-162; src/modes/controllers/input-controller.ts:483-493; src/modes/utils/hotkeys-markdown.ts:64-66"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:43-49,158-162; src/modes/controllers/input-controller.ts:483-493; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:64-66"
   },
   {
     "id": "F5.app-clipboard-pastetextraw",
@@ -186,7 +186,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:163-167; src/modes/controllers/input-controller.ts:494-499"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:163-167; src/modes/controllers/input-controller.ts:494-499"
   },
   {
     "id": "F5.app-history-search",
@@ -195,7 +195,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:231-235; src/modes/controllers/input-controller.ts:478-481; src/modes/utils/hotkeys-markdown.ts:66-67"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:231-235; src/modes/controllers/input-controller.ts:478-481; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:66-67"
   },
   {
     "id": "F5.tui-editor-cursordown",
@@ -204,7 +204,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:32-35; src/modes/utils/hotkeys-markdown.ts:14-21"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:32-35; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:14-21"
   },
   {
     "id": "F5.tui-editor-cursorleft",
@@ -222,7 +222,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:67-73; src/modes/utils/hotkeys-markdown.ts:25-27"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:67-73; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:25-27"
   },
   {
     "id": "F5.tui-editor-cursorlinestart",
@@ -231,7 +231,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:61-67; src/modes/utils/hotkeys-markdown.ts:23-25"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:61-67; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:23-25"
   },
   {
     "id": "F5.tui-editor-cursorright",
@@ -249,7 +249,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:32-35; src/modes/utils/hotkeys-markdown.ts:14-21"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:32-35; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:14-21"
   },
   {
     "id": "F5.tui-editor-cursorwordleft",
@@ -258,7 +258,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:47-54; src/modes/utils/hotkeys-markdown.ts:21-23"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:47-54; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:21-23"
   },
   {
     "id": "F5.tui-editor-cursorwordright",
@@ -267,7 +267,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:54-61; src/modes/utils/hotkeys-markdown.ts:21-23"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:54-61; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:21-23"
   },
   {
     "id": "F5.tui-editor-deletecharbackward",
@@ -402,7 +402,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:109-111; src/modes/utils/hotkeys-markdown.ts:39-43"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:109-111; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:39-43"
   },
   {
     "id": "F5.tui-input-submit",
@@ -411,7 +411,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:111-113; src/modes/utils/hotkeys-markdown.ts:37-43"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:111-113; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:37-43"
   },
   {
     "id": "F5.tui-input-tab",
@@ -420,7 +420,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:113-114; src/modes/utils/hotkeys-markdown.ts:45-47"
+    "source": "@oh-my-pi/pi-tui/src/keybindings.ts:113-114; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:45-47"
   },
   {
     "id": "F6.app-display-reset",
@@ -429,7 +429,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:72-77; src/modes/controllers/input-controller.ts:470-483; src/modes/utils/hotkeys-markdown.ts:52-53"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:72-77; src/modes/controllers/input-controller.ts:470-483; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:52-53"
   },
   {
     "id": "F6.app-thinking-toggle",
@@ -438,7 +438,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:82-87; src/modes/controllers/input-controller.ts:479-482; src/modes/utils/hotkeys-markdown.ts:55-56"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:82-87; src/modes/controllers/input-controller.ts:479-482; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:55-56"
   },
   {
     "id": "F6.app-tools-expand",
@@ -447,7 +447,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:107-112; src/modes/controllers/input-controller.ts:553-555; src/modes/utils/hotkeys-markdown.ts:61-62"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:107-112; src/modes/controllers/input-controller.ts:553-555; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:61-62"
   },
   {
     "id": "F6.app-tools-togglevisibility",
@@ -456,7 +456,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:112-117; src/modes/controllers/input-controller.ts:501-507; src/modes/utils/hotkeys-markdown.ts:62-63"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:112-117; src/modes/controllers/input-controller.ts:501-507; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:62-63"
   },
   {
     "id": "F6.aborted-assistant-turn",
@@ -465,7 +465,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/utils/transcript-render-helpers.ts:229-271; src/modes/components/assistant-message.ts:930-940"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/transcript-render-helpers.ts:229-271; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:930-940"
   },
   {
     "id": "F6.assistant-native-image",
@@ -474,7 +474,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/components/assistant-message.ts:611-655; src/modes/components/assistant-message.ts:893-904"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:611-655; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:893-904"
   },
   {
     "id": "F6.assistant-provider-error",
@@ -483,7 +483,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/assistant-message.ts:539-551; src/modes/components/assistant-message.ts:930-953; src/modes/components/error-banner.ts:1-43"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:539-551; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:930-953; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/error-banner.ts"
   },
   {
     "id": "F6.assistant-text",
@@ -492,7 +492,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/components/assistant-message.ts:812-927; src/modes/utils/transcript-render-helpers.ts:169-226"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:812-927; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/transcript-render-helpers.ts:169-226"
   },
   {
     "id": "F6.assistant-thinking-reasoning",
@@ -510,7 +510,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/custom-message.ts:1-70; src/modes/utils/ui-helpers.ts:183-250"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-message.ts:1-70; src/modes/utils/ui-helpers.ts:183-250"
   },
   {
     "id": "F6.display-false-custom-continuity-message",
@@ -519,7 +519,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "none",
-    "source": "src/session/messages.ts:334-338; src/session/agent-session.ts:2424-2482; src/modes/components/chat-transcript-builder.ts:469-471"
+    "source": "src/session/messages.ts:334-338; src/session/agent-session.ts:2424-2482; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/chat/chat-transcript-builder.ts:1-634"
   },
   {
     "id": "F6.display-false-prewalk-plan-nudge",
@@ -537,7 +537,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/utils/transcript-render-helpers.ts:143-168; src/modes/utils/ui-helpers.ts:265-269"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/transcript-render-helpers.ts:143-168; src/modes/utils/ui-helpers.ts:265-269"
   },
   {
     "id": "F6.generic-system-notification-custom-body",
@@ -546,7 +546,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/custom-message.ts:17-64; src/modes/utils/ui-helpers.ts:183-250"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-message.ts:17-64; src/modes/utils/ui-helpers.ts:183-250"
   },
   {
     "id": "F6.hidden-thinking-streaming-pulse",
@@ -564,7 +564,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/utils/transcript-render-helpers.ts:239-271; src/modes/components/assistant-message.ts:516-520"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/transcript-render-helpers.ts:239-271; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:516-520"
   },
   {
     "id": "F6.session-entry-credential-pin",
@@ -672,7 +672,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/skill-message.ts:1-109; src/modes/utils/ui-helpers.ts:211-215"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/skill-message.ts:1-109; src/modes/utils/ui-helpers.ts:211-215"
   },
   {
     "id": "F6.stripped-tool-call-placeholder",
@@ -681,7 +681,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/components/stripped-tool-calls-placeholder.ts:1-38; src/modes/utils/ui-helpers.ts:469-478"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/stripped-tool-calls-placeholder.ts; src/modes/utils/ui-helpers.ts:469-478"
   },
   {
     "id": "F6.synthetic-developer-prompt",
@@ -690,7 +690,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/user-message.ts:94-190; src/modes/components/chat-transcript-builder.ts:260-274"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/user-message.ts:94-190; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/chat/chat-transcript-builder.ts:1-634"
   },
   {
     "id": "F6.tool-result-image",
@@ -699,7 +699,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/components/assistant-message.ts:631-655; src/modes/utils/ui-helpers.ts:371-393"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:631-655; src/modes/utils/ui-helpers.ts:371-393"
   },
   {
     "id": "F6.toolresult-message-attached",
@@ -708,7 +708,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "none",
-    "source": "src/modes/utils/ui-helpers.ts:313-315; src/modes/components/chat-transcript-builder.ts:439-466"
+    "source": "src/modes/utils/ui-helpers.ts:313-315; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/chat/chat-transcript-builder.ts:1-634"
   },
   {
     "id": "F6.user-prompt",
@@ -717,7 +717,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "card",
-    "source": "src/modes/components/user-message.ts:24-91; src/modes/utils/ui-helpers.ts:271-298"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/user-message.ts:24-91; src/modes/utils/ui-helpers.ts:271-298"
   },
   {
     "id": "E1.bash",
@@ -753,7 +753,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/modes/components/hook-selector.ts:162-433; src/modes/controllers/extension-ui-controller.ts:898-963"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/hook-selector.ts:162-433; src/modes/controllers/extension-ui-controller.ts:898-963"
   },
   {
     "id": "E2.hook-multiline-editor",
@@ -762,7 +762,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "dialog",
-    "source": "src/modes/components/hook-editor.ts:33-230"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/hook-editor.ts:33-230"
   },
   {
     "id": "E2.hook-text-input",
@@ -771,7 +771,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "dialog",
-    "source": "src/modes/components/hook-input.ts:16-80; src/modes/controllers/extension-ui-controller.ts:973-1030"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/hook-input.ts:16-80; src/modes/controllers/extension-ui-controller.ts:973-1030"
   },
   {
     "id": "E2.generic-extension-confirmation",
@@ -789,7 +789,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/tools/renderers.ts:81-83; src/tools/ask.ts:1280-1385; src/modes/components/ask-dialog.ts:1-80"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:81-83; src/tools/ask.ts:1280-1385; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/ask-dialog.ts:1-80"
   },
   {
     "id": "E2.extension-ui-cancellation",
@@ -816,7 +816,7 @@
     "kind": "notification",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/controllers/extension-ui-controller.ts:1011-1041; src/modes/components/hook-editor.ts:1-90"
+    "source": "src/modes/controllers/extension-ui-controller.ts:1011-1041; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/hook-editor.ts:1-90"
   },
   {
     "id": "E2.extension-select-dialog",
@@ -825,7 +825,7 @@
     "kind": "notification",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/controllers/extension-ui-controller.ts:898-958; src/modes/components/hook-selector.ts:1-260"
+    "source": "src/modes/controllers/extension-ui-controller.ts:898-958; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/hook-selector.ts:1-260"
   },
   {
     "id": "E2.extension-single-line-input-dialog",
@@ -834,7 +834,7 @@
     "kind": "notification",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/controllers/extension-ui-controller.ts:971-1008; src/modes/components/hook-input.ts:1-55"
+    "source": "src/modes/controllers/extension-ui-controller.ts:971-1008; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/hook-input.ts:1-55"
   },
   {
     "id": "E3.todo-command",
@@ -933,7 +933,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/renderers.ts:112-115; src/tools/todo.ts:1123-1320"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:112-115; src/tools/todo.ts:1123-1320"
   },
   {
     "id": "E3.todo-checklist-panel",
@@ -951,7 +951,7 @@
     "kind": "todo-plan-view",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/components/todo-reminder.ts:1-56; src/modes/controllers/event-controller.ts:2087-2090"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/todo-reminder.ts; src/modes/controllers/event-controller.ts:2087-2090"
   },
   {
     "id": "E4.compact",
@@ -996,7 +996,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/renderers.ts:90-96; src/edit/renderer.ts:759-903"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:90-96; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/edit/renderer.ts:759-903"
   },
   {
     "id": "T1.ast-edit",
@@ -1005,7 +1005,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:82-84; src/tools/ast-edit.ts:590-620"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:82-84; src/tools/ast-edit.ts:590-620"
   },
   {
     "id": "T1.edit",
@@ -1014,7 +1014,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/index.ts:427-463; src/tools/renderers.ts:90-96; src/edit/renderer.ts:759-903"
+    "source": "src/tools/index.ts:427-463; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:90-96; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/edit/renderer.ts:759-903"
   },
   {
     "id": "T1.read",
@@ -1023,7 +1023,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/index.ts:427-463; src/tools/renderers.ts:80-111; src/tools/read-renderer.ts:83-218; src/modes/components/read-tool-group.ts:1-120"
+    "source": "src/tools/index.ts:427-463; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:80-111; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/read-renderer.ts:83-218; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/read-tool-group.ts:1-120"
   },
   {
     "id": "T1.write",
@@ -1041,7 +1041,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/late-diagnostics-message.ts:1-68; src/modes/utils/ui-helpers.ts:191-201"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/late-diagnostics-message.ts:1-68; src/modes/utils/ui-helpers.ts:191-201"
   },
   {
     "id": "T2.ast-grep",
@@ -1050,7 +1050,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:82-84; src/tools/ast-grep.ts:409-442"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:82-84; src/tools/ast-grep.ts:409-442"
   },
   {
     "id": "T2.find-legacy-alias-to-glob",
@@ -1068,7 +1068,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/index.ts:427-463; src/tools/renderers.ts:93-94; src/tools/glob.ts:538-610"
+    "source": "src/tools/index.ts:427-463; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:93-94; src/tools/glob.ts:538-610"
   },
   {
     "id": "T2.grep",
@@ -1077,7 +1077,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/index.ts:427-463; src/tools/renderers.ts:94-95; src/tools/grep.ts:1782-1850"
+    "source": "src/tools/index.ts:427-463; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:94-95; src/tools/grep.ts:1782-1850"
   },
   {
     "id": "T2.lsp",
@@ -1086,7 +1086,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/renderers.ts:92-95; src/lsp/render.ts:1-80,662-666"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:92-95; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/lsp/render.ts:1-80,662-666"
   },
   {
     "id": "T3.computer",
@@ -1095,7 +1095,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/renderers.ts:85-87; src/tools/computer-renderer.ts:132-173"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:85-87; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.1.8/packages/coding-agent/src/tools/computer-renderer.ts"
   },
   {
     "id": "T3.debug",
@@ -1104,7 +1104,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:87-88; src/tools/debug.ts:616-665"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:87-88; src/tools/debug.ts:616-665"
   },
   {
     "id": "T3.eval",
@@ -1122,7 +1122,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/renderers.ts:84-87; src/tools/browser/render.ts:1-229"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:84-87; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.1.8/packages/coding-agent/src/tools/browser/render.ts:1-229"
   },
   {
     "id": "T4.fetch-read-url-path",
@@ -1131,7 +1131,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/read.ts:68-70,1106-1129; src/tools/fetch.ts:1696-1808; src/tools/read-renderer.ts:83-218"
+    "source": "src/tools/read.ts:68-70,1106-1129; src/tools/fetch.ts:1696-1808; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/read-renderer.ts:83-218"
   },
   {
     "id": "T4.github",
@@ -1140,7 +1140,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/renderers.ts:121-124; src/tools/gh-renderer.ts:273-321,418-470"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:121-124; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/gh-renderer.ts:273-321,418-470"
   },
   {
     "id": "T4.web-search",
@@ -1149,7 +1149,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/tools/renderers.ts:130-136; src/web/search/render.ts:1-263"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:130-136; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/web/search/render.ts"
   },
   {
     "id": "T5.hub",
@@ -1158,7 +1158,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:98-104; src/tools/hub/index.ts:537-578; src/tools/hub/jobs.ts:520-590; src/tools/hub/messaging.ts:709-780"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:98-104; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.11/packages/coding-agent/src/tools/hub/index.ts; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/coding-agent/src/async/job-control.ts:1-452; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.11/packages/coding-agent/src/tools/hub/messaging.ts"
   },
   {
     "id": "T5.task",
@@ -1176,7 +1176,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/vibe.ts:222-247,481-520; src/tools/renderers.ts:131-136"
+    "source": "src/tools/vibe.ts:222-247,481-520; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:131-136"
   },
   {
     "id": "T5.vibe-list",
@@ -1185,7 +1185,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/vibe.ts:248-280,481-520; src/tools/renderers.ts:131-136"
+    "source": "src/tools/vibe.ts:248-280,481-520; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:131-136"
   },
   {
     "id": "T5.vibe-send",
@@ -1194,7 +1194,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/vibe.ts:60-149,481-520; src/tools/renderers.ts:131-136"
+    "source": "src/tools/vibe.ts:60-149,481-520; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:131-136"
   },
   {
     "id": "T5.vibe-spawn",
@@ -1203,7 +1203,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/vibe.ts:50-120,481-520; src/tools/renderers.ts:131-136"
+    "source": "src/tools/vibe.ts:50-120,481-520; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:131-136"
   },
   {
     "id": "T5.vibe-wait",
@@ -1212,7 +1212,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/vibe.ts:150-220,481-520; src/tools/renderers.ts:131-136"
+    "source": "src/tools/vibe.ts:150-220,481-520; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:131-136"
   },
   {
     "id": "T5.yield",
@@ -1266,7 +1266,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:111-116; src/tools/memory-render.ts:120-166"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:111-116; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/memory-render.ts:120-166"
   },
   {
     "id": "T6.reflect",
@@ -1275,7 +1275,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:111-116; src/tools/memory-render.ts:167-210"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:111-116; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/memory-render.ts:167-210"
   },
   {
     "id": "T6.retain",
@@ -1284,7 +1284,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:111-116; src/tools/memory-render.ts:87-119"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:111-116; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/memory-render.ts:87-119"
   },
   {
     "id": "T7.checkpoint",
@@ -1302,7 +1302,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:127-130; src/goals/tools/goal-tool.ts:164-230"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:127-130; src/goals/tools/goal-tool.ts:164-230"
   },
   {
     "id": "T7.host-custom-mcp-tool-fallback",
@@ -1320,7 +1320,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:107-110; src/tools/resolve.ts:359-420"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:107-110; src/tools/resolve.ts:359-420"
   },
   {
     "id": "T7.resolve",
@@ -1329,7 +1329,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:107-110; src/tools/resolve.ts:359-420"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:107-110; src/tools/resolve.ts:359-420"
   },
   {
     "id": "T7.rewind",
@@ -1356,7 +1356,7 @@
     "kind": "tool-renderer",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/tools/renderers.ts:122-125; src/tools/think.ts:53-100"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/tools/renderers.ts:122-125; src/tools/think.ts:53-100"
   },
   {
     "id": "P1.agents",
@@ -1365,7 +1365,7 @@
     "kind": "command",
     "rpc": "terminal-only",
     "ui": "side panel",
-    "source": "src/slash-commands/builtin-session.ts:443-450; src/modes/components/agents-hub.ts:204-1083"
+    "source": "src/slash-commands/builtin-session.ts:443-450; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agents-hub.ts:204-1083"
   },
   {
     "id": "P1.cancel-subagent",
@@ -1392,7 +1392,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "side panel",
-    "source": "src/modes/controllers/input-controller.ts:685-690,730-753; src/modes/components/agent-transcript-viewer.ts:444-543"
+    "source": "src/modes/controllers/input-controller.ts:685-690,730-753; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-transcript-viewer.ts:444-543"
   },
   {
     "id": "P1.agents-hub",
@@ -1401,7 +1401,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "side panel",
-    "source": "src/modes/components/agent-hub.ts:147-430; src/modes/controllers/selector-controller.ts:2220-2300"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-hub.ts:147-430; src/modes/controllers/selector-controller.ts:2220-2300"
   },
   {
     "id": "P1.agents-dashboard",
@@ -1410,7 +1410,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "side panel",
-    "source": "src/modes/components/agents-hub.ts:204-1083"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agents-hub.ts:204-1083"
   },
   {
     "id": "P1.hub",
@@ -1428,7 +1428,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "side panel",
-    "source": "src/modes/components/agent-transcript-viewer.ts:140-193,444-543"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-transcript-viewer.ts:140-193,444-543"
   },
   {
     "id": "P1.double-left-agent-hub-gesture",
@@ -1437,7 +1437,7 @@
     "kind": "composer",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/modes/controllers/input-controller.ts:557-572; src/modes/components/agent-hub.ts:318-343"
+    "source": "src/modes/controllers/input-controller.ts:557-572; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-hub.ts:318-343"
   },
   {
     "id": "P1.app-agents-hub",
@@ -1446,7 +1446,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:175-179; src/modes/controllers/input-controller.ts:550-555; src/modes/utils/hotkeys-markdown.ts:66-67"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:175-179; src/modes/controllers/input-controller.ts:550-555; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:66-67"
   },
   {
     "id": "P1.irc-incoming-autoreply-relay-card",
@@ -1455,7 +1455,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "card",
-    "source": "src/modes/utils/transcript-render-helpers.ts:99-131; src/modes/controllers/event-controller.ts:910-959"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/transcript-render-helpers.ts:99-131; src/modes/controllers/event-controller.ts:910-959"
   },
   {
     "id": "P1.background-job-completed-row",
@@ -1464,7 +1464,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/utils/transcript-render-helpers.ts:33-74"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/transcript-render-helpers.ts:33-74"
   },
   {
     "id": "P1.background-tangent-dispatch-breadcrumb",
@@ -1473,7 +1473,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/background-tan-message.ts:1-37; src/modes/utils/ui-helpers.ts:233-235"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/background-tan-message.ts; src/modes/utils/ui-helpers.ts:233-235"
   },
   {
     "id": "P1.live-delegation-message",
@@ -1482,7 +1482,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "card",
-    "source": "src/modes/components/custom-message.ts:44-64; src/session/messages.ts:313-318"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-message.ts:44-64; src/session/messages.ts:313-318"
   },
   {
     "id": "P1.supervised-process-completion-row",
@@ -1491,7 +1491,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/utils/transcript-render-helpers.ts:77-119; src/session/launch-completion.ts:1-39"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/transcript-render-helpers.ts:77-119; src/session/launch-completion.ts:1-39"
   },
   {
     "id": "P1.agent-hub-roster",
@@ -1500,7 +1500,7 @@
     "kind": "subagent-view",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/components/agent-hub.ts:1-20,292-340,479-570; src/modes/components/agent-hub.ts:570-744"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-hub.ts:1-20,292-340,479-570; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-hub.ts:570-744"
   },
   {
     "id": "P1.agent-hub-selected-agent-inspector",
@@ -1509,7 +1509,7 @@
     "kind": "subagent-view",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/components/agent-hub.ts:775-853; src/modes/components/agent-hub-renderer.ts:70-155"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-hub.ts:775-853; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-hub-renderer.ts:70-155"
   },
   {
     "id": "P1.rpc-subagent-lifecycle-progress-event-feed",
@@ -1527,7 +1527,7 @@
     "kind": "subagent-view",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/components/agent-transcript-viewer.ts:1-183,550-650; src/modes/components/chat-transcript-builder.ts:1-527"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/agent-transcript-viewer.ts:1-183,550-650; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/chat/chat-transcript-builder.ts:1-634"
   },
   {
     "id": "P1.subagent-progress-rows",
@@ -1536,7 +1536,7 @@
     "kind": "subagent-view",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/task/render.ts:40-145,1483-1560; src/task/types.ts:58-105"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/task/render.ts:40-145,1483-1560; src/task/types.ts:58-105"
   },
   {
     "id": "P1.task-subagent-card",
@@ -1545,7 +1545,7 @@
     "kind": "subagent-view",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/task/render.ts:837-900,1483-1605; src/task/renderer.ts:1-14"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/task/render.ts:837-900,1483-1605; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/task/renderer.ts:1-14"
   },
   {
     "id": "P2.plan",
@@ -1572,7 +1572,7 @@
     "kind": "mode",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/interactive-mode.ts:3508-3580; src/modes/components/status-line/segments.ts:249-290"
+    "source": "src/modes/interactive-mode.ts:3508-3580; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:249-290"
   },
   {
     "id": "P2.plan-review-mode",
@@ -1581,7 +1581,7 @@
     "kind": "mode",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/modes/interactive-mode.ts:3130-3205; src/modes/components/plan-review-overlay.ts:160-433"
+    "source": "src/modes/interactive-mode.ts:3130-3205; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/plan-review-overlay.ts:160-433"
   },
   {
     "id": "P2.plan-annotation-editor",
@@ -1590,7 +1590,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/modes/components/plan-review-overlay.ts:160-433"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/plan-review-overlay.ts:160-433"
   },
   {
     "id": "P2.app-plan-toggle",
@@ -1599,7 +1599,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:227-231; src/modes/controllers/input-controller.ts:514-518; src/modes/utils/hotkeys-markdown.ts:66-67"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:227-231; src/modes/controllers/input-controller.ts:514-518; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:66-67"
   },
   {
     "id": "P2.plan-review-overlay",
@@ -1617,7 +1617,7 @@
     "kind": "todo-plan-view",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:247-288; src/modes/components/status-line/component.ts:641-643"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:247-288; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/component.ts:641-643"
   },
   {
     "id": "P2.plan-table-of-contents",
@@ -1626,7 +1626,7 @@
     "kind": "todo-plan-view",
     "rpc": "terminal-only",
     "ui": "panel",
-    "source": "src/modes/components/plan-toc.ts:1-107; src/modes/components/plan-review-overlay.ts:403-434"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/overlays/plan-toc.ts:1-139; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/plan-review-overlay.ts:403-434"
   },
   {
     "id": "P3.branch",
@@ -1680,7 +1680,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/modes/components/user-message-selector.ts:192-218; src/modes/controllers/selector-controller.ts:1164-1260"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.0.11/packages/coding-agent/src/modes/components/user-message-selector.ts:192-218; src/modes/controllers/selector-controller.ts:1164-1260"
   },
   {
     "id": "P3.tree-selector",
@@ -1698,7 +1698,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:183-187; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/docs/rpc.md:148-149"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:183-187; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/docs/rpc.md:148-149"
   },
   {
     "id": "P3.app-tree-foldorup",
@@ -1707,7 +1707,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:219-223; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/docs/rpc.md:148-149"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:219-223; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/docs/rpc.md:148-149"
   },
   {
     "id": "P3.app-tree-unfoldordown",
@@ -1716,7 +1716,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:223-227; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/docs/rpc.md:148-149"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:223-227; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/docs/rpc.md:148-149"
   },
   {
     "id": "P3.branch-summary-divider",
@@ -1725,7 +1725,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/compaction-summary-message.ts:194-236; src/modes/utils/ui-helpers.ts:258-262"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/compaction-summary-message.ts:194-236; src/modes/utils/ui-helpers.ts:258-262"
   },
   {
     "id": "P4.context",
@@ -1761,7 +1761,7 @@
     "kind": "subcommand",
     "rpc": "RPC",
     "ui": "approval",
-    "source": "src/slash-commands/builtin-session.ts:299-302; src/modes/components/reset-usage-selector.ts:14-190"
+    "source": "src/slash-commands/builtin-session.ts:299-302; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/reset-usage-selector.ts"
   },
   {
     "id": "P4.usage-show",
@@ -1779,7 +1779,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/components/cache-invalidation-marker.ts:1-111; src/modes/components/assistant-message.ts:296-310"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/cache-invalidation-marker.ts:1-111; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:296-310"
   },
   {
     "id": "P4.compaction-summary-divider",
@@ -1788,7 +1788,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/compaction-summary-message.ts:1-149; src/modes/utils/ui-helpers.ts:253-257"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/compaction-summary-message.ts:1-149; src/modes/utils/ui-helpers.ts:253-257"
   },
   {
     "id": "P4.per-turn-usage-row",
@@ -1797,7 +1797,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "inline",
-    "source": "src/modes/components/usage-row.ts:1-51; src/modes/components/chat-transcript-builder.ts:191-227"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/usage-row.ts:1-51; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/chat/chat-transcript-builder.ts:1-634"
   },
   {
     "id": "P4.cache-hit",
@@ -1806,7 +1806,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:608-628"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:608-628"
   },
   {
     "id": "P4.cache-read",
@@ -1815,7 +1815,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:584-594"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:584-594"
   },
   {
     "id": "P4.cache-write",
@@ -1824,7 +1824,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:596-607"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:596-607"
   },
   {
     "id": "P4.context-pct",
@@ -1833,7 +1833,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:485-512"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:485-512"
   },
   {
     "id": "P4.context-total",
@@ -1842,7 +1842,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:513-522"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:513-522"
   },
   {
     "id": "P4.cost",
@@ -1851,7 +1851,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:451-483"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:451-483"
   },
   {
     "id": "P4.token-in",
@@ -1860,7 +1860,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:402-411"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:402-411"
   },
   {
     "id": "P4.token-out",
@@ -1869,7 +1869,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:413-422"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:413-422"
   },
   {
     "id": "P4.token-rate",
@@ -1878,7 +1878,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:440-449"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:440-449"
   },
   {
     "id": "P4.token-total",
@@ -1887,7 +1887,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:424-438"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:424-438"
   },
   {
     "id": "P4.usage-status-segment",
@@ -1896,7 +1896,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:680-735"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:680-735"
   },
   {
     "id": "P4.auto-compaction-progress-result",
@@ -1941,7 +1941,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "toggle",
-    "source": "src/config/settings-schema.ts:1910-1920; src/modes/rpc/rpc-types.ts:60-63"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:1910-1920; src/modes/rpc/rpc-types.ts:60-63"
   },
   {
     "id": "P5.interrupt-mode",
@@ -1950,7 +1950,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "toggle",
-    "source": "src/config/settings-schema.ts:1922-1932; src/modes/rpc/rpc-types.ts:60-63"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:1922-1932; src/modes/rpc/rpc-types.ts:60-63"
   },
   {
     "id": "P5.steering-queue-mode",
@@ -1959,7 +1959,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "toggle",
-    "source": "src/config/settings-schema.ts:1897-1908; src/modes/rpc/rpc-types.ts:60-63"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:1897-1908; src/modes/rpc/rpc-types.ts:60-63"
   },
   {
     "id": "P5.queue-mode-selector-component",
@@ -1968,7 +1968,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/modes/components/queue-mode-selector.ts:9-56; src/config/settings-schema.ts:1897-1920"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/queue-mode-selector.ts; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:1897-1920"
   },
   {
     "id": "P5.dequeue-queued-message",
@@ -1977,7 +1977,7 @@
     "kind": "composer",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:145-151; src/modes/controllers/input-controller.ts:646-657; src/modes/components/custom-editor.ts:477-484"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:145-151; src/modes/controllers/input-controller.ts:646-657; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-editor.ts:477-484"
   },
   {
     "id": "P5.follow-up-on-ctrl-enter-ctrl-q",
@@ -1986,7 +1986,7 @@
     "kind": "composer",
     "rpc": "RPC",
     "ui": "composer feature",
-    "source": "src/config/keybindings.ts:133-142; src/modes/controllers/input-controller.ts:531-535; src/modes/components/hook-editor.ts:133-192"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:133-142; src/modes/controllers/input-controller.ts:531-535; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/hook-editor.ts:133-192"
   },
   {
     "id": "P5.queue-shorthand-and-queued-lists",
@@ -1995,7 +1995,7 @@
     "kind": "composer",
     "rpc": "RPC",
     "ui": "composer feature",
-    "source": "src/modes/queue-input.ts:1-123; src/modes/components/custom-editor.ts:561-590; src/modes/controllers/input-controller.ts:767-779,1282-1348"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/queue-input.ts:1-132; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-editor.ts:561-590; src/modes/controllers/input-controller.ts:767-779,1282-1348"
   },
   {
     "id": "P5.steer-on-enter-while-streaming",
@@ -2013,7 +2013,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/docs/rpc.md:136-139,346-382; src/config/keybindings.ts:145-152"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.6.1/docs/rpc.md:136-139,346-382; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:145-152"
   },
   {
     "id": "P5.app-message-followup",
@@ -2022,7 +2022,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:122-143; src/modes/controllers/input-controller.ts:531-535; src/modes/utils/hotkeys-markdown.ts:39-43"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:122-143; src/modes/controllers/input-controller.ts:531-535; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:39-43"
   },
   {
     "id": "P5.queued-steering-follow-up-bar",
@@ -2121,7 +2121,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/modes/components/model-picker.ts:65-186; src/modes/components/model-browser.ts:349-683"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/model-picker.ts:65-186; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/model-browser.ts:349-683"
   },
   {
     "id": "D1.thinking-level-selector",
@@ -2139,7 +2139,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:92-97; src/modes/controllers/input-controller.ts:477-479; src/modes/utils/hotkeys-markdown.ts:57-59"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:92-97; src/modes/controllers/input-controller.ts:477-479; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:57-59"
   },
   {
     "id": "D1.app-model-cycleforward",
@@ -2148,7 +2148,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:87-92; src/modes/controllers/input-controller.ts:477-479; src/modes/utils/hotkeys-markdown.ts:56-58"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:87-92; src/modes/controllers/input-controller.ts:477-479; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:56-58"
   },
   {
     "id": "D1.app-model-select",
@@ -2157,7 +2157,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:97-102; src/modes/controllers/input-controller.ts:477-479; src/modes/utils/hotkeys-markdown.ts:59-61"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:97-102; src/modes/controllers/input-controller.ts:477-479; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:59-61"
   },
   {
     "id": "D1.app-model-selecttemporary",
@@ -2166,7 +2166,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:102-107; src/modes/controllers/input-controller.ts:471-474; src/modes/utils/hotkeys-markdown.ts:60-61"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:102-107; src/modes/controllers/input-controller.ts:471-474; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:60-61"
   },
   {
     "id": "D1.app-thinking-cycle",
@@ -2175,7 +2175,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:77-82; src/modes/controllers/input-controller.ts:474-477; src/modes/utils/hotkeys-markdown.ts:53-54"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:77-82; src/modes/controllers/input-controller.ts:474-477; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:53-54"
   },
   {
     "id": "D2.resume",
@@ -2193,7 +2193,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "approval",
-    "source": "src/modes/components/session-selector.ts:957-1000"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/session-selector.ts:957-1000"
   },
   {
     "id": "D2.session-pin-account-selector",
@@ -2202,7 +2202,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/modes/components/session-account-selector.ts:10-60; src/modes/controllers/selector-controller.ts:2045-2110"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/session-account-selector.ts; src/modes/controllers/selector-controller.ts:2045-2110"
   },
   {
     "id": "D2.session-selector",
@@ -2211,7 +2211,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/modes/components/session-selector.ts:779-1000; src/modes/controllers/selector-controller.ts:1700-1815"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/session-selector.ts:779-1000; src/modes/controllers/selector-controller.ts:1700-1815"
   },
   {
     "id": "D2.app-session-delete",
@@ -2220,7 +2220,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:211-215"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:211-215"
   },
   {
     "id": "D2.app-session-deletenoninvasive",
@@ -2229,7 +2229,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:215-219"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:215-219"
   },
   {
     "id": "D2.app-session-fork",
@@ -2238,7 +2238,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:187-191; src/modes/controllers/input-controller.ts:525-527"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:187-191; src/modes/controllers/input-controller.ts:525-527"
   },
   {
     "id": "D2.app-session-new",
@@ -2247,7 +2247,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:179-183; src/modes/controllers/input-controller.ts:519-521"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:179-183; src/modes/controllers/input-controller.ts:519-521"
   },
   {
     "id": "D2.app-session-observe",
@@ -2256,7 +2256,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:195-199; src/modes/controllers/input-controller.ts:550-555; src/modes/utils/hotkeys-markdown.ts:66-67"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:195-199; src/modes/controllers/input-controller.ts:550-555; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:66-67"
   },
   {
     "id": "D2.app-session-rename",
@@ -2265,7 +2265,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:207-211"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:207-211"
   },
   {
     "id": "D2.app-session-resume",
@@ -2274,7 +2274,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:191-195; src/modes/controllers/input-controller.ts:528-530"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:191-195; src/modes/controllers/input-controller.ts:528-530"
   },
   {
     "id": "D2.app-session-togglepath",
@@ -2283,7 +2283,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:199-203"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:199-203"
   },
   {
     "id": "D2.app-session-togglesort",
@@ -2292,7 +2292,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:203-207"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:203-207"
   },
   {
     "id": "D3.mcp-prompt",
@@ -2355,7 +2355,7 @@
     "kind": "composer",
     "rpc": "RPC",
     "ui": "composer feature",
-    "source": "src/modes/prompt-action-autocomplete.ts:128-259; @oh-my-pi/pi-tui/src/autocomplete.ts:400-553; src/slash-commands/builtin-registry.ts:73-94"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/prompt-action-autocomplete.ts:1-344; @oh-my-pi/pi-tui/src/autocomplete.ts:400-553; src/slash-commands/builtin-registry.ts:73-94"
   },
   {
     "id": "D4.login",
@@ -2364,7 +2364,7 @@
     "kind": "command",
     "rpc": "RPC",
     "ui": "dialog",
-    "source": "src/slash-commands/builtin-session.ts:479-530; src/modes/components/login-dialog.ts:11-217"
+    "source": "src/slash-commands/builtin-session.ts:479-530; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/login-dialog.ts:11-217"
   },
   {
     "id": "D4.logout",
@@ -2373,7 +2373,7 @@
     "kind": "command",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/slash-commands/builtin-session.ts:531-552; src/modes/components/oauth-selector.ts:53-260; src/modes/components/logout-account-selector.ts:10-125"
+    "source": "src/slash-commands/builtin-session.ts:531-552; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/oauth-selector.ts:53-260; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/logout-account-selector.ts"
   },
   {
     "id": "D4.switch",
@@ -2391,7 +2391,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/modes/components/oauth-selector.ts:53-260; src/modes/controllers/selector-controller.ts:1940-2045"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/oauth-selector.ts:53-260; src/modes/controllers/selector-controller.ts:1940-2045"
   },
   {
     "id": "D4.login-dialog",
@@ -2400,7 +2400,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "dialog",
-    "source": "src/modes/components/login-dialog.ts:11-217; src/modes/controllers/selector-controller.ts:2200-2350"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/login-dialog.ts:11-217; src/modes/controllers/selector-controller.ts:2200-2350"
   },
   {
     "id": "D4.logout-account-selector",
@@ -2409,7 +2409,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/modes/components/logout-account-selector.ts:10-125; src/modes/controllers/selector-controller.ts:1870-1940"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/logout-account-selector.ts; src/modes/controllers/selector-controller.ts:1870-1940"
   },
   {
     "id": "D4.reset-usage-account-selector",
@@ -2418,7 +2418,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "approval",
-    "source": "src/modes/components/reset-usage-selector.ts:14-190; src/modes/controllers/selector-controller.ts:2110-2190"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/reset-usage-selector.ts; src/modes/controllers/selector-controller.ts:2110-2190"
   },
   {
     "id": "D5.copy",
@@ -2427,7 +2427,7 @@
     "kind": "command",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/slash-commands/builtin-collaboration.ts:466-503; src/modes/components/copy-selector.ts:53-193"
+    "source": "src/slash-commands/builtin-collaboration.ts:466-503; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/copy-selector.ts:53-193"
   },
   {
     "id": "D5.dump",
@@ -2490,7 +2490,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/modes/components/copy-selector.ts:53-193; src/modes/controllers/selector-controller.ts:1220-1260"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/copy-selector.ts:53-193; src/modes/controllers/selector-controller.ts:1220-1260"
   },
   {
     "id": "D6.hotkeys",
@@ -2499,7 +2499,7 @@
     "kind": "command",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/slash-commands/builtin-session.ts:380-386; src/modes/controllers/command-controller.ts:584-587; src/modes/utils/hotkeys-markdown.ts:10-68"
+    "source": "src/slash-commands/builtin-session.ts:380-386; src/modes/controllers/command-controller.ts:584-587; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:10-68"
   },
   {
     "id": "D6.app-clear",
@@ -2508,7 +2508,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:58-65; src/modes/controllers/input-controller.ts:459-467; src/modes/utils/hotkeys-markdown.ts:48-50"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:58-65; src/modes/controllers/input-controller.ts:459-467; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:48-50"
   },
   {
     "id": "D6.app-editor-external",
@@ -2517,7 +2517,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:117-122; src/modes/controllers/input-controller.ts:482-485; src/modes/utils/hotkeys-markdown.ts:63-64"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:117-122; src/modes/controllers/input-controller.ts:482-485; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:63-64"
   },
   {
     "id": "D6.app-exit",
@@ -2526,7 +2526,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:63-69; src/modes/controllers/input-controller.ts:468-472; src/modes/utils/hotkeys-markdown.ts:50-51"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:63-69; src/modes/controllers/input-controller.ts:468-472; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:50-51"
   },
   {
     "id": "D6.app-interrupt",
@@ -2535,7 +2535,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:54-61; src/modes/controllers/input-controller.ts:350-455; src/modes/utils/hotkeys-markdown.ts:47-50"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:54-61; src/modes/controllers/input-controller.ts:350-455; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:47-50"
   },
   {
     "id": "D6.app-live-toggle",
@@ -2544,7 +2544,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:239-243; src/modes/controllers/input-controller.ts:536-539; src/modes/utils/hotkeys-markdown.ts:66-67"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:239-243; src/modes/controllers/input-controller.ts:536-539; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:66-67"
   },
   {
     "id": "D6.app-stt-toggle",
@@ -2553,7 +2553,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:235-239; src/modes/controllers/input-controller.ts:529-551"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:235-239; src/modes/controllers/input-controller.ts:529-551"
   },
   {
     "id": "D6.app-suspend",
@@ -2562,7 +2562,7 @@
     "kind": "keybinding",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:68-73; src/modes/controllers/input-controller.ts:465-473; src/modes/utils/hotkeys-markdown.ts:51-52"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:68-73; src/modes/controllers/input-controller.ts:465-473; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:51-52"
   },
   {
     "id": "D7.prompt-actions",
@@ -2571,7 +2571,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "composer feature",
-    "source": "src/modes/prompt-action-autocomplete.ts:19-30,128-259,280-322"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/prompt-action-autocomplete.ts:1-344"
   },
   {
     "id": "D7.file-autocomplete",
@@ -2589,7 +2589,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "composer feature",
-    "source": "src/modes/github-ref-autocomplete.ts:1-85; src/modes/prompt-action-autocomplete.ts:101-126"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/github-ref-autocomplete.ts:1-75; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/prompt-action-autocomplete.ts:1-344"
   },
   {
     "id": "D7.emoji-autocomplete-and-inline-replacement",
@@ -2598,7 +2598,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "composer feature",
-    "source": "src/modes/emoji-autocomplete.ts:131-170,232-322; src/modes/prompt-action-autocomplete.ts:199-259; src/modes/controllers/input-controller.ts:682-684"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/emoji-autocomplete.ts:1-285; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/prompt-action-autocomplete.ts:1-344; src/modes/controllers/input-controller.ts:682-684"
   },
   {
     "id": "D7.internal-url-autocomplete",
@@ -2607,7 +2607,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "composer feature",
-    "source": "src/modes/internal-url-autocomplete.ts:1-143; src/modes/prompt-action-autocomplete.ts:199-259"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/internal-url-autocomplete.ts:1-143; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.9.1/packages/tui/src/prompt/prompt-action-autocomplete.ts:1-344"
   },
   {
     "id": "D8.live-voice",
@@ -2625,7 +2625,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "keyboard shortcut",
-    "source": "src/modes/controllers/input-controller.ts:540-551; src/modes/components/custom-editor.ts:725-866; src/modes/utils/hotkeys-markdown.ts:51-54"
+    "source": "src/modes/controllers/input-controller.ts:540-551; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/custom-editor.ts:725-866; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:51-54"
   },
   {
     "id": "A1.report-tool-issue-consent",
@@ -2643,7 +2643,7 @@
     "kind": "approval",
     "rpc": "RPC",
     "ui": "approval",
-    "source": "src/tools/approval.ts:1-279; src/extensibility/extensions/wrapper.ts:270-365; src/config/settings-schema.ts:3921-3958"
+    "source": "src/tools/approval.ts:1-279; src/extensibility/extensions/wrapper.ts:270-365; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:3921-3958"
   },
   {
     "id": "C1.changelog",
@@ -2868,7 +2868,7 @@
     "kind": "subcommand",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/slash-commands/builtin-session.ts:185-250; src/modes/components/session-account-selector.ts:10-60"
+    "source": "src/slash-commands/builtin-session.ts:185-250; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/session-account-selector.ts"
   },
   {
     "id": "C1.setup-providers",
@@ -2922,7 +2922,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/modes/setup-wizard/index.ts:19-130; src/modes/setup-wizard/wizard-overlay.ts:111-283"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/setup-wizard/index.ts; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/setup-wizard/wizard-overlay.ts:111-283"
   },
   {
     "id": "C2.add-dir",
@@ -2994,7 +2994,7 @@
     "kind": "command",
     "rpc": "RPC",
     "ui": "dialog",
-    "source": "src/slash-commands/builtin-lifecycle.ts:496-540; src/modes/components/move-overlay.ts:155-255"
+    "source": "src/slash-commands/builtin-lifecycle.ts:496-540; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/move-overlay.ts:155-255"
   },
   {
     "id": "C2.new",
@@ -3039,7 +3039,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/modes/components/move-overlay.ts:155-255; src/modes/controllers/command-controller.ts:1040-1086"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/move-overlay.ts:155-255; src/modes/controllers/command-controller.ts:1040-1086"
   },
   {
     "id": "C2.app-retry",
@@ -3048,7 +3048,7 @@
     "kind": "keybinding",
     "rpc": "RPC",
     "ui": "keyboard shortcut",
-    "source": "src/config/keybindings.ts:142-148; src/modes/controllers/input-controller.ts:508-511; src/modes/utils/hotkeys-markdown.ts:64-65"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/config/keybindings.ts:142-148; src/modes/controllers/input-controller.ts:508-511; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:64-65"
   },
   {
     "id": "C2.handoff-summary-divider",
@@ -3057,7 +3057,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/modes/components/compaction-summary-message.ts:150-190; src/modes/utils/ui-helpers.ts:237-243"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/compaction-summary-message.ts:150-190; src/modes/utils/ui-helpers.ts:237-243"
   },
   {
     "id": "C2.restart",
@@ -3111,7 +3111,7 @@
     "kind": "command",
     "rpc": "terminal-only",
     "ui": "side panel",
-    "source": "src/slash-commands/builtin-lifecycle.ts:344-354; src/modes/components/cleanse-panel.ts:30-174"
+    "source": "src/slash-commands/builtin-lifecycle.ts:344-354; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/cleanse-panel.ts"
   },
   {
     "id": "C3.computer",
@@ -3192,7 +3192,7 @@
     "kind": "command",
     "rpc": "terminal-only",
     "ui": "side panel",
-    "source": "src/slash-commands/builtin-lifecycle.ts:333-343; src/modes/components/omfg-panel.ts:21-151"
+    "source": "src/slash-commands/builtin-lifecycle.ts:333-343; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/omfg-panel.ts"
   },
   {
     "id": "C3.pause",
@@ -3201,7 +3201,7 @@
     "kind": "command",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/slash-commands/builtin-control.ts:64-71; src/modes/components/pause-screen.ts:124-193"
+    "source": "src/slash-commands/builtin-control.ts:64-71; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/pause-screen.ts:124-193"
   },
   {
     "id": "C3.prewalk-command",
@@ -3327,7 +3327,7 @@
     "kind": "subcommand",
     "rpc": "RPC",
     "ui": "dialog",
-    "source": "src/slash-commands/builtin-collaboration.ts:61-68,161-171; src/modes/components/advisor-config.ts:127-623"
+    "source": "src/slash-commands/builtin-collaboration.ts:61-68,161-171; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/advisor-config.ts:127-623"
   },
   {
     "id": "C3.advisor-dump",
@@ -3543,7 +3543,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/slash-commands/builtin-collaboration.ts:56-171; src/modes/components/advisor-message.ts:44-78; src/modes/components/status-line/segments.ts:165-184"
+    "source": "src/slash-commands/builtin-collaboration.ts:56-171; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/advisor-message.ts:44-78; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:165-184"
   },
   {
     "id": "C3.goal-updated",
@@ -3561,7 +3561,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "toggle",
-    "source": "src/slash-commands/builtin-collaboration.ts:390-464; src/config/settings-schema.ts:4409-4418"
+    "source": "src/slash-commands/builtin-collaboration.ts:390-464; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:4409-4418"
   },
   {
     "id": "C3.computer-use",
@@ -3570,7 +3570,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "toggle",
-    "source": "src/slash-commands/builtin-modes.ts:488-531; src/config/settings-schema.ts:4184-4192"
+    "source": "src/slash-commands/builtin-modes.ts:488-531; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:4184-4192"
   },
   {
     "id": "C3.default-execution",
@@ -3579,7 +3579,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/interactive-mode.ts:646-687; src/modes/components/status-line/segments.ts:129-290"
+    "source": "src/modes/interactive-mode.ts:646-687; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:129-290"
   },
   {
     "id": "C3.extended-context-mode",
@@ -3588,7 +3588,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "toggle",
-    "source": "src/slash-commands/builtin-modes.ts:462-487; src/config/settings-schema.ts:2397-2409"
+    "source": "src/slash-commands/builtin-modes.ts:462-487; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:2397-2409"
   },
   {
     "id": "C3.fast-mode",
@@ -3597,7 +3597,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/slash-commands/builtin-modes.ts:393-460; src/modes/components/status-line/segments.ts:150-187"
+    "source": "src/slash-commands/builtin-modes.ts:393-460; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:150-187"
   },
   {
     "id": "C3.goal-mode",
@@ -3624,7 +3624,7 @@
     "kind": "mode",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/slash-commands/builtin-modes.ts:307-326; src/modes/interactive-mode.ts:1643-1665; src/modes/components/status-line/segments.ts:237-285"
+    "source": "src/slash-commands/builtin-modes.ts:307-326; src/modes/interactive-mode.ts:1643-1665; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:237-285"
   },
   {
     "id": "C3.pause-gate",
@@ -3633,7 +3633,7 @@
     "kind": "mode",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/slash-commands/builtin-control.ts:64-71; src/modes/components/pause-screen.ts:4-8,124-193"
+    "source": "src/slash-commands/builtin-control.ts:64-71; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/pause-screen.ts:4-8,124-193"
   },
   {
     "id": "C3.prewalk-mode",
@@ -3642,7 +3642,7 @@
     "kind": "mode",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/slash-commands/builtin-modes.ts:573-597; src/modes/components/status-line/segments.ts:258-264"
+    "source": "src/slash-commands/builtin-modes.ts:573-597; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:258-264"
   },
   {
     "id": "C3.vibe-mode",
@@ -3651,7 +3651,7 @@
     "kind": "mode",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/interactive-mode.ts:3581-3685; src/modes/components/status-line/segments.ts:277-285"
+    "source": "src/modes/interactive-mode.ts:3581-3685; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:277-285"
   },
   {
     "id": "C3.advisor-configuration-overlay",
@@ -3678,7 +3678,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "side panel",
-    "source": "src/modes/components/cleanse-panel.ts:30-174; src/modes/controllers/cleanse-command-controller.ts:68-120"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/cleanse-panel.ts; src/modes/controllers/cleanse-command-controller.ts:68-120"
   },
   {
     "id": "C3.debug-selector",
@@ -3696,7 +3696,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "side panel",
-    "source": "src/modes/components/omfg-panel.ts:21-151; src/modes/controllers/omfg-controller.ts:73-223"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/omfg-panel.ts; src/modes/controllers/omfg-controller.ts:73-223"
   },
   {
     "id": "C3.pause-screen",
@@ -3705,7 +3705,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/modes/components/pause-screen.ts:124-193"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/pause-screen.ts:124-193"
   },
   {
     "id": "C3.advisor-note-card",
@@ -3723,7 +3723,7 @@
     "kind": "command",
     "rpc": "terminal-only",
     "ui": "side panel",
-    "source": "src/slash-commands/builtin-session.ts:434-442; src/modes/components/extensions/extension-dashboard.ts:66-430"
+    "source": "src/slash-commands/builtin-session.ts:434-442; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/extensions/extension-dashboard.ts:66-430"
   },
   {
     "id": "C4.marketplace",
@@ -3876,7 +3876,7 @@
     "kind": "subcommand",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/slash-commands/builtin-marketplace.ts:54-59,154-190,234-247; src/modes/components/plugin-selector.ts:24-87"
+    "source": "src/slash-commands/builtin-marketplace.ts:54-59,154-190,234-247; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/plugin-selector.ts:24-87"
   },
   {
     "id": "C4.marketplace-installed",
@@ -3939,7 +3939,7 @@
     "kind": "subcommand",
     "rpc": "RPC",
     "ui": "dialog",
-    "source": "src/slash-commands/builtin-session.ts:559-563; src/modes/components/mcp-add-wizard.ts:98-383; src/modes/controllers/mcp-command-controller.ts:772-813"
+    "source": "src/slash-commands/builtin-session.ts:559-563; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/mcp-add-wizard.ts:98-383; src/modes/controllers/mcp-command-controller.ts:772-813"
   },
   {
     "id": "C4.mcp-disable",
@@ -4245,7 +4245,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "side panel",
-    "source": "src/modes/components/extensions/extension-dashboard.ts:66-430"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/extensions/extension-dashboard.ts:66-430"
   },
   {
     "id": "C4.mcp-add-wizard",
@@ -4254,7 +4254,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "dialog",
-    "source": "src/modes/components/mcp-add-wizard.ts:98-383,900-1395; src/modes/controllers/mcp-command-controller.ts:772-813"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/mcp-add-wizard.ts:98-383,900-1395; src/modes/controllers/mcp-command-controller.ts:772-813"
   },
   {
     "id": "C4.plugin-marketplace-picker",
@@ -4263,7 +4263,7 @@
     "kind": "dialog",
     "rpc": "RPC",
     "ui": "picker",
-    "source": "src/modes/components/plugin-selector.ts:24-87; src/modes/controllers/selector-controller.ts:1062-1160"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/plugin-selector.ts:24-87; src/modes/controllers/selector-controller.ts:1062-1160"
   },
   {
     "id": "C5.collab",
@@ -4353,7 +4353,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "card",
-    "source": "src/modes/components/collab-prompt-message.ts:1-60; src/modes/utils/ui-helpers.ts:206-209"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/collab-prompt-message.ts; src/modes/utils/ui-helpers.ts:206-209"
   },
   {
     "id": "C6.python-composer-mode",
@@ -4362,7 +4362,7 @@
     "kind": "composer",
     "rpc": "terminal-only",
     "ui": "composer feature",
-    "source": "src/modes/controllers/input-controller.ts:858-876; src/modes/utils/hotkeys-markdown.ts:65-68"
+    "source": "src/modes/controllers/input-controller.ts:858-876; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:65-68"
   },
   {
     "id": "C6.bash-composer-mode",
@@ -4371,7 +4371,7 @@
     "kind": "composer",
     "rpc": "RPC",
     "ui": "composer feature",
-    "source": "src/modes/controllers/input-controller.ts:834-857; src/modes/utils/hotkeys-markdown.ts:61-66"
+    "source": "src/modes/controllers/input-controller.ts:834-857; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/utils/hotkeys-markdown.ts:61-66"
   },
   {
     "id": "C6.user-python-execution",
@@ -4380,7 +4380,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/session/messages.ts:948-969; src/modes/utils/ui-helpers.ts:172-181; src/modes/components/eval-execution.ts:1-180"
+    "source": "src/session/messages.ts:948-969; src/modes/utils/ui-helpers.ts:172-181; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/eval-execution.ts:1-180"
   },
   {
     "id": "C6.user-bash-execution",
@@ -4389,7 +4389,7 @@
     "kind": "message-type",
     "rpc": "RPC",
     "ui": "collapsible card",
-    "source": "src/session/messages.ts:929-947; src/modes/utils/ui-helpers.ts:160-170; src/modes/components/bash-execution.ts:1-190"
+    "source": "src/session/messages.ts:929-947; src/modes/utils/ui-helpers.ts:160-170; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/bash-execution.ts:1-190"
   },
   {
     "id": "N1.ttsr-rewind-notification",
@@ -4398,7 +4398,7 @@
     "kind": "notification",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/components/ttsr-notification.ts:1-135; src/modes/controllers/event-controller.ts:2065-2084"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/ttsr-notification.ts:1-135; src/modes/controllers/event-controller.ts:2065-2084"
   },
   {
     "id": "N1.automatic-retry-loader-result",
@@ -4416,7 +4416,7 @@
     "kind": "notification",
     "rpc": "RPC",
     "ui": "toast",
-    "source": "src/modes/rpc/rpc-mode.ts:1438-1446; src/modes/rpc/rpc-types.ts:430-440; src/modes/components/login-dialog.ts:63-93"
+    "source": "src/modes/rpc/rpc-mode.ts:1438-1446; src/modes/rpc/rpc-types.ts:430-440; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/login-dialog.ts:63-93"
   },
   {
     "id": "N1.extension-editor-text-update",
@@ -4443,7 +4443,7 @@
     "kind": "notification",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/controllers/extension-ui-controller.ts:103-111; src/modes/components/status-line/component.ts:368-370,677-683,2242-2248"
+    "source": "src/modes/controllers/extension-ui-controller.ts:103-111; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/component.ts:368-370,677-683,2242-2248"
   },
   {
     "id": "N1.extension-terminal-title",
@@ -4488,7 +4488,7 @@
     "kind": "notification",
     "rpc": "RPC",
     "ui": "toast",
-    "source": "src/modes/components/error-banner.ts:1-43; src/modes/components/assistant-message.ts:199-208"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/error-banner.ts; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/assistant-message.ts:199-208"
   },
   {
     "id": "N1.retry-fallback-notification",
@@ -4515,7 +4515,7 @@
     "kind": "notification",
     "rpc": "RPC",
     "ui": "panel",
-    "source": "src/modes/components/todo-reminder.ts:1-56; src/modes/controllers/event-controller.ts:2087-2090"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/todo-reminder.ts; src/modes/controllers/event-controller.ts:2087-2090"
   },
   {
     "id": "N2.collab",
@@ -4524,7 +4524,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:647-661"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:647-661"
   },
   {
     "id": "N2.git",
@@ -4533,7 +4533,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:334-377"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:334-377"
   },
   {
     "id": "N2.hostname",
@@ -4542,7 +4542,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:576-582"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:576-582"
   },
   {
     "id": "N2.mode",
@@ -4551,7 +4551,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:247-288"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:247-288"
   },
   {
     "id": "N2.model",
@@ -4560,7 +4560,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:114-245"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:114-245"
   },
   {
     "id": "N2.path",
@@ -4569,7 +4569,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:291-332"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:291-332"
   },
   {
     "id": "N2.pi",
@@ -4578,7 +4578,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:102-112"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:102-112"
   },
   {
     "id": "N2.pr",
@@ -4587,7 +4587,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:379-389"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:379-389"
   },
   {
     "id": "N2.session",
@@ -4596,7 +4596,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:565-575"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:565-575"
   },
   {
     "id": "N2.session-name",
@@ -4605,7 +4605,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:630-645"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:630-645"
   },
   {
     "id": "N2.subagents",
@@ -4614,7 +4614,7 @@
     "kind": "status-segment",
     "rpc": "RPC",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:391-400"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:391-400"
   },
   {
     "id": "N2.time",
@@ -4623,7 +4623,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:541-564"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:541-564"
   },
   {
     "id": "N2.time-spent",
@@ -4632,7 +4632,7 @@
     "kind": "status-segment",
     "rpc": "terminal-only",
     "ui": "status chip",
-    "source": "src/modes/components/status-line/segments.ts:524-539"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/status-line/segments.ts:524-539"
   },
   {
     "id": "S1.settings",
@@ -4650,7 +4650,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/modes/components/plugin-settings.ts:169-463,625-763; src/modes/controllers/selector-controller.ts:182-241"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/plugin-settings.ts:169-463,625-763; src/modes/controllers/selector-controller.ts:182-241"
   },
   {
     "id": "S1.settings-selector",
@@ -4659,7 +4659,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "dialog",
-    "source": "src/modes/components/settings-selector.ts:596-923; src/modes/components/settings-defs.ts:1-300"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/settings-selector.ts:596-923; https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/settings-defs.ts"
   },
   {
     "id": "S1.show-images-selector",
@@ -4668,7 +4668,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/modes/components/show-images-selector.ts:9-56"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/show-images-selector.ts"
   },
   {
     "id": "S1.theme-selector",
@@ -4677,7 +4677,7 @@
     "kind": "dialog",
     "rpc": "terminal-only",
     "ui": "picker",
-    "source": "src/modes/components/theme-selector.ts:10-59"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.2.4/packages/coding-agent/src/modes/components/theme-selector.ts:10-59"
   },
   {
     "id": "S1.appearance-composer",
@@ -4704,7 +4704,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:974-1001"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:974-1001"
   },
   {
     "id": "S1.appearance-status-line",
@@ -4713,7 +4713,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:198-200,744-843,954-960"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:198-200,744-843,954-960"
   },
   {
     "id": "S1.appearance-theme",
@@ -4722,7 +4722,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:198-200,678-725"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:198-200,678-725"
   },
   {
     "id": "S2.model-advisor",
@@ -4740,7 +4740,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:538-548"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:538-548"
   },
   {
     "id": "S2.model-prompt",
@@ -4767,7 +4767,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:1552-1745"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:1552-1745"
   },
   {
     "id": "S2.model-thinking",
@@ -4785,7 +4785,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:1006-1117"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:1006-1117"
   },
   {
     "id": "S3.interaction-agent",
@@ -4794,7 +4794,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:5458-5468"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:5458-5468"
   },
   {
     "id": "S3.interaction-approvals",
@@ -4803,7 +4803,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:3599-3670"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:3599-3670"
   },
   {
     "id": "S3.interaction-collab",
@@ -4821,7 +4821,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:585-591"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:585-591"
   },
   {
     "id": "S3.interaction-input",
@@ -4848,7 +4848,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:2172-2253"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:2172-2253"
   },
   {
     "id": "S3.interaction-power",
@@ -4902,7 +4902,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:2412-2617"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:2412-2617"
   },
   {
     "id": "S4.context-experimental",
@@ -4911,7 +4911,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:2620-2712"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:2620-2712"
   },
   {
     "id": "S4.context-general",
@@ -4920,7 +4920,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:1510-1518,2385-2410,2812-2820"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:1510-1518,2385-2410,2812-2820"
   },
   {
     "id": "S4.context-rules-ttsr",
@@ -4929,7 +4929,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:3325-3415"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:3325-3415"
   },
   {
     "id": "S5.files-editing",
@@ -4947,7 +4947,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:3627-3694"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:3627-3694"
   },
   {
     "id": "S5.files-read-summaries",
@@ -4956,7 +4956,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:3536-3612"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:3536-3612"
   },
   {
     "id": "S5.files-reading",
@@ -4965,7 +4965,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:3496-3532,3615-3623"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:3496-3532,3615-3623"
   },
   {
     "id": "S5.memory-auto-learn",
@@ -4974,7 +4974,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:2891-2915"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:2891-2915"
   },
   {
     "id": "S5.memory-general",
@@ -4983,7 +4983,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:2867-2887,5415-5425"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:2867-2887,5415-5425"
   },
   {
     "id": "S5.memory-hindsight",
@@ -4992,7 +4992,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:3161-3319"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:3161-3319"
   },
   {
     "id": "S5.memory-sharpshooter",
@@ -5010,7 +5010,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:2918-3151"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:2918-3151"
   },
   {
     "id": "S5.providers-fireworks",
@@ -5019,7 +5019,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:5350-5353"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:5350-5353"
   },
   {
     "id": "S5.providers-privacy",
@@ -5055,7 +5055,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:5554-5590"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:5554-5590"
   },
   {
     "id": "S5.providers-tiny-model",
@@ -5091,7 +5091,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:5050-5120"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:5050-5120"
   },
   {
     "id": "S5.tasks-isolation",
@@ -5136,7 +5136,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:4190-4238"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:4190-4238"
   },
   {
     "id": "S5.tools-ida-pro",
@@ -5154,7 +5154,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:5806-5821"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:5806-5821"
   },
   {
     "id": "S5.tools-discovery-mcp",
@@ -5172,7 +5172,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:4239-4259,4474-4598"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:4239-4259,4474-4598"
   },
   {
     "id": "S5.tools-extensions",
@@ -5181,7 +5181,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:5792-5803"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:5792-5803"
   },
   {
     "id": "S5.tools-github",
@@ -5190,7 +5190,7 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:4290-4325"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:4290-4325"
   },
   {
     "id": "S5.tools-grep-browser",
@@ -5217,6 +5217,6 @@
     "kind": "setting-group",
     "rpc": "terminal-only",
     "ui": "settings section",
-    "source": "src/config/settings-schema.ts:3988-4032,5008-5038"
+    "source": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.3.0/packages/coding-agent/src/config/settings-schema.ts:3988-4032,5008-5038"
   }
 ]
