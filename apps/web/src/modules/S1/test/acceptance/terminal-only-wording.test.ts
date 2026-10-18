@@ -79,6 +79,7 @@ const TERMINAL_ONLY_SOURCES: Readonly<Record<string, string>> = {
   "startup.showSplash": "main.ts shouldShowStartupSplash receives isInteractive",
   "startup.setupWizard": "main.ts setup scene selection is interactive-only",
   "startup.checkUpdate": "main.ts version check is created only in isInteractive branch",
+  "mcp.renderMarkdownResults": "mcp/settings.ts effect into pi-tui's MCP renderer; terminal only",
 };
 
 const ALL_SECTIONS = [...SETTINGS_SECTIONS, ...P7_CONTEXT_SETTINGS_SECTIONS];
