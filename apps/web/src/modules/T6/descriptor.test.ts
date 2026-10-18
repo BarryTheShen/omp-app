@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { T6_INVENTORY_COVERS, T6_MEMORY_EDIT_CAPABILITY, T6_TOOL_DESCRIPTORS } from "./descriptor";
+import { T6_INVENTORY_COVERS, T6_TOOL_DESCRIPTORS } from "./descriptor";
 
 describe("T6 tool descriptors", () => {
   test("claims exactly the six memory/learning inventory rows once", () => {
@@ -18,7 +18,7 @@ describe("T6 tool descriptors", () => {
     expect(new Set(T6_TOOL_DESCRIPTORS.flatMap((descriptor) => descriptor.covers)).size).toBe(6);
   });
 
-  test("matches exact omp v18.6.1 tool names, the xd__ memory names, and uses U3 fallback renderers", () => {
+  test("matches exact omp v18.9.1 tool names and associates every card renderer", () => {
     expect(T6_TOOL_DESCRIPTORS.map((descriptor) => descriptor.match)).toEqual([
       { by: "name", name: "learn" },
       { by: "name", name: "manage_skill" },
@@ -30,6 +30,6 @@ describe("T6 tool descriptors", () => {
       { by: "name", name: "xd__retain" },
     ]);
     expect(T6_TOOL_DESCRIPTORS.every((descriptor) => descriptor.renderer)).toBe(true);
-    expect(T6_MEMORY_EDIT_CAPABILITY).toBe("upstream.memory-edit");
+    expect(T6_TOOL_DESCRIPTORS.every((descriptor) => descriptor.requires.length === 0)).toBe(true);
   });
 });
