@@ -93,6 +93,8 @@ describe("design token boundary", () => {
   test("tokens.css is the file allowed to declare raw colors", () => {
     const text = readFileSync(join(STYLES_DIR, "tokens.css"), "utf-8");
     expect(text).toMatch(/oklch\(/);
+    expect(text).not.toMatch(/color-mix\(/);
+    expect(text).not.toMatch(/oklch\([^)]*var\(/);
   });
 
   test("no other src file hard-codes a color, arbitrary pixel size or shadow", () => {

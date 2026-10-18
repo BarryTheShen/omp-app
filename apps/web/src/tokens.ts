@@ -104,6 +104,11 @@ export const radiusTokens = {
   "2xl": "var(--radius-2xl)",
   "3xl": "var(--radius-3xl)",
   "4xl": "var(--radius-4xl)",
+  control: "var(--radius-control)",
+  surface: "var(--radius-surface)",
+  thread: "var(--radius-thread)",
+  document: "var(--radius-document)",
+  pill: "var(--radius-pill)",
 } as const satisfies Record<string, string>;
 export type RadiusToken = keyof typeof radiusTokens;
 
@@ -147,16 +152,21 @@ export type ZIndexToken = keyof typeof zIndexTokens;
 
 export const fontTokens = {
   sans: "var(--font-sans)",
+  display: "var(--font-display)",
+  heading: "var(--font-heading)",
   mono: "var(--font-mono)",
 } as const satisfies Record<string, string>;
 export type FontToken = keyof typeof fontTokens;
 
 export const typeScaleTokens = {
+  meta: { fontSize: "0.6875rem", lineHeight: "1.5" },
   xs: { fontSize: "0.75rem", lineHeight: "1rem" },
-  sm: { fontSize: "0.8125rem", lineHeight: "1.25rem" },
-  base: { fontSize: "0.875rem", lineHeight: "1.375rem" },
-  md: { fontSize: "0.9375rem", lineHeight: "1.5rem" },
-  lg: { fontSize: "1.0625rem", lineHeight: "1.625rem" },
+  trace: { fontSize: "0.75rem", lineHeight: "1.625" },
+  sm: { fontSize: "0.8125rem", lineHeight: "1.5" },
+  code: { fontSize: "0.78125rem", lineHeight: "1.625" },
+  md: { fontSize: "0.9375rem", lineHeight: "1.5" },
+  base: { fontSize: "1rem", lineHeight: "1.5rem" },
+  lg: { fontSize: "1.125rem", lineHeight: "1.75rem" },
   xl: { fontSize: "1.25rem", lineHeight: "1.75rem" },
   "2xl": { fontSize: "1.5rem", lineHeight: "2rem" },
 } as const satisfies Record<string, { fontSize: string; lineHeight: string }>;

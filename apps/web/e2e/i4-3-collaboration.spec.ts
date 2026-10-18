@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -46,6 +46,21 @@ function buildPlaygroundPage(): void {
   );
 }
 
+async function expectSidebarToken(page: Page): Promise<void> {
+  const colors = await page.locator('[data-u0-right-sidebar="true"]').evaluate((element) => {
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = "var(--sidebar)";
+    document.body.append(probe);
+    const value = {
+      actual: getComputedStyle(element).backgroundColor,
+      token: getComputedStyle(probe).backgroundColor,
+    };
+    probe.remove();
+    return value;
+  });
+  expect(colors.actual).toBe(colors.token);
+}
+
 test.beforeAll(() => buildPlaygroundPage());
 
 test.describe("I4.3 collaboration panel", () => {
@@ -64,10 +79,7 @@ test.describe("I4.3 collaboration panel", () => {
         "Every action is unavailable because omp only offers collaboration in its terminal.",
       ),
     ).toHaveCount(1);
-    const lightSidebar = await page
-      .locator('[data-u0-right-sidebar="true"]')
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    expect(lightSidebar).toBe("oklch(1 0 0)");
+    await expectSidebarToken(page);
     await page.screenshot({
       path: join(SCREENSHOTS, "i4.3-collaboration-light.png"),
       fullPage: true,
@@ -78,10 +90,7 @@ test.describe("I4.3 collaboration panel", () => {
     const darkPanel = darkPage.getByRole("region", { name: "Collaboration" });
     await expect(darkPanel).toBeVisible();
     await expect(darkPage.locator("html")).toHaveClass(/dark/);
-    const darkSidebar = await darkPage
-      .locator('[data-u0-right-sidebar="true"]')
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    expect(darkSidebar).not.toBe("oklch(1 0 0)");
+    await expectSidebarToken(darkPage);
     await darkPage.screenshot({
       path: join(SCREENSHOTS, "i4.3-collaboration-dark.png"),
       fullPage: true,
@@ -95,10 +104,7 @@ test.describe("I4.3 collaboration panel", () => {
     await expect(panel).toBeVisible();
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(scrollWidth).toBeLessThanOrEqual(390);
-    const narrowSidebar = await page
-      .locator('[data-u0-right-sidebar="true"]')
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    expect(narrowSidebar).toBe("oklch(1 0 0)");
+    await expectSidebarToken(page);
     await page.screenshot({
       path: join(SCREENSHOTS, "i4.3-collaboration-390.png"),
       fullPage: true,

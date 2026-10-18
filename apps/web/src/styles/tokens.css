@@ -1,80 +1,13 @@
 /**
- * U0 design tokens (Plan item 2, `modules/U0/README.md`). Colors are omp's own: the app uses the
- * themes omp v18.6.1 ships as its defaults (`theme.dark = "titanium"`, `theme.light = "light"`,
- * docs/theme.md), so the browser looks like the terminal it extends. This file is the one place in
- * `apps/web/src` allowed to hold a raw color, pixel or shadow literal; everywhere else consumes
- * these custom properties, or the typed mirror in `src/tokens.ts` (enforced by
- * `raw-values.test.ts` in this folder, H4).
+ * The palette is the assistant-ui home demo's. Its literal semantic values and the app's small
+ * contrast corrections are documented in `research/ui-redesign.md`.
  *
- * Two layers:
- * 1. Primitives (`--omp-titanium-*`, `--omp-light-*`): omp's theme colors, converted to OKLCH
- *    (the source hex is beside each). They never change between themes; nothing outside this file
- *    references a primitive, only the semantic tokens below.
- * 2. Semantics: the shadcn-compatible names (`--background`, `--primary`, `--destructive`,
- *    `--card`, `--sidebar-*`, …) that `src/components/ui/**` and `src/components/assistant-ui/**`
- *    (copied, U0.1) already depend on, plus U0's own additions (`--info`, `--success`,
- *    `--warning`, `--diff-add`, `--diff-remove`). Each is assigned once for light (`:root`) and
- *    once for dark (`.dark`); consumers always read a semantic name, never a primitive.
- *
- * To change the palette, change the primitives (or point the semantics at others); no component
- * changes. `contrast.test.ts` checks the text pairs of both themes against WCAG AA.
+ * Raw color, size and shadow values live here. `src/tokens.ts` is the typed mirror; the styles
+ * tests enforce both the boundary and the mirror.
  */
 
-/* ---------- Primitives (theme-independent) ---------- */
+/* ---------- Theme-independent layout tokens ---------- */
 :root {
-  /* omp "titanium" (dark default): packages/tui/src/theme/defaults/titanium.json. */
-  --omp-titanium-brushed: oklch(0.2096 0.0166 268.85); /* #151820 page, terminal background */
-  --omp-titanium-dark: oklch(0.1808 0.0095 255.64); /* #0f1216 chrome, cards, tool output */
-  --omp-titanium-widget: oklch(0.2435 0.0182 266.22); /* #1c2029 widgets */
-  --omp-titanium-electric-blue: oklch(0.73 0.1603 237.36); /* #00b4ff accent */
-  --omp-titanium-deep-blue: oklch(0.5716 0.1195 233.93); /* #0082b3 selection */
-  --omp-titanium-gold: oklch(0.8129 0.0673 88.01); /* #d4c090 */
-  --omp-titanium-bright-aluminum: oklch(0.9424 0.0116 264.51); /* #e8ecf4 text */
-  --omp-titanium-dim-aluminum: oklch(0.714 0.0205 262.98); /* #9ca3b0 muted text */
-  --omp-titanium-dim: oklch(0.551 0.0234 264.36); /* #6b7280 dim */
-  --omp-titanium-subtle-gray: oklch(0.3067 0.0167 255.65); /* #2a3038 border */
-  --omp-titanium-border-muted: oklch(0.2621 0.0174 255.68); /* #1f252d muted border */
-  --omp-titanium-readout-green: oklch(0.8763 0.2278 152.55); /* #00ff88 success */
-  --omp-titanium-alert-red: oklch(0.6689 0.2189 20.91); /* #ff4757 error */
-  --omp-titanium-warning-amber: oklch(0.8208 0.1486 72.1); /* #ffb347 warning */
-  --omp-titanium-tool-error-bg: oklch(0.1839 0.0188 13.06); /* #1a0f10 failed tool */
-  /* titanium's bright ANSI colors, for text on its status tints. */
-  --omp-titanium-bright-green: oklch(0.8998 0.1691 156.97); /* #6bffb0 */
-  --omp-titanium-bright-yellow: oklch(0.8993 0.1298 91.71); /* #fddb72 */
-  --omp-titanium-bright-red: oklch(0.7386 0.1608 16.7); /* #ff7b86 */
-  --omp-titanium-bright-blue: oklch(0.8004 0.1161 236.72); /* #6ec9ff */
-  /* Status tints: 12% of the status color over #0f1216 (omp tints only failed tools). */
-  --omp-titanium-success-tint: oklch(0.2734 0.043 170.06); /* #0d2e24 */
-  --omp-titanium-warning-tint: oklch(0.2694 0.0191 73.82); /* #2c251c */
-  --omp-titanium-info-tint: oklch(0.2521 0.0387 234.88); /* #0d2532 */
-
-  /* omp "light" (light default): packages/tui/src/theme/light.json. */
-  --omp-light-page: oklch(0.9791 0 0); /* #f8f8f8 page, terminal background */
-  --omp-light-card: oklch(1 0 0); /* #ffffff cards */
-  --omp-light-text: oklch(0.3523 0 0); /* #3b3b3b text */
-  --omp-light-teal: oklch(0.5716 0.0425 196.03); /* #5a8080 accent */
-  --omp-light-blue: oklch(0.577 0.0797 249.92); /* #547da7 */
-  --omp-light-green: oklch(0.5691 0.0824 144.4); /* #588458 success */
-  --omp-light-red: oklch(0.5528 0.1118 21.34); /* #aa5555 error */
-  --omp-light-yellow: oklch(0.5804 0.1039 80.64); /* #9a7326 warning */
-  --omp-light-medium-gray: oklch(0.5313 0 0); /* #6c6c6c muted text */
-  --omp-light-dim-gray: oklch(0.5658 0 0); /* #767676 dim */
-  --omp-light-selected: oklch(0.8624 0.022 285.93); /* #d0d0e0 selection */
-  --omp-light-user-message: oklch(0.931 0 0); /* #e8e8e8 user message */
-  --omp-light-status-line: oklch(0.9067 0 0); /* #e0e0e0 status line */
-  --omp-light-tool-success: oklch(0.9469 0.0136 145.47); /* #e8f0e8 */
-  --omp-light-tool-error: oklch(0.9373 0.0087 17.31); /* #f0e8e8 */
-  --omp-light-tool-pending: oklch(0.9333 0.0107 286.19); /* #e8e8f0 */
-  --omp-light-info-bg: oklch(0.9837 0.0267 95.33); /* #fffae6 export info */
-  --omp-light-purple: oklch(0.5416 0.0774 326.58); /* #875f87 status-line model */
-  --omp-light-syntax-type: oklch(0.5566 0.0901 221.73); /* #267f99 */
-  --omp-light-syntax-string: oklch(0.4587 0.175 27.74); /* #a31515 */
-  --omp-light-syntax-function: oklch(0.4978 0.0812 83.01); /* #795e26 */
-  /* omp's light green and blue are too faint for text on their tints (<4.5:1); these are darker
-     shades of the same hues. */
-  --omp-light-green-strong: oklch(0.4784 0.0967 143.88); /* #386b38 */
-  --omp-light-blue-strong: oklch(0.4829 0.0757 251.45); /* #3d6188 */
-
   /* Spacing: semantic names over Tailwind's own numeric scale (both stay available). */
   --space-3xs: 0.125rem;
   --space-2xs: 0.25rem;
@@ -86,15 +19,8 @@
   --space-2xl: 2rem;
   --space-3xl: 3rem;
 
-  /*
-   * Layout: how wide the conversation is (messages, tool cards, the composer and the queue bar all
-   * share it, so they line up). A moderate share of a wide window, not all of it: the owner's feedback
-   * #654 found 48rem too narrow on a wide screen. Change it here, in one place.
-   */
-  --layout-thread-width: 60rem;
-
-  /* Radii: soft, generous rounding (shadcn's own default base is 0.625rem). */
-  --radius: 0.75rem;
+  /* Radii follow the approved compact 0.5rem base. */
+  --radius: 0.5rem;
 
   /* Borders */
   --border-width-hairline: 1px;
@@ -119,14 +45,6 @@
   --z-popover: 1400;
   --z-tooltip: 1500;
   --z-toast: 1600;
-
-  /* Shadows: soft, low-opacity in light; dark needs a stronger wash plus a faint top highlight to
-     separate a raised surface from the page behind it. */
-  --shadow-xs-raw: 0 1px 2px rgb(0 0 0 / 4%);
-  --shadow-sm-raw: 0 1px 3px rgb(0 0 0 / 6%), 0 1px 2px rgb(0 0 0 / 4%);
-  --shadow-md-raw: 0 4px 10px rgb(0 0 0 / 8%), 0 2px 4px rgb(0 0 0 / 4%);
-  --shadow-lg-raw: 0 12px 28px rgb(0 0 0 / 12%), 0 4px 8px rgb(0 0 0 / 4%);
-  --shadow-overlay-raw: 0 16px 40px rgb(0 0 0 / 16%), 0 6px 12px rgb(0 0 0 / 8%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -139,156 +57,122 @@
   }
 }
 
-/* ---------- Semantics: light (omp "light") ---------- */
+/* ---------- Assistant-ui home demo tokens: light ---------- */
 :root {
-  /* Native controls (select menus, scrollbars, date pickers) follow the theme. */
-  color-scheme: light;
-  --background: var(--omp-light-page);
-  --foreground: var(--omp-light-text);
-  --card: var(--omp-light-card);
-  --card-foreground: var(--omp-light-text);
-  --popover: var(--omp-light-card);
-  --popover-foreground: var(--omp-light-text);
-  /* omp's light accent (teal #5a8080) carries white text at only 4.3:1; filled controls use the
-     theme's own deeper teal (its syntax type color), the accent stays for rings and links. */
-  --primary: var(--omp-light-syntax-type);
-  --primary-foreground: var(--omp-light-card);
-  --secondary: var(--omp-light-user-message);
-  --secondary-foreground: var(--omp-light-text);
-  --muted: var(--omp-light-user-message);
-  --muted-foreground: var(--omp-light-medium-gray);
-  --accent: var(--omp-light-selected);
-  --accent-foreground: var(--omp-light-text);
-  --destructive: var(--omp-light-red);
-  --border: var(--omp-light-status-line);
-  --input: var(--omp-light-dim-gray);
-  --ring: var(--omp-light-teal);
-  --chart-1: var(--omp-light-teal);
-  --chart-2: var(--omp-light-green);
-  --chart-3: var(--omp-light-yellow);
-  --chart-4: var(--omp-light-blue);
-  --chart-5: var(--omp-light-purple);
-  --sidebar: var(--omp-light-card);
-  --sidebar-foreground: var(--omp-light-text);
-  --sidebar-primary: var(--omp-light-syntax-type);
-  --sidebar-primary-foreground: var(--omp-light-card);
-  --sidebar-accent: var(--omp-light-selected);
-  --sidebar-accent-foreground: var(--omp-light-text);
-  --sidebar-border: var(--omp-light-status-line);
-  --sidebar-ring: var(--omp-light-teal);
-
-  --info: var(--omp-light-blue);
-  --success: var(--omp-light-green);
-  --warning: var(--omp-light-yellow);
-  --danger: var(--destructive);
-  --success-surface: var(--omp-light-tool-success);
-  --success-surface-foreground: var(--omp-light-green-strong);
-  --warning-surface: var(--omp-light-info-bg);
-  --warning-surface-foreground: var(--omp-light-syntax-function);
-  --danger-surface: var(--omp-light-tool-error);
-  --danger-surface-foreground: var(--omp-light-syntax-string);
-  --info-surface: var(--omp-light-tool-pending);
-  --info-surface-foreground: var(--omp-light-blue-strong);
-  --diff-add-surface: var(--omp-light-tool-success);
-  --diff-add-foreground: var(--omp-light-green-strong);
-  --diff-remove-surface: var(--omp-light-tool-error);
-  --diff-remove-foreground: var(--omp-light-syntax-string);
-  --diff-add: var(--omp-light-green);
-  --diff-remove: var(--omp-light-red);
-  /* Syntax code view: the omp light syntax colours, consumed by Shiki's CSS-variable theme. */
+  --background: oklch(0.992 0.002 106);
+  --foreground: oklch(0.145 0.006 106);
+  --card: oklch(0.992 0.002 106);
+  --card-foreground: oklch(0.145 0.006 106);
+  --popover: oklch(0.992 0.002 106);
+  --popover-foreground: oklch(0.145 0.006 106);
+  --primary: oklch(0.205 0.006 106);
+  --primary-foreground: oklch(0.985 0.003 106);
+  --secondary: oklch(0.97 0.004 106);
+  --secondary-foreground: oklch(0.205 0.006 106);
+  --muted: oklch(0.97 0.004 106);
+  --muted-foreground: oklch(0.545 0.007 106);
+  --accent: oklch(0.97 0.004 106);
+  --accent-foreground: oklch(0.205 0.006 106);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.145 0.006 106 / 10%);
+  --input: oklch(0.64 0.006 106);
+  --ring: oklch(0.545 0.007 106);
+  --sidebar: oklch(0.974 0.002 106);
+  --sidebar-foreground: oklch(0.145 0.006 106);
+  --sidebar-primary: oklch(0.205 0.006 106);
+  --sidebar-primary-foreground: oklch(0.985 0.003 106);
+  --sidebar-accent: oklch(0.145 0.006 106 / 6%);
+  --sidebar-accent-foreground: oklch(0.145 0.006 106);
+  --sidebar-border: oklch(0.145 0.006 106 / 10%);
+  --sidebar-ring: oklch(0.545 0.007 106);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --info: oklch(0.546 0.245 262.881);
+  --success: oklch(0.527 0.154 150.069);
+  --warning: oklch(0.555 0.163 48.998);
+  --danger: oklch(0.577 0.245 27.325);
+  --info-surface: oklch(0.953 0.016 264.2);
+  --info-surface-foreground: oklch(0.424 0.199 265.638);
+  --success-surface: oklch(0.953 0.015 154.6);
+  --success-surface-foreground: oklch(0.448 0.119 151.328);
+  --warning-surface: oklch(0.955 0.014 63.3);
+  --warning-surface-foreground: oklch(0.473 0.137 46.201);
+  --danger-surface: oklch(0.946 0.02 19.5);
+  --danger-surface-foreground: oklch(0.505 0.213 27.518);
+  --diff-add: var(--success);
+  --diff-add-surface: var(--success-surface);
+  --diff-add-foreground: var(--success-surface-foreground);
+  --diff-remove: var(--danger);
+  --diff-remove-surface: var(--danger-surface);
+  --diff-remove-foreground: var(--danger-surface-foreground);
   --code-foreground: var(--foreground);
-  --code-background: var(--muted);
   --code-token-comment: var(--muted-foreground);
-  --code-token-keyword: var(--omp-light-blue-strong);
-  --code-token-string: var(--omp-light-syntax-string);
-  --code-token-constant: var(--omp-light-green-strong);
-  --code-token-parameter: var(--omp-light-purple);
-  --code-token-function: var(--omp-light-syntax-function);
-  --code-token-string-expression: var(--omp-light-syntax-string);
   --code-token-punctuation: var(--muted-foreground);
-  --code-token-link: var(--omp-light-blue-strong);
-  --code-token-inserted: var(--omp-light-green-strong);
-  --code-token-deleted: var(--omp-light-red);
-  --code-token-changed: var(--warning-surface-foreground);
+  --code-token-keyword: var(--info);
+  --code-token-link: var(--info);
+  --code-token-string: var(--success);
+  --code-token-string-expression: var(--success);
+  --code-token-inserted: var(--success);
+  --code-token-constant: var(--warning);
+  --code-token-parameter: var(--warning);
+  --code-token-function: var(--foreground);
+  --code-token-deleted: var(--danger);
+  --layout-thread-width: 45rem;
+  --shadow-xs-raw: 0 0 #0000;
+  --shadow-sm-raw: 0 0 #0000;
+  --shadow-md-raw: 0 0 #0000;
+  --shadow-lg-raw: 0 0 #0000;
+  --shadow-overlay-raw: 0 0 #0000;
 }
 
-/* ---------- Semantics: dark (omp "titanium") ---------- */
+/* ---------- Assistant-ui home demo tokens: dark ---------- */
 .dark {
-  color-scheme: dark;
-  --background: var(--omp-titanium-brushed);
-  --foreground: var(--omp-titanium-bright-aluminum);
-  --card: var(--omp-titanium-dark);
-  --card-foreground: var(--omp-titanium-bright-aluminum);
-  --popover: var(--omp-titanium-widget);
-  --popover-foreground: var(--omp-titanium-bright-aluminum);
-  --primary: var(--omp-titanium-electric-blue);
-  --primary-foreground: var(--omp-titanium-dark);
-  --secondary: var(--omp-titanium-widget);
-  --secondary-foreground: var(--omp-titanium-bright-aluminum);
-  --muted: var(--omp-titanium-widget);
-  --muted-foreground: var(--omp-titanium-dim-aluminum);
-  --accent: var(--omp-titanium-subtle-gray);
-  --accent-foreground: var(--omp-titanium-bright-aluminum);
-  --destructive: var(--omp-titanium-alert-red);
-  --border: var(--omp-titanium-subtle-gray);
-  --input: var(--omp-titanium-dim);
-  --ring: var(--omp-titanium-electric-blue);
-  --chart-1: var(--omp-titanium-electric-blue);
-  --chart-2: var(--omp-titanium-readout-green);
-  --chart-3: var(--omp-titanium-warning-amber);
-  --chart-4: var(--omp-titanium-gold);
-  --chart-5: var(--omp-titanium-dim-aluminum);
-  --sidebar: var(--omp-titanium-dark);
-  --sidebar-foreground: var(--omp-titanium-bright-aluminum);
-  --sidebar-primary: var(--omp-titanium-electric-blue);
-  --sidebar-primary-foreground: var(--omp-titanium-dark);
-  --sidebar-accent: var(--omp-titanium-subtle-gray);
-  --sidebar-accent-foreground: var(--omp-titanium-bright-aluminum);
-  --sidebar-border: var(--omp-titanium-border-muted);
-  --sidebar-ring: var(--omp-titanium-electric-blue);
-
-  --info: var(--omp-titanium-electric-blue);
-  --success: var(--omp-titanium-readout-green);
-  --warning: var(--omp-titanium-warning-amber);
-  --danger: var(--destructive);
-  --success-surface: var(--omp-titanium-success-tint);
-  --success-surface-foreground: var(--omp-titanium-bright-green);
-  --warning-surface: var(--omp-titanium-warning-tint);
-  --warning-surface-foreground: var(--omp-titanium-bright-yellow);
-  --danger-surface: var(--omp-titanium-tool-error-bg);
-  --danger-surface-foreground: var(--omp-titanium-bright-red);
-  --info-surface: var(--omp-titanium-info-tint);
-  --info-surface-foreground: var(--omp-titanium-bright-blue);
-  --diff-add-surface: var(--omp-titanium-success-tint);
-  --diff-add-foreground: var(--omp-titanium-bright-green);
-  --diff-remove-surface: var(--omp-titanium-tool-error-bg);
-  --diff-remove-foreground: var(--omp-titanium-bright-red);
-  --diff-add: var(--omp-titanium-readout-green);
-  --diff-remove: var(--omp-titanium-alert-red);
-  /* Syntax code view: the titanium palette, consumed by Shiki's CSS-variable theme. */
-  --code-foreground: var(--foreground);
-  --code-background: var(--muted);
-  --code-token-comment: var(--muted-foreground);
-  --code-token-keyword: var(--omp-titanium-electric-blue);
-  --code-token-string: var(--omp-titanium-readout-green);
-  --code-token-constant: var(--omp-titanium-warning-amber);
-  --code-token-parameter: var(--omp-titanium-bright-blue);
-  --code-token-function: var(--omp-titanium-gold);
-  --code-token-string-expression: var(--omp-titanium-readout-green);
-  --code-token-punctuation: var(--omp-titanium-dim-aluminum);
-  --code-token-link: var(--omp-titanium-bright-blue);
-  --code-token-inserted: var(--omp-titanium-bright-green);
-  --code-token-deleted: var(--omp-titanium-bright-red);
-  --code-token-changed: var(--omp-titanium-bright-yellow);
-
-  --shadow-xs-raw: 0 1px 2px rgb(0 0 0 / 30%);
-  --shadow-sm-raw: 0 1px 3px rgb(0 0 0 / 40%), 0 1px 2px rgb(0 0 0 / 30%);
-  --shadow-md-raw:
-    0 4px 10px rgb(0 0 0 / 45%), 0 2px 4px rgb(0 0 0 / 30%), inset 0 1px 0 rgb(255 255 255 / 4%);
-  --shadow-lg-raw:
-    0 12px 28px rgb(0 0 0 / 55%), 0 4px 8px rgb(0 0 0 / 35%), inset 0 1px 0 rgb(255 255 255 / 5%);
-  --shadow-overlay-raw:
-    0 20px 48px rgb(0 0 0 / 60%), 0 8px 16px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 6%);
+  --background: oklch(0.17 0.003 106);
+  --foreground: oklch(0.985 0.002 106);
+  --card: oklch(0.215 0.003 106);
+  --card-foreground: oklch(0.985 0.002 106);
+  --popover: oklch(0.215 0.003 106);
+  --popover-foreground: oklch(0.985 0.002 106);
+  --primary: oklch(0.922 0.002 106);
+  --primary-foreground: oklch(0.215 0.003 106);
+  --secondary: oklch(0.275 0.004 106);
+  --secondary-foreground: oklch(0.985 0.002 106);
+  --muted: oklch(0.275 0.004 106);
+  --muted-foreground: oklch(0.708 0.004 106);
+  --accent: oklch(0.275 0.004 106);
+  --accent-foreground: oklch(0.985 0.002 106);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(0.985 0.002 106 / 10%);
+  --input: oklch(0.52 0.004 106);
+  --ring: oklch(0.556 0.004 106);
+  --sidebar: oklch(0.212 0.003 106);
+  --sidebar-foreground: oklch(0.985 0.002 106);
+  --sidebar-primary: oklch(0.922 0.002 106);
+  --sidebar-primary-foreground: oklch(0.215 0.003 106);
+  --sidebar-accent: oklch(0.985 0.002 106 / 6%);
+  --sidebar-accent-foreground: oklch(0.985 0.002 106);
+  --sidebar-border: oklch(0.985 0.002 106 / 10%);
+  --sidebar-ring: oklch(0.556 0.004 106);
+  --chart-1: oklch(0.68 0.21 41.116);
+  --chart-2: oklch(0.64 0.118 184.704);
+  --chart-3: oklch(0.56 0.09 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --info: oklch(0.707 0.165 254.624);
+  --success: oklch(0.792 0.209 151.711);
+  --warning: oklch(0.828 0.189 84.429);
+  --danger: oklch(0.704 0.191 22.216);
+  --info-surface: oklch(0.255 0.027 249.7);
+  --info-surface-foreground: oklch(0.809 0.105 251.813);
+  --success-surface: oklch(0.267 0.048 157.1);
+  --success-surface-foreground: oklch(0.871 0.15 154.449);
+  --warning-surface: oklch(0.278 0.044 89.5);
+  --warning-surface-foreground: oklch(0.879 0.169 91.605);
+  --danger-surface: oklch(0.252 0.035 22.1);
+  --danger-surface-foreground: oklch(0.808 0.114 19.571);
 }
 
 /* ---------- Tailwind registration ---------- */
@@ -303,25 +187,33 @@
   --animate-pulse: pulse var(--duration-loop) var(--ease-standard) infinite;
 
   --font-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial,
-    "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
-  /* `dialog.tsx` (U0.1, copied) applies `font-heading`; Notion AI uses the same sans for
-     headings, so this is not a second family. */
+    "Public Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --font-display: var(--font-sans);
   --font-heading: var(--font-sans);
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  --tracking-hero: -0.015em;
+  --tracking-section: -0.01em;
+  --font-weight-hero: 500;
 
+  --text-meta: 0.6875rem;
+  --text-meta--line-height: 1.5;
   --text-xs: 0.75rem;
   --text-xs--line-height: 1rem;
+  --text-trace: 0.75rem;
+  --text-trace--line-height: 1.625;
   --text-sm: 0.8125rem;
-  --text-sm--line-height: 1.25rem;
-  --text-base: 0.875rem;
-  --text-base--line-height: 1.375rem;
+  --text-sm--line-height: 1.5;
+  --text-code: 0.78125rem;
+  --text-code--line-height: 1.625;
   --text-md: 0.9375rem;
-  --text-md--line-height: 1.5rem;
-  --text-lg: 1.0625rem;
-  --text-lg--line-height: 1.625rem;
+  --text-md--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
   --text-xl: 1.25rem;
   --text-xl--line-height: 1.75rem;
   --text-2xl: 1.5rem;
@@ -381,15 +273,19 @@
   --color-diff-remove: var(--diff-remove);
   --color-diff-remove-surface: var(--diff-remove-surface);
   --color-diff-remove-foreground: var(--diff-remove-foreground);
-
   --radius-xs: calc(var(--radius) * 0.25);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
   --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-control: 0.5rem;
+  --radius-surface: 0.625rem;
+  --radius-thread: 1rem;
+  --radius-document: 0.375rem;
+  --radius-pill: 9999px;
 
   --shadow-xs: var(--shadow-xs-raw);
   --shadow-sm: var(--shadow-sm-raw);

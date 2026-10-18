@@ -11,11 +11,10 @@ import {
 } from "./real-omp";
 
 /**
- * Feedback #654: on a wide window the conversation was a 48rem column with about 1000 px of empty
- * space around it. The width is one layout token (`--layout-thread-width`, 60rem); the composer and
- * the queue bar line up with the transcript.
+ * The demo's 45rem thread token includes the app's horizontal row gutters; the composer and tool
+ * cards line up with the transcript.
  */
-const THREAD_WIDTH_REM = 60;
+const THREAD_WIDTH_REM = 45;
 
 async function setSidebars(page: Page, open: boolean): Promise<void> {
   for (const side of ["sessions", "panels"] as const) {

@@ -55,17 +55,14 @@ function buildPlaygroundPage(): void {
   );
 }
 
-async function expectCardToken(page: Page, dark: boolean): Promise<void> {
+async function expectCardToken(page: Page): Promise<void> {
   const card = page
     .getByTestId("settings-view-S2.filesEditing")
     .locator("section[aria-labelledby]");
-  const colors = await card.evaluate((element, isDark) => {
-    const rootStyle = getComputedStyle(document.documentElement);
-    const token = rootStyle
-      .getPropertyValue(isDark ? "--omp-titanium-dark" : "--omp-light-card")
-      .trim();
+  const colors = await card.evaluate((element) => {
+    const token = getComputedStyle(document.documentElement).getPropertyValue("--card").trim();
     return { background: getComputedStyle(element).backgroundColor, token };
-  }, dark);
+  });
   expect(normalizeColor(colors.background)).toBe(normalizeColor(colors.token));
 }
 
@@ -90,7 +87,7 @@ test("Files settings render ConfigStore provenance and dependent read-only contr
     page.getByText("This preference only changes omp's terminal; the app does not use it."),
   ).toBeVisible();
   await expect(page.getByText("Turn on Read Summaries to edit this setting.")).toHaveCount(6);
-  await expectCardToken(page, false);
+  await expectCardToken(page);
   await page.screenshot({ path: join(SCREENSHOTS, "s2.2-files-light.png"), fullPage: true });
 
   const dark = await page.context().newPage();
@@ -100,12 +97,12 @@ test("Files settings render ConfigStore provenance and dependent read-only contr
   await expect(dark.locator("html")).toHaveClass(/dark/);
   await expect(dark.getByRole("heading", { name: "Read Summaries", exact: true })).toBeVisible();
   await expect(dark.getByText("Turn on Read Summaries to edit this setting.")).toHaveCount(6);
-  await expectCardToken(dark, true);
+  await expectCardToken(dark);
   await dark.screenshot({ path: join(SCREENSHOTS, "s2.2-files-dark.png"), fullPage: true });
 
   await dark.setViewportSize({ width: 390, height: 844 });
   await expect(dark.getByRole("heading", { name: "Reading", exact: true })).toBeVisible();
-  await expectCardToken(dark, true);
+  await expectCardToken(dark);
   const dimensions = await dark.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,

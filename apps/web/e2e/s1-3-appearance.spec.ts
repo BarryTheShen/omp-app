@@ -45,19 +45,26 @@ function buildPlaygroundPage(): void {
   );
 }
 
-async function expectBackgroundToken(page: Page, token: string): Promise<void> {
+async function expectBackgroundToken(page: Page): Promise<void> {
   await expect(
     page.getByText("These settings change omp's terminal only. This app does not use them.", {
       exact: true,
     }),
   ).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        getComputedStyle(document.documentElement).getPropertyValue("--background").trim(),
-      ),
-    )
-    .toBe(token);
+  const background = await page.evaluate(() => {
+    const token = getComputedStyle(document.documentElement)
+      .getPropertyValue("--background")
+      .trim();
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = "var(--background)";
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).backgroundColor;
+    const pageBackground = getComputedStyle(document.body).backgroundColor;
+    probe.remove();
+    return { token, resolved, pageBackground };
+  });
+  expect(background.token).not.toBe("");
+  expect(background.pageBackground).toBe(background.resolved);
 }
 
 async function waitForAnimations(page: Page): Promise<void> {
@@ -83,7 +90,7 @@ test("appearance settings commit terminal values and fit narrow screens in both 
     viewport: { width: 1280, height: 960 },
   });
   await lightPage.goto(`/${PAGE_NAME}.html`);
-  await expectBackgroundToken(lightPage, "oklch(97.91% 0 0)");
+  await expectBackgroundToken(lightPage);
   await waitForAnimations(lightPage);
   await lightPage.screenshot({
     path: join(SCREENSHOT_ROOT, "s1-3-appearance-light.png"),
@@ -100,7 +107,7 @@ test("appearance settings commit terminal values and fit narrow screens in both 
   });
   await darkPage.goto(`/${PAGE_NAME}.html`);
   await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
-  await expectBackgroundToken(darkPage, "oklch(20.96% .0166 268.85)");
+  await expectBackgroundToken(darkPage);
   await expect(darkPage.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await waitForAnimations(darkPage);
   await darkPage.screenshot({
@@ -123,7 +130,7 @@ test("appearance settings commit terminal values and fit narrow screens in both 
   await expect(lightPage.getByText("Applied")).toBeVisible();
 
   await lightPage.setViewportSize({ width: 390, height: 844 });
-  await expectBackgroundToken(lightPage, "oklch(97.91% 0 0)");
+  await expectBackgroundToken(lightPage);
   const dimensions = await lightPage.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,

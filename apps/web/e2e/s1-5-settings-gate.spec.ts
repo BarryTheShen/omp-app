@@ -44,13 +44,22 @@ function buildPlaygroundPage(): void {
   );
 }
 
-async function expectBackgroundToken(page: Page, background: string): Promise<void> {
+async function expectBackgroundToken(page: Page): Promise<void> {
   const root = page.locator("[data-s1-appearance-settings]");
   await expect(root).toBeVisible();
   await expect(root.locator("[data-s1-appearance-section]")).toBeVisible();
-  await expect
-    .poll(() => root.evaluate((element) => getComputedStyle(element).backgroundColor))
-    .toBe(background);
+  const background = await root.evaluate((element) => {
+    const token = getComputedStyle(element).getPropertyValue("--background").trim();
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = "var(--background)";
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).backgroundColor;
+    const actual = getComputedStyle(element).backgroundColor;
+    probe.remove();
+    return { token, resolved, actual };
+  });
+  expect(background.token).not.toBe("");
+  expect(background.actual).toBe(background.resolved);
 }
 
 async function expectNoHorizontalOverflow(page: Page): Promise<void> {
@@ -91,7 +100,7 @@ test("S1 settings retain keyboard, focus, reduced motion and 200% zoom behavior"
       exact: true,
     }),
   ).toBeVisible();
-  await expectBackgroundToken(lightPage, "oklch(0.9791 0 0)");
+  await expectBackgroundToken(lightPage);
   const reducedMotionDuration = await lightPage.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--duration-base").trim(),
   );
@@ -124,7 +133,7 @@ test("S1 settings retain keyboard, focus, reduced motion and 200% zoom behavior"
       exact: true,
     }),
   ).toBeVisible();
-  await expectBackgroundToken(darkPage, "oklch(0.2096 0.0166 268.85)");
+  await expectBackgroundToken(darkPage);
   await waitForAnimations(darkPage);
   await darkPage.screenshot({
     path: join(SCREENSHOT_ROOT, "s1-5-settings-gate-dark.png"),
@@ -145,7 +154,7 @@ test("S1 settings retain keyboard, focus, reduced motion and 200% zoom behavior"
   await lightPage.locator("html").evaluate((element) => {
     (element as HTMLElement).style.zoom = "200%";
   });
-  await expectBackgroundToken(lightPage, "oklch(0.9791 0 0)");
+  await expectBackgroundToken(lightPage);
   await expectNoHorizontalOverflow(lightPage);
   await waitForAnimations(lightPage);
   await lightPage.screenshot({
@@ -160,7 +169,7 @@ test("S1 settings retain keyboard, focus, reduced motion and 200% zoom behavior"
   });
   await narrowPage.goto(`/${PAGE_NAME}.html`);
   await expect(narrowPage.getByRole("heading", { name: "Appearance" })).toBeVisible();
-  await expectBackgroundToken(narrowPage, "oklch(0.9791 0 0)");
+  await expectBackgroundToken(narrowPage);
   await expectNoHorizontalOverflow(narrowPage);
   await waitForAnimations(narrowPage);
   await narrowPage.screenshot({

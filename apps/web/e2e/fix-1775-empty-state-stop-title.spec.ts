@@ -40,17 +40,23 @@ async function setTheme(page: Page, dark: boolean): Promise<void> {
   await waitForFiniteAnimations(page);
 }
 
-async function expectFailedOpen(page: Page): Promise<void> {
+async function expectFailedOpen(page: Page): Promise<string> {
   await expect(page.getByText("This chat could not open", { exact: true })).toBeVisible();
   await expect(page.getByText(/omp stopped before the chat could start\./)).toBeVisible();
   await expect(page.getByText("Ready when you are", { exact: true })).toHaveCount(0);
-  const background = await page
-    .locator("[data-shell-layout]")
-    .evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim());
-  const isDark = await page
-    .locator("html")
-    .evaluate((element) => element.classList.contains("dark"));
-  expect(background).toBe(isDark ? "oklch(20.96% .0166 268.85)" : "oklch(97.91% 0 0)");
+  const background = await page.locator("[data-shell-layout]").evaluate((element) => {
+    const token = getComputedStyle(element).getPropertyValue("--background").trim();
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = "var(--background)";
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).backgroundColor;
+    const pageBackground = getComputedStyle(document.body).backgroundColor;
+    probe.remove();
+    return { token, resolved, pageBackground };
+  });
+  expect(background.token).not.toBe("");
+  expect(background.pageBackground).toBe(background.resolved);
+  return background.token;
 }
 
 realTest("a chat that stops while opening says it could not open", async ({ realApp }) => {
@@ -66,7 +72,7 @@ realTest("a chat that stops while opening says it could not open", async ({ real
     .first()
     .click();
   process.kill(await waitForNewOmp(realApp, before), "SIGKILL");
-  await expectFailedOpen(page);
+  const lightBackground = await expectFailedOpen(page);
 
   await mkdirSync(screenshots, { recursive: true });
   await waitForFiniteAnimations(page);
@@ -76,14 +82,15 @@ realTest("a chat that stops while opening says it could not open", async ({ real
   });
 
   await setTheme(page, true);
-  await expectFailedOpen(page);
+  const darkBackground = await expectFailedOpen(page);
+  expect(darkBackground).not.toBe(lightBackground);
   await page.screenshot({
     path: join(screenshots, "fix-1775-empty-state-dark.png"),
     fullPage: true,
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expectFailedOpen(page);
+  expect(await expectFailedOpen(page)).toBe(darkBackground);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
     .toBeLessThanOrEqual(390);

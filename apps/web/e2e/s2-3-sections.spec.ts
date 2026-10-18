@@ -55,15 +55,12 @@ function buildPlaygroundPage(): void {
   );
 }
 
-async function expectCardToken(page: Page, dark: boolean): Promise<void> {
+async function expectCardToken(page: Page): Promise<void> {
   const card = page.getByTestId("settings-runtime-S2.filesLsp").locator("section[aria-labelledby]");
-  const colors = await card.evaluate((element, isDark) => {
-    const rootStyle = getComputedStyle(document.documentElement);
-    const token = rootStyle
-      .getPropertyValue(isDark ? "--omp-titanium-dark" : "--omp-light-card")
-      .trim();
+  const colors = await card.evaluate((element) => {
+    const token = getComputedStyle(document.documentElement).getPropertyValue("--card").trim();
     return { background: getComputedStyle(element).backgroundColor, token };
-  }, dark);
+  });
   expect(normalizeColor(colors.background)).toBe(normalizeColor(colors.token));
 }
 
@@ -85,7 +82,7 @@ test("S2.3 sections render ConfigStore state and descriptor-backed apply reports
   await expect(reports.nth(1)).toContainText("Live: Bash, Allow Compound Commands");
   await expect(reports.nth(2)).toContainText("Live: Python Eval Backend");
   await expect(page.getByText("Source: Saved for all projects").first()).toBeVisible();
-  await expectCardToken(page, false);
+  await expectCardToken(page);
   await page.screenshot({ path: join(SCREENSHOTS, "s2.3-sections-light.png"), fullPage: true });
 
   const dark = await page.context().newPage();
@@ -94,12 +91,12 @@ test("S2.3 sections render ConfigStore state and descriptor-backed apply reports
   await dark.goto("/s2-3-sections-playground.html?theme=dark");
   await expect(dark.locator("html")).toHaveClass(/dark/);
   await expect(dark.getByRole("heading", { name: "LSP", exact: true })).toBeVisible();
-  await expectCardToken(dark, true);
+  await expectCardToken(dark);
   await dark.screenshot({ path: join(SCREENSHOTS, "s2.3-sections-dark.png"), fullPage: true });
 
   await dark.setViewportSize({ width: 390, height: 844 });
   await expect(dark.getByRole("heading", { name: "Eval and Runtimes", exact: true })).toBeVisible();
-  await expectCardToken(dark, true);
+  await expectCardToken(dark);
   const dimensions = await dark.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,

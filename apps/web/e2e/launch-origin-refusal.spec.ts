@@ -73,7 +73,7 @@ function fetchRequest(target: URL, incoming: IncomingMessage): ClientRequest {
   });
 }
 
-async function showRefusal(page: Page, url: string, theme: "light" | "dark"): Promise<void> {
+async function showRefusal(page: Page, url: string, theme: "light" | "dark"): Promise<string> {
   await page.goto(url);
   await expect(
     page.getByRole("heading", { name: "This page address is not allowed to reach omp-app" }),
@@ -84,13 +84,20 @@ async function showRefusal(page: Page, url: string, theme: "light" | "dark"): Pr
   await expect(page.getByRole("heading", { name: "This launch link has expired" })).toHaveCount(0);
   const main = page.locator("main");
   await expect(main).toHaveAttribute("data-launch-state", "origin-rejected");
-  const expectedBackground = theme === "dark" ? "oklch(20.96% .0166 268.85)" : "oklch(97.91% 0 0)";
-  await expect
-    .poll(() =>
-      main.evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim()),
-    )
-    .toBe(expectedBackground);
+  const background = await main.evaluate((element) => {
+    const token = getComputedStyle(element).getPropertyValue("--background").trim();
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = "var(--background)";
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).backgroundColor;
+    const pageBackground = getComputedStyle(document.body).backgroundColor;
+    probe.remove();
+    return { token, resolved, pageBackground };
+  });
+  expect(background.token).not.toBe("");
+  expect(background.pageBackground).toBe(background.resolved);
   if (theme === "dark") await expect(page.locator("html")).toHaveClass(/dark/);
+  return background.token;
 }
 
 realTest("a page from a disallowed origin explains how to reach the app", async ({ realApp }) => {
@@ -103,7 +110,7 @@ realTest("a page from a disallowed origin explains how to reach the app", async 
   const launchLink = `${proxy.url}/#token=${encodeURIComponent(realApp.token)}`;
   let darkPage: Page | undefined;
   try {
-    await showRefusal(lightPage, launchLink, "light");
+    const lightBackground = await showRefusal(lightPage, launchLink, "light");
     await mkdir(screenshots, { recursive: true });
     await waitForFiniteAnimations(lightPage);
     await lightPage.screenshot({
@@ -117,7 +124,8 @@ realTest("a page from a disallowed origin explains how to reach the app", async 
         page.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
     });
     darkPage = renderedDarkPage;
-    await showRefusal(renderedDarkPage, launchLink, "dark");
+    const darkBackground = await showRefusal(renderedDarkPage, launchLink, "dark");
+    expect(darkBackground).not.toBe(lightBackground);
     await waitForFiniteAnimations(renderedDarkPage);
     await renderedDarkPage.screenshot({
       path: join(screenshots, "launch-origin-refusal-dark.png"),

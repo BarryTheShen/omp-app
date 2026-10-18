@@ -104,6 +104,10 @@ function oklchToSrgb(color: Oklch): Rgb {
   };
 }
 
+function parseColor(value: string): Rgb {
+  return oklchToSrgb(parseOklch(value));
+}
+
 function composite(foreground: Rgb, background: Rgb): Rgb {
   if (foreground.alpha >= 1) return foreground;
   const alpha = foreground.alpha;
@@ -131,8 +135,21 @@ function ratio(foreground: Rgb, background: Rgb): number {
 }
 
 function contrast(foreground: string, background: string, tokens: TokenMap): number {
-  const bg = oklchToSrgb(parseOklch(resolve(background, tokens)));
-  return ratio(composite(oklchToSrgb(parseOklch(resolve(foreground, tokens))), bg), bg);
+  const bg = parseColor(resolve(background, tokens));
+  return ratio(composite(parseColor(resolve(foreground, tokens)), bg), bg);
+}
+
+function contrastOnOverlay(
+  foreground: string,
+  overlay: string,
+  surface: string,
+  tokens: TokenMap,
+): number {
+  const background = composite(
+    parseColor(resolve(overlay, tokens)),
+    parseColor(resolve(surface, tokens)),
+  );
+  return ratio(composite(parseColor(resolve(foreground, tokens)), background), background);
 }
 
 /**
@@ -140,20 +157,26 @@ function contrast(foreground: string, background: string, tokens: TokenMap): num
  * this colour, the one a reader sees behind it, not on the bare token.
  */
 function codeBlockBackground(tokens: TokenMap): Rgb {
-  const page = oklchToSrgb(parseOklch(resolve("--background", tokens)));
-  const muted = oklchToSrgb(parseOklch(resolve("--muted", tokens)));
+  const page = parseColor(resolve("--background", tokens));
+  const muted = parseColor(resolve("--muted", tokens));
   return composite({ ...muted, alpha: 0.3 }, page);
 }
 
 function contrastOnCodeBlock(foreground: string, tokens: TokenMap): number {
   const bg = codeBlockBackground(tokens);
-  return ratio(composite(oklchToSrgb(parseOklch(resolve(foreground, tokens))), bg), bg);
+  return ratio(composite(parseColor(resolve(foreground, tokens)), bg), bg);
 }
 
 const TEXT_PAIRS = [
   ["--foreground", "--background"],
+  ["--card-foreground", "--card"],
+  ["--foreground", "--muted"],
   ["--muted-foreground", "--background"],
+  ["--muted-foreground", "--card"],
   ["--primary-foreground", "--primary"],
+  ["--secondary-foreground", "--secondary"],
+  ["--accent-foreground", "--accent"],
+  ["--sidebar-foreground", "--sidebar"],
   ["--success-surface-foreground", "--success-surface"],
   ["--warning-surface-foreground", "--warning-surface"],
   ["--danger-surface-foreground", "--danger-surface"],
@@ -192,6 +215,14 @@ for (const theme of ["light", "dark"] as const) {
 
     test("input border has at least 3:1 contrast against the page", () => {
       expect(contrast("--input", "--background", tokens)).toBeGreaterThanOrEqual(3);
+    });
+    test("keyboard focus ring has at least 3:1 contrast against the page", () => {
+      expect(contrast("--ring", "--background", tokens)).toBeGreaterThanOrEqual(3);
+    });
+    test("selected rail text on its composited row has WCAG AA contrast", () => {
+      expect(
+        contrastOnOverlay("--sidebar-accent-foreground", "--sidebar-accent", "--sidebar", tokens),
+      ).toBeGreaterThanOrEqual(4.5);
     });
   });
 }

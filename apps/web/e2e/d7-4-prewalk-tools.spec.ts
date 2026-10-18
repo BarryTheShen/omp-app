@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -46,6 +46,21 @@ function buildPlaygroundPage(): void {
   );
 }
 
+async function expectPageBackground(page: Page): Promise<void> {
+  const background = await page.locator("main").evaluate((element) => {
+    const token = getComputedStyle(element).getPropertyValue("--background").trim();
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = "var(--background)";
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).backgroundColor;
+    const actual = getComputedStyle(element).backgroundColor;
+    probe.remove();
+    return { token, resolved, actual };
+  });
+  expect(background.token).not.toBe("");
+  expect(background.actual).toBe(background.resolved);
+}
+
 test.beforeAll(() => buildPlaygroundPage());
 
 test.describe("D7.4 preparation and tools", () => {
@@ -58,10 +73,7 @@ test.describe("D7.4 preparation and tools", () => {
     await expect(page.getByRole("button", { name: "Drop images from context" })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Refresh available tools" })).toBeEnabled();
     await expect(page.getByRole("list", { name: "Tool availability" })).toContainText("Limited");
-    const lightBackground = await page
-      .locator("main")
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    expect(lightBackground).toBe("oklch(0.9791 0 0)");
+    await expectPageBackground(page);
     await page.getByRole("button", { name: "Switch model at the next edit" }).click();
     await expect(
       page.getByText("Prewalk on: switching models at the next edit or write."),
@@ -74,10 +86,7 @@ test.describe("D7.4 preparation and tools", () => {
     const darkPage = await page.context().newPage();
     await darkPage.goto(`${playground}?dark`);
     await expect(darkPage.locator("html")).toHaveClass(/dark/);
-    const darkBackground = await darkPage
-      .locator("main")
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    expect(darkBackground).toBe("oklch(0.2096 0.0166 268.85)");
+    await expectPageBackground(darkPage);
     await darkPage.getByRole("button", { name: "Switch model at the next edit" }).click();
     await expect(
       darkPage.getByText("Prewalk on: switching models at the next edit or write."),
@@ -117,10 +126,7 @@ test.describe("D7.4 preparation and tools", () => {
     await expect(page.getByRole("region", { name: "Tools and skills" })).toBeVisible();
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(scrollWidth).toBeLessThanOrEqual(390);
-    const narrowBackground = await page
-      .locator("main")
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    expect(narrowBackground).toBe("oklch(0.9791 0 0)");
+    await expectPageBackground(page);
     await page.getByRole("button", { name: "Switch model at the next edit" }).click();
     await expect(
       page.getByText("Prewalk on: switching models at the next edit or write."),
