@@ -30,13 +30,43 @@ const FILE_WATCH_REGISTRY = resolve(
 const LOGGING = resolve(APP_ROOT, "packages/server/src/logging/index.ts");
 export const screenshots = resolve(APP_ROOT, ".data/screenshots");
 
+/** Waits through the shell's initial layout frames, then until no finite animation or transition is running. */
 export async function waitForFiniteAnimations(page: Page): Promise<void> {
   await page.evaluate(async () => {
-    const finite = document
-      .getAnimations()
-      .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity);
-    await Promise.all(finite.map((animation) => animation.finished.catch(() => undefined)));
+    const frame = (): Promise<void> => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      requestAnimationFrame(() => resolve());
+      return promise;
+    };
+    await frame();
+    await frame();
+    let quietFrames = 0;
+    while (quietFrames < 8) {
+      const running = document
+        .getAnimations()
+        .some(
+          (animation) =>
+            animation.playState === "running" &&
+            animation.effect?.getComputedTiming().iterations !== Infinity,
+        );
+      quietFrames = running ? 0 : quietFrames + 1;
+      await frame();
+    }
   });
+}
+
+/** Resize to the phone layout only after both responsive drawers have closed and their transitions are finished. */
+export async function narrowTo(
+  page: Page,
+  size: { readonly width?: number; readonly height?: number } = {},
+): Promise<void> {
+  await page.setViewportSize({ width: size.width ?? 390, height: size.height ?? 844 });
+  await expect(page.locator('[data-shell-layout="narrow"]')).toBeAttached();
+  const drawers = page.locator("[data-shell-sidebar]");
+  await expect(drawers).toHaveCount(2);
+  await expect(drawers.nth(0)).toHaveAttribute("data-open", "false");
+  await expect(drawers.nth(1)).toHaveAttribute("data-open", "false");
+  await waitForFiniteAnimations(page);
 }
 
 /** A tool call and the result omp recorded for it: what `seedToolResults` puts in one chat as one turn each. */

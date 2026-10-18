@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
+  narrowTo,
   REAL_OMP,
   realTest,
   screenshots,
@@ -102,8 +103,7 @@ realTest(
       await composerError(page).evaluate((element) => getComputedStyle(element).color),
     ).not.toBe("rgb(0, 0, 0)");
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    await waitForFiniteAnimations(page);
+    await narrowTo(page);
     const box = await composerError(page).boundingBox();
     expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
     expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);

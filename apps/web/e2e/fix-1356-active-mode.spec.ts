@@ -1,7 +1,14 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
+import {
+  expect,
+  narrowTo,
+  realTest,
+  screenshots,
+  startChat,
+  waitForFiniteAnimations,
+} from "./real-omp";
 
 /** The refusal omp's app gives a `!!` line: the output would go to the model, and this version cannot leave it out. */
 const REFUSED =
@@ -58,9 +65,8 @@ realTest(
     await page.screenshot({ path: join(screenshots, "fix-1356-kept-marker-light.png") });
 
     await expectRefusedAndKept(page, composer);
-    await page.setViewportSize({ width: 390, height: 844 });
+    await narrowTo(page);
     await expect(composer).toHaveValue(LINE);
-    await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-1356-kept-marker-narrow.png") });
     expect(realApp.problems).toEqual([]);
   },
