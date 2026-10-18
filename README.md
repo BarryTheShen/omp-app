@@ -143,7 +143,7 @@ Each wave ends with a gate issue that checks it as a whole. The project is done 
 - Every piece of work is a GitHub issue: one per module, one per part, plus the wave gates.
 - Builder agents (GPT-5.6 Luna, at most 10 at a time) each take a group of related parts, one pull request per part (`tools/builder-brief.md`).
 - The main agent reviews every pull request against `tools/pr-review.md`: the diff, the checks, the running app and screenshots. It fixes what falls short, then merges.
-- A PR gate (`.github/workflows/pr-gate.yml`) closes any pull request that is not from the owner's account, not on a `module/` or `fix/` branch, does not close one of the owner's issues, touches `.github/`, or adds a line that looks like a secret.
+- A PR gate closes any pull request that is not from the owner's account, not on a `module/` or `fix/` branch, does not close one of the owner's issues, touches `.github/`, or adds a line that looks like a secret. Its rules run in the main agent's feeder (since 2026-10-17, so that pull request events start no GitHub Actions run) and show as the commit status `gate`; `.github/workflows/pr-gate.yml` is disabled, not deleted.
 
 ## More
 
