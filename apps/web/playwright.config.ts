@@ -16,9 +16,11 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {
+    actionTimeout: 60_000,
     baseURL: origin,
     channel: "chrome",
     headless: true,
+    navigationTimeout: 60_000,
     trace: "on-first-retry",
   },
   webServer: {
