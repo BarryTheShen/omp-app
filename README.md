@@ -2,6 +2,8 @@
 
 A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent (oh-my-pi), built on [assistant-ui](https://www.assistant-ui.com/) and React. omp stays the engine; this app is its interface. The goal: every feature of omp's terminal, with the UX of the best AI chat apps.
 
+The logo is copied from omp under its [MIT licence](NOTICE).
+
 The floor version is omp **18.6.1**. Features are switched on by capabilities omp reports when a session starts, not by version numbers.
 
 ## Install

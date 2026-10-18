@@ -29,7 +29,7 @@ bun build --compile --minify --target=bun-linux-x64 \
   packages/server/scripts/omp-app.ts --outfile "$stage/usr/bin/omp-app"
 cp -r apps/web/dist "$stage/usr/share/omp-app/web"
 install -m 0644 packaging/omp-app.desktop "$stage/usr/share/applications/omp-app.desktop"
-install -m 0644 packaging/omp-app.svg "$stage/usr/share/icons/hicolor/scalable/apps/omp-app.svg"
+install -m 0644 apps/web/public/favicon.svg "$stage/usr/share/icons/hicolor/scalable/apps/omp-app.svg"
 find "$stage" -type d -exec chmod 0755 {} +
 find "$stage/usr/share" -type f -exec chmod 0644 {} +
 
