@@ -136,19 +136,53 @@ interface FetchedSessions {
   readonly running: readonly RunningSession[];
 }
 
+function normalizedFolder(folder: string): string {
+  const parts = folder.replaceAll("\\", "/").split("/");
+  const normalized: string[] = [];
+  for (const part of parts) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (normalized.length > 0) normalized.pop();
+      continue;
+    }
+    normalized.push(part);
+  }
+  return `/${normalized.join("/")}`;
+}
+
+function folderWithin(folder: string, root: string): boolean {
+  const candidate = normalizedFolder(folder);
+  const normalizedRoot = normalizedFolder(root);
+  return candidate === normalizedRoot || candidate.startsWith(`${normalizedRoot}/`);
+}
+
 function folderRoots(scope: SessionScope, git: GitState | null): readonly FolderPath[] {
   if (scope.kind === "folder") return [scope.folder];
   const roots = [scope.repositoryRoot, ...(git?.worktrees.map((worktree) => worktree.path) ?? [])];
   return [...new Set(roots)];
 }
 
-export function sessionFolderInScope(scope: SessionScope, folder: FolderPath): boolean {
-  if (scope.kind === "folder") return folder === scope.folder;
-  return folder === scope.repositoryRoot || folder.startsWith(`${scope.repositoryRoot}/`);
+/**
+ * Folder scope is one A1 session bucket: an exact canonical folder, not its nested buckets.
+ * Project scope widens that rule to the repository and linked worktree roots and their descendants.
+ */
+export function sessionFolderInScope(
+  scope: SessionScope,
+  folder: FolderPath,
+  git: GitState | null = null,
+): boolean {
+  if (scope.kind === "folder") return normalizedFolder(folder) === normalizedFolder(scope.folder);
+  return folderRoots(scope, git).some((root) => folderWithin(folder, root));
 }
 
-function changedInScope(scope: SessionScope, session: SessionMetadata): boolean {
-  return sessionFolderInScope(scope, session.cwd);
+function sessionBucketDirectory(sessionFile: string): string {
+  const normalized = sessionFile.replaceAll("\\", "/");
+  return normalized.slice(0, normalized.lastIndexOf("/"));
+}
+
+function listedBucketContains(sessions: readonly SessionMetadata[], sessionFile: string): boolean {
+  const bucket = sessionBucketDirectory(sessionFile);
+  return sessions.some((session) => sessionBucketDirectory(session.sessionFile) === bucket);
 }
 
 /**
@@ -387,10 +421,7 @@ export class SessionCatalogModel {
       if (this.reconcileBegun.get(change.id) !== begun || this.tombstones.has(change.id)) return;
       const metadata = metadataFromFile(file, this.snapshot.scope, this.pins);
       this.endTurnRefusal(metadata.id, metadata.turn);
-      if (
-        !changedInScope(this.snapshot.scope, metadata) ||
-        !queryMatches(metadata, this.snapshot.filter.query)
-      ) {
+      if (!queryMatches(metadata, this.snapshot.filter.query)) {
         this.markChanged(change.id);
         this.commit({
           sessions: this.snapshot.sessions.filter((session) => session.id !== change.id),
@@ -561,7 +592,8 @@ export class SessionCatalogModel {
   }
 
   private eventInScope(change: SessionFileChanged): boolean {
-    return sessionFolderInScope(this.snapshot.scope, change.folder);
+    if (sessionFolderInScope(this.snapshot.scope, change.folder, this.snapshot.git)) return true;
+    return listedBucketContains(this.snapshot.sessions, change.sessionFile);
   }
 
   private requireSessionFile(threadId: ThreadId): SessionFilePath {

@@ -10,7 +10,7 @@ import type {
 import { AppFailure, SessionFilePath, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import type { SessionScope } from "../contract";
-import { SessionCatalogModel } from ".";
+import { SessionCatalogModel, sessionFolderInScope } from ".";
 
 const folder = "/workspace/project" as FolderPath;
 const worktree = "/workspace/project-worktree" as FolderPath;
@@ -133,6 +133,144 @@ describe("SessionCatalogModel list/sort/filter", () => {
 
     expect(folders).toEqual(["/workspace", worktree]);
     expect(page.sessions.map((item) => item.id)).toEqual(["feature"]);
+  });
+});
+
+describe("R1 folder and project scope boundaries", () => {
+  test("uses one exact folder bucket while normalizing aliases", () => {
+    expect(sessionFolderInScope(scope, folder)).toBe(true);
+    expect(sessionFolderInScope(scope, `${folder}/` as FolderPath)).toBe(true);
+    expect(sessionFolderInScope(scope, `${folder}/./../project` as FolderPath)).toBe(true);
+    expect(sessionFolderInScope(scope, `${folder}/nested` as FolderPath)).toBe(false);
+  });
+
+  test("includes repository and linked worktree roots in project scope", () => {
+    const repositoryRoot = "/workspace/repository" as FolderPath;
+    const linkedWorktree = "/workspace/repository-worktree" as FolderPath;
+    const project: SessionScope = {
+      kind: "project",
+      folder: repositoryRoot,
+      repositoryRoot,
+    };
+    const git: GitState = {
+      ...gitState(),
+      repositoryRoot,
+      worktrees: [
+        {
+          path: linkedWorktree,
+          head: "head-2",
+          branch: "feature",
+          detached: false,
+          bare: false,
+          locked: false,
+        },
+      ],
+    };
+
+    expect(sessionFolderInScope(project, linkedWorktree, git)).toBe(true);
+    expect(sessionFolderInScope(project, `${linkedWorktree}/nested` as FolderPath, git)).toBe(true);
+    expect(sessionFolderInScope(project, "/workspace/unrelated" as FolderPath, git)).toBe(false);
+  });
+
+  test("keeps a symlink-style alias listed initially and during a live update", async () => {
+    const physicalFolder = "/workspace/project" as FolderPath;
+    const aliasedFolder = "/workspace/project-link" as FolderPath;
+    const aliasedScope: SessionScope = { kind: "folder", folder: aliasedFolder };
+    const listed = session("alias", "2026-10-03T00:00:00.000Z", physicalFolder);
+    const updated = {
+      ...listed,
+      title: "Updated through alias",
+      displayTitle: "Updated through alias",
+    };
+    const model = new SessionCatalogModel({
+      scope: aliasedScope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [listed], nextCursor: null }),
+        readSession: async () => updated,
+      },
+    });
+
+    const page = await model.list({ filter: { scope: aliasedScope, query: "" }, limit: 50 });
+    expect(page.sessions.map((item) => item.id)).toEqual(["alias"]);
+
+    await model.reconcile({
+      folder: physicalFolder,
+      sessionFile: listed.sessionFile,
+      id: listed.id,
+      kind: "updated",
+    } satisfies SessionFileChanged);
+    expect(model.getSnapshot().sessions[0]?.title).toBe("Updated through alias");
+  });
+
+  test("does not add a nested bucket from a live event", async () => {
+    const listed = session("exact", "2026-10-03T00:00:00.000Z");
+    const nested = session("nested", "2026-10-02T00:00:00.000Z", `${folder}/nested` as FolderPath);
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [listed], nextCursor: null }),
+        readSession: async () => nested,
+      },
+    });
+
+    await model.list({ filter: { scope, query: "" }, limit: 50 });
+    await model.reconcile({
+      folder: nested.cwd,
+      sessionFile: nested.sessionFile,
+      id: nested.id,
+      kind: "updated",
+    } satisfies SessionFileChanged);
+    expect(model.getSnapshot().sessions.map((item) => item.id)).toEqual(["exact"]);
+  });
+
+  test("applies project worktree scope to live file changes", async () => {
+    const repositoryRoot = "/workspace/repository" as FolderPath;
+    const linkedWorktree = "/workspace/repository-worktree" as FolderPath;
+    const project: SessionScope = {
+      kind: "project",
+      folder: repositoryRoot,
+      repositoryRoot,
+    };
+    const git: GitState = {
+      ...gitState(),
+      repositoryRoot,
+      worktrees: [
+        {
+          path: linkedWorktree,
+          head: "head-2",
+          branch: "feature",
+          detached: false,
+          bare: false,
+          locked: false,
+        },
+      ],
+    };
+    const listed = session("worktree-live", "2026-10-03T00:00:00.000Z", linkedWorktree);
+    const updated = {
+      ...listed,
+      title: "Live worktree update",
+      displayTitle: "Live worktree update",
+    };
+    const model = new SessionCatalogModel({
+      scope: project,
+      sessionFiles: {
+        listSessions: async ({ folder: selected }) =>
+          selected === linkedWorktree
+            ? { sessions: [listed], nextCursor: null }
+            : { sessions: [], nextCursor: null },
+        readSession: async () => updated,
+      },
+      gitState: { read: async () => ({ ...workspace(), folder: repositoryRoot, git }) },
+    });
+
+    await model.list({ filter: { scope: project, query: "" }, limit: 50 });
+    await model.reconcile({
+      folder: linkedWorktree,
+      sessionFile: listed.sessionFile,
+      id: listed.id,
+      kind: "updated",
+    } satisfies SessionFileChanged);
+    expect(model.getSnapshot().sessions[0]?.title).toBe("Live worktree update");
   });
 });
 

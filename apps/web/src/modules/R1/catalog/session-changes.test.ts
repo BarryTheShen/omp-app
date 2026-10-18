@@ -4,9 +4,10 @@ import type {
   ConnectionStateEvent,
   ResyncEvent,
 } from "@omp-app/client";
-import type { SessionFileChanged, SessionRunningChanged } from "@omp-app/contracts";
+import type { GitState, SessionFileChanged, SessionRunningChanged } from "@omp-app/contracts";
 import { FolderPath, SessionFilePath, SessionFileStore, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import type { SessionScope } from "../contract";
 import type { SessionCatalogModel } from "./catalog";
 import { watchSessionFileChanges, watchSessionRunningChanges } from "./session-changes";
 
@@ -91,16 +92,19 @@ function fakeClient(initialState: ConnectionState = "open"): FakeClient {
   };
 }
 
-function catalogFor(folder: FolderPath): {
+function catalogFor(
+  folder: FolderPath,
+  options: { readonly scope?: SessionScope; readonly git?: GitState | null } = {},
+): {
   readonly catalog: SessionCatalogModel;
   readonly listCalls: unknown[];
 } {
   const listCalls: unknown[] = [];
-  const scope = { kind: "folder" as const, folder };
+  const scope = options.scope ?? { kind: "folder", folder };
   const filter = { scope, query: "" };
   return {
     catalog: {
-      getSnapshot: () => ({ scope, filter }),
+      getSnapshot: () => ({ scope, filter, git: options.git ?? null }),
       list: async (args: unknown) => {
         listCalls.push(args);
         return undefined;
@@ -155,6 +159,57 @@ describe("session change subscriptions", () => {
     expect(first.listCalls).toHaveLength(1);
     expect(other.listCalls).toHaveLength(0);
     expect(first.listCalls[0]).toMatchObject({ filter: { scope: { folder }, query: "" } });
+    stop();
+  });
+
+  test("refreshes project catalogs for linked worktrees and repository roots only", async () => {
+    const repositoryRoot = FolderPath.parse("/workspace/repository");
+    const linkedWorktree = FolderPath.parse("/workspace/repository-worktree");
+    const unrelatedFolder = FolderPath.parse("/workspace/unrelated");
+    const projectScope: SessionScope = {
+      kind: "project",
+      folder: repositoryRoot,
+      repositoryRoot,
+    };
+    const git: GitState = {
+      repositoryRoot,
+      branch: "main",
+      head: "head",
+      detached: false,
+      dirtyFiles: [],
+      ahead: 0,
+      behind: 0,
+      worktrees: [
+        {
+          path: linkedWorktree,
+          head: "head-worktree",
+          branch: "feature",
+          detached: false,
+          bare: false,
+          locked: false,
+        },
+      ],
+      observedAt: "2026-10-05T00:00:00.000Z",
+    };
+    const project = catalogFor(repositoryRoot, { scope: projectScope, git });
+    const unrelated = catalogFor(unrelatedFolder);
+    const catalogs = new Map<FolderPath, SessionCatalogModel>([
+      [repositoryRoot, project.catalog],
+      [unrelatedFolder, unrelated.catalog],
+    ]);
+    const fake = fakeClient();
+    const stop = watchSessionRunningChanges(fake.client, catalogs);
+    await settle();
+
+    fake.emit("runningChanged", { folder: linkedWorktree, id: threadId, busy: true });
+    expect(project.listCalls).toHaveLength(1);
+    expect(unrelated.listCalls).toHaveLength(0);
+
+    fake.emit("runningChanged", { folder: repositoryRoot, id: threadId, busy: true });
+    expect(project.listCalls).toHaveLength(2);
+
+    fake.emit("runningChanged", { folder: unrelatedFolder, id: threadId, busy: true });
+    expect(project.listCalls).toHaveLength(2);
     stop();
   });
 

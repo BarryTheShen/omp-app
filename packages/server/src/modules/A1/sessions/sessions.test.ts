@@ -107,7 +107,9 @@ describe("omp session bucket rule", () => {
       const alias = path.join(root, "alias");
       await mkdir(project, { recursive: true });
       await symlink(project, alias);
-      expect(sessionBucketName(alias, { home, tempRoot: path.join(root, "tmp") })).toBe("-project");
+      expect(sessionBucketName(alias, { home, tempRoot: path.join(root, "tmp") })).toBe(
+        sessionBucketName(project, { home, tempRoot: path.join(root, "tmp") }),
+      );
     } finally {
       await removeRoot(root);
     }

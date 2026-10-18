@@ -69,7 +69,8 @@ export function refreshCatalogsForRunningChange(
   change: SessionRunningChanged,
 ): void {
   for (const catalog of catalogs.values()) {
-    if (sessionFolderInScope(catalog.getSnapshot().scope, change.folder)) refreshCatalog(catalog);
+    if (sessionFolderInScope(catalog.getSnapshot().scope, change.folder, catalog.getSnapshot().git))
+      refreshCatalog(catalog);
   }
 }
 
