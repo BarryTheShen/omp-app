@@ -10,7 +10,7 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
  */
 
 const DESCRIPTION =
-  "Save tool output as an artifact when it exceeds this size; keep the tail inline.";
+  /^Save tool output as an artifact when it exceeds this size; keep the tail inline\./;
 
 interface Box {
   readonly x: number;
@@ -125,6 +125,9 @@ realTest(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+    const description = dialog.getByText(DESCRIPTION);
+    await description.scrollIntoViewIfNeeded();
+    await expect(description).toBeInViewport();
     await capture(page, "app-settings-layout-narrow.png");
     expect(realApp.problems).toEqual([]);
   },

@@ -30,7 +30,20 @@ realTest(
     await page.getByRole("option", { name: "Collab", exact: true }).click();
 
     const displayName = settings.getByRole("textbox", { name: "Display Name", exact: true });
-    await expect(displayName).toBeVisible({ timeout: 30_000 });
+    // On a loaded machine omp's first settings read can hit the app's own read timeout. The app then shows that alert
+    // with a Retry, which is what a person presses; this test is about the conflict that follows, not read latency.
+    const readTimeout = settings
+      .getByRole("alert")
+      .filter({ hasText: "Settings took too long to load." });
+    await expect
+      .poll(async () => (await displayName.isVisible()) || (await readTimeout.isVisible()), {
+        timeout: 30_000,
+      })
+      .toBe(true);
+    if (await readTimeout.isVisible()) {
+      await readTimeout.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(displayName).toBeVisible({ timeout: 30_000 });
+    }
     await displayName.fill("Mine");
     await expect(displayName).toHaveValue("Mine");
     const save = settings.getByRole("button", { name: "Save changes", exact: true });
@@ -49,7 +62,8 @@ realTest(
       settings.getByRole("button", { name: "Keep my edits", exact: true }),
     ).toBeVisible();
     await expect(settings.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
-    await expect(settings.getByRole("alert")).toHaveCount(0);
+    await expect(settings.getByRole("alert")).toHaveCount(1);
+    await expect(settings.getByRole("alert")).toContainText("Settings changed elsewhere");
     await expect(displayName).toHaveValue("Mine");
     // Centres the conflict card in the dialog's scroll area, so the captures show the two choices with the field.
     await conflictHeading.evaluate((element) => element.scrollIntoView({ block: "center" }));

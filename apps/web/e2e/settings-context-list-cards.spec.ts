@@ -19,6 +19,12 @@ const LIST_SECTIONS = [
     lastLine: "One entry per line. Blank lines are ignored.",
   },
   {
+    id: "P7.contextGeneral",
+    tab: "General",
+    field: "Extra Context Files",
+    lastLine: "One entry per line. Blank lines are ignored.",
+  },
+  {
     id: "P7.contextCompaction",
     tab: "Compaction",
     field: "Compaction Method Order",
@@ -103,7 +109,8 @@ realTest(
       const section = settings.locator(`[data-p7-context-section="${id}"]`);
       const card = section.getByRole("region", { name: tab, exact: true });
       const fieldTitle = card.getByText(field, { exact: true });
-      const last = card.getByText(lastLine, { exact: true });
+      const fieldRow = fieldTitle.locator("xpath=../..");
+      const last = fieldRow.getByText(lastLine, { exact: true });
       const save = card.getByRole("button", { name: "Save changes", exact: true });
       const cancel = card.getByRole("button", { name: "Cancel", exact: true });
       await expect(fieldTitle).toBeVisible({ timeout: 30_000 });
