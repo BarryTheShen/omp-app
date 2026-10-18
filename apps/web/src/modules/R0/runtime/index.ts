@@ -15,5 +15,6 @@ export {
   createOmpRuntime,
   OmpRuntimeController,
   promptFromAppend,
+  strippedToolCallsCount,
   useOmpRuntime,
 } from "./runtime";

@@ -154,6 +154,57 @@ describe("U1.3 standalone parts", () => {
     expect(document.querySelector('[data-message-surface="system-note"]')).toBeTruthy();
     expect(document.querySelector('[data-message-surface="assistant-text"]')).toBeTruthy();
   });
+
+  test("MessageParts renders the elided-call note from assistant metadata under the answer", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    store.ingest(
+      {
+        kind: "omp",
+        event: {
+          type: "message_start",
+          messageId: "assistant-elided",
+          message: {
+            ...assistantMessage("assistant", "answer"),
+            strippedToolCalls: 2,
+          } as unknown as OmpMessage,
+        },
+      } as RpcSessionEvent,
+      2,
+    );
+    render(<RuntimeThread store={store} />);
+    expect(screen.getByText("2 tool calls elided — no result on this branch")).toBeTruthy();
+  });
+
+  test("MessageParts ignores elided-call metadata on user messages and zero counts", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+    for (const [messageId, message, sequence] of [
+      [
+        "user-elided",
+        { ...assistantMessage("user", "question"), strippedToolCalls: 2 } as unknown as OmpMessage,
+        2,
+      ],
+      [
+        "assistant-zero",
+        {
+          ...assistantMessage("assistant", "answer"),
+          strippedToolCalls: 0,
+        } as unknown as OmpMessage,
+        3,
+      ],
+    ] as const) {
+      store.ingest(
+        {
+          kind: "omp",
+          event: { type: "message_start", messageId, message },
+        } as RpcSessionEvent,
+        sequence,
+      );
+    }
+    render(<RuntimeThread store={store} />);
+    expect(screen.queryByText(/tool call[s]? elided — no result on this branch/)).toBeNull();
+  });
   test("does not add a usage-row placeholder when an assistant message has no usage", () => {
     const store = new OmpRuntimeStore({ threadId });
     const noUsage = {
@@ -300,5 +351,38 @@ describe("U1.3 standalone parts", () => {
     const answerText = document.querySelector('[data-message-surface="assistant-text"] p');
     expect(answerText?.innerHTML).toBe("soft one\nsoft two");
     expect(answerText?.querySelector("br")).toBeNull();
+  });
+  test("renders the validated elided-call count under an assistant row, including singular, never for a user row", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "assistant-elided",
+          parentId: null,
+          timestamp: "2026-10-18T00:00:00.000Z",
+          message: {
+            ...assistantMessage("assistant", [{ type: "text", text: "Answer" }]),
+            strippedToolCalls: 1,
+          },
+        },
+        {
+          type: "message",
+          id: "user-elided",
+          parentId: "assistant-elided",
+          timestamp: "2026-10-18T00:00:01.000Z",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "User" }],
+            timestamp: 1_759_600_000_001,
+            strippedToolCalls: 2,
+          },
+        },
+      ],
+      "user-elided" as never,
+    );
+    render(<RuntimeThread store={store} />);
+    expect(screen.getByText("1 tool call elided — no result on this branch")).toBeTruthy();
+    expect(screen.queryByText("2 tool calls elided — no result on this branch")).toBeNull();
   });
 });

@@ -451,6 +451,15 @@ function fallbackMessage(id: string): ThreadMessageLike {
   } as unknown as ThreadMessageLike;
 }
 
+/** omp v18.9.1 marks transcript turns with dangling calls as `strippedToolCalls` while rebuilding context (`session-context.ts:703-728`). */
+export function strippedToolCallsCount(value: unknown): number | undefined {
+  let count: number | undefined;
+  if (typeof value === "number") count = value;
+  else if (isRecord(value) && typeof value.strippedToolCalls === "number")
+    count = value.strippedToolCalls;
+  return count !== undefined && Number.isSafeInteger(count) && count > 0 ? count : undefined;
+}
+
 function convertRecord(
   runtime: RuntimeMessage | undefined,
   fallbackMessageValue: unknown,
@@ -468,6 +477,7 @@ function convertRecord(
   // The store key: the persisted entry's key once history returns the message (`entry:<thread>:<entry>`), else its live
   // key. The reading place and the entry ids use it; the row's id can stay the key of the streamed copy (issue 1047).
   const storeKey = runtime?.key ?? id;
+  const strippedToolCalls = strippedToolCallsCount(message);
   const metadata = {
     custom: {
       ompMessageKey: storeKey,
@@ -484,6 +494,7 @@ function convertRecord(
             ompTurnTtftMs:
               view === undefined ? nonNegativeFiniteNumber(message.ttft) : view.ompTurnTtftMs,
             ompPreviousUsage: view?.previousAssistantUsage ?? null,
+            ...(strippedToolCalls === undefined ? {} : { ompStrippedToolCalls: strippedToolCalls }),
           }
         : {}),
     },

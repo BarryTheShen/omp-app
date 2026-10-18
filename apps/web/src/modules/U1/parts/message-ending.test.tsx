@@ -1,7 +1,12 @@
 import type { AppError } from "@omp-app/contracts";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
-import { endingOf, failureShownUnderAnswer, MessageEndingNote } from "./message-ending";
+import {
+  endingOf,
+  failureShownUnderAnswer,
+  MessageEndingNote,
+  StrippedToolCallsNote,
+} from "./message-ending";
 
 afterEach(() => cleanup());
 
@@ -132,6 +137,14 @@ describe("MessageEndingNote", () => {
     expect(screen.getByText("The model could not sign in")).toBeTruthy();
     expect(screen.getByText(/openai did not accept the sign-in/)).toBeTruthy();
     expect(screen.getByText("Show details").closest("details")?.open).toBe(false);
+  });
+  test("uses omp's singular words for one elided tool call", () => {
+    render(<StrippedToolCallsNote count={1} />);
+    expect(screen.getByText("1 tool call elided — no result on this branch")).toBeTruthy();
+  });
+  test("shows omp's plural words for two elided tool calls", () => {
+    render(<StrippedToolCallsNote count={2} />);
+    expect(screen.getByText("2 tool calls elided — no result on this branch")).toBeTruthy();
   });
 });
 

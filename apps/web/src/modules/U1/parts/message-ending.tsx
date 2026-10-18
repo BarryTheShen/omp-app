@@ -69,6 +69,18 @@ export function failureShownUnderAnswer(error: AppError | null, answer: unknown)
   );
 }
 
+export function StrippedToolCallsNote({ count }: { readonly count: number }) {
+  return (
+    <p
+      className="text-muted-foreground mt-2 text-sm italic"
+      data-ending="stripped-tool-calls"
+      data-slot="u1-message-ending"
+    >
+      {count} tool call{count === 1 ? "" : "s"} elided — no result on this branch
+    </p>
+  );
+}
+
 /** One line under an answer saying why it stopped, in plain words. */
 export function MessageEndingNote({ ending }: { readonly ending: MessageEnding }) {
   switch (ending.kind) {

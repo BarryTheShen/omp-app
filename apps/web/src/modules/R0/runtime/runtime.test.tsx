@@ -26,6 +26,7 @@ import {
   createOmpRuntime,
   type RuntimeMessageView,
   stoppedToolCallIds,
+  strippedToolCallsCount,
   useOmpRuntime,
 } from "./runtime";
 
@@ -1078,6 +1079,17 @@ describe("R0.3 assistant-ui runtime", () => {
     ) as { status?: unknown };
     expect(converted.status).toEqual({ type: "complete", reason: "unknown" });
   });
+  test("carries omp's stripped tool-call count into assistant metadata", () => {
+    expect(strippedToolCallsCount({ strippedToolCalls: 2 })).toBe(2);
+    expect(strippedToolCallsCount(0)).toBeUndefined();
+    const converted = convertMessage(
+      runtimeMessage(
+        { ...assistantMessage([]), strippedToolCalls: 2 } as unknown as OmpMessage,
+        "entry:runtime-test-thread:elided",
+      ) as RuntimeMessageView["record"],
+    ) as ThreadMessageLike;
+    expect(converted.metadata?.custom?.ompStrippedToolCalls).toBe(2);
+  });
 });
 
 describe("a call the person stopped", () => {
@@ -1171,5 +1183,26 @@ describe("a call the person stopped", () => {
         toolState: expect.objectContaining({ status: "cancelled" }),
       }),
     );
+  });
+
+  test("a branch with a call and no result is finished as cancelled after the turn ends", () => {
+    const record = runtimeMessage(
+      assistantMessage([callPart]),
+      "entry:runtime-test-thread:no-result",
+    );
+    const [part] = messageParts(
+      convertMessage({
+        record,
+        toolStates: [{ toolCallId: "tool-1", state: undefined }],
+        stoppedToolCallIds: ["tool-1"],
+      }),
+    ).filter((candidate) => candidate.type === "tool-call");
+    expect(part).toEqual(
+      expect.objectContaining({
+        isError: false,
+        toolState: expect.objectContaining({ status: "cancelled" }),
+      }),
+    );
+    expect(part?.result).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@ import { File } from "@/components/assistant-ui/elements/file";
 import { Reasoning } from "@/components/assistant-ui/elements/reasoning.aui";
 import { ENTER_FADE, isRecent } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import type { OmpTurnUsage } from "@/modules/R0/runtime";
+import { type OmpTurnUsage, strippedToolCallsCount } from "@/modules/R0/runtime";
 import { executionRecordOf } from "@/modules/U2/execution";
 import { MarkdownText } from "../markdown";
 import { ReasoningGroup } from "../reasoning";
@@ -14,7 +14,7 @@ import { CustomNote, type CustomNoteSource } from "./custom-note";
 import { EarlierSteps, isTurnGroup, useTurnGroupBy } from "./earlier-steps";
 import { ExecutionRow } from "./execution-row";
 import { fileMentionFilesOf } from "./file-mention";
-import { endingOf, MessageEndingNote } from "./message-ending";
+import { endingOf, MessageEndingNote, StrippedToolCallsNote } from "./message-ending";
 import { hasPastedBlock, PastedBlockText } from "./pasted-text";
 import { useProviderError } from "./provider-error-resolver";
 import { storeKeyOf } from "./store-key";
@@ -291,6 +291,10 @@ export function MessageParts({
       ? message.status.error
       : undefined;
   const providerError = useProviderError(errorText);
+  const strippedToolCalls =
+    role === "assistant"
+      ? strippedToolCallsCount(message.metadata.custom.ompStrippedToolCalls)
+      : undefined;
   const ending = endingOf(message, providerError);
   const groupBy = useTurnGroupBy(!isUser && !isSystem);
   const className = isUser
@@ -339,6 +343,7 @@ export function MessageParts({
           </MessagePrimitive.GroupedParts>
         )}
         {ending !== undefined && <MessageEndingNote ending={ending} />}
+        {strippedToolCalls !== undefined && <StrippedToolCallsNote count={strippedToolCalls} />}
         {extra}
         {role === "assistant" && message.status?.type !== "running" ? (
           <TurnUsageRow fields={turnUsageFieldsOf(message)} />
