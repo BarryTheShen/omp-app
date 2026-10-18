@@ -41,6 +41,22 @@ const IDLE_GOOD = {
 
 export const T5_VIBE_SOURCE_RESULTS: readonly RealToolResult[] = [
   {
+    name: "vibe_wait: progress frame while waiting (source-derived)",
+    toolName: "vibe_wait",
+    args: { sessions: ["fast-1"], timeout: 60 },
+    // tools/vibe.ts:159-166: an interruptible wait reports empty text with `wait.waiting: true`.
+    result: {
+      content: [{ type: "text", text: "" }],
+      details: {
+        op: "wait",
+        screens: [RUNNING_FAST],
+        wait: { settled: [], stillRunning: ["fast-1"], timedOut: false, waiting: true },
+      },
+    },
+    isError: false,
+    shows: ["Waiting for worker turns"],
+  },
+  {
     name: "vibe_send: a new turn (source-derived)",
     toolName: "vibe_send",
     args: { session: "fast-1", message: "Run the unit tests and report the failures." },
