@@ -64,10 +64,7 @@ function DefaultLeftSidebar() {
 function DefaultThreadHeader() {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <div className="min-w-0">
-        <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
-        <p className="text-muted-foreground truncate text-xs">New conversation</p>
-      </div>
+      <h1 className="min-w-0 truncate text-sm font-medium">New conversation</h1>
     </div>
   );
 }
@@ -131,27 +128,23 @@ function SidebarToggle({
   readonly onToggle: () => void;
 }) {
   const label = side === "left" ? "sessions" : "panels";
+  const Icon = side === "left" ? Icons.panelLeft : Icons.panelRight;
   return (
     <Button
       aria-controls={`shell-${label}-sidebar`}
       aria-expanded={false}
       aria-label={`Show ${label} sidebar`}
       aria-keyshortcuts={side === "left" ? "Control+B Meta+B" : "Control+Shift+B Meta+Shift+B"}
+      className="text-muted-foreground hover:text-foreground rounded-control grid size-7 place-items-center transition-colors"
       data-shell-sidebar-toggle={side}
-      size="icon-sm"
       title={`Show ${label} sidebar`}
       variant="ghost"
       onClick={onToggle}
     >
-      {side === "left" ? (
-        <Icons.chevronRight aria-hidden="true" />
-      ) : (
-        <Icons.chevronLeft aria-hidden="true" />
-      )}
+      <Icon aria-hidden="true" className="size-4" />
     </Button>
   );
 }
-
 function SidebarHeader({
   side,
   open,
@@ -163,22 +156,31 @@ function SidebarHeader({
 }) {
   const label = side === "left" ? "Sessions" : "Panels";
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-3">
-      <h2 className="text-sm font-semibold tracking-tight">{label}</h2>
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-sidebar-border px-4">
+      {side === "left" ? (
+        <>
+          <img alt="" className="size-5 shrink-0" src="/favicon.svg" />
+          <span className="text-sm font-medium">omp</span>
+          <h2 className="sr-only">{label}</h2>
+        </>
+      ) : (
+        <h2 className="text-sm font-medium">{label}</h2>
+      )}
       <Button
         aria-keyshortcuts={side === "left" ? "Control+B Meta+B" : "Control+Shift+B Meta+Shift+B"}
-        aria-label={`Hide ${label.toLowerCase()} sidebar`}
+        aria-controls={`shell-${label.toLowerCase()}-sidebar`}
         aria-expanded={open}
+        aria-label={`Hide ${label.toLowerCase()} sidebar`}
+        className="text-muted-foreground hover:text-foreground rounded-control ms-auto -me-1.5 grid size-7 shrink-0 place-items-center transition-colors"
         data-shell-sidebar-collapse={side}
-        size="icon-sm"
         title={`Hide ${label.toLowerCase()} sidebar`}
         variant="ghost"
         onClick={onToggle}
       >
         {side === "left" ? (
-          <Icons.chevronLeft aria-hidden="true" />
+          <Icons.panelLeft aria-hidden="true" className="size-4" />
         ) : (
-          <Icons.chevronRight aria-hidden="true" />
+          <Icons.panelRight aria-hidden="true" className="size-4" />
         )}
       </Button>
     </div>
@@ -279,7 +281,7 @@ export function AppShell({
     : `${sidebarTrack(preferences.leftSidebarWidth, leftOpen)} minmax(0, 1fr) ${sidebarTrack(preferences.rightSidebarWidth, rightOpen)}`;
   const sidebarWidth = (side: "left" | "right", open: boolean) => {
     if (!open) return "0";
-    if (isNarrow) return `calc(100% - ${spacingTokens.xl})`;
+    if (isNarrow) return `min(18rem, calc(100% - ${spacingTokens.xl}))`;
     return `min(${side === "left" ? preferences.leftSidebarWidth : preferences.rightSidebarWidth}rem, ${MAX_SIDEBAR_VIEWPORT})`;
   };
   const hasDrawer = isNarrow && drawer !== null;
@@ -307,7 +309,7 @@ export function AppShell({
         aria-label="Sessions"
         className={cn(
           "relative row-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden border-e border-sidebar-border bg-sidebar transition-[width,opacity,visibility] duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none",
-          isNarrow && "absolute inset-y-0 start-0 h-full shadow-overlay",
+          isNarrow && "absolute inset-y-0 start-0 h-full",
           !leftShown && "pointer-events-none invisible opacity-0",
         )}
         data-open={leftShown}
@@ -340,20 +342,12 @@ export function AppShell({
         style={{ gridColumn: isNarrow ? "1" : "2" }}
       >
         <header
-          className="flex min-h-12 items-center gap-2 border-b border-border px-3"
+          className="flex min-h-12 items-center gap-2 border-b border-border px-4 md:px-5"
           data-shell-region="header"
         >
-          {leftShown ? (
-            <span aria-hidden="true" className="size-7 shrink-0" />
-          ) : (
-            <SidebarToggle side="left" onToggle={toggleLeft} />
-          )}
+          {!leftShown && <SidebarToggle side="left" onToggle={toggleLeft} />}
           {threadHeader}
-          {rightShown ? (
-            <span aria-hidden="true" className="size-7 shrink-0" />
-          ) : (
-            <SidebarToggle side="right" onToggle={toggleRight} />
-          )}
+          {!rightShown && <SidebarToggle side="right" onToggle={toggleRight} />}
         </header>
         {/* A labelled region, not role="log": a log is a live region, so every streamed token
             would be announced. U1.8's polite status announces new content instead. */}
@@ -366,7 +360,7 @@ export function AppShell({
         </section>
         <section
           aria-label="Composer"
-          className="shrink-0 border-t border-border bg-background"
+          className="shrink-0 bg-background"
           data-shell-region="composer"
         >
           {/* The composer shares the conversation's width, so its edges line up with the messages. */}
@@ -380,7 +374,7 @@ export function AppShell({
         aria-label="Panels"
         className={cn(
           "relative row-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden border-s border-sidebar-border bg-sidebar transition-[width,opacity,visibility] duration-(--duration-base) ease-(--ease-standard) motion-reduce:transition-none",
-          isNarrow && "absolute inset-y-0 end-0 h-full shadow-overlay",
+          isNarrow && "absolute inset-y-0 end-0 h-full",
           !rightShown && "pointer-events-none invisible opacity-0",
         )}
         data-open={rightShown}
@@ -410,7 +404,7 @@ export function AppShell({
 
       <footer
         aria-label="Status"
-        className="col-start-1 row-start-2 border-t border-border bg-background"
+        className="col-start-1 row-start-2 bg-background"
         data-shell-region="status"
         role="contentinfo"
         style={{ gridColumn: isNarrow ? "1" : "2" }}

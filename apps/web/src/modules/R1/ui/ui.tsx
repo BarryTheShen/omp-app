@@ -1,6 +1,6 @@
 import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import { type AppError, AppFailure, type RunningSession, type ThreadId } from "@omp-app/contracts";
-import { Loader2Icon, MoreHorizontalIcon, PinIcon } from "lucide-react";
+import { Loader2Icon, PinIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ENTER_FADE, LEAVE_FADE, LEAVE_MS } from "@/lib/motion";
 import { type Presence, useEnteringItems, usePresentItems } from "@/lib/presence";
 import { useCapabilityStatus } from "@/registry-core";
+import { Icons } from "@/tokens";
 import type { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
 import { R1_SESSION_LIST_SCOPE } from "../descriptors/descriptors";
@@ -590,16 +591,28 @@ export function SessionCatalogSidebar({
   return (
     <aside
       aria-label="Sessions"
-      className="flex min-h-0 w-full flex-col bg-sidebar text-sidebar-foreground"
+      className="flex min-h-0 w-full flex-col bg-sidebar px-3 text-sidebar-foreground"
     >
-      <div className="flex shrink-0 items-center justify-end border-b border-sidebar-border p-2">
-        <Button ref={newChatRef} type="button" size="sm" onClick={() => void createNewChat()}>
+      <div className="flex shrink-0 items-center">
+        <Button
+          ref={newChatRef}
+          className="border-foreground/10 bg-background hover:border-foreground/25 rounded-control flex h-8 w-full shrink-0 items-center justify-start gap-2 border px-2.5 text-sm transition-colors"
+          type="button"
+          variant="outline"
+          onClick={() => void createNewChat()}
+        >
+          <Icons.add aria-hidden="true" className="size-3.5" />
           New chat
         </Button>
       </div>
-      <div className="border-b border-sidebar-border p-3">
+      <div className="relative px-0.5 py-1">
+        <Icons.search
+          aria-hidden="true"
+          className="text-muted-foreground pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2"
+        />
         <Input
           aria-label="Search sessions"
+          className="h-8 ps-8 text-sm border-foreground/10 bg-background"
           placeholder="Search sessions"
           value={query}
           onChange={(event) => {
@@ -660,7 +673,7 @@ export function SessionCatalogSidebar({
         <div
           ref={attachList}
           aria-label="Session list"
-          className="min-h-0 flex-1 overflow-y-auto p-2"
+          className="-mx-3 min-h-0 flex-1 overflow-y-auto px-3"
           data-focus-scope={R1_SESSION_LIST_SCOPE}
           role="listbox"
           onKeyDown={onListKeyDown}
@@ -675,287 +688,297 @@ export function SessionCatalogSidebar({
               headingLevel={3}
               variant="plain"
             >
-              {group.running.map((presence) => {
-                const chat = presence.item;
-                return (
-                  <div
-                    className={
-                      presence.entering
-                        ? `group relative mb-1 ${ENTER_FADE}`
-                        : "group relative mb-1"
-                    }
-                    data-slot="r1-running-row"
-                    key={`running-${chat.id}`}
-                    ref={(element) => rememberRow(chat.id, element)}
-                  >
-                    <ListRow
-                      title="New chat"
-                      detail={
-                        <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 text-xs">
-                          <Loader2Icon
-                            aria-hidden="true"
-                            className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
-                            data-slot="r1-session-running"
-                          />
-                          Running
-                        </span>
+              <div className="flex flex-col gap-0.5">
+                {group.running.map((presence) => {
+                  const chat = presence.item;
+                  return (
+                    <div
+                      className={
+                        presence.entering
+                          ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${ENTER_FADE}`
+                          : "group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors"
                       }
-                      selected={shownThreadId === chat.id}
-                      tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
-                      onSelect={() => void openSession({ id: chat.id })}
-                      onFocus={() => setFocusedId(chat.id)}
-                    />
-                  </div>
-                );
-              })}
-              {group.sessions.map((presence) => {
-                const session = presence.item;
-                const leaving = presence.leaving;
-                const index = rowIds.indexOf(session.id);
-                const selected = shownThreadId === session.id;
-                const isEditing = editingId === session.id;
-                const title = sessionTitle(session);
-                const activity = activityPreview(session.updatedAt);
-                const running = session.turn === "running";
-                const source =
-                  session.parentSession === null
-                    ? undefined
-                    : snapshot.sessions.find((item) => item.sessionFile === session.parentSession);
-                const marker = branchMarker(session, source);
-                const menuOpen = menuSessionId === session.id;
-                const pinReason = canPin
-                  ? onPinChange
-                    ? session.pinned
-                      ? "Unpin"
-                      : "Pin"
-                    : "Pinning is unavailable"
-                  : capabilityReason(pinStatus, "Pinning is unavailable");
-                return (
-                  <div
-                    aria-hidden={leaving || undefined}
-                    className={
-                      leaving
-                        ? `group relative mb-1 ${LEAVE_FADE}`
-                        : presence.entering
-                          ? `group relative mb-1 ${ENTER_FADE}`
-                          : "group relative mb-1"
-                    }
-                    data-slot="r1-session-row"
-                    inert={leaving || undefined}
-                    key={session.id}
-                    ref={(element) => rememberRow(session.id, element)}
-                  >
-                    <ListRow
-                      title={
-                        isEditing ? (
-                          <Input
-                            aria-busy={isEditing && renaming ? true : undefined}
-                            aria-label={`Rename ${title}`}
-                            autoFocus
-                            readOnly={renaming}
-                            value={editingTitle}
-                            onChange={(event) => setEditingTitle(event.target.value)}
-                            onClick={(event) => event.stopPropagation()}
-                            onFocus={(event) => event.currentTarget.select()}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void finishRename(session);
-                              }
-                              if (event.key === "Escape") endRename(session);
-                            }}
-                          />
-                        ) : (
-                          highlight(title, query)
-                        )
-                      }
-                      titleTooltip={isEditing ? undefined : title}
-                      leading={
-                        session.pinned ? (
-                          <PinIcon
-                            aria-label="Pinned"
-                            className="text-primary size-3 shrink-0"
-                            role="img"
-                          />
-                        ) : undefined
-                      }
-                      detail={
-                        isEditing && renaming ? (
-                          <span className="text-muted-foreground text-xs" role="status">
-                            Saving…
+                      data-selected={shownThreadId === chat.id ? "true" : "false"}
+                      data-slot="r1-running-row"
+                      key={`running-${chat.id}`}
+                      ref={(element) => rememberRow(chat.id, element)}
+                    >
+                      <ListRow
+                        title="New chat"
+                        detail={
+                          <span className="text-meta text-muted-foreground flex w-full min-w-0 items-center gap-1">
+                            <Loader2Icon
+                              aria-hidden="true"
+                              className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
+                              data-slot="r1-session-running"
+                            />
+                            Running
                           </span>
-                        ) : (
-                          <>
-                            {marker && (
-                              <span
-                                className="text-muted-foreground block truncate text-xs"
-                                title={marker.tooltip}
-                              >
-                                {marker.text}
-                              </span>
-                            )}
-                            <span className="text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate text-xs">
-                              {running && (
-                                <span className="flex shrink-0 items-center" title="Running">
-                                  <Loader2Icon
-                                    aria-hidden="true"
-                                    className="size-3 animate-spin motion-reduce:animate-none"
-                                    data-slot="r1-session-running"
-                                  />
-                                  <span className="sr-only">Running</span>
+                        }
+                        selected={shownThreadId === chat.id}
+                        tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
+                        onSelect={() => void openSession({ id: chat.id })}
+                        onFocus={() => setFocusedId(chat.id)}
+                      />
+                    </div>
+                  );
+                })}
+                {group.sessions.map((presence) => {
+                  const session = presence.item;
+                  const leaving = presence.leaving;
+                  const index = rowIds.indexOf(session.id);
+                  const selected = shownThreadId === session.id;
+                  const isEditing = editingId === session.id;
+                  const title = sessionTitle(session);
+                  const activity = activityPreview(session.updatedAt);
+                  const running = session.turn === "running";
+                  const source =
+                    session.parentSession === null
+                      ? undefined
+                      : snapshot.sessions.find(
+                          (item) => item.sessionFile === session.parentSession,
+                        );
+                  const marker = branchMarker(session, source);
+                  const menuOpen = menuSessionId === session.id;
+                  const pinReason = canPin
+                    ? onPinChange
+                      ? session.pinned
+                        ? "Unpin"
+                        : "Pin"
+                      : "Pinning is unavailable"
+                    : capabilityReason(pinStatus, "Pinning is unavailable");
+                  return (
+                    <div
+                      aria-hidden={leaving || undefined}
+                      className={
+                        leaving
+                          ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${LEAVE_FADE}`
+                          : presence.entering
+                            ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${ENTER_FADE}`
+                            : "group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors"
+                      }
+                      data-selected={selected ? "true" : "false"}
+                      data-slot="r1-session-row"
+                      inert={leaving || undefined}
+                      key={session.id}
+                      ref={(element) => rememberRow(session.id, element)}
+                    >
+                      <ListRow
+                        title={
+                          isEditing ? (
+                            <Input
+                              aria-busy={isEditing && renaming ? true : undefined}
+                              aria-label={`Rename ${title}`}
+                              autoFocus
+                              readOnly={renaming}
+                              value={editingTitle}
+                              onChange={(event) => setEditingTitle(event.target.value)}
+                              onClick={(event) => event.stopPropagation()}
+                              onFocus={(event) => event.currentTarget.select()}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  void finishRename(session);
+                                }
+                                if (event.key === "Escape") endRename(session);
+                              }}
+                            />
+                          ) : (
+                            highlight(title, query)
+                          )
+                        }
+                        titleTooltip={isEditing ? undefined : title}
+                        leading={
+                          session.pinned ? (
+                            <PinIcon
+                              aria-label="Pinned"
+                              className="text-primary size-3 shrink-0"
+                              role="img"
+                            />
+                          ) : undefined
+                        }
+                        detail={
+                          isEditing && renaming ? (
+                            <span className="text-meta text-muted-foreground" role="status">
+                              Saving…
+                            </span>
+                          ) : (
+                            <>
+                              {marker && (
+                                <span
+                                  className="text-meta text-muted-foreground block truncate"
+                                  title={marker.tooltip}
+                                >
+                                  {marker.text}
                                 </span>
                               )}
-                              {/* A branch's line above gives the time it was made, so its update time is left out (issue 1314). */}
-                              {marker === undefined && (
-                                <time dateTime={session.updatedAt} title={activity.title}>
-                                  {activity.label}
-                                </time>
-                              )}
-                              {snapshot.git?.branch && (
-                                <>
-                                  <span aria-hidden="true">·</span>
-                                  <span
-                                    className="truncate"
-                                    title={`Branch: ${snapshot.git.branch}`}
-                                  >
-                                    {snapshot.git.branch}
+                              <span className="text-meta text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate">
+                                {running && (
+                                  <span className="flex shrink-0 items-center" title="Running">
+                                    <Loader2Icon
+                                      aria-hidden="true"
+                                      className="size-3 animate-spin motion-reduce:animate-none"
+                                      data-slot="r1-session-running"
+                                    />
+                                    <span className="sr-only">Running</span>
                                   </span>
-                                </>
-                              )}
-                            </span>
-                          </>
-                        )
-                      }
-                      selected={selected}
-                      tabIndex={index === activeIndex ? 0 : -1}
-                      onSelect={!isEditing ? () => void openSession(session) : undefined}
-                      onFocus={!isEditing ? () => setFocusedId(session.id) : undefined}
-                      trailing={
-                        <Toolbar ariaLabel={`Actions for ${title}`}>
+                                )}
+                                {/* A branch's line above gives the time it was made, so its update time is left out (issue 1314). */}
+                                {marker === undefined && (
+                                  <time dateTime={session.updatedAt} title={activity.title}>
+                                    {activity.label}
+                                  </time>
+                                )}
+                                {snapshot.git?.branch && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span
+                                      className="truncate"
+                                      title={`Branch: ${snapshot.git.branch}`}
+                                    >
+                                      {snapshot.git.branch}
+                                    </span>
+                                  </>
+                                )}
+                              </span>
+                            </>
+                          )
+                        }
+                        selected={selected}
+                        tabIndex={index === activeIndex ? 0 : -1}
+                        onSelect={!isEditing ? () => void openSession(session) : undefined}
+                        onFocus={!isEditing ? () => setFocusedId(session.id) : undefined}
+                        trailing={
+                          <Toolbar ariaLabel={`Actions for ${title}`}>
+                            <Button
+                              ref={(element) => {
+                                if (element) moreButtons.current.set(session.id, element);
+                                else moreButtons.current.delete(session.id);
+                              }}
+                              aria-expanded={menuOpen}
+                              aria-haspopup="menu"
+                              aria-label={`More actions for ${title}`}
+                              className="text-muted-foreground hover:text-foreground absolute end-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm opacity-0 transition-colors group-hover:opacity-100 group-focus-within:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                              size="icon-xs"
+                              tabIndex={index === activeIndex ? 0 : -1}
+                              title="More actions"
+                              type="button"
+                              variant="ghost"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                catalog.setActionError(undefined);
+                                setMenuSessionId(menuOpen ? undefined : session.id);
+                              }}
+                              onKeyDown={(event) => {
+                                // Escape closes the menu this button opened; the focus stays on the button (issue 973).
+                                if (event.key === "Escape" && menuOpen) {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setMenuSessionId(undefined);
+                                }
+                              }}
+                            >
+                              <Icons.more aria-hidden="true" className="size-3.5" />
+                            </Button>
+                          </Toolbar>
+                        }
+                      />
+                      {menuOpen && (
+                        <div
+                          aria-label={`Actions for ${title}`}
+                          className="bg-popover text-popover-foreground border-foreground/10 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out rounded-surface z-50 min-w-28 overflow-hidden border p-1 absolute end-1 top-8 flex flex-col gap-0.5"
+                          role="menu"
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setMenuSessionId(undefined);
+                              // The item that had focus leaves with the menu, so the chat's More actions button takes it back (issue 1059).
+                              moreButtons.current.get(session.id)?.focus();
+                            }
+                          }}
+                        >
                           <Button
-                            ref={(element) => {
-                              if (element) moreButtons.current.set(session.id, element);
-                              else moreButtons.current.delete(session.id);
-                            }}
-                            aria-expanded={menuOpen}
-                            aria-haspopup="menu"
-                            aria-label={`More actions for ${title}`}
-                            className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                            size="icon-xs"
-                            tabIndex={index === activeIndex ? 0 : -1}
-                            title="More actions"
+                            aria-label={`Rename ${title}`}
+                            disabled={!canRename}
+                            role="menuitem"
+                            className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                            size="xs"
+                            title={
+                              canRename
+                                ? "Rename"
+                                : capabilityReason(renameStatus, "Rename is unavailable")
+                            }
                             type="button"
                             variant="ghost"
                             onClick={(event) => {
                               event.stopPropagation();
-                              catalog.setActionError(undefined);
-                              setMenuSessionId(menuOpen ? undefined : session.id);
-                            }}
-                            onKeyDown={(event) => {
-                              // Escape closes the menu this button opened; the focus stays on the button (issue 973).
-                              if (event.key === "Escape" && menuOpen) {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                setMenuSessionId(undefined);
-                              }
+                              setMenuSessionId(undefined);
+                              beginRename(session);
                             }}
                           >
-                            <MoreHorizontalIcon aria-hidden="true" />
+                            Rename
                           </Button>
-                        </Toolbar>
-                      }
-                    />
-                    {menuOpen && (
-                      <div
-                        aria-label={`Actions for ${title}`}
-                        className="border-border bg-popover text-popover-foreground shadow-overlay absolute end-1 top-8 z-10 flex min-w-32 flex-col gap-0.5 rounded-md border p-1"
-                        role="menu"
-                        onKeyDown={(event) => {
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            setMenuSessionId(undefined);
-                            // The item that had focus leaves with the menu, so the chat's More actions button takes it back (issue 1059).
-                            moreButtons.current.get(session.id)?.focus();
-                          }
-                        }}
-                      >
-                        <Button
-                          aria-label={`Rename ${title}`}
-                          disabled={!canRename}
-                          role="menuitem"
-                          size="xs"
-                          title={
-                            canRename
-                              ? "Rename"
-                              : capabilityReason(renameStatus, "Rename is unavailable")
-                          }
-                          type="button"
-                          variant="ghost"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setMenuSessionId(undefined);
-                            beginRename(session);
-                          }}
-                        >
-                          Rename
-                        </Button>
-                        <Button
-                          aria-label={`${session.pinned ? "Unpin" : "Pin"} ${title}`}
-                          disabled={!canPin || !onPinChange}
-                          role="menuitem"
-                          size="xs"
-                          title={pinReason}
-                          type="button"
-                          variant="ghost"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void togglePin(session);
-                          }}
-                        >
-                          {session.pinned ? "Unpin" : "Pin"}
-                        </Button>
-                        <Button
-                          aria-label={`Delete ${title}`}
-                          disabled={!canDelete}
-                          role="menuitem"
-                          size="xs"
-                          title={
-                            canDelete
-                              ? "Delete"
-                              : capabilityReason(
-                                  deleteStatus,
-                                  "Deleting a chat isn't available in the app yet.",
-                                )
-                          }
-                          type="button"
-                          variant="ghost"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setMenuSessionId(undefined);
-                            void deleteSession(session, true);
-                          }}
-                        >
-                          Delete
-                        </Button>
-                        <Button
-                          aria-label={`Archive ${title}`}
-                          disabled
-                          role="menuitem"
-                          size="xs"
-                          title={capabilityReason(
-                            archiveStatus,
-                            "Archive is unavailable at the omp release floor",
-                          )}
-                          type="button"
-                          variant="ghost"
-                        >
-                          Archive
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                          <Button
+                            aria-label={`${session.pinned ? "Unpin" : "Pin"} ${title}`}
+                            disabled={!canPin || !onPinChange}
+                            role="menuitem"
+                            className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                            size="xs"
+                            title={pinReason}
+                            type="button"
+                            variant="ghost"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void togglePin(session);
+                            }}
+                          >
+                            {session.pinned ? "Unpin" : "Pin"}
+                          </Button>
+                          <Button
+                            aria-label={`Delete ${title}`}
+                            disabled={!canDelete}
+                            role="menuitem"
+                            className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                            size="xs"
+                            title={
+                              canDelete
+                                ? "Delete"
+                                : capabilityReason(
+                                    deleteStatus,
+                                    "Deleting a chat isn't available in the app yet.",
+                                  )
+                            }
+                            type="button"
+                            variant="ghost"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setMenuSessionId(undefined);
+                              void deleteSession(session, true);
+                            }}
+                          >
+                            Delete
+                          </Button>
+                          <Button
+                            aria-label={`Archive ${title}`}
+                            disabled
+                            role="menuitem"
+                            className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                            size="xs"
+                            title={capabilityReason(
+                              archiveStatus,
+                              "Archive is unavailable at the omp release floor",
+                            )}
+                            type="button"
+                            variant="ghost"
+                          >
+                            Archive
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </Section>
           ))}
         </div>
@@ -963,7 +986,7 @@ export function SessionCatalogSidebar({
       {!snapshot.isLoading && sessions.length > 0 && snapshot.nextCursor !== null && (
         // Outside the listbox (a listbox holds only options) and pinned under it, so it is always
         // in reach however far the list is scrolled.
-        <div className="border-sidebar-border flex shrink-0 flex-col gap-1 border-t p-2">
+        <div className="flex shrink-0 flex-col gap-1 p-2">
           {snapshot.moreError ? (
             <p className="text-destructive px-1 text-xs" role="alert">
               Couldn't load older chats. {snapshot.moreError.message}
@@ -971,9 +994,9 @@ export function SessionCatalogSidebar({
           ) : null}
           <Button
             disabled={snapshot.isLoadingMore}
-            size="sm"
+            className="text-muted-foreground hover:text-foreground rounded-control mt-1 flex h-8 shrink-0 items-center px-2 text-sm transition-colors"
             type="button"
-            variant="outline"
+            variant="ghost"
             onClick={() => void catalog.loadMore()}
           >
             {snapshot.isLoadingMore

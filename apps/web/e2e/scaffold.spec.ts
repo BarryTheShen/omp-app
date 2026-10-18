@@ -22,7 +22,7 @@ test("loads the production shell without console errors", async ({ page }) => {
   await page.goto("/");
 
   await expect(page).toHaveTitle("omp");
-  await expect(page.getByRole("heading", { name: "omp" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start omp-app to connect" })).toBeVisible();
   await page.screenshot({
     path: "../../.data/screenshots/u0-1-light.png",
     fullPage: true,

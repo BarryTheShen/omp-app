@@ -8,7 +8,8 @@ export const SHELL_PREFERENCES_STORAGE_KEY = "omp.app.shell.preferences";
 
 const MIN_SIDEBAR_WIDTH = 14;
 const MAX_SIDEBAR_WIDTH = 32;
-const DEFAULT_SIDEBAR_WIDTH = 18;
+const DEFAULT_LEFT_SIDEBAR_WIDTH = 15;
+const DEFAULT_RIGHT_SIDEBAR_WIDTH = 18;
 
 export interface ShellPreferences {
   readonly leftSidebarWidth: number;
@@ -25,8 +26,8 @@ export interface ShellPreferencesState {
 }
 
 const DEFAULT_PREFERENCES: ShellPreferences = Object.freeze({
-  leftSidebarWidth: DEFAULT_SIDEBAR_WIDTH,
-  rightSidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+  leftSidebarWidth: DEFAULT_LEFT_SIDEBAR_WIDTH,
+  rightSidebarWidth: DEFAULT_RIGHT_SIDEBAR_WIDTH,
 });
 
 function clampSidebarWidth(width: number, fallback: number): number {
@@ -61,8 +62,8 @@ function readStoredPreferences(): {
       typeof candidate.rightSidebarWidth === "number" ? candidate.rightSidebarWidth : Number.NaN;
     return {
       preferences: {
-        leftSidebarWidth: clampSidebarWidth(leftWidth, DEFAULT_SIDEBAR_WIDTH),
-        rightSidebarWidth: clampSidebarWidth(rightWidth, DEFAULT_SIDEBAR_WIDTH),
+        leftSidebarWidth: clampSidebarWidth(leftWidth, DEFAULT_LEFT_SIDEBAR_WIDTH),
+        rightSidebarWidth: clampSidebarWidth(rightWidth, DEFAULT_RIGHT_SIDEBAR_WIDTH),
       },
       persistenceStatus: "ready",
     };

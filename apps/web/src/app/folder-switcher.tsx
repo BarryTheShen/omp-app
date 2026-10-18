@@ -32,17 +32,14 @@ export function FolderSwitcher({
   const currentValue = folder ?? "";
   const options = [...new Set([...(folder ? [folder] : []), ...recentFolders])];
   return (
-    <div
-      className="border-sidebar-border bg-sidebar relative z-10 flex shrink-0 flex-col gap-2 border-b p-3"
-      data-app-folder-switcher="true"
-    >
+    <div className="flex shrink-0 flex-col gap-1 p-3 pb-0" data-app-folder-switcher="true">
       <label className="text-muted-foreground text-xs font-medium" htmlFor="workspace-folder">
         Workspace folder
       </label>
       <select
         aria-label="Workspace folder"
         ref={picker}
-        className="border-border bg-background text-foreground rounded-(--radius) border px-2 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="h-8 w-full rounded-control border-0 bg-transparent px-2 text-sm text-muted-foreground outline-none hover:bg-foreground/[0.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         id="workspace-folder"
         title={folder ?? "Choose a workspace folder"}
         value={otherOpen ? "__other__" : currentValue}

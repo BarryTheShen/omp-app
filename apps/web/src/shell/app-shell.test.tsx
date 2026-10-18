@@ -136,12 +136,12 @@ describe("sidebar widths", () => {
   test("adjusts and restores bounded widths through app-owned storage", () => {
     const first = render(<AppShell />);
     const separator = screen.getByRole("separator", { name: "Resize sessions sidebar" });
-    expect(separator.getAttribute("aria-valuenow")).toBe("18");
+    expect(separator.getAttribute("aria-valuenow")).toBe("15");
 
     fireEvent.keyDown(separator, { key: "ArrowRight" });
-    expect(separator.getAttribute("aria-valuenow")).toBe("19");
+    expect(separator.getAttribute("aria-valuenow")).toBe("16");
     expect(window.localStorage.getItem(SHELL_PREFERENCES_STORAGE_KEY)).toContain(
-      '"leftSidebarWidth":19',
+      '"leftSidebarWidth":16',
     );
     first.unmount();
 
@@ -150,7 +150,7 @@ describe("sidebar widths", () => {
       screen
         .getByRole("separator", { name: "Resize sessions sidebar" })
         .getAttribute("aria-valuenow"),
-    ).toBe("19");
+    ).toBe("16");
   });
 
   test("clamps keyboard resizing at its minimum and maximum", () => {

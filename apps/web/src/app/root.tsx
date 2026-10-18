@@ -205,6 +205,7 @@ import {
   useShortcutRegistry,
 } from "@/shortcuts";
 import { setThemePreference, ThemeApplier, ThemeButton } from "@/theme";
+import { Icons } from "@/tokens";
 import { type AgentHubOpenResult, useAgentHubShortcut } from "./agents/agent-hub-shortcut";
 import { reportClientError, setClientErrorSink } from "./client-errors";
 import { watchSavedCompactions } from "./compaction-watch";
@@ -369,8 +370,16 @@ function SettingsButton({
   readonly threadId: ThreadId | null;
 }) {
   return (
-    <Button type="button" size="sm" variant="outline" onClick={() => onOpenSettings(threadId)}>
-      Settings
+    <Button
+      aria-label="Settings"
+      className="text-muted-foreground hover:text-foreground rounded-control grid size-7 place-items-center transition-colors"
+      title="Settings"
+      type="button"
+      variant="ghost"
+      onClick={() => onOpenSettings(threadId)}
+    >
+      <Icons.settings aria-hidden="true" className="size-4" />
+      <span className="sr-only">Settings</span>
     </Button>
   );
 }
@@ -1627,8 +1636,7 @@ function ActiveThreadReady({
       grow: true,
       render: () => (
         <div className="relative min-w-0">
-          <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
-          <p className="text-muted-foreground truncate text-xs">{title}</p>
+          <h1 className="min-w-0 truncate text-sm font-medium">{title}</h1>
           {/* Messages about the shortcuts and about a command float over the top of the chat, so the header keeps its height. */}
           {(shortcutPreferenceError !== undefined ||
             commandStatus !== null ||
@@ -2605,8 +2613,7 @@ function ConnectedApp({
       grow: true,
       render: () => (
         <div className="relative min-w-0">
-          <h1 className="truncate text-sm font-semibold tracking-tight">omp</h1>
-          <p className="text-muted-foreground truncate text-xs">New conversation</p>
+          <h1 className="min-w-0 truncate text-sm font-medium">New conversation</h1>
           {shortcutPreferenceError !== undefined && (
             <div className="absolute start-0 top-full z-10 flex w-max max-w-[min(26rem,calc(100vw-4.5rem))] flex-col pt-1">
               <ShortcutPreferenceNotice />

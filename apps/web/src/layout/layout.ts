@@ -53,14 +53,14 @@ export const LAYOUT: AppLayout = {
   /** Left sidebar, top to bottom; the theme control sits at the bottom. */
   sidebar: ["folder", "sessions", "theme"],
   /** Above the conversation, left to right; the title takes the free space. */
-  header: ["title", "model", "settings"],
+  header: ["title", "settings"],
   /**
    * Right sidebar; with more than one panel they become tabs, in this order. An on-demand panel
    * (`Surface.open`) is listed only while it is open.
    */
   panels: ["todo", "contextCard", "agents", "rewind", "commandOutput"],
   /** The inline control row inside the composer, left to right. */
-  composerToolbar: ["mode", "executionModes"],
+  composerToolbar: ["model", "mode", "executionModes"],
   /** The queued messages, on a row of their own under the controls. The row is open only while a message waits. */
   composerQueue: ["queue"],
   /** Under the controls and the queue, at the foot of the composer. */

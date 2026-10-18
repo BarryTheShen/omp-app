@@ -49,46 +49,48 @@ export function ThemeButton() {
   };
 
   return (
-    <div
-      className="flex items-center justify-between gap-2 px-(--space-md) py-(--space-xs)"
-      data-slot="theme-button"
-    >
-      <span className="text-muted-foreground text-sm" id="theme-button-label">
-        Theme
-      </span>
-      <div
-        aria-labelledby="theme-button-label"
-        className="flex items-center gap-1"
-        role="radiogroup"
-      >
-        {THEME_PREFERENCES.map((choice) => {
-          const { label, Icon } = CHOICES[choice];
-          const selected = choice === preference;
-          return (
-            <Button
-              aria-checked={selected}
-              aria-label={label}
-              className={cn(selected && "bg-muted text-foreground")}
-              data-theme-choice={choice}
-              key={choice}
-              onClick={() => choose(choice)}
-              onKeyDown={(event) => onKeyDown(event, choice)}
-              ref={(element) => {
-                buttons.current[choice] = element;
-              }}
-              role="radio"
-              size="icon-sm"
-              tabIndex={selected ? 0 : -1}
-              title={
-                choice === "system" ? "System: follows your browser's dark or light setting" : label
-              }
-              type="button"
-              variant="ghost"
-            >
-              <Icon className="size-4" />
-            </Button>
-          );
-        })}
+    <div className="border-foreground/10 border-t p-3" data-slot="theme-button">
+      <div className="text-muted-foreground flex h-8 w-full items-center justify-between gap-2 px-2 text-sm">
+        <span id="theme-button-label">Theme</span>
+        <div
+          aria-labelledby="theme-button-label"
+          className="flex items-center gap-1"
+          role="radiogroup"
+        >
+          {THEME_PREFERENCES.map((choice) => {
+            const { label, Icon } = CHOICES[choice];
+            const selected = choice === preference;
+            return (
+              <Button
+                aria-checked={selected}
+                aria-label={label}
+                className={cn(
+                  "text-muted-foreground hover:text-foreground rounded-sm transition-colors",
+                  selected && "bg-foreground/[0.06] text-foreground",
+                )}
+                data-theme-choice={choice}
+                key={choice}
+                onClick={() => choose(choice)}
+                onKeyDown={(event) => onKeyDown(event, choice)}
+                ref={(element) => {
+                  buttons.current[choice] = element;
+                }}
+                role="radio"
+                size="icon-xs"
+                tabIndex={selected ? 0 : -1}
+                title={
+                  choice === "system"
+                    ? "System: follows your browser's dark or light setting"
+                    : label
+                }
+                type="button"
+                variant="ghost"
+              >
+                <Icon className="size-4" />
+              </Button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
