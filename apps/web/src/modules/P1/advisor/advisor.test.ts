@@ -306,6 +306,7 @@ describe("advisor configuration handoff", () => {
     const invalidValues: readonly (readonly [AdvisorKey, JsonValue])[] = [
       ["advisor.enabled", "yes"],
       ["advisor.syncBacklog", "sometimes"],
+      ["advisor.syncBacklog", 3],
       ["advisor.immuneTurns", -1],
       ["advisor.reviewMode", "always"],
       ["advisor.reviewInterval", 0],

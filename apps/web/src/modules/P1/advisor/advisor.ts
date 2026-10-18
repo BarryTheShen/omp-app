@@ -14,6 +14,12 @@ import {
 } from "@omp-app/contracts";
 export type AdvisorConfigLayer = "global" | "project";
 
+/**
+ * omp v18.9.1 declares these seven settings in
+ * `packages/coding-agent/src/advisor/settings.ts:7-139`, under the model/Advisor group.
+ * The browser uses their plain-English labels in `model.ts`; these keys stay in the
+ * typed ConfigStore seam and never appear as UI copy.
+ */
 export const ADVISOR_KEYS = [
   "advisor.enabled",
   "advisor.syncBacklog",
@@ -25,11 +31,14 @@ export const ADVISOR_KEYS = [
 ] as const;
 
 export type AdvisorKey = (typeof ADVISOR_KEYS)[number];
+
+/**
+ * The setting is a string enum in omp's v18.9.1 `advisor/settings.ts:26-40`.
+ * `advisor/config.ts:49-67` also accepts numeric thresholds only for WATCHDOG
+ * roster entries, not for this setting.
+ */
 const ADVISOR_SYNC_BACKLOG_VALUES = ["off", "1", "3", "5", "strict"] as const;
 const ADVISOR_REVIEW_MODE_VALUES = ["turn", "agent-end"] as const;
-// Value domains follow omp v18.8.9's advisor/settings.ts:11-140 and advisor-config.ts:47-48.
-const ADVISOR_IMMUNE_TURN_VALUES = [0, 1, 2, 3, 4, 5] as const;
-const ADVISOR_REVIEW_INTERVAL_VALUES = [1, 2, 3, 5, 10] as const;
 const ADVISOR_VALUE_VALIDATORS: Readonly<Record<AdvisorKey, (value: JsonValue) => boolean>> = {
   "advisor.enabled": (value) => typeof value === "boolean",
   "advisor.syncBacklog": (value) =>
@@ -39,15 +48,11 @@ const ADVISOR_VALUE_VALIDATORS: Readonly<Record<AdvisorKey, (value: JsonValue) =
     typeof value === "string" &&
     ADVISOR_REVIEW_MODE_VALUES.includes(value as (typeof ADVISOR_REVIEW_MODE_VALUES)[number]),
   "advisor.immuneTurns": (value) =>
-    typeof value === "number" &&
-    ADVISOR_IMMUNE_TURN_VALUES.includes(value as (typeof ADVISOR_IMMUNE_TURN_VALUES)[number]),
+    typeof value === "number" && Number.isInteger(value) && value >= 0,
   "advisor.maxNotesPerUpdate": (value) =>
     typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value >= 1,
   "advisor.reviewInterval": (value) =>
-    typeof value === "number" &&
-    ADVISOR_REVIEW_INTERVAL_VALUES.includes(
-      value as (typeof ADVISOR_REVIEW_INTERVAL_VALUES)[number],
-    ),
+    typeof value === "number" && Number.isInteger(value) && value >= 1,
   "advisor.evictStaleResults": (value) => typeof value === "boolean",
 };
 
@@ -62,6 +67,12 @@ function validateAdvisorValue(key: AdvisorKey, value: JsonValue): void {
 
 export type AdvisorCommand = "toggle" | "on" | "off" | "status" | "dump";
 
+/**
+ * omp v18.9.1 registers `/advisor` and these subcommands in
+ * `packages/coding-agent/src/slash-commands/builtin-collaboration.ts:63-75`.
+ * Its RPC handler returns typed command output through A1; the browser never parses
+ * that human-facing text.
+ */
 const ADVISOR_COMMANDS: Readonly<Record<AdvisorCommand, SlashCommand>> = {
   toggle: "/advisor toggle" as SlashCommand,
   on: "/advisor on" as SlashCommand,
