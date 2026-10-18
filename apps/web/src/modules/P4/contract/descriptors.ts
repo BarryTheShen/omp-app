@@ -2,6 +2,7 @@ import type { Descriptor, ShortcutDescriptor } from "@omp-app/contracts";
 
 /** A shortcut that also fires while focus is in the composer: the app's opt-in (shortcuts/registry.ts). */
 type EditableShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditable: true };
+type TreeShortcutDescriptor = ShortcutDescriptor & { readonly focus: "tree" };
 
 /** P4 owns durable session-tree/fork rows only; P3 assistant-ui rows stay outside this list. */
 export const P4_DESCRIPTORS = [
@@ -75,6 +76,10 @@ export const P4_DESCRIPTORS = [
     scope: "global",
     allowInEditable: true,
   },
+  /**
+   * omp v18.9.1's `app.tree.foldOrUp` is Ctrl+Left / Alt+Left
+   * (`packages/tui/src/app-keybindings.ts:225-232`).
+   */
   {
     kind: "shortcut",
     id: "P4.treeFoldOrUp",
@@ -84,6 +89,29 @@ export const P4_DESCRIPTORS = [
     requires: ["omp.cmd.get_tree"],
     chord: "ArrowLeft",
     scope: "tree",
+    focus: "tree",
+  },
+  {
+    kind: "shortcut",
+    id: "P4.treeFoldOrUpCtrl",
+    owner: "P4",
+    title: "Fold tree or move up",
+    covers: [],
+    requires: ["omp.cmd.get_tree"],
+    chord: "Ctrl+ArrowLeft",
+    scope: "tree",
+    focus: "tree",
+  },
+  {
+    kind: "shortcut",
+    id: "P4.treeFoldOrUpAlt",
+    owner: "P4",
+    title: "Fold tree or move up",
+    covers: [],
+    requires: ["omp.cmd.get_tree"],
+    chord: "Alt+ArrowLeft",
+    scope: "tree",
+    focus: "tree",
   },
   {
     kind: "shortcut",
@@ -94,5 +122,28 @@ export const P4_DESCRIPTORS = [
     requires: ["omp.cmd.get_tree"],
     chord: "ArrowRight",
     scope: "tree",
+    focus: "tree",
   },
-] as const satisfies readonly (Descriptor | EditableShortcutDescriptor)[];
+  {
+    kind: "shortcut",
+    id: "P4.treeUnfoldOrDownCtrl",
+    owner: "P4",
+    title: "Unfold tree or move down",
+    covers: [],
+    requires: ["omp.cmd.get_tree"],
+    chord: "Ctrl+ArrowRight",
+    scope: "tree",
+    focus: "tree",
+  },
+  {
+    kind: "shortcut",
+    id: "P4.treeUnfoldOrDownAlt",
+    owner: "P4",
+    title: "Unfold tree or move down",
+    covers: [],
+    requires: ["omp.cmd.get_tree"],
+    chord: "Alt+ArrowRight",
+    scope: "tree",
+    focus: "tree",
+  },
+] as const satisfies readonly (Descriptor | EditableShortcutDescriptor | TreeShortcutDescriptor)[];

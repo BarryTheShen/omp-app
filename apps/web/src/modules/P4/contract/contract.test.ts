@@ -64,8 +64,8 @@ describe("P4 entry/tree contracts", () => {
 });
 
 describe("P4 descriptor boundary", () => {
-  test("covers the nine durable-tree rows and registers the tree panel without a duplicate id", () => {
-    expect(P4_DESCRIPTORS).toHaveLength(10);
+  test("covers the nine durable-tree rows and registers tree chords without duplicate ids", () => {
+    expect(P4_DESCRIPTORS).toHaveLength(14);
     expect(P4_DESCRIPTORS.flatMap((descriptor) => descriptor.covers).sort()).toEqual([
       "P3.app-session-tree",
       "P3.app-tree-foldorup",
@@ -77,6 +77,19 @@ describe("P4 descriptor boundary", () => {
       "P3.tree",
       "P3.tree-selector",
     ]);
+    expect(
+      P4_DESCRIPTORS.flatMap((descriptor) =>
+        descriptor.kind === "shortcut" &&
+        [
+          "P4.treeFoldOrUpCtrl",
+          "P4.treeFoldOrUpAlt",
+          "P4.treeUnfoldOrDownCtrl",
+          "P4.treeUnfoldOrDownAlt",
+        ].includes(descriptor.id)
+          ? [descriptor.chord]
+          : [],
+      ),
+    ).toEqual(["Ctrl+ArrowLeft", "Alt+ArrowLeft", "Ctrl+ArrowRight", "Alt+ArrowRight"]);
     expect(P4_DESCRIPTORS.flatMap((descriptor) => descriptor.covers)).not.toContain(
       "P3.branch-message-selector",
     );

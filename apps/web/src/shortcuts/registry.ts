@@ -140,6 +140,14 @@ function eventChord(event: KeyboardEvent): string {
   return [...modifiers, keyName(event)].join("+");
 }
 
+/** A literal Ctrl chord is distinct from Mod in descriptors, but the physical Ctrl key also serves Mod on Windows/Linux. */
+function eventCtrlChord(event: KeyboardEvent): string {
+  const modifiers = ["Ctrl"];
+  if (event.altKey) modifiers.push("Alt");
+  if (event.shiftKey) modifiers.push("Shift");
+  return [...modifiers, keyName(event)].join("+");
+}
+
 /** App-only opt-ins: `allowInEditable` acts while a text box has focus; `focus` limits a chord to the element that carries that `data-focus-scope`. */
 type RegisteredShortcutDescriptor = ShortcutDescriptor & {
   readonly allowInEditable?: true;
@@ -403,10 +411,13 @@ export class ShortcutRegistry {
       return { handled: false };
     }
     const normalized = normalizeChord(eventChord(event));
+    const normalizedCtrl =
+      event.ctrlKey && !event.metaKey ? normalizeChord(eventCtrlChord(event)) : undefined;
     const matching = this.bindings().filter(
       (candidate) =>
         candidate.scope === scope &&
-        candidate.normalizedChord === normalized &&
+        (candidate.normalizedChord === normalized ||
+          candidate.normalizedChord === normalizedCtrl) &&
         !isReservedChord(candidate.chord, candidate.scope),
     );
     if (matching.length !== 1) return { handled: false };

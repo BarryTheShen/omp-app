@@ -184,12 +184,40 @@ export function useP4TreeSelectorController(
   }, []);
   const onRowKeyDown = useCallback(
     (entryId: EntryId, event: KeyboardEvent<HTMLDivElement>) => {
+      const treeChord =
+        (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+        event.ctrlKey !== event.altKey &&
+        !event.metaKey &&
+        !event.shiftKey;
+      if (treeChord) event.preventDefault();
       const { rows, canSelect, selectedEntryId } = viewModelRef.current;
       const index = rows.findIndex((row) => row.entryId === entryId);
       const item = rows[index];
       if (!item) return;
+      const modifierNavigation = treeChord;
+      const plainNavigation = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
       let target: EntryId | null = null;
       switch (event.key) {
+        case "ArrowRight": {
+          if (!plainNavigation && !modifierNavigation) return;
+          if (item.hasVisibleChildren && item.collapsed) {
+            event.preventDefault();
+            onToggleCollapsed(entryId);
+            return;
+          }
+          const next = rows[index + 1];
+          if (next?.parentId === entryId) target = next.entryId;
+          break;
+        }
+        case "ArrowLeft":
+          if (!plainNavigation && !modifierNavigation) return;
+          if (item.hasVisibleChildren && !item.collapsed) {
+            event.preventDefault();
+            onToggleCollapsed(entryId);
+            return;
+          }
+          target = item.parentId;
+          break;
         case "ArrowDown":
           target = rows[index + 1]?.entryId ?? null;
           break;
@@ -207,24 +235,6 @@ export function useP4TreeSelectorController(
           break;
         case "PageUp":
           target = rows[Math.max(0, index - TREE_PAGE_ROWS)]?.entryId ?? null;
-          break;
-        case "ArrowRight": {
-          if (item.hasVisibleChildren && item.collapsed) {
-            event.preventDefault();
-            onToggleCollapsed(entryId);
-            return;
-          }
-          const next = rows[index + 1];
-          if (next?.parentId === entryId) target = next.entryId;
-          break;
-        }
-        case "ArrowLeft":
-          if (item.hasVisibleChildren && !item.collapsed) {
-            event.preventDefault();
-            onToggleCollapsed(entryId);
-            return;
-          }
-          target = item.parentId;
           break;
         case "Enter":
           // The first Enter marks a row; Enter on the marked row confirms it.

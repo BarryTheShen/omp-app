@@ -220,6 +220,7 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "Mod+ArrowLeft",
     scope: "composer",
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -230,6 +231,7 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "Mod+ArrowRight",
     scope: "composer",
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -306,6 +308,7 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "Alt+ArrowLeft",
     scope: "composer",
+    focus: "composer-input",
   },
   {
     kind: "shortcut",
@@ -316,6 +319,7 @@ const COMPOSER_DESCRIPTORS = [
     requires: [COMPOSER],
     chord: "Alt+ArrowRight",
     scope: "composer",
+    focus: "composer-input",
   },
   {
     kind: "shortcut",

@@ -1,8 +1,10 @@
 import { type AppError, EntryId, type SessionEntryHead, ThreadId } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { type OverlayControls, OverlayHost, useStableOverlayHost } from "@/overlay";
+import { DESCRIPTORS } from "@/registry";
+import { MemoryPreferenceStore, ShortcutRegistry } from "@/shortcuts/registry";
 import type {
   ReadOnlyTreeLabel,
   TreeNode,
@@ -132,6 +134,21 @@ function staticActions(overrides: Partial<P4TreeSelectorActions> = {}): P4TreeSe
     registerRowRef: vi.fn(),
     ...overrides,
   };
+}
+
+function dispatchKey(
+  target: HTMLElement,
+  key: string,
+  modifiers: Pick<KeyboardEventInit, "altKey" | "ctrlKey" | "metaKey" | "shiftKey"> = {},
+): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...modifiers,
+  });
+  act(() => target.dispatchEvent(event));
+  return event;
 }
 
 function SelectorHarness({
@@ -351,6 +368,173 @@ describe("P4 tree selector model and views", () => {
     fireEvent.keyDown(root, { key: "ArrowRight" });
     expect(root.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("treeitem", { name: /Saved point/ })).toBeTruthy();
+  });
+
+  test("handles all four omp tree chords on a parent and a leaf, preventing browser fall-through", () => {
+    render(<SelectorHarness />);
+    const root = screen.getByRole("treeitem", { name: /Your message/ });
+    let leaf = screen.getByRole("treeitem", { name: /Saved point/ });
+    expect(root.getAttribute("aria-expanded")).toBe("true");
+
+    root.focus();
+    const ctrlLeft = dispatchKey(root, "ArrowLeft", { ctrlKey: true });
+    expect(ctrlLeft.defaultPrevented).toBe(true);
+    expect(root.getAttribute("aria-expanded")).toBe("false");
+    const altRight = dispatchKey(root, "ArrowRight", { altKey: true });
+    expect(altRight.defaultPrevented).toBe(true);
+    expect(root.getAttribute("aria-expanded")).toBe("true");
+
+    const ctrlRight = dispatchKey(root, "ArrowRight", { ctrlKey: true });
+    expect(ctrlRight.defaultPrevented).toBe(true);
+    expect(document.activeElement?.getAttribute("data-tree-entry-id")).toBe(leafId);
+    root.focus();
+    const altLeft = dispatchKey(root, "ArrowLeft", { altKey: true });
+    expect(altLeft.defaultPrevented).toBe(true);
+    expect(root.getAttribute("aria-expanded")).toBe("false");
+    const altLeftAtRoot = dispatchKey(root, "ArrowLeft", { altKey: true });
+    expect(altLeftAtRoot.defaultPrevented).toBe(true);
+    const altRightToRestore = dispatchKey(root, "ArrowRight", { altKey: true });
+    expect(altRightToRestore.defaultPrevented).toBe(true);
+    expect(root.getAttribute("aria-expanded")).toBe("true");
+    leaf = screen.getByRole("treeitem", { name: /Saved point/ });
+    const ctrlLeftOnLeaf = dispatchKey(leaf, "ArrowLeft", { ctrlKey: true });
+    expect(ctrlLeftOnLeaf.defaultPrevented).toBe(true);
+    expect(document.activeElement?.getAttribute("data-tree-entry-id")).toBe(rootId);
+    leaf.focus();
+    const altLeftOnLeaf = dispatchKey(leaf, "ArrowLeft", { altKey: true });
+    expect(altLeftOnLeaf.defaultPrevented).toBe(true);
+    expect(document.activeElement?.getAttribute("data-tree-entry-id")).toBe(rootId);
+    leaf.focus();
+    const ctrlRightOnLeaf = dispatchKey(leaf, "ArrowRight", { ctrlKey: true });
+    expect(ctrlRightOnLeaf.defaultPrevented).toBe(true);
+    expect(document.activeElement?.getAttribute("data-tree-entry-id")).toBe(leafId);
+    const altRightOnLeaf = dispatchKey(leaf, "ArrowRight", { altKey: true });
+    expect(altRightOnLeaf.defaultPrevented).toBe(true);
+    expect(document.activeElement?.getAttribute("data-tree-entry-id")).toBe(leafId);
+
+    const shifted = dispatchKey(leaf, "ArrowRight", { shiftKey: true });
+    expect(shifted.defaultPrevented).toBe(false);
+    const command = dispatchKey(leaf, "ArrowLeft", { metaKey: true });
+    expect(command.defaultPrevented).toBe(false);
+    const modifiedTwice = dispatchKey(leaf, "ArrowLeft", {
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(modifiedTwice.defaultPrevented).toBe(false);
+  });
+
+  test("the rendered tree and composer shortcuts stay in their real registry focus scopes", () => {
+    render(
+      <>
+        <SelectorHarness />
+        <textarea aria-label="Message box" data-focus-scope="composer-input" />
+      </>,
+    );
+    const tree = screen.getByRole("tree", { name: "Conversation messages" });
+    const root = screen.getByRole("treeitem", { name: /Your message/ });
+    const composer = screen.getByRole("textbox", { name: "Message box" });
+    expect(tree.getAttribute("data-focus-scope")).toBe("tree");
+
+    const registry = new ShortcutRegistry(DESCRIPTORS, {
+      preferenceStore: new MemoryPreferenceStore(),
+    });
+    const treeAction = vi.fn();
+    const composerAction = vi.fn();
+    registry.registerAction("P4.treeFoldOrUpCtrl", treeAction);
+    registry.registerAction("P4.treeFoldOrUp", treeAction);
+    registry.registerAction("U2.cursorLeft", composerAction);
+
+    root.focus();
+    const treeEvent = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      ctrlKey: true,
+      cancelable: true,
+    });
+    tree.dispatchEvent(treeEvent);
+    expect(registry.dispatch(treeEvent, "tree").handled).toBe(true);
+    expect(treeAction).toHaveBeenCalledOnce();
+
+    const commandKey = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      metaKey: true,
+      cancelable: true,
+    });
+    tree.dispatchEvent(commandKey);
+    expect(registry.dispatch(commandKey, "tree").handled).toBe(false);
+    const controlAndCommand = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      ctrlKey: true,
+      metaKey: true,
+      cancelable: true,
+    });
+    tree.dispatchEvent(controlAndCommand);
+    expect(registry.dispatch(controlAndCommand, "tree").handled).toBe(false);
+    expect(treeAction).toHaveBeenCalledOnce();
+
+    const composerChordInTree = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      cancelable: true,
+    });
+    tree.dispatchEvent(composerChordInTree);
+    expect(registry.dispatch(composerChordInTree, "composer").handled).toBe(false);
+    expect(composerAction).not.toHaveBeenCalled();
+
+    composer.focus();
+    const treeChordInComposer = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      cancelable: true,
+    });
+    composer.dispatchEvent(treeChordInComposer);
+    expect(registry.dispatch(treeChordInComposer, "tree").handled).toBe(false);
+    expect(treeAction).toHaveBeenCalledOnce();
+    expect(registry.dispatch(treeChordInComposer, "composer").handled).toBe(true);
+    expect(composerAction).toHaveBeenCalledOnce();
+  });
+
+  test("rejects Cmd and extra Shift modifiers on mounted parent and leaf rows", () => {
+    render(<SelectorHarness />);
+    let root = screen.getByRole("treeitem", { name: /Your message/ });
+    let leaf = screen.getByRole("treeitem", { name: /Saved point/ });
+    root.focus();
+
+    for (const modifiers of [
+      { shiftKey: true },
+      { metaKey: true },
+      { ctrlKey: true, shiftKey: true },
+    ]) {
+      const event = dispatchKey(root, "ArrowRight", modifiers);
+      expect(event.defaultPrevented).toBe(false);
+      expect(root.getAttribute("aria-expanded")).toBe("true");
+      expect(document.activeElement?.getAttribute("data-tree-entry-id")).toBe(rootId);
+    }
+    const commandLeft = dispatchKey(root, "ArrowLeft", { metaKey: true });
+    expect(commandLeft.defaultPrevented).toBe(false);
+    expect(document.activeElement?.getAttribute("data-tree-entry-id")).toBe(rootId);
+
+    dispatchKey(root, "ArrowLeft");
+    expect(root.getAttribute("aria-expanded")).toBe("false");
+    const shiftedCollapsedRight = dispatchKey(root, "ArrowRight", { shiftKey: true });
+    expect(shiftedCollapsedRight.defaultPrevented).toBe(false);
+    expect(root.getAttribute("aria-expanded")).toBe("false");
+
+    dispatchKey(root, "ArrowRight");
+    root = screen.getByRole("treeitem", { name: /Your message/ });
+    leaf = screen.getByRole("treeitem", { name: /Saved point/ });
+    leaf.focus();
+    for (const modifiers of [
+      { ctrlKey: true, metaKey: true },
+      { altKey: true, metaKey: true },
+      { ctrlKey: true, shiftKey: true },
+      { altKey: true, shiftKey: true },
+      { ctrlKey: true, altKey: true },
+    ]) {
+      for (const key of ["ArrowLeft", "ArrowRight"]) {
+        const event = dispatchKey(leaf, key, modifiers);
+        expect(event.defaultPrevented).toBe(false);
+        expect(document.activeElement?.getAttribute("data-tree-entry-id")).toBe(leafId);
+        expect(leaf.isConnected).toBe(true);
+      }
+    }
   });
 
   test("hides labels from both results and search when label visibility is off", () => {

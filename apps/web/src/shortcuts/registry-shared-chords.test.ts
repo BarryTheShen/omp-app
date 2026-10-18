@@ -1,5 +1,5 @@
 import type { Descriptor, ShortcutDescriptor } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { DESCRIPTORS } from "@/registry";
 import { MemoryPreferenceStore, ShortcutRegistry } from "./registry";
 
@@ -257,5 +257,75 @@ describe("two areas that both run outside text boxes cannot share a chord", () =
 
   test("a tree shortcut and a transcript shortcut on one chord conflict, since each runs outside text boxes", () => {
     expect(registryOf([treeFold, transcriptLeft]).conflicts()).toHaveLength(1);
+  });
+});
+
+describe("the composed tree and composer shortcuts use their own focus scopes", () => {
+  test("the tree chord runs only in the tree, and the composer chord runs only in the message box", () => {
+    const registry = registryOf(DESCRIPTORS);
+    const treeAction = vi.fn();
+    const composerAction = vi.fn();
+    registry.registerAction("P4.treeFoldOrUpCtrl", treeAction);
+    registry.registerAction("U2.cursorWordLeft", composerAction);
+    const tree = document.createElement("div");
+    tree.dataset.focusScope = "tree";
+    const row = document.createElement("div");
+    tree.append(row);
+    const composer = document.createElement("div");
+    composer.dataset.focusScope = "composer-input";
+    document.body.append(tree, composer);
+
+    const treeChordInTree = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    row.dispatchEvent(treeChordInTree);
+    expect(registry.dispatch(treeChordInTree, "tree").handled).toBe(true);
+    expect(treeAction).toHaveBeenCalledOnce();
+
+    for (const modifiers of [{ metaKey: true }, { ctrlKey: true, metaKey: true }]) {
+      const nonLiteralCtrl = new KeyboardEvent("keydown", {
+        key: "ArrowLeft",
+        bubbles: true,
+        cancelable: true,
+        ...modifiers,
+      });
+      row.dispatchEvent(nonLiteralCtrl);
+      expect(registry.dispatch(nonLiteralCtrl, "tree").handled).toBe(false);
+    }
+    expect(treeAction).toHaveBeenCalledOnce();
+
+    const composerChordInTree = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      ctrlKey: true,
+      cancelable: true,
+    });
+    row.dispatchEvent(composerChordInTree);
+    expect(registry.dispatch(composerChordInTree, "composer").handled).toBe(false);
+    expect(composerAction).not.toHaveBeenCalled();
+
+    const treeChordInComposer = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(treeChordInComposer);
+    expect(registry.dispatch(treeChordInComposer, "tree").handled).toBe(false);
+    expect(treeAction).toHaveBeenCalledOnce();
+
+    const composerChordInComposer = new KeyboardEvent("keydown", {
+      key: "ArrowLeft",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(composerChordInComposer);
+    expect(registry.dispatch(composerChordInComposer, "composer").handled).toBe(true);
+    expect(composerAction).toHaveBeenCalledOnce();
+    tree.remove();
+    composer.remove();
   });
 });

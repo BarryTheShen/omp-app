@@ -322,6 +322,7 @@ export function P4TreeSelectorView({
             aria-label="Conversation messages"
             className="min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-lg border border-border p-1"
             role="tree"
+            data-focus-scope="tree"
             onScroll={onTreeScroll}
           >
             {startIndex > 0 ? (
