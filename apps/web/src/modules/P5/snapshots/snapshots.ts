@@ -27,7 +27,7 @@ export type CheckpointStorePort = PortClient<typeof CheckpointStore>;
 /** R0.1's state fields that establish whether the workspace is at a safe turn boundary. */
 export type QuietPointRuntimeSnapshot = Pick<
   RuntimeSnapshot,
-  "prompt" | "queue" | "tools" | "pending" | "process" | "session"
+  "prompt" | "queue" | "tools" | "pending" | "process" | "session" | "needsRefetch"
 >;
 
 export interface QuietPointRuntime {
@@ -45,6 +45,7 @@ export type QuietPointReason =
   | "pending-host-tool"
   | "pending-host-uri"
   | "compacting"
+  | "state-out-of-date"
   | "process-unavailable";
 
 export interface QuietPointCheck {
@@ -52,7 +53,12 @@ export interface QuietPointCheck {
   readonly reasons: readonly QuietPointReason[];
 }
 
-export type SnapshotTrigger = "prompt-boundary" | "manual" | "post-settle" | "pretool-hook";
+export type SnapshotTrigger =
+  | "prompt-boundary"
+  | "manual"
+  | "post-settle"
+  | "pretool-hook"
+  | "pre-restore";
 
 /** A1's per-session recent cap; pinned snapshots may be retained in addition. */
 export const SNAPSHOT_RETENTION_LIMIT = 100 as const;
@@ -128,6 +134,11 @@ export interface SnapshotGated extends CaptureBase {
 
 export type SnapshotCaptureResult = SnapshotCaptured | SnapshotSkipped | SnapshotGated;
 
+export interface SnapshotCaptureOptions {
+  readonly pinned?: boolean;
+  readonly signal?: PortCallOptions["signal"];
+}
+
 export interface SnapshotCoordinatorState {
   readonly activeOperations: number;
   readonly lastCapture: SnapshotCaptureResult | null;
@@ -135,17 +146,12 @@ export interface SnapshotCoordinatorState {
   readonly error: AppError | null;
 }
 
-export interface SnapshotCaptureOptions {
-  readonly pinned?: boolean;
-  readonly signal?: PortCallOptions["signal"];
-}
-
 export interface SnapshotCoordinatorOptions {
   readonly store: Pick<CheckpointStorePort, "snapshot" | "list">;
   readonly runtime: QuietPointRuntime;
   readonly workspace: FolderPath;
   readonly conversation: ConversationHead | (() => ConversationHead);
-  readonly capabilities?: CapabilityMap;
+  readonly capabilities?: CapabilityMap | (() => CapabilityMap);
   /** Defaults to true; set false when a composition root wants to call start explicitly. */
   readonly autoStart?: boolean;
 }
@@ -190,6 +196,7 @@ const UNAUTHORIZED_EXACT_SNAPSHOT_REASON =
  */
 export function checkQuietPoint(snapshot: QuietPointRuntimeSnapshot): QuietPointCheck {
   const reasons: QuietPointReason[] = [];
+  if (snapshot.needsRefetch) reasons.push("state-out-of-date");
   if (!snapshot.prompt.sessionSettled) reasons.push("session-not-settled");
   if (snapshot.prompt.streaming) reasons.push("turn-streaming");
   if (Object.values(snapshot.tools).some(activeTool)) reasons.push("tracked-tool-running");
@@ -207,6 +214,7 @@ export function checkQuietPoint(snapshot: QuietPointRuntimeSnapshot): QuietPoint
 
 function quietPointReason(check: QuietPointCheck): string {
   const labels: Record<QuietPointReason, string> = {
+    "state-out-of-date": "the runtime state needs to be refetched",
     "session-not-settled": "omp has not finished the session yet",
     "turn-streaming": "the turn is still streaming",
     "tracked-tool-running": "a tracked tool is still running",
@@ -245,8 +253,6 @@ function safeFailure(error: unknown, fallback: string): AppFailure {
 }
 
 function sourceForTrigger(trigger: SnapshotTrigger): CheckpointSnapshotArgs["source"] {
-  // A1.7's source union has no post-settle member. It is still an automatic quiet boundary, while
-  // the P5 view retains the post-settle trigger so the UI does not confuse it with manual capture.
   return trigger === "post-settle" ? "prompt-boundary" : trigger;
 }
 
@@ -281,9 +287,12 @@ export class SnapshotCoordinator {
   private readonly runtime: QuietPointRuntime;
   private readonly workspace: FolderPath;
   private readonly conversation: ConversationHead | (() => ConversationHead);
-  private readonly capabilities: CapabilityMap;
+  private readonly capabilities: () => CapabilityMap;
   private readonly knownSnapshotIds = new Map<string, Set<SnapshotId>>();
+  private readonly captureOrder = new Map<string, SnapshotId[]>();
+  private readonly pinnedSnapshotIds = new Map<string, Set<SnapshotId>>();
   private readonly prunedSnapshotIds = new Map<string, Set<SnapshotId>>();
+  private readonly downgradedSnapshotIds = new Map<string, Set<SnapshotId>>();
   private readonly triggers = new Map<SnapshotId, SnapshotTrigger>();
   private readonly listeners = new Set<SnapshotCoordinatorListener>();
   private readonly queue: Promise<void>[] = [];
@@ -295,13 +304,18 @@ export class SnapshotCoordinator {
   private postSettleGeneration = 0;
   private capturedPostSettleGeneration = 0;
   private readonly scheduledPostSettleGenerations = new Set<number>();
+  private failedPostSettleGeneration = 0;
 
   public constructor(options: SnapshotCoordinatorOptions) {
     this.store = options.store;
     this.runtime = options.runtime;
     this.workspace = options.workspace;
     this.conversation = options.conversation;
-    this.capabilities = options.capabilities ?? {};
+    const capabilities = options.capabilities;
+    this.capabilities =
+      typeof capabilities === "function"
+        ? () => (capabilities as () => CapabilityMap)()
+        : () => capabilities ?? {};
     this.state = {
       activeOperations: 0,
       lastCapture: null,
@@ -377,18 +391,23 @@ export class SnapshotCoordinator {
       const conversation = conversationFrom(this.conversation);
       try {
         const listing = await this.refreshRetention(conversation.threadId, options.signal);
-        const views = listing.records.map((record) =>
-          captureView(
-            record,
-            this.triggers.get(record.snapshotId) ??
+        const downgraded =
+          this.downgradedSnapshotIds.get(conversation.threadId) ?? new Set<SnapshotId>();
+        const views = listing.records.map((record) => {
+          const isDowngraded = downgraded.has(record.snapshotId);
+          const listedRecord = isDowngraded ? { ...record, source: "manual" as const } : record;
+          const trigger = isDowngraded
+            ? "manual"
+            : (this.triggers.get(record.snapshotId) ??
               (record.source === "manual"
                 ? "manual"
                 : record.source === "pretool-hook"
                   ? "pretool-hook"
-                  : "prompt-boundary"),
-            listing.retention,
-          ),
-        );
+                  : record.source === "pre-restore"
+                    ? "pre-restore"
+                    : "prompt-boundary"));
+          return captureView(listedRecord, trigger, listing.retention);
+        });
         this.publish({ ...this.state, retention: listing.retention, error: null });
         return { snapshots: views, retention: listing.retention };
       } catch (error) {
@@ -403,7 +422,7 @@ export class SnapshotCoordinator {
     trigger: SnapshotTrigger,
     options: SnapshotCaptureOptions,
   ): Promise<SnapshotCaptureResult> {
-    const exactCapability = exactSnapshotCapabilityGate(this.capabilities);
+    const exactCapability = exactSnapshotCapabilityGate(this.capabilities());
     const quietPoint = this.checkQuietPoint();
     if (trigger === "pretool-hook" && exactCapability.state !== "available") {
       const gated: SnapshotGated = {
@@ -469,42 +488,73 @@ export class SnapshotCoordinator {
             capability: SNAPSHOT_EXACT_CAPABILITY,
           });
         }
-        this.triggers.set(record.snapshotId, trigger);
+        const afterCaptureQuietPoint = this.checkQuietPoint();
+        const turnStartedDuringCapture =
+          trigger !== "pretool-hook" && !afterCaptureQuietPoint.quiet;
+        const storedRecord: SnapshotRecord = turnStartedDuringCapture
+          ? { ...record, source: "manual" }
+          : record;
+        const captureTrigger: SnapshotTrigger = turnStartedDuringCapture ? "manual" : trigger;
+        if (turnStartedDuringCapture) {
+          const downgraded =
+            this.downgradedSnapshotIds.get(conversation.threadId) ?? new Set<SnapshotId>();
+          downgraded.add(storedRecord.snapshotId);
+          this.downgradedSnapshotIds.set(conversation.threadId, downgraded);
+        }
+        this.triggers.set(storedRecord.snapshotId, captureTrigger);
+        const knownIds = this.knownSnapshotIds.get(conversation.threadId) ?? new Set<SnapshotId>();
+        const order = this.captureOrder.get(conversation.threadId) ?? [];
+        const pinnedIds =
+          this.pinnedSnapshotIds.get(conversation.threadId) ?? new Set<SnapshotId>();
+        knownIds.add(storedRecord.snapshotId);
+        order.push(storedRecord.snapshotId);
+        if (storedRecord.pinned) pinnedIds.add(storedRecord.snapshotId);
+        const pruned = this.prunedSnapshotIds.get(conversation.threadId) ?? new Set<SnapshotId>();
+        while (
+          order.filter((snapshotId) => !pinnedIds.has(snapshotId)).length > SNAPSHOT_RETENTION_LIMIT
+        ) {
+          const candidate = order.find((snapshotId) => !pinnedIds.has(snapshotId));
+          if (candidate === undefined) break;
+          order.splice(order.indexOf(candidate), 1);
+          knownIds.delete(candidate);
+          pruned.add(candidate);
+        }
+        this.knownSnapshotIds.set(conversation.threadId, knownIds);
+        this.captureOrder.set(conversation.threadId, order);
+        this.pinnedSnapshotIds.set(conversation.threadId, pinnedIds);
+        this.prunedSnapshotIds.set(conversation.threadId, pruned);
         const limitation =
           trigger === "pretool-hook" && record.guarantee !== "exact"
             ? "The checkpoint store returned a boundary snapshot; it did not confirm it was taken right before the tool ran."
-            : undefined;
-        let retention: SnapshotRetentionState;
-        let retentionError: AppError | null = null;
-        try {
-          const listing = await this.refreshRetention(conversation.threadId, options.signal);
-          retention = listing.retention;
-        } catch (error) {
-          const failure = safeFailure(error, "Checkpoint retention could not be loaded");
-          retentionError = failure.appError;
-          retention = {
-            ...this.state.retention,
-            loadState: "unavailable",
-            error: failure.appError,
-          };
-        }
-        const view = captureView(record, trigger, retention);
+            : turnStartedDuringCapture
+              ? "The turn started while the snapshot was being taken; this restore point is not the pre-prompt quiet point."
+              : undefined;
+        const retention: SnapshotRetentionState = {
+          ...this.state.retention,
+          retainedCount: knownIds.size,
+          pinnedBaseline: storedRecord.pinned
+            ? storedRecord.snapshotId
+            : this.state.retention.pinnedBaseline,
+          prunedSnapshotIds: [...pruned],
+          error: null,
+        };
+        const view = captureView(storedRecord, captureTrigger, retention);
         const captured: SnapshotCaptured = {
           state: "captured",
-          trigger,
-          quietPoint: currentQuietPoint,
+          trigger: captureTrigger,
+          quietPoint: turnStartedDuringCapture ? afterCaptureQuietPoint : currentQuietPoint,
           exactCapability,
-          record,
+          record: storedRecord,
           view,
           retention,
-          guarantee: record.guarantee,
+          guarantee: storedRecord.guarantee,
           ...(limitation === undefined ? {} : { limitation }),
         };
         this.publish({
           ...this.state,
           lastCapture: captured,
           retention,
-          error: retentionError,
+          error: null,
         });
         return captured;
       } catch (error) {
@@ -574,6 +624,14 @@ export class SnapshotCoordinator {
       if (!currentIds.has(snapshotId)) pruned.add(snapshotId);
     }
     this.knownSnapshotIds.set(threadId, currentIds);
+    this.captureOrder.set(
+      threadId,
+      records.map((record) => record.snapshotId),
+    );
+    this.pinnedSnapshotIds.set(
+      threadId,
+      new Set(records.filter((record) => record.pinned).map((record) => record.snapshotId)),
+    );
     this.prunedSnapshotIds.set(threadId, pruned);
     const pinnedBaseline = records.find((record) => record.pinned)?.snapshotId ?? null;
     const retention: SnapshotRetentionState = {
@@ -604,7 +662,11 @@ export class SnapshotCoordinator {
   private maybeSchedulePostSettle(snapshot: QuietPointRuntimeSnapshot): void {
     if (this.disposed) return;
     const generation = this.postSettleGeneration;
-    if (generation <= this.capturedPostSettleGeneration) return;
+    if (
+      generation <= this.capturedPostSettleGeneration ||
+      generation <= this.failedPostSettleGeneration
+    )
+      return;
     if (this.scheduledPostSettleGenerations.has(generation)) return;
     if (!checkQuietPoint(snapshot).quiet) return;
     this.scheduledPostSettleGenerations.add(generation);
@@ -623,6 +685,7 @@ export class SnapshotCoordinator {
       })
       .catch((error: unknown) => {
         this.scheduledPostSettleGenerations.delete(generation);
+        this.failedPostSettleGeneration = Math.max(this.failedPostSettleGeneration, generation);
         const failure = safeFailure(error, "Post-settle workspace snapshot failed");
         this.publish({ ...this.state, error: failure.appError });
       });

@@ -18,6 +18,7 @@ import {
   rawToolEventExactGate,
   SNAPSHOT_EXACT_CAPABILITY,
   SNAPSHOT_RETENTION_LIMIT,
+  type SnapshotCaptureResult,
   SnapshotCoordinator,
 } from ".";
 
@@ -34,6 +35,8 @@ function runtimeState(
   overrides: Partial<QuietPointRuntimeSnapshot> = {},
 ): QuietPointRuntimeSnapshot {
   return {
+    needsRefetch: false,
+    ...overrides,
     prompt: {
       admitted: true,
       streaming: false,
@@ -99,6 +102,11 @@ class FakeRuntime implements QuietPointRuntime {
     this.snapshot = snapshot;
     for (const listener of this.listeners) listener(snapshot);
   }
+}
+
+/** Lets every promise the coordinator has already queued run (no wall-clock wait). */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 25; turn += 1) await Promise.resolve();
 }
 
 function record(index: number, overrides: Partial<SnapshotRecord> = {}): SnapshotRecord {
@@ -184,6 +192,13 @@ describe("P5 quiet-point snapshot coordination", () => {
         "compacting",
         "process-unavailable",
       ],
+    });
+  });
+
+  test("blocks snapshots while R0 state needs a refetch", () => {
+    expect(checkQuietPoint(runtimeState({ needsRefetch: true }))).toEqual({
+      quiet: false,
+      reasons: ["state-out-of-date"],
     });
   });
 
@@ -462,6 +477,96 @@ describe("P5 quiet-point snapshot coordination", () => {
     });
   });
 
+  test("keeps the cap literal while retaining a pinned capture beyond it", async () => {
+    let calls = 0;
+    const coordinator = new SnapshotCoordinator({
+      store: {
+        snapshot: async () => {
+          calls += 1;
+          return record(calls - 1, { pinned: calls === SNAPSHOT_RETENTION_LIMIT + 1 });
+        },
+        list: async () =>
+          CheckpointListResult.parse({ snapshots: [], nextCursor: null, pinnedBaseline: null }),
+      },
+      runtime: new FakeRuntime(),
+      workspace,
+      conversation,
+      autoStart: false,
+    });
+    let result: SnapshotCaptureResult | undefined;
+    for (let index = 0; index <= SNAPSHOT_RETENTION_LIMIT; index += 1) {
+      result = await coordinator.takeManualSnapshot({ pinned: index === SNAPSHOT_RETENTION_LIMIT });
+    }
+    expect(result).toMatchObject({
+      state: "captured",
+      retention: {
+        retainedCount: SNAPSHOT_RETENTION_LIMIT + 1,
+        pinnedBaseline: "snapshot-100",
+        prunedSnapshotIds: [],
+      },
+    });
+  });
+
+  test("reconciles ordinary retention before the next capture", async () => {
+    const existing = Array.from({ length: SNAPSHOT_RETENTION_LIMIT }, (_, index) => record(index));
+    const coordinator = new SnapshotCoordinator({
+      store: {
+        snapshot: async () => record(SNAPSHOT_RETENTION_LIMIT),
+        list: async () =>
+          CheckpointListResult.parse({
+            snapshots: existing,
+            nextCursor: null,
+            pinnedBaseline: null,
+          }),
+      },
+      runtime: new FakeRuntime(),
+      workspace,
+      conversation,
+      autoStart: false,
+    });
+    await coordinator.listSnapshots();
+    const result = await coordinator.takeManualSnapshot();
+    expect(result).toMatchObject({
+      state: "captured",
+      retention: {
+        retainedCount: SNAPSHOT_RETENTION_LIMIT,
+        prunedSnapshotIds: ["snapshot-0"],
+      },
+    });
+  });
+
+  test("keeps a pinned record from a listing in addition to the cap when the next capture prunes", async () => {
+    const existing = [
+      record(0, { pinned: true }),
+      ...Array.from({ length: SNAPSHOT_RETENTION_LIMIT }, (_, index) => record(index + 1)),
+    ];
+    const coordinator = new SnapshotCoordinator({
+      store: {
+        snapshot: async () => record(SNAPSHOT_RETENTION_LIMIT + 1),
+        list: async () =>
+          CheckpointListResult.parse({
+            snapshots: existing,
+            nextCursor: null,
+            pinnedBaseline: "snapshot-0",
+          }),
+      },
+      runtime: new FakeRuntime(),
+      workspace,
+      conversation,
+      autoStart: false,
+    });
+    await coordinator.listSnapshots();
+    const result = await coordinator.takeManualSnapshot();
+    expect(result).toMatchObject({
+      state: "captured",
+      retention: {
+        retainedCount: SNAPSHOT_RETENTION_LIMIT + 1,
+        pinnedBaseline: "snapshot-0",
+        prunedSnapshotIds: ["snapshot-1"],
+      },
+    });
+  });
+
   test("gates exact pre-tool snapshots with the upstream capability and never upgrades raw events", async () => {
     const runtime = new FakeRuntime(
       runtimeState({ prompt: { ...runtimeState().prompt, streaming: true } }),
@@ -520,6 +625,50 @@ describe("P5 quiet-point snapshot coordination", () => {
       reason:
         "Restore points taken right before each tool runs need a newer omp. This version only reports a tool after it has started.",
     });
+  });
+
+  test("reads changing capabilities for each exact capture", async () => {
+    let capabilities: Record<string, unknown> = {};
+    const coordinator = new SnapshotCoordinator({
+      store: fakeStore([], {
+        onSnapshot: (args) => record(1, { source: args.source, guarantee: "exact" }),
+      }),
+      runtime: new FakeRuntime(
+        runtimeState({ prompt: { ...runtimeState().prompt, streaming: true } }),
+      ),
+      workspace,
+      conversation,
+      capabilities: () => capabilities as never,
+      autoStart: false,
+    });
+    expect((await coordinator.takePretoolHookSnapshot()).state).toBe("gated");
+    capabilities = {
+      [SNAPSHOT_EXACT_CAPABILITY]: CapabilityStatus.parse({ state: "available", via: "upstream" }),
+    };
+    expect(await coordinator.takePretoolHookSnapshot()).toMatchObject({
+      state: "captured",
+      guarantee: "exact",
+    });
+  });
+
+  test("maps a pre-restore record to the pre-restore trigger", async () => {
+    const coordinator = new SnapshotCoordinator({
+      store: {
+        snapshot: async () => record(1, { source: "pre-restore" }),
+        list: async () =>
+          CheckpointListResult.parse({
+            snapshots: [record(1, { source: "pre-restore" })],
+            nextCursor: null,
+            pinnedBaseline: null,
+          }),
+      },
+      runtime: new FakeRuntime(),
+      workspace,
+      conversation,
+      autoStart: false,
+    });
+    const listing = await coordinator.listSnapshots();
+    expect(listing.snapshots[0]?.trigger).toBe("pre-restore");
   });
 
   test("keeps a boundary guarantee visible if a future exact gate has a boundary-only store", async () => {
@@ -613,12 +762,56 @@ describe("P5 quiet-point snapshot coordination", () => {
     });
   });
 
-  test("keeps a successful snapshot when retention refresh is unavailable", async () => {
+  test("downgrades a prompt-boundary record when a turn starts during capture", async () => {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const runtime = new FakeRuntime();
     const coordinator = new SnapshotCoordinator({
       store: {
-        snapshot: async (args) => record(1, { source: args.source }),
+        snapshot: async (args) => {
+          started.resolve();
+          await release.promise;
+          return record(1, { source: args.source });
+        },
+        list: async () =>
+          CheckpointListResult.parse({
+            snapshots: [record(1, { source: "prompt-boundary" })],
+            nextCursor: null,
+            pinnedBaseline: null,
+          }),
+      },
+      runtime,
+      workspace,
+      conversation,
+      autoStart: false,
+    });
+    const capture = coordinator.takePromptBoundarySnapshot();
+    await started.promise;
+    runtime.emit(runtimeState({ prompt: { ...runtimeState().prompt, streaming: true } }));
+    release.resolve();
+    const result = await capture;
+    expect(result).toMatchObject({
+      state: "captured",
+      record: { source: "manual" },
+      limitation: expect.stringContaining("not the pre-prompt quiet point"),
+    });
+    if (result.state !== "captured") throw new Error("the raced capture must be captured");
+    expect(result.quietPoint.quiet).toBe(false);
+    expect(result.quietPoint.reasons).toContain("turn-streaming");
+    const listing = await coordinator.listSnapshots();
+    expect(listing.snapshots[0]).toMatchObject({
+      record: { source: "manual" },
+      trigger: "manual",
+    });
+  });
+  test("does not refresh full retention metadata after each capture", async () => {
+    let listCalls = 0;
+    const coordinator = new SnapshotCoordinator({
+      store: {
+        snapshot: async () => record(1),
         list: async () => {
-          throw new Error("retention store unavailable");
+          listCalls += 1;
+          throw new Error("retention should load only when listing");
         },
       },
       runtime: new FakeRuntime(),
@@ -631,16 +824,52 @@ describe("P5 quiet-point snapshot coordination", () => {
     expect(result).toMatchObject({
       state: "captured",
       record: { snapshotId: "snapshot-1" },
-      retention: {
-        loadState: "unavailable",
-        error: { message: "Checkpoint retention could not be loaded" },
-      },
+      retention: { loadState: "ready", error: null, retainedCount: 1 },
     });
-    expect(coordinator.getSnapshot().error?.message).toBe(
-      "Checkpoint retention could not be loaded",
-    );
+    expect(listCalls).toBe(0);
   });
 
+  test("does not retry an automatic failure until a new settled generation", async () => {
+    let calls = 0;
+    const failed = Promise.withResolvers<void>();
+    const runtime = new FakeRuntime(
+      runtimeState({ prompt: { ...runtimeState().prompt, sessionSettled: false } }),
+    );
+    const coordinator = new SnapshotCoordinator({
+      store: {
+        snapshot: async () => {
+          calls += 1;
+          throw new Error("automatic failure");
+        },
+        list: async () =>
+          CheckpointListResult.parse({ snapshots: [], nextCursor: null, pinnedBaseline: null }),
+      },
+      runtime,
+      workspace,
+      conversation,
+    });
+    coordinator.subscribe((state) => {
+      if (state.error !== null) failed.resolve();
+    });
+    runtime.emit(runtimeState());
+    await failed.promise;
+    // The error is published before the coordinator has finished handling the failure: let it finish first.
+    await settle();
+    runtime.emit(runtimeState());
+    runtime.emit(runtimeState());
+    await settle();
+    expect(calls).toBe(1);
+    // A new settled turn is a new generation: exactly one more attempt.
+    runtime.emit(
+      runtimeState({
+        prompt: { ...runtimeState().prompt, streaming: true, sessionSettled: false },
+      }),
+    );
+    runtime.emit(runtimeState());
+    await settle();
+    expect(calls).toBe(2);
+    coordinator.dispose();
+  });
   test("records an automatic failure without an unhandled rejection and preserves the typed error", async () => {
     const failure = new Error("checkpoint unavailable");
     const coordinator = new SnapshotCoordinator({
