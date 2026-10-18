@@ -7,7 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../settings-kit";
-import { settingOptions } from "../settings-kit";
+import { settingOptions, terminalOnlyDescription } from "../settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 
@@ -74,13 +74,6 @@ function validateEnum(values: readonly string[]) {
       : invalid("enum", `Choose one of: ${values.join(", ")}.`);
   };
 }
-
-const TERMINAL_ONLY = "Terminal only.";
-
-function terminalDescription(description: string | undefined): string {
-  return description === undefined ? TERMINAL_ONLY : `${TERMINAL_ONLY} ${description}`;
-}
-
 function control(
   key: SettingControl["key"],
   label: string,
@@ -98,12 +91,17 @@ function control(
     validate,
     apply: "live",
     ...(options === undefined ? {} : { options }),
-    description: terminalOnly ? terminalDescription(description) : description,
+    description: terminalOnly ? terminalOnlyDescription(description) : description,
   };
 }
 
-function booleanControl(key: string, label: string, description?: string): ScalarSettingControl {
-  return control(key, label, "boolean", validateBoolean, undefined, description);
+function booleanControl(
+  key: string,
+  label: string,
+  description?: string,
+  terminalOnly = true,
+): ScalarSettingControl {
+  return control(key, label, "boolean", validateBoolean, undefined, description, terminalOnly);
 }
 
 function enumControl(
@@ -125,8 +123,13 @@ function enumControl(
   );
 }
 
-function textControl(key: string, label: string, description: string): ScalarSettingControl {
-  return control(key, label, "text", validateText, undefined, description);
+function textControl(
+  key: string,
+  label: string,
+  description: string,
+  terminalOnly = true,
+): ScalarSettingControl {
+  return control(key, label, "text", validateText, undefined, description, terminalOnly);
 }
 
 function section(
@@ -145,11 +148,17 @@ export const THEME_SETTINGS_SECTION = section(
   "Theme",
   ["S1.appearance-theme"],
   [
-    textControl("theme.dark", "Dark Theme", "Theme used when the terminal has a dark background"),
+    textControl(
+      "theme.dark",
+      "Dark Theme",
+      "Theme used when the terminal has a dark background",
+      false,
+    ),
     textControl(
       "theme.light",
       "Light Theme",
       "Theme used when the terminal has a light background",
+      false,
     ),
     enumControl(
       "symbolPreset",
@@ -329,6 +338,7 @@ export const DISPLAY_SETTINGS_SECTION = section(
       "tui.reactions",
       "Agent Reactions",
       "Invite the agent to react to your message with an emoji badge on its bubble",
+      false,
     ),
     booleanControl(
       "tui.codexResetFireworks",
@@ -463,11 +473,13 @@ export const IMAGES_SETTINGS_SECTION = section(
       "images.autoResize",
       "Auto-Resize Images",
       "Resize large images to 2000x2000 max for better model compatibility",
+      false,
     ),
     booleanControl(
       "images.blockImages",
       "Block Images",
       "Prevent images from being sent to LLM providers",
+      false,
     ),
   ],
 );

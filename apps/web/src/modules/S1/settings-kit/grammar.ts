@@ -169,6 +169,12 @@ function controlFor(
 ): SettingControl | undefined {
   return descriptor.controls.find((control) => control.key === key);
 }
+/** Shared wording for controls whose effects exist only in omp's terminal modes. */
+export const TERMINAL_ONLY = "Terminal only.";
+
+export function terminalOnlyDescription(description?: string): string {
+  return description === undefined ? TERMINAL_ONLY : `${TERMINAL_ONLY} ${description}`;
+}
 
 /**
  * How long a settings read may take before it fails with a message and a Retry. A read the server never

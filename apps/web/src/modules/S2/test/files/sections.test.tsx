@@ -106,7 +106,9 @@ describe("S2.2 ConfigStore-backed Files sections", () => {
     );
     expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("500");
     expect(
-      screen.getByText("Show read results inline in the transcript instead of as summary rows."),
+      screen.getByText(
+        "Terminal only. Show read results inline in the transcript instead of as summary rows.",
+      ),
     ).toBeTruthy();
     expect(
       screen.getByText("This preference only changes omp's terminal; the app does not use it."),

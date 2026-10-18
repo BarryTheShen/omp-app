@@ -187,6 +187,14 @@ describe("S1.3 appearance sections", () => {
   });
 
   test("validates every effective source default and preserves its apply boundary", () => {
+    const sharedAppearanceKeys = new Set([
+      "theme.dark",
+      "theme.light",
+      "images.autoResize",
+      "images.blockImages",
+      "tui.reactions",
+      "title.icons",
+    ]);
     for (const descriptor of S1_APPEARANCE_SECTIONS) {
       const snapshot = defaultSnapshot(descriptor);
       expect(descriptor.requires).toContain("host.config");
@@ -194,14 +202,14 @@ describe("S1.3 appearance sections", () => {
         expect(setting.kind).toBe(EXPECTED_KINDS[setting.key]);
         expect(setting.secret).toBe(false);
         expect(setting.apply).toBe("live");
-        if (setting.key === "title.icons") {
-          // Session titles are made for app chats too, so this one control must not say "Terminal only."
-          expect(setting.description).not.toMatch(/Terminal only/);
+        if (sharedAppearanceKeys.has(setting.key)) {
+          expect(setting.description ?? "").not.toMatch(/^Terminal only\./);
         } else {
           expect(setting.description).toMatch(/^Terminal only\. /);
         }
         const value = DEFAULT_VALUES[setting.key];
-        if (value === undefined) throw new Error(`Missing omp v18.6.1 default for ${setting.key}.`);
+        if (value === undefined)
+          throw new Error(`Missing omp v18.6.1 default fixture for ${setting.key}.`);
         expect(setting.validate({ secret: false, value }, snapshot)).toEqual({ valid: true });
         expect(snapshot.entries.find((entry) => entry.key === setting.key)).toMatchObject({
           value,
@@ -231,9 +239,7 @@ describe("S1.3 appearance sections", () => {
     ).toEqual({ valid: true });
     expect(theme.preview).toBeUndefined();
     expect(shape.preview).toBeUndefined();
-    expect(theme.description).toBe(
-      "Terminal only. Theme used when the terminal has a dark background",
-    );
+    expect(theme.description).toBe("Theme used when the terminal has a dark background");
     expect(shape.description).toBe(
       "Terminal only. Visual layout of the input editor and status line",
     );

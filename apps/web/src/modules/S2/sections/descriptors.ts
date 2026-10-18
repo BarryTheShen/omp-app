@@ -7,7 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { numberRangeWords, settingOptions } from "../../S1/settings-kit";
+import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../../S1/settings-kit";
 
 /**
  * Keys and labels mirror omp v18.6.1's registered UI settings:
@@ -283,7 +283,9 @@ const readToolResultPreviewControl: ScalarSettingControl = {
     "read.toolResultPreview",
     "Inline Read Previews",
     "live",
-    "Show read results inline in the transcript instead of as summary rows.",
+    terminalOnlyDescription(
+      "Show read results inline in the transcript instead of as summary rows.",
+    ),
   ),
   readOnly: {
     reason: "This preference only changes omp's terminal; the app does not use it.",

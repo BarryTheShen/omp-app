@@ -158,8 +158,8 @@ describe("S3 Tasks settings", () => {
     expect(controlFor("worktree.cleanSource").description).toContain("Destructive");
     expect(controlFor("task.isolation.apply").description).toContain("Destructive");
     expect(TASKS_ISOLATION_SECTION.requires).toEqual(["host.config"]);
-    expect(controlFor("worktree.onStart").description).toContain("Used by omp's terminal only.");
-    expect(controlFor("worktree.onExit").description).toContain("Used by omp's terminal only.");
+    expect(controlFor("worktree.onStart").description).toMatch(/^Terminal only\./);
+    expect(controlFor("worktree.onExit").description).toMatch(/^Terminal only\./);
     expect(enumControl("worktree.onStart").options?.map((option) => option.value)).toEqual([
       "off",
       "ask",

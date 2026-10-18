@@ -6,7 +6,7 @@ import type {
   SettingsSectionDescriptor,
   SettingValue,
 } from "@/modules/S1/settings-kit";
-import { settingOptions } from "@/modules/S1/settings-kit";
+import { settingOptions, terminalOnlyDescription } from "@/modules/S1/settings-kit";
 
 const valid = () => ({ valid: true as const });
 /**
@@ -243,19 +243,19 @@ export const modelThinkingSection = section("D1.modelThinking", "Thinking", [
   booleanControl(
     "hideThinkingBlock",
     "Hide Thinking Blocks",
-    "Hide reasoning blocks in assistant responses.",
+    terminalOnlyDescription("Hide reasoning blocks in assistant responses."),
     "live",
   ),
   booleanControl(
     "expandThinkingBlocks",
     "Expand Thinking Blocks",
-    "Terminal only. This app does not use this setting.",
+    terminalOnlyDescription("This app does not use this setting."),
     "live",
   ),
   booleanControl(
     "proseOnlyThinking",
     "Prose Only Thinking",
-    "Omit code blocks from thinking summaries.",
+    terminalOnlyDescription("Omit code blocks from thinking summaries."),
     "live",
   ),
   booleanControl(

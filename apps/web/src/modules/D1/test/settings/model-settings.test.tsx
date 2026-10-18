@@ -140,6 +140,18 @@ describe("D1 model settings sections", () => {
       "images.urls.sshRemotePort",
     ]);
   });
+
+  test("marks thinking display settings as terminal-only when omp has no shared reader", () => {
+    const controls = new Map(
+      modelSettingsSections.flatMap((section) =>
+        section.controls.map((control) => [control.key, control] as const),
+      ),
+    );
+    for (const key of ["hideThinkingBlock", "expandThinkingBlocks", "proseOnlyThinking"]) {
+      expect(controls.get(key)?.description, key).toMatch(/^Terminal only\./);
+    }
+    expect(controls.get("defaultThinkingLevel")?.description).not.toMatch(/^Terminal only\./);
+  });
   test("sampling tier controls pin omp's registered values and validation", () => {
     const sampling = modelSettingsSections[1];
     if (!sampling) throw new Error("missing sampling section");

@@ -312,9 +312,15 @@ describe("S3 Tools and Tasks sections", () => {
     }
   });
 
-  test("says in the description when only omp's terminal or editor sessions read a setting", () => {
-    for (const key of ["tasks.todoClearDelay", "goal.statusInFooter", "plan.defaultOnStartup"]) {
-      expect(control(key).description, key).toContain("Used by omp's terminal only.");
+  test("says Terminal only when omp reads a setting only in terminal modes", () => {
+    for (const key of [
+      "tasks.todoClearDelay",
+      "goal.statusInFooter",
+      "plan.defaultOnStartup",
+      "worktree.onStart",
+      "worktree.onExit",
+    ]) {
+      expect(control(key).description, key).toMatch(/^Terminal only\./);
     }
     for (const key of ["plan.autosave", "plan.autosaveDir"]) {
       expect(control(key).description, key).toContain(

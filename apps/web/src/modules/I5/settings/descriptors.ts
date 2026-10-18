@@ -7,7 +7,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { numberRangeWords, settingOptions } from "../../S1/settings-kit";
+import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../../S1/settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const;
 
@@ -279,7 +279,9 @@ const providerServiceControls: readonly SettingControl[] = [
   enumControl(
     "speech.mode",
     ["all", "assistant", "yield"],
-    "Choose whether speech reads all output, assistant messages, or only the final response.",
+    terminalOnlyDescription(
+      "Choose whether speech reads all output, assistant messages, or only the final response.",
+    ),
   ),
   booleanControl(
     "speech.enhanced",
@@ -429,7 +431,11 @@ export const INTERACTION_SPEECH_SECTION = section(
   "Speech",
   ["S3.interaction-speech"],
   [
-    booleanControl("stt.enabled", "Enable speech-to-text input through the microphone.", "live"),
+    booleanControl(
+      "stt.enabled",
+      terminalOnlyDescription("Enable speech-to-text input through the microphone."),
+      "live",
+    ),
     enumControl(
       "stt.submitTrigger",
       ["never", "release", "release-complete", "say-submit"],

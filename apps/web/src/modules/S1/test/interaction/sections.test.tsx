@@ -315,6 +315,36 @@ describe("S1.4 interaction settings sections", () => {
     expect(keys).not.toContain("speech.enabled");
   });
 
+  test("marks settings read only by terminal interaction code", () => {
+    const controls = new Map(
+      S1_INTERACTION_SECTIONS.flatMap((descriptor) =>
+        descriptor.controls.map((setting) => [setting.key, setting] as const),
+      ),
+    );
+    for (const key of [
+      "tui.vimMode",
+      "tui.vimModeDisplay",
+      "loop.mode",
+      "loop.conditionTimeoutMs",
+      "composer.predictions",
+      "composer.recallClearedDrafts",
+      "doubleEscapeAction",
+      "input.bareExitOnEmptySession",
+      "input.bareSlashCommands",
+      "treeFilterMode",
+      "autocompleteMaxVisible",
+      "spelling.typoDetection",
+      "spelling.autocorrect",
+      "emojiAutocomplete",
+      "paste.largeMenuThreshold",
+    ]) {
+      expect(controls.get(key)?.description, key).toMatch(/^Terminal only\./);
+    }
+    for (const key of ["steeringMode", "followUpMode", "interruptMode", "spelling.autocomplete"]) {
+      expect(controls.get(key)?.description ?? "", key).not.toMatch(/^Terminal only\./);
+    }
+  });
+
   test("uses the source setting type and apply boundary for every key", () => {
     const descriptors = S1_INTERACTION_SECTIONS;
     for (const descriptor of descriptors) {

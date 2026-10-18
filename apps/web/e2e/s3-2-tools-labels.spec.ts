@@ -10,7 +10,12 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
  * width its name says.
  */
 
-const TERMINAL_ONLY_NOTE = "Used by omp's terminal only.";
+const TODO_TERMINAL_NOTE =
+  "Terminal only. How long completed todo items remain visible; -1 keeps them indefinitely.";
+const GOAL_TERMINAL_NOTE =
+  "Terminal only. Show the token budget alongside the goal indicator in the status line.";
+const PLAN_TERMINAL_NOTE =
+  "Terminal only. Automatically enter plan mode at the start of each new session.";
 const TERMINAL_AND_EDITOR_NOTE = "Used by omp's terminal and editor sessions only.";
 
 async function openSettings(page: Page): Promise<Locator> {
@@ -91,7 +96,7 @@ realTest(
     await expect(panel.getByText("Todo Reminder Limit", { exact: true })).toBeVisible();
     const autoClear = panel.getByText("Todo Auto-Clear Delay (seconds)", { exact: true });
     await expect(autoClear).toBeVisible();
-    await expect(panel.getByText(TERMINAL_ONLY_NOTE)).toHaveCount(1);
+    await expect(panel.getByText(TODO_TERMINAL_NOTE, { exact: true })).toHaveCount(1);
     await panel
       .getByRole("spinbutton", { name: "Todo Auto-Clear Delay (seconds)", exact: true })
       .fill("90");
@@ -128,8 +133,8 @@ realTest(
     panel = await openSection(settings, "Tasks", "Modes");
     const goalStatus = panel.getByText("Goal Status in Footer", { exact: true });
     await expect(goalStatus).toBeVisible({ timeout: 20_000 });
-    await expect(panel.getByText(TERMINAL_ONLY_NOTE)).toHaveCount(2);
-    await expect(panel.getByText(TERMINAL_AND_EDITOR_NOTE)).toHaveCount(2);
+    await expect(panel.getByText(GOAL_TERMINAL_NOTE, { exact: true })).toHaveCount(1);
+    await expect(panel.getByText(PLAN_TERMINAL_NOTE, { exact: true })).toHaveCount(1);
     await capture(page, "s3-2-modes-light.png", goalStatus);
     await panel.getByRole("checkbox", { name: "Start in Plan Mode", exact: true }).check();
     await saveAndWait(page);
@@ -156,7 +161,7 @@ realTest(
     let panel = await openSection(settings, "Tools", "Todos");
     const autoClear = panel.getByText("Todo Auto-Clear Delay (seconds)", { exact: true });
     await expect(autoClear).toBeVisible({ timeout: 20_000 });
-    await expect(panel.getByText(TERMINAL_ONLY_NOTE)).toHaveCount(1);
+    await expect(panel.getByText(TODO_TERMINAL_NOTE, { exact: true })).toHaveCount(1);
     await capture(page, "s3-2-todos-dark.png", autoClear);
 
     panel = await openSection(settings, "Tasks", "Modes");
@@ -189,7 +194,8 @@ realTest(
     panel = await openSection(settings, "Tasks", "Modes");
     const startPlan = panel.getByRole("checkbox", { name: "Start in Plan Mode", exact: true });
     await expect(startPlan).toBeVisible({ timeout: 20_000 });
-    await expect(panel.getByText(TERMINAL_ONLY_NOTE)).toHaveCount(2);
+    await expect(panel.getByText(GOAL_TERMINAL_NOTE, { exact: true })).toHaveCount(1);
+    await expect(panel.getByText(PLAN_TERMINAL_NOTE, { exact: true })).toHaveCount(1);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

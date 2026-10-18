@@ -9,7 +9,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../../S1/settings-kit";
-import { numberRangeWords, settingOptions } from "../../S1/settings-kit";
+import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../../S1/settings-kit";
 
 /**
  * Keys mirror omp v18.6.1's UI registrations in tools/settings.ts, tools/browser/settings.ts,
@@ -733,7 +733,9 @@ const toolsTodos: readonly SettingControl[] = [
   described(
     number("tasks.todoClearDelay", -1, 86_400, "live"),
     "Todo Auto-Clear Delay (seconds)",
-    "How long completed todo items remain visible; -1 keeps them indefinitely. Used by omp's terminal only.",
+    terminalOnlyDescription(
+      "How long completed todo items remain visible; -1 keeps them indefinitely.",
+    ),
   ),
 ];
 
@@ -793,12 +795,16 @@ const tasksIsolation: readonly SettingControl[] = [
   described(
     enumSetting("worktree.onStart", ["off", "ask", "create"], "restart"),
     "Worktree on Start",
-    "Whether fresh interactive sessions start in a new linked worktree. Used by omp's terminal only. Saving only updates configuration.",
+    terminalOnlyDescription(
+      "Whether fresh interactive sessions start in a new linked worktree. Saving only updates configuration.",
+    ),
   ),
   described(
     enumSetting("worktree.onExit", ["keep", "ask", "remove"], "restart"),
     "Worktree on Exit",
-    "What to do on exit with worktrees created since omp started. Used by omp's terminal only. Saving only updates configuration.",
+    terminalOnlyDescription(
+      "What to do on exit with worktrees created since omp started. Saving only updates configuration.",
+    ),
   ),
   described(
     bool("task.isolation.apply", "restart"),
@@ -831,7 +837,9 @@ const tasksModes: readonly SettingControl[] = [
   described(
     bool("goal.statusInFooter", "live"),
     "Goal Status in Footer",
-    "Show the token budget alongside the goal indicator in the status line. Used by omp's terminal only.",
+    terminalOnlyDescription(
+      "Show the token budget alongside the goal indicator in the status line.",
+    ),
   ),
   described(
     array("goal.continuationModes", "session"),
@@ -856,7 +864,7 @@ const tasksModes: readonly SettingControl[] = [
   described(
     bool("plan.defaultOnStartup", "restart"),
     "Start in Plan Mode",
-    "Automatically enter plan mode at the start of each new session. Used by omp's terminal only.",
+    terminalOnlyDescription("Automatically enter plan mode at the start of each new session."),
   ),
   described(
     bool("plan.autosave", "reload"),

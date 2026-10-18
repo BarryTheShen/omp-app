@@ -8,7 +8,7 @@ import type {
   SettingValue,
   ValidationResult,
 } from "../settings-kit";
-import { numberRangeWords, settingOptions } from "../settings-kit";
+import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 const HOST_CONFIG_AND_GIT = ["host.config", "host.git"] as const satisfies readonly CapabilityKey[];
@@ -281,48 +281,92 @@ export const INPUT_SETTINGS_SECTION = section(
       immediate: "Interrupt immediately",
       wait: "Wait for tool completion",
     }),
-    booleanControl("tui.vimMode", "Vim Editing Mode"),
+    booleanControl("tui.vimMode", "Vim Editing Mode", "live", terminalOnlyDescription()),
     enumControl(
       "tui.vimModeDisplay",
       "Vim Mode Indicator",
       ["text", "icon", "none"],
       "live",
       { text: "Text", icon: "Icon", none: "Hidden" },
-      "Used in the status line only when Vim Editing Mode is enabled.",
+      terminalOnlyDescription("Used in the status line only when Vim Editing Mode is enabled."),
     ),
-    enumControl("loop.mode", "Loop Mode", ["prompt", "compact", "reset"], "live", {
-      prompt: "Prompt",
-      compact: "Compact",
-      reset: "Reset",
-    }),
-    numberControl("loop.conditionTimeoutMs", "Loop Condition Timeout (ms)", 0, Number.MAX_VALUE),
+    enumControl(
+      "loop.mode",
+      "Loop Mode",
+      ["prompt", "compact", "reset"],
+      "live",
+      {
+        prompt: "Prompt",
+        compact: "Compact",
+        reset: "Reset",
+      },
+      terminalOnlyDescription(),
+    ),
+    numberControl(
+      "loop.conditionTimeoutMs",
+      "Loop Condition Timeout (ms)",
+      0,
+      Number.MAX_VALUE,
+      "live",
+      false,
+      terminalOnlyDescription(),
+    ),
     booleanControl(
       "composer.predictions",
       "Composer Predictions",
       "live",
-      "Terminal only. After a completed turn, omp's terminal can show a predicted next message as ghost text; this uses one extra billed request per turn. Chats in this app do not use predictions.",
+      terminalOnlyDescription(
+        "After a completed turn, omp's terminal can show a predicted next message as ghost text; this uses one extra billed request per turn. Chats in this app do not use predictions.",
+      ),
     ),
-    booleanControl("composer.recallClearedDrafts", "Recall Cleared Drafts"),
-    enumControl("doubleEscapeAction", "Double-Escape Action", ["rewind", "tree", "none"], "live", {
-      rewind: "Rewind",
-      tree: "Session tree",
-      none: "Do nothing",
-    }),
-    booleanControl("input.bareExitOnEmptySession", "Bare Exit on Empty Session"),
-    booleanControl("input.bareSlashCommands", "Bare Slash Commands"),
+    booleanControl(
+      "composer.recallClearedDrafts",
+      "Recall Cleared Drafts",
+      "live",
+      terminalOnlyDescription(),
+    ),
+    enumControl(
+      "doubleEscapeAction",
+      "Double-Escape Action",
+      ["rewind", "tree", "none"],
+      "live",
+      { rewind: "Rewind", tree: "Session tree", none: "Do nothing" },
+      terminalOnlyDescription(),
+    ),
+    booleanControl(
+      "input.bareExitOnEmptySession",
+      "Bare Exit on Empty Session",
+      "live",
+      terminalOnlyDescription(),
+    ),
+    booleanControl(
+      "input.bareSlashCommands",
+      "Bare Slash Commands",
+      "live",
+      terminalOnlyDescription(),
+    ),
     enumControl(
       "treeFilterMode",
       "Session Tree Filter",
       ["default", "no-tools", "user-only", "labeled-only", "all"],
       "live",
       { "no-tools": "No tools", "user-only": "User only", "labeled-only": "Labeled", all: "All" },
+      terminalOnlyDescription(),
     ),
-    numberControl("autocompleteMaxVisible", "Autocomplete Items", 3, 20, "live", true),
+    numberControl(
+      "autocompleteMaxVisible",
+      "Autocomplete Items",
+      3,
+      20,
+      "live",
+      true,
+      terminalOnlyDescription(),
+    ),
     booleanControl(
       "spelling.typoDetection",
       "Typo Detection (macOS)",
       "live",
-      "Uses the host's macOS dictionaries.",
+      terminalOnlyDescription("Uses the host's macOS dictionaries."),
     ),
     enumControl(
       "spelling.autocomplete",
@@ -335,9 +379,9 @@ export const INPUT_SETTINGS_SECTION = section(
       "spelling.autocorrect",
       "Autocorrect (macOS)",
       "live",
-      "Uses the host's macOS dictionaries.",
+      terminalOnlyDescription("Uses the host's macOS dictionaries."),
     ),
-    booleanControl("emojiAutocomplete", "Emoji Autocomplete"),
+    booleanControl("emojiAutocomplete", "Emoji Autocomplete", "live", terminalOnlyDescription()),
     numberControl(
       "paste.largeMenuThreshold",
       "Large Paste Menu",
@@ -345,6 +389,7 @@ export const INPUT_SETTINGS_SECTION = section(
       Number.MAX_VALUE,
       "live",
       true,
+      terminalOnlyDescription(),
     ),
   ],
 );
@@ -370,18 +415,34 @@ export const NOTIFICATIONS_SETTINGS_SECTION = section(
   "Notifications",
   ["S3.interaction-notifications"],
   [
-    enumControl("completion.notify", "Completion Notification", ["on", "off"], "live", {
-      on: "On",
-      off: "Off",
-    }),
-    enumControl("error.notify", "Error Notification", ["on", "off"], "live", {
-      on: "On",
-      off: "Off",
-    }),
+    enumControl(
+      "completion.notify",
+      "Completion Notification",
+      ["on", "off"],
+      "live",
+      { on: "On", off: "Off" },
+      terminalOnlyDescription(),
+    ),
+    enumControl(
+      "error.notify",
+      "Error Notification",
+      ["on", "off"],
+      "live",
+      { on: "On", off: "Off" },
+      terminalOnlyDescription(),
+    ),
     numberControl("ask.timeout", "Ask Timeout (seconds)", 0, Number.MAX_VALUE),
     enumControl("ask.notify", "Ask Notification", ["on", "off"], "live", { on: "On", off: "Off" }),
-    booleanControl("recap.enabled", "Idle Recap"),
-    numberControl("recap.idleSeconds", "Idle Recap Delay (seconds)", 0, Number.MAX_VALUE),
+    booleanControl("recap.enabled", "Idle Recap", "live", terminalOnlyDescription()),
+    numberControl(
+      "recap.idleSeconds",
+      "Idle Recap Delay (seconds)",
+      0,
+      Number.MAX_VALUE,
+      "live",
+      false,
+      terminalOnlyDescription(),
+    ),
   ],
 );
 
@@ -435,9 +496,19 @@ export const STARTUP_UPDATES_SETTINGS_SECTION = section(
   [
     booleanControl("autoResume", "Auto Resume", "restart"),
     booleanControl("startup.quiet", "Quiet Startup", "restart"),
-    booleanControl("startup.showSplash", "Show Startup Splash", "restart"),
-    booleanControl("startup.setupWizard", "Setup Wizard", "restart"),
-    booleanControl("startup.checkUpdate", "Check for Updates", "restart"),
+    booleanControl(
+      "startup.showSplash",
+      "Show Startup Splash",
+      "restart",
+      terminalOnlyDescription(),
+    ),
+    booleanControl("startup.setupWizard", "Setup Wizard", "restart", terminalOnlyDescription()),
+    booleanControl(
+      "startup.checkUpdate",
+      "Check for Updates",
+      "restart",
+      terminalOnlyDescription(),
+    ),
     enumControl("update.channel", "Update Channel", ["stable", "canary"], "restart", {
       stable: "Stable",
       canary: "Canary",
@@ -510,7 +581,7 @@ export const GIT_SETTINGS_SECTION = section(
   "interaction/Git",
   "Git",
   ["S3.interaction-git"],
-  [booleanControl("git.enabled", "Enable Git Integration", "live")],
+  [booleanControl("git.enabled", "Enable Git Integration", "live", terminalOnlyDescription())],
   HOST_CONFIG_AND_GIT,
 );
 
