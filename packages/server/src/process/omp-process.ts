@@ -1,6 +1,6 @@
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import type {
   AppError,
   FolderPath,
@@ -10,12 +10,22 @@ import type {
 } from "@omp-app/contracts";
 import { AppFailure, checkScrubbed, OmpProcessId as OmpProcessIdSchema } from "@omp-app/contracts";
 import type { RpcDuplex, RpcSessionTimer } from "@omp-app/omp-rpc";
+import { ensureAppDataDir } from "../modules/A1/fs/app-data";
+import { writeFileAtomic } from "../modules/A1/fs/atomic-file";
 
 /** `--mode rpc-ui` is required: it is the only mode that forwards extension/tool UI requests. */
 const OMP_MODE_ARGS = ["--mode", "rpc-ui"] as const;
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const DEFAULT_MAX_STDERR_BYTES = 16 * 1024;
 const DEFAULT_MAX_PENDING_CHUNK_BYTES = 1024 * 1024;
+
+/** App-owned policy keeps omp chats from silently spending saved provider resets. */
+const USAGE_RESET_POLICY = `codexResets:
+  autoRedeem: no
+claudeResets:
+  autoRedeem: no
+`;
+const USAGE_RESET_POLICY_FILE = "omp-app-usage-reset-policy.yml";
 
 export interface OmpProcessOptions {
   /** For attribution and logging only; never parsed or matched against omp's own session id. */
@@ -255,10 +265,10 @@ class SpawnedOmpProcess implements OmpProcess {
 
   async #spawnChild(): Promise<void> {
     this.#setStatus("starting");
-    const env = this.#buildEnv();
-    const homeArgs = await homeFolderArguments(this.folder, this.#homeDir);
     let child: OmpSubprocess;
     try {
+      const env = await this.#buildEnv();
+      const homeArgs = await homeFolderArguments(this.folder, this.#homeDir);
       child = this.#spawn([this.#ompBin, ...OMP_MODE_ARGS, ...homeArgs, ...this.#args], {
         cwd: this.folder,
         env,
@@ -387,7 +397,7 @@ class SpawnedOmpProcess implements OmpProcess {
     }
   }
 
-  #buildEnv(): Record<string, string> {
+  async #buildEnv(): Promise<Record<string, string>> {
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(Bun.env)) {
       if (value !== undefined) env[key] = value;
@@ -396,6 +406,21 @@ class SpawnedOmpProcess implements OmpProcess {
       if (value === undefined) delete env[key];
       else env[key] = value;
     }
+    const appData = await ensureAppDataDir({
+      env,
+      homeDir: this.#homeDir,
+      cwd: this.folder,
+    });
+    const policyPath = join(appData, USAGE_RESET_POLICY_FILE);
+    let current: string | undefined;
+    try {
+      current = await readFile(policyPath, "utf8");
+    } catch {
+      // A missing policy is written below; other failures are reported by the atomic write.
+    }
+    if (current !== USAGE_RESET_POLICY) await writeFileAtomic(policyPath, USAGE_RESET_POLICY);
+    const configuredFiles = env.PI_CONFIG_FILES?.split(delimiter).filter(Boolean) ?? [];
+    env.PI_CONFIG_FILES = [...configuredFiles, policyPath].join(delimiter);
     return env;
   }
 

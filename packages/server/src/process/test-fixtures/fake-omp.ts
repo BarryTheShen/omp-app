@@ -36,6 +36,7 @@ console.log(
     type: "notice",
     cwd: process.cwd(),
     echoedEnv: Bun.env.FAKE_OMP_PASSTHROUGH_CHECK ?? null,
+    configFiles: Bun.env.PI_CONFIG_FILES ?? null,
   }),
 );
 

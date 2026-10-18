@@ -60,6 +60,7 @@ realTest(
     const process = spawnOmpProcess({
       threadId: ThreadId.parse("thread-a0-5-real"),
       folder,
+      homeDir: home,
       ompBin: REAL_OMP ?? "omp",
       env: {
         HOME: home,

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
@@ -166,6 +166,7 @@ describe("OmpProcess spawn and stdio", () => {
       spawnOmpProcess({
         threadId,
         folder,
+        homeDir: folder,
         ompBin: FAKE_OMP,
         env: { FAKE_OMP_PASSTHROUGH_CHECK: "isolated-value" },
       }),
@@ -180,10 +181,89 @@ describe("OmpProcess spawn and stdio", () => {
     expect(process.processId).toBeDefined();
     expect(notice).toMatchObject({ cwd: folder, echoedEnv: "isolated-value" });
   });
+  test("adds an app-owned usage-reset overlay after configured overlays", async () => {
+    const folder = await temporaryFolder();
+    const configured = join(folder, "existing.yml");
+    const process = track(
+      spawnOmpProcess({
+        threadId,
+        folder,
+        homeDir: folder,
+        ompBin: FAKE_OMP,
+        env: { PI_CONFIG_FILES: configured },
+      }),
+    );
+
+    process.start();
+    const notice = await waitForFrame(process, (frame) => frame.type === "notice");
+    const configFiles = String(notice.configFiles).split(":");
+    const policy = configFiles.at(-1);
+    expect(configFiles[0]).toBe(configured);
+    expect(policy).toMatch(/omp-app-usage-reset-policy\.yml$/);
+    expect(await readFile(policy as string, "utf8")).toBe(
+      "codexResets:\n  autoRedeem: no\nclaudeResets:\n  autoRedeem: no\n",
+    );
+    const expectedPolicy = join(folder, ".omp", "app", "omp-app-usage-reset-policy.yml");
+    expect(policy).toBe(expectedPolicy);
+  });
+  test("does not rewrite an unchanged policy when a second process starts", async () => {
+    const folder = await temporaryFolder();
+    const policy = join(folder, ".omp", "app", "omp-app-usage-reset-policy.yml");
+    const startProcess = async (): Promise<void> => {
+      const process = track(
+        spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }),
+      );
+      await process.start();
+      await waitForFrame(process, (frame) => frame.type === "ready");
+      await process.stop();
+    };
+    await startProcess();
+    const before = await stat(policy);
+    await startProcess();
+    const after = await stat(policy);
+    expect(after.ino).toBe(before.ino);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
+  });
+
+  test("replaces a stale policy on the next process start", async () => {
+    const folder = await temporaryFolder();
+    const policy = join(folder, ".omp", "app", "omp-app-usage-reset-policy.yml");
+    await mkdir(join(folder, ".omp", "app"), { recursive: true });
+    await writeFile(policy, "codexResets:\n  autoRedeem: yes\n");
+    const process = track(spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }));
+    await process.start();
+    await waitForFrame(process, (frame) => frame.type === "ready");
+    await process.stop();
+    expect(await readFile(policy, "utf8")).toBe(
+      "codexResets:\n  autoRedeem: no\nclaudeResets:\n  autoRedeem: no\n",
+    );
+  });
+  test("reports a typed startup failure when the app data path is a regular file", async () => {
+    const folder = await temporaryFolder();
+    const appData = join(folder, "app-data");
+    await writeFile(appData, "not a directory");
+    const events: OmpProcessEvent[] = [];
+    const process = track(
+      spawnOmpProcess({
+        threadId,
+        folder,
+        homeDir: folder,
+        ompBin: FAKE_OMP,
+        env: { OMP_APP_DATA_DIR: appData },
+      }),
+    );
+    process.onEvent((event) => events.push(event));
+
+    await expect(process.start()).rejects.toMatchObject({
+      appError: { code: "omp_exited", retryable: true },
+    });
+    expect(process.status).toBe("error");
+    expect(events.at(-1)).toMatchObject({ status: "error", error: { code: "omp_exited" } });
+  });
 
   test("round-trips a written command as the fake's echoed response", async () => {
     const folder = await temporaryFolder();
-    const process = track(spawnOmpProcess({ threadId, folder, ompBin: FAKE_OMP }));
+    const process = track(spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }));
     await process.start();
     await waitForFrame(process, (frame) => frame.type === "ready");
 
@@ -195,7 +275,7 @@ describe("OmpProcess spawn and stdio", () => {
 
   test("rejects start() once stopped, and stop() is idempotent", async () => {
     const folder = await temporaryFolder();
-    const process = track(spawnOmpProcess({ threadId, folder, ompBin: FAKE_OMP }));
+    const process = track(spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }));
     await process.start();
     await waitForFrame(process, (frame) => frame.type === "ready");
 
@@ -235,7 +315,7 @@ describe("OmpProcess shutdown", () => {
   test("stop() sends SIGTERM and resolves without secrets leaking into any event", async () => {
     const folder = await temporaryFolder();
     const events: OmpProcessEvent[] = [];
-    const process = track(spawnOmpProcess({ threadId, folder, ompBin: FAKE_OMP }));
+    const process = track(spawnOmpProcess({ threadId, folder, homeDir: folder, ompBin: FAKE_OMP }));
     process.onEvent((event) => events.push(event));
     let closedWith: unknown;
     process.onClose((cause) => {
@@ -258,6 +338,7 @@ describe("OmpProcess shutdown", () => {
       spawnOmpProcess({
         threadId,
         folder,
+        homeDir: folder,
         ompBin: FAKE_OMP,
         env: { FAKE_OMP_IGNORE_SIGTERM: "1" },
         terminationGraceMs: 25,
@@ -285,6 +366,7 @@ describe("OmpProcess shutdown", () => {
       spawnOmpProcess({
         threadId,
         folder,
+        homeDir: folder,
         ompBin: FAKE_OMP,
         terminationGraceMs: 25,
         timer,
@@ -315,6 +397,7 @@ describe("OmpProcess crash handling", () => {
       spawnOmpProcess({
         threadId,
         folder,
+        homeDir: folder,
         ompBin: FAKE_OMP,
         env: { FAKE_OMP_EXIT_CODE: "9", FAKE_OMP_STDERR: "diagnostic: fixture crash" },
       }),
@@ -344,6 +427,7 @@ describe("OmpProcess crash handling", () => {
       spawnOmpProcess({
         threadId,
         folder,
+        homeDir: folder,
         ompBin: FAKE_OMP,
         env: { FAKE_OMP_EXIT_CODE: "3", FAKE_OMP_STDERR: `error: provider rejected key ${key}` },
       }),
@@ -362,6 +446,7 @@ describe("OmpProcess crash handling", () => {
       spawnOmpProcess({
         threadId,
         folder,
+        homeDir: folder,
         ompBin: FAKE_OMP,
         maxStderrBytes: 2500,
         env: { FAKE_OMP_EXIT_CODE: "1", FAKE_OMP_STDERR: head + tail },
