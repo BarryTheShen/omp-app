@@ -5,4 +5,5 @@ export { P3MessageActions } from "./message-actions";
 export { endNoticeOnPrompt } from "./prompt-ends-notice";
 export { createP3Runs, type P3Runs } from "./runs";
 export { storedEntryId } from "./source";
+export { lastSavedUserEntryId, type OtherVersion, otherVersionsFor } from "./versions";
 export { P3RunStatusSurface, type P3RunStatusSurfaceProps } from "./view";

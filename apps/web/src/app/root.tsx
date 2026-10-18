@@ -88,6 +88,8 @@ import { StatusSegments } from "@/modules/N1/status";
 import {
   createP3Runs,
   endNoticeOnPrompt,
+  lastSavedUserEntryId,
+  otherVersionsFor,
   P3EditSurface,
   type P3EditTarget,
   P3MessageActions,
@@ -730,6 +732,15 @@ function ActiveThreadReady({
 }: ActiveThreadProps) {
   const store = history.store as OmpRuntimeStore;
   const threadId = history.threadId as ThreadId;
+  const catalogSessions = useSyncExternalStore(
+    useCallback((listener) => catalog?.subscribe(listener) ?? (() => undefined), [catalog]),
+    useCallback(() => catalog?.getSnapshot().sessions ?? [], [catalog]),
+    useCallback(() => catalog?.getSnapshot().sessions ?? [], [catalog]),
+  );
+  const otherVersions = useMemo(
+    () => otherVersionsFor(catalogSessions, threadId),
+    [catalogSessions, threadId],
+  );
   const connection = useAppConnection();
   const providerErrors = useMemo(() => client.port(ProviderErrorPort), [client]);
   const resolveProviderError = useCallback(
@@ -787,6 +798,20 @@ function ActiveThreadReady({
   const [editing, setEditing] = useState<P3EditTarget | null>(null);
   // Edit and Regenerate need omp's branch command, and a row omp has saved: a streaming row has no entry yet.
   const branchAvailable = capabilities["omp.cmd.branch"]?.state === "available";
+  const currentSnapshot = store.getSnapshot();
+  const lastUserEntryId = lastSavedUserEntryId(
+    currentSnapshot.messageOrder.map((key) => {
+      const row = currentSnapshot.messages[key];
+      return {
+        role: row?.message.role ?? "",
+        entryId:
+          row?.entryId !== undefined &&
+          currentSnapshot.transcript.entries[row.entryId] !== undefined
+            ? row.entryId
+            : null,
+      };
+    }),
+  );
   const rowActions = (row: { readonly id: string; readonly role: string }): ReactNode => {
     if (!branchAvailable) return undefined;
     const entryId = storedEntryId(store, row.id);
@@ -794,6 +819,10 @@ function ActiveThreadReady({
     return (
       <P3MessageActions
         onEdit={row.role === "user" ? (trigger) => setEditing({ entryId, trigger }) : undefined}
+        otherVersions={
+          row.role === "user" && entryId === lastUserEntryId ? otherVersions : undefined
+        }
+        onOpenOtherVersion={(otherThreadId) => void openThread(otherThreadId)}
       />
     );
   };
