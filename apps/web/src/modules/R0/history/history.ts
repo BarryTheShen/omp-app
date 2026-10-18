@@ -63,6 +63,21 @@ function cancelledFailure(message: string): AppFailure {
 function asEntryIdOrNull(value: string | null): EntryId | null {
   return value === null ? null : (value as EntryId);
 }
+/** omp v18.9.1 records `/clear` as a `reset_boundary` entry with no payload; its context starts after the latest one (`packages/coding-agent/src/session/session-entries.ts:158-168`, `packages/coding-agent/src/session/session-context.ts:461-480`). */
+function entriesAfterResetBoundary(entries: readonly unknown[]): readonly unknown[] {
+  let boundary = -1;
+  for (const [index, value] of entries.entries()) {
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "type" in value &&
+      value.type === "reset_boundary"
+    ) {
+      boundary = index;
+    }
+  }
+  return boundary < 0 ? entries : entries.slice(boundary + 1);
+}
 
 /** True when `get_entries` rejected a stale `since` watermark; the caller should reload from the start. */
 export function isUnknownSinceError(error: unknown): boolean {
@@ -257,14 +272,17 @@ export class SessionHistoryLoader {
     const live = await this.getEntries(newest.fileLastId ?? undefined, signal);
     const leafId = asEntryIdOrNull(live.leafId);
     if (leafId === null) {
-      this.store.pairEndedMessages(live.entries, null);
+      const visible = entriesAfterResetBoundary(live.entries);
+      this.store.pairEndedMessages(visible, null);
       this.store.setHasOlder(false);
       return;
     }
     const window =
       leafId === newest.leafId ? newest : await this.windows({ sessionFile, leafId }, { signal });
-    this.store.pairEndedMessages([...window.entries, ...live.entries], leafId);
-    this.store.setHasOlder(window.hasOlder);
+    const entries = [...window.entries, ...live.entries];
+    const visible = entriesAfterResetBoundary(entries);
+    this.store.pairEndedMessages(visible, leafId);
+    this.store.setHasOlder(window.hasOlder && visible.length === entries.length);
   }
 
   /**
@@ -275,7 +293,10 @@ export class SessionHistoryLoader {
   private async applyEntries(since: EntryId | undefined, signal: AbortSignalLike): Promise<void> {
     try {
       const result = await this.getEntries(since, signal);
-      this.store.pairEndedMessages(result.entries, asEntryIdOrNull(result.leafId));
+      this.store.pairEndedMessages(
+        entriesAfterResetBoundary(result.entries),
+        asEntryIdOrNull(result.leafId),
+      );
     } catch (error) {
       if (since === undefined || !isUnknownSinceError(error)) throw error;
       await this.applyWindow(signal);
@@ -295,7 +316,11 @@ export class SessionHistoryLoader {
         { sessionFile, leafId: transcript.head, before },
         { signal: controller.signal },
       );
-      this.store.prependHistoryEntries(page.entries, page.hasOlder);
+      const visible = entriesAfterResetBoundary(page.entries);
+      this.store.prependHistoryEntries(
+        visible,
+        page.hasOlder && visible.length === page.entries.length,
+      );
     } catch (error) {
       if (controller.signal.aborted) throw cancelledFailure(CANCELLED_MESSAGE);
       throw toAppFailure(error, "Loading older session history failed");

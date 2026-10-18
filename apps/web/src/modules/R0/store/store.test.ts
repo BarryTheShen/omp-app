@@ -1616,6 +1616,37 @@ describe("OmpRuntimeStore", () => {
       message: { role: "assistant", content: "first answer" },
     });
   });
+  test("a clear boundary hides the old branch and keeps only the latest segment", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const message = (id: string, parentId: string | null, text: string) => ({
+      type: "message",
+      id,
+      parentId,
+      timestamp: "2026-10-05T00:00:00.000Z",
+      message: { role: "user", content: text, timestamp: 1 },
+    });
+    store.pairEndedMessages(
+      [
+        message("old", null, "before clear"),
+        {
+          type: "reset_boundary",
+          id: "clear-1",
+          parentId: "old",
+          timestamp: "2026-10-05T00:00:01.000Z",
+        },
+        message("middle", "clear-1", "after first clear"),
+        {
+          type: "reset_boundary",
+          id: "clear-2",
+          parentId: "middle",
+          timestamp: "2026-10-05T00:00:02.000Z",
+        },
+        message("new", "clear-2", "after second clear"),
+      ],
+      "new" as EntryId,
+    );
+    expect(store.getSnapshot().messageOrder).toEqual([`entry:${threadId}:new`]);
+  });
 
   test("keeps the turn in progress after the history and shows each message once", () => {
     const store = new OmpRuntimeStore({ threadId });

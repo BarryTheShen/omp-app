@@ -680,7 +680,7 @@ function mergeEntryMessageKey(next: MutableSnapshot, entryId: EntryId, key: Mess
   entries[entryId] = { ...current, messageKey: key };
 }
 
-/** The entries from the root to `head` (the branch the session is on), oldest first. */
+/** The entries from the root to `head` (the branch the session is on), oldest first, after the latest omp reset boundary (`session-context.ts:461-480` at v18.9.1). */
 function activeBranch(transcript: TranscriptState): readonly EntryId[] {
   if (transcript.head === null) return transcript.order;
   const path: EntryId[] = [];
@@ -693,7 +693,11 @@ function activeBranch(transcript: TranscriptState): readonly EntryId[] {
     path.push(current);
     current = entry.parentId;
   }
-  return path.reverse();
+  path.reverse();
+  const boundary = path.findLastIndex(
+    (entryId) => transcript.entries[entryId]?.type === "reset_boundary",
+  );
+  return boundary < 0 ? path : path.slice(boundary + 1);
 }
 
 /**

@@ -1,4 +1,5 @@
 import type {
+  EntryId,
   OmpWire,
   RpcSessionEvent,
   RpcSessionSend,
@@ -54,6 +55,18 @@ interface FileEntry {
 
 function fileEntry(id: string, parentId: string | null, text: string): FileEntry {
   return { id, parentId, raw: entry(id, parentId, text) };
+}
+function boundaryFileEntry(id: string, parentId: string | null): FileEntry {
+  return {
+    id,
+    parentId,
+    raw: {
+      type: "reset_boundary",
+      id,
+      parentId,
+      timestamp: "2026-10-05T00:01:00.000Z",
+    },
+  };
 }
 
 /**
@@ -257,6 +270,117 @@ describe("SessionHistoryLoader.loadInitial", () => {
     expect(store.getSnapshot().transcript.order).toEqual(["a"]);
     expect(store.getSnapshot().transcript.hasOlder).toBe(false);
   });
+  test("starts the transcript after the latest omp reset boundary", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const { send } = makeSend({
+      get_state: () => ({ sessionId: "s1" }),
+      get_entries: () => ({
+        entries: [
+          entry("old", null, "before clear"),
+          {
+            type: "reset_boundary",
+            id: "clear-1",
+            parentId: "old",
+            timestamp: "2026-10-05T00:01:00.000Z",
+          },
+          entry("middle", "clear-1", "after first clear"),
+          {
+            type: "reset_boundary",
+            id: "clear-2",
+            parentId: "middle",
+            timestamp: "2026-10-05T00:02:00.000Z",
+          },
+          entry("new", "clear-2", "after second clear"),
+        ],
+        leafId: "new",
+      }),
+    });
+    const loader = new SessionHistoryLoader({ send, threadId, store, readWindow: noWindows });
+
+    await loader.loadInitial();
+
+    expect(store.getSnapshot().transcript.order).toEqual(["new"]);
+    expect(store.getSnapshot().messageOrder).toEqual([`entry:${threadId}:new`]);
+  });
+  test("cuts a session-file window at its boundary and closes its older cursor", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const file = [
+      fileEntry("old1", null, "old one"),
+      fileEntry("old2", "old1", "old two"),
+      boundaryFileEntry("clear", "old2"),
+      fileEntry("new1", "clear", "new one"),
+      fileEntry("new2", "new1", "new two"),
+    ];
+    const { send } = makeSend({
+      get_state: () => ({ sessionId: "s1", sessionFile: "/work/s1.jsonl" }),
+      get_entries: () => ({ entries: [], leafId: "new2" }),
+    });
+    const loader = new SessionHistoryLoader({
+      send,
+      threadId,
+      store,
+      readWindow: windowsOf(file, 4),
+    });
+    await loader.loadInitial();
+    expect(store.getSnapshot().transcript.order).toEqual(["new1", "new2"]);
+    expect(store.getSnapshot().transcript.hasOlder).toBe(false);
+  });
+
+  test("cuts live entries when the session-file window is empty and omp has no leaf", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const { send } = makeSend({
+      get_state: () => ({ sessionId: "s1", sessionFile: "/work/s1.jsonl" }),
+      get_entries: () => ({
+        entries: [
+          entry("old", null, "old"),
+          {
+            type: "reset_boundary",
+            id: "clear",
+            parentId: "old",
+            timestamp: "2026-10-05T00:01:00.000Z",
+          },
+          entry("new", "clear", "new"),
+        ],
+        leafId: null,
+      }),
+    });
+    const loader = new SessionHistoryLoader({
+      send,
+      threadId,
+      store,
+      readWindow: windowsOf([], 4),
+    });
+    await loader.loadInitial();
+    expect(store.getSnapshot().transcript.order).toEqual(["new"]);
+    expect(store.getSnapshot().transcript.hasOlder).toBe(false);
+  });
+
+  test("keeps a just-cleared chat empty, then shows a message parented to its boundary", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const { send } = makeSend({
+      get_state: () => ({ sessionId: "s1" }),
+      get_entries: () => ({
+        entries: [
+          entry("old", null, "old"),
+          {
+            type: "reset_boundary",
+            id: "clear",
+            parentId: "old",
+            timestamp: "2026-10-05T00:01:00.000Z",
+          },
+        ],
+        leafId: "clear",
+      }),
+    });
+    const loader = new SessionHistoryLoader({ send, threadId, store, readWindow: noWindows });
+    await loader.loadInitial();
+    expect(store.getSnapshot().transcript.order).toEqual([]);
+    expect(store.getSnapshot().transcript.hasOlder).toBe(false);
+
+    store.pairEndedMessages([entry("after", "clear", "after clear")], "after" as EntryId);
+    expect(store.getSnapshot().transcript.order).toEqual(["after"]);
+    expect(store.getSnapshot().messageOrder).toEqual([`entry:${threadId}:after`]);
+  });
 });
 
 describe("SessionHistoryLoader.loadInitial before a session file is written", () => {
@@ -283,6 +407,37 @@ describe("SessionHistoryLoader.loadInitial before a session file is written", ()
 });
 
 describe("SessionHistoryLoader.loadOlder", () => {
+  test("cuts paging at a boundary and stops requesting older pages", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const windowCalls: SessionEntryWindowArgs[] = [];
+    const file = [
+      fileEntry("old1", null, "old one"),
+      boundaryFileEntry("clear", "old1"),
+      fileEntry("mid", "clear", "middle"),
+      fileEntry("x", "mid", "x"),
+      fileEntry("y", "x", "y"),
+    ];
+    const { send } = makeSend({
+      get_state: () => ({ sessionId: "s1", sessionFile: "/work/s1.jsonl" }),
+      get_entries: () => ({ entries: [], leafId: "y" }),
+    });
+    const loader = new SessionHistoryLoader({
+      send,
+      threadId,
+      store,
+      readWindow: windowsOf(file, 2, windowCalls),
+    });
+    await loader.loadInitial();
+    expect(store.getSnapshot().transcript.order).toEqual(["x", "y"]);
+    expect(store.getSnapshot().transcript.hasOlder).toBe(true);
+
+    await loader.loadOlder();
+    expect(store.getSnapshot().transcript.order).toEqual(["mid", "x", "y"]);
+    expect(store.getSnapshot().transcript.hasOlder).toBe(false);
+    const requests = windowCalls.length;
+    await loader.loadOlder();
+    expect(windowCalls).toHaveLength(requests);
+  });
   test("pages older entries in front of the transcript, on the branch the head shows", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const windowCalls: SessionEntryWindowArgs[] = [];
