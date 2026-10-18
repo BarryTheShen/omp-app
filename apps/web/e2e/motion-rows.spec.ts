@@ -125,12 +125,16 @@ realTest.describe("history", () => {
     testInfo.setTimeout(240_000);
     const page = await realApp.open({ beforeLoad: (target) => target.addInitScript(recordFades) });
     await page.getByRole("listbox", { name: "Session list" }).getByRole("option").first().click();
-    await expect(page.getByText("Earlier answer 20")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("Earlier answer 20", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
     await waitForFiniteAnimations(page);
     expect(await fadeCounts(page), "fades while history loads").toEqual({});
 
     await page.reload();
-    await expect(page.getByText("Earlier answer 20")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("Earlier answer 20", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
     await waitForFiniteAnimations(page);
     expect(await fadeCounts(page), "fades after a reload").toEqual({});
   });

@@ -200,7 +200,7 @@ function RuntimeError({
   return (
     <div className="px-6 pt-3">
       <div
-        className="border-danger bg-danger-surface text-danger-surface-foreground flex max-h-[40dvh] flex-col rounded-lg border p-4"
+        className="border-danger bg-danger-surface text-danger-surface-foreground flex max-h-[25dvh] flex-col rounded-lg border p-4"
         data-slot="u1-thread-error"
       >
         <p

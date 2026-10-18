@@ -10,22 +10,22 @@ realTest.use({ seedSessions: 60 });
  * nothing, a refresh after a turn runs in the background with the rows still on screen, and a
  * failed refresh keeps them and says so in one line.
  *
- * The page's WebSocket is routed through the test so it can count the list requests and hold or
- * fail one result.
+ * The page's WebSocket is routed through the test so it can count the list requests and hold one result or
+ * fail every refresh in a turn.
  */
 interface ListWire {
   /** How many `listSessions` calls the page has made. */
   readonly calls: () => number;
   /** Hold the next list result for 3 s. */
   readonly delayNext: () => void;
-  /** Answer the next list call with an error. */
-  readonly failNext: () => void;
+  /** Fail each list call until the test ends. */
+  readonly failRefreshes: () => void;
 }
 
 async function routeListSessions(page: Page): Promise<ListWire> {
   let calls = 0;
   let delay = false;
-  let fail = false;
+  let failing = false;
   const held = new Map<string, "delay" | "fail">();
   await page.routeWebSocket(/.*/, (ws) => {
     const server = ws.connectToServer();
@@ -33,10 +33,9 @@ async function routeListSessions(page: Page): Promise<ListWire> {
       if (typeof message === "string" && message.includes('"method":"listSessions"')) {
         const frame = JSON.parse(message) as { id: string };
         calls += 1;
-        // Only the next call is held or failed.
-        if (fail) {
+        // A delayed result is one-shot; failures persist through start and end refreshes.
+        if (failing) {
           held.set(frame.id, "fail");
-          fail = false;
         } else if (delay) {
           held.set(frame.id, "delay");
           delay = false;
@@ -73,8 +72,8 @@ async function routeListSessions(page: Page): Promise<ListWire> {
     delayNext: () => {
       delay = true;
     },
-    failNext: () => {
-      fail = true;
+    failRefreshes: () => {
+      failing = true;
     },
   };
 }
@@ -163,14 +162,13 @@ realTest(
     const rowsBefore = await rows();
     expect(rowsBefore).toBeGreaterThan(10);
 
-    // A new chat's turn fetches the list twice, both in the background: when it starts, so its row shows as running
-    // (its file does not exist until its reply), and when it ends. The first result is held for 3 s; meanwhile the rows
-    // stay and no placeholder appears.
+    // A new chat's turn refreshes the list in the background when it starts and ends. The first result is held for 3 s;
+    // meanwhile the rows stay and no placeholder appears. A running-change refresh can add requests beyond those two.
     let calls = wire.calls();
     wire.delayNext();
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
-    await expect.poll(() => wire?.calls()).toBe(calls + 2);
+    await expect.poll(() => wire?.calls()).toBeGreaterThanOrEqual(calls + 2);
     expect(await rows()).toBeGreaterThanOrEqual(rowsBefore);
     await expect(page.getByRole("status", { name: "Loading sessions" })).toHaveCount(0);
     // The held result arrives; the list is still there.
@@ -180,12 +178,12 @@ realTest(
       0,
     );
 
-    // The next refresh fails: the old list stays, with one line saying so.
+    // The next turn's refreshes fail: the old list stays, with one line saying so.
     calls = wire.calls();
-    wire.failNext();
+    wire.failRefreshes();
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toHaveCount(2, { timeout: 60_000 });
-    await expect.poll(() => wire?.calls()).toBe(calls + 1);
+    await expect.poll(() => wire?.calls()).toBeGreaterThanOrEqual(calls + 2);
     const notice = page.getByText("Couldn't refresh sessions. Showing the last list.");
     await expect(notice).toBeVisible();
     // The whole sentence can be read: in the narrow sidebar it wraps onto a second line. It must

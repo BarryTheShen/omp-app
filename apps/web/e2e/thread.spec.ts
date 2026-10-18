@@ -212,7 +212,13 @@ test("renders fixture empty, streaming, settled and AppFailure states", async ({
   await expect(page.getByText("No messages yet.")).toBeVisible();
 
   await page.getByTestId("thread-show-error").click();
-  await expect(page.getByRole("alert")).toContainText("unavailable", { timeout: 5_000 });
+  await expect(page.getByRole("alert")).toHaveText("The conversation could not continue.", {
+    timeout: 5_000,
+  });
+  await expect(page.getByRole("region", { name: "Failure details" })).toContainText(
+    "setTodos is unavailable for this runtime store",
+    { timeout: 5_000 },
+  );
   await page.screenshot({ path: "../../.data/screenshots/u1-3-error-light.png", fullPage: false });
 
   await page.reload();
