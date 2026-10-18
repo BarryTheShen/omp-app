@@ -23,11 +23,323 @@ import {
   TOOL_APPROVAL_POLICY_VALUES,
 } from "../../interaction";
 
+// Each row is the exact ui.description at its source line in omp v18.9.1. Witness commands:
+// `git -C /home/user/workspace/projects/omp-app/.data/scratch/omp-src.git show v18.9.1:<source>`.
+// The D1 settings-registry fixture has no ui.description field, so these upstream source literals
+// pin each key. Terminal-only descriptions keep their source text here and the shared prefix in UI.
+const OMP_DESCRIPTION_ROWS: readonly {
+  readonly key: string;
+  readonly description: string;
+  readonly source: string;
+}[] = [
+  {
+    key: "steeringMode",
+    description: "How to process queued messages while agent is working",
+    source: "modes/settings.ts:758",
+  },
+  {
+    key: "followUpMode",
+    description: "How to drain follow-up messages after a turn completes",
+    source: "modes/settings.ts:771",
+  },
+  {
+    key: "interruptMode",
+    description: "When steering messages interrupt tool execution",
+    source: "modes/settings.ts:784",
+  },
+  {
+    key: "tui.vimMode",
+    description:
+      "Modal prompt editing. Escape leaves Insert mode; Normal mode has hjkl, 0, $, ^, w, b, e, gg, G, counts, x/D/C, dd/yy, p and u; operators take motions or text objects (diw, ca(, dap); v/V start a Visual selection that y copies and d deletes",
+    source: "modes/settings.ts:797",
+  },
+  {
+    key: "tui.vimModeDisplay",
+    description: "How the current Vim mode appears in the status line",
+    source: "modes/settings.ts:811",
+  },
+  {
+    key: "loop.mode",
+    description: "What happens between /loop iterations before re-submitting the prompt",
+    source: "modes/settings.ts:830",
+  },
+  {
+    key: "loop.conditionTimeoutMs",
+    description:
+      "Max wait for a `/loop --while` / `--until` condition command before treating it as broken and stopping the loop. Set to 0 to wait indefinitely",
+    source: "modes/settings.ts:855",
+  },
+  {
+    key: "composer.predictions",
+    description:
+      "After a completed turn, ask the active model to predict your next message and show it as ghost text in the empty composer; Tab or Right inserts it without sending. Extra usage: every completed turn sends one more billed request over the whole conversation (counted in /stats)",
+    source: "modes/settings.ts:1009",
+  },
+  {
+    key: "composer.recallClearedDrafts",
+    description:
+      "Keep drafts cleared with Ctrl+C in local Up/Down history until exit; disabling affects future clears",
+    source: "modes/settings.ts:876",
+  },
+  {
+    key: "doubleEscapeAction",
+    description:
+      "What pressing Escape twice with an empty editor does: open the transcript rewind selector, open the session tree, or nothing",
+    source: "modes/settings.ts:891",
+  },
+  {
+    key: "input.bareExitOnEmptySession",
+    description:
+      "Submitting exactly `exit`, `quit`, or `q` (any case) before the first message quits instead of prompting the model",
+    source: "modes/settings.ts:904",
+  },
+  {
+    key: "input.bareSlashCommands",
+    description:
+      "Submitting exactly a command name without the leading `/` (e.g. `model`, `compact`) runs that slash command; once the session has messages, press Enter twice to confirm",
+    source: "modes/settings.ts:917",
+  },
+  {
+    key: "treeFilterMode",
+    description: "Default filter mode when opening the session tree",
+    source: "modes/settings.ts:931",
+  },
+  {
+    key: "autocompleteMaxVisible",
+    description: "Max visible items in autocomplete dropdown (3-20)",
+    source: "modes/settings.ts:943",
+  },
+  {
+    key: "spelling.typoDetection",
+    description: "Mark misspelled prompt words with the active macOS dictionaries",
+    source: "modes/settings.ts:963",
+  },
+  {
+    key: "spelling.autocomplete",
+    description:
+      "Show predicted word completions as inline hints: Tab accepts with a space, Right without",
+    source: "modes/settings.ts:978",
+  },
+  {
+    key: "spelling.autocorrect",
+    description: "Apply confident macOS spelling corrections after completed words",
+    source: "modes/settings.ts:1022",
+  },
+  {
+    key: "emojiAutocomplete",
+    description:
+      "Suggest emojis from `:name:` shortcodes and expand text emoticons like `:D` or `:-)`",
+    source: "modes/settings.ts:1035",
+  },
+  {
+    key: "paste.largeMenuThreshold",
+    description:
+      "When a paste reaches this many lines, offer a menu to wrap it in a code block, wrap it in XML tags, or save it to a file. 0 disables the menu (large pastes still collapse to a [Paste] marker).",
+    source: "modes/settings.ts:1048",
+  },
+  {
+    key: "tools.approval",
+    description:
+      "Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode.",
+    source: "tools/settings.ts:302",
+  },
+  {
+    key: "tools.approvalMode",
+    description:
+      "Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.",
+    source: "tools/settings.ts:321",
+  },
+  {
+    key: "completion.notify",
+    description: "Notify when the agent finishes a turn",
+    source: "modes/settings.ts:1209",
+  },
+  {
+    key: "error.notify",
+    description: "Notify when the agent stops with an error",
+    source: "modes/settings.ts:1222",
+  },
+  {
+    key: "ask.timeout",
+    description:
+      "Auto-select the recommended ask option after this many seconds (0 disables). Also bounds cfg:// approval prompts; an unanswered approval denies the write instead of auto-selecting",
+    source: "modes/settings.ts:1235",
+  },
+  {
+    key: "ask.notify",
+    description: "Notify when the ask tool is waiting for input",
+    source: "modes/settings.ts:1265",
+  },
+  {
+    key: "recap.enabled",
+    description:
+      "Generate a brief LLM recap of where things stand after the terminal has been idle",
+    source: "modes/settings.ts:1277",
+  },
+  {
+    key: "recap.idleSeconds",
+    description: "Seconds to wait while idle before showing the recap",
+    source: "modes/settings.ts:1289",
+  },
+  {
+    key: "collab.relayUrl",
+    description: "Relay used by /collab (wss://host[:port])",
+    source: "collab/settings.ts:17",
+  },
+  {
+    key: "collab.webUrl",
+    description:
+      "Browser UI used by /collab links; empty derives from collab.relayUrl; explicit http:// is localhost-only",
+    source: "collab/settings.ts:29",
+  },
+  {
+    key: "collab.displayName",
+    description: "Name shown to other collab participants (default: OS username)",
+    source: "collab/settings.ts:42",
+  },
+  {
+    key: "collab.autoStart",
+    description:
+      "Host every interactive session via collab.relayUrl as it starts and publish it to the local registry (omp collab list); rooms rotate on session switch",
+    source: "collab/settings.ts:55",
+  },
+  {
+    key: "share.serverUrl",
+    description:
+      "Share viewer/upload base used by /share (encrypted blob upload + viewer; links are <base>/<id>#<key>)",
+    source: "commands/settings.ts:16",
+  },
+  {
+    key: "share.store",
+    description: "Where /share uploads the encrypted session blob",
+    source: "commands/settings.ts:30",
+  },
+  {
+    key: "share.redactSecrets",
+    description:
+      "Run the secret obfuscator over /share snapshots before upload (uses the secrets.* config)",
+    source: "commands/settings.ts:54",
+  },
+  {
+    key: "magicKeywords.enabled",
+    description:
+      "Enable hidden notices for standalone ultrathink, orchestrate, workflowz, jevify keywords",
+    source: "modes/settings.ts:1182",
+  },
+  {
+    key: "magicKeywords.ultrathink",
+    description:
+      "Let standalone ultrathink request maximum automatic thinking and append its hidden notice",
+    source: "modes/magic-keywords.ts:74",
+  },
+  {
+    key: "magicKeywords.orchestrate",
+    description: "Let standalone orchestrate append its hidden multi-agent orchestration notice",
+    source: "modes/magic-keywords.ts:83",
+  },
+  {
+    key: "magicKeywords.workflow",
+    description: "Let standalone workflowz append its hidden eval workflow notice",
+    source: "modes/magic-keywords.ts:93",
+  },
+  {
+    key: "magicKeywords.jevify",
+    description: "Let standalone jevify append its hidden bulk-judge classification notice",
+    source: "modes/magic-keywords.ts:102",
+  },
+  {
+    key: "autoResume",
+    description: "Automatically resume the most recent session in the current directory",
+    source:
+      "modes/settings.ts:38; main.ts:1284-1295,2054-2062; packages/server/src/process/omp-process.ts:15,262 (New chat uses rpc-ui without a session override, so this can resume the last folder session)",
+  },
+  {
+    key: "startup.quiet",
+    description: "Skip welcome screen and startup status messages",
+    source: "modes/settings.ts:1068",
+  },
+  {
+    key: "startup.showSplash",
+    description:
+      "Show the full animated setup splash on normal interactive startup without rerunning setup. Quiet Startup still suppresses it.",
+    source: "modes/settings.ts:1080",
+  },
+  {
+    key: "startup.setupWizard",
+    description: "Show newly added onboarding steps once per setup version",
+    source: "modes/settings.ts:1093",
+  },
+  {
+    key: "startup.checkUpdate",
+    description: "Check for omp updates on startup",
+    source: "modes/settings.ts:1105",
+  },
+  {
+    key: "update.channel",
+    description: "Update channel used by omp update and the startup update check",
+    source: "modes/settings.ts:1118",
+  },
+  {
+    key: "marketplace.autoUpdate",
+    description: "Check for plugin updates on startup",
+    source: "modes/settings.ts:1135",
+  },
+  {
+    key: "startup.changelogMode",
+    description: "Choose whether update notes start as a summary, full details, or stay hidden",
+    source: "modes/settings.ts:1153",
+  },
+  {
+    key: "power.sleepPrevention",
+    description:
+      "Prevent the system sleeping during active sessions. Each level is cumulative — it adds the flags of all lower levels.",
+    source: "session/settings.ts:47",
+  },
+  {
+    key: "features.unexpectedStopDetection",
+    description:
+      "Automatically recover when the assistant stops without a visible message. Smart also classifies text-only stops with a small model.",
+    source: "session/settings.ts:1061",
+  },
+  {
+    key: "git.enabled",
+    description:
+      "Show git branch, status, and PR information in the TUI and watch repository metadata.",
+    source: "modes/settings.ts:50",
+  },
+];
+const TERMINAL_ONLY_DESCRIPTION_KEYS: Readonly<Record<string, true>> = {
+  "tui.vimMode": true,
+  "tui.vimModeDisplay": true,
+  "loop.mode": true,
+  "loop.conditionTimeoutMs": true,
+  "composer.predictions": true,
+  "composer.recallClearedDrafts": true,
+  doubleEscapeAction: true,
+  "input.bareExitOnEmptySession": true,
+  "input.bareSlashCommands": true,
+  treeFilterMode: true,
+  autocompleteMaxVisible: true,
+  "spelling.typoDetection": true,
+  "spelling.autocorrect": true,
+  emojiAutocomplete: true,
+  "paste.largeMenuThreshold": true,
+  "completion.notify": true,
+  "error.notify": true,
+  "recap.enabled": true,
+  "recap.idleSeconds": true,
+  "startup.quiet": true,
+  "startup.showSplash": true,
+  "startup.setupWizard": true,
+  "startup.checkUpdate": true,
+  "git.enabled": true,
+};
+
 afterEach(() => cleanup());
 
-// omp v18.9.1 defaults: modes/settings.ts:29-50, 694-1216; tools/settings.ts:294-333;
-// collab/settings.ts:9-69; commands/settings.ts:8-55; session/settings.ts:37-56, 1011-1035;
-// packages/wire/src/index.ts:426,429. Defaults stay in A1 ConfigStore at runtime.
+// Omp v18.9.1 defaults: modes/settings.ts:31-50, 694-1289; tools/settings.ts:294-342;
+// collab/settings.ts:9-65; commands/settings.ts:8-57; session/settings.ts:39-62, 1052-1079;
+// modes/magic-keywords.ts:70-107. Defaults stay in A1 ConfigStore at runtime.
 const DEFAULT_VALUES: Readonly<Record<string, JsonValue>> = {
   autoResume: false,
   "git.enabled": true,
@@ -197,9 +509,9 @@ const EXPECTED_KINDS: Readonly<Record<string, SettingControl["kind"]>> = {
 };
 
 const APPLY_BOUNDARIES: Readonly<Record<string, SettingControl["apply"]>> = {
-  steeringMode: "session",
-  followUpMode: "session",
-  interruptMode: "session",
+  steeringMode: "live",
+  followUpMode: "live",
+  interruptMode: "live",
   "tui.vimMode": "live",
   "tui.vimModeDisplay": "live",
   "loop.mode": "live",
@@ -245,14 +557,14 @@ const APPLY_BOUNDARIES: Readonly<Record<string, SettingControl["apply"]>> = {
   "startup.changelogMode": "restart",
   "update.channel": "restart",
   "power.sleepPrevention": "live",
-  "features.unexpectedStopDetection": "session",
+  "features.unexpectedStopDetection": "live",
   "git.enabled": "live",
 };
 
 function defaultSnapshot(descriptor: SettingsSectionDescriptor): ConfigSnapshot {
   const entries: ConfigEntry[] = descriptor.controls.map((setting) => {
     const value = DEFAULT_VALUES[setting.key];
-    if (value === undefined) throw new Error(`Missing v18.6.1 default fixture for ${setting.key}.`);
+    if (value === undefined) throw new Error(`Missing v18.9.1 default fixture for ${setting.key}.`);
     return { key: setting.key, secret: false, value, source: "default", overrides: [] };
   });
   return { folder: null, revision: "revision-1", entries };
@@ -315,33 +627,50 @@ describe("S1.4 interaction settings sections", () => {
     expect(keys).not.toContain("speech.enabled");
   });
 
-  test("marks settings read only by terminal interaction code", () => {
+  test("marks every S1 terminal-only control and keeps Auto Resume available to the app", () => {
     const controls = new Map(
       S1_INTERACTION_SECTIONS.flatMap((descriptor) =>
         descriptor.controls.map((setting) => [setting.key, setting] as const),
       ),
     );
-    for (const key of [
-      "tui.vimMode",
-      "tui.vimModeDisplay",
-      "loop.mode",
-      "loop.conditionTimeoutMs",
-      "composer.predictions",
-      "composer.recallClearedDrafts",
-      "doubleEscapeAction",
-      "input.bareExitOnEmptySession",
-      "input.bareSlashCommands",
-      "treeFilterMode",
-      "autocompleteMaxVisible",
-      "spelling.typoDetection",
-      "spelling.autocorrect",
-      "emojiAutocomplete",
-      "paste.largeMenuThreshold",
-    ]) {
+    for (const key of Object.keys(TERMINAL_ONLY_DESCRIPTION_KEYS)) {
       expect(controls.get(key)?.description, key).toMatch(/^Terminal only\./);
     }
-    for (const key of ["steeringMode", "followUpMode", "interruptMode", "spelling.autocomplete"]) {
-      expect(controls.get(key)?.description ?? "", key).not.toMatch(/^Terminal only\./);
+    expect(Object.hasOwn(TERMINAL_ONLY_DESCRIPTION_KEYS, "autoResume")).toBe(false);
+    expect(controls.get("autoResume")?.description).not.toMatch(/^Terminal only\./);
+  });
+
+  test("explains approval choices and uses one plain policy label", () => {
+    expect(APPROVALS_SECTION.title).toBe("Approvals");
+    const mode = control("tools.approvalMode");
+    expect(mode.label).toBe("Approval Mode");
+    expect(mode.description).toBe(
+      OMP_DESCRIPTION_ROWS.find((row) => row.key === "tools.approvalMode")?.description,
+    );
+    const policies = control("tools.approval");
+    if (policies.kind !== "map") throw new Error("Expected the approval policy map.");
+    expect(policies.value.options).toContainEqual({ value: "prompt", label: "Ask first" });
+    expect(policies.description).toBe(
+      OMP_DESCRIPTION_ROWS.find((row) => row.key === "tools.approval")?.description,
+    );
+  });
+
+  test("matches every interaction control to the literal omp source table", () => {
+    const controls = S1_INTERACTION_SECTIONS.flatMap((descriptor) => descriptor.controls);
+    const actualKeys = controls.map((setting) => setting.key).sort();
+    const sourceKeys = OMP_DESCRIPTION_ROWS.map((row) => row.key).sort();
+    expect(OMP_DESCRIPTION_ROWS).toHaveLength(50);
+    expect(new Set(sourceKeys).size).toBe(sourceKeys.length);
+    expect(actualKeys).toEqual(sourceKeys);
+
+    for (const row of OMP_DESCRIPTION_ROWS) {
+      const setting = control(row.key);
+      expect(row.source, row.key).toContain(":");
+      if (Object.hasOwn(TERMINAL_ONLY_DESCRIPTION_KEYS, row.key)) {
+        expect(setting.description, `${row.key} (${row.source})`).toMatch(/^Terminal only\./);
+      } else {
+        expect(setting.description, `${row.key} (${row.source})`).toBe(row.description);
+      }
     }
   });
 
@@ -359,8 +688,8 @@ describe("S1.4 interaction settings sections", () => {
         expect(setting.validate({ secret: false, value }, snapshot)).toEqual({ valid: true });
       }
     }
-    expect(POWER_SETTINGS_SECTION.requires).toContain("host.power");
-    expect(GIT_SETTINGS_SECTION.requires).toContain("host.git");
+    expect(POWER_SETTINGS_SECTION.requires).toEqual(["host.config"]);
+    expect(GIT_SETTINGS_SECTION.requires).toEqual(["host.config"]);
   });
 
   test("projects ConfigStore defaults as typed values without losing provenance", () => {
@@ -477,6 +806,28 @@ describe("S1.4 interaction settings sections", () => {
     ).toThrow("Invalid effective value for interaction setting steeringMode");
   });
 
+  test("projects effective values by type without applying write-only bounds", () => {
+    const input = defaultSnapshot(INPUT_SETTINGS_SECTION);
+    const inputEntries = input.entries.map((entry) =>
+      entry.key === "autocompleteMaxVisible" ? { ...entry, value: 25 } : entry,
+    );
+    const collab = defaultSnapshot(COLLAB_SETTINGS_SECTION);
+    const collabEntries = collab.entries.map((entry) =>
+      entry.key === "share.serverUrl"
+        ? { ...entry, value: "https://share.example.com/base?team=1" }
+        : entry,
+    );
+    const projected = projectInteractionSettingsSnapshot({
+      ...interactionConfigDefaults(),
+      input: { ...input, entries: inputEntries },
+      collab: { ...collab, entries: collabEntries },
+    });
+    expect(projected.input.settings.autocompleteMaxVisible).toMatchObject({ value: 25 });
+    expect(projected.collaboration.settings.shareServerUrl).toMatchObject({
+      value: "https://share.example.com/base?team=1",
+    });
+  });
+
   test("edits per-tool approval policies through the kit's enum-valued map control", () => {
     const base = defaultSnapshot(APPROVALS_SECTION);
     const configured: ConfigEntry = {
@@ -501,7 +852,7 @@ describe("S1.4 interaction settings sections", () => {
       kind: "enum",
       options: [
         { value: "allow", label: "Allow" },
-        { value: "prompt", label: "Prompt" },
+        { value: "prompt", label: "Ask first" },
         { value: "deny", label: "Deny" },
       ],
     });

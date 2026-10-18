@@ -76,6 +76,7 @@ const TERMINAL_ONLY_SOURCES: Readonly<Record<string, string>> = {
   "read.toolResultPreview": "modes/controllers/event-controller.ts and modes/utils/ui-helpers.ts",
   "speech.mode": "modes/controllers/event-controller.ts",
   "stt.enabled": "modes/interactive-mode.ts",
+  "startup.quiet": "main.ts interactive startup output",
   "startup.showSplash": "main.ts shouldShowStartupSplash receives isInteractive",
   "startup.setupWizard": "main.ts setup scene selection is interactive-only",
   "startup.checkUpdate": "main.ts version check is created only in isInteractive branch",

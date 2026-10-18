@@ -81,10 +81,10 @@ describe("S1.5 descriptor ownership and CC12 gate", () => {
     );
     expect(
       S1_SETTINGS_SECTIONS.find((section) => section.section === "interaction/Git")?.requires,
-    ).toEqual(["host.config", "host.git"]);
+    ).toEqual(["host.config"]);
     expect(
       S1_SETTINGS_SECTIONS.find((section) => section.section === "interaction/Power")?.requires,
-    ).toEqual(["host.config", "host.power"]);
+    ).toEqual(["host.config"]);
   });
 
   test("registers the app-local command and three selector dialogs without a fake omp slash command", () => {

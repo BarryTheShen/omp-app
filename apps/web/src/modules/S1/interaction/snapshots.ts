@@ -137,31 +137,21 @@ function stringValue(value: JsonValue): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function controlFor(descriptor: SettingsSectionDescriptor, key: string) {
-  const control = descriptor.controls.find((candidate) => candidate.key === key);
-  if (!control) throw new Error(`Interaction descriptor is missing ${key}.`);
-  return control;
-}
-
 function projectSetting<T>(
   snapshot: ConfigSnapshot,
   descriptor: SettingsSectionDescriptor,
   key: string,
   parse: (value: JsonValue) => T | undefined,
 ): InteractionSetting<T> {
+  if (!descriptor.controls.some((control) => control.key === key)) {
+    throw new Error(`Interaction descriptor is missing ${key}.`);
+  }
   const entry = snapshot.entries.find((candidate) => candidate.key === key);
   if (!entry) throw new Error(`Interaction snapshot is missing ${key}.`);
   if (entry.secret) return entry;
 
-  const validation = controlFor(descriptor, key).validate(
-    { secret: false, value: entry.value },
-    snapshot,
-  );
-  if (!validation.valid) {
-    throw new Error(
-      `Invalid effective value for interaction setting ${key} (${validation.code ?? "invalid"}).`,
-    );
-  }
+  // Effective values may be outside write-time bounds or use broader URLs than the UI accepts.
+  // Projection is a type/domain boundary; validators remain the write path's guard.
   const value = parse(entry.value);
   if (value === undefined) {
     throw new Error(`Invalid effective value for interaction setting ${key} (type).`);

@@ -127,7 +127,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("explains unavailable Git and Power settings", () => {
+test("shows Git and Power settings when configuration is available", async () => {
   const state = notificationsConfig([]);
   render(
     <SettingsScreen
@@ -140,15 +140,10 @@ test("explains unavailable Git and Power settings", () => {
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Interaction" }));
-
-  const gitMessage = "Git settings are not built into this app yet.";
-  const powerMessage = "Power settings are not built into this app yet.";
-  const renderedGitMessage = screen.getByText(gitMessage);
-  const renderedPowerMessage = screen.getByText(powerMessage);
-  expect(renderedGitMessage.textContent).toBe(gitMessage);
-  expect(renderedPowerMessage.textContent).toBe(powerMessage);
-  expect(renderedGitMessage.closest("[hidden]")).toBeNull();
-  expect(renderedPowerMessage.closest("[hidden]")).toBeNull();
+  fireEvent.click(await screen.findByRole("option", { name: "Git" }));
+  expect(await screen.findByRole("checkbox", { name: "Enable Git Integration" })).toBeTruthy();
+  fireEvent.click(await screen.findByRole("option", { name: "Power" }));
+  expect(await screen.findByRole("combobox", { name: "Sleep Prevention" })).toBeTruthy();
 });
 
 describe("the generic settings panel after a save omp refuses in part", () => {

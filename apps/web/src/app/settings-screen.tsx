@@ -169,8 +169,6 @@ function unavailableReason(
     return state !== "available" && state !== "fallback";
   });
   if (missing === undefined) return undefined;
-  if (missing === "host.git") return "Git settings are not built into this app yet.";
-  if (missing === "host.power") return "Power settings are not built into this app yet.";
   switch (capabilities[missing]?.via) {
     case "upstream":
       return "This setting needs a newer version of omp.";

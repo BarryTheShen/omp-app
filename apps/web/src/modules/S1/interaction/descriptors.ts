@@ -11,18 +11,11 @@ import type {
 import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../settings-kit";
 
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
-const HOST_CONFIG_AND_GIT = ["host.config", "host.git"] as const satisfies readonly CapabilityKey[];
-const HOST_CONFIG_AND_POWER = [
-  "host.config",
-  "host.power",
-] as const satisfies readonly CapabilityKey[];
-
-/** Exact `tools.approval` values from omp v18.6.1's settings registration. */
 export const TOOL_APPROVAL_POLICY_VALUES = ["allow", "prompt", "deny"] as const;
 
 const TOOL_APPROVAL_POLICY_LABELS = {
   allow: "Allow",
-  prompt: "Prompt",
+  prompt: "Ask first",
   deny: "Deny",
 } as const;
 
@@ -226,12 +219,12 @@ function validateApprovalPolicies(value: SettingValue): ValidationResult {
   return { valid: true };
 }
 
-/** Registration and the allow/prompt/deny policy values: omp v18.6.1 tools/settings.ts:294-307. */
+/** Omp v18.9.1 approval-policy description: tools/settings.ts:294-305. */
 const approvalPoliciesControl: MapSettingControl = {
   key: "tools.approval",
   label: "Tool Approval Policies",
   description:
-    "Per-tool approval policies override the default approval mode. Allow auto-approves, Prompt requests confirmation, and Deny blocks a tool.",
+    "Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode.",
   kind: "map",
   secret: false,
   keyLabel: "Tool name",
@@ -256,12 +249,15 @@ function section(
 
 /**
  * Keys, defaults, and enums follow omp v18.9.1. ConfigStore supplies each effective default and its
- * provenance rather than duplicating defaults here. Source registrations: modes/settings.ts:694-1012
- * (Input and Composer Predictions), 29-50 (Auto Resume/Git), 991-1088 (Startup & Updates), and
- * 1105-1216 (Magic Keywords / Notifications); modes/magic-keywords.ts:47-100;
- * tools/settings.ts:294-333 (Approvals); collab/settings.ts:9-69 and commands/settings.ts:8-55
- * (Collab); session/settings.ts:37-56, 1011-1035 (Power and Agent). The tree-filter and word-
- * completion enums are pi-tui/overlays/tree-selector.ts:12 and pi-tui/prompt/word-completion.ts:8.
+ * provenance rather than duplicating defaults here. Description ranges are recorded per key in
+ * `test/interaction/sections.test.tsx`. Their witness commands (run inside the omp source checkout):
+ * `git show v18.9.1:packages/coding-agent/src/modes/settings.ts`,
+ * `git show v18.9.1:packages/coding-agent/src/tools/settings.ts`,
+ * `git show v18.9.1:packages/coding-agent/src/modes/magic-keywords.ts`,
+ * `git show v18.9.1:packages/coding-agent/src/collab/settings.ts`,
+ * `git show v18.9.1:packages/coding-agent/src/commands/settings.ts`, and
+ * `git show v18.9.1:packages/coding-agent/src/session/settings.ts`. The tree-filter and
+ * word-completion enums are pi-tui/overlays/tree-selector.ts:12 and pi-tui/prompt/word-completion.ts:8.
  */
 export const INPUT_SETTINGS_SECTION = section(
   "S1.interactionInput",
@@ -269,18 +265,30 @@ export const INPUT_SETTINGS_SECTION = section(
   "Input",
   ["S3.interaction-input"],
   [
-    enumControl("steeringMode", "Steering Mode", ["all", "one-at-a-time"], "session", {
-      all: "All queued messages",
-      "one-at-a-time": "One at a time",
-    }),
-    enumControl("followUpMode", "Follow-Up Mode", ["all", "one-at-a-time"], "session", {
-      all: "All queued messages",
-      "one-at-a-time": "One at a time",
-    }),
-    enumControl("interruptMode", "Interrupt Mode", ["immediate", "wait"], "session", {
-      immediate: "Interrupt immediately",
-      wait: "Wait for tool completion",
-    }),
+    enumControl(
+      "steeringMode",
+      "Steering Mode",
+      ["all", "one-at-a-time"],
+      "live",
+      { all: "All queued messages", "one-at-a-time": "One at a time" },
+      "How to process queued messages while agent is working",
+    ),
+    enumControl(
+      "followUpMode",
+      "Follow-Up Mode",
+      ["all", "one-at-a-time"],
+      "live",
+      { all: "All queued messages", "one-at-a-time": "One at a time" },
+      "How to drain follow-up messages after a turn completes",
+    ),
+    enumControl(
+      "interruptMode",
+      "Interrupt Mode",
+      ["immediate", "wait"],
+      "live",
+      { immediate: "Interrupt immediately", wait: "Wait for tool completion" },
+      "When steering messages interrupt tool execution",
+    ),
     booleanControl("tui.vimMode", "Vim Editing Mode", "live", terminalOnlyDescription()),
     enumControl(
       "tui.vimModeDisplay",
@@ -374,6 +382,7 @@ export const INPUT_SETTINGS_SECTION = section(
       ["off", "auto", "ngram", "smollm", "apple"],
       "live",
       { off: "Off", auto: "Auto", ngram: "N-gram", smollm: "SmolLM", apple: "Apple (macOS only)" },
+      "Show predicted word completions as inline hints: Tab accepts with a space, Right without",
     ),
     booleanControl(
       "spelling.autocorrect",
@@ -397,15 +406,22 @@ export const INPUT_SETTINGS_SECTION = section(
 export const APPROVALS_SECTION = section(
   "S1.interactionApprovals",
   "interaction/Approvals",
-  "Tool Approval",
+  "Approvals",
   ["S3.interaction-approvals"],
   [
     approvalPoliciesControl,
-    enumControl("tools.approvalMode", "Tool Approval", ["always-ask", "write", "yolo"], "live", {
-      "always-ask": "Always ask",
-      write: "Write",
-      yolo: "Yolo",
-    }),
+    enumControl(
+      "tools.approvalMode",
+      "Approval Mode",
+      ["always-ask", "write", "yolo"],
+      "live",
+      {
+        "always-ask": "Always ask",
+        write: "Write",
+        yolo: "Yolo",
+      },
+      "Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.",
+    ),
   ],
 );
 
@@ -431,8 +447,23 @@ export const NOTIFICATIONS_SETTINGS_SECTION = section(
       { on: "On", off: "Off" },
       terminalOnlyDescription(),
     ),
-    numberControl("ask.timeout", "Ask Timeout (seconds)", 0, Number.MAX_VALUE),
-    enumControl("ask.notify", "Ask Notification", ["on", "off"], "live", { on: "On", off: "Off" }),
+    numberControl(
+      "ask.timeout",
+      "Ask Timeout (seconds)",
+      0,
+      Number.MAX_VALUE,
+      "live",
+      false,
+      "Auto-select the recommended ask option after this many seconds (0 disables). Also bounds cfg:// approval prompts; an unanswered approval denies the write instead of auto-selecting",
+    ),
+    enumControl(
+      "ask.notify",
+      "Ask Notification",
+      ["on", "off"],
+      "live",
+      { on: "On", off: "Off" },
+      "Notify when the ask tool is waiting for input",
+    ),
     booleanControl("recap.enabled", "Idle Recap", "live", terminalOnlyDescription()),
     numberControl(
       "recap.idleSeconds",
@@ -452,25 +483,52 @@ export const COLLAB_SETTINGS_SECTION = section(
   "Collab",
   ["S3.interaction-collab"],
   [
-    urlControl("collab.relayUrl", "Relay URL", validateRelayUrl),
+    urlControl(
+      "collab.relayUrl",
+      "Relay URL",
+      validateRelayUrl,
+      "Relay used by /collab (wss://host[:port])",
+    ),
     urlControl(
       "collab.webUrl",
       "Web UI URL",
       validateUrl,
-      "Leave blank to derive the web URL from the relay URL.",
+      "Browser UI used by /collab links; empty derives from collab.relayUrl; explicit http:// is localhost-only",
     ),
-    textControl("collab.displayName", "Display Name"),
-    enumControl("collab.autoStart", "Auto Start", ["off", "view", "control"], "session", {
-      off: "Off",
-      view: "View only",
-      control: "Control",
-    }),
-    urlControl("share.serverUrl", "Share Server", validateUrl),
-    enumControl("share.store", "Share Store", ["blob", "gist"], "live", {
-      blob: "Encrypted blob",
-      gist: "GitHub gist",
-    }),
-    booleanControl("share.redactSecrets", "Share Secret Redaction"),
+    textControl(
+      "collab.displayName",
+      "Display Name",
+      "live",
+      "Name shown to other collab participants (default: OS username)",
+    ),
+    enumControl(
+      "collab.autoStart",
+      "Auto Start",
+      ["off", "view", "control"],
+      "session",
+      { off: "Off", view: "View only", control: "Control" },
+      "Host every interactive session via collab.relayUrl as it starts and publish it to the local registry (omp collab list); rooms rotate on session switch",
+    ),
+    urlControl(
+      "share.serverUrl",
+      "Share Server",
+      validateUrl,
+      "Share viewer/upload base used by /share (encrypted blob upload + viewer; links are <base>/<id>#<key>)",
+    ),
+    enumControl(
+      "share.store",
+      "Share Store",
+      ["blob", "gist"],
+      "live",
+      { blob: "Encrypted blob", gist: "GitHub gist" },
+      "Where /share uploads the encrypted session blob",
+    ),
+    booleanControl(
+      "share.redactSecrets",
+      "Share Secret Redaction",
+      "live",
+      "Run the secret obfuscator over /share snapshots before upload (uses the secrets.* config)",
+    ),
   ],
 );
 
@@ -480,11 +538,36 @@ export const MAGIC_KEYWORDS_SETTINGS_SECTION = section(
   "Magic Keywords",
   ["S3.interaction-magic-keywords"],
   [
-    booleanControl("magicKeywords.enabled", "Magic Keywords"),
-    booleanControl("magicKeywords.ultrathink", "Ultrathink Keyword"),
-    booleanControl("magicKeywords.orchestrate", "Orchestrate Keyword"),
-    booleanControl("magicKeywords.workflow", "Workflow Keyword"),
-    booleanControl("magicKeywords.jevify", "Jevify Keyword"),
+    booleanControl(
+      "magicKeywords.enabled",
+      "Magic Keywords",
+      "live",
+      "Enable hidden notices for standalone ultrathink, orchestrate, workflowz, jevify keywords",
+    ),
+    booleanControl(
+      "magicKeywords.ultrathink",
+      "Ultrathink Keyword",
+      "live",
+      "Let standalone ultrathink request maximum automatic thinking and append its hidden notice",
+    ),
+    booleanControl(
+      "magicKeywords.orchestrate",
+      "Orchestrate Keyword",
+      "live",
+      "Let standalone orchestrate append its hidden multi-agent orchestration notice",
+    ),
+    booleanControl(
+      "magicKeywords.workflow",
+      "Workflow Keyword",
+      "live",
+      "Let standalone workflowz append its hidden eval workflow notice",
+    ),
+    booleanControl(
+      "magicKeywords.jevify",
+      "Jevify Keyword",
+      "live",
+      "Let standalone jevify append its hidden bulk-judge classification notice",
+    ),
   ],
 );
 
@@ -494,46 +577,61 @@ export const STARTUP_UPDATES_SETTINGS_SECTION = section(
   "Startup & Updates",
   ["S3.interaction-startup-updates"],
   [
-    booleanControl("autoResume", "Auto Resume", "restart"),
-    booleanControl("startup.quiet", "Quiet Startup", "restart"),
+    booleanControl(
+      "autoResume",
+      "Auto Resume",
+      "restart",
+      "Automatically resume the most recent session in the current directory",
+    ),
+    booleanControl(
+      "startup.quiet",
+      "Quiet Startup",
+      "restart",
+      terminalOnlyDescription("Skip welcome screen and startup status messages"),
+    ),
     booleanControl(
       "startup.showSplash",
       "Show Startup Splash",
       "restart",
-      terminalOnlyDescription(),
+      terminalOnlyDescription(
+        "Show the full animated setup splash on normal interactive startup without rerunning setup. Quiet Startup still suppresses it.",
+      ),
     ),
-    booleanControl("startup.setupWizard", "Setup Wizard", "restart", terminalOnlyDescription()),
+    booleanControl(
+      "startup.setupWizard",
+      "Setup Wizard",
+      "restart",
+      terminalOnlyDescription("Show newly added onboarding steps once per setup version"),
+    ),
     booleanControl(
       "startup.checkUpdate",
       "Check for Updates",
       "restart",
-      terminalOnlyDescription(),
+      terminalOnlyDescription("Check for omp updates on startup"),
     ),
-    enumControl("update.channel", "Update Channel", ["stable", "canary"], "restart", {
-      stable: "Stable",
-      canary: "Canary",
-    }),
+    enumControl(
+      "update.channel",
+      "Update Channel",
+      ["stable", "canary"],
+      "restart",
+      { stable: "Stable", canary: "Canary" },
+      "Update channel used by omp update and the startup update check",
+    ),
     enumControl(
       "marketplace.autoUpdate",
       "Marketplace Auto-Update",
       ["off", "notify", "auto"],
       "restart",
-      {
-        off: "Off",
-        notify: "Notify",
-        auto: "Automatic",
-      },
+      { off: "Off", notify: "Notify", auto: "Automatic" },
+      "Check for plugin updates on startup",
     ),
     enumControl(
       "startup.changelogMode",
       "Startup Changelog",
       ["summary", "expanded", "hidden"],
       "restart",
-      {
-        summary: "Summary",
-        expanded: "Expanded",
-        hidden: "Hidden",
-      },
+      { summary: "Summary", expanded: "Expanded", hidden: "Hidden" },
+      "Choose whether update notes start as a summary, full details, or stay hidden",
     ),
   ],
 );
@@ -555,9 +653,10 @@ export const POWER_SETTINGS_SECTION = section(
         display: "Prevent display sleep",
         system: "Prevent system sleep",
       },
+      "Prevent the system sleeping during active sessions. Each level is cumulative — it adds the flags of all lower levels.",
     ),
   ],
-  HOST_CONFIG_AND_POWER,
+  HOST_CONFIG,
 );
 
 export const AGENT_SETTINGS_SECTION = section(
@@ -570,8 +669,9 @@ export const AGENT_SETTINGS_SECTION = section(
       "features.unexpectedStopDetection",
       "Unexpected Stops",
       ["none", "mechanical", "smart"],
-      "session",
+      "live",
       { none: "None", mechanical: "Mechanical", smart: "Smart" },
+      "Automatically recover when the assistant stops without a visible message. Smart also classifies text-only stops with a small model.",
     ),
   ],
 );
@@ -582,7 +682,7 @@ export const GIT_SETTINGS_SECTION = section(
   "Git",
   ["S3.interaction-git"],
   [booleanControl("git.enabled", "Enable Git Integration", "live", terminalOnlyDescription())],
-  HOST_CONFIG_AND_GIT,
+  HOST_CONFIG,
 );
 
 /** The nine owned interaction settings sections. */

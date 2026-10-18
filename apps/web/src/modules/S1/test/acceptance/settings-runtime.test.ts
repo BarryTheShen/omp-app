@@ -366,13 +366,13 @@ describe("S1.5 ConfigStore fixture and grammar gate", () => {
     await runtime.save();
     expect(runtime.getSnapshot().applyStatus).toBe("restart-required");
   });
-  test("reports session-only apply status for session-owned controls", async () => {
+  test("reports applied status for live controls", async () => {
     const state = fakeConfig();
     const runtime = runtimeFor(state, INPUT_SETTINGS_SECTION);
     await runtime.read();
     expect(runtime.stage("steeringMode", { secret: false, value: "all" }).ok).toBe(true);
     await runtime.save();
-    expect(runtime.getSnapshot().applyStatus).toBe("session-only");
+    expect(runtime.getSnapshot().applyStatus).toBe("applied");
   });
 
   test("sets and unsets secrets through status-only ConfigStore entries", async () => {
