@@ -64,6 +64,11 @@ finish() {
   exit "${1:-0}"
 }
 fail() {
+  if [[ -f ${state:-/nonexistent}/omp-app.log ]]; then
+    echo "--- the server's log, last 30 lines"
+    tail -n 30 "$state/omp-app.log"
+    echo "--- end of the server's log"
+  fi
   note "FAIL: $1"
   finish 1
 }
@@ -99,6 +104,15 @@ wait_log() { # waits up to $2 seconds until the server's log has the text $1
   local n
   for n in $(seq 1 $(($2 * 5))); do
     grep -q -- "$1" "$state/omp-app.log" 2>/dev/null && return 0
+    sleep 0.2
+  done
+  return 1
+}
+count_log() { grep -c -- "$1" "$state/omp-app.log" 2>/dev/null || true; }
+wait_log_count() { # waits up to $3 seconds until the server's log has at least $2 lines with the text $1
+  local n
+  for n in $(seq 1 $(($3 * 5))); do
+    [[ $(count_log "$1") -ge $2 ]] && return 0
     sleep 0.2
   done
   return 1
@@ -341,11 +355,16 @@ note "T6 the window stayed open with the error page, and closing it ended the ap
 note "== T7: the window is SIGKILLed (3 rounds): the kernel ends the server, and nothing of the run is left"
 for round in 1 2 3; do
   stops_before=$(stop_count)
+  opens_before=$(count_log 'connection.open')
   launch "$app"
   p=$LAUNCHED
   wid=$(wait_window 120) || fail "T7 round $round: no window"
   info=$(server_info 90) || fail "T7 round $round: the server never answered"
   read -r side _ <<<"$info"
+  # A server that is still starting has not set up its signal handlers, so the window's death would end it without a
+  # stop line (seen once in a release run on the test-machine runner, and reproduced 1 time in 26 by killing the window the
+  # moment the server's instance record appeared). The window's connection means the start is over, as in T1.
+  wait_log_count 'connection.open' $((${opens_before:-0} + 1)) 60 || fail "T7 round $round: the window never connected to its server"
   kill -KILL "$p"
   wait_gone "$p" 10 || fail "T7 round $round: the window process did not die"
   wait "$p"
