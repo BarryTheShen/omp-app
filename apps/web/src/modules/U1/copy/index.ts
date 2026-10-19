@@ -379,10 +379,11 @@ function contentParts(content: unknown, startIndex: number): BuiltContent {
       case "thinking": {
         const thinking =
           "thinking" in item && typeof item.thinking === "string" ? item.thinking : undefined;
+        const narration = "narration" in item && item.narration === true;
         parts.push(
           thinking === undefined
             ? rawPart(index, "notice", item)
-            : rawPart(index, "reasoning", item, thinking, thinking),
+            : rawPart(index, narration ? "text" : "reasoning", item, thinking, thinking),
         );
         break;
       }

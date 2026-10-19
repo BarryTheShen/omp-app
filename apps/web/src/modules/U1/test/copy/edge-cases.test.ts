@@ -140,6 +140,20 @@ describe("raw transcript copy edge cases", () => {
     expect(raw.parts[3]?.markdown).toBe(toolCall.rawBlock);
     expect(raw.markdown).not.toContain(toolCall.rawBlock);
   });
+  test("copies 18.12 narration (shaped as omp's wire definition says) as answer text, not reasoning", () => {
+    const narration = {
+      type: "thinking",
+      thinking: "The model's user-facing narration belongs in the answer.",
+      narration: true,
+    };
+    const raw = new TranscriptContentReader().read(
+      runtimeMessage("entry:thread:narration", assistantMessage([narration], 25)),
+    );
+    expect(raw.parts.map((part) => part.type)).toEqual(["text"]);
+    expect(raw.markdown).toBe(narration.thinking);
+    expect(copyText(raw)).toBe(narration.thinking);
+    expect(copyText(raw, { includeReasoning: true })).toBe(narration.thinking);
+  });
 
   test("keeps hidden reasoning out of default assistant copy", () => {
     const reader = new TranscriptContentReader();

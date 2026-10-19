@@ -337,13 +337,17 @@ function assistantParts(
             : textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" }),
         );
         break;
-      case "thinking":
+      case "thinking": {
+        const thinking = typeof rawPart.thinking === "string" ? rawPart.thinking : undefined;
         parts.push(
-          typeof rawPart.thinking === "string"
-            ? { type: "reasoning", text: rawPart.thinking, status }
-            : textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" }),
+          thinking === undefined
+            ? textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" })
+            : rawPart.narration === true
+              ? textPart(thinking, status)
+              : { type: "reasoning", text: thinking, status },
         );
         break;
+      }
       case "image": {
         const converted = imagePart(rawPart);
         parts.push(converted ?? textPart(FALLBACK_TEXT, { type: "incomplete", reason: "other" }));

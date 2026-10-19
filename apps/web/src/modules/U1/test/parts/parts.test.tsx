@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
 import { FilePart, ImagePart, MessageParts, SourcePart } from "../../parts";
+import { MemoryThinkingVisibilityStore, TranscriptDisplayPolicyProvider } from "../../policy";
 import { ThreadShell } from "../../thread";
+import narrationFixture from "../fixtures/narration-v18.12.2.json";
 
 const originalScrollTo = HTMLElement.prototype.scrollTo;
 
@@ -90,7 +92,58 @@ function RuntimeThread({
   );
 }
 
+function renderThinkingMessage(source: OmpMessage, thinking: "visible" | "hidden") {
+  const store = new OmpRuntimeStore({ threadId });
+  store.ingest({ kind: "process", status: "ready" } as RpcSessionEvent, 1);
+  store.ingest(
+    {
+      kind: "omp",
+      event: { type: "message_start", messageId: "narration-1", message: source },
+    } as RpcSessionEvent,
+    2,
+  );
+  store.ingest(
+    {
+      kind: "omp",
+      event: { type: "message_end", messageId: "narration-1", message: source },
+    } as RpcSessionEvent,
+    3,
+  );
+  const storage = new MemoryThinkingVisibilityStore();
+  storage.set(`omp.u1.thinking.visibility.${threadId}`, thinking === "visible");
+  return render(
+    <TranscriptDisplayPolicyProvider storage={storage} threadId={String(threadId)}>
+      <RuntimeThread store={store} />
+    </TranscriptDisplayPolicyProvider>,
+  );
+}
+
 describe("U1.3 standalone parts", () => {
+  test("renders narration from omp's wire definition as answer text in visible and hidden thinking modes", () => {
+    const source = narrationFixture.message as unknown as OmpMessage;
+    const visible = renderThinkingMessage(source, "visible");
+    expect(
+      screen.getByText("The model's user-facing narration belongs in the answer."),
+    ).toBeTruthy();
+    visible.unmount();
+    const hidden = renderThinkingMessage(source, "hidden");
+    expect(
+      screen.getByText("The model's user-facing narration belongs in the answer."),
+    ).toBeTruthy();
+    hidden.unmount();
+  });
+  test("keeps a thinking block whose narration is false as reasoning: hidden when thinking is hidden", () => {
+    const [block] = narrationFixture.message.content;
+    const source = {
+      ...narrationFixture.message,
+      content: [{ ...block, narration: false }],
+    } as unknown as OmpMessage;
+    const hidden = renderThinkingMessage(source, "hidden");
+    expect(
+      screen.queryByText("The model's user-facing narration belongs in the answer."),
+    ).toBeNull();
+    hidden.unmount();
+  });
   test("renders safe image, file, and source boundaries", () => {
     render(
       <>
