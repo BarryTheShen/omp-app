@@ -87,7 +87,9 @@ test("captures the light grouped catalog with pinned, recent, branch and long-ti
   await page.goto(PLAYGROUND);
   await expectCatalogReady(page);
   await expect(
-    page.locator('[data-testid="r1-session-sidebar"] [data-selected="true"]'),
+    page.locator(
+      '[data-testid="r1-session-sidebar"] [data-slot="r1-session-row"][data-selected="true"]',
+    ),
   ).toContainText("Pinned project kickoff");
   await expect(page.getByText("main").first()).toBeVisible();
   await expect(page.getByText(/A very long session title/)).toBeVisible();

@@ -26,7 +26,7 @@ async function openModelDialog(page: Page): Promise<Locator> {
   await sendPrompt(composer, "ping");
   await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
   // A CSS locator: while the dialog is open the header is hidden from role queries.
-  await page.locator('header button[aria-label^="Model:"]').click();
+  await page.locator('[data-layout-area="composerToolbar"] button[aria-label^="Model:"]').click();
   const dialog = page.getByRole("dialog", { name: "Model and thinking" });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -36,7 +36,7 @@ async function openModelDialog(page: Page): Promise<Locator> {
 async function reopenModelDialog(page: Page, dialog: Locator): Promise<Locator> {
   await dialog.getByRole("button", { name: "Done" }).click();
   await expect(dialog).toHaveCount(0);
-  await page.locator('header button[aria-label^="Model:"]').click();
+  await page.locator('[data-layout-area="composerToolbar"] button[aria-label^="Model:"]').click();
   const reopened = page.getByRole("dialog", { name: "Model and thinking" });
   await expect(reopened).toBeVisible();
   return reopened;
@@ -44,7 +44,7 @@ async function reopenModelDialog(page: Page, dialog: Locator): Promise<Locator> 
 
 /** The header's model button, which names the session's model. */
 function headerModel(page: Page): Locator {
-  return page.locator('header button[aria-label^="Model:"]');
+  return page.locator('[data-layout-area="composerToolbar"] button[aria-label^="Model:"]');
 }
 
 /** omp's config.yml in this run's agent folder. */

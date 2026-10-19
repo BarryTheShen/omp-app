@@ -16,7 +16,7 @@ function sessionRow(page: Page, title: string) {
 }
 
 realTest(
-  "the chat title takes its own row when narrow and stays beside controls at wide widths",
+  "the chat title stays visible and does not overlap header controls across widths",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);
     const page = await realApp.open();
@@ -33,9 +33,10 @@ realTest(
     const row = sessionRow(page, CHAT_TITLE);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await row.click();
-    const title = page.locator('[data-layout-area="header"] [data-surface="title"] p');
-    await expect(title).toHaveText(CHAT_TITLE);
-    const model = page.locator('[data-layout-area="header"] [data-surface="model"]');
+    const title = page.locator('[data-layout-area="header"] [data-surface="title"] h1');
+    await expect(title).toHaveText(CHAT_TITLE, { timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: CHAT_TITLE })).toBeVisible();
+    const model = page.locator('[data-layout-area="composerToolbar"] [data-surface="model"]');
     await expect(model).toBeVisible();
     await mkdir(screenshots, { recursive: true });
 
@@ -47,31 +48,42 @@ realTest(
           dark,
         );
         await waitForFiniteAnimations(page);
-        await expect(title).toHaveCSS("font-size", "12px");
         const boxes = await page.evaluate(() => {
-          const titleSurface = document.querySelector<HTMLElement>(
-            '[data-layout-area="header"] [data-surface="title"]',
+          const header = document.querySelector<HTMLElement>('[data-shell-region="header"]');
+          const title = document.querySelector<HTMLElement>(
+            '[data-layout-area="header"] [data-surface="title"] h1',
           );
-          const modelSurface = document.querySelector<HTMLElement>(
-            '[data-layout-area="header"] [data-surface="model"]',
+          const settings = document.querySelector<HTMLElement>(
+            '[data-layout-area="header"] [data-surface="settings"] button',
           );
-          if (!titleSurface || !modelSurface)
-            throw new Error("The chat title or model control is missing");
-          const titleBox = titleSurface.getBoundingClientRect();
-          const modelBox = modelSurface.getBoundingClientRect();
+          if (!header || !title || !settings) {
+            throw new Error("The chat title or Settings control is missing from the header");
+          }
+          const headerBox = header.getBoundingClientRect();
+          const titleBox = title.getBoundingClientRect();
+          const settingsBox = settings.getBoundingClientRect();
+          const overlap =
+            titleBox.left < settingsBox.right &&
+            titleBox.right > settingsBox.left &&
+            titleBox.top < settingsBox.bottom &&
+            titleBox.bottom > settingsBox.top;
           return {
-            titleTop: titleBox.top,
-            titleBottom: titleBox.bottom,
+            headerLeft: headerBox.left,
+            headerRight: headerBox.right,
+            titleLeft: titleBox.left,
             titleRight: titleBox.right,
-            modelTop: modelBox.top,
-            modelLeft: modelBox.left,
+            settingsLeft: settingsBox.left,
+            titleTop: titleBox.top,
+            settingsTop: settingsBox.top,
+            overlap,
           };
         });
-
-        if (width <= 390) expect(boxes.titleBottom).toBeLessThanOrEqual(boxes.modelTop);
-        else {
-          expect(Math.abs(boxes.titleTop - boxes.modelTop)).toBeLessThan(8);
-          expect(boxes.titleRight).toBeLessThanOrEqual(boxes.modelLeft);
+        expect(boxes.titleLeft).toBeGreaterThanOrEqual(boxes.headerLeft);
+        expect(boxes.titleRight).toBeLessThanOrEqual(boxes.headerRight);
+        expect(boxes.overlap, `${width}px: title and Settings overlap`).toBe(false);
+        if (width >= 768) {
+          expect(Math.abs(boxes.titleTop - boxes.settingsTop)).toBeLessThan(8);
+          expect(boxes.titleRight).toBeLessThanOrEqual(boxes.settingsLeft);
         }
 
         await page.screenshot({

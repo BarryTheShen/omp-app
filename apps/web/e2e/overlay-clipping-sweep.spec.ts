@@ -240,7 +240,9 @@ for (const { width, height } of SIZES) {
       });
 
       await check(sweep, "Model and thinking", async () => {
-        await page.locator('header button[aria-label^="Model:"]').click();
+        await page
+          .locator('[data-layout-area="composerToolbar"] button[aria-label^="Model:"]')
+          .click();
         return page.getByRole("dialog", { name: "Model and thinking" });
       });
 

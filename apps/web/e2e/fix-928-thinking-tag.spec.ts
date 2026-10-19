@@ -23,8 +23,8 @@ realTest(
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
 
-    // A CSS locator: while the dialog is open the header is hidden from role queries.
-    await page.locator('header button[aria-label^="Model:"]').click();
+    // A CSS locator: while the dialog is open, its trigger is hidden from role queries.
+    await page.locator('[data-layout-area="composerToolbar"] button[aria-label^="Model:"]').click();
     const dialog = page.getByRole("dialog", { name: "Model and thinking" });
     await expect(dialog).toBeVisible();
     await expect(

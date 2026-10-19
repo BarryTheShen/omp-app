@@ -148,7 +148,9 @@ realTest(
     // opened the second process; that comparison keeps the process stopped below from belonging to the chat on screen.
     await firstChatRow.click();
     await expect(
-      page.locator('[role="listbox"][aria-label="Session list"] [data-selected="true"]'),
+      page.locator(
+        '[role="listbox"][aria-label="Session list"] [data-slot="r1-session-row"][data-selected="true"]',
+      ),
     ).toContainText(firstChatTitle);
     await expect.poll(() => releaseHeldEntries !== undefined, { timeout: 60_000 }).toBe(true);
     expect(realApp.ompProcesses()).toContain(firstProcess);
@@ -174,7 +176,7 @@ realTest(
       });
     }
     const selectedRow = page.locator(
-      '[role="listbox"][aria-label="Session list"] [data-selected="true"]',
+      '[role="listbox"][aria-label="Session list"] [data-slot="r1-session-row"][data-selected="true"]',
     );
     await expect(selectedRow).toContainText(firstChatTitle, { timeout: 30_000 });
     const pickedUserBubble = transcript

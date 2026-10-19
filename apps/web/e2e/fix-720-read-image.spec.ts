@@ -65,7 +65,7 @@ function noisePng(width: number, height: number): Buffer {
 
 /** Picks the fake vision model in the header's dialog, so that omp returns a picture in a read. */
 async function useVisionModel(page: Page): Promise<void> {
-  await page.locator('header button[aria-label^="Model:"]').click();
+  await page.locator('[data-layout-area="composerToolbar"] button[aria-label^="Model:"]').click();
   const dialog = page.getByRole("dialog", { name: "Model and thinking" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: /fake\/fake-vision ·/ }).click();

@@ -73,7 +73,7 @@ async function layoutProblems(page: Page, width: number): Promise<string[]> {
     );
   }
   const titleWhole = await page
-    .getByRole("heading", { level: 1, name: "omp" })
+    .locator('[data-shell-region="header"] h1')
     .evaluate((element) => element.scrollWidth <= element.clientWidth);
   if (!titleWhole) problems.push(`${width} px: the title is cut off`);
   const inToolbar = await page
