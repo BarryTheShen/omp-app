@@ -94,6 +94,21 @@ describe("ExtensionCatalogService", () => {
       version: "2.0.0",
       omp: { extensions: ["index.js"] },
     });
+    await writeJson(join(globalPluginRoot, "installed_plugins.json"), {
+      version: 2,
+      plugins: {
+        "demo@community": [
+          {
+            scope: "user",
+            installPath: join(globalPluginRoot, "node_modules", "demo-plugin"),
+            version: "1.0.0",
+            installedAt: "2026-10-18T00:00:00.000Z",
+            lastUpdated: "2026-10-18T00:00:00.000Z",
+            enabled: false,
+          },
+        ],
+      },
+    });
 
     const catalog = new ExtensionCatalogService({ homeDir: home, env: { HOME: home } });
     const global = await catalog.list({ folder: null });
@@ -109,6 +124,11 @@ describe("ExtensionCatalogService", () => {
     });
     expect(native?.path.startsWith("/")).toBe(false);
     expect(native?.path.includes("..")).toBe(false);
+    expect(global.extensions.find((entry) => entry.id === "demo-plugin")).toMatchObject({
+      marketplacePluginId: "demo@community",
+      marketplaceScope: "user",
+      enabled: false,
+    });
     const broken = global.extensions.find((entry) => entry.id === "broken");
     expect(broken?.error).toBe("Malformed JSON manifest.");
     expect(global.commands).toEqual(

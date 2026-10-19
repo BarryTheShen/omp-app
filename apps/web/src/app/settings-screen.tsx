@@ -707,6 +707,7 @@ export function SettingsScreen({
                     capabilities={capabilities}
                     client={client}
                     folder={folder}
+                    threadId={threadId}
                   />
                 ) : null}
                 {activeTab === "providers" && providerLoginAvailable(capabilities) ? (

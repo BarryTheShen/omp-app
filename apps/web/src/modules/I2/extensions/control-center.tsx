@@ -1,4 +1,4 @@
-import type { CapabilityMap, FolderPath } from "@omp-app/contracts";
+import type { CapabilityMap, FolderPath, ThreadId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,9 @@ import type {
   ExtensionMetadata,
   PromptMetadata,
 } from "../catalog";
-import { I2CapabilityKeys, isI2CapabilityAvailable } from "../catalog";
+import { capabilityFailure, I2CapabilityKeys, isI2CapabilityAvailable } from "../catalog";
+import type { MarketplacePort } from "../catalog/marketplace";
+import { createPluginOperations, type PluginToggleRequest } from "../plugins/operations";
 import { itemOriginText } from "./item-origin";
 
 type ProviderTab = "extensions" | "skills" | "prompts" | "plugins";
@@ -45,6 +47,19 @@ export interface ExtensionControlCenterProps {
   readonly catalog: ExtensionCatalog;
   readonly folder: FolderPath | null;
   readonly capabilities?: CapabilityMap;
+  readonly marketplace?: MarketplacePort;
+  readonly threadId?: ThreadId | null;
+}
+
+interface ToggleMessage {
+  readonly rowKey: string;
+  readonly text: string;
+  readonly failure: boolean;
+}
+
+interface PendingToggle {
+  readonly rowKey: string;
+  readonly request: PluginToggleRequest;
 }
 
 function unavailableError(): AppFailure {
@@ -125,6 +140,8 @@ export function ExtensionControlCenter({
   catalog,
   folder,
   capabilities = {},
+  marketplace,
+  threadId = null,
 }: ExtensionControlCenterProps) {
   const [catalogState, setCatalogState] = useState<CatalogState>({
     status: "loading",
@@ -136,7 +153,13 @@ export function ExtensionControlCenter({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
   const available = isI2CapabilityAvailable(capabilities, I2CapabilityKeys.extensionCatalog);
+  const commandAvailable = isI2CapabilityAvailable(capabilities, I2CapabilityKeys.commandGateway);
   const narrow = useMediaQuery("(max-width: 48rem)");
+  const [toggleBusy, setToggleBusy] = useState<string | null>(null);
+  const [toggleMessage, setToggleMessage] = useState<ToggleMessage | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<PendingToggle | null>(null);
+  const pendingAbortRef = useRef<AbortController | null>(null);
+  const pendingCancelRef = useRef<HTMLButtonElement | null>(null);
   const selectedButtonRef = useRef<HTMLButtonElement | null>(null);
   const inspectorHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
@@ -212,6 +235,98 @@ export function ExtensionControlCenter({
       setReloading(false);
     }
   };
+  const rowKeyFor = (item: ExtensionMetadata): string => item.id;
+  const cancelPendingToggle = useCallback(() => {
+    pendingAbortRef.current?.abort();
+    pendingAbortRef.current = null;
+    setPendingToggle(null);
+  }, []);
+  const beginToggle = (item: ExtensionMetadata): void => {
+    const pluginId = item.marketplacePluginId;
+    const scope = item.marketplaceScope;
+    if (
+      marketplace === undefined ||
+      threadId === null ||
+      !commandAvailable ||
+      pluginId === undefined ||
+      scope === undefined ||
+      item.shadowed
+    )
+      return;
+    const separator = pluginId.lastIndexOf("@");
+    if (separator <= 0 || separator === pluginId.length - 1) return;
+    pendingAbortRef.current?.abort();
+    pendingAbortRef.current = new AbortController();
+    setToggleMessage(null);
+    setPendingToggle({
+      rowKey: rowKeyFor(item),
+      request: {
+        name: pluginId.slice(0, separator),
+        marketplace: pluginId.slice(separator + 1),
+        scope,
+        enabled: !item.enabled,
+      },
+    });
+  };
+  const confirmPendingToggle = async (): Promise<void> => {
+    if (pendingToggle === null || marketplace === undefined || threadId === null) return;
+    const pending = pendingToggle;
+    const signal = pendingAbortRef.current?.signal;
+    setPendingToggle(null);
+    setToggleBusy(pending.rowKey);
+    let attempted = false;
+    try {
+      const operations = createPluginOperations({
+        threadId,
+        folder,
+        capabilities,
+        catalog,
+        marketplace,
+      });
+      const result = await operations.setEnabled(pending.request, {
+        signal,
+        confirm: async () => true,
+      });
+      if (result === null) return;
+      attempted = true;
+      setToggleMessage({
+        rowKey: pending.rowKey,
+        text: result.outputs.map((output) => output.text).join("\n\n"),
+        failure: false,
+      });
+    } catch (error) {
+      attempted = true;
+      setToggleMessage({
+        rowKey: pending.rowKey,
+        text:
+          error instanceof AppFailure
+            ? error.appError.message
+            : error instanceof Error
+              ? error.message
+              : "Plugin operation failed.",
+        failure: true,
+      });
+    } finally {
+      if (attempted) await reload();
+      setToggleBusy(null);
+      pendingAbortRef.current = null;
+    }
+  };
+  useEffect(() => {
+    if (pendingToggle === null) return;
+    pendingCancelRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      cancelPendingToggle();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [cancelPendingToggle, pendingToggle]);
+  useEffect(() => {
+    if (pendingToggle === null) return;
+    if (selectedId !== pendingToggle.rowKey) cancelPendingToggle();
+  }, [cancelPendingToggle, pendingToggle, selectedId]);
 
   const items = useMemo(() => {
     if (!catalogState.snapshot) return [];
@@ -386,6 +501,16 @@ export function ExtensionControlCenter({
                       headingRef={inspectorHeadingRef}
                       item={selected}
                       narrow={narrow}
+                      toggleBusy={toggleBusy}
+                      toggleMessage={toggleMessage}
+                      pendingToggle={pendingToggle}
+                      commandAvailable={commandAvailable}
+                      hasMarketplace={marketplace !== undefined}
+                      hasOpenChat={threadId !== null}
+                      pendingCancelRef={pendingCancelRef}
+                      onToggle={beginToggle}
+                      onConfirmToggle={() => void confirmPendingToggle()}
+                      onCancelToggle={cancelPendingToggle}
                       onBack={() => {
                         setSelectedId(null);
                         requestAnimationFrame(() => selectedButtonRef.current?.focus());
@@ -405,7 +530,7 @@ export function ExtensionControlCenter({
         title: "Extension Control Center",
         description: "Extensions, skills, prompts and plugins",
         error: catalogState.error?.appError ?? null,
-        readOnly: true,
+        readOnly: false,
         pendingUpdates: 0,
       }}
     />
@@ -416,11 +541,31 @@ function Inspector({
   headingRef,
   item,
   narrow,
+  toggleBusy,
+  toggleMessage,
+  pendingToggle,
+  commandAvailable,
+  hasMarketplace,
+  hasOpenChat,
+  pendingCancelRef,
+  onToggle,
+  onConfirmToggle,
+  onCancelToggle,
   onBack,
 }: {
   readonly headingRef: RefObject<HTMLHeadingElement | null>;
   readonly item: ControlItem | null;
   readonly narrow: boolean;
+  readonly toggleBusy: string | null;
+  readonly toggleMessage: ToggleMessage | null;
+  readonly pendingToggle: PendingToggle | null;
+  readonly commandAvailable: boolean;
+  readonly hasMarketplace: boolean;
+  readonly hasOpenChat: boolean;
+  readonly pendingCancelRef: RefObject<HTMLButtonElement | null>;
+  readonly onToggle: (item: ExtensionMetadata) => void;
+  readonly onConfirmToggle: () => void;
+  readonly onCancelToggle: () => void;
   readonly onBack: () => void;
 }) {
   if (!item)
@@ -429,6 +574,21 @@ function Inspector({
         Select an item to see its details.
       </div>
     );
+  const plugin = "id" in item && item.source === "plugin" ? item : null;
+  const hasMarketplaceId = plugin?.marketplacePluginId !== undefined;
+  const busy = plugin !== null && toggleBusy === plugin.id;
+  const result = plugin !== null && toggleMessage?.rowKey === plugin.id ? toggleMessage : null;
+  const reason =
+    plugin?.shadowed === true
+      ? "Another copy of this plugin is used instead, so this one cannot be changed here."
+      : !hasOpenChat
+        ? "Open a chat first: plugins are changed through a running chat."
+        : !commandAvailable || !hasMarketplace
+          ? capabilityFailure(I2CapabilityKeys.commandGateway, "Plugin operations").message
+          : undefined;
+  const rowKey = plugin?.id;
+  const pending = rowKey !== undefined && pendingToggle?.rowKey === rowKey ? pendingToggle : null;
+  const disabled = !hasOpenChat || !commandAvailable || !hasMarketplace || busy || plugin?.shadowed;
   return (
     <article
       aria-label={`${itemName(item)} details`}
@@ -449,6 +609,62 @@ function Inspector({
           {securityLabel(item)}
         </span>
       </div>
+      {plugin !== null && (
+        <div className="mt-3 flex flex-col gap-2">
+          {hasMarketplaceId &&
+            (pending !== null ? (
+              // biome-ignore lint/a11y/useSemanticElements: the Inspector contract requires a div role group
+              <div
+                role="group"
+                aria-label={pending.request.enabled ? "Enable plugin" : "Disable plugin"}
+                className="flex flex-col gap-2"
+              >
+                <p className="text-sm">
+                  {pending.request.enabled ? "Enable" : "Disable"} the {pending.request.name} plugin
+                  in the {pending.request.scope} scope?
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    ref={pendingCancelRef}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    onClick={onCancelToggle}
+                  >
+                    Cancel
+                  </Button>
+                  <Button size="sm" type="button" onClick={onConfirmToggle}>
+                    {pending.request.enabled ? "Enable plugin" : "Disable plugin"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                aria-busy={busy ? true : undefined}
+                disabled={Boolean(disabled)}
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => onToggle(plugin)}
+              >
+                {busy ? "Working…" : plugin.enabled ? "Disable plugin" : "Enable plugin"}
+              </Button>
+            ))}
+          {!hasMarketplaceId ? (
+            <p className="text-xs text-muted-foreground">
+              This plugin was not installed from a marketplace, so omp cannot turn it on or off from
+              here.
+            </p>
+          ) : disabled && !busy && pending === null && reason !== undefined ? (
+            <p className="text-xs text-muted-foreground">{reason}</p>
+          ) : null}
+          {result?.failure === true && (
+            <p className="text-destructive text-sm" role="alert">
+              {result.text}
+            </p>
+          )}
+        </div>
+      )}
       <dl className="mt-3 space-y-2 text-xs">
         <div>
           <dt className="text-muted-foreground">Where it comes from</dt>
@@ -474,7 +690,36 @@ function Inspector({
             <dd className="break-words whitespace-pre-wrap">{item.description}</dd>
           </div>
         )}
+        {plugin !== null && (
+          <div>
+            <dt className="text-muted-foreground">Scope</dt>
+            <dd>
+              {plugin.marketplaceScope === "project"
+                ? "Project"
+                : plugin.marketplaceScope === "user"
+                  ? "User"
+                  : "Unknown"}
+            </dd>
+          </div>
+        )}
       </dl>
+      {plugin === null && (
+        <div className="mt-3 flex flex-col gap-2">
+          {"id" in item && item.source === "extension" ? (
+            <p className="text-xs text-muted-foreground">
+              omp's own extensions can only be turned on or off in omp's terminal.
+            </p>
+          ) : item.source === "skill" ? (
+            <p className="text-xs text-muted-foreground">
+              Skills cannot be turned on or off from here.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Prompts cannot be turned on or off from here.
+            </p>
+          )}
+        </div>
+      )}
     </article>
   );
 }

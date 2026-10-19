@@ -33,7 +33,8 @@ function catalogResult(): ExtensionCatalogResult {
         name: "demo-plugin",
         provider: "marketplace",
         source: "plugin",
-        version: "1.0.0",
+        marketplacePluginId: "demo@community",
+        marketplaceScope: "user",
         enabled: true,
         shadowed: false,
         capabilities: ["tools", "tools", "\u0000hooks"],
@@ -120,6 +121,10 @@ describe("I2 safe extension catalog model", () => {
       path: "plugins/demo-plugin",
       description: "<b>untrusted description</b>",
       capabilities: ["tools", "hooks"],
+    });
+    expect(snapshot.extensions[0]).toMatchObject({
+      marketplacePluginId: "demo@community",
+      marketplaceScope: "user",
     });
     expect(snapshot.skills).toHaveLength(1);
     expect(snapshot.skills[0]?.path).toBeUndefined();

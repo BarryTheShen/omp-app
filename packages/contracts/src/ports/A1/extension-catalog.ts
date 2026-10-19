@@ -13,6 +13,8 @@ export const ExtensionSummary = z.strictObject({
   provider: z.string().min(1),
   source: ExtensionSource,
   version: z.string().min(1).optional(),
+  marketplacePluginId: z.string().min(1).optional(),
+  marketplaceScope: z.enum(["user", "project"]).optional(),
   enabled: z.boolean(),
   shadowed: z.boolean(),
   capabilities: z.array(z.string().min(1)),

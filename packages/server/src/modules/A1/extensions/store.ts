@@ -1,6 +1,6 @@
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 import {
   AppFailure,
   type CommandMetadata,
@@ -49,6 +49,24 @@ interface RootSpec {
   readonly source: ExtensionSource;
   readonly provider: string;
   readonly scope: "user" | "project";
+}
+interface MarketplacePluginBinding {
+  readonly marketplacePluginId: string;
+  readonly marketplaceScope: "user" | "project";
+  readonly enabled: boolean;
+}
+function marketplacePluginId(value: string): string | undefined {
+  const separator = value.lastIndexOf("@");
+  if (separator <= 0 || separator === value.length - 1 || value.length > 128) return undefined;
+  const segment = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
+  const name = value.slice(0, separator);
+  const marketplace = value.slice(separator + 1);
+  return name.length <= 64 &&
+    marketplace.length <= 64 &&
+    segment.test(name) &&
+    segment.test(marketplace)
+    ? value
+    : undefined;
 }
 
 interface ScanResult {
@@ -124,9 +142,9 @@ function nonEmpty(value: string | undefined): string | undefined {
 }
 
 /**
- * Mirrors omp v18.6.1 `packages/utils/src/dirs.ts:27-31, 659-688, 970-987` and
- * `packages/coding-agent/src/discovery/builtin.ts:288-315, 499-505`: native extensions/skills are
- * under the agent directory, plugins under the omp root, and project providers under `.omp`.
+ * omp v18.9.1 `packages/utils/src/dirs.ts` resolves native extensions/skills
+ * under the agent directory, marketplace plugins under `getPluginsDir()`, and
+ * project providers under `.omp`.
  */
 function resolveAgentDir(options: ExtensionCatalogOptions): string {
   const environment = options.env ?? process.env;
@@ -136,6 +154,27 @@ function resolveAgentDir(options: ExtensionCatalogOptions): string {
   const profile = nonEmpty(environment.OMP_PROFILE);
   if (profile) return resolve(home, ".omp", "profiles", profile, "agent");
   return resolve(home, ".omp", "agent");
+}
+
+/**
+ * omp v18.9.1 dirs.ts:getPluginsDir resolves the user plugin registry under the
+ * configuration root's plugins directory, independently of PI_CODING_AGENT_DIR.
+ */
+function resolveOmpRoot(options: ExtensionCatalogOptions): string {
+  const environment = options.env ?? process.env;
+  const home = resolve(options.homeDir ?? environment.HOME ?? homedir());
+  const configDir = nonEmpty(environment.PI_CONFIG_DIR) ?? ".omp";
+  const profile = nonEmpty(environment.PI_PROFILE) ?? nonEmpty(environment.OMP_PROFILE);
+  const profilePath = profile ? ["profiles", profile] : [];
+  let root = resolve(home, configDir, ...profilePath);
+  const agentDir = resolveAgentDir(options);
+  if (agentDir !== resolve(root, "agent")) return root;
+  if (process.platform !== "linux" && process.platform !== "darwin") return root;
+  const xdgDataHome = nonEmpty(environment.XDG_DATA_HOME);
+  if (!xdgDataHome) return root;
+  const xdgRoot = resolve(xdgDataHome, "omp", ...profilePath);
+  if (existsSync(xdgRoot)) root = xdgRoot;
+  return root;
 }
 
 function safeText(value: unknown): string | undefined {
@@ -226,6 +265,7 @@ function packageSummary(
   packagePath: string,
   ompRoot: string,
   enabled: boolean,
+  marketplaceBinding?: MarketplacePluginBinding,
 ): ExtensionSummary {
   const packageName = safeText(pkg.name) ?? safeText(manifest.name) ?? basename(packagePath);
   const description = safeText(manifest.description) ?? safeText(pkg.description);
@@ -236,6 +276,10 @@ function packageSummary(
     provider: safeText(spec.provider) ?? packageName,
     source: spec.source,
     ...(version ? { version } : {}),
+    ...(marketplaceBinding ? { marketplacePluginId: marketplaceBinding.marketplacePluginId } : {}),
+    ...(spec.source === "plugin"
+      ? { marketplaceScope: marketplaceBinding?.marketplaceScope ?? spec.scope }
+      : {}),
     enabled,
     shadowed: false,
     capabilities: manifestCapabilities(manifest),
@@ -320,7 +364,7 @@ export class ExtensionCatalogService {
   constructor(options: ExtensionCatalogOptions = {}) {
     this.#options = options;
     this.agentDir = resolveAgentDir(options);
-    this.ompRoot = resolve(dirname(this.agentDir));
+    this.ompRoot = resolveOmpRoot(options);
   }
 
   async list(args: { readonly folder: FolderRequest }): Promise<ExtensionCatalogResult> {
@@ -548,6 +592,7 @@ export class ExtensionCatalogService {
     packagePath: string,
     spec: RootSpec,
     files: Map<string, string | null>,
+    marketplaceBinding?: MarketplacePluginBinding,
   ): Promise<{
     extension: ExtensionSummary;
     commands: CommandMetadata[];
@@ -572,7 +617,15 @@ export class ExtensionCatalogService {
     if (!read.value) return null;
     const manifest = objectFrom(read.value.omp) ?? objectFrom(read.value.pi);
     if (!manifest) return null;
-    const extension = packageSummary(read.value, manifest, spec, packagePath, this.ompRoot, true);
+    const extension = packageSummary(
+      read.value,
+      manifest,
+      spec,
+      packagePath,
+      this.ompRoot,
+      true,
+      marketplaceBinding,
+    );
     const commands = commandMetadata(
       manifest,
       spec,
@@ -605,6 +658,40 @@ export class ExtensionCatalogService {
     files.set(join(packageRoot, "package.json"), packageRead.hash);
     const lockRead = await readJson(join(packageRoot, "omp-plugins.lock.json"));
     files.set(join(packageRoot, "omp-plugins.lock.json"), lockRead.hash);
+    // omp v18.9.1 registry.ts:getInstalledPluginsRegistryPath/readInstalledPluginsRegistry
+    // reads <pluginsDir>/installed_plugins.json with plugins keyed by marketplace plugin ID;
+    // types.ts:InstalledPluginEntry carries installPath, scope, and enabled.
+    const installedRegistryPath = join(packageRoot, "installed_plugins.json");
+    const installedRegistryRead = await readJson(installedRegistryPath);
+    files.set(installedRegistryPath, installedRegistryRead.hash);
+    const registryPlugins = objectFrom(installedRegistryRead.value?.plugins);
+    const bindingsByInstallPath = new Map<string, MarketplacePluginBinding[]>();
+    for (const [rawMarketplacePluginId, rawEntries] of Object.entries(registryPlugins ?? {})) {
+      const installedMarketplacePluginId = marketplacePluginId(rawMarketplacePluginId);
+      if (!installedMarketplacePluginId || !Array.isArray(rawEntries)) continue;
+      for (const rawEntry of rawEntries) {
+        const installedEntry = objectFrom(rawEntry);
+        if (
+          !installedEntry ||
+          installedEntry.scope !== spec.scope ||
+          typeof installedEntry.installPath !== "string"
+        )
+          continue;
+        let installPath: string;
+        try {
+          installPath = await fs.realpath(installedEntry.installPath);
+        } catch {
+          continue;
+        }
+        const bindings = bindingsByInstallPath.get(installPath) ?? [];
+        bindings.push({
+          marketplacePluginId: installedMarketplacePluginId,
+          marketplaceScope: spec.scope,
+          enabled: installedEntry.enabled !== false,
+        });
+        bindingsByInstallPath.set(installPath, bindings);
+      }
+    }
     const packageNames = new Set<string>();
     if (packageRead.value) {
       const dependencies = objectFrom(packageRead.value.dependencies);
@@ -616,14 +703,26 @@ export class ExtensionCatalogService {
     }
     for (const name of [...packageNames].sort()) {
       const packagePath = join(packageRoot, "node_modules", name);
+      let packageRealPath: string | undefined;
+      try {
+        packageRealPath = await fs.realpath(packagePath);
+      } catch {
+        packageRealPath = undefined;
+      }
+      const matchingBindings =
+        packageRealPath === undefined ? [] : (bindingsByInstallPath.get(packageRealPath) ?? []);
+      const marketplaceBinding = matchingBindings.length === 1 ? matchingBindings[0] : undefined;
       const result = await this.scanPackageDirectory(
         packagePath,
         { ...spec, provider: name },
         files,
+        marketplaceBinding,
       );
       if (!result) continue;
       const lockPlugin = objectFrom(objectFrom(lockRead.value?.plugins)?.[name]);
-      const enabled = lockPlugin?.enabled !== false;
+      const enabled = marketplaceBinding
+        ? marketplaceBinding.enabled
+        : lockPlugin?.enabled !== false;
       extensions.push({ ...result.extension, enabled });
       commands.push(...result.commands.map((command) => ({ ...command, enabled })));
       skills.push(...result.skills.map((skill) => ({ ...skill, enabled })));

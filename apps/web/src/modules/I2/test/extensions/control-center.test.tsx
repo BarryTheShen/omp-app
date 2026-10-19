@@ -1,7 +1,12 @@
-import { AppFailure, FolderPath } from "@omp-app/contracts";
+import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { ExtensionCatalog, ExtensionCatalogSnapshot } from "../../catalog";
+import type {
+  ExtensionCatalog,
+  ExtensionCatalogSnapshot,
+  MarketplacePort,
+  MarketplaceResult,
+} from "../../catalog";
 import { ExtensionControlCenter } from "../../extensions";
 
 const folder = FolderPath.parse("/workspace/project");
@@ -13,6 +18,8 @@ const snapshot: ExtensionCatalogSnapshot = {
       name: "Plugin One",
       provider: "demo",
       source: "plugin",
+      marketplacePluginId: "plugin-one@demo-market",
+      marketplaceScope: "project",
       version: "1.0.0",
       enabled: true,
       shadowed: false,
@@ -58,6 +65,7 @@ const hostStopped = () =>
   Promise.reject(
     new AppFailure({ code: "internal", message: "The host stopped.", retryable: true }),
   );
+
 afterEach(() => cleanup());
 
 describe("ExtensionControlCenter", () => {
@@ -448,5 +456,421 @@ describe("ExtensionControlCenter", () => {
     const inspector = screen.getByTestId("extension-inspector").textContent ?? "";
     expect(inspector).toContain("From your skills folder");
     expect(inspector).toContain("native");
+  });
+  test("confirms the exact marketplace target, renders omp's reply and reloads its state", async () => {
+    const fake = catalog();
+    const threadId = ThreadId.parse("thread-i2-toggle");
+    const marketplace = {
+      capability: "host.command-gateway",
+      run: vi.fn(async () => ({
+        operation: "plugins-disable",
+        status: "completed",
+        agentInvoked: false,
+        promptSettled: true,
+        sessionSettled: true,
+        outputs: [{ text: "Disabled plugin-one@demo-market" }],
+        sessionUpdates: [],
+        configUpdates: [],
+      })),
+    } as unknown as MarketplacePort;
+    render(
+      <ExtensionControlCenter
+        capabilities={{
+          "host.extension-catalog": { state: "available", via: "host" },
+          "host.command-gateway": { state: "available", via: "host" },
+        }}
+        catalog={fake.catalog}
+        folder={folder}
+        marketplace={marketplace}
+        threadId={threadId}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    fireEvent.click(screen.getByRole("button", { name: "Disable plugin" }));
+    const group = await screen.findByRole("group", { name: "Disable plugin" });
+    fireEvent.click(within(group).getByRole("button", { name: "Disable plugin" }));
+    await waitFor(() =>
+      expect(marketplace.run).toHaveBeenCalledWith(
+        {
+          operation: "plugins-disable",
+          threadId,
+          name: "plugin-one",
+          marketplace: "demo-market",
+          scope: "project",
+        },
+        { signal: expect.anything() },
+      ),
+    );
+    expect(screen.queryByRole("group", { name: "Disable plugin" })).toBeNull();
+    expect(
+      within(screen.getByTestId("extension-inspector")).getByText("Enabled", { exact: true }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("extension-inspector")).getByText("Scope").parentElement
+        ?.textContent,
+    ).toContain("Project");
+    expect(fake.reload).toHaveBeenCalledTimes(1);
+  });
+
+  test("switching away from a plugin cancels its pending confirmation", async () => {
+    const twoPlugins: ExtensionCatalogSnapshot = {
+      ...snapshot,
+      extensions: [
+        ...snapshot.extensions.slice(0, 1),
+        {
+          id: "plugin-two",
+          name: "Plugin Two",
+          provider: "other",
+          source: "plugin",
+          marketplacePluginId: "plugin-two@other-market",
+          marketplaceScope: "user",
+          version: "2.0.0",
+          enabled: true,
+          shadowed: false,
+          capabilities: [],
+        },
+      ],
+      sources: [
+        { source: "plugin", provider: "demo", total: 1, enabled: 1, shadowed: 0 },
+        { source: "plugin", provider: "other", total: 1, enabled: 1, shadowed: 0 },
+      ],
+    };
+    const marketplace = {
+      capability: "host.command-gateway",
+      run: vi.fn(),
+    } as unknown as MarketplacePort;
+    const catalogWithTwoPlugins: ExtensionCatalog = {
+      list: vi.fn(async () => twoPlugins),
+      reload: vi.fn(async () => twoPlugins),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(
+      <ExtensionControlCenter
+        capabilities={{
+          "host.extension-catalog": { state: "available", via: "host" },
+          "host.command-gateway": { state: "available", via: "host" },
+        }}
+        catalog={catalogWithTwoPlugins}
+        folder={folder}
+        marketplace={marketplace}
+        threadId={ThreadId.parse("thread-i2-toggle")}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    fireEvent.click(screen.getByRole("button", { name: "Disable plugin" }));
+    await screen.findByRole("group", { name: "Disable plugin" });
+
+    fireEvent.click(screen.getByTestId("extension-item-plugin-two"));
+    fireEvent.click(screen.getByTestId("extension-item-plugin-one"));
+
+    expect(screen.queryByRole("group", { name: "Disable plugin" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Disable plugin" })).toBeTruthy();
+    expect(marketplace.run).not.toHaveBeenCalled();
+  });
+
+  test("a cancelled confirmation sends no plugin command", async () => {
+    const fake = catalog();
+    const marketplace = {
+      capability: "host.command-gateway",
+      run: vi.fn(),
+    } as unknown as MarketplacePort;
+    render(
+      <ExtensionControlCenter
+        capabilities={{
+          "host.extension-catalog": { state: "available", via: "host" },
+          "host.command-gateway": { state: "available", via: "host" },
+        }}
+        catalog={fake.catalog}
+        folder={folder}
+        marketplace={marketplace}
+        threadId={ThreadId.parse("thread-i2-toggle")}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    fireEvent.click(screen.getByRole("button", { name: "Disable plugin" }));
+    await screen.findByRole("group", { name: "Disable plugin" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(marketplace.run).not.toHaveBeenCalled();
+    expect(fake.reload).not.toHaveBeenCalled();
+    expect(screen.queryByRole("group", { name: "Disable plugin" })).toBeNull();
+  });
+
+  test("a failed omp reply is an alert, keeps the catalog state and still reloads", async () => {
+    const fake = catalog();
+    const refusal = 'Plugin "plugin-one@demo-market" is not installed';
+    const marketplace = {
+      capability: "host.command-gateway",
+      run: vi.fn(async () => ({
+        operation: "plugins-disable",
+        status: "completed",
+        agentInvoked: false,
+        promptSettled: true,
+        sessionSettled: true,
+        failure: { message: refusal },
+        outputs: [{ text: refusal }],
+        sessionUpdates: [],
+        configUpdates: [],
+      })),
+    } as unknown as MarketplacePort;
+    render(
+      <ExtensionControlCenter
+        capabilities={{
+          "host.extension-catalog": { state: "available", via: "host" },
+          "host.command-gateway": { state: "available", via: "host" },
+        }}
+        catalog={fake.catalog}
+        folder={folder}
+        marketplace={marketplace}
+        threadId={ThreadId.parse("thread-i2-toggle")}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    fireEvent.click(screen.getByRole("button", { name: "Disable plugin" }));
+    const group = await screen.findByRole("group", { name: "Disable plugin" });
+    fireEvent.click(within(group).getByRole("button", { name: "Disable plugin" }));
+    const inspector = screen.getByTestId("extension-inspector");
+    expect((await within(inspector).findByRole("alert")).textContent).toBe(refusal);
+    expect(within(inspector).getByText("Enabled", { exact: true })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Disable plugin" })).toBeTruthy();
+    expect(fake.reload).toHaveBeenCalledTimes(1);
+  });
+
+  test("a shadowed marketplace copy has the specified disabled reason", async () => {
+    const shadowed = {
+      ...snapshot,
+      extensions: snapshot.extensions.map((item) => ({ ...item, shadowed: true })),
+    };
+    const fake: ExtensionCatalog = {
+      list: vi.fn(async () => shadowed),
+      reload: vi.fn(async () => shadowed),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    const marketplace = {
+      capability: "host.command-gateway",
+      run: vi.fn(),
+    } as unknown as MarketplacePort;
+    render(
+      <ExtensionControlCenter
+        capabilities={{
+          "host.extension-catalog": { state: "available", via: "host" },
+          "host.command-gateway": { state: "available", via: "host" },
+        }}
+        catalog={fake}
+        folder={folder}
+        marketplace={marketplace}
+        threadId={ThreadId.parse("thread-i2-toggle")}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    expect(
+      (screen.getByRole("button", { name: "Disable plugin" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByText(
+        "Another copy of this plugin is used instead, so this one cannot be changed here.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Disable plugin" }));
+    expect(marketplace.run).not.toHaveBeenCalled();
+  });
+
+  test("shows the action-specific busy name and aria-busy while omp is changing the plugin", async () => {
+    const fake = catalog();
+    const deferred = Promise.withResolvers<MarketplaceResult>();
+    const marketplace = {
+      capability: "host.command-gateway",
+      run: vi.fn(() => deferred.promise),
+    } as unknown as MarketplacePort;
+    render(
+      <ExtensionControlCenter
+        capabilities={{
+          "host.extension-catalog": { state: "available", via: "host" },
+          "host.command-gateway": { state: "available", via: "host" },
+        }}
+        catalog={fake.catalog}
+        folder={folder}
+        marketplace={marketplace}
+        threadId={ThreadId.parse("thread-i2-toggle")}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    fireEvent.click(screen.getByRole("button", { name: "Disable plugin" }));
+    const group = await screen.findByRole("group", { name: "Disable plugin" });
+    fireEvent.click(within(group).getByRole("button", { name: "Disable plugin" }));
+    const busy = await screen.findByRole("button", { name: "Working…" });
+    expect(busy.getAttribute("aria-busy")).toBe("true");
+    deferred.resolve({
+      operation: "plugins-disable",
+      status: "completed",
+      agentInvoked: false,
+      promptSettled: true,
+      sessionSettled: true,
+      outputs: [{ text: "Disabled plugin-one@demo-market" }],
+      sessionUpdates: [],
+      configUpdates: [],
+    });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Working…" })).toBeNull());
+  });
+
+  test("enables a disabled plugin through the typed user/project scope request", async () => {
+    const disabledSnapshot: ExtensionCatalogSnapshot = {
+      ...snapshot,
+      extensions: snapshot.extensions.map((item) => ({ ...item, enabled: false })),
+    };
+    const fake: ExtensionCatalog = {
+      list: vi.fn(async () => disabledSnapshot),
+      reload: vi.fn(async () => disabledSnapshot),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    const marketplace = {
+      capability: "host.command-gateway",
+      run: vi.fn(async () => ({
+        operation: "plugins-enable",
+        status: "completed",
+        agentInvoked: false,
+        promptSettled: true,
+        sessionSettled: true,
+        outputs: [{ text: "Enabled plugin-one@demo-market" }],
+        sessionUpdates: [],
+        configUpdates: [],
+      })),
+    } as unknown as MarketplacePort;
+    render(
+      <ExtensionControlCenter
+        capabilities={{
+          "host.extension-catalog": { state: "available", via: "host" },
+          "host.command-gateway": { state: "available", via: "host" },
+        }}
+        catalog={fake}
+        folder={folder}
+        marketplace={marketplace}
+        threadId={ThreadId.parse("thread-i2-toggle")}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    fireEvent.click(screen.getByRole("button", { name: "Enable plugin" }));
+    const group = await screen.findByRole("group", { name: "Enable plugin" });
+    expect(document.activeElement).toBe(within(group).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(group).getByRole("button", { name: "Enable plugin" }));
+    await waitFor(() =>
+      expect(marketplace.run).toHaveBeenCalledWith(
+        {
+          operation: "plugins-enable",
+          threadId: ThreadId.parse("thread-i2-toggle"),
+          name: "plugin-one",
+          marketplace: "demo-market",
+          scope: "project",
+        },
+        { signal: expect.anything() },
+      ),
+    );
+  });
+
+  test("disables the control when the chat or U4 dialog host is missing", async () => {
+    const fake = catalog();
+    const marketplace = { capability: "host.command-gateway", run: vi.fn() } as never;
+    render(
+      <ExtensionControlCenter
+        capabilities={{
+          "host.extension-catalog": { state: "available", via: "host" },
+          "host.command-gateway": { state: "available", via: "host" },
+        }}
+        catalog={fake.catalog}
+        folder={folder}
+        marketplace={marketplace}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    expect(
+      (screen.getByRole("button", { name: "Disable plugin" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByText("Open a chat first: plugins are changed through a running chat."),
+    ).toBeTruthy();
+  });
+
+  test("uses the command capability explanation when the command gateway is unavailable", async () => {
+    const fake = catalog();
+    render(
+      <ExtensionControlCenter
+        capabilities={{ "host.extension-catalog": { state: "available", via: "host" } }}
+        catalog={fake.catalog}
+        folder={folder}
+        marketplace={{ capability: "host.command-gateway", run: vi.fn() } as never}
+        threadId={ThreadId.parse("thread-i2-toggle")}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-plugin-one"));
+    expect(
+      screen.getByText(
+        "Plugin operations is unavailable until the required host capability is connected.",
+      ),
+    ).toBeTruthy();
+  });
+
+  test("shows the exact source-specific explanations for non-marketplace items", async () => {
+    const mixed: ExtensionCatalogSnapshot = {
+      ...snapshot,
+      extensions: [
+        {
+          id: "native-extension",
+          name: "Native extension",
+          provider: "native",
+          source: "extension",
+          enabled: true,
+          shadowed: false,
+          capabilities: [],
+        },
+        {
+          id: "unlinked-plugin-package",
+          name: "Unlinked plugin",
+          provider: "package-name",
+          source: "plugin",
+          marketplaceScope: "user",
+          enabled: true,
+          shadowed: false,
+          capabilities: [],
+        },
+      ],
+      prompts: [{ name: "prompt-one", provider: "native", source: "extension", enabled: true }],
+    };
+    const fake: ExtensionCatalog = {
+      list: vi.fn(async () => mixed),
+      reload: vi.fn(async () => mixed),
+      subscribe: vi.fn(async () => async () => undefined),
+    };
+    render(<ExtensionControlCenter catalog={fake} folder={folder} capabilities={available} />);
+    fireEvent.click(screen.getByTestId("extension-tab-extensions"));
+    fireEvent.click(await screen.findByTestId("extension-item-native-extension"));
+    expect(
+      screen.getByText("omp's own extensions can only be turned on or off in omp's terminal."),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByTestId("extension-tab-plugins"));
+    fireEvent.click(await screen.findByTestId("extension-item-unlinked-plugin-package"));
+    expect(
+      screen.getByText(
+        "This plugin was not installed from a marketplace, so omp cannot turn it on or off from here.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Enable plugin" })).toBeNull();
+    expect(
+      within(screen.getByTestId("extension-inspector")).getByText("Scope").parentElement
+        ?.textContent,
+    ).toContain("User");
+    fireEvent.click(screen.getByTestId("extension-tab-skills"));
+    fireEvent.click(await screen.findByTestId("extension-item-skill-one"));
+    expect(screen.getByText("Skills cannot be turned on or off from here.")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("extension-tab-prompts"));
+    fireEvent.click(await screen.findByTestId("extension-item-prompt:native:prompt-one"));
+    expect(screen.getByText("Prompts cannot be turned on or off from here.")).toBeTruthy();
   });
 });

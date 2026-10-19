@@ -140,6 +140,71 @@ describe("I2 installed plugin operations", () => {
     expect(requests).toEqual([{ operation: "plugins-list", threadId: THREAD }]);
   });
 
+  test("setEnabled asks through hooks and does nothing when the answer is no", async () => {
+    const { operations, requests } = setup({
+      dialogs: {
+        open: () => {
+          throw new Error("setEnabled must not open dialogs");
+        },
+        confirm: () => {
+          throw new Error("setEnabled must not use DialogHost.confirm");
+        },
+      } as never,
+    });
+    const confirm = vi.fn(async () => false);
+    const result = await operations.setEnabled(
+      { name: "example-plugin", marketplace: "community", scope: "user", enabled: true },
+      { confirm },
+    );
+    expect(result).toBeNull();
+    expect(confirm).toHaveBeenCalledWith(
+      "Enable plugin",
+      "Enable the example-plugin plugin in the user scope?",
+      undefined,
+    );
+    expect(requests).toEqual([]);
+  });
+
+  test("setEnabled sends the typed request and turns omp failures into AppFailure", async () => {
+    const refusal = 'Plugin "example-plugin@community" is not installed';
+    const { operations, requests } = setup({
+      dialogs: {
+        open: () => {
+          throw new Error("setEnabled must not open dialogs");
+        },
+        confirm: () => {
+          throw new Error("setEnabled must not use DialogHost.confirm");
+        },
+      } as never,
+      run: async () => ({
+        operation: "plugins-disable",
+        status: "completed",
+        agentInvoked: true,
+        promptSettled: true,
+        sessionSettled: true,
+        failure: { message: refusal },
+        outputs: [{ text: refusal }],
+        sessionUpdates: [],
+        configUpdates: [],
+      }),
+    });
+    await expect(
+      operations.setEnabled(
+        { name: "example-plugin", marketplace: "community", scope: "project", enabled: false },
+        { confirm: async () => true },
+      ),
+    ).rejects.toMatchObject({ appError: { code: "omp_error", message: refusal } });
+    expect(requests).toEqual([
+      {
+        operation: "plugins-disable",
+        threadId: THREAD,
+        name: "example-plugin",
+        marketplace: "community",
+        scope: "project",
+      },
+    ]);
+  });
+
   test("requires a full plugin id, shows installed scopes, confirms, and sends a typed command", async () => {
     const dialogs = new ScriptedDialogs(
       [

@@ -15,21 +15,41 @@ import {
   isI2CapabilityAvailable,
   sanitizeCatalogText,
 } from "../catalog/contract";
-import type { MarketplacePort, MarketplaceResult } from "../catalog/marketplace";
+import type {
+  MarketplacePort,
+  MarketplaceRequest,
+  MarketplaceResult,
+} from "../catalog/marketplace";
 
 export interface PluginOperationsOptions {
   readonly threadId: ThreadId;
   readonly folder: FolderPath | null;
   readonly capabilities: CapabilityMap;
-  readonly dialogs: Pick<DialogHost, "open" | "confirm">;
+  readonly dialogs?: Pick<DialogHost, "open" | "confirm">;
   readonly catalog: ExtensionCatalog;
   readonly marketplace: MarketplacePort;
+}
+
+export interface PluginToggleRequest {
+  readonly name: string;
+  readonly marketplace: string;
+  readonly scope: "user" | "project";
+  readonly enabled: boolean;
+}
+
+export interface PluginToggleHooks {
+  readonly confirm: (title: string, message: string, signal?: AbortSignal) => Promise<boolean>;
+  readonly signal?: AbortSignal;
 }
 
 export interface PluginOperations {
   readonly list: (signal?: AbortSignal) => Promise<MarketplaceResult>;
   readonly enable: (signal?: AbortSignal) => Promise<MarketplaceResult | null>;
   readonly disable: (signal?: AbortSignal) => Promise<MarketplaceResult | null>;
+  readonly setEnabled: (
+    request: PluginToggleRequest,
+    hooks: PluginToggleHooks,
+  ) => Promise<MarketplaceResult | null>;
   readonly uninstall: (signal?: AbortSignal) => Promise<MarketplaceResult | null>;
   readonly upgrade: (signal?: AbortSignal) => Promise<MarketplaceResult | null>;
   readonly reload: (signal?: AbortSignal) => Promise<ExtensionCatalogSnapshot>;
@@ -74,11 +94,19 @@ async function askText(
 }
 
 export function createPluginOperations(options: PluginOperationsOptions): PluginOperations {
+  const requireDialogs = (): Pick<DialogHost, "open" | "confirm"> => {
+    if (options.dialogs !== undefined) return options.dialogs;
+    throw new AppFailure({
+      code: "unavailable",
+      message: "Plugin dialogs are unavailable from this surface.",
+      retryable: false,
+    });
+  };
   const askPluginTarget = async (
     signal?: AbortSignal,
   ): Promise<{ readonly name: string; readonly marketplace: string } | null> => {
     const value = await askText(
-      options.dialogs,
+      requireDialogs(),
       options.threadId,
       "Plugin id",
       "name@marketplace",
@@ -99,7 +127,7 @@ export function createPluginOperations(options: PluginOperationsOptions): Plugin
   };
 
   const scopeFor = async (signal?: AbortSignal): Promise<"user" | "project" | null> => {
-    const selected = await options.dialogs.open(
+    const selected = await requireDialogs().open(
       {
         kind: "select",
         id: requestId("plugin-scope"),
@@ -119,7 +147,7 @@ export function createPluginOperations(options: PluginOperationsOptions): Plugin
   };
 
   const confirm = (title: string, message: string, signal?: AbortSignal) =>
-    options.dialogs.confirm(
+    requireDialogs().confirm(
       { kind: "confirm", id: requestId("confirm-plugin"), title, message },
       dialogOptions(options.threadId, signal),
     );
@@ -129,7 +157,7 @@ export function createPluginOperations(options: PluginOperationsOptions): Plugin
     signal?: AbortSignal,
   ): Promise<void> => {
     const text = result.outputs.map((output) => output.text).join("\n\n");
-    await options.dialogs.open(
+    await requireDialogs().open(
       {
         kind: "editor",
         id: requestId("report"),
@@ -141,6 +169,71 @@ export function createPluginOperations(options: PluginOperationsOptions): Plugin
     );
   };
 
+  const setEnabledWithDialog = async (
+    target: {
+      readonly name: string;
+      readonly marketplace: string;
+      readonly scope: "user" | "project";
+    },
+    enabled: boolean,
+    signal?: AbortSignal,
+  ): Promise<MarketplaceResult | null> => {
+    requireCapability(options.capabilities, I2CapabilityKeys.commandGateway, "Plugin operations");
+    const verb = enabled ? "Enable" : "Disable";
+    if (
+      !(await confirm(
+        `${verb} plugin`,
+        `${verb} the ${target.name} plugin in the ${target.scope} scope?`,
+        signal,
+      ))
+    )
+      return null;
+    return options.marketplace.run(
+      {
+        operation: enabled ? "plugins-enable" : "plugins-disable",
+        threadId: options.threadId,
+        name: target.name,
+        marketplace: target.marketplace,
+        scope: target.scope,
+      },
+      { signal },
+    );
+  };
+
+  const setEnabled = async (
+    request: PluginToggleRequest,
+    hooks: PluginToggleHooks,
+  ): Promise<MarketplaceResult | null> => {
+    requireCapability(options.capabilities, I2CapabilityKeys.commandGateway, "Plugin operations");
+    const verb = request.enabled ? "Enable" : "Disable";
+    if (
+      !(await hooks.confirm(
+        `${verb} plugin`,
+        `${verb} the ${request.name} plugin in the ${request.scope} scope?`,
+        hooks.signal,
+      ))
+    )
+      return null;
+    const result = await options.marketplace.run(
+      {
+        operation: request.enabled ? "plugins-enable" : "plugins-disable",
+        threadId: options.threadId,
+        name: request.name,
+        marketplace: request.marketplace,
+        scope: request.scope,
+      },
+      { signal: hooks.signal },
+    );
+    if (result.failure !== undefined) {
+      throw new AppFailure({
+        code: "omp_error",
+        message: result.failure.message,
+        retryable: false,
+      });
+    }
+    return result;
+  };
+
   const mutate = async (
     operation: "plugins-enable" | "plugins-disable" | "uninstall" | "upgrade",
     signal?: AbortSignal,
@@ -150,7 +243,6 @@ export function createPluginOperations(options: PluginOperationsOptions): Plugin
     if (target === null) return null;
     const scope = await scopeFor(signal);
     if (scope === null) return null;
-
     const verb =
       operation === "plugins-enable"
         ? "Enable"
@@ -159,24 +251,37 @@ export function createPluginOperations(options: PluginOperationsOptions): Plugin
           : operation === "uninstall"
             ? "Uninstall"
             : "Upgrade";
-    if (
-      !(await confirm(
-        `${verb} plugin`,
-        `${verb} the ${target.name} plugin in the ${scope} scope?`,
-        signal,
-      ))
-    )
-      return null;
-    const result = await options.marketplace.run(
-      {
-        operation,
-        threadId: options.threadId,
-        name: target.name,
-        marketplace: target.marketplace,
-        scope,
-      },
-      { signal },
-    );
+    const result =
+      operation === "plugins-enable" || operation === "plugins-disable"
+        ? await setEnabledWithDialog({ ...target, scope }, operation === "plugins-enable", signal)
+        : await (async () => {
+            if (
+              !(await confirm(
+                `${verb} plugin`,
+                `${verb} the ${target.name} plugin in the ${scope} scope?`,
+                signal,
+              ))
+            )
+              return null;
+            const request: MarketplaceRequest =
+              operation === "uninstall"
+                ? {
+                    operation,
+                    threadId: options.threadId,
+                    name: target.name,
+                    marketplace: target.marketplace,
+                    scope,
+                  }
+                : {
+                    operation,
+                    threadId: options.threadId,
+                    name: target.name,
+                    marketplace: target.marketplace,
+                    scope,
+                  };
+            return options.marketplace.run(request, { signal });
+          })();
+    if (result === null) return null;
     await report(`${verb} plugin result`, result, signal);
     if (result.failure !== undefined) {
       throw new AppFailure({
@@ -197,6 +302,7 @@ export function createPluginOperations(options: PluginOperationsOptions): Plugin
       );
     },
     enable: (signal) => mutate("plugins-enable", signal),
+    setEnabled,
     disable: (signal) => mutate("plugins-disable", signal),
     uninstall: (signal) => mutate("uninstall", signal),
     upgrade: (signal) => mutate("upgrade", signal),

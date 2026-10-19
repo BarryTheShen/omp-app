@@ -48,6 +48,10 @@ export interface ExtensionMetadata {
   readonly provider: string;
   readonly source: ExtensionSource;
   readonly version?: string;
+  /** Exact registry key from omp v18.9.1 `registry.ts:30,104`; never inferred from package names. */
+  readonly marketplacePluginId?: string;
+  /** `types.ts:169-182` `InstalledPluginEntry.scope`, otherwise the catalog root's user/project scope. */
+  readonly marketplaceScope?: "user" | "project";
   readonly enabled: boolean;
   readonly shadowed: boolean;
   readonly capabilities: readonly string[];
@@ -135,6 +139,10 @@ function normalizeExtension(summary: ExtensionSummary): ExtensionMetadata {
     summary.description === undefined ? undefined : sanitizeCatalogText(summary.description);
   const version =
     summary.version === undefined ? undefined : sanitizeCatalogText(summary.version, 256);
+  const marketplacePluginId =
+    summary.marketplacePluginId === undefined
+      ? undefined
+      : sanitizeCatalogText(summary.marketplacePluginId, MAX_IDENTIFIER);
   const error = summary.error === undefined ? undefined : sanitizeCatalogText(summary.error);
   return Object.freeze({
     id: identifier(summary.id, "unknown-extension"),
@@ -142,6 +150,10 @@ function normalizeExtension(summary: ExtensionSummary): ExtensionMetadata {
     provider: identifier(summary.provider, "unknown-provider"),
     source: summary.source,
     ...(version === undefined ? {} : { version }),
+    ...(marketplacePluginId === undefined ? {} : { marketplacePluginId }),
+    ...(summary.marketplaceScope === undefined
+      ? {}
+      : { marketplaceScope: summary.marketplaceScope }),
     enabled: summary.enabled,
     shadowed: summary.shadowed,
     capabilities: safeCapabilities(summary.capabilities),

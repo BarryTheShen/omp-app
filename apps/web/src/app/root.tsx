@@ -1681,7 +1681,12 @@ function ActiveThreadReady({
     },
     settings: {
       title: "Settings",
-      render: () => <SettingsButton onOpenSettings={onOpenSettings} threadId={threadId} />,
+      render: () => (
+        <SettingsButton
+          onOpenSettings={(requestThreadId) => onOpenSettings(requestThreadId, undefined)}
+          threadId={threadId}
+        />
+      ),
     },
     todo: {
       title: "Todo checklist",

@@ -1,7 +1,11 @@
 import type { AppClient } from "@omp-app/client";
-import type { CapabilityMap, FolderPath } from "@omp-app/contracts";
+import type { CapabilityMap, FolderPath, ThreadId } from "@omp-app/contracts";
 import { useMemo } from "react";
-import { createExtensionCatalog, I2CapabilityKeys } from "@/modules/I2/catalog";
+import {
+  createExtensionCatalog,
+  createMarketplacePort,
+  I2CapabilityKeys,
+} from "@/modules/I2/catalog";
 import { ExtensionControlCenter } from "@/modules/I2/extensions";
 
 /**
@@ -17,15 +21,24 @@ export function ExtensionCenterSection({
   client,
   folder,
   capabilities,
+  threadId,
 }: {
   readonly client: AppClient;
   readonly folder: FolderPath | null;
   readonly capabilities: CapabilityMap;
+  readonly threadId: ThreadId | null;
 }) {
   const catalog = useMemo(() => createExtensionCatalog(client), [client]);
+  const marketplace = useMemo(() => createMarketplacePort(client), [client]);
   return (
     <div className="min-w-0">
-      <ExtensionControlCenter capabilities={capabilities} catalog={catalog} folder={folder} />
+      <ExtensionControlCenter
+        capabilities={capabilities}
+        catalog={catalog}
+        folder={folder}
+        marketplace={marketplace}
+        threadId={threadId}
+      />
     </div>
   );
 }
