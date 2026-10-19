@@ -251,7 +251,7 @@ export function ToolCard({
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent
-        className="grid grid-rows-[1fr] transition-[grid-template-rows] duration-(--duration-base) ease-(--ease-standard) data-[ending-style]:grid-rows-[0fr] data-[starting-style]:grid-rows-[0fr] motion-reduce:transition-none"
+        className="grid grid-rows-[1fr] transition-[grid-template-rows] duration-(--duration-base) ease-(--ease-standard) group-data-[instant-toggle]/tool-card:transition-none data-[ending-style]:grid-rows-[0fr] data-[starting-style]:grid-rows-[0fr] motion-reduce:transition-none"
         id={contentId}
         data-slot="u3-tool-card-content"
         ref={contentRef}
