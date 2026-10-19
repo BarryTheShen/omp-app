@@ -32,7 +32,7 @@ realTest(
     await page.getByRole("button", { name: /More actions for/ }).click();
     await page
       .getByRole("menu")
-      .getByRole("menuitem", { name: /Delete/ })
+      .getByRole("menuitem", { name: /^Delete (?!and stop)/ })
       .click();
     await page
       .getByRole("dialog", { name: "Delete chat" })

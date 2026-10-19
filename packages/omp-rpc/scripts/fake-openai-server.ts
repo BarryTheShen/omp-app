@@ -646,12 +646,14 @@ function reply(request: Request): Reply {
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
   if (prompt.includes("read_image"))
     return { tool: "read", args: { path: "pixel.png" }, thinking: "I should read the image." };
-  if (prompt.includes("slow_tool"))
+  if (prompt.includes("slow_tool")) {
+    const seconds = /\bslow_tool\s+(\d+)\b/.exec(prompt)?.[1] ?? "7";
     return {
       tool: "bash",
-      args: { command: "sleep 7; echo slow-tool-done" },
+      args: { command: `sleep ${seconds}; echo slow-tool-done` },
       thinking: "I should run something slow.",
     };
+  }
   if (prompt.includes("count_reply")) {
     countedReplies += 1;
     // The word after the keyword names the turn; omp's own preamble in the prompt is not echoed.

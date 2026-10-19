@@ -37,6 +37,7 @@ export interface SessionCatalogSidebarProps {
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
   /** Asks before a chat is deleted; the chat is deleted only when this resolves true. `title` is the chat's name. */
   readonly confirmDelete?: (session: SessionMetadata, title: string) => Promise<boolean> | boolean;
+  readonly confirmDeleteRunning?: (title: string) => Promise<boolean> | boolean;
   /** Coalesces catalog refreshes that can arrive from the active-thread and running-change watchers. */
   readonly requestRefresh?: (catalog: SessionCatalogModel, limit?: number) => void;
   /**
@@ -44,6 +45,7 @@ export interface SessionCatalogSidebarProps {
    * delete says why it cannot be deleted, in that chat.
    */
   readonly currentTurnRunning?: () => boolean;
+  readonly stopRunning?: (threadId: ThreadId) => Promise<void>;
 }
 
 /** The refusal of a delete while the chat's turn runs: the same sentence the server gives for such a delete. */
@@ -189,8 +191,10 @@ export function SessionCatalogSidebar({
   onDeletedOpenThread,
   onPinChange,
   confirmDelete,
+  confirmDeleteRunning,
   requestRefresh,
   currentTurnRunning,
+  stopRunning,
 }: SessionCatalogSidebarProps) {
   const snapshot = catalog.getSnapshot();
   // The picked chat's row is the selected one from the pick on, before its open finishes (see openSession).
@@ -530,12 +534,32 @@ export function SessionCatalogSidebar({
       if (focused !== undefined) void openSession({ id: focused });
     }
   };
+  const deleteRunningSession = async (sessionId: ThreadId, title: string): Promise<void> => {
+    if (!canDelete || stopRunning === undefined || confirmDeleteRunning === undefined) return;
+    if (!(await confirmDeleteRunning(title))) return;
+    catalog.setActionError(undefined);
+    try {
+      await stopRunning(sessionId);
+      await remote.delete(sessionId);
+      if (sessionId === currentThreadId) {
+        if (onDeletedOpenThread) await onDeletedOpenThread();
+        else await createNewChat();
+      }
+      requestRefresh?.(catalog);
+      catalog.requestFocus({ kind: "newChat" });
+    } catch (error) {
+      catalog.setActionError(
+        error instanceof Error ? error.message : "The chat could not be deleted.",
+        sessionId,
+      );
+      catalog.requestFocus({ kind: "row", id: sessionId });
+    }
+  };
 
   /** Deletes a chat. `confirm` asks first (the More actions item and Mod+Shift+Backspace); Mod+Backspace deletes at once. */
   const deleteSession = async (session: SessionMetadata, confirm: boolean): Promise<void> => {
     if (!canDelete) return;
     if (confirm && !(await confirmDelete?.(session, sessionTitle(session)))) return;
-    catalog.setActionError(undefined);
     // Focus moves to the neighbouring row once the chat is gone: the next row, else the one above.
     const index = rowIds.indexOf(session.id);
     const neighbour = index < 0 ? undefined : (rowIds[index + 1] ?? rowIds[index - 1]);
@@ -564,7 +588,7 @@ export function SessionCatalogSidebar({
     } catch (error) {
       catalog.setActionError(
         error instanceof Error ? error.message : "The chat could not be deleted.",
-        session.turn === "running" ? session.id : undefined,
+        undefined,
       );
       // The chat stays, so focus stays on its row rather than falling to the page body.
       catalog.requestFocus({ kind: "row", id: session.id });
@@ -700,12 +724,14 @@ export function SessionCatalogSidebar({
               <div className="flex flex-col gap-0.5">
                 {group.running.map((presence) => {
                   const chat = presence.item;
+                  const title = "New chat";
+                  const menuOpen = menuSessionId === chat.id;
                   return (
                     <div
                       className={
                         presence.entering
-                          ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${ENTER_FADE}`
-                          : "group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors"
+                          ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${ENTER_FADE}`
+                          : "group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors"
                       }
                       data-selected={shownThreadId === chat.id ? "true" : "false"}
                       data-slot="r1-running-row"
@@ -726,9 +752,76 @@ export function SessionCatalogSidebar({
                         }
                         selected={shownThreadId === chat.id}
                         tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
+                        trailing={
+                          <Toolbar ariaLabel={`Actions for ${title}`}>
+                            <Button
+                              ref={(element) => {
+                                if (element) moreButtons.current.set(chat.id, element);
+                                else moreButtons.current.delete(chat.id);
+                              }}
+                              aria-expanded={menuOpen}
+                              aria-haspopup="menu"
+                              aria-label={`More actions for ${title}`}
+                              className="text-muted-foreground hover:text-foreground absolute end-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm opacity-0 transition-colors group-hover:opacity-100 group-focus-within:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                              size="icon-xs"
+                              tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
+                              title="More actions"
+                              type="button"
+                              variant="ghost"
+                              onMouseDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMenuSessionId(menuOpen ? undefined : chat.id);
+                              }}
+                              onKeyDown={(event) => {
+                                // Escape closes the menu this button opened; the focus stays on the button (issue 973).
+                                if (event.key === "Escape" && menuOpen) {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setMenuSessionId(undefined);
+                                }
+                              }}
+                            >
+                              <Icons.more aria-hidden="true" className="size-3.5" />
+                            </Button>
+                          </Toolbar>
+                        }
                         onSelect={() => void openSession({ id: chat.id })}
                         onFocus={() => setFocusedId(chat.id)}
                       />
+                      {menuOpen && (
+                        <div
+                          aria-label={`Actions for ${title}`}
+                          className="bg-popover text-popover-foreground rounded-surface z-50 min-w-28 overflow-hidden border p-1 absolute end-1 top-8 flex flex-col gap-0.5"
+                          role="menu"
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setMenuSessionId(undefined);
+                              moreButtons.current.get(chat.id)?.focus();
+                            }
+                          }}
+                        >
+                          <Button
+                            aria-label={`Delete and stop ${title}`}
+                            disabled={
+                              !canDelete ||
+                              stopRunning === undefined ||
+                              confirmDeleteRunning === undefined
+                            }
+                            role="menuitem"
+                            size="xs"
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                              setMenuSessionId(undefined);
+                              void deleteRunningSession(chat.id, title);
+                            }}
+                          >
+                            Delete and stop
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -943,6 +1036,25 @@ export function SessionCatalogSidebar({
                           >
                             {session.pinned ? "Unpin" : "Pin"}
                           </Button>
+                          {running && stopRunning && confirmDeleteRunning ? (
+                            <Button
+                              aria-label={`Delete and stop ${title}`}
+                              disabled={!canDelete}
+                              role="menuitem"
+                              className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                              size="xs"
+                              title="Stop this chat, then delete it"
+                              type="button"
+                              variant="ghost"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMenuSessionId(undefined);
+                                void deleteRunningSession(session.id, title);
+                              }}
+                            >
+                              Delete and stop
+                            </Button>
+                          ) : null}
                           <Button
                             aria-label={`Delete ${title}`}
                             disabled={!canDelete}

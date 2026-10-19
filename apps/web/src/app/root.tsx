@@ -2629,7 +2629,17 @@ function ConnectedApp({
             onNewChat={openNewChatFromSidebar}
             onOpenThread={openSidebarChat}
             confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
+            confirmDeleteRunning={(title) =>
+              openChatDeleteConfirm(
+                overlay,
+                title,
+                "This chat is still running. Deleting it stops the run.",
+              )
+            }
             onDeletedOpenThread={() => controller?.close()}
+            stopRunning={async (threadId) => {
+              await rpc.send({ threadId, command: { type: "abort" } });
+            }}
             currentTurnRunning={() =>
               controller?.getSnapshot().store?.getSnapshot().prompt.streaming === true
             }

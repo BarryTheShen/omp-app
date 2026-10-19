@@ -14,10 +14,12 @@ export interface OverlayOpener {
  */
 function ChatDeleteConfirm({
   chatTitle,
+  notice,
   onDecide,
   onGone,
 }: {
   readonly chatTitle: string;
+  readonly notice?: string;
   readonly onDecide: (confirmed: boolean) => void;
   /** The overlay closed without a choice (Escape or a click outside): the chat is kept. */
   readonly onGone: () => void;
@@ -46,17 +48,22 @@ function ChatDeleteConfirm({
         </>
       }
     >
-      {null}
+      {notice ? <p className="mb-3 text-sm">{notice}</p> : null}
     </DialogFrame>
   );
 }
 
 /** Opens the confirmation before a chat is deleted. It resolves true only when the person chooses Delete. */
-export function openChatDeleteConfirm(overlay: OverlayOpener, chatTitle: string): Promise<boolean> {
+export function openChatDeleteConfirm(
+  overlay: OverlayOpener,
+  chatTitle: string,
+  notice?: string,
+): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const content: OverlayContent = ({ close }) => (
       <ChatDeleteConfirm
         chatTitle={chatTitle}
+        notice={notice}
         onDecide={(confirmed) => {
           resolve(confirmed);
           close("programmatic");

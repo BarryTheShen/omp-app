@@ -93,6 +93,10 @@ const RENAME_AVAILABLE: CapabilityMap = {
   "omp.cmd.set_session_name": { state: "available", via: "rpc" },
 };
 
+const DELETE_AVAILABLE: CapabilityMap = {
+  "host.session-files": { state: "available", via: "rpc" },
+};
+
 function fakeRemote(calls: string[]): ComponentProps<typeof SessionCatalogSidebar>["remote"] {
   return {
     initialize: async (id: string) => {
@@ -113,9 +117,10 @@ function fakeRemote(calls: string[]): ComponentProps<typeof SessionCatalogSideba
 function renderSidebar(
   overrides: Partial<ComponentProps<typeof SessionCatalogSidebar>> & {
     readonly renameAvailable?: boolean;
+    readonly deleteAvailable?: boolean;
   } = {},
 ) {
-  const { renameAvailable = false, ...props } = overrides;
+  const { renameAvailable = false, deleteAvailable = false, ...props } = overrides;
   const catalog = props.catalog ?? modelWithSessions();
   const calls: string[] = [];
   const sidebar = (
@@ -125,8 +130,14 @@ function renderSidebar(
       remote={props.remote ?? fakeRemote(calls)}
     />
   );
+  const capabilities = {
+    ...(renameAvailable ? RENAME_AVAILABLE : {}),
+    ...(deleteAvailable ? DELETE_AVAILABLE : {}),
+  };
   const view = render(
-    renameAvailable ? withRegistry(createRegistry([]), RENAME_AVAILABLE, sidebar) : sidebar,
+    renameAvailable || deleteAvailable
+      ? withRegistry(createRegistry([]), capabilities, sidebar)
+      : sidebar,
   );
   return { catalog, calls, rerender: view.rerender };
 }
@@ -1736,8 +1747,124 @@ describe("SessionCatalogSidebar running chats", () => {
     const row = screen.getByRole("option", { name: /New chat/ });
     expect(within(row).getByText("Running")).toBeTruthy();
     expect(row.getAttribute("aria-selected")).toBe("true");
-    expect(screen.queryByRole("button", { name: /More actions for New chat/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /More actions for New chat/ })).toBeTruthy();
     expect(screen.queryByText("No sessions in this folder")).toBeNull();
+  });
+
+  test("a no-file running chat confirms, stops before deletion, and focuses the row on failure", async () => {
+    const asked: boolean[] = [];
+    const events: string[] = [];
+    const id = ThreadIdSchema.parse("first-reply");
+    const remote = fakeRemote(events);
+    renderSidebar({
+      catalog: modelWithRunning(["first-reply"]),
+      currentThreadId: id,
+      confirmDeleteRunning: () => {
+        asked.push(true);
+        return true;
+      },
+      stopRunning: async () => {
+        events.push("stop:first-reply");
+      },
+      remote,
+      deleteAvailable: true,
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    const more = screen.getByRole("button", { name: /More actions for New chat/ });
+    fireEvent.click(more);
+    const menu = screen.getByRole("menu", { name: "Actions for New chat" });
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(document.activeElement).toBe(more);
+    fireEvent.click(more);
+    fireEvent.click(
+      within(screen.getByRole("menu", { name: "Actions for New chat" })).getByRole("menuitem", {
+        name: "Delete and stop New chat",
+      }),
+    );
+    await waitFor(() =>
+      expect(events.slice(0, 2)).toEqual(["stop:first-reply", "delete:first-reply"]),
+    );
+    expect(asked).toEqual([true]);
+  });
+
+  test("Cancel leaves a no-file running chat untouched, and an idle row has no stop action", async () => {
+    const calls: string[] = [];
+    const confirmed: string[] = [];
+    const { calls: remoteCalls } = renderSidebar({
+      catalog: modelWithRunning(
+        ["first-reply"],
+        [session("idle", "2026-10-03T00:00:00.000Z", "Idle chat")],
+      ),
+      confirmDeleteRunning: (title) => {
+        confirmed.push(title);
+        return false;
+      },
+      stopRunning: async () => {
+        calls.push("stop");
+      },
+      deleteAvailable: true,
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    const runningMore = screen.getByRole("button", { name: /More actions for New chat/ });
+    fireEvent.click(runningMore);
+    fireEvent.click(
+      within(screen.getByRole("menu", { name: "Actions for New chat" })).getByRole("menuitem", {
+        name: "Delete and stop New chat",
+      }),
+    );
+    // The answer is awaited before anything else happens. Let every pending step run, then nothing was stopped or deleted:
+    // an assertion made right after the click would also pass if the answer were ignored and the stop came a tick later.
+    await waitFor(() => expect(confirmed).toEqual(["New chat"]));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls).toEqual([]);
+    expect(remoteCalls).toEqual([]);
+    const idleMore = screen.getByRole("button", { name: /More actions for Idle chat/ });
+    fireEvent.click(idleMore);
+    expect(
+      within(screen.getByRole("menu", { name: "Actions for Idle chat" })).queryByRole("menuitem", {
+        name: "Delete and stop Idle chat",
+      }),
+    ).toBeNull();
+  });
+
+  test("a failed stop reports its message and leaves focus on the running row", async () => {
+    renderSidebar({
+      catalog: modelWithRunning(["first-reply"]),
+      currentThreadId: ThreadIdSchema.parse("first-reply"),
+      confirmDeleteRunning: () => true,
+      stopRunning: async () => {
+        throw new Error("stop failed");
+      },
+      deleteAvailable: true,
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    const row = screen.getByRole("option", { name: /New chat/ });
+    fireEvent.click(screen.getByRole("button", { name: /More actions for New chat/ }));
+    fireEvent.click(
+      within(screen.getByRole("menu", { name: "Actions for New chat" })).getByRole("menuitem", {
+        name: "Delete and stop New chat",
+      }),
+    );
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("stop failed"));
+    await waitFor(() => expect(document.activeElement).toBe(row));
+  });
+
+  test("Escape on a no-file running chat's More actions button closes its menu and keeps the focus there", async () => {
+    renderSidebar({
+      catalog: modelWithRunning(["first-reply"]),
+      currentThreadId: ThreadIdSchema.parse("first-reply"),
+      confirmDeleteRunning: () => true,
+      stopRunning: async () => undefined,
+      deleteAvailable: true,
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    const more = screen.getByRole("button", { name: "More actions for New chat" });
+    fireEvent.click(more);
+    expect(screen.getByRole("menu", { name: "Actions for New chat" })).toBeTruthy();
+    more.focus();
+    fireEvent.keyDown(more, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Actions for New chat" })).toBeNull();
+    expect(document.activeElement).toBe(more);
   });
 
   test("a running chat that the list holds shows once, as its listed row", async () => {
