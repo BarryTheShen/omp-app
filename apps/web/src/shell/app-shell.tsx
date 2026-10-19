@@ -155,6 +155,8 @@ function SidebarHeader({
   readonly onToggle: () => void;
 }) {
   const label = side === "left" ? "Sessions" : "Panels";
+  const action = open ? "Hide" : "Show";
+  const actionLabel = `${action} ${label.toLowerCase()} sidebar`;
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-sidebar-border px-4">
       {side === "left" ? (
@@ -170,10 +172,10 @@ function SidebarHeader({
         aria-keyshortcuts={side === "left" ? "Control+B Meta+B" : "Control+Shift+B Meta+Shift+B"}
         aria-controls={`shell-${label.toLowerCase()}-sidebar`}
         aria-expanded={open}
-        aria-label={`Hide ${label.toLowerCase()} sidebar`}
+        aria-label={actionLabel}
         className="text-muted-foreground hover:text-foreground rounded-control ms-auto -me-1.5 grid size-7 shrink-0 place-items-center transition-colors"
         data-shell-sidebar-collapse={side}
-        title={`Hide ${label.toLowerCase()} sidebar`}
+        title={actionLabel}
         variant="ghost"
         onClick={onToggle}
       >

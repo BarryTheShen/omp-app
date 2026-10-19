@@ -99,19 +99,31 @@ describe("sidebar controls", () => {
       screen.queryAllByRole("button", { name: new RegExp(`^(Hide|Collapse) ${label} sidebar$`) });
     const openers = (label: string) =>
       screen.queryAllByRole("button", { name: `Show ${label} sidebar` });
+    const assertToggle = (side: "left" | "right", action: "Show" | "Hide", expanded: boolean) => {
+      const toggle = document.querySelector(`[data-shell-sidebar-collapse="${side}"]`);
+      const label = `${action} ${side === "left" ? "sessions" : "panels"} sidebar`;
+      expect(toggle).not.toBeNull();
+      expect(toggle?.getAttribute("aria-expanded")).toBe(String(expanded));
+      expect(toggle?.getAttribute("aria-label")).toBe(label);
+      expect(toggle?.getAttribute("title")).toBe(label);
+    };
 
     expect(closers("sessions")).toHaveLength(1);
     expect(openers("sessions")).toHaveLength(0);
     expect(closers("panels")).toHaveLength(1);
     expect(openers("panels")).toHaveLength(0);
+    assertToggle("left", "Hide", true);
+    assertToggle("right", "Hide", true);
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true });
     expect(closers("sessions")).toHaveLength(0);
     expect(openers("sessions")).toHaveLength(1);
+    assertToggle("left", "Show", false);
 
     fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
     expect(closers("panels")).toHaveLength(0);
     expect(openers("panels")).toHaveLength(1);
+    assertToggle("right", "Show", false);
   });
 
   test("the Panels sidebar keeps its own column when the sessions sidebar is hidden", () => {

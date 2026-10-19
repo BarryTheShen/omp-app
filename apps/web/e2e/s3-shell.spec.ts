@@ -129,9 +129,11 @@ async function expectAccessibleShellChrome(page: Page): Promise<void> {
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(toggle).toHaveAttribute("aria-controls", /shell-(sessions|panels)-sidebar/);
   }
-  await expect(page.getByRole("button", { name: /More actions for/ }).first()).toBeVisible();
   await expect(hideSessions).toHaveAttribute("aria-label", "Hide sessions sidebar");
+  await expect(hideSessions).toHaveAttribute("title", "Hide sessions sidebar");
   await expect(hidePanels).toHaveAttribute("aria-label", "Hide panels sidebar");
+  await expect(hidePanels).toHaveAttribute("title", "Hide panels sidebar");
+  await expect(page.getByRole("button", { name: /More actions for/ }).first()).toBeVisible();
   await expect(hideSessions.locator("svg")).toHaveClass(/lucide-panel-left/);
   await expect(hidePanels.locator("svg")).toHaveClass(/lucide-panel-right/);
 }
@@ -247,15 +249,15 @@ for (const theme of ["light", "dark"] as const) {
 
       await expectSessionRowStyles(page);
       await page.getByRole("button", { name: "Hide sessions sidebar" }).click();
-      await expect(page.getByRole("button", { name: "Show sessions sidebar" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Show sessions sidebar" })).toHaveAttribute(
-        "aria-expanded",
-        "false",
-      );
-      await expect(page.getByRole("button", { name: "Show sessions sidebar" })).toHaveAttribute(
-        "aria-controls",
-        "shell-sessions-sidebar",
-      );
+      const showSessions = page.getByRole("button", { name: "Show sessions sidebar" });
+      await expect(showSessions).toBeVisible();
+      await expect(showSessions).toHaveAttribute("aria-expanded", "false");
+      await expect(showSessions).toHaveAttribute("aria-controls", "shell-sessions-sidebar");
+      await expect(showSessions).toHaveAttribute("title", "Show sessions sidebar");
+      const collapsedSessionHeader = page.locator('[data-shell-sidebar-collapse="left"]');
+      await expect(collapsedSessionHeader).toHaveAttribute("aria-expanded", "false");
+      await expect(collapsedSessionHeader).toHaveAttribute("aria-label", "Show sessions sidebar");
+      await expect(collapsedSessionHeader).toHaveAttribute("title", "Show sessions sidebar");
       await page.getByRole("button", { name: "Hide panels sidebar" }).click();
       await expect(page.getByRole("button", { name: "Show panels sidebar" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Show panels sidebar" })).toHaveAttribute(
@@ -289,12 +291,25 @@ for (const theme of ["light", "dark"] as const) {
       });
       await page.setViewportSize(PHONE);
       await expect(page.locator('[data-shell-layout="narrow"]')).toHaveCount(1);
-      await expect(page.getByRole("button", { name: "Show sessions sidebar" })).toBeVisible();
+      await expect(showSessions).toBeVisible();
+      await expect(showSessions).toHaveAttribute("title", "Show sessions sidebar");
       await expect(page.getByRole("button", { name: "Show panels sidebar" })).toBeVisible();
-      await page.getByRole("button", { name: "Show sessions sidebar" }).click();
+      await showSessions.click();
       const drawer = page.locator('[data-shell-sidebar="left"]');
       await expect(drawer).toBeVisible();
       await expect(drawer).toHaveCSS("width", "288px");
+      await expect(drawer.locator('[data-shell-sidebar-collapse="left"]')).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      await expect(drawer.locator('[data-shell-sidebar-collapse="left"]')).toHaveAttribute(
+        "aria-label",
+        "Hide sessions sidebar",
+      );
+      await expect(drawer.locator('[data-shell-sidebar-collapse="left"]')).toHaveAttribute(
+        "title",
+        "Hide sessions sidebar",
+      );
       const phone = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
