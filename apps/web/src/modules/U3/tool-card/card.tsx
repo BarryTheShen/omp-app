@@ -38,12 +38,20 @@ const VISUAL_BY_PHASE: Record<ToolCardPhase, VisualState> = {
 
 /** A call omp has not started yet (ToolCardState.queued): its run is active, and it waits for its turn. */
 const QUEUED_VISUAL: VisualState = { label: "Waiting", tone: "muted" };
+
 const TONE_CLASSES: Record<VisualState["tone"], string> = {
   info: "text-info",
   success: "text-muted-foreground/50",
   warning: "text-warning",
   danger: "text-destructive",
   muted: "text-muted-foreground/50",
+};
+const STATUS_TONE_CLASSES: Record<VisualState["tone"], string> = {
+  info: "text-info",
+  success: "text-muted-foreground",
+  warning: "text-warning",
+  danger: "text-destructive",
+  muted: "text-muted-foreground",
 };
 const ERROR_TONE_CLASSES = {
   warning: "border-warning/30 bg-warning-surface text-warning-surface-foreground",
@@ -228,12 +236,14 @@ export function ToolCard({
           {visibleSummary}
         </span>
         <span
-          className={cn(
+          className={[
             "ms-auto shrink-0 text-meta",
             !calmInterruption && state.phase === "error"
               ? "text-destructive"
-              : TONE_CLASSES[status.tone],
-          )}
+              : calmInterruption
+                ? TONE_CLASSES[status.tone]
+                : STATUS_TONE_CLASSES[status.tone],
+          ].join(" ")}
           data-slot="u3-tool-card-status"
           data-testid={`tool-state-chip-${state.phase}`}
         >

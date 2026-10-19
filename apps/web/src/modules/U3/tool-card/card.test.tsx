@@ -41,6 +41,20 @@ describe("ToolCard state grammar", () => {
     expect(screen.getByTestId(`tool-state-chip-${phase}`).textContent).toContain(label);
   });
 
+  test("the status word keeps its 11 px size class and the plain muted tone, not a dimmed one", () => {
+    render(<ToolCard state={state("success", "tone-success")} />);
+    const done = screen.getByTestId("tool-state-chip-success");
+    expect(done.className).toContain("text-meta");
+    expect(done.className).toContain("text-muted-foreground");
+    expect(done.className).not.toContain("text-muted-foreground/50");
+    cleanup();
+
+    render(<ToolCard state={state("running", "tone-running")} />);
+    const running = screen.getByTestId("tool-state-chip-running");
+    expect(running.className).toContain("text-meta");
+    expect(running.className).toContain("text-info");
+  });
+
   test("has an accessible disclosure button and toggles with Enter and Space", () => {
     render(<ToolCard state={state("success", "keyboard")} />);
     const trigger = screen.getByRole("button", { name: "Run bash: Complete" });

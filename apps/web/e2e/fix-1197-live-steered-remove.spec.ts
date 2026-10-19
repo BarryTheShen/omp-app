@@ -52,7 +52,7 @@ async function expectStyledQueueBar(page: Page): Promise<void> {
   const bar = page.getByRole("complementary", { name: "Queued messages" });
   const colors = await bar.evaluate((element) => {
     const probe = document.createElement("div");
-    probe.style.backgroundColor = "var(--card)";
+    probe.style.backgroundColor = "color-mix(in oklab, var(--muted) 30%, transparent)";
     document.body.append(probe);
     const token = getComputedStyle(probe).backgroundColor;
     probe.remove();
