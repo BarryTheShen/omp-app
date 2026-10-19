@@ -67,6 +67,9 @@ function triggerRuns(trigger: Trigger, rest: string): boolean {
  * - `wt` and its alias `worktree` move the chat into a new worktree. With omp's "Clean Source Checkout on /wt" setting on, they
  *   also reset and clean the folder's checkout (builtin-lifecycle.ts:747, session-worktree.ts:96-103). The app cannot read that
  *   setting, so every form asks first.
+ * - `annotate` opens omp's annotation editor, which needs omp's interactive terminal UI and sends no message without it
+ *   (extensibility/custom-commands/bundled/annotate/index.ts:223-239 and :310-327), so the app answers it itself and says
+ *   why (`SPECIFIC_REFUSALS`).
  */
 const GUARDED_OMP_COMMANDS: Record<string, true | Record<string, Trigger>> = {
   share: true,
@@ -79,6 +82,7 @@ const GUARDED_OMP_COMMANDS: Record<string, true | Record<string, Trigger>> = {
   modelpreset: { delete: "target" },
   wt: true,
   worktree: true,
+  annotate: true,
 };
 
 /** omp's `parseSubcommand`: the first word of the arguments in lower case, and the text after it. */
@@ -116,11 +120,19 @@ export function guardedCommandName(text: string): string | null {
   return guardedForm(text)?.name ?? null;
 }
 
+/** Refusals that say why, for the guarded forms whose reason is more useful than "isn't available". Own keys only. */
+const SPECIFIC_REFUSALS: Readonly<Record<string, string>> = {
+  annotate:
+    "/annotate only runs in omp's terminal, where it opens the annotation editor; nothing was sent.",
+};
+
 /** The refusal for a guarded form the app has no handler for. Nothing is sent to omp. */
 export function guardedRefusal(name: string): AppFailure {
   return new AppFailure({
     code: "unavailable",
-    message: `/${name} isn't available in this app, so nothing was sent to omp.`,
+    message: Object.hasOwn(SPECIFIC_REFUSALS, name)
+      ? (SPECIFIC_REFUSALS[name] as string)
+      : `/${name} isn't available in this app, so nothing was sent to omp.`,
     retryable: false,
   });
 }

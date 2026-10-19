@@ -322,6 +322,11 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
       "/pause only runs in omp's terminal, so nothing was sent.",
     );
   });
+  test("refuses /annotate with a terminal-editor explanation instead of claiming it ran", async () => {
+    expect(await refusalOf("/annotate diff")).toBe(
+      "/annotate only runs in omp's terminal, where it opens the annotation editor; nothing was sent.",
+    );
+  });
 
   test("bare /copy is the app's command when the app lists it; words after it stay refused", () => {
     const copy: SlashAppCommand = {

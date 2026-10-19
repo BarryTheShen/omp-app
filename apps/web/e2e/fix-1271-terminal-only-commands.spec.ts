@@ -16,6 +16,9 @@ const CLEAR_REFUSAL =
   "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.";
 /** The sentence for `/loop`, which has no app equivalent. */
 const LOOP_REFUSAL = "/loop only runs in omp's terminal, so nothing was sent.";
+/** `/annotate` needs omp's terminal annotation editor, which the browser cannot open. */
+const ANNOTATE_REFUSAL =
+  "/annotate only runs in omp's terminal, where it opens the annotation editor; nothing was sent.";
 
 /** The reason the composer shows for a send it did not make. */
 function composerError(page: Page): Locator {
@@ -50,6 +53,13 @@ async function typeCommand(
   await expect(async () => {
     await composer.press("Enter");
     await expect(answer).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 60_000 });
+}
+async function runAnnotate(_page: Page, composer: Locator): Promise<void> {
+  await composer.fill("/annotate diff");
+  await expect(async () => {
+    await composer.press("Enter");
+    await expect(composerError(_page)).toHaveText(ANNOTATE_REFUSAL, { timeout: 3_000 });
   }).toPass({ timeout: 60_000 });
 }
 
@@ -121,6 +131,46 @@ realTest(
     expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);
     await page.screenshot({
       path: join(screenshots, "fix-1271-clear-dark-narrow.png"),
+      fullPage: true,
+    });
+  },
+);
+realTest(
+  "typing /annotate explains that its editor is terminal-only",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await runAnnotate(page, composer);
+    await expect(composer).toHaveValue("/annotate diff");
+    await expect(page.getByText("pong")).toHaveCount(0);
+    expect(await sessionFilesText(realApp)).not.toContain("/annotate diff");
+    await mkdir(screenshots, { recursive: true });
+    await page.screenshot({
+      path: join(screenshots, "fix-2107-annotate-light.png"),
+      fullPage: true,
+    });
+  },
+);
+
+realTest(
+  "the /annotate refusal is styled in dark mode at 390 px",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const page = await realApp.open();
+    await page.evaluate(() => window.localStorage.setItem("omp-app.theme", "dark"));
+    await page.reload();
+    const composer = await startChat(page);
+    await runAnnotate(page, composer);
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expect(composerError(page)).toHaveCSS("color", /^(?!rgb\(0, 0, 0\))/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForFiniteAnimations(page);
+    const box = await composerError(page).boundingBox();
+    expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);
+    await page.screenshot({
+      path: join(screenshots, "fix-2107-annotate-dark-narrow.png"),
       fullPage: true,
     });
   },
