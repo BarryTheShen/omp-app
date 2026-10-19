@@ -4,9 +4,9 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
 /**
- * Issue #1328. One chat is open in two tabs. Deleting it from the first tab used to leave that tab for a new, empty chat
- * and then say to close a chat the person had just left. Now the first tab stays in the chat and is told that another tab
- * or window has it open. Once the other tab leaves the chat, the same delete from the first tab goes through.
+ * Issue #1328. One chat is open in two tabs. Deleting it from the first tab while the second holds it is refused and
+ * keeps the first tab in the chat, where the app says that another tab has it open. Once the second tab leaves, deleting
+ * the chat from the first tab clears that tab to the closed New conversation view.
  */
 
 realTest.use({ seedSessions: 1 });
@@ -100,11 +100,20 @@ realTest(
     await startChat(second);
     await expect(transcript(second).getByText("No messages yet.")).toBeVisible({ timeout: 60_000 });
 
-    // The same delete from the first tab goes through: the first tab leaves the chat, and the row goes.
+    // Once the second tab leaves, the same delete succeeds and closes the first tab's view.
     await deleteChat(first);
     await expect(chatRow(first)).toHaveCount(0, { timeout: 30_000 });
-    // The new chat opens once its omp starts, which can take longer than the row's removal under load: wait for it.
-    await expect(transcript(first).getByText("No messages yet.")).toBeVisible({ timeout: 60_000 });
+    await expect(first.getByRole("heading", { name: "New conversation" })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(first.getByText("Ready when you are")).toBeVisible();
+    await expect(
+      first.getByText("Choose a workspace folder and start a new session."),
+    ).toBeVisible();
+    await expect(first.getByText("Open a session to start composing.")).toBeVisible();
+    await expect(first.getByRole("textbox", { name: "Message input" })).toHaveCount(0);
+    await expect(first.getByRole("button", { name: /Edit message/i })).toHaveCount(0);
+    await expect(first.getByRole("button", { name: /Regenerate/i })).toHaveCount(0);
     await expect(first.getByRole("alert").filter({ hasText: OTHER_TAB })).toHaveCount(0);
     expect(realApp.problems).toEqual([]);
   },

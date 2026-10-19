@@ -664,13 +664,14 @@ describe("SessionCatalogSidebar", () => {
     expect(opened).toEqual([]);
   });
 
-  test("deleting the open chat leaves it for a new chat only after the server has deleted it", async () => {
+  test("deleting the open chat clears the active view after the server has deleted it", async () => {
     const calls: string[] = [];
-    const opened: string[] = [];
+    const events: string[] = [];
     const remote = {
       ...fakeRemote(calls),
       delete: async (id: string) => {
         calls.push(`delete:${id}`);
+        events.push("delete");
       },
     };
     render(
@@ -681,8 +682,11 @@ describe("SessionCatalogSidebar", () => {
           catalog={modelWithSessions()}
           confirmDelete={() => true}
           currentThreadId={ThreadIdSchema.parse("new")}
-          onNewChat={async (threadId) => {
-            opened.push(threadId);
+          onDeletedOpenThread={() => {
+            events.push("close");
+          }}
+          onNewChat={async () => {
+            events.push("new");
           }}
           remote={remote}
         />,
@@ -692,8 +696,8 @@ describe("SessionCatalogSidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
     const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
-    await waitFor(() => expect(opened).toEqual(["new"]));
-    expect(calls).toEqual(["delete:new", "initialize:new"]);
+    await waitFor(() => expect(events).toEqual(["delete", "close"]));
+    expect(calls).toEqual(["delete:new"]);
   });
 
   test("a chat the person picks while the server answers keeps the selection: no new chat takes its place", async () => {

@@ -2629,6 +2629,7 @@ function ConnectedApp({
             onNewChat={openNewChatFromSidebar}
             onOpenThread={openSidebarChat}
             confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
+            onDeletedOpenThread={() => controller?.close()}
             currentTurnRunning={() =>
               controller?.getSnapshot().store?.getSnapshot().prompt.streaming === true
             }

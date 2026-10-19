@@ -33,6 +33,7 @@ export interface SessionCatalogSidebarProps {
   readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
   /** Shows why a picked chat did not open, when the chat's saved model cannot be restored (the picker offers another). */
   readonly onOpenFailed?: (threadId: ThreadId, error: AppError) => void;
+  readonly onDeletedOpenThread?: () => Promise<void> | void;
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
   /** Asks before a chat is deleted; the chat is deleted only when this resolves true. `title` is the chat's name. */
   readonly confirmDelete?: (session: SessionMetadata, title: string) => Promise<boolean> | boolean;
@@ -185,6 +186,7 @@ export function SessionCatalogSidebar({
   onNewChat,
   onNewChatStatus,
   onOpenFailed,
+  onDeletedOpenThread,
   onPinChange,
   confirmDelete,
   requestRefresh,
@@ -554,7 +556,10 @@ export function SessionCatalogSidebar({
       // a new chat must not take its place, because it would be the later pick.
       const after = catalog.getSnapshot();
       const picked = after.selectionRevision !== selectionBefore || after.selectedThreadId !== null;
-      if (session.id === currentThreadId && !picked) await createNewChat();
+      if (session.id === currentThreadId && !picked) {
+        if (onDeletedOpenThread) await onDeletedOpenThread();
+        else await createNewChat();
+      }
       catalog.requestFocus(neighbour ? { kind: "row", id: neighbour } : { kind: "newChat" });
     } catch (error) {
       catalog.setActionError(
