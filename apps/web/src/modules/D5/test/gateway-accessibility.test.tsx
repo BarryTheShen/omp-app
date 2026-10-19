@@ -6,7 +6,11 @@ import {
 } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { WorkspacePanelActions, WorkspaceViewModel } from "../workspace/models";
+import type {
+  WorkspaceActionName,
+  WorkspacePanelActions,
+  WorkspaceViewModel,
+} from "../workspace/models";
 import { WORKTREE_UNAVAILABLE_REASON } from "../workspace/models";
 import { WorkspacePanelView } from "../workspace/view";
 
@@ -88,6 +92,17 @@ const nonGitWorkspace: WorkspaceState = {
 
 // Scripted busy view-model reason matching WorkspaceController's busy-action state.
 const SCRIPTED_BUSY_REASON = "Another workspace action is running.";
+const BUSY_STATUS_CASES = [
+  { action: "refresh", status: "Refreshing the workspace…" },
+  { action: "add-directory", status: "Adding a folder…" },
+  { action: "remove-directory", status: "Removing a folder…" },
+  { action: "move-session", status: "Moving the session…" },
+  { action: "manage-ssh", status: "Managing SSH hosts…" },
+  { action: "worktree", status: "Setting up a worktree…" },
+] as const satisfies readonly {
+  readonly action: WorkspaceActionName;
+  readonly status: string;
+}[];
 
 function keyboardActivate(button: HTMLButtonElement, key: "Enter" | " ") {
   fireEvent.keyDown(button, { key });
@@ -201,7 +216,47 @@ describe("D5 gateway output and accessible workspace actions", () => {
       expect(button.disabled, button.textContent).toBe(true);
       expect(button.hasAttribute("aria-describedby"), button.textContent).toBe(false);
     }
-    expect(screen.getByRole("status").textContent).toBe("Working on manage ssh…");
+    expect(screen.getByRole("status").textContent).toBe("Managing SSH hosts…");
+  });
+
+  test("announces plain-language progress for all six busy workspace actions", () => {
+    const blocked = { disabled: true, reason: SCRIPTED_BUSY_REASON } as const;
+    const actionKeys = BUSY_STATUS_CASES.map(({ action }) => action);
+
+    expect(actionKeys).toHaveLength(6);
+    for (const { action, status: expectedStatus } of BUSY_STATUS_CASES) {
+      const { unmount } = render(
+        <WorkspacePanelView
+          model={model({
+            busyAction: action,
+            actions: {
+              refresh: blocked,
+              "add-directory": blocked,
+              "remove-directory": blocked,
+              "move-session": blocked,
+              "manage-ssh": blocked,
+              worktree: { disabled: true, reason: WORKTREE_UNAVAILABLE_REASON },
+            },
+          })}
+          actions={actions()}
+        />,
+      );
+      const statusText = screen.getByRole("status").textContent ?? "";
+
+      expect(statusText).toBe(expectedStatus);
+      // Progress is announced without interrupting what a screen reader is saying.
+      expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
+      expect(statusText).not.toContain("-");
+      for (const actionKey of actionKeys) {
+        if (actionKey === "worktree") {
+          // The approved sentence uses "worktree" as a normal noun, never as the status itself.
+          expect(statusText).not.toBe(actionKey);
+        } else {
+          expect(statusText).not.toContain(actionKey);
+        }
+      }
+      unmount();
+    }
   });
 
   test("renders the idle workspace hint", () => {

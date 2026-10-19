@@ -17,6 +17,14 @@ const ACTIONS: readonly {
   { id: "manage-ssh", label: "Manage SSH hosts", callback: "onManageSsh" },
   { id: "worktree", label: "Create or move to worktree", callback: "onWorktree" },
 ];
+const BUSY_STATUS_TEXT: Record<WorkspaceActionName, string> = {
+  refresh: "Refreshing the workspace…",
+  "add-directory": "Adding a folder…",
+  "remove-directory": "Removing a folder…",
+  "move-session": "Moving the session…",
+  "manage-ssh": "Managing SSH hosts…",
+  worktree: "Setting up a worktree…",
+};
 
 function StatusText({ children }: { readonly children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
@@ -161,7 +169,7 @@ export function WorkspacePanelView({ model, actions }: WorkspacePanelViewProps) 
       </fieldset>
       {model.busyAction ? (
         <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-          Working on {model.busyAction.replaceAll("-", " ")}…
+          {BUSY_STATUS_TEXT[model.busyAction]}
         </p>
       ) : null}
 
