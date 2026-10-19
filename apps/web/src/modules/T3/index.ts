@@ -1,7 +1,6 @@
 export { DebugCard, DebugToolRenderer } from "./debug";
 export {
   T3_INVENTORY_COVERS,
-  T3_LIVE_CAPABILITIES,
   T3_TOOL_DESCRIPTORS,
   type T3InventoryId,
   type T3ToolDescriptor,
@@ -12,8 +11,6 @@ export {
   ComputerArgsSchema,
   type ComputerDetails,
   ComputerDetailsSchema,
-  capabilityAvailable,
-  capabilityFailure,
   type DebugArgs,
   DebugArgsSchema,
   type DebugDetails,
@@ -31,7 +28,6 @@ export {
   mapT3Failure,
   normalizeComputer,
   normalizeEval,
-  T3_CAPABILITIES,
   type T3Decode,
   type T3ToolArgs,
   type T3ToolDetails,
