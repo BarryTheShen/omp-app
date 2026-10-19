@@ -211,17 +211,19 @@ export function SessionModelControl({
   const open = () => openDialog();
   useModelPaletteCommand(openDialog);
   return (
-    <Button
-      aria-label={modelName ? `Model: ${modelName}. Change model or thinking` : "Choose a model"}
-      className="min-w-0 max-w-[min(16rem,100%)]"
-      onClick={open}
-      size="sm"
-      type="button"
-      variant="outline"
-    >
-      <span className="truncate">{modelName ?? "Choose a model"}</span>
-      {level ? <span className="text-muted-foreground shrink-0">· {level}</span> : null}
-    </Button>
+    <span className="flex h-7 min-w-0 max-w-[min(16rem,100%)]">
+      <Button
+        aria-label={modelName ? `Model: ${modelName}. Change model or thinking` : "Choose a model"}
+        className="text-muted-foreground hover:text-foreground rounded-control h-7 w-full min-w-0 px-2 text-sm font-normal transition-colors"
+        onClick={open}
+        size="xs"
+        type="button"
+        variant="ghost"
+      >
+        <span className="truncate">{modelName ?? "Choose a model"}</span>
+        {level ? <span className="text-muted-foreground shrink-0">· {level}</span> : null}
+      </Button>
+    </span>
   );
 }
 

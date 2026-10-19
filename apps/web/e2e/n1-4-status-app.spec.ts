@@ -46,8 +46,8 @@ realTest(
 /**
  * Issue 1607, under the one-line rule: the status row is one line at every width. The segments take the room that is left and
  * cut a segment short when it does not fit, and the full text stays in its title and accessible name. The context group keeps its
- * own width and is never clipped, so Usage stays inside the row. The checks read the boxes: the segments section is one text line
- * tall (16 px of text plus 4 px of padding each side, 24 px), and nothing in the context group may be wider than it is.
+ * own width and is never clipped, so Usage stays inside the row. The limit is the rendered line-height plus vertical padding and
+ * one pixel for fractional layout rounding; a second line exceeds it.
  */
 realTest(
   "the status row stays one line at every width, and the context group is never clipped",
@@ -59,6 +59,31 @@ realTest(
     const context = page.getByRole("region", { name: "Context status" });
     const usage = context.getByRole("button", { name: "Usage" });
     await expect(segments).toBeVisible({ timeout: 30_000 });
+    const usageStyle = await usage.evaluate((button) => {
+      const style = getComputedStyle(button);
+      const rect = button.getBoundingClientRect();
+      return {
+        height: rect.height,
+        paddingInlineStart: style.paddingInlineStart,
+        fontSize: style.fontSize,
+        borderWidth: style.borderTopWidth,
+      };
+    });
+    expect(usageStyle).toEqual({
+      height: 28,
+      paddingInlineStart: "8px",
+      fontSize: "12px",
+      borderWidth: "0px",
+    });
+    const oneLineMaxHeight = await segments.evaluate((section) => {
+      const style = getComputedStyle(section);
+      return (
+        Number.parseFloat(style.lineHeight) +
+        Number.parseFloat(style.paddingTop) +
+        Number.parseFloat(style.paddingBottom) +
+        1
+      );
+    });
     for (const width of [1920, 1280, 1024, 834, 390]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(usage).toBeVisible();
@@ -68,7 +93,7 @@ realTest(
         .poll(() => segments.evaluate((section) => section.getBoundingClientRect().height), {
           message: `${width} px: the segments take more than one line`,
         })
-        .toBeLessThanOrEqual(24);
+        .toBeLessThanOrEqual(oneLineMaxHeight);
       await expect
         .poll(() => context.evaluate((group) => group.scrollWidth > group.clientWidth + 1), {
           message: `${width} px: the context group is clipped`,

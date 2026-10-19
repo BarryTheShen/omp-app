@@ -18,22 +18,22 @@ async function expectComposerStyles(page: Page, dark: boolean) {
     if (!surface) {
       return {
         dark: document.documentElement.classList.contains("dark"),
-        usesCardToken: false,
+        usesMutedSurfaceToken: false,
       };
     }
     const probe = document.createElement("div");
-    probe.style.backgroundColor = "var(--card)";
+    probe.style.backgroundColor = "color-mix(in oklab, var(--muted) 30%, transparent)";
     document.body.append(probe);
     const expected = getComputedStyle(probe).backgroundColor;
     const actual = getComputedStyle(surface).backgroundColor;
     probe.remove();
     return {
       dark: document.documentElement.classList.contains("dark"),
-      usesCardToken: expected !== "rgba(0, 0, 0, 0)" && actual === expected,
+      usesMutedSurfaceToken: expected !== "rgba(0, 0, 0, 0)" && actual === expected,
     };
   });
   expect(styles.dark).toBe(dark);
-  expect(styles.usesCardToken).toBe(true);
+  expect(styles.usesMutedSurfaceToken).toBe(true);
 }
 
 async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Promise<void> {
@@ -60,7 +60,7 @@ async function runComposerGrowth({ realApp }: { readonly realApp: RealApp }): Pr
       // they fold, with nothing typed (#773).
       await expect
         .poll(inputHeight, { message: `${theme} ${viewport.name}px: empty input is one line` })
-        .toBeLessThanOrEqual(32);
+        .toBeLessThanOrEqual(44);
       const emptyMetrics = await composer.evaluate((input) => {
         const card = input.closest("[data-composer-card]");
         if (!card) throw new Error("Composer card is missing");

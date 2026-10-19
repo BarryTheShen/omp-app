@@ -12,7 +12,7 @@ import type { AttachmentAdapter } from "../contract";
 
 /** The look of an attachment chip: the composer's chips and the transcript's pasted-text chips share it. */
 export const ATTACHMENT_CHIP_CLASS =
-  "border-border bg-card shadow-xs flex min-w-0 items-center gap-(--space-xs) rounded-(--radius) border px-(--space-sm) py-(--space-2xs)";
+  "border-foreground/10 bg-muted/30 flex min-w-0 items-center gap-(--space-xs) rounded-surface border px-(--space-sm) py-(--space-2xs)";
 
 const EMPTY_ATTACHMENT_STATE = Object.freeze({
   pending: [],
@@ -38,7 +38,7 @@ function ManagerAttachmentChip({
       {image?.type === "image" && (
         <img src={image.image} alt="" className="size-6 rounded-sm object-cover" />
       )}
-      <span className="min-w-0 max-w-48 truncate text-xs">{attachment.name}</span>
+      <span className="min-w-0 max-w-48 truncate text-sm">{attachment.name}</span>
       <Button
         type="button"
         variant="ghost"
@@ -74,7 +74,7 @@ export const AttachmentChips: FC<AttachmentChipsProps> = ({ manager }) => {
     <>
       <div
         data-slot="u2-composer-attachments"
-        className="flex w-full flex-row items-center gap-(--space-xs) overflow-x-auto empty:hidden"
+        className="flex w-full flex-row items-center gap-(--space-xs) overflow-x-auto px-2 pb-2 empty:hidden"
       >
         {manager ? (
           <>
@@ -84,7 +84,7 @@ export const AttachmentChips: FC<AttachmentChipsProps> = ({ manager }) => {
                 data-slot="attachment-root"
                 className={`${ATTACHMENT_CHIP_CLASS} opacity-70`}
               >
-                <span className="min-w-0 max-w-48 truncate text-xs">{attachment.name}</span>
+                <span className="min-w-0 max-w-48 truncate text-sm">{attachment.name}</span>
                 {attachment.status.type === "incomplete" && (
                   <Button
                     type="button"
@@ -112,7 +112,7 @@ export const AttachmentChips: FC<AttachmentChipsProps> = ({ manager }) => {
             {() => (
               <AttachmentPrimitive.Root className={ATTACHMENT_CHIP_CLASS}>
                 <AttachmentPrimitive.unstable_Thumb />
-                <span className="min-w-0 max-w-48 truncate text-xs">
+                <span className="min-w-0 max-w-48 truncate text-sm">
                   <AttachmentPrimitive.Name />
                 </span>
                 <AttachmentPrimitive.Remove

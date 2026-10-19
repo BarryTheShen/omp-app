@@ -34,7 +34,7 @@ function LaneItem({
   const removeLabel = `Remove ${item.lane === "steering" ? "steering" : "follow-up"} message: ${item.prompt}`;
   return (
     <li
-      className="border-border bg-background flex min-w-0 items-center gap-(--space-xs) rounded-(--radius) border px-(--space-sm) py-(--space-xs) shadow-xs"
+      className="border-foreground/10 bg-background flex min-w-0 items-center gap-(--space-xs) rounded-control border px-(--space-sm) py-(--space-xs)"
       data-queue-item-id={item.id}
       data-queue-lane={item.lane}
       data-queue-status={item.status}
@@ -147,14 +147,14 @@ export function QueueLaneBar({
   return (
     <aside
       aria-label="Queued messages"
-      className="border-border bg-card mb-(--space-xs) flex w-full flex-col gap-(--space-md) rounded-(--radius) border p-(--space-sm) shadow-xs"
+      className="border-foreground/10 bg-muted/30 mb-(--space-xs) flex w-full flex-col gap-(--space-md) rounded-surface border p-(--space-sm) text-sm"
       data-queue-bar="true"
       data-queue-connection={connection.state}
     >
       {disconnected && (
         <p
           aria-live="polite"
-          className="text-warning text-xs"
+          className="text-warning text-sm"
           data-queue-disabled-reason
           role="status"
         >
@@ -162,7 +162,7 @@ export function QueueLaneBar({
         </p>
       )}
       {snapshot.lastError && (
-        <p aria-live="assertive" className="text-destructive text-xs" data-queue-error role="alert">
+        <p aria-live="assertive" className="text-destructive text-sm" data-queue-error role="alert">
           {snapshot.lastError.appError.message}
         </p>
       )}

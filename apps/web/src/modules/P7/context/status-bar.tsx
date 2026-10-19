@@ -32,7 +32,7 @@ export function ContextStatusBar({
   return (
     <section
       aria-label="Context status"
-      className="text-muted-foreground flex min-w-0 items-center gap-3 text-xs"
+      className="text-muted-foreground flex min-w-0 items-center gap-3 text-meta"
     >
       {window ? (
         <span className="flex min-w-0 items-center gap-2">

@@ -578,8 +578,7 @@ function DraftComposer({
     () => manager.getState(),
     () => manager.getState(),
   );
-  const hasAttachmentOutput =
-    attachmentState.pending.length > 0 || attachmentState.complete.length > 0;
+
   const text = useAuiState((state) => state.composer.text);
   useComposerDraftOwner(controller);
   const isRecalledPrompt = useIsRecalledPrompt();
@@ -597,6 +596,7 @@ function DraftComposer({
       cancel={cancel}
       disabled={snapshot.status === "error"}
       replaced={editing}
+      attachmentManager={manager}
       policy={policy}
       attachmentHoldReason={attachmentHoldReason(attachmentState)}
       sendBlockedReason={sendBlockedReason}
@@ -604,7 +604,6 @@ function DraftComposer({
       savePasteFile={savePasteFile}
       toolbar={toolbar}
       queue={queue}
-      showAttachmentNames={false}
       onDoubleLeftArrow={onDoubleLeftArrow}
     >
       <DraftNotice
@@ -613,7 +612,7 @@ function DraftComposer({
         onRetry={onRetry}
         snapshot={snapshot}
       />
-      {hasAttachmentOutput || footerOpen ? footer : null}
+      {footerOpen ? footer : null}
     </ComposerSurface>
   );
 }

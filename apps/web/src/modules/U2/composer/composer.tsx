@@ -23,8 +23,9 @@ import { InlineError } from "@/components/blocks";
 import { chordLabel, isApplePlatform } from "@/shortcuts";
 import { Button } from "../../../components/ui/button";
 import type { PromptDelivery, PromptIntent } from "../../R0/runtime/runtime";
-import { classifyLargePaste, pastedTextName } from "../attachments";
+import { AttachmentChips, classifyLargePaste, pastedTextName } from "../attachments";
 import {
+  type AttachmentAdapter,
   type ComposerDraft,
   type ComposerKeyChord,
   defaultSubmitPolicy,
@@ -67,6 +68,7 @@ export interface ComposerSurfaceProps {
    * set, Enter, Ctrl+Enter and Send do nothing and the text stays in the composer. Stop keeps working.
    */
   readonly attachmentHoldReason?: string;
+  readonly attachmentManager?: AttachmentAdapter;
   readonly showAttachmentNames?: boolean;
   readonly toolbar?: ReactNode;
   /**
@@ -203,6 +205,7 @@ export function ComposerSurface({
   replaced = false,
   sendBlockedReason,
   attachmentHoldReason,
+  attachmentManager,
   showAttachmentNames = true,
   toolbar,
   queue,
@@ -524,7 +527,7 @@ export function ComposerSurface({
         render={
           <div
             data-composer-card="true"
-            className="border-border bg-card shadow-xs focus-within:ring-2 focus-within:ring-ring/50 focus-within:ring-offset-2 data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-(--space-sm) rounded-(--radius) border p-(--space-sm) outline-none transition-[border-color,box-shadow] data-[dragging=true]:border-dashed"
+            className="border-foreground/10 bg-muted/30 focus-within:border-foreground/25 focus-within:ring-2 focus-within:ring-ring/50 focus-within:ring-offset-2 data-[dragging=true]:border-foreground/40 rounded-thread flex w-full cursor-text flex-col border outline-none transition-colors data-[dragging=true]:border-dashed"
           />
         }
       >
@@ -532,13 +535,7 @@ export function ComposerSurface({
           className="flex flex-col gap-(--space-sm)"
           style={replaced ? { display: "none" } : undefined}
         >
-          {showAttachmentNames && (
-            <ComposerPrimitive.Attachments>
-              {({ attachment }) => (
-                <span className="text-muted-foreground px-2 text-xs">{attachment.name}</span>
-              )}
-            </ComposerPrimitive.Attachments>
-          )}
+          {showAttachmentNames && <AttachmentChips manager={attachmentManager} />}
           <ComposerPrimitive.Input
             ref={inputRef}
             aria-label={inputLabel}
@@ -559,12 +556,12 @@ export function ComposerSurface({
             placeholder="Send a message..."
             rows={1}
             submitMode="none"
-            className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-(--space-md) py-(--space-2xs) text-base leading-6 outline-none"
+            className="aui-composer-input caret-primary placeholder:text-muted-foreground max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-4 pt-3 pb-2 text-base leading-6 focus:outline-none"
           />
         </div>
         {largePaste !== null && !replaced && (
           <div
-            className="flex flex-wrap items-center gap-(--space-xs) px-(--space-md)"
+            className="bg-muted/30 rounded-surface flex flex-wrap items-center gap-(--space-xs) px-(--space-md) py-(--space-xs) text-sm"
             data-composer-paste-choice="true"
           >
             <p className="text-muted-foreground mr-auto text-sm">
@@ -622,7 +619,7 @@ export function ComposerSurface({
         )}
         {notSentReason !== undefined && (
           <p
-            className="text-warning px-(--space-md) text-xs"
+            className="text-warning px-(--space-md) text-sm"
             data-composer-blocked="true"
             id={blockedId}
           >
@@ -630,7 +627,7 @@ export function ComposerSurface({
           </p>
         )}
         <div
-          className="@container flex min-w-0 items-center gap-(--space-xs)"
+          className="@container flex min-w-0 items-center justify-between gap-2 px-2 pb-2"
           data-composer-toolbar="true"
           style={replaced ? { display: "none" } : undefined}
         >
@@ -641,7 +638,7 @@ export function ComposerSurface({
                 variant="ghost"
                 size="icon"
                 aria-label="Add attachment"
-                className="text-muted-foreground hover:text-foreground size-7 rounded-full"
+                className="text-muted-foreground hover:text-foreground rounded-control grid size-7 shrink-0 place-items-center transition-colors"
               >
                 <PlusIcon aria-hidden="true" className="size-4" />
               </Button>
@@ -650,7 +647,7 @@ export function ComposerSurface({
           {toolbar}
           {isStreaming && notSentReason === undefined && modeForText(text) === "prompt" && (
             <p
-              className="text-muted-foreground hidden min-w-0 flex-1 whitespace-nowrap text-xs @[38rem]:block"
+              className="text-muted-foreground hidden min-w-0 flex-1 whitespace-nowrap text-xs @[38rem]:block truncate"
               data-composer-steer-hint="true"
               title={steerHintTitle}
             >
@@ -667,9 +664,9 @@ export function ComposerSurface({
                 disabled={(isSubmitting && !isStreaming) || sendBlockedReason !== undefined}
                 aria-describedby={sendBlockedReason === undefined ? undefined : blockedId}
                 onClick={() => void handleCancel()}
-                className="size-7 rounded-full"
+                className="bg-primary text-primary-foreground rounded-control grid size-7 place-items-center"
               >
-                <SquareIcon aria-hidden="true" className="size-3.5 fill-current" />
+                <SquareIcon aria-hidden="true" className="size-3 fill-current" />
               </Button>
             ) : (
               <Button
@@ -684,7 +681,7 @@ export function ComposerSurface({
                   notSentReason !== undefined
                 }
                 onClick={() => void submit("enter")}
-                className="size-7 rounded-full"
+                className="bg-primary text-primary-foreground rounded-control grid size-7 place-items-center transition-opacity disabled:opacity-40"
               >
                 <ArrowUpIcon aria-hidden="true" className="size-4" />
               </Button>

@@ -1,9 +1,9 @@
 import { useAui, useAuiState } from "@assistant-ui/react";
 import type { CapabilityMap } from "@omp-app/contracts";
 import type { FC } from "react";
+import { cn } from "@/lib/utils";
 import { Button } from "../../../components/ui/button";
 import { modeForText, pythonModeAvailability, textForMode } from "./modes";
-
 export interface ModeIndicatorProps {
   readonly capabilities: CapabilityMap;
 }
@@ -25,8 +25,12 @@ export const ModeIndicator: FC<ModeIndicatorProps> = ({ capabilities }) => {
       <legend className="sr-only">Input mode</legend>
       <Button
         type="button"
-        variant={mode === "prompt" ? "secondary" : "ghost"}
+        variant="ghost"
         size="xs"
+        className={cn(
+          "text-muted-foreground hover:text-foreground rounded-control h-7 px-2 text-sm font-normal transition-colors",
+          mode === "prompt" && "bg-foreground/[0.06] text-foreground",
+        )}
         aria-pressed={mode === "prompt"}
         onClick={() => changeMode("prompt")}
       >
@@ -34,8 +38,12 @@ export const ModeIndicator: FC<ModeIndicatorProps> = ({ capabilities }) => {
       </Button>
       <Button
         type="button"
-        variant={mode === "bash" ? "secondary" : "ghost"}
+        variant="ghost"
         size="xs"
+        className={cn(
+          "text-muted-foreground hover:text-foreground rounded-control h-7 px-2 text-sm font-normal transition-colors",
+          mode === "bash" && "bg-foreground/[0.06] text-foreground",
+        )}
         aria-pressed={mode === "bash"}
         onClick={() => changeMode("bash")}
       >
@@ -44,8 +52,12 @@ export const ModeIndicator: FC<ModeIndicatorProps> = ({ capabilities }) => {
       <span className="inline-flex" title={python.available ? undefined : python.reason}>
         <Button
           type="button"
-          variant={mode === "python" ? "secondary" : "ghost"}
+          variant="ghost"
           size="xs"
+          className={cn(
+            "text-muted-foreground hover:text-foreground rounded-control h-7 px-2 text-sm font-normal transition-colors",
+            mode === "python" && "bg-foreground/[0.06] text-foreground",
+          )}
           aria-pressed={mode === "python"}
           disabled={!python.available}
           title={python.available ? "Python mode" : undefined}

@@ -18,7 +18,7 @@ async function expectComposerStyles(page: Page, dark: boolean): Promise<void> {
     if (!input || !surface) {
       return {
         dark: document.documentElement.classList.contains("dark"),
-        usesCardToken: false,
+        usesMutedSurfaceToken: false,
         inputBorderWidth: "missing",
         inputOutlineStyle: "none",
         cardBorderStyle: "none",
@@ -26,7 +26,7 @@ async function expectComposerStyles(page: Page, dark: boolean): Promise<void> {
       };
     }
     const probe = document.createElement("div");
-    probe.style.backgroundColor = "var(--card)";
+    probe.style.backgroundColor = "color-mix(in oklab, var(--muted) 30%, transparent)";
     document.body.append(probe);
     const expected = getComputedStyle(probe).backgroundColor;
     const actual = getComputedStyle(surface).backgroundColor;
@@ -34,7 +34,7 @@ async function expectComposerStyles(page: Page, dark: boolean): Promise<void> {
     const surfaceStyle = getComputedStyle(surface);
     return {
       dark: document.documentElement.classList.contains("dark"),
-      usesCardToken: expected !== "rgba(0, 0, 0, 0)" && actual === expected,
+      usesMutedSurfaceToken: expected !== "rgba(0, 0, 0, 0)" && actual === expected,
       inputBorderWidth: getComputedStyle(input).borderTopWidth,
       inputOutlineStyle: getComputedStyle(input).outlineStyle,
       cardBorderStyle: surfaceStyle.borderTopStyle,
@@ -42,7 +42,7 @@ async function expectComposerStyles(page: Page, dark: boolean): Promise<void> {
     };
   });
   expect(styles.dark).toBe(dark);
-  expect(styles.usesCardToken).toBe(true);
+  expect(styles.usesMutedSurfaceToken).toBe(true);
   expect(styles.inputOutlineStyle).toBe("none");
   expect(styles.inputBorderWidth).toBe("0px");
   expect(styles.cardBorderStyle).toBe("solid");
@@ -52,6 +52,11 @@ async function expectComposerStyles(page: Page, dark: boolean): Promise<void> {
 async function expectFilePreview(page: Page, filename: string): Promise<void> {
   await expect(page.locator('[data-slot="u2-composer-attachments"]')).toContainText(filename);
   await expect(page.getByText(filename, { exact: true })).toHaveCount(1);
+  const [strip, input] = await Promise.all([
+    page.locator('[data-slot="u2-composer-attachments"]').boundingBox(),
+    page.getByRole("textbox", { name: "Message input" }).boundingBox(),
+  ]);
+  expect(strip && input ? strip.y + strip.height <= input.y + 1 : false).toBe(true);
 }
 
 async function addFileByDrop(page: Page): Promise<void> {
@@ -95,10 +100,12 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
       await waitForFiniteAnimations(page);
 
       const attachment = page.getByRole("button", { name: /Add attachment/i });
+      const model = page.getByRole("button", { name: /^(?:Model:|Choose a model)/ });
       const prompt = page.getByRole("button", { name: "Prompt" });
       const bash = page.getByRole("button", { name: "Bash" });
       const python = page.getByRole("button", { name: "Python" });
       const send = page.getByRole("button", { name: "Send message" });
+      const executionModes = page.getByRole("button", { name: "Execution modes" });
       const toolbar = page.getByRole("group", { name: "Input mode" });
       const reason = page.locator('[data-slot="u2-mode-indicator"] > span[title]');
 
@@ -106,10 +113,19 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
       await expect(attachment).toHaveCount(1);
       await expect(page.getByText("Add file", { exact: true })).toHaveCount(0);
       await expect(toolbar).toBeVisible();
+      await expect(model).toBeVisible();
       await expect(prompt).toBeVisible();
       await expect(bash).toBeVisible();
       await expect(python).toBeDisabled();
       await expect(send).toBeVisible();
+      const modeLabelsFit = await Promise.all(
+        [prompt, bash, python].map((button) =>
+          button.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        ),
+      );
+      expect(modeLabelsFit.every(Boolean), `${viewport.name}px: mode labels remain whole`).toBe(
+        true,
+      );
       await expect(reason).toHaveAttribute("title", /.+/);
       const reasonText = await reason.getAttribute("title");
       if (!reasonText) throw new Error("The unavailable Python reason is missing");
@@ -117,9 +133,22 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
       await composer.focus();
       await expectComposerStyles(page, theme === "dark");
 
-      const [attachmentBox, toolbarBox, sendBox, inputBox, card] = await Promise.all([
+      const [
+        attachmentBox,
+        modelBox,
+        promptBox,
+        toolbarBox,
+        executionModesBox,
+        sendBox,
+        inputBox,
+        card,
+        toolbarButtonsInside,
+      ] = await Promise.all([
         attachment.boundingBox(),
+        model.boundingBox(),
+        prompt.boundingBox(),
         toolbar.boundingBox(),
+        executionModes.boundingBox(),
         send.boundingBox(),
         composer.boundingBox(),
         composer.evaluate((input) => {
@@ -134,17 +163,51 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
             height: rect.height,
           };
         }),
+        page.locator("[data-composer-toolbar] button").evaluateAll((buttons) =>
+          buttons.every((button) => {
+            const rect = button.getBoundingClientRect();
+            const card = button.closest("[data-composer-card]")?.getBoundingClientRect();
+            return (
+              card !== undefined &&
+              rect.left >= card.left &&
+              rect.top >= card.top &&
+              rect.right <= card.right &&
+              rect.bottom <= card.bottom
+            );
+          }),
+        ),
       ]);
-      if (!attachmentBox || !toolbarBox || !sendBox || !inputBox)
+      if (
+        !attachmentBox ||
+        !modelBox ||
+        !promptBox ||
+        !toolbarBox ||
+        !executionModesBox ||
+        !sendBox ||
+        !inputBox
+      )
         throw new Error("The composer controls are missing from the layout");
       const centerY = (box: { readonly y: number; readonly height: number }) =>
         box.y + box.height / 2;
-      expect(Math.abs(centerY(attachmentBox) - centerY(toolbarBox))).toBeLessThanOrEqual(2);
-      expect(Math.abs(centerY(sendBox) - centerY(toolbarBox))).toBeLessThanOrEqual(2);
+      if (viewport.width >= 1280) {
+        expect(Math.abs(centerY(attachmentBox) - centerY(toolbarBox))).toBeLessThanOrEqual(2);
+        expect(Math.abs(centerY(sendBox) - centerY(toolbarBox))).toBeLessThanOrEqual(2);
+        expect(
+          card.height,
+          `${viewport.name}px: empty composer card height (input ${inputBox.height}px, controls ${toolbarBox.height}px)`,
+        ).toBeLessThanOrEqual(96);
+      } else {
+        expect(modelBox.y + modelBox.height).toBeLessThanOrEqual(toolbarBox.y + 2);
+        expect(executionModesBox.y).toBeGreaterThanOrEqual(toolbarBox.y - 2);
+        expect(toolbarBox.y).toBeGreaterThan(modelBox.y);
+      }
       expect(
-        card.height,
-        `${viewport.name}px: empty composer card height (input ${inputBox.height}px, controls ${toolbarBox.height}px)`,
-      ).toBeLessThanOrEqual(viewport.width >= 1280 ? 96 : 108);
+        toolbarButtonsInside,
+        `${viewport.name}px: every toolbar control stays in the card`,
+      ).toBe(true);
+      expect(card.height, `${viewport.name}px: empty composer card height`).toBe(
+        viewport.width === 390 ? 116 : 82,
+      );
       expect(inputBox.y + inputBox.height).toBeLessThanOrEqual(attachmentBox.y + 2);
       expect(attachmentBox.x).toBeGreaterThanOrEqual(card.left);
       expect(attachmentBox.y).toBeGreaterThanOrEqual(card.top);
@@ -159,11 +222,15 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
           ),
         );
       const attachmentIndex = buttonLabels.indexOf("Add attachment");
+      const modelIndex = buttonLabels.findIndex(
+        (label) => label.startsWith("Model:") || label === "Choose a model",
+      );
       const promptIndex = buttonLabels.indexOf("Prompt");
       const bashIndex = buttonLabels.indexOf("Bash");
       const pythonIndex = buttonLabels.indexOf("Python");
       const sendIndex = buttonLabels.indexOf("Send message");
-      expect(attachmentIndex).toBeLessThan(promptIndex);
+      expect(attachmentIndex).toBeLessThan(modelIndex);
+      expect(modelIndex).toBeLessThan(promptIndex);
       expect(promptIndex).toBeLessThan(bashIndex);
       expect(bashIndex).toBeLessThan(pythonIndex);
       expect(pythonIndex).toBeLessThan(sendIndex);
@@ -172,13 +239,13 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
       await page.keyboard.press("Tab");
       await expect(attachment).toBeFocused();
       await page.keyboard.press("Tab");
+      await expect(model).toBeFocused();
+      await page.keyboard.press("Tab");
       await expect(prompt).toBeFocused();
       await page.keyboard.press("Tab");
       await expect(bash).toBeFocused();
       await page.keyboard.press("Tab");
-      await expect(page.getByRole("button", { name: "Execution modes" })).toBeFocused();
-      await page.keyboard.press("Tab");
-      await expect(send).toBeFocused();
+      await expect(executionModes).toBeFocused();
       await composer.fill("");
       await composer.focus();
 

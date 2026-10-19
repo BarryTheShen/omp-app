@@ -66,6 +66,7 @@ function ExecutionModesButton({ onOpen }: { readonly onOpen: () => void }) {
     <Button
       aria-haspopup="dialog"
       aria-label="Execution modes"
+      className="text-muted-foreground hover:text-foreground rounded-control h-7 px-2 text-sm font-normal transition-colors"
       onClick={onOpen}
       size="xs"
       title="Execution modes"
@@ -136,6 +137,10 @@ export function useExecutionModesSurface({
 
   return {
     title: "Execution modes",
-    render: () => <ExecutionModesButton onOpen={() => open()} />,
+    render: () => (
+      <span className="flex h-7">
+        <ExecutionModesButton onOpen={() => open()} />
+      </span>
+    ),
   };
 }

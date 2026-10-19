@@ -172,10 +172,19 @@ export function UsagePopover({
   };
   return (
     <Popover.Root>
-      <Popover.Trigger render={<Button type="button" variant="outline" size="sm" />}>
+      <Popover.Trigger
+        render={
+          <Button
+            className="border-0 text-muted-foreground hover:text-foreground rounded-control h-7 px-2 text-xs font-normal transition-colors"
+            type="button"
+            variant="ghost"
+            size="xs"
+          />
+        }
+      >
         Usage
         {snapshot.totals ? (
-          <span className="text-muted-foreground">
+          <span className="text-muted-foreground text-meta">
             {number(snapshot.totals.totalTokens)} tokens
           </span>
         ) : null}

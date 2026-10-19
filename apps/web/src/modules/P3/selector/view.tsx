@@ -29,7 +29,9 @@ export function PreviousMessageSelectorView({
     >
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
+        className="border-0 text-muted-foreground hover:text-foreground rounded-control h-7 self-start px-2 text-sm font-normal transition-colors"
+        size="sm"
         aria-disabled={busy}
         disabled={disabled}
         onClick={(event) => actions.onOpen(event.currentTarget)}
