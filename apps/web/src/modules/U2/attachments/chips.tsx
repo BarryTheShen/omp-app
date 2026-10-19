@@ -24,7 +24,6 @@ const EMPTY_ATTACHMENT_STATE = Object.freeze({
 export interface AttachmentChipsProps {
   readonly manager?: AttachmentAdapter;
 }
-
 function ManagerAttachmentChip({
   attachment,
   onRemove,
@@ -70,6 +69,11 @@ export const AttachmentChips: FC<AttachmentChipsProps> = ({ manager }) => {
     if (manager === undefined) return;
     void manager.remove(attachment).catch(() => undefined);
   };
+  // No chips, no strip: an empty strip is a stale box in the card (issue 2129). A removal the manager refused keeps its
+  // chip in the list, so its message is never shown with an empty strip.
+  const showContainer =
+    manager === undefined || managerState.pending.length > 0 || managerState.complete.length > 0;
+  if (!showContainer) return null;
   return (
     <>
       <div

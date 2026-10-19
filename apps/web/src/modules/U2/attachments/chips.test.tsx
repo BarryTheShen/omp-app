@@ -55,6 +55,13 @@ function managerThatCannotDelete(): AttachmentManager {
 }
 
 describe("U2 attachment chips", () => {
+  test("with no attachments nothing is drawn: no empty strip in the composer card", () => {
+    const { container } = render(<AttachmentChips manager={managerWith("hang")} />);
+
+    expect(container.querySelector('[data-slot="u2-composer-attachments"]')).toBeNull();
+    expect(container.firstChild).toBeNull();
+  });
+
   test("an image that is still loading has no Remove button, and it holds the message", async () => {
     const attachments = managerWith("hang");
     const pending = await attachments.add({ file: photo() });

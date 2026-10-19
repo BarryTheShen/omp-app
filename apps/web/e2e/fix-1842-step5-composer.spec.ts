@@ -16,6 +16,22 @@ const viewports = [
 ] as const;
 const themes = ["light", "dark"] as const;
 type Theme = (typeof themes)[number];
+const MEASUREMENT_IMAGE = "measurement.png";
+const MEASUREMENT_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+async function attachMeasurementPicture(page: Page): Promise<void> {
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Add attachment" }).click();
+  await (await chooser).setFiles({
+    name: MEASUREMENT_IMAGE,
+    mimeType: "image/png",
+    buffer: Buffer.from(MEASUREMENT_PNG_BASE64, "base64"),
+  });
+  await expect(page.locator('[data-slot="u2-composer-attachments"]')).toContainText(
+    MEASUREMENT_IMAGE,
+  );
+}
 
 interface ComposerMetrics {
   readonly card: {
@@ -275,10 +291,13 @@ async function assertMetrics(
   expect(darkMode, `${theme} theme before capture`).toBe(theme === "dark");
   if (viewport.width === 1280) {
     expect(metrics.card.width, `${viewport.name}: card width`).toBe(672);
-    expect(metrics.card.height, `${viewport.name}: empty card height`).toBe(82);
+    expect(metrics.card.height, `${viewport.name}: card with attachment strip`).toBeGreaterThan(82);
   } else {
     expect(metrics.card.width, `${viewport.name}: card width`).toBe(342);
-    expect(metrics.card.height, `${viewport.name}: wrapped toolbar height`).toBe(116);
+    expect(
+      metrics.card.height,
+      `${viewport.name}: wrapped card with attachment strip`,
+    ).toBeGreaterThan(116);
   }
   expect(metrics.attachmentStripAboveInput, `${viewport.name}: attachment strip above input`).toBe(
     true,
@@ -326,9 +345,11 @@ async function assertMetrics(
   const bash = labels.indexOf("Bash");
   const python = labels.indexOf("Python");
   const execution = labels.indexOf("Execution modes");
-  expect(labels[0]).toBe("Add attachment");
-  expect(labels[1]).toMatch(/^(?:Model:|Choose a model)/);
-  expect(labels[2]).toBe("Prompt");
+  const attachment = labels.indexOf("Add attachment");
+  expect(attachment).toBeGreaterThanOrEqual(0);
+  expect(labels[attachment + 1]).toMatch(/^(?:Model:|Choose a model)/);
+  expect(labels[prompt]).toBe("Prompt");
+  expect(prompt).toBeGreaterThan(attachment);
   expect(prompt).toBeLessThan(bash);
   expect(bash).toBeLessThan(python);
   expect(python).toBeLessThan(execution);
@@ -349,6 +370,20 @@ realTest(
       await expect(
         page.getByRole("main", { name: "Conversation" }).locator('[data-slot="u1-thread-empty"]'),
       ).toBeVisible({ timeout: 60_000 });
+      await expect(page.locator('[data-slot="u2-composer-attachments"]')).toHaveCount(0);
+      // The empty card is the Step 5 card with no strip in it, and its height is exact; the picture comes after.
+      for (const viewport of viewports) {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await expect(composer).toBeVisible();
+        await waitForFiniteAnimations(page);
+        const empty = await page
+          .locator("[data-composer-card]")
+          .evaluate((card) => card.getBoundingClientRect().height);
+        expect(empty, `${viewport.name}: empty card height`).toBe(
+          viewport.width === 1280 ? 82 : 116,
+        );
+      }
+      await attachMeasurementPicture(page);
       for (const viewport of viewports) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await expect(composer).toBeVisible();
