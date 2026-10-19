@@ -67,9 +67,9 @@ function triggerRuns(trigger: Trigger, rest: string): boolean {
  * - `wt` and its alias `worktree` move the chat into a new worktree. With omp's "Clean Source Checkout on /wt" setting on, they
  *   also reset and clean the folder's checkout (builtin-lifecycle.ts:747, session-worktree.ts:96-103). The app cannot read that
  *   setting, so every form asks first.
- * - `annotate` opens omp's annotation editor, which needs omp's interactive terminal UI and sends no message without it
- *   (extensibility/custom-commands/bundled/annotate/index.ts:223-239 and :310-327), so the app answers it itself and says
- *   why (`SPECIFIC_REFUSALS`).
+ * - `annotate` opens omp's annotation editor, which needs omp's interactive terminal UI and sends no message without it,
+ *   except lower-case `annotate code-review` with whitespace or end-of-text, which omp runs headlessly to return a review request
+ *   (`extensibility/custom-commands/bundled/annotate/index.ts:223-239`; the exemption is the same `:230` parser check).
  */
 const GUARDED_OMP_COMMANDS: Record<string, true | Record<string, Trigger>> = {
   share: true,
@@ -107,6 +107,9 @@ export function guardedForm(text: string): GuardedForm | null {
   if (name === undefined || !Object.hasOwn(GUARDED_OMP_COMMANDS, name)) return null;
   const guard = GUARDED_OMP_COMMANDS[name];
   const words = match?.[2] ?? "";
+  // omp handles this form without its interactive UI and sends the review request to the agent. omp trims its arguments
+  // first (`args.trim().match(/^code-review.../)`, annotate/index.ts:230), so extra spaces before the word do not matter.
+  if (name === "annotate" && /^code-review(?:\s|$)/u.test(words.trim())) return null;
   if (guard === true) return { name, args: words.trim() };
   const { verb, rest } = subcommandOf(words);
   const trigger: Trigger | undefined =

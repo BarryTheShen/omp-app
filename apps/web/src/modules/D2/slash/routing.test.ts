@@ -327,6 +327,32 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
       "/annotate only runs in omp's terminal, where it opens the annotation editor; nothing was sent.",
     );
   });
+  test("lets omp handle only the exact lower-case code-review annotate form", () => {
+    const annotate = SlashCommand.parse({ name: "annotate", source: "custom" });
+    for (const text of [
+      "/annotate code-review",
+      "/annotate code-review focus on tests",
+      "/annotate   code-review focus on tests",
+      "/annotate\tcode-review",
+    ]) {
+      expect(routeSlashText(text, [...entries, annotate], [])).toEqual({
+        kind: "omp",
+        command: text,
+      });
+    }
+    for (const text of [
+      "/annotate Code-Review",
+      "/annotate code-reviewer",
+      "/annotate last",
+      "/share code-review",
+      "/wt code-review",
+    ]) {
+      expect(routeSlashText(text, [...entries, annotate], [])).not.toEqual({
+        kind: "omp",
+        command: text,
+      });
+    }
+  });
 
   test("bare /copy is the app's command when the app lists it; words after it stay refused", () => {
     const copy: SlashAppCommand = {
