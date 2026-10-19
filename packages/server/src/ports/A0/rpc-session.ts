@@ -237,6 +237,12 @@ function readSessionState(value: unknown): {
     });
   }
 }
+/** Whether omp opened an existing conversation rather than a fresh session. */
+function hasMessages(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const count = Reflect.get(value, "messageCount");
+  return typeof count === "number" && count > 0;
+}
 
 /**
  * Whether omp says it is idle: no turn running, nothing queued, no background work that could wake
@@ -389,7 +395,22 @@ export class RpcSessionPortRuntime {
     try {
       await process.start();
       await session.start();
-      const state = await session.send({ type: "get_state" });
+      let state = await session.send({ type: "get_state" });
+      if ("start" in args && args.start === "new" && hasMessages(state)) {
+        // `start: "new"` launches without --continue, but omp's autoResume setting can still restore the
+        // newest folder session. Discard startup events from that restored conversation before asking omp
+        // to create the fresh session, so New chat never briefly publishes the old transcript.
+        entry.startupEvents.length = 0;
+        const result = await session.send({ type: "new_session" });
+        if (result.cancelled) {
+          throw new AppFailure({
+            code: "cancelled",
+            message: "Starting a new chat was cancelled.",
+            retryable: false,
+          });
+        }
+        state = await session.send({ type: "get_state" });
+      }
       await this.#rekeyEntry(entry, "threadId" in args ? args.threadId : undefined, state);
     } catch (error) {
       await session.close();

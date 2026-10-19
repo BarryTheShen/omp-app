@@ -80,6 +80,10 @@ class FakeProcess implements OmpProcess {
   exitOnWrite = false;
   /** Set before the process starts: its ready frame waits for `sendReady()`, so the chat is still starting. */
   holdReady = false;
+  /** Frames the fake sends right after it starts: the conversation omp restored when its autoResume setting is on. */
+  startupFrames: Record<string, unknown>[] = [];
+  /** When set, omp refuses `new_session`, like an extension that cancels it. */
+  cancelNewSession = false;
   #status: OmpProcessEvent["status"] = "starting";
   #eventListeners = new Set<(event: OmpProcessEvent) => void>();
   #chunkListeners = new Set<(chunk: Uint8Array) => void>();
@@ -116,6 +120,7 @@ class FakeProcess implements OmpProcess {
     }
     this.emitEvent({ status: "running", processId: this.processId });
     if (!this.holdReady) this.sendReady();
+    for (const frame of this.startupFrames) this.emit(frame);
     return Promise.resolve();
   }
 
@@ -152,20 +157,26 @@ class FakeProcess implements OmpProcess {
                 ? { toolNames: registeredToolNames(frame.tools) }
                 : command === "set_host_uri_schemes"
                   ? { schemes: registeredUriSchemes(frame.schemes) }
-                  : command === "branch"
-                    ? { text: "", cancelled: false }
-                    : command === "get_state"
-                      ? {
-                          sessionId: this.identity.threadId,
-                          sessionFile: this.identity.sessionFile,
-                          ...this.extraState,
-                        }
-                      : {};
+                  : command === "new_session"
+                    ? { cancelled: this.cancelNewSession }
+                    : command === "branch"
+                      ? { text: "", cancelled: false }
+                      : command === "get_state"
+                        ? {
+                            sessionId: this.identity.threadId,
+                            sessionFile: this.identity.sessionFile,
+                            ...this.extraState,
+                          }
+                        : {};
     const response = { type: "response", id: frame.id, command, success: true, data };
     if (command === "set_host_tools" && this.holdHostTools !== undefined) {
       void this.holdHostTools.then(() => this.emit(response));
     } else {
       this.emit(response);
+    }
+    // A fresh session has no messages, as omp reports it.
+    if (command === "new_session" && !this.cancelNewSession) {
+      this.extraState = { ...this.extraState, messageCount: 0 };
     }
     if (command === "branch" && this.nextIdentity !== undefined) this.identity = this.nextIdentity;
     if (command === "set_session_name" && this.nextIdentity !== undefined) {
@@ -231,14 +242,25 @@ class FakeProcess implements OmpProcess {
   }
 }
 
+/** What the fake omp reports when it starts: the conversation it restored, if any. */
+interface FakeStartup {
+  readonly extraState?: Record<string, unknown>;
+  readonly startupFrames?: readonly Record<string, unknown>[];
+  readonly cancelNewSession?: boolean;
+}
+
 function context(
   created: FakeProcess[],
   identity: FakeIdentity = { threadId: authorityThread, sessionFile: authorityFile },
+  startup: FakeStartup = {},
 ): A0PortContext {
   return {
     processRegistry: new OmpProcessRegistry({
       createProcess: (options: OmpProcessOptions) => {
         const process = new FakeProcess(options, identity);
+        process.extraState = { ...startup.extraState };
+        process.startupFrames = [...(startup.startupFrames ?? [])];
+        process.cancelNewSession = startup.cancelNewSession ?? false;
         created.push(process);
         return process;
       },
@@ -492,6 +514,87 @@ describe("A0.7 RpcSessionPort handlers", () => {
     });
     expect(busy()).toBe(false);
     await runtimeContext.processRegistry.closeAll();
+  });
+
+  describe("New chat when omp restored the last conversation (autoResume)", () => {
+    const open = (handlers: HandlerSet, start: "new" | "latest") =>
+      getHandler(handlers, "open")({ folderPath: folder, start }, call("one"));
+    const commandsOf = (process: FakeProcess | undefined): unknown[] => {
+      if (process === undefined) throw new Error("missing fake process");
+      return process.writes.map((frame) => frame.type);
+    };
+    const replayText = async (
+      handlers: HandlerSet,
+      runtimeContext: A0PortContext,
+      threadId: ThreadId,
+    ): Promise<string> => {
+      const stream = (await getHandler(handlers, "subscribe")({ threadId }, call("one"))) as {
+        stream: StreamKey;
+      };
+      return JSON.stringify(runtimeContext.replay.replay(stream.stream, 0));
+    };
+    const restored = { messageCount: 4 };
+    const restoredEvent = { type: "session_settled" };
+
+    test("asks omp for a fresh session and keeps the restored conversation off the stream", async () => {
+      const created: FakeProcess[] = [];
+      const runtimeContext = context(created, undefined, {
+        extraState: restored,
+        startupFrames: [restoredEvent],
+      });
+      const handlers = handlersFor(runtimeContext, 0);
+      const opened = (await open(handlers, "new")) as { threadId: ThreadId };
+
+      const commands = commandsOf(created[0]);
+      const askedAt = commands.indexOf("new_session");
+      expect(commands.filter((type) => type === "new_session")).toHaveLength(1);
+      expect(commands.indexOf("get_state")).toBeLessThan(askedAt);
+      expect(commands.slice(askedAt + 1)).toContain("get_state");
+      expect(await replayText(handlers, runtimeContext, opened.threadId)).not.toContain(
+        "session_settled",
+      );
+      await runtimeContext.processRegistry.closeAll();
+    });
+
+    test("does not ask for a fresh session when omp opened an empty one", async () => {
+      const created: FakeProcess[] = [];
+      const runtimeContext = context(created, undefined, {
+        extraState: { messageCount: 0 },
+        startupFrames: [restoredEvent],
+      });
+      const handlers = handlersFor(runtimeContext, 0);
+      const opened = (await open(handlers, "new")) as { threadId: ThreadId };
+
+      expect(commandsOf(created[0])).not.toContain("new_session");
+      expect(await replayText(handlers, runtimeContext, opened.threadId)).toContain(
+        "session_settled",
+      );
+      await runtimeContext.processRegistry.closeAll();
+    });
+
+    test("leaves the conversation alone when the person asked for the latest one", async () => {
+      const created: FakeProcess[] = [];
+      const runtimeContext = context(created, undefined, { extraState: restored });
+      const handlers = handlersFor(runtimeContext, 0);
+      await open(handlers, "latest");
+
+      expect(commandsOf(created[0])).not.toContain("new_session");
+      await runtimeContext.processRegistry.closeAll();
+    });
+
+    test("fails the open as cancelled when omp refuses the fresh session", async () => {
+      const created: FakeProcess[] = [];
+      const runtimeContext = context(created, undefined, {
+        extraState: restored,
+        cancelNewSession: true,
+      });
+      const handlers = handlersFor(runtimeContext, 0);
+
+      await expect(open(handlers, "new")).rejects.toMatchObject({
+        appError: { code: "cancelled", retryable: false },
+      });
+      await runtimeContext.processRegistry.closeAll();
+    });
   });
 
   test("uses --continue for latest and --resume for an existing omp ThreadId", async () => {
