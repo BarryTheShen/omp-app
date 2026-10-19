@@ -256,7 +256,7 @@ export function ToolCard({
         data-slot="u3-tool-card-content"
         ref={contentRef}
       >
-        <div className="min-h-0 overflow-hidden">
+        <div className="min-h-0 overflow-hidden px-1">
           <div className="border-foreground/10 ms-[0.3125rem] flex min-w-0 flex-col gap-3 border-s py-2 ps-4">
             {state.error !== undefined && !calmInterruption && (
               <div
