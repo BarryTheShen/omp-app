@@ -284,6 +284,11 @@ function SettingControlRow({
   const unsetSecret = () => onSecretAction?.(control.key, "unset");
   const secretActionLabel = secret?.isSet ? "Replace…" : "Set…";
   const invalid = validation !== undefined && !validation.valid;
+  const unknownValue =
+    control.kind === "enum" &&
+    !control.secret &&
+    effectiveValue === undefined &&
+    hiddenValue === undefined;
   const firstEnumOption = control.kind === "enum" ? control.options?.[0] : undefined;
   const enumMatchesOption =
     control.kind === "enum" &&
@@ -338,7 +343,11 @@ function SettingControlRow({
       layout="stacked"
       notice={unsaved ? "Not saved" : undefined}
     >
-      {unrecognized ? (
+      {unknownValue ? (
+        <p className="text-muted-foreground text-sm" role="status">
+          Value not available yet.
+        </p>
+      ) : unrecognized ? (
         <InlineError
           actions={
             <Button

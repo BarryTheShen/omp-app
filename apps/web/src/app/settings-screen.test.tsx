@@ -120,6 +120,13 @@ function notificationsConfig(refused: readonly string[]): FakeConfig {
     entries: [
       { key: "completion.notify", secret: false, value: "on", source: "global", overrides: [] },
       { key: "error.notify", secret: false, value: "on", source: "global", overrides: [] },
+      {
+        key: "power.sleepPrevention",
+        secret: false,
+        value: "off",
+        source: "default",
+        overrides: [],
+      },
     ],
     refused: new Set(refused),
     failingReads: 0,

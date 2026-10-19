@@ -4,15 +4,27 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createProviderSettingsController } from "../settings/controller";
+import { PROVIDER_SETTINGS_SECTIONS } from "../settings/descriptors";
 import { ProviderSettingsPanel } from "../settings/settings-panel";
 
 afterEach(() => cleanup());
 
 function fakeClient(): AppClient {
   const port = () => ({
-    list: vi.fn(async (): Promise<ConfigListResult> => ({ entries: [], revision: "revision-1" })),
-    read: vi.fn(),
-    write: vi.fn(),
+    list: vi.fn(
+      async (): Promise<ConfigListResult> => ({
+        entries: PROVIDER_SETTINGS_SECTIONS.flatMap((section) =>
+          section.controls.map((control) => ({
+            key: control.key,
+            secret: false as const,
+            value: control.defaultValue,
+            source: "default" as const,
+            overrides: [],
+          })),
+        ),
+        revision: "revision-1",
+      }),
+    ),
   });
   return {
     port,

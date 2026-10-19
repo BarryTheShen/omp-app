@@ -318,6 +318,38 @@ describe("S1 settings section", () => {
     expect(screen.getAllByText("Source: not configured")).toHaveLength(controls.length);
   });
 
+  test("does not guess an enum's first option without a value, while showing known defaults", () => {
+    const missingMode: ConfigSnapshot = {
+      ...snapshot,
+      entries: snapshot.entries.filter((entry) => entry.key !== "appearance.mode"),
+    };
+    const missing = render(<SettingsSection descriptor={descriptor} snapshot={missingMode} />);
+    expect(screen.getByRole("status").textContent).toContain("Value not available yet.");
+    expect(screen.queryByRole("combobox", { name: "Mode" })).toBeNull();
+    missing.unmount();
+    const missingNonEnums: ConfigSnapshot = {
+      ...snapshot,
+      entries: snapshot.entries.filter(
+        (entry) => !["appearance.enabled", "appearance.notes"].includes(entry.key),
+      ),
+    };
+    render(<SettingsSection descriptor={descriptor} snapshot={missingNonEnums} />);
+    expect(screen.getByRole("checkbox", { name: "Enabled" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Notes" })).toBeTruthy();
+    cleanup();
+
+    const knownDefault: ConfigSnapshot = {
+      ...snapshot,
+      entries: snapshot.entries.map((entry) =>
+        entry.key === "appearance.mode" ? { ...entry, source: "default", overrides: [] } : entry,
+      ),
+    };
+    render(<SettingsSection descriptor={descriptor} snapshot={knownDefault} />);
+    expect((screen.getByRole("combobox", { name: "Mode" }) as HTMLSelectElement).value).toBe(
+      "system",
+    );
+  });
+
   test("draws list controls inside the card, after the rows and above Save and Cancel", () => {
     render(
       <SettingsSection
@@ -367,6 +399,30 @@ describe("S1 settings section", () => {
     expect(
       screen.getByText("Source: Set in the environment · overrides omp's default"),
     ).toBeTruthy();
+  });
+
+  test("a value the server hid on a choice control is the same sentence, not the unavailable text", () => {
+    const hidden: ConfigEntry = {
+      key: "appearance.mode",
+      secret: true,
+      isSet: true,
+      source: "env",
+      overrides: [],
+    };
+    render(
+      <SettingsSection
+        descriptor={descriptor}
+        snapshot={{
+          ...snapshot,
+          entries: snapshot.entries.map((entry) =>
+            entry.key === "appearance.mode" ? hidden : entry,
+          ),
+        }}
+      />,
+    );
+    expect(screen.getByText("Set in the environment; the value is hidden.")).toBeTruthy();
+    expect(screen.queryByText("Value not available yet.")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Mode" })).toBeNull();
   });
 
   test("a number the setting refuses, or an emptied field, stays in the field under the setting's message and blocks Save", () => {

@@ -54,6 +54,9 @@ const snapshot: ConfigSnapshot = {
     { key: "stt.submitTrigger", secret: false, value: "never", source: "default", overrides: [] },
     { key: "live.voice", secret: false, value: "sol", source: "global", overrides: ["default"] },
     { key: "stt.language", secret: false, value: "en", source: "project", overrides: [] },
+    { key: "tts.localVoice", secret: false, value: "af_heart", source: "default", overrides: [] },
+    { key: "speech.mode", secret: false, value: "assistant", source: "default", overrides: [] },
+    { key: "speech.voice", secret: false, value: "af_heart", source: "default", overrides: [] },
     {
       key: "providers.maxInFlightRequests",
       secret: false,
