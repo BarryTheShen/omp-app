@@ -38,7 +38,7 @@ describe("failed file-operation cards", () => {
     render(<EditCard rendererProps={rendererProps} />);
     expandToolCards();
 
-    const trigger = screen.getByRole("button", { name: "apply_patch: Error" });
+    const trigger = screen.getByRole("button", { name: "edit: Error" });
     expect(trigger.textContent).toContain("2 files");
     expect(screen.getByText("Update")).toBeTruthy();
     expect(screen.getByText("Apply failed")).toBeTruthy();

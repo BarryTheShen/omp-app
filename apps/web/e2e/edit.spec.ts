@@ -55,14 +55,20 @@ test("renders edit and apply_patch diffs in light, dark and narrow layouts", asy
     "background-color",
     /^(rgb|oklch)/,
   );
-  await expect(page.getByRole("button", { name: "edit: Complete" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "apply_patch: Complete" })).toBeVisible();
+  await expect(
+    page.getByTestId("t1-edit-card").nth(0).getByRole("button", { name: "edit: Complete" }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("t1-edit-card").nth(1).getByRole("button", { name: "edit: Complete" }),
+  ).toBeVisible();
   await expect(page.getByTestId("t1-edit-card")).toHaveCount(4);
   await expect(page.getByTestId("t1-ast-edit-card-ast-failed")).toHaveCount(1);
   await openAllToolCards(page);
   await expect(page.getByText("patch: Review generated export")).toBeVisible();
   await expect(page.getByText("Streaming preview")).toBeVisible();
-  await expect(page.getByRole("button", { name: "apply_patch: Error" })).toContainText("2 files");
+  await expect(
+    page.getByTestId("t1-edit-card").nth(2).getByRole("button", { name: "edit: Error" }),
+  ).toContainText("2 files");
   await expect(page.getByText("Apply failed")).toBeVisible();
   await expect(page.getByText("Structural edit failed")).toBeVisible();
   await expect(
@@ -88,8 +94,12 @@ test("renders edit and apply_patch diffs in light, dark and narrow layouts", asy
     /^(rgb|oklch)/,
   );
   await openAllToolCards(darkPage);
-  await expect(darkPage.getByRole("button", { name: "edit: Complete" })).toBeVisible();
-  await expect(darkPage.getByRole("button", { name: "apply_patch: Complete" })).toBeVisible();
+  await expect(
+    darkPage.getByTestId("t1-edit-card").nth(0).getByRole("button", { name: "edit: Complete" }),
+  ).toBeVisible();
+  await expect(
+    darkPage.getByTestId("t1-edit-card").nth(1).getByRole("button", { name: "edit: Complete" }),
+  ).toBeVisible();
   await expect(
     darkPage.getByText("No files were modified — sections apply atomically."),
   ).toBeVisible();
@@ -106,8 +116,12 @@ test("renders edit and apply_patch diffs in light, dark and narrow layouts", asy
     "background-color",
     /^(rgb|oklch)/,
   );
-  await expect(page.getByRole("button", { name: "edit: Complete" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "apply_patch: Complete" })).toBeVisible();
+  await expect(
+    page.getByTestId("t1-edit-card").nth(0).getByRole("button", { name: "edit: Complete" }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("t1-edit-card").nth(1).getByRole("button", { name: "edit: Complete" }),
+  ).toBeVisible();
   await expect(page.getByText("No files were modified — sections apply atomically.")).toBeVisible();
   await expect(
     page.getByText("Duplicate rewrite pattern: legacyCall($A)", { exact: true }),

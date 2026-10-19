@@ -18,6 +18,9 @@ const MAX_PREVIEW_LINES = 12;
 const MAX_PREVIEW_CHARACTERS = 8_000;
 
 const rememberedDisclosure = new Map<string, boolean>();
+function visibleToolLabel(state: ToolCardState): string {
+  return state.label === "apply_patch" ? "edit" : state.label;
+}
 
 type VisualState = {
   readonly label: string;
@@ -82,6 +85,7 @@ export function ToolCard({
   children,
 }: ToolCardProps) {
   const contentId = useId();
+  const label = visibleToolLabel(state);
   const interruptionOutcome: ToolCardOutcome | undefined =
     state.interruption === undefined
       ? undefined
@@ -138,6 +142,7 @@ export function ToolCard({
   const isUnrecorded = state.phase === "unrecorded";
   const summary = isUnrecorded ? summarize(state) : (suppliedSummary ?? summarize(state));
   const summaryTone = isUnrecorded ? undefined : summaryClassName;
+  const visibleSummary = summary === label ? "" : summary;
 
   const rememberOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -185,7 +190,7 @@ export function ToolCard({
       <CollapsibleTrigger
         aria-controls={contentId}
         aria-expanded={open}
-        aria-label={`${state.label}: ${status.label}`}
+        aria-label={`${label}: ${status.label}`}
         className="group/tool-card-trigger my-1 flex w-full min-w-0 items-baseline gap-2 text-start font-mono text-trace outline-none [font-variant-ligatures:none] focus-visible:underline"
         data-slot="u3-tool-card-trigger"
       >
@@ -210,7 +215,7 @@ export function ToolCard({
             (state.phase === "running" || state.phase === "partial") && "animate-pulse",
           )}
         >
-          {state.label}
+          {label}
         </span>
         <span
           className={cn(
@@ -218,9 +223,9 @@ export function ToolCard({
             state.phase === "unrecorded" && "break-words",
             summaryTone,
           )}
-          title={summary}
+          title={visibleSummary}
         >
-          {summary}
+          {visibleSummary}
         </span>
         <span
           className={cn(

@@ -81,9 +81,9 @@ describe("EditCard", () => {
     );
     expandToolCards();
 
-    expect(screen.getByRole("button", { name: "apply_patch: Complete" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "edit: Complete" })).toBeTruthy();
     expect(screen.getAllByTestId("t1-edit-file")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "apply_patch: Complete" }).textContent).toContain(
+    expect(screen.getByRole("button", { name: "edit: Complete" }).textContent).toContain(
       "2 files · +2 −2",
     );
     expect(screen.getByText("patch: Review generated import")).toBeTruthy();

@@ -56,6 +56,21 @@ describe("ToolCard state grammar", () => {
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
+  test("shows apply_patch as edit and removes a repeated edit summary", () => {
+    render(
+      <ToolCard
+        summary="edit"
+        state={{
+          ...state("success", "apply-patch-label"),
+          toolName: "apply_patch",
+          label: "apply_patch",
+        }}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "edit: Complete" });
+    expect(trigger.textContent).toBe(">editComplete");
+    expect(trigger.textContent).not.toContain("apply_patch");
+  });
 
   test("remembers a manual disclosure choice per toolCallId", () => {
     const first = render(<ToolCard state={state("success", "remembered")} />);
