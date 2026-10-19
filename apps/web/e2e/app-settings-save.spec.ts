@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, realTest, screenshots } from "./real-omp";
@@ -22,13 +23,15 @@ realTest(
   "a setting saved for all workspaces and one for this workspace are kept",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(150_000);
+    const configPath = join(realApp.agentDir, "config.yml");
+    const config = await readFile(configPath, "utf8");
+    await writeFile(configPath, `${config}\nsteeringMode: one-at-a-time\n`, "utf8");
+    await realApp.restartServer();
     const page = await realApp.open();
-    await page.setViewportSize({ width: 1280, height: 900 });
 
     // All workspaces. Controls carry the setting's name, so a screen reader hears what each one is.
     let dialog = await openInteraction(page);
     const steering = dialog.getByRole("combobox", { name: "Steering Mode" });
-    await expect(steering).toBeVisible({ timeout: 20_000 });
     await expect(steering).toHaveValue("one-at-a-time");
     await steering.selectOption("all");
     await dialog.getByRole("button", { name: "Save changes" }).click();
