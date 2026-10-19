@@ -38,13 +38,12 @@ async function sessionFilesContaining(agentDir: string, text: string): Promise<s
 }
 
 /**
- * The composer card's background is the `--card` token, resolved on this page. Styles that did not load show the
- * browser's default colors, and the two would differ.
+ * The large-paste choice background is the redesign's `bg-muted/30`, resolved on this page.
  */
-async function expectCardToken(page: Page): Promise<void> {
-  const colors = await page.locator('[data-composer-card="true"]').evaluate((card) => {
+async function expectPasteChoiceSurface(page: Page): Promise<void> {
+  const colors = await page.locator('[data-composer-paste-choice="true"]').evaluate((card) => {
     const probe = document.createElement("div");
-    probe.style.backgroundColor = "var(--card)";
+    probe.style.backgroundColor = "color-mix(in oklab, var(--muted) 30%, transparent)";
     card.append(probe);
     const token = getComputedStyle(probe).backgroundColor;
     probe.remove();
@@ -106,14 +105,14 @@ realTest(
     await paste(composer, LARGE);
     await expect(page.getByText(CHOICE)).toBeVisible();
     await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
-    await expectCardToken(page);
+    await expectPasteChoiceSurface(page);
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-1291-choice-light.png") });
 
     // The app follows the browser's colour scheme live, so the same chat turns dark without a second page or chat.
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveClass(/\bdark\b/);
-    await expectCardToken(page);
+    await expectPasteChoiceSurface(page);
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-1291-choice-dark.png") });
 
@@ -132,7 +131,7 @@ realTest(
           return boxes.every((box) => box !== null && box.x + box.width <= 390);
         })
         .toBe(true);
-      await expectCardToken(page);
+      await expectPasteChoiceSurface(page);
       await waitForFiniteAnimations(page);
       await page.screenshot({ path: join(screenshots, name) });
     };
