@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { INVENTORY, validateRegistry } from "@omp-app/contracts";
+import { INVENTORY, ToolCallId, validateRegistry } from "@omp-app/contracts";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { DESCRIPTORS } from "../../../registry";
@@ -59,6 +59,31 @@ function renderFixture(fixture: T3LifecycleFixture) {
   const descriptor = T3_TOOL_DESCRIPTORS.find((candidate) => candidate.id === fixture.descriptor);
   if (!descriptor) throw new Error(`No descriptor ${fixture.descriptor}`);
   return render(<descriptor.renderer {...(fixture.input as ToolRendererProps)} />);
+}
+function fixtureNamed(name: string): T3LifecycleFixture {
+  const fixture = T3_LIFECYCLE_FIXTURES.find((candidate) => candidate.name === name);
+  if (!fixture) throw new Error(`Missing T3 fixture ${name}`);
+  return fixture;
+}
+
+function withResultDetails(
+  fixture: T3LifecycleFixture,
+  patch: Readonly<Record<string, unknown>>,
+): T3LifecycleFixture {
+  const result = fixture.input.result;
+  if (result === null || typeof result !== "object" || Array.isArray(result))
+    throw new Error(`Fixture ${fixture.name} has no result envelope`);
+  const envelope = result as Record<string, unknown>;
+  const details = envelope.details;
+  if (details === null || typeof details !== "object" || Array.isArray(details))
+    throw new Error(`Fixture ${fixture.name} has no details object`);
+  return {
+    ...fixture,
+    input: {
+      ...fixture.input,
+      result: { ...envelope, details: { ...(details as Record<string, unknown>), ...patch } },
+    },
+  };
 }
 
 function sourceFiles(): Array<{ name: string; text: string }> {
@@ -288,6 +313,165 @@ describe("T3 descriptors and W4 coverage", () => {
     const text = visibleText(container);
     expect(text).toContain("python");
     expect(text).toContain("debug-session-1");
+  });
+  test("shows a failed eval card that says its execution details were not retained", () => {
+    const fixture = fixtureNamed("success: eval: scripted no cells executed");
+    const recorded = fixture.input.result as { details: unknown };
+    const failure = T3.mapT3Failure(new Error("eval backend stopped"), "eval");
+    const failedFixture: T3LifecycleFixture = {
+      ...fixture,
+      input: {
+        ...fixture.input,
+        toolState: {
+          toolCallId: ToolCallId.parse(fixture.input.toolCallId),
+          toolName: fixture.input.toolName,
+          status: "error",
+          result: {
+            content: [{ type: "text", text: failure.appError.message }],
+            details: recorded.details,
+          },
+          isError: true,
+        },
+      },
+    };
+    const { container } = renderFixture(failedFixture);
+    openEveryFold(container);
+
+    expect(container.querySelector("[role='alert']")?.textContent).toContain(
+      "execution details were not retained in the error",
+    );
+  });
+
+  test("lists all 64 eval status events from the result", () => {
+    const fixture = T3_LIFECYCLE_FIXTURES.find(
+      (candidate) =>
+        candidate.input.toolName === "eval" &&
+        candidate.name.includes("browser call with status events") &&
+        candidate.expect.phase === "success",
+    );
+    if (!fixture) throw new Error("Missing recorded eval status-event fixture");
+    const statusEvents = Array.from({ length: 64 }, (_, index) => ({
+      op: "browser",
+      detail: `status event ${index + 1}`,
+    }));
+    const result = withResultDetails(fixture, { statusEvents });
+    const { container } = renderFixture(result);
+    openEveryFold(container);
+
+    const eventRows = container.querySelectorAll("[data-testid='t3-eval-status-events'] > div");
+    expect(eventRows).toHaveLength(64);
+    expect(eventRows[63]?.textContent).toContain("status event 64");
+  });
+
+  test("a cancelled eval call never says that evaluation finished", () => {
+    const fixture = T3_LIFECYCLE_FIXTURES.find(
+      (candidate) => candidate.input.toolName === "eval" && candidate.expect.phase === "cancelled",
+    );
+    if (!fixture) throw new Error("Missing cancelled eval fixture");
+    const { container } = renderFixture(fixture);
+    openEveryFold(container);
+
+    const alert = container.querySelector("[role='alert']")?.textContent ?? "";
+    expect(alert).toContain("Evaluation cancelled.");
+    expect(alert).not.toContain("Evaluation finished.");
+  });
+
+  test("one eval cell is labeled as one cell", () => {
+    const fixture = T3_LIFECYCLE_FIXTURES.find(
+      (candidate) =>
+        candidate.input.toolName === "eval" &&
+        candidate.name.includes("one cell that finished") &&
+        candidate.expect.phase === "success",
+    );
+    if (!fixture) throw new Error("Missing one-cell eval fixture");
+    const { container } = renderFixture(fixture);
+    const header = container.querySelector("[data-slot='u3-tool-card-trigger']")?.textContent ?? "";
+
+    expect(header).toContain("1 cell");
+    expect(header).not.toContain("1 cells");
+  });
+
+  test("the sessions action header and tooltip say Debug sessions", () => {
+    const fixture = fixtureNamed("success: scripted v18.9.1 debug sessions result");
+    const { container } = renderFixture(fixture);
+    const summary = container.querySelector("[data-slot='u3-tool-card-trigger'] span[title]");
+
+    expect(summary?.textContent).toBe("Debug sessions");
+    expect(summary?.getAttribute("title")).toBe("Debug sessions");
+  });
+
+  test("a failed debug call's first line becomes its error banner", () => {
+    const fixture = fixtureNamed("error: scripted debug details unavailable result");
+    const recorded = fixture.input.result as {
+      readonly content: readonly unknown[];
+      readonly details: unknown;
+    };
+    const scriptedFailure: T3LifecycleFixture = {
+      ...fixture,
+      input: {
+        ...fixture.input,
+        result: {
+          ...recorded,
+          content: [
+            {
+              type: "text",
+              text: "Debug details unavailable.\nThe adapter sent additional diagnostic text.",
+            },
+          ],
+        },
+      },
+    };
+    const { container } = renderFixture(scriptedFailure);
+
+    expect(container.querySelector("[role='alert']")?.textContent).toBe(
+      "Debug details unavailable.",
+    );
+    expect(container.querySelector("[data-testid='t3-debug-text']")).toBeNull();
+  });
+
+  test("a pending eval cell makes the call partial", () => {
+    const fixture = T3_LIFECYCLE_FIXTURES.find(
+      (candidate) =>
+        candidate.input.toolName === "eval" &&
+        candidate.name.includes("one cell that finished") &&
+        candidate.expect.phase === "success",
+    );
+    if (!fixture) throw new Error("Missing one-cell eval fixture");
+    const result = fixture.input.result as {
+      readonly details: {
+        readonly cells: readonly Record<string, unknown>[];
+      };
+    };
+    const pending = withResultDetails(fixture, {
+      cells: result.details.cells.map((cell, index) =>
+        index === 0 ? { ...cell, status: "pending" } : cell,
+      ),
+    });
+    const { container } = renderFixture(pending);
+
+    expect(container.querySelector("[data-slot='u3-tool-card']")?.getAttribute("data-phase")).toBe(
+      "partial",
+    );
+  });
+
+  test("an unrecognized future debug session status remains visible as returned", () => {
+    const fixture = fixtureNamed("success: scripted v18.9.1 debug sessions result");
+    const result = fixture.input.result as {
+      readonly details: {
+        readonly sessions: readonly Record<string, unknown>[];
+      };
+    };
+    const futureStatus = withResultDetails(fixture, {
+      sessions: result.details.sessions.map((session, index) =>
+        index === 0 ? { ...session, status: "paused" } : session,
+      ),
+    });
+    const { container } = renderFixture(futureStatus);
+    openEveryFold(container);
+
+    expect(container.querySelector("[data-testid='t3-debug-sessions']")?.textContent).toContain(
+      "Status: paused",
+    );
   });
 
   test("does not import a registry or execute eval, debug or computer work", () => {
