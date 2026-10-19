@@ -3,6 +3,9 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
 
+// The Fallback Trigger (retry.fallbackOn) needs omp 18.9.0 or newer; the harness default binary is older.
+realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
+
 /**
  * Issue #1202. omp 18.9.0 added `retry.fallbackOn`, the Fallback Trigger: which failed requests may switch to a
  * configured fallback model. Retry & Fallback in the Model tab shows it, and a change is saved to omp's config.yml.
