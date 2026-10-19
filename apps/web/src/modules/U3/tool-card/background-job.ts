@@ -50,8 +50,11 @@ export interface StopOutcome {
 }
 
 /** The outcome of a stop omp confirmed: the job was running, and omp stopped it. */
-export function stoppedOutcome(jobId: string): StopOutcome {
-  return { status: "stopped", sentence: `Stopped background job ${jobId}.` };
+export function stoppedOutcome(_jobId: string): StopOutcome {
+  return {
+    status: "stopped",
+    sentence: "The background command stopped before its result came back.",
+  };
 }
 
 /** The outcome of a stop for a job omp no longer lists as running: it had already finished. */

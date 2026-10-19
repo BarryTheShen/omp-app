@@ -19,7 +19,7 @@ import {
 
 const DESKTOP = { width: 1280, height: 1000 } as const;
 const NARROW = { width: 390, height: 844 } as const;
-const RUNNING_NOTE = "Running in the background";
+const RUNNING_NOTE = "Running in the background.";
 
 /** The bash card whose command contains `command`. */
 function bashCard(page: Page, command: string): Locator {
@@ -45,9 +45,11 @@ realTest(
     const stopper = bashCard(first, "sleep 120; echo job-0");
     await expect(first.getByText("background jobs started")).toBeVisible({ timeout: 120_000 });
     await openToolCard(stopper);
-    await expect(stopper).toContainText("Running in the background as job bg_1.");
+    await expect(stopper).toContainText(RUNNING_NOTE);
     await stopper.getByRole("button", { name: "Stop background job bg_1" }).click();
-    await expect(stopper.getByRole("status")).toHaveText("Stopped background job bg_1.");
+    await expect(stopper.getByRole("status")).toHaveText(
+      "The background command stopped before its result came back.",
+    );
 
     // A second browser has its own storage, so only the server can say the job was stopped.
     const second = await realApp.open();
@@ -59,7 +61,9 @@ realTest(
     const other = bashCard(second, "sleep 120; echo job-0");
     await expect(other).toBeVisible({ timeout: 120_000 });
     await openToolCard(other);
-    await expect(other.getByRole("status")).toHaveText("Stopped background job bg_1.");
+    await expect(other.getByRole("status")).toHaveText(
+      "The background command stopped before its result came back.",
+    );
     await expect(other).not.toContainText(RUNNING_NOTE);
     await expect(other.getByRole("button", { name: /^Stop background job/ })).toHaveCount(0);
     await capture(second, "fix-1518-other-browser-light.png", false);
@@ -86,9 +90,11 @@ realTest(
     const earlier = bashCard(page, "sleep 120; echo job-0");
     await expect(page.getByText("background jobs started")).toBeVisible({ timeout: 120_000 });
     await openToolCard(earlier);
-    await expect(earlier).toContainText("Running in the background as job bg_1.");
+    await expect(earlier).toContainText(RUNNING_NOTE);
     await earlier.getByRole("button", { name: "Stop background job bg_1" }).click();
-    await expect(earlier.getByRole("status")).toHaveText("Stopped background job bg_1.");
+    await expect(earlier.getByRole("status")).toHaveText(
+      "The background command stopped before its result came back.",
+    );
 
     // The app restarts, so the chat's omp process ends; the chat opens in a new process, which starts its jobs at bg_1
     // again. The old tab cannot reach the stopped app: those connection errors are expected.
@@ -102,7 +108,9 @@ realTest(
     const earlierAgain = bashCard(reopened, "sleep 120; echo job-0");
     await expect(earlierAgain).toBeVisible({ timeout: 120_000 });
     await openToolCard(earlierAgain);
-    await expect(earlierAgain).toContainText("omp stopped before its result came back");
+    await expect(earlierAgain).toContainText(
+      "The background command stopped before its result came back.",
+    );
     await expect(earlierAgain.getByRole("button", { name: /^Stop background job/ })).toHaveCount(0);
 
     // The new process runs its own job, bg_1. Its card is running and keeps its Stop: the stop made for the earlier job
@@ -112,7 +120,7 @@ realTest(
     const later = bashCard(reopened, "sleep 120; echo second-job");
     await expect(later).toBeVisible({ timeout: 120_000 });
     await openToolCard(later);
-    await expect(later).toContainText("Running in the background as job bg_1.");
+    await expect(later).toContainText(RUNNING_NOTE);
     await expect(later).not.toContainText("Stopped background job");
     const laterStop = later.getByRole("button", { name: "Stop background job bg_1" });
     await expect(laterStop).toHaveCount(1);
@@ -129,7 +137,9 @@ realTest(
 
     // The new job's own Stop still works, and then reads as stopped; the earlier card is left as it was.
     await laterStop.click();
-    await expect(later.getByRole("status")).toHaveText("Stopped background job bg_1.");
+    await expect(later.getByRole("status")).toHaveText(
+      "The background command stopped before its result came back.",
+    );
     await expect(earlierAgain.getByRole("button", { name: /^Stop background job/ })).toHaveCount(0);
   },
 );

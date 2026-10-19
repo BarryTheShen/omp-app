@@ -17,8 +17,7 @@ import {
  * in bash; the steer is sent while it sleeps (the same run the queued-messages spec drives).
  */
 
-const NOTE =
-  /Running in the background as job bg_\d+\. Its output is added to the conversation when it finishes\./;
+const NOTE = "Running in the background.";
 const OMP_NOTICE = ["Do NOT poll", "Backgrounded early", "log tailing"];
 /** Tall enough for the whole short chat: the card's sticky header then needs no scroll, and stays under the chat's top bar. */
 const DESKTOP_TALL = { width: 1280, height: 1000 } as const;

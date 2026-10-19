@@ -76,7 +76,7 @@ describe("T5 Tasks view: stopping background jobs", () => {
     );
     expect(cardOutcome).toEqual({
       status: "stopped",
-      sentence: "Stopped background job bg_1.",
+      sentence: "The background command stopped before its result came back.",
     });
     renderJobs(
       [job("bg_1", "running")],
@@ -84,7 +84,9 @@ describe("T5 Tasks view: stopping background jobs", () => {
       { stops: new Map([["bg_1", stop]]), launchedAt: new Map([["bg_1", launchedAt]]) },
     );
     expect(screen.getByText("Cancelled")).toBeTruthy();
-    expect(screen.getByText("Stopped background job bg_1.")).toBeTruthy();
+    expect(
+      screen.getByText("The background command stopped before its result came back."),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
   });
 
@@ -129,7 +131,9 @@ describe("T5 Tasks view: stopping background jobs", () => {
     renderJobs([job("bg_1", "running"), job("bg_2", "running")], gateway);
     fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
     await waitFor(() =>
-      expect(screen.getByRole("status").textContent).toBe("Stopped background job bg_1."),
+      expect(screen.getByRole("status").textContent).toBe(
+        "The background command stopped before its result came back.",
+      ),
     );
     expect(gateway).toHaveBeenCalledWith("/jobs kill bg_1");
     expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
@@ -166,7 +170,9 @@ describe("T5 Tasks view: stopping background jobs", () => {
     renderJobs([job("bg_1", "running"), job("bg_2", "running")], gateway);
     fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
     await waitFor(() =>
-      expect(screen.getByRole("status").textContent).toBe("Stopped background job bg_1."),
+      expect(screen.getByRole("status").textContent).toBe(
+        "The background command stopped before its result came back.",
+      ),
     );
     expect(screen.getByText("Cancelled")).toBeTruthy();
     expect(screen.getByText("Running")).toBeTruthy();

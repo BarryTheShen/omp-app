@@ -721,19 +721,14 @@ describe("a command omp moved to the background", () => {
     );
   }
 
-  test("says it runs in the background with its job number, and shows none of omp's words for the model", () => {
+  test("says it runs in the background without exposing its job number", () => {
     render(
       <ChatJobs view={running}>
         <BashCard rendererProps={props(backgrounded)} />
       </ChatJobs>,
     );
     expandToolCards();
-    expect(
-      screen.getByText(
-        "Running in the background as job bg_1. Its output is added to the conversation when it finishes.",
-        { exact: true },
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Running in the background.", { exact: true })).toBeTruthy();
     expect(screen.getByText("In background")).toBeTruthy();
     expect(screen.queryByText(/Do NOT poll/)).toBeNull();
     expect(screen.queryByText(/Backgrounded early/)).toBeNull();
@@ -751,7 +746,11 @@ describe("a command omp moved to the background", () => {
     expandToolCards();
     fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
     await waitFor(() =>
-      expect(screen.getByText("Stopped background job bg_1.", { exact: true })).toBeTruthy(),
+      expect(
+        screen.getByText("The background command stopped before its result came back.", {
+          exact: true,
+        }),
+      ).toBeTruthy(),
     );
     expect(run).toHaveBeenCalledWith("/jobs kill bg_1");
     expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
@@ -863,7 +862,7 @@ describe("a command omp moved to the background", () => {
     );
     expandToolCards();
     expect(
-      screen.getByText("Background job bg_1. omp stopped before its result came back.", {
+      screen.getByText("The background command stopped before its result came back.", {
         exact: true,
       }),
     ).toBeTruthy();
@@ -890,14 +889,26 @@ describe("a command omp moved to the background", () => {
     render(
       <ChatJobs
         view={running}
-        stops={[["bash-call", { status: "stopped", sentence: "Stopped background job bg_1." }]]}
+        stops={[
+          [
+            "bash-call",
+            {
+              status: "stopped",
+              sentence: "The background command stopped before its result came back.",
+            },
+          ],
+        ]}
       >
         <BashCard rendererProps={props(backgrounded)} />
       </ChatJobs>,
     );
     expandToolCards();
     expect(screen.getByText("Stopped", { exact: true })).toBeTruthy();
-    expect(screen.getByText("Stopped background job bg_1.", { exact: true })).toBeTruthy();
+    expect(
+      screen.getByText("The background command stopped before its result came back.", {
+        exact: true,
+      }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Stop background job/ })).toBeNull();
   });
 });

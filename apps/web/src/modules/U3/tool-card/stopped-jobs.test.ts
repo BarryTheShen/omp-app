@@ -8,7 +8,7 @@ describe("the outcome a card shows for a stop the server kept", () => {
   test("a stopped job reads as stopped, and a job omp had finished reads as already finished", () => {
     expect(outcomeOfRecordedStop({ jobId: "bg_1", status: "stopped", at: 1 })).toEqual({
       status: "stopped",
-      sentence: "Stopped background job bg_1.",
+      sentence: "The background command stopped before its result came back.",
     });
     expect(outcomeOfRecordedStop({ jobId: "bg_2", status: "finished", at: 1 })).toEqual({
       status: "finished",
@@ -21,7 +21,7 @@ describe("which kept stop applies to a card", () => {
   test("a stop recorded after the card's launch is the card's own stop", () => {
     expect(keptStopOutcome(stopped, 1_000)).toEqual({
       status: "stopped",
-      sentence: "Stopped background job bg_1.",
+      sentence: "The background command stopped before its result came back.",
     });
   });
 
@@ -48,7 +48,10 @@ describe("which kept stop applies to a card", () => {
 });
 
 describe("which stop a card shows", () => {
-  const kept: StopOutcome = { status: "stopped", sentence: "Stopped background job bg_1." };
+  const kept: StopOutcome = {
+    status: "stopped",
+    sentence: "The background command stopped before its result came back.",
+  };
 
   test("a stop that arrived on this page always wins over the kept stop", () => {
     const live: StopOutcome = { status: "failed", sentence: "Could not stop background job bg_1." };
@@ -65,7 +68,10 @@ describe("which stop a card shows", () => {
 
   test("the kept stop is not read at all when a stop on this page already decides the card", () => {
     let reads = 0;
-    const live: StopOutcome = { status: "stopped", sentence: "Stopped background job bg_1." };
+    const live: StopOutcome = {
+      status: "stopped",
+      sentence: "The background command stopped before its result came back.",
+    };
     expect(
       resolveStopOutcome(live, true, () => {
         reads += 1;

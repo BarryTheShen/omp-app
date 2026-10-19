@@ -17,10 +17,10 @@ describe("stopCommandFor", () => {
 });
 
 describe("stopOutcomeOf", () => {
-  test("says the job stopped when omp cancelled it", () => {
+  test("says the job stopped in plain words", () => {
     expect(stopOutcomeOf(["Cancelled background job bg_1."], "bg_1")).toEqual({
       status: "stopped",
-      sentence: "Stopped background job bg_1.",
+      sentence: "The background command stopped before its result came back.",
     });
   });
 

@@ -663,13 +663,11 @@ function backgroundNoteOf(
   view: BackgroundJobView | undefined,
   running: boolean,
 ): string {
-  if (running)
-    return `Running in the background as job ${jobId}. Its output is added to the conversation when it finishes.`;
+  if (running) return "Running in the background.";
   if (view?.kind === "failed") return `Background job ${jobId} failed.`;
   if (view?.kind === "cancelled") return `Background job ${jobId} cancelled.`;
   if (view?.kind === "finished") return `Background job ${jobId} finished.`;
-  if (view?.kind === "ended")
-    return `Background job ${jobId}. omp stopped before its result came back.`;
+  if (view?.kind === "ended") return "The background command stopped before its result came back.";
   return `Background job ${jobId}.`;
 }
 

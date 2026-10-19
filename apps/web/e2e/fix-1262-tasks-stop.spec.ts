@@ -65,7 +65,9 @@ realTest("the Tasks view stops one job, then Stop all ends the rest", async ({ r
   await page.screenshot({ path: join(screenshots, "fix-1262-running-light.png"), fullPage: true });
 
   await page.keyboard.press("Enter");
-  await expect(first.getByRole("status")).toHaveText(/^Stopped background job bg_\d+\.$/);
+  await expect(first.getByRole("status")).toHaveText(
+    "The background command stopped before its result came back.",
+  );
   await expect(first.getByRole("button", { name: /^Stop background job/ })).toHaveCount(0);
   await expect(second.getByRole("button", { name: /^Stop background job bg_\d+$/ })).toHaveCount(1);
   await expect(wait.getByRole("button", { name: "Stop all background jobs" })).toHaveCount(1);
@@ -118,9 +120,12 @@ realTest(
     await expect(stop).toHaveCount(1, { timeout: 180_000 });
     await stop.click();
     // Under load omp's answer to a subagent's stop arrived after the default 5 s, so the answer itself is awaited.
-    await expect(worker.getByRole("status")).toHaveText("Stopped background job SteerProbe.", {
-      timeout: 60_000,
-    });
+    await expect(worker.getByRole("status")).toHaveText(
+      "The background command stopped before its result came back.",
+      {
+        timeout: 60_000,
+      },
+    );
     await expect(worker.getByText("Cancelled", { exact: true })).toHaveCount(1, {
       timeout: 60_000,
     });

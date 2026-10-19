@@ -70,9 +70,12 @@ realTest(
     const stop = bash.getByRole("button", { name: /^Stop background job bg_\d+$/ });
     await expect(stop).toHaveCount(1, { timeout: 120_000 });
     await stop.click();
-    await expect(bash.getByRole("status")).toHaveText(/^Stopped background job bg_\d+\.$/, {
-      timeout: 60_000,
-    });
+    await expect(bash.getByRole("status")).toHaveText(
+      "The background command stopped before its result came back.",
+      {
+        timeout: 60_000,
+      },
+    );
 
     await page.reload();
     await expectStoppedTask(page);

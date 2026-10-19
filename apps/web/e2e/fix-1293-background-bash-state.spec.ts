@@ -19,7 +19,7 @@ import {
 
 const DESKTOP = { width: 1280, height: 1000 } as const;
 const NARROW = { width: 390, height: 844 } as const;
-const RUNNING_NOTE = "Running in the background";
+const RUNNING_NOTE = "Running in the background.";
 
 /** The bash card whose command contains `command`. */
 function bashCard(page: Page, command: string): Locator {
@@ -76,7 +76,7 @@ realTest(
     const earlier = bashCard(page, "sleep 120; echo job-0");
     await expect(page.getByText("background jobs started")).toBeVisible({ timeout: 120_000 });
     await openToolCard(earlier);
-    await expect(earlier).toContainText("Running in the background as job bg_1.");
+    await expect(earlier).toContainText(RUNNING_NOTE);
 
     // The app restarts, so its omp process ends. The chat is opened again in a new process, which starts at bg_1 again.
     // The old tab cannot reach the stopped app: those connection errors are expected.
@@ -90,7 +90,9 @@ realTest(
     const earlierAgain = bashCard(reopened, "sleep 120; echo job-0");
     await expect(earlierAgain).toBeVisible({ timeout: 120_000 });
     await openToolCard(earlierAgain);
-    await expect(earlierAgain).toContainText("omp stopped before its result came back");
+    await expect(earlierAgain).toContainText(
+      "The background command stopped before its result came back.",
+    );
     await expect(earlierAgain).not.toContainText(RUNNING_NOTE);
     await expect(earlierAgain.getByRole("button", { name: /^Stop background job/ })).toHaveCount(0);
 
@@ -100,9 +102,11 @@ realTest(
     const later = bashCard(reopened, "sleep 120; echo second-job");
     await expect(later).toBeVisible({ timeout: 120_000 });
     await openToolCard(later);
-    await expect(later).toContainText("Running in the background as job bg_1.");
+    await expect(later).toContainText(RUNNING_NOTE);
     await later.getByRole("button", { name: "Stop background job bg_1" }).click();
-    await expect(later.getByRole("status")).toHaveText("Stopped background job bg_1.");
+    await expect(later.getByRole("status")).toHaveText(
+      "The background command stopped before its result came back.",
+    );
     await expect(earlierAgain).not.toContainText(RUNNING_NOTE);
     await expect(earlierAgain.getByRole("button", { name: /^Stop background job/ })).toHaveCount(0);
     await capture(reopened, "fix-1293-restart-light.png", false);
@@ -128,7 +132,7 @@ realTest(
     const card = bashCard(page, "sleep 120; echo job-0");
     await expect(page.getByText("background jobs started")).toBeVisible({ timeout: 120_000 });
     await openToolCard(card);
-    await expect(card).toContainText("Running in the background as job bg_1.");
+    await expect(card).toContainText(RUNNING_NOTE);
 
     // A plain reload: omp keeps running, so the job is still this chat's own and still running.
     realApp.allowProblem(/WebSocket connection to .* failed/);
@@ -140,11 +144,13 @@ realTest(
     const reloaded = bashCard(page, "sleep 120; echo job-0");
     await expect(reloaded).toBeVisible({ timeout: 120_000 });
     await openToolCard(reloaded);
-    await expect(reloaded).toContainText("Running in the background as job bg_1.");
+    await expect(reloaded).toContainText(RUNNING_NOTE);
     const stop = reloaded.getByRole("button", { name: "Stop background job bg_1" });
     await expect(stop).toHaveCount(1);
     await stop.click();
-    await expect(reloaded.getByRole("status")).toHaveText("Stopped background job bg_1.");
+    await expect(reloaded.getByRole("status")).toHaveText(
+      "The background command stopped before its result came back.",
+    );
   },
 );
 

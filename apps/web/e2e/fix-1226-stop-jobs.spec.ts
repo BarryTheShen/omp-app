@@ -40,7 +40,9 @@ realTest("Stop ends that background job and the card says so", async ({ realApp 
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: join(screenshots, "fix-1226-running-light.png"), fullPage: true });
   await stop.click();
-  await expect(card.getByRole("status")).toHaveText(/^Stopped background job bg_\d+\.$/);
+  await expect(card.getByRole("status")).toHaveText(
+    "The background command stopped before its result came back.",
+  );
   await expect(card.getByRole("button", { name: /^Stop/ })).toHaveCount(0);
   await expect(card).toContainText(/Background job bg_\d+\./);
   await expect(card.getByText("Stopped", { exact: true })).toBeVisible();
@@ -68,10 +70,14 @@ realTest("Stop on one card leaves the other background job running", async ({ re
   const firstStop = first.getByRole("button", { name: /^Stop background job bg_\d+$/ });
   await expect(firstStop).toHaveCount(1);
   await firstStop.click();
-  await expect(first.getByRole("status")).toHaveText(/^Stopped background job bg_\d+\.$/);
-  await expect(second).toContainText(/Running in the background as job bg_\d+/);
+  await expect(first.getByRole("status")).toHaveText(
+    "The background command stopped before its result came back.",
+  );
+  await expect(second).toContainText("Running in the background.");
   const stillRunning = second.getByRole("button", { name: /^Stop background job bg_\d+$/ });
   await expect(stillRunning).toHaveCount(1);
   await stillRunning.click();
-  await expect(second.getByRole("status")).toHaveText(/^Stopped background job bg_\d+\.$/);
+  await expect(second.getByRole("status")).toHaveText(
+    "The background command stopped before its result came back.",
+  );
 });
