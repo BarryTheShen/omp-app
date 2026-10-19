@@ -38,6 +38,21 @@ describe("T7 fallback", () => {
     expect(screen.getByText(/long string/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Show raw details" })).toBeTruthy();
   });
+  test("uses the app wording for a host status that is unavailable", () => {
+    render(<T7ToolFallback {...props({ status: "unavailable" })} />);
+    expect(screen.getByText("This tool is not available in the app.")).toBeTruthy();
+  });
+  test("keeps artifact ids in data while using a plain saved-result label", () => {
+    const artifactProps = {
+      ...props({ content: [{ type: "text", text: "saved" }], details: {} }),
+      outputMeta: { artifactId: "artifact-internal-id" },
+    } as unknown as ToolRendererProps;
+    render(<T7ToolFallback {...artifactProps} />);
+    expandToolCards();
+    const label = screen.getByText("A saved result is available.");
+    expect(label.getAttribute("data-artifact-id")).toBe("artifact-internal-id");
+    expect(screen.queryByText("Artifact available: artifact-internal-id")).toBeNull();
+  });
 
   test("maps host cancellation without executing or exposing raw error text in summary", () => {
     render(
@@ -116,8 +131,14 @@ describe("T7 fallback for a finished call with no result", () => {
   test("reads as finished and says no result was recorded, never Streaming", () => {
     render(<T7ToolFallback {...{ ...props(undefined), toolName: "yield" }} />);
     expect(screen.getByTestId("tool-state-chip-unrecorded").textContent).toContain("Finished");
-    expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
+    expect(
+      screen.getByTestId("t7-fallback-t7-host-1").getAttribute("data-t7-fallback-summary"),
+    ).toBe("No result recorded");
     expect(screen.queryByText("Streaming")).toBeNull();
+  });
+  test("keeps the exact unrecorded summary visible", () => {
+    render(<T7ToolFallback {...{ ...props(undefined), toolName: "yield" }} />);
+    expect(screen.getByText("No result recorded", { exact: true })).toBeTruthy();
   });
 });
 

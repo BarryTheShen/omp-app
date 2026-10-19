@@ -3,24 +3,47 @@ import type { ToolRenderer, ToolRendererProps } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { decodeResolve, decodeResolveArgs } from "./models";
 
-type ResolveStatus = "approved" | "rejected" | "pending" | "unrecorded";
+type ResolveStatus = "approved" | "rejected" | "cancelled" | "error" | "pending" | "unrecorded";
 
 export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRendererProps }) {
   const state = normalizeToolRendererProps(rendererProps);
   const output = state.result ?? state.partialResult;
-  const decoded = decodeResolve(output);
+  const envelope =
+    output !== null && typeof output === "object" && !Array.isArray(output) ? output : undefined;
+  const detailsSource = envelope !== undefined && "details" in envelope ? envelope.details : output;
+  const decoded = decodeResolve(detailsSource);
   const details = decoded.ok ? decoded.value : undefined;
   const requested = decodeResolveArgs(state.args);
   const rejectedTool = state.toolName === "reject";
+  const hasRecordedResult = state.result !== undefined;
+  const action =
+    details?.action ??
+    (hasRecordedResult
+      ? rejectedTool
+        ? "discard"
+        : "apply"
+      : requested.ok && requested.value.action !== undefined
+        ? requested.value.action
+        : rejectedTool
+          ? "discard"
+          : "apply");
+  const label = details?.label ?? "the staged change";
+  const source = details?.sourceToolName ?? "staged change";
   const status = resolveStatus(state.phase, rejectedTool, details?.action);
-  const action = details?.action ?? (rejectedTool ? "discard" : "apply");
-  const source = details?.sourceToolName ?? details?.label ?? "host action";
-  // The reason omp recorded; a call with no result still shows the reason its arguments carry.
   const reason =
     details?.reason ??
-    (requested.ok ? requested.value.reason : undefined) ??
-    (state.phase === "running" ? "Waiting for the staged decision." : "No reason provided.");
-
+    (hasRecordedResult
+      ? "No reason provided."
+      : requested.ok && requested.value.reason !== undefined
+        ? requested.value.reason
+        : state.phase === "running"
+          ? "Waiting for the staged decision."
+          : "No reason provided.");
+  const summary =
+    hasRecordedResult &&
+    (state.phase === "success" || state.phase === "error" || state.phase === "cancelled")
+      ? `${action === "discard" ? "Discarded" : "Applied"}: ${label}`
+      : `${action === "discard" ? "Discard" : "Apply"} the staged change`;
   const hideRawDetails =
     state.phase === "running" || state.phase === "partial"
       ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
@@ -32,7 +55,7 @@ export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRen
         className={hideRawDetails}
         rawResult={rawText(state.result ?? state.partialResult)}
         state={state}
-        summary={`${action} · ${source}`}
+        summary={summary}
       >
         <section
           aria-label={`${status} staged action`}
@@ -42,16 +65,11 @@ export function ResolveCard({ rendererProps }: { readonly rendererProps: ToolRen
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className={`text-sm font-medium ${statusTextTone(status)}`}>
-              {statusLabel(status)}
+              {statusLabel(status, action)}
             </span>
             <span className="text-muted-foreground pe-1 text-xs">Source: {source}</span>
           </div>
           <p className="text-foreground mt-1 text-xs">{reason}</p>
-          {state.phase === "error" && (
-            <p className="text-destructive mt-2 text-xs font-medium" role="alert">
-              The staged action failed; it was not accepted.
-            </p>
-          )}
           {!decoded.ok &&
             output !== undefined &&
             state.phase !== "running" &&
@@ -74,14 +92,20 @@ function resolveStatus(
   action: "apply" | "discard" | undefined,
 ): ResolveStatus {
   if (phase === "running" || phase === "partial") return "pending";
-  if (phase === "error" || phase === "cancelled") return "rejected";
+  if (phase === "cancelled") return "cancelled";
+  if (phase === "error") return "error";
   if (phase === "unrecorded") return "unrecorded";
   return rejectedTool || action === "discard" ? "rejected" : "approved";
 }
 
-function statusLabel(status: ResolveStatus): string {
+function statusLabel(status: ResolveStatus, action: "apply" | "discard"): string {
   if (status === "pending") return "Pending decision";
   if (status === "unrecorded") return "No result recorded";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "error")
+    return action === "discard"
+      ? "Could not discard the staged change."
+      : "Could not apply the staged change.";
   return status === "approved" ? "Approved" : "Rejected";
 }
 

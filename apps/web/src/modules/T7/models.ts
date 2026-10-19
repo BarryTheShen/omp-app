@@ -62,7 +62,10 @@ export const CheckpointArgsSchema = z.looseObject({ goal: z.string() });
 export type CheckpointArgs = z.infer<typeof CheckpointArgsSchema>;
 export const RewindArgsSchema = z.looseObject({ report: z.string() });
 export type RewindArgs = z.infer<typeof RewindArgsSchema>;
-export const ResolveArgsSchema = z.looseObject({ reason: z.string().optional() });
+export const ResolveArgsSchema = z.looseObject({
+  action: z.enum(["apply", "discard"]).optional(),
+  reason: z.string().optional(),
+});
 export type ResolveArgs = z.infer<typeof ResolveArgsSchema>;
 
 /**

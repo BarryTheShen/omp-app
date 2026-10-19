@@ -124,8 +124,11 @@ function ScanDetails({
       {details.cancelled === false && <p>The scan was not running.</p>}
       {finding?.validationStatus !== undefined && (
         <p className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-foreground truncate">
-            {finding.id ? `Finding ${finding.id}` : "Finding"}
+          <span
+            className="text-foreground truncate"
+            {...(finding.id === undefined ? {} : { "data-finding-id": finding.id })}
+          >
+            Finding 1
           </span>
           <span className={`${CHIP} ${TONES[VALIDATION[finding.validationStatus].tone]}`}>
             {VALIDATION[finding.validationStatus].label}

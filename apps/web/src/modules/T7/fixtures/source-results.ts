@@ -220,22 +220,22 @@ export const T7_SOURCE_RESULTS: readonly RealToolResult[] = [
     toolName: "host_tool",
     args: { toolName: "Scrubbed host tool" },
     result: {
-      content: [{ type: "text", text: "Host tool unavailable." }],
+      content: [{ type: "text", text: "This tool is not available in the app." }],
       details: { status: "unavailable", toolName: "Scrubbed host tool" },
     },
     isError: false,
-    shows: ["Host tool unavailable"],
+    shows: ["This tool is not available in the app."],
   },
   {
     name: "[scripted] host URI unavailable empty result",
     toolName: "host_uri",
     args: { operation: "read", url: "local://scrubbed" },
     result: {
-      content: [{ type: "text", text: "Host URI unavailable." }],
+      content: [{ type: "text", text: "This tool is not available in the app." }],
       details: { status: "unavailable", operation: "read", url: "local://scrubbed" },
     },
     isError: false,
-    shows: ["Host URI unavailable"],
+    shows: ["This tool is not available in the app."],
   },
   {
     name: "[scripted] custom fallback empty result",

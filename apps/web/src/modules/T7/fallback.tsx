@@ -39,11 +39,19 @@ function hostStatus(props: ToolRendererProps, state: ToolCardState): string | un
   const raw = state.result ?? state.partialResult ?? props.result;
   if (state.toolName === "host_tool") {
     const decoded = decodeHostTool(raw);
-    if (decoded.ok && decoded.value.status) return `Host tool: ${decoded.value.status}`;
+    if (decoded.ok && decoded.value.status) {
+      return decoded.value.status === "unavailable"
+        ? "This tool is not available in the app."
+        : `Host tool: ${decoded.value.status}`;
+    }
   }
   if (state.toolName === "host_uri") {
     const decoded = decodeHostUri(raw);
-    if (decoded.ok && decoded.value.status) return `Host URI: ${decoded.value.status}`;
+    if (decoded.ok && decoded.value.status) {
+      return decoded.value.status === "unavailable"
+        ? "This tool is not available in the app."
+        : `Host URI: ${decoded.value.status}`;
+    }
   }
   return undefined;
 }
@@ -143,7 +151,11 @@ function SafeDetails({
           Unavailable
         </span>
       )}
-      {artifact && <p className="text-muted-foreground text-xs">Artifact available: {artifact}</p>}
+      {artifact && (
+        <p className="text-muted-foreground text-xs" data-artifact-id={artifact}>
+          A saved result is available.
+        </p>
+      )}
       <ArgumentRows args={rawArgs} />
       {text !== "" && <TextOutput testId="t7-fallback-text" text={text} />}
       {images.length > 0 && <ResultImages alt="Picture returned by the tool" previews={images} />}
@@ -242,7 +254,11 @@ export const T7ToolFallback: ToolRenderer = (props) => {
       ? "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
       : "[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-status']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden";
   return (
-    <div data-testid={`t7-fallback-${state.toolCallId}`} data-tool-name={state.toolName}>
+    <div
+      data-testid={`t7-fallback-${state.toolCallId}`}
+      data-tool-name={state.toolName}
+      data-t7-fallback-summary={summary}
+    >
       <ToolCard className={cardClassName} state={shellState} summary={summary}>
         <SafeDetails props={props} state={state} />
       </ToolCard>

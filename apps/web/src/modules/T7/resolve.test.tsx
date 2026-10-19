@@ -10,99 +10,150 @@ function props(
   toolName: "resolve" | "reject",
   result: unknown,
   status: ToolRendererProps["status"] = { type: "complete" },
+  args: Record<string, unknown> = { action: toolName === "resolve" ? "apply" : "discard" },
 ): ToolRendererProps {
   return {
     type: "tool-call",
     toolCallId: `${toolName}-1`,
     toolName,
-    args: { action: toolName === "resolve" ? "apply" : "discard" },
-    argsText: JSON.stringify({ action: toolName }),
+    args,
+    argsText: JSON.stringify(args),
     result,
     status,
   } as unknown as ToolRendererProps;
 }
 
+const discardEnvelope = {
+  content: [{ type: "text", text: "Discarded: Edit. Reason: R" }],
+  details: { action: "discard", reason: "R", sourceToolName: "ast_edit", label: "Edit" },
+};
+
 describe("ResolveCard", () => {
-  test("renders pending staged action and source/reason", () => {
+  test("uses the action argument while running and shows the waiting reason", () => {
     render(
       <ResolveCard
         rendererProps={props(
           "resolve",
-          { action: "apply", reason: "Approve device access", sourceToolName: "host_tool" },
+          undefined,
           { type: "running" },
+          {
+            action: "apply",
+            reason: "Approve device access",
+          },
         )}
       />,
     );
     expandToolCards();
     const card = screen.getByTestId("t7-resolve-status-resolve-1");
-    expect(card.getAttribute("data-status")).toBe("pending");
     expect(card.textContent).toContain("Pending decision");
-    expect(card.textContent).toContain("host_tool");
+    expect(screen.getByText("Apply the staged change")).toBeTruthy();
+    expect(card.textContent).toContain("Pending decision");
     expect(card.textContent).toContain("Approve device access");
   });
 
-  test("renders approved resolve and rejected reject with status tones", () => {
-    render(
-      <>
-        <ResolveCard
-          rendererProps={props("resolve", { action: "apply", reason: "Accepted", label: "URI" })}
-        />
-        <ResolveCard
-          rendererProps={props("reject", { action: "discard", reason: "Denied", label: "URI" })}
-        />
-      </>,
-    );
-    expandToolCards();
-    expect(screen.getByTestId("t7-resolve-status-resolve-1").getAttribute("data-status")).toBe(
-      "approved",
-    );
-    expect(screen.getByTestId("t7-resolve-status-reject-1").getAttribute("data-status")).toBe(
-      "rejected",
-    );
-    expect(screen.getByText("Accepted")).toBeTruthy();
-    expect(screen.getByText("Denied")).toBeTruthy();
-  });
-
-  test("failed result never reads as accepted and malformed details stay visible", () => {
+  test("decodes omp's exact result envelope and uses details label/action instead of args", () => {
     render(
       <ResolveCard
         rendererProps={props(
           "resolve",
-          { unexpected: true },
+          discardEnvelope,
+          { type: "complete" },
+          {
+            action: "apply",
+            reason: "wrong argument reason",
+          },
+        )}
+      />,
+    );
+    expandToolCards();
+    expect(screen.getByText("Discarded: Edit")).toBeTruthy();
+    expect(screen.getByTestId("t7-resolve-status-resolve-1").textContent).toContain("R");
+    expect(screen.queryByText("Applied: the staged change")).toBeNull();
+    expect(screen.queryByText("wrong argument reason")).toBeNull();
+  });
+  test("a completed apply result is explicitly approved, while reject uses the tool name", () => {
+    render(
+      <>
+        <ResolveCard
+          rendererProps={props("resolve", {
+            content: [{ type: "text", text: "Applied: Edit" }],
+            details: { action: "apply", label: "Edit" },
+          })}
+        />
+        <ResolveCard
+          rendererProps={props("reject", {
+            content: [{ type: "text", text: "Discarded: Edit" }],
+            details: {},
+          })}
+        />
+      </>,
+    );
+    expandToolCards();
+    expect(screen.getByTestId("t7-resolve-status-resolve-1").textContent).toContain("Approved");
+    expect(screen.getByTestId("t7-resolve-status-reject-1").textContent).toContain("Rejected");
+  });
+
+  test("uses plain cancellation and action-specific error words", () => {
+    render(
+      <>
+        <ResolveCard
+          rendererProps={props("resolve", undefined, { type: "incomplete", reason: "cancelled" })}
+        />
+        <ResolveCard
+          rendererProps={props(
+            "reject",
+            {
+              content: [{ type: "text", text: "Could not discard" }],
+              details: { action: "discard", label: "Edit" },
+            },
+            { type: "incomplete", reason: "error" },
+          )}
+        />
+      </>,
+    );
+    expandToolCards();
+    expect(screen.getByTestId("t7-resolve-status-resolve-1").textContent).toContain("Cancelled");
+    expect(screen.getByTestId("t7-resolve-status-reject-1").textContent).toContain(
+      "Could not discard the staged change.",
+    );
+    expect(screen.queryByText("Rejected")).toBeNull();
+  });
+
+  test("an apply error says it could not apply the staged change", () => {
+    render(
+      <ResolveCard
+        rendererProps={props(
+          "resolve",
+          {
+            content: [{ type: "text", text: "failure" }],
+            details: { action: "apply", label: "Edit" },
+          },
           { type: "incomplete", reason: "error" },
         )}
       />,
     );
     expandToolCards();
-    expect(screen.getByTestId("t7-resolve-status-resolve-1").getAttribute("data-status")).toBe(
-      "rejected",
-    );
-    expect(
-      screen.getAllByRole("alert").some((item) => item.textContent?.includes("not accepted")),
-    ).toBe(true);
+    expect(screen.getByText("Could not apply the staged change.")).toBeTruthy();
   });
-});
 
-describe("ResolveCard with no result recorded", () => {
-  test("says no result was recorded and never reports an approval nobody gave", () => {
-    render(<ResolveCard rendererProps={props("resolve", undefined)} />);
-    expandToolCards();
-    expect(screen.getAllByText("No result recorded").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Approved")).toBeNull();
-  });
-  test("reads the reason from its arguments, with no malformed alert", () => {
-    const call = props("resolve", undefined);
+  test("malformed details preserve the raw envelope and show a safe alert", () => {
     render(
       <ResolveCard
-        rendererProps={{
-          ...call,
-          args: { action: "apply", reason: "Approve device access" },
-          argsText: '{"action":"apply","reason":"Approve device access"}',
-        }}
+        rendererProps={props(
+          "resolve",
+          {
+            content: [{ type: "text", text: "raw" }],
+            details: { action: "not-an-action" },
+          },
+          { type: "incomplete", reason: "error" },
+        )}
       />,
     );
-    expect(screen.getByText("Approve device access")).toBeTruthy();
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByText("No reason provided.")).toBeNull();
+    expandToolCards();
+    expect(
+      screen
+        .getAllByRole("alert")
+        .some((alert) => alert.textContent?.includes("malformed") === true),
+    ).toBe(true);
   });
 });

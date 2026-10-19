@@ -191,9 +191,23 @@ describe("SecurityScanCard", () => {
     expect(header().textContent).toContain("Validate finding F-12");
     const chip = screen.getByText("Confirmed");
     expect(chip.className).toContain("bg-danger-surface");
-    expect(screen.getByText("Finding F-12")).toBeTruthy();
+    expect(screen.getByText("Finding 1").getAttribute("data-finding-id")).toBe("F-12");
   });
 
+  test("labels a rejected finding as Rejected, not Confirmed", () => {
+    render(
+      <SecurityScanCard
+        rendererProps={props(
+          { action: "validate", finding_id: "F-13" },
+          scanResult({ action: "validate", finding: { id: "F-13", validationStatus: "rejected" } }),
+        )}
+      />,
+    );
+    expandToolCards();
+    expect(screen.getByText("Finding 1").getAttribute("data-finding-id")).toBe("F-13");
+    expect(screen.getByText("Rejected")).toBeTruthy();
+    expect(screen.queryByText("Confirmed")).toBeNull();
+  });
   test("a failed validation and an operation error each show once", () => {
     render(
       <SecurityScanCard
