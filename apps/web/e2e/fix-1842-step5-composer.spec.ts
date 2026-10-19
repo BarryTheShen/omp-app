@@ -293,7 +293,7 @@ async function assertMetrics(
     expect(metrics.card.width, `${viewport.name}: card width`).toBe(672);
     expect(metrics.card.height, `${viewport.name}: card with attachment strip`).toBeGreaterThan(82);
   } else {
-    expect(metrics.card.width, `${viewport.name}: card width`).toBe(342);
+    expect(metrics.card.width, `${viewport.name}: card width`).toBe(358);
     expect(
       metrics.card.height,
       `${viewport.name}: wrapped card with attachment strip`,

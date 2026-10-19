@@ -109,6 +109,16 @@ async function assertFoundation({ page, fontRequests }: ThemedPage, theme: Theme
     h2.remove();
     const sidebar = document.querySelector('[aria-label="Sessions"]');
     const bodyStyle = getComputedStyle(document.body);
+    const railRows = [...document.querySelectorAll<HTMLElement>('[data-slot="r1-session-row"]')];
+    const railRow = railRows[0];
+    const secondRailRow = railRows[1];
+    const railRowButton = railRow?.querySelector<HTMLElement>("button");
+    const railRowStyle = railRow ? getComputedStyle(railRow) : null;
+    const railRowButtonStyle = railRowButton ? getComputedStyle(railRowButton) : null;
+    const railRowGap =
+      railRow !== undefined && secondRailRow !== undefined
+        ? secondRailRow.getBoundingClientRect().top - railRow.getBoundingClientRect().bottom
+        : 0;
     return {
       background: bodyStyle.backgroundColor,
       backgroundToken: resolveToken("--background"),
@@ -139,6 +149,14 @@ async function assertFoundation({ page, fontRequests }: ThemedPage, theme: Theme
         small: measureShadow("shadow-sm"),
         overlay: measureShadow("shadow-overlay"),
       },
+      railRow: railRow
+        ? {
+            height: railRow.getBoundingClientRect().height,
+            radius: railRowStyle?.borderRadius ?? "",
+            fontSize: railRowButtonStyle?.fontSize ?? "",
+          }
+        : null,
+      railRowGap,
       maxWidth,
       headingWeights,
       publicSansLoaded:
@@ -178,6 +196,14 @@ async function assertFoundation({ page, fontRequests }: ThemedPage, theme: Theme
   expect(metrics.typography.trace).toMatchObject({ fontSize: "12px", lineHeight: "19.5px" });
   expect(metrics.typography.code).toMatchObject({ fontSize: "12.5px", lineHeight: "20.3125px" });
   expect(metrics.typography.lg).toMatchObject({ fontSize: "18px", lineHeight: "28px" });
+  if (metrics.railRow === null) throw new Error("the session rail row was not rendered");
+  expect(metrics.railRow.height).toBe(48);
+  expect(metrics.railRow.radius).toBe("8px");
+  expect(metrics.railRow.fontSize).toBe("13px");
+  expect(metrics.railRowGap).toBe(2);
+  process.stdout.write(
+    `Rail row (${theme}, ${page.viewportSize()?.width}px) | 48px high app row (document demo 32px; time line retained), 13px, 8px radius, 2px gap | ${metrics.railRow.height}px high, ${metrics.railRow.fontSize}, ${metrics.railRow.radius}, ${metrics.railRowGap}px gap | ${metrics.railRow.height - 48}px, ${Number.parseFloat(metrics.railRow.fontSize) - 13}px, ${Number.parseFloat(metrics.railRow.radius) - 8}px, ${metrics.railRowGap - 2}px\n`,
+  );
   expect(metrics.radii).toEqual({
     thread: "16px",
     surface: "10px",

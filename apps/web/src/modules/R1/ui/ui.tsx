@@ -741,7 +741,7 @@ export function SessionCatalogSidebar({
                       <ListRow
                         title="New chat"
                         detail={
-                          <span className="text-meta text-muted-foreground flex w-full min-w-0 items-center gap-1">
+                          <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground flex w-full min-w-0 items-center gap-1">
                             <Loader2Icon
                               aria-hidden="true"
                               className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
@@ -914,7 +914,7 @@ export function SessionCatalogSidebar({
                                   {marker.text}
                                 </span>
                               )}
-                              <span className="text-meta text-muted-foreground flex w-full min-w-0 items-center gap-1 truncate">
+                              <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground flex w-full min-w-0 items-center gap-1 truncate">
                                 {running && (
                                   <span className="flex shrink-0 items-center" title="Running">
                                     <Loader2Icon

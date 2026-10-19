@@ -11,6 +11,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Button } from "@/components/ui/button";
@@ -161,7 +162,7 @@ function SidebarHeader({
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-sidebar-border px-4">
       {side === "left" ? (
         <>
-          <img alt="" className="size-5 shrink-0" src="/favicon.svg" />
+          <img alt="" className="size-4 shrink-0" src="/favicon.svg" />
           <span className="text-sm font-medium">omp</span>
           <h2 className="sr-only">{label}</h2>
         </>
@@ -216,6 +217,10 @@ export function AppShell({
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [drawer, setDrawer] = useState<Drawer>(null);
+  const focusDrawerOnOpen = useRef(false);
+  const sessionsSidebarRef = useRef<HTMLElement | null>(null);
+  const panelsSidebarRef = useRef<HTMLElement | null>(null);
+  const returnFocusSide = useRef<Drawer>(null);
   const leftShown = isNarrow ? drawer === "left" : leftOpen;
   const rightShown = isNarrow ? drawer === "right" : rightOpen;
   const showRightSidebar = useCallback(() => {
@@ -227,16 +232,88 @@ export function AppShell({
     [rightShown, showRightSidebar],
   );
 
-  // A drawer belongs to the narrow layout only: the wide layout never has one open.
   useEffect(() => {
-    if (!isNarrow) setDrawer(null);
+    if (!isNarrow) {
+      setDrawer(null);
+      returnFocusSide.current = null;
+    }
   }, [isNarrow]);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || isEditableTarget(event.target)) return;
+    if (!drawer) {
+      const side = returnFocusSide.current;
+      returnFocusSide.current = null;
+      if (isNarrow && side) {
+        document.querySelector<HTMLButtonElement>(`[data-shell-sidebar-toggle="${side}"]`)?.focus();
+      }
+      return;
+    }
 
-      if (event.key === "Escape" && isNarrow) {
+    const shouldFocus = focusDrawerOnOpen.current;
+    focusDrawerOnOpen.current = false;
+    const sidebar = drawer === "left" ? sessionsSidebarRef.current : panelsSidebarRef.current;
+    if (!sidebar) return;
+    let focusFrame = 0;
+    const focusCollapse = (attempt: number) => {
+      if (!shouldFocus) return;
+      const collapse = sidebar.querySelector<HTMLButtonElement>("[data-shell-sidebar-collapse]");
+      if (collapse && !collapse.closest("[inert]")) {
+        collapse.focus();
+        if (document.activeElement === collapse || attempt >= 4) return;
+      }
+      if (attempt < 4) focusFrame = requestAnimationFrame(() => focusCollapse(attempt + 1));
+    };
+    if (shouldFocus) {
+      focusCollapse(0);
+      if (document.activeElement !== sidebar.querySelector("[data-shell-sidebar-collapse]"))
+        focusFrame = requestAnimationFrame(() => focusCollapse(1));
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        sidebar.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter(
+        (element) =>
+          element.tabIndex >= 0 &&
+          element.getAttribute("aria-hidden") !== "true" &&
+          !element.closest("[inert]") &&
+          (element.checkVisibility?.() ?? true),
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        sidebar.focus();
+        return;
+      }
+      const first =
+        sidebar.querySelector<HTMLElement>("[data-shell-sidebar-collapse]") ?? focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !sidebar.contains(active))) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && (active === last || !sidebar.contains(active))) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+
+    sidebar.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      sidebar.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [drawer, isNarrow]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+
+      if (isEditableTarget(event.target)) return;
+      if (event.key === "Escape" && isNarrow && drawer) {
+        returnFocusSide.current = drawer;
         setDrawer(null);
         return;
       }
@@ -246,34 +323,52 @@ export function AppShell({
 
       event.preventDefault();
       if (event.shiftKey) {
-        if (isNarrow) setDrawer((current) => (current === "right" ? null : "right"));
+        if (isNarrow)
+          setDrawer((current) => {
+            focusDrawerOnOpen.current = true;
+            if (current === "right") returnFocusSide.current = "right";
+            return current === "right" ? null : "right";
+          });
         else setRightOpen((open) => !open);
       } else {
-        if (isNarrow) setDrawer((current) => (current === "left" ? null : "left"));
+        if (isNarrow)
+          setDrawer((current) => {
+            focusDrawerOnOpen.current = true;
+            if (current === "left") returnFocusSide.current = "left";
+            return current === "left" ? null : "left";
+          });
         else setLeftOpen((open) => !open);
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isNarrow]);
+  }, [drawer, isNarrow]);
 
   const toggleLeft = () => {
-    if (isNarrow) setDrawer((current) => (current === "left" ? null : "left"));
-    else setLeftOpen((open) => !open);
+    if (isNarrow) {
+      focusDrawerOnOpen.current = true;
+      setDrawer("left");
+    } else setLeftOpen((open) => !open);
   };
   const toggleRight = () => {
-    if (isNarrow) setDrawer((current) => (current === "right" ? null : "right"));
-    else setRightOpen((open) => !open);
+    if (isNarrow) {
+      focusDrawerOnOpen.current = true;
+      setDrawer("right");
+    } else setRightOpen((open) => !open);
   };
   // A side's own arrow closes it. In the narrow layout a drawer closes by leaving no drawer open.
   const closeLeft = () => {
-    if (isNarrow) setDrawer(null);
-    else setLeftOpen(false);
+    if (isNarrow) {
+      returnFocusSide.current = "left";
+      setDrawer(null);
+    } else setLeftOpen(false);
   };
   const closeRight = () => {
-    if (isNarrow) setDrawer(null);
-    else setRightOpen(false);
+    if (isNarrow) {
+      returnFocusSide.current = "right";
+      setDrawer(null);
+    } else setRightOpen(false);
   };
 
   const sidebarTrack = (width: number, open: boolean) =>
@@ -302,11 +397,15 @@ export function AppShell({
           style={{ zIndex: zIndexTokens.overlay - 1 }}
           tabIndex={-1}
           type="button"
-          onClick={() => setDrawer(null)}
+          onClick={() => {
+            returnFocusSide.current = drawer;
+            setDrawer(null);
+          }}
         />
       )}
 
       <nav
+        ref={sessionsSidebarRef}
         aria-hidden={!leftShown}
         aria-label="Sessions"
         className={cn(
@@ -370,7 +469,7 @@ export function AppShell({
           data-shell-region="composer"
         >
           {/* The composer shares the conversation's width, so its edges line up with the messages. */}
-          <div className="mx-auto w-full max-w-(--layout-thread-width) px-6 py-3 group-has-[[data-empty-chat='true']]/main:py-0">
+          <div className="mx-auto w-full max-w-(--layout-thread-width) px-4 py-3 md:px-6 group-has-[[data-empty-chat='true']]/main:py-0">
             {composer}
           </div>
         </section>
@@ -382,6 +481,7 @@ export function AppShell({
 
       {/* Its own column: a hidden sessions sidebar must not pull this one into the first column. */}
       <aside
+        ref={panelsSidebarRef}
         aria-hidden={!rightShown}
         aria-label="Panels"
         className={cn(

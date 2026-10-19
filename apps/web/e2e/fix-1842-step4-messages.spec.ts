@@ -299,6 +299,7 @@ async function measure(page: Page) {
         borderBottomWidth: computed.borderBottomWidth,
         marginTop: computed.marginTop,
         marginBottom: computed.marginBottom,
+        columnGap: computed.columnGap,
         paddingInlineStart: computed.paddingInlineStart,
         paddingTop: computed.paddingTop,
         paddingRight: computed.paddingRight,
@@ -341,6 +342,8 @@ async function measure(page: Page) {
     const error = document.querySelector<HTMLElement>('[data-ending="error"]');
     const popup = document.querySelector<HTMLElement>('[aria-label="Other versions"]');
     const footerToggle = document.querySelector<HTMLElement>('[data-slot="u1-tool-calls-toggle"]');
+    const actionRow = document.querySelector<HTMLElement>('[data-slot="p3-message-actions"]');
+    const trace = document.querySelector<HTMLElement>('[data-slot="u3-tool-card-trigger"]');
     const headings = ["h1", "h2", "h3"].map((tag) =>
       style(assistantText?.querySelector(tag) ?? null),
     );
@@ -368,6 +371,7 @@ async function measure(page: Page) {
       tableButtonCount: table?.querySelectorAll("button").length ?? 0,
       error: style(error),
       footerToggle: style(footerToggle),
+      trace: style(trace),
       popup: style(popup),
       borderForeground10: probeClass("border border-foreground/10", "borderTopColor"),
       documentRadius: probeClass("rounded-document", "borderRadius"),
@@ -388,6 +392,7 @@ async function measure(page: Page) {
           : Number.parseFloat(getComputedStyle(firstRow).paddingTop) +
             Number.parseFloat(getComputedStyle(firstRow).paddingBottom),
       edit: style(action("user", "Edit")),
+      actionRow: style(actionRow),
       regenerate: style(action("assistant", "Regenerate")),
       editWordCount: document.querySelectorAll(
         '[data-slot="u1-message-row"][data-role="user"] .sr-only',
@@ -445,8 +450,22 @@ async function assertTranscript(page: Page, viewport: (typeof VIEWPORTS)[number]
   await expect(initialJump).toBeHidden({ timeout: 15_000 });
   const dark = await page.locator("html").evaluate((element) => element.classList.contains("dark"));
   const metrics = await measure(page);
+  const transcriptRows = [
+    `Thread width (${dark ? "dark" : "light"}, ${viewport.name}) | ${viewport.width === 1280 ? "672px" : "358px"} content | ${metrics.contentWidth}px | ${metrics.contentWidth - (viewport.width === 1280 ? 672 : 358)}px`,
+    `Messages (${dark ? "dark" : "light"}, ${viewport.name}) | 24px between rows | ${metrics.rowGap}px | ${metrics.rowGap - 24}px`,
+    `User bubble (${dark ? "dark" : "light"}, ${viewport.name}) | max-width 80% | ${metrics.user?.width}px / ${metrics.contentWidth}px (${(((metrics.user?.width ?? 0) / (metrics.contentWidth || 358)) * 100).toFixed(1)}%); long-message cap pinned separately | short-message cap not reached`,
+    `Assistant text (${dark ? "dark" : "light"}, ${viewport.name}) | 15px / 24.375px | ${metrics.assistant?.fontSize} / ${metrics.assistant?.lineHeight} | ${Number.parseFloat(metrics.assistant?.fontSize ?? "0") - 15}px, ${Number.parseFloat(metrics.assistant?.lineHeight ?? "0") - 24.375}px`,
+    `Markdown headings (${dark ? "dark" : "light"}, ${viewport.name}) | h1 20/28/600; h2 18/28/600; h3 16/24/600 | ${metrics.headings.map((heading) => `${heading?.fontSize}/${heading?.lineHeight}/${heading?.fontWeight}`).join("; ")} | checked below`,
+    `Inline code (${dark ? "dark" : "light"}, ${viewport.name}) | 12.75px mono | ${metrics.inlineCode?.fontSize} ${metrics.inlineCode?.fontFamily} | ${Number.parseFloat(metrics.inlineCode?.fontSize ?? "0") - 12.75}px`,
+    `Code sheet (${dark ? "dark" : "light"}, ${viewport.name}) | 36px header, 14px body padding, 12.5px mono text | ${metrics.codeHeader?.height}px header, ${metrics.codePre?.paddingLeft} body padding, ${metrics.codePre?.fontSize} ${metrics.codePre?.fontFamily} | ${Number.parseFloat(metrics.codeHeader?.height.toString() ?? "0") - 36}px`,
+    `Message action row (${dark ? "dark" : "light"}, ${viewport.name}) | 8px below text, 24px buttons, 6px gap | mt ${metrics.actionRow?.marginTop}; Edit ${metrics.edit?.width}×${metrics.edit?.height}px; Regenerate ${metrics.regenerate?.width}×${metrics.regenerate?.height}px; gap ${metrics.actionRow?.columnGap} | ${Number.parseFloat(metrics.actionRow?.marginTop ?? "0") - 8}px, ${Number.parseFloat(metrics.actionRow?.columnGap ?? "0") - 6}px`,
+    `Trace row (${dark ? "dark" : "light"}, ${viewport.name}) | 12px mono / 19.5px | ${metrics.trace?.fontSize} ${metrics.trace?.fontFamily} / ${metrics.trace?.lineHeight} | ${Number.parseFloat(metrics.trace?.fontSize ?? "0") - 12}px, ${Number.parseFloat(metrics.trace?.lineHeight ?? "0") - 19.5}px`,
+  ];
+  process.stdout.write(
+    `Part | Document value | Measured value | Difference\n${transcriptRows.join("\n")}\n`,
+  );
   const colorAlpha = (value: string) => value.match(/\/\s*([\d.]+)\)?$/)?.[1] ?? value;
-  if (viewport.width === 1280) expect(metrics.contentWidth).toBe(672);
+  expect(metrics.contentWidth).toBe(viewport.width === 1280 ? 672 : 358);
   const user = metrics.user;
   if (user === null) throw new Error("the real user-message bubble was not rendered");
   expect(user.backgroundColor).not.toBe("");
@@ -466,12 +485,19 @@ async function assertTranscript(page: Page, viewport: (typeof VIEWPORTS)[number]
   expect(user.paddingLeft).toBe("16px");
   expect(user.fontSize).toBe("15px");
   expect(user.lineHeight).toBe("22.5px");
-  expect(user.width).toBeLessThanOrEqual((metrics.contentWidth || 342) * 0.8 + 1);
+  expect(user.width).toBeLessThanOrEqual((metrics.contentWidth || 358) * 0.8 + 1);
   expect(metrics.assistant?.fontSize).toBe("15px");
   expect(metrics.assistant?.lineHeight).toBe("24.375px");
   expect(metrics.answerBackground).toBe("rgba(0, 0, 0, 0)");
   expect(metrics.answerBorder).toMatch(/0px/);
   expect(metrics.rowGap).toBe(24);
+  if (metrics.actionRow === null) throw new Error("the real message action row was not rendered");
+  expect(metrics.actionRow.marginTop).toBe("8px");
+  expect(metrics.actionRow.columnGap).toBe("6px");
+  if (metrics.trace === null) throw new Error("the real tool trace row was not rendered");
+  expect(metrics.trace.fontSize).toBe("12px");
+  expect(metrics.trace.lineHeight).toBe("19.5px");
+  expect(metrics.trace.fontFamily).toContain("JetBrains Mono");
   expect(metrics.inlineCode?.fontSize).toBe("12.75px");
   expect(metrics.inlineCode?.fontFamily).toContain("JetBrains Mono");
   if (metrics.code === null || metrics.codeHeader === null || metrics.codeLanguage === null) {
@@ -597,6 +623,11 @@ async function assertTranscript(page: Page, viewport: (typeof VIEWPORTS)[number]
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
   });
   await expect(jump).toBeHidden({ timeout: 15_000 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
 }
 
 realTest(

@@ -222,6 +222,87 @@ describe("narrow layout", () => {
     expect(document.getElementById("shell-panels-sidebar")?.hasAttribute("inert")).toBe(true);
   });
 
+  test("focuses the sessions drawer, traps focus, and returns it to the opener", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: query === "(max-width: 48rem)",
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+
+    render(
+      <AppShell
+        leftSidebar={
+          <>
+            <button type="button">First drawer control</button>
+            <input aria-label="Drawer search" />
+            <button type="button">Last drawer control</button>
+          </>
+        }
+      />,
+    );
+    const opener = screen.getByRole("button", { name: "Show sessions sidebar" });
+    fireEvent.click(opener);
+    const close = screen.getByRole("button", { name: "Hide sessions sidebar" });
+    const last = screen.getByRole("button", { name: "Last drawer control" });
+    expect(document.activeElement).toBe(close);
+
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+
+    const search = screen.getByRole("textbox", { name: "Drawer search" });
+    search.focus();
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(screen.getByRole("navigation", { name: "Sessions" }).getAttribute("data-open")).toBe(
+      "true",
+    );
+    expect(document.activeElement).toBe(search);
+
+    fireEvent.click(close);
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Show sessions sidebar" }),
+    );
+  });
+
+  test("right-sidebar show does not steal focus into the drawer", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: query === "(max-width: 48rem)",
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    const reveal: { current: (() => void) | null } = { current: null };
+    function Reveal() {
+      const show = useRightSidebar()?.show;
+      reveal.current = show ?? null;
+      return <p>Reports</p>;
+    }
+    render(<AppShell rightSidebar={<Reveal />} />);
+    const opener = screen.getByRole("button", { name: "Show sessions sidebar" });
+    opener.focus();
+    act(() => reveal.current?.());
+    expect(screen.getByRole("complementary", { name: "Panels" }).getAttribute("data-open")).toBe(
+      "true",
+    );
+    expect(document.activeElement).toBe(opener);
+  });
   test("widening again brings back both sidebars the wide layout had open", () => {
     let narrow = false;
     const listeners = new Set<() => void>();

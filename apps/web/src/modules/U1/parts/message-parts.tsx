@@ -316,7 +316,7 @@ export function MessageParts({
       : ASSISTANT_SURFACE_CLASS;
   const rowClassName = nested
     ? "mx-auto w-full min-w-0 py-1"
-    : "mx-auto w-full min-w-0 max-w-(--layout-thread-width) px-6 py-3";
+    : "mx-auto w-full min-w-0 max-w-(--layout-thread-width) px-4 py-3 md:px-6";
 
   return (
     <MessagePrimitive.Root

@@ -746,7 +746,7 @@ export function ThreadShell({
                   onRetry={onRetry}
                   onRestartOmp={onRestartOmp}
                 />
-                <div className="flex items-center justify-between gap-(--space-md) px-6 py-2">
+                <div className="flex items-center justify-between gap-(--space-md) px-4 py-2 md:px-6">
                   <RuntimeSettledStatus snapshot={snapshot} />
                   {footer}
                 </div>

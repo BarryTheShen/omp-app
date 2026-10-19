@@ -11,8 +11,8 @@ import {
 } from "./real-omp";
 
 /**
- * The demo's 45rem thread token includes the app's horizontal row gutters; the composer and tool
- * cards line up with the transcript.
+ * The 45rem thread token includes row gutters. The transcript, composer and footer use 16px below
+ * 768px and 24px at desktop; tool cards stay inside the message column.
  */
 const THREAD_WIDTH_REM = 45;
 
@@ -27,6 +27,7 @@ async function setSidebars(page: Page, open: boolean): Promise<void> {
 
 interface Columns {
   readonly transcript: { readonly left: number; readonly right: number };
+  readonly transcriptGutter: number;
   readonly composer: { readonly left: number; readonly right: number };
   readonly composerBox: { readonly left: number; readonly right: number };
   readonly toolCard: { readonly left: number; readonly right: number };
@@ -48,6 +49,9 @@ async function measureColumns(page: Page): Promise<Columns> {
     const main = document.querySelector('main[aria-label="Conversation"]');
     return {
       transcript: edges(message),
+      transcriptGutter: message
+        ? Number.parseFloat(getComputedStyle(message).paddingInlineStart)
+        : 0,
       composer: edges(wrapper),
       composerBox: edges(form),
       toolCard: edges(card),
@@ -86,6 +90,8 @@ realTest(
         const expected = Math.min(areaWidth, THREAD_WIDTH_REM * 16);
         expect(columnWidth, `${label}: column width`).toBeGreaterThanOrEqual(expected - 2);
         expect(columnWidth, `${label}: column width`).toBeLessThanOrEqual(expected + 2);
+        const expectedGutter = size.width < 768 ? 16 : 24;
+        expect(columns.transcriptGutter, `${label}: transcript gutter`).toBe(expectedGutter);
         // The composer and the transcript share the same left and right edges.
         expect(
           Math.abs(columns.composer.left - columns.transcript.left),
@@ -95,13 +101,15 @@ realTest(
           Math.abs(columns.composer.right - columns.transcript.right),
           `${label}: composer right`,
         ).toBeLessThanOrEqual(2);
-        // The composer's visible box starts where the messages' text starts (1.5rem of padding).
+        // The composer form and transcript content edges align; the row's outer box includes its gutter.
         expect(
-          Math.abs(columns.composerBox.left - (columns.transcript.left + 24)),
+          Math.abs(columns.composerBox.left - (columns.transcript.left + columns.transcriptGutter)),
           `${label}: composer box left`,
         ).toBeLessThanOrEqual(2);
         expect(
-          Math.abs(columns.composerBox.right - (columns.transcript.right - 24)),
+          Math.abs(
+            columns.composerBox.right - (columns.transcript.right - columns.transcriptGutter),
+          ),
           `${label}: composer box right`,
         ).toBeLessThanOrEqual(2);
         // Tool cards use the column and never stick out of it.
