@@ -45,12 +45,15 @@ test.beforeAll(() => buildMemoryPlayground());
 test("renders all T6 memory cards in light, dark and narrow states", async ({ page }) => {
   await page.goto("/t6-memory-playground.html");
   await expect(page.locator("html")).not.toHaveClass(/dark/);
-  await expect(page.getByText("prior release decision")).toBeVisible();
+  await expect(page.getByText("Scrubbed query 2")).toBeVisible();
   await openAllToolCards(page);
   await expect(
     page.getByText("Found 22 relevant memories (as of 2026-10-07 21:44 UTC):", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Showing 8 of 22 memories.")).toBeVisible();
+  const recallCard = page.locator('[data-t6-tool="recall"]');
+  await expect(recallCard).toContainText("Showing 8 of 22 memories.");
+  await recallCard.screenshot({ path: "../../.data/screenshots/t6-recall-count-light.png" });
   await expect(page.getByRole("heading", { name: "Synthesis" })).toBeVisible();
   await expect(
     page
@@ -101,6 +104,10 @@ test("renders all T6 memory cards in light, dark and narrow states", async ({ pa
   await darkPage.goto("/t6-memory-playground.html");
   await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
   await expect(darkPage.locator("html")).toHaveClass(/dark/);
+  await openAllToolCards(darkPage);
+  const darkRecallCard = darkPage.locator('[data-t6-tool="recall"]');
+  await expect(darkRecallCard).toContainText("Showing 8 of 22 memories.");
+  await darkRecallCard.screenshot({ path: "../../.data/screenshots/t6-recall-count-dark.png" });
   const darkTrigger = darkPage.locator(
     '[data-t6-tool="memory_edit"] [data-slot="u3-tool-card-trigger"]',
   );
@@ -111,6 +118,9 @@ test("renders all T6 memory cards in light, dark and narrow states", async ({ pa
     path: "../../.data/screenshots/t6-2044-memory-labels-dark.png",
   });
   await narrowTo(darkPage);
+  await openAllToolCards(darkPage);
+  await expect(darkRecallCard).toContainText("Showing 8 of 22 memories.");
+  await darkRecallCard.screenshot({ path: "../../.data/screenshots/t6-recall-count-390.png" });
   await darkPage.screenshot({
     path: "../../.data/screenshots/t6-2044-memory-labels-narrow.png",
   });

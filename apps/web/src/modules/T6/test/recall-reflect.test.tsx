@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../../U3/tool-card/contract";
+import { T6_REAL_RESULTS } from "../fixtures/real-results";
 import { RecallRenderer } from "../recall";
 import { ReflectRenderer } from "../reflect";
 
@@ -53,16 +54,16 @@ describe("T6 recall and reflect renderers", () => {
     expect(screen.getByText("No memories found.")).toBeTruthy();
   });
 
-  test("keeps the recall header outside the eight memory rows and reports the omitted count", () => {
-    const memories = Array.from({ length: 12 }, (_, index) => `Scrubbed memory ${index + 1}.`);
-    const header = "Found 12 relevant memories (as of 2026-10-07 21:44 UTC):";
-    const result = {
-      content: [
-        { type: "text", text: `${header}\n\n${memories.map((line) => `- ${line}`).join("\n\n")}` },
-      ],
-      details: { count: 12 },
-    };
-    const { container } = render(<RecallRenderer {...props("recall", {}, result)} />);
+  // omp v18.9.1 puts the recall count in its first content line and returns details: {} (memory-recall.ts:58-67,95-104).
+  test("uses the recorded omp recall header to report memories beyond the visible eight rows", () => {
+    const recorded = T6_REAL_RESULTS.find(
+      (result) => result.name === "recall: memories found for a query (14 shown)",
+    );
+    if (!recorded) throw new Error("missing 14-memory recorded recall fixture");
+    const header = "Found 14 relevant memories (as of 2026-10-05 23:12 UTC):";
+    const { container } = render(
+      <RecallRenderer {...props("recall", recorded.args, recorded.result)} />,
+    );
     expandToolCards();
     const card = container.querySelector('[data-t6-tool="recall"]');
     expect(card).not.toBeNull();
@@ -70,8 +71,24 @@ describe("T6 recall and reflect renderers", () => {
     expect(headerElement.tagName).toBe("P");
     expect(headerElement.closest("ul")).toBeNull();
     expect(card?.querySelectorAll("ul > li")).toHaveLength(8);
-    expect(screen.getByText("Showing 8 of 12 memories.")).toBeTruthy();
+    expect(screen.getByText("Showing 8 of 14 memories.")).toBeTruthy();
   });
+  test("uses omp's singular recall header for a one-memory summary", () => {
+    const result = {
+      content: [
+        {
+          type: "text",
+          text: "Found 1 relevant memory (as of 2026-10-07 21:44 UTC):\n\n- One recorded memory.",
+        },
+      ],
+      details: {},
+    };
+    render(<RecallRenderer {...props("recall", {}, result)} />);
+    expandToolCards();
+    expect(screen.getByText("1 memory", { exact: true })).toBeTruthy();
+    expect(screen.queryByText(/Showing /)).toBeNull();
+  });
+
   test("caps headerless recall results at eight rows and reports the omitted count", () => {
     const memories = Array.from({ length: 12 }, (_, index) => `Headerless memory ${index + 1}.`);
     const result = {

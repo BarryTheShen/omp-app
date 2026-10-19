@@ -218,6 +218,14 @@ function contentText(raw: unknown): string {
     .join("");
 }
 
+function recallResultCount(text: string): number | null {
+  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+  const match = /^Found (\d+) relevant (?:memory|memories)\b/.exec(firstLine);
+  if (match === null) return null;
+  const count = Number(match[1]);
+  return Number.isSafeInteger(count) ? count : null;
+}
+
 export function decodeMemoryRecallArgs(raw: unknown): T6Decode<MemoryRecallArgs> {
   return decode(MemoryRecallArgsSchema, raw, "recall arguments");
 }
@@ -249,6 +257,7 @@ export function normalizeRecall(args: unknown, result: unknown): RecallModel {
   return {
     query: decoded.value?.query ?? "",
     count:
+      recallResultCount(content.text) ??
       details.value?.count ??
       (details.value?.noMatch || content.text.includes("No relevant memories") ? 0 : null),
     noMatch: details.value?.noMatch === true || content.text.includes("No relevant memories found"),

@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { AppShell } from "@/shell";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
+import { T6_REAL_RESULTS } from "./fixtures/real-results";
 import { LearnRenderer } from "./learn";
 import { ManageSkillRenderer } from "./manage-skill";
 import { MemoryEditRenderer } from "./memory-edit";
@@ -8,20 +9,13 @@ import { RecallRenderer } from "./recall";
 import { ReflectRenderer } from "./reflect";
 import { RetainRenderer } from "./retain";
 
+const recordedRecall = T6_REAL_RESULTS.find(
+  (result) => result.name === "recall: memories found for a query (22 shown)",
+);
+if (recordedRecall === undefined) throw new Error("The recorded recall result is missing.");
 const RECALL_PROPS = {
+  ...recordedRecall,
   toolCallId: "call-recall-fixture",
-  toolName: "recall",
-  args: { query: "prior release decision" },
-  argsText: '{"query":"prior release decision"}',
-  result: {
-    content: [
-      {
-        type: "text",
-        text: "Found 22 relevant memories (as of 2026-10-07 21:44 UTC):\n\n- Release decision: keep the browser client read-only.\n\n- Follow-up: gate upstream collaboration.\n\n- Memory detail three.\n\n- Memory detail four.\n\n- Memory detail five.\n\n- Memory detail six.\n\n- Memory detail seven.\n\n- Memory detail eight.\n\n- Memory detail nine.\n\n- Memory detail ten.",
-      },
-    ],
-    details: { count: 22 },
-  },
   status: { type: "complete", reason: "stop" },
 } as unknown as ToolRendererProps;
 
