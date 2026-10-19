@@ -16,6 +16,7 @@ import { isStreaming, REWIND_CAPABILITIES, rewindAvailable } from "./rewind-tree
 /** P4's palette command and shortcut that open the rewind tree (`modules/P4/contract/descriptors.ts`). */
 const REWIND_COMMAND: DescriptorId = "P4.treeCommand";
 const REWIND_SHORTCUT: DescriptorId = "P4.sessionTree";
+const COMPOSER_INPUT = 'textarea[aria-label="Message input"]';
 
 export interface RewindPanelOptions {
   readonly threadId: ThreadId;
@@ -74,7 +75,9 @@ export function useRewindPanel({
   }, []);
 
   const close = useCallback(() => {
-    const target = openedFrom.current;
+    const opened = openedFrom.current;
+    const currentComposer = document.querySelector<HTMLTextAreaElement>(COMPOSER_INPUT);
+    const target = opened?.isConnected ? opened : currentComposer;
     openedFrom.current = null;
     setPanel((current) => ({ ...current, open: false }));
     if (target?.isConnected) target.focus({ preventScroll: true });

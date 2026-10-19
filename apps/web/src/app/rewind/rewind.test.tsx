@@ -8,7 +8,7 @@ import type {
 } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { LayoutArea, type SurfaceMap } from "@/layout";
 import type { TreeNode } from "@/modules/P4/contract";
 import { P4_DESCRIPTORS } from "@/modules/P4/contract";
@@ -99,6 +99,15 @@ function fakeOmp(calls: string[], failFork = false): RpcSessionSend {
     throw new Error(`The fake omp does not answer ${command.type}.`);
   };
   return answer as unknown as RpcSessionSend;
+}
+
+function heldOmp(gate: Promise<void>): RpcSessionSend {
+  const base = fakeOmp([]);
+  return (async (args: unknown) => {
+    const request = args as { command: { type: string } };
+    if (request.command.type === "get_tree") await gate;
+    return base(args as never);
+  }) as unknown as RpcSessionSend;
 }
 
 interface HarnessProps {
@@ -235,6 +244,102 @@ describe("rewind panel", () => {
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
     await waitFor(() => expect(document.activeElement).toBe(composer));
     expect(screen.queryByRole("tree", { name: "Conversation messages" })).toBeNull();
+  });
+  test("keeps retrying until a newly available tree row can take focus", async () => {
+    const realFocus = HTMLElement.prototype.focus;
+    let allowTreeFocus = false;
+    HTMLElement.prototype.focus = function focusProbe(
+      this: HTMLElement,
+      ...args: Parameters<HTMLElement["focus"]>
+    ) {
+      if (this.getAttribute("role") === "treeitem" && !allowTreeFocus) return;
+      realFocus.apply(this, args);
+    };
+    try {
+      const { composer, registry } = renderRewind({ send: fakeOmp([]) });
+      composer.focus();
+      openFromPalette(registry());
+      const tree = await screen.findByRole("tree", { name: "Conversation messages" });
+      await screen.findAllByRole("treeitem");
+      expect(document.activeElement).toBe(composer);
+      allowTreeFocus = true;
+      await waitFor(() => expect(tree.contains(document.activeElement)).toBe(true), {
+        timeout: 2_000,
+      });
+    } finally {
+      HTMLElement.prototype.focus = realFocus;
+    }
+  });
+  test("an added row gets the latest-row fallback before the retry interval", async () => {
+    const realFocus = HTMLElement.prototype.focus;
+    const interval = vi
+      .spyOn(globalThis, "setInterval")
+      .mockImplementation((() => 0) as unknown as typeof setInterval);
+    const gate = Promise.withResolvers<void>();
+    let allowTreeFocus = false;
+    HTMLElement.prototype.focus = function focusProbe(
+      this: HTMLElement,
+      ...args: Parameters<HTMLElement["focus"]>
+    ) {
+      if (this.getAttribute("role") === "treeitem" && !allowTreeFocus) return;
+      realFocus.apply(this, args);
+    };
+    try {
+      const { composer, registry } = renderRewind({ send: heldOmp(gate.promise) });
+      composer.focus();
+      openFromPalette(registry());
+      await screen.findByText("Loading");
+      gate.resolve();
+      const tree = await screen.findByRole("tree", { name: "Conversation messages" });
+      await screen.findAllByRole("treeitem");
+      for (const row of tree.querySelectorAll<HTMLElement>('[role="treeitem"]')) {
+        row.setAttribute("tabindex", "-1");
+      }
+      allowTreeFocus = true;
+      act(() => {
+        tree.append(document.createElement("span"));
+      });
+      await waitFor(() => expect(tree.contains(document.activeElement)).toBe(true));
+      expect(document.activeElement).toBe(tree.querySelector('[role="treeitem"]:last-of-type'));
+    } finally {
+      interval.mockRestore();
+      HTMLElement.prototype.focus = realFocus;
+    }
+  });
+
+  test("Escape returns focus to an edit box that opened the panel", async () => {
+    const { composer, registry } = renderRewind({ send: fakeOmp([]) });
+    composer.setAttribute("aria-label", "Edit message");
+    const mainComposer = document.createElement("textarea");
+    mainComposer.setAttribute("aria-label", "Message input");
+    document.body.appendChild(mainComposer);
+    composer.focus();
+    openFromPalette(registry());
+    await screen.findByRole("tree", { name: "Conversation messages" });
+    await waitFor(() => expect(document.activeElement?.getAttribute("role")).toBe("treeitem"));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("tree", { name: "Conversation messages" })).toBeNull(),
+    );
+    expect(document.activeElement).toBe(composer);
+    mainComposer.remove();
+  });
+  test("Escape falls back to the mounted composer after the opener is removed", async () => {
+    const { composer, registry } = renderRewind({ send: fakeOmp([]) });
+    const replacement = document.createElement("textarea");
+    replacement.setAttribute("aria-label", "Message input");
+    document.body.appendChild(replacement);
+    composer.focus();
+    openFromPalette(registry());
+    await screen.findByRole("tree", { name: "Conversation messages" });
+    await waitFor(() => expect(document.activeElement?.getAttribute("role")).toBe("treeitem"));
+    composer.remove();
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("tree", { name: "Conversation messages" })).toBeNull(),
+    );
+    expect(document.activeElement).toBe(replacement);
+    replacement.remove();
   });
 
   test("without omp's tree or branch command there is no tab, palette command or chord", () => {

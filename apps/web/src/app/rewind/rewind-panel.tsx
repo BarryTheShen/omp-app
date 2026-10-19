@@ -1,5 +1,13 @@
 import type { EntryId, RpcSessionSend, ThreadId } from "@omp-app/contracts";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { TreeSelectorFilter, TreeSelectorState, TreeSnapshot } from "@/modules/P4/contract";
 import { OmpSessionTreePort } from "@/modules/P4/history";
 import { createP4LabelsViewModel, P4LabelsView } from "@/modules/P4/labels";
@@ -50,6 +58,11 @@ export function RewindPanel({
   const overlay = useStableOverlayHost();
   const sidebar = useRightSidebar();
   const root = useRef<HTMLDivElement | null>(null);
+  const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
+  const setRoot = useCallback((element: HTMLDivElement | null) => {
+    root.current = element;
+    setRootElement(element);
+  }, []);
   const mounted = useRef(false);
   const port = useMemo(
     () =>
@@ -148,17 +161,31 @@ export function RewindPanel({
     const current = shell.current;
     if (current !== null && !current.open) current.show();
   }, [reveal]);
+  // The controller normally marks one row as the roving tab stop. During a slow tree load it can
+  // briefly render rows before that state settles; still put focus into the visible tree, then the
+  // row's onFocus callback repairs the roving tab stop.
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus may move once a row, a reveal or a finished read arrives.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!pendingFocus.current || !sidebarOpen) return;
-    const row = root.current?.querySelector<HTMLElement>('[role="treeitem"][tabindex="0"]');
-    if (row) {
-      pendingFocus.current = false;
+    const focusRow = (): boolean => {
+      if (!pendingFocus.current) return true;
+      const activeRow = root.current?.querySelector<HTMLElement>('[role="treeitem"][tabindex="0"]');
+      const row =
+        activeRow ??
+        Array.from(root.current?.querySelectorAll<HTMLElement>('[role="treeitem"]') ?? []).at(-1);
+      if (!row) return false;
       row.focus({ preventScroll: true });
-      return;
+      if (document.activeElement !== row) return false;
+      pendingFocus.current = false;
+      return true;
+    };
+    const retry = setInterval(() => {
+      if (focusRow()) clearInterval(retry);
+    }, 100);
+    if (focusRow()) {
+      clearInterval(retry);
+      return () => clearInterval(retry);
     }
-    // No message to move into (the tree failed, or the conversation has none): the search box or the
-    // picker button is the next place a keyboard user can act from.
     const emptyTree =
       tree.snapshot !== null && !tree.isLoading && controller.viewModel.rows.length === 0;
     if (tree.error !== null || emptyTree) {
@@ -167,7 +194,31 @@ export function RewindPanel({
         root.current?.querySelector<HTMLElement>('input[type="search"]') ??
         root.current?.querySelector<HTMLElement>("button:not([disabled])");
       next?.focus({ preventScroll: true });
+      clearInterval(retry);
+      return;
     }
+    const panelRoot = root.current;
+    if (panelRoot === null) {
+      return () => clearInterval(retry);
+    }
+    const observer = new MutationObserver(() => {
+      if (focusRow()) observer.disconnect();
+    });
+    const observeOptions: MutationObserverInit = {
+      attributes: true,
+      attributeFilter: ["aria-hidden", "data-open", "inert"],
+      childList: true,
+      subtree: true,
+    };
+    observer.observe(panelRoot, observeOptions);
+    const sidebarElement = panelRoot.closest("[data-shell-sidebar]");
+    if (sidebarElement !== null && sidebarElement !== panelRoot) {
+      observer.observe(sidebarElement, observeOptions);
+    }
+    return () => {
+      observer.disconnect();
+      clearInterval(retry);
+    };
   }, [
     controller.activeEntryId,
     controller.viewModel.rows.length,
@@ -175,7 +226,7 @@ export function RewindPanel({
     sidebarOpen,
     tree.error,
     tree.isLoading,
-    tree.snapshot,
+    rootElement,
   ]);
   const forkAvailable = transitions.getCapabilities()["omp.cmd.fork"]?.state === "available";
 
@@ -239,7 +290,7 @@ export function RewindPanel({
   );
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col" data-rewind-panel="true" ref={root}>
+    <div className="flex h-full min-h-0 min-w-0 flex-col" data-rewind-panel="true" ref={setRoot}>
       <P4TreePanelView
         actions={controller.actions}
         activeEntryId={controller.activeEntryId}
