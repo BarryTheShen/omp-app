@@ -131,6 +131,8 @@ export function WorkspacePanelView({ model, actions }: WorkspacePanelViewProps) 
         <legend className="sr-only">Workspace actions</legend>
         {ACTIONS.map(({ id, label, callback }) => {
           const presentation = model.actions[id];
+          const reasonShown =
+            presentation.disabled && presentation.reason && model.busyAction === null;
           return (
             <div className="min-w-0" key={id}>
               <Button
@@ -139,14 +141,12 @@ export function WorkspacePanelView({ model, actions }: WorkspacePanelViewProps) 
                 variant="outline"
                 onClick={actions[callback]}
                 disabled={presentation.disabled}
-                aria-describedby={
-                  presentation.disabled && presentation.reason ? `${id}-reason` : undefined
-                }
+                aria-describedby={reasonShown ? `${id}-reason` : undefined}
                 title={presentation.reason ?? undefined}
               >
                 {label}
               </Button>
-              {presentation.disabled && presentation.reason && model.busyAction === null ? (
+              {reasonShown ? (
                 <p
                   className="mt-1 max-w-56 text-xs text-muted-foreground"
                   id={`${id}-reason`}
