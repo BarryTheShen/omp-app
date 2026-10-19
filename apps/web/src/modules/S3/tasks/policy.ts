@@ -40,6 +40,7 @@ export interface SubagentPolicySnapshot {
   readonly eager: TaskPolicyValue<"default" | "preferred" | "always">;
   readonly batch: TaskPolicyValue<boolean>;
   readonly speculativeLaunch: TaskPolicyValue<boolean>;
+  readonly structured: TaskPolicyValue<boolean>;
   readonly enableEffort: TaskPolicyValue<boolean>;
   readonly maxConcurrency: TaskPolicyValue<number>;
   readonly enableLsp: TaskPolicyValue<boolean>;
@@ -93,6 +94,7 @@ const TASK_POLICY_DEFAULTS = {
   "task.enableEffort": false,
   "task.maxConcurrency": 32,
   "task.enableLsp": false,
+  "task.structured": false,
   "task.maxRecursionDepth": 2,
   "task.maxRuntimeMs": 0,
   "task.completionProbe": true,
@@ -310,6 +312,7 @@ export async function readTasksPolicySnapshot(
     revision: snapshot.revision,
     eager: eagerSetting(snapshot, "task.eager"),
     batch: booleanSetting(snapshot, "task.batch"),
+    structured: booleanSetting(snapshot, "task.structured"),
     speculativeLaunch: booleanSetting(snapshot, "task.speculativeLaunch"),
     enableEffort: booleanSetting(snapshot, "task.enableEffort"),
     maxConcurrency: numberSetting(snapshot, "task.maxConcurrency"),

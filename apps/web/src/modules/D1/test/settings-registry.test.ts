@@ -16,6 +16,8 @@ const INVISIBLE_TO_THE_EXTRACTOR: Readonly<Record<string, string>> = {
     "generated in omp's magic-keyword loop; absent from literal register calls",
   "magicKeywords.jevify":
     "generated in omp's magic-keyword loop; absent from literal register calls",
+  "lsp.requestTimeout": "added in omp v18.12.2; absent from the v18.9.1 registry fixture",
+  "task.structured": "added in omp v18.12.2; absent from the v18.9.1 registry fixture",
 };
 /** These enum values are identifier-valued in omp, so the literal-register extractor omits them. */
 const IDENTIFIER_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {

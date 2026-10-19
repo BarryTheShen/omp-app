@@ -118,4 +118,4 @@ export const OMP_V18_8_9_DEFAULT_REGISTRY_EXTRACT = {
 } satisfies Readonly<Record<string, JsonValue | undefined>>;
 
 /** All S3 default literals now match the v18.8.9 registry extract. */
-export const S3_DEFAULT_EVIDENCE_GAPS = [] as const;
+export const S3_DEFAULT_EVIDENCE_GAPS = ["task.structured"] as const;

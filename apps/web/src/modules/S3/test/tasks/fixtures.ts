@@ -235,6 +235,13 @@ export const TASK_SETTING_EVIDENCE = [
     source: "packages/coding-agent/src/task/settings.ts:195-199",
   },
   {
+    key: "task.structured",
+    ompType: "boolean",
+    controlKind: "boolean",
+    defaultValue: false,
+    source: "packages/coding-agent/src/task/settings.ts:255-266 (v18.12.2)",
+  },
+  {
     key: "task.speculativeLaunch",
     ompType: "boolean",
     controlKind: "boolean",

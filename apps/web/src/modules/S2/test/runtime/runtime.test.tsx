@@ -88,6 +88,13 @@ const DEFAULTS: readonly DefaultFixture[] = [
     citation: "lsp/settings.ts:82-92; write.ts:501-515; lsp/deferred-diagnostics.ts:42-45",
   },
   {
+    key: "lsp.requestTimeout",
+    value: 10,
+    source: "default",
+    kind: "number",
+    citation: "lsp/settings.ts:94-113 (v18.12.2)",
+  },
+  {
     key: "bash.enabled",
     value: true,
     source: "default",
@@ -363,7 +370,7 @@ afterEach(() => {
 describe("S2.3 LSP and Shell ConfigStore settings", () => {
   test("every S2.3 control has a description and uses omp's live apply boundary", () => {
     const controls = GROUPS.flatMap((descriptor) => descriptor.controls);
-    expect(controls).toHaveLength(25);
+    expect(controls).toHaveLength(26);
     expect(controls.every((control) => control.apply === "live")).toBe(true);
     expect(controls.every((control) => control.description?.trim().length)).toBe(true);
   });
@@ -796,7 +803,7 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     render(<FilesLspSection runtime={runtime} />);
     const report = screen.getByLabelText("When settings take effect");
     expect(report.textContent).toContain(
-      "Live: LSP, Lazy LSP Startup, Shared Language Servers, Format on Write, Diagnostics on Write, Diagnostics on Edit, Deduplicate Diagnostics.",
+      "Live: LSP, Lazy LSP Startup, Shared Language Servers, Format on Write, Diagnostics on Write, Diagnostics on Edit, Deduplicate Diagnostics, Request Timeout.",
     );
     expect(report.textContent).not.toContain("Reload required");
     expect(report.textContent).toContain(

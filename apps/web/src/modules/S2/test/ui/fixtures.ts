@@ -14,6 +14,8 @@ export const OMP_DEFAULTS: Readonly<Record<string, JsonValue>> = {
   "lsp.diagnosticsOnWrite": true,
   "lsp.diagnosticsOnEdit": false,
   "lsp.diagnosticsDeduplicate": true,
+  // lsp/settings.ts v18.12.2:94-113
+  "lsp.requestTimeout": 10,
   // exec/settings.ts:83, 95, 108, 134, 148, 166, 180, 194, 230
   "bash.enabled": true,
   "bash.allowCompoundCommands": false,

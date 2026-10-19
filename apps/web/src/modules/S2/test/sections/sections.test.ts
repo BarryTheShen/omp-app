@@ -36,6 +36,7 @@ const EXPECTED_KEYS = [
   "lsp.diagnosticsOnWrite",
   "lsp.diagnosticsOnEdit",
   "lsp.diagnosticsDeduplicate",
+  "lsp.requestTimeout",
   "bash.enabled",
   "bash.allowCompoundCommands",
   "bash.autoBackground.enabled",
@@ -120,6 +121,23 @@ describe("S2 Files and Shell sections", () => {
     });
     expect(validate("read.defaultLimit", { secret: false, value: 300 })).toEqual({ valid: true });
     expect(validate("read.defaultLimit", { secret: false, value: -1 })).toMatchObject({
+      valid: false,
+      code: "range",
+    });
+    expect(validate("lsp.requestTimeout", { secret: false, value: 0 })).toEqual({ valid: true });
+    expect(validate("lsp.requestTimeout", { secret: false, value: 3600 })).toEqual({
+      valid: true,
+    });
+    expect(validate("lsp.requestTimeout", { secret: false, value: -1 })).toMatchObject({
+      valid: false,
+      code: "range",
+    });
+    expect(validate("lsp.requestTimeout", { secret: false, value: 3600.1 })).toMatchObject({
+      valid: false,
+      code: "range",
+    });
+    // 3601 is a whole number one above the maximum: 3600.1 alone fails on being fractional, whatever the maximum is.
+    expect(validate("lsp.requestTimeout", { secret: false, value: 3601 })).toMatchObject({
       valid: false,
       code: "range",
     });

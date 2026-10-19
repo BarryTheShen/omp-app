@@ -7,7 +7,7 @@ const INVENTORY_GROUPS = [
   ["S5.files-editing", 9], // "Files / Editing (9)"
   ["S5.files-reading", 4], // "Files / Reading (4)"
   ["S5.files-read-summaries", 7], // "Files / Read Summaries (7)"
-  ["S5.files-lsp", 7], // "Files / LSP (7)"
+  ["S5.files-lsp", 8], // "Files / LSP (8)"
   ["S5.shell-bash", 10], // "Shell / Bash (10)"
   ["S5.shell-eval-runtimes", 8], // "Shell / Eval & Runtimes (8)"
 ] as const;

@@ -423,6 +423,15 @@ const filesLsp: readonly SettingControl[] = [
     "live",
     "Skip diagnostics already shown for a file and show only new or changed ones.",
   ),
+  numberControl(
+    "lsp.requestTimeout",
+    "Request Timeout",
+    0,
+    3600,
+    "live",
+    true,
+    "Seconds to wait for a language server's diagnostics, hover, and other answers when no timeout is set.",
+  ),
 ];
 
 const shellBash: readonly SettingControl[] = [

@@ -111,6 +111,21 @@ describe("S3 typed ConfigStore handoffs", () => {
     expect(Object.isFrozen(snapshot.subagents.agentModelOverrides.value)).toBe(true);
     expect(Object.isFrozen(snapshot.subagents.disabledAgents.value)).toBe(true);
   });
+  test("reads structured independently from batch when both are explicitly set", async () => {
+    const fixture = createTaskConfigStoreFixture();
+    for (const [key, value] of [
+      ["task.structured", true],
+      ["task.batch", false],
+    ] as const) {
+      const index = settingIndex(fixture.state.entries, key);
+      const entry = fixture.state.entries[index];
+      if (!entry || entry.secret) throw new Error(`Missing non-secret ${key} fixture.`);
+      fixture.state.entries[index] = { ...entry, value };
+    }
+    const snapshot = await readTasksPolicySnapshot(fixture.client, null);
+    expect(snapshot.subagents.structured.value).toBe(true);
+    expect(snapshot.subagents.batch.value).toBe(false);
+  });
 
   test("preserves project source, overridden layers, revision and typed map entries", async () => {
     const fixture = createTaskConfigStoreFixture();
@@ -241,6 +256,7 @@ describe("S3 typed ConfigStore handoffs", () => {
       snapshot.subagents.eager,
       snapshot.subagents.batch,
       snapshot.subagents.speculativeLaunch,
+      snapshot.subagents.structured,
       snapshot.subagents.enableEffort,
       snapshot.subagents.maxConcurrency,
       snapshot.subagents.enableLsp,
@@ -351,7 +367,7 @@ describe("S3 typed ConfigStore handoffs", () => {
   });
 
   test("keeps the expected source/type/default table complete and citation-bearing", () => {
-    expect(TASK_SETTING_EVIDENCE).toHaveLength(49);
+    expect(TASK_SETTING_EVIDENCE).toHaveLength(50);
     for (const setting of TASK_SETTING_EVIDENCE) {
       expect(setting.key.length).toBeGreaterThan(0);
       expect(setting.source).toMatch(/\.ts:\d/);

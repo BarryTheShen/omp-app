@@ -1007,6 +1007,11 @@ const tasksSubagents: readonly SettingControl[] = [
     "Use one task call to start one subagent per item, sharing context across the batch.",
   ),
   described(
+    bool("task.structured", "live"),
+    "Structured Task Results",
+    "Expose structured task results validated through the yield tool.",
+  ),
+  described(
     bool("task.speculativeLaunch", "live"),
     "Speculative Task Launch",
     "Start each batch subagent as soon as its task is ready; stop it if the call fails validation or is blocked.",

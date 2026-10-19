@@ -65,6 +65,7 @@ const OMP_V18_8_9_DEFAULTS: Readonly<Record<string, unknown>> = {
   "lsp.diagnosticsOnWrite": true,
   "lsp.diagnosticsOnEdit": false,
   "lsp.diagnosticsDeduplicate": true,
+  "lsp.requestTimeout": 10,
   "bash.enabled": true,
   "bash.allowCompoundCommands": false,
   "bash.autoBackground.enabled": true,
@@ -157,7 +158,10 @@ describe("S2.5 ConfigStore fixtures and gate coverage", () => {
       expect(row).toBeDefined();
       const registeredCount = Number(row?.name.match(/\((\d+)\)$/)?.[1]);
       const count =
-        group.descriptor.inventory[0] === "S5.shell-bash" ? registeredCount + 1 : registeredCount;
+        group.descriptor.inventory[0] === "S5.files-lsp" ||
+        group.descriptor.inventory[0] === "S5.shell-bash"
+          ? registeredCount + 1
+          : registeredCount;
       expect(group.snapshot.entries).toHaveLength(count);
       expect(group.snapshot.entries.map((entry) => entry.key)).toEqual(
         group.descriptor.controls.map((control) => control.key),

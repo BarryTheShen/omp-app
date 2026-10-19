@@ -111,6 +111,7 @@ const EXPECTED_KEYS = [
   [
     "task.eager",
     "task.batch",
+    "task.structured",
     "task.speculativeLaunch",
     "task.enableEffort",
     "task.maxConcurrency",
