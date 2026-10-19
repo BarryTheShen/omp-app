@@ -592,6 +592,14 @@ function DraftComposer({
     attachments: manager,
     isRecalledPrompt,
   });
+  // assistant-ui keeps its own composer attachment list in the runtime. Clear that list when the draft owner changes,
+  // before a New chat can submit it; U2's attachment manager is restored separately by useComposerDraft.
+  const previousChat = useRef(chat);
+  useEffect(() => {
+    if (previousChat.current === chat) return;
+    previousChat.current = chat;
+    void aui.composer.reset();
+  }, [aui.composer, chat]);
   return (
     <ComposerSurface
       capabilities={capabilities}
