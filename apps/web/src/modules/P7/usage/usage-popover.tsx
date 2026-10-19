@@ -45,11 +45,11 @@ function UsageTotalsTable({
   return (
     <section
       aria-labelledby={`${title.toLowerCase().replaceAll(" ", "-")}-usage-title`}
-      className="border-border/60 border-b pb-3 last:border-b-0 last:pb-0"
+      className="border-foreground/10 border-b pb-3 last:border-b-0 last:pb-0"
     >
       <h3
         id={`${title.toLowerCase().replaceAll(" ", "-")}-usage-title`}
-        className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+        className="text-sm font-medium text-muted-foreground"
       >
         {title}
       </h3>
@@ -110,12 +110,9 @@ function ProviderLimitsSection({ limits }: { readonly limits: UsageLimitsSource 
   return (
     <section
       aria-labelledby="provider-limits-title"
-      className="border-border/60 border-b pb-3 last:border-b-0 last:pb-0"
+      className="border-foreground/10 border-b pb-3 last:border-b-0 last:pb-0"
     >
-      <h3
-        id="provider-limits-title"
-        className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-      >
+      <h3 id="provider-limits-title" className="text-sm font-medium text-muted-foreground">
         Provider limits
       </h3>
       {result === undefined ? (
@@ -195,12 +192,12 @@ export function UsagePopover({
           <Popover.Popup
             role="dialog"
             aria-label="Session usage details"
-            className="bg-popover text-popover-foreground flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-xl border border-border p-4 shadow-lg outline-none"
+            className="bg-popover text-popover-foreground flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-surface border border-foreground/10 p-4 shadow-none outline-none"
           >
             <header className="flex items-center justify-between gap-2">
               <div>
-                <Popover.Title className="font-semibold">Usage</Popover.Title>
-                <Popover.Description className="text-xs text-muted-foreground">
+                <Popover.Title className="text-sm font-medium">Usage</Popover.Title>
+                <Popover.Description className="text-sm text-muted-foreground">
                   Current session
                 </Popover.Description>
               </div>

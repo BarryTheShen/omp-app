@@ -73,7 +73,7 @@ export function ThinkingSelector({
       {unavailable ? (
         <p
           role="status"
-          className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground"
+          className="border-foreground/10 bg-muted/30 rounded-surface border px-3 py-2 text-sm text-muted-foreground"
         >
           The current model does not support thinking levels.
         </p>
@@ -118,9 +118,9 @@ export function ThinkingSelector({
                 <Popover.Popup
                   role="listbox"
                   aria-label="Thinking levels"
-                  className="bg-popover text-popover-foreground flex w-64 flex-col gap-1 rounded-xl border border-border p-2 shadow-lg outline-none"
+                  className="bg-popover text-popover-foreground flex w-64 flex-col gap-1 rounded-surface border border-foreground/10 p-1 shadow-none outline-none"
                 >
-                  <Popover.Title className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Popover.Title className="px-2 py-1 text-sm font-medium text-muted-foreground">
                     Thinking levels
                   </Popover.Title>
                   {ALL_LEVELS.map((level) => {
@@ -133,7 +133,7 @@ export function ThinkingSelector({
                         aria-selected={snapshot.current === level}
                         disabled={!supported}
                         variant={snapshot.current === level ? "secondary" : "ghost"}
-                        className="h-auto justify-between px-2 py-1.5 text-start"
+                        className="flex h-auto items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm text-start hover:bg-muted focus:bg-muted dark:hover:bg-muted dark:focus:bg-muted"
                         title={
                           supported
                             ? `Use ${thinkingLevelLabel(level)}`

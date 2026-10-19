@@ -173,10 +173,10 @@ function CommandPaletteDialog({
     <section className="flex flex-col gap-(--space-sm)" aria-labelledby={`${listId}-title`}>
       <header className="flex items-start justify-between gap-(--space-sm)">
         <div className="flex min-w-0 flex-col gap-(--space-2xs)">
-          <h2 id={`${listId}-title`} className="text-foreground text-base font-semibold">
+          <h2 id={`${listId}-title`} className="text-sm font-medium text-foreground">
             Commands
           </h2>
-          <p id={`${listId}-help`} className="text-muted-foreground text-xs">
+          <p id={`${listId}-help`} className="text-muted-foreground text-sm">
             Search commands. Use the arrow keys to move and Enter to choose.
           </p>
         </div>
@@ -194,6 +194,7 @@ function CommandPaletteDialog({
         }
         aria-describedby={`${listId}-help`}
         placeholder="Search commands"
+        className="rounded-control text-sm"
         value={query}
         disabled={isRunning}
         onChange={(event) => {
@@ -254,7 +255,7 @@ function CommandPaletteDialog({
                 aria-describedby={entry.reason === undefined ? undefined : reasonId}
                 variant={activeIndex === index ? "secondary" : "ghost"}
                 className={cn(
-                  "h-auto w-full flex-col items-stretch justify-start whitespace-normal gap-(--space-2xs) px-(--space-sm) py-(--space-xs) text-start",
+                  "h-auto w-full flex-col items-stretch justify-start gap-(--space-2xs) rounded-sm px-2 py-1.5 text-sm whitespace-normal text-start hover:bg-muted focus:bg-muted",
                   // The secondary surface is the panel's own colour in the dark theme, so the highlighted row takes the accent there.
                   activeIndex === index && "dark:bg-accent dark:hover:bg-accent",
                   entry.available && !isRunning

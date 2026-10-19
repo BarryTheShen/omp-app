@@ -92,9 +92,12 @@ export function ShortcutSheet({ open, onOpenChange }: ShortcutSheetProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby="shortcut-sheet-description" className="max-w-2xl">
+      <DialogContent
+        aria-describedby="shortcut-sheet-description"
+        className="max-w-2xl rounded-surface border border-foreground/10 shadow-none ring-0"
+      >
         <DialogHeader>
-          <DialogTitle>Keyboard shortcuts</DialogTitle>
+          <DialogTitle className="text-sm font-medium">Keyboard shortcuts</DialogTitle>
           <DialogDescription id="shortcut-sheet-description">
             Search, rebind, or reset shortcuts. Changes are saved to app preferences.
           </DialogDescription>

@@ -41,7 +41,7 @@ function EditorBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{EXTERNAL_EDITOR_MESSAGES.title}</DialogTitle>
+        <DialogTitle className="text-sm font-medium">{EXTERNAL_EDITOR_MESSAGES.title}</DialogTitle>
         <DialogDescription>{EXTERNAL_EDITOR_MESSAGES.description}</DialogDescription>
       </DialogHeader>
       <Textarea
@@ -75,7 +75,7 @@ export function ExternalEditorDialog({ request, onFinish }: ExternalEditorDialog
         if (!open && request !== null) onFinish(request.initialText);
       }}
     >
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl rounded-surface border border-foreground/10 shadow-none ring-0">
         {request !== null && <EditorBody request={request} onFinish={onFinish} />}
       </DialogContent>
     </Dialog>

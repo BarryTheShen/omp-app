@@ -169,7 +169,7 @@ function NoticeItem({ notification, expires, leaving, entering, onDismiss }: Not
   return (
     <article
       aria-hidden={leaving || undefined}
-      className={`flex min-w-0 items-start gap-2 rounded-md border px-3 py-2 text-xs ${NOTICE_TONE[notification.severity]} ${leaving ? LEAVE_FADE : entering ? ENTER_FADE : ""}`}
+      className={`flex min-w-0 items-start gap-2 rounded-surface border border-foreground/10 bg-muted/30 px-3 py-2 text-sm ${NOTICE_TONE[notification.severity]} ${leaving ? LEAVE_FADE : entering ? ENTER_FADE : ""}`}
       data-notice-key={keyOf(notification)}
       data-notification-placement={notification.placement}
       inert={leaving || undefined}

@@ -259,7 +259,7 @@ function OverlayView({
             onPointerDown={(event) => onInside(event.nativeEvent)}
             onPointerUp={(event) => onInside(event.nativeEvent)}
             className={cn(
-              "fixed top-1/2 left-1/2 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-border bg-popover p-4 text-sm text-popover-foreground shadow-overlay ring-1 ring-foreground/10 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 duration-(--duration-base) transition-none motion-reduce:animate-none",
+              "fixed top-1/2 left-1/2 grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-surface border border-foreground/10 bg-popover p-4 text-sm text-popover-foreground shadow-none ring-0 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 duration-(--duration-base) transition-none motion-reduce:animate-none",
               sharedClassName,
             )}
             style={layerStyle(record.kind, index + 1)}
@@ -292,7 +292,7 @@ function OverlayView({
                   role="alertdialog"
                   aria-modal="true"
                   aria-labelledby={questionId}
-                  className="w-full max-w-sm rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-overlay"
+                  className="w-full max-w-sm rounded-surface border border-foreground/10 bg-popover p-4 text-popover-foreground shadow-none ring-0"
                 >
                   <Section
                     heading="Discard unsaved changes?"
@@ -339,7 +339,7 @@ function OverlayView({
       {...dataProps}
       {...surfaceSemantics}
       className={cn(
-        "border-border bg-popover text-popover-foreground shadow-overlay motion-reduce:transition-none",
+        "rounded-surface border border-foreground/10 bg-popover text-popover-foreground shadow-none ring-0 motion-reduce:transition-none",
         record.kind === "toast" && "pointer-events-auto",
         sharedClassName,
       )}

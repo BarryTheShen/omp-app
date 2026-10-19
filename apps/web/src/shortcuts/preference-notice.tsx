@@ -14,7 +14,7 @@ export function ShortcutPreferenceNotice() {
   if (preferenceError === undefined) return null;
   return (
     <p
-      className="border-border bg-popover text-danger shadow-overlay rounded-md border px-3 py-2 text-xs"
+      className="border-foreground/10 bg-muted/30 text-danger rounded-surface border px-3 py-2 text-sm"
       role="alert"
     >
       {SHORTCUT_PREFERENCE_NOTICE}

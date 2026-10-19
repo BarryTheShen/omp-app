@@ -426,8 +426,8 @@ export function Notice({ message, tone = "neutral" }: NoticeProps) {
     <p
       className={
         tone === "danger"
-          ? "border-border bg-popover text-danger shadow-overlay rounded-md border px-3 py-2 text-xs"
-          : "border-border bg-popover text-popover-foreground shadow-overlay rounded-md border px-3 py-2 text-xs"
+          ? "border-foreground/10 bg-muted/30 text-danger rounded-surface border px-3 py-2 text-sm"
+          : "border-foreground/10 bg-muted/30 text-popover-foreground rounded-surface border px-3 py-2 text-sm"
       }
       role={tone === "danger" ? "alert" : "status"}
     >

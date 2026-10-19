@@ -70,7 +70,7 @@ function renderItems(
   status: string | undefined,
 ): React.ReactNode {
   return (
-    <div className="border-border bg-popover text-popover-foreground shadow-overlay max-h-72 min-w-64 overflow-y-auto rounded-lg border p-1">
+    <div className="bg-popover text-popover-foreground border-foreground/10 max-h-72 min-w-64 overflow-y-auto rounded-surface border p-1">
       {status !== undefined && (
         <p role="status" className="text-muted-foreground px-3 py-2 text-sm">
           {status}
@@ -84,7 +84,7 @@ function renderItems(
             key={`${trigger}-${item.id}`}
             item={item}
             index={index}
-            className="data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex w-full flex-col items-start rounded-md px-3 py-2 text-start text-sm outline-none"
+            className="data-[highlighted]:bg-muted data-[highlighted]:text-foreground flex w-full cursor-pointer flex-col items-start rounded-sm px-2 py-1.5 text-start text-sm outline-none select-none"
           >
             <span className="font-medium">{item.label}</span>
             {item.description && (

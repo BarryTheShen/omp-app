@@ -106,8 +106,10 @@ export function BrowserToolCard(rendererProps: ToolRendererProps) {
                       src={source}
                     />
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-5xl">
-                    <DialogTitle>Browser screenshot {index + 1}</DialogTitle>
+                  <DialogContent className="sm:max-w-5xl rounded-surface border border-foreground/10 shadow-none ring-0">
+                    <DialogTitle className="text-sm font-medium">
+                      Browser screenshot {index + 1}
+                    </DialogTitle>
                     <img
                       alt={`Browser screenshot ${index + 1}`}
                       className="max-h-[80dvh] w-full object-contain"

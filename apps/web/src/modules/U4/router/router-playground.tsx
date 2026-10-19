@@ -39,6 +39,22 @@ function RouterPlayground() {
   if (!router) throw new Error("Router is missing.");
   useEffect(() => () => host.dispose(), [host]);
 
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("presentation")) return;
+    void router.routeExtensionUi(
+      {
+        request: {
+          type: "extension_ui_request",
+          id: "router-presentation",
+          method: "notify",
+          message: "OAuth handoff presented",
+        },
+        receivedSeq: 2,
+      },
+      { threadId },
+    );
+  }, [router]);
+
   const openOAuth = () => {
     void router
       .routeExtensionUi(

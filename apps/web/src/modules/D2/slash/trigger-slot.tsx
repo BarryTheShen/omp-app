@@ -80,7 +80,7 @@ function renderItems(
   answersQuery: string | undefined,
 ): ReactNode {
   return (
-    <div className="border-border bg-popover text-popover-foreground shadow-overlay max-h-72 min-w-64 max-w-[min(28rem,90vw)] overflow-y-auto rounded-lg border p-1">
+    <div className="bg-popover text-popover-foreground border-foreground/10 max-h-72 min-w-64 max-w-[min(28rem,90vw)] overflow-y-auto rounded-surface border p-1">
       {items.length === 0 ? (
         <p className="text-muted-foreground px-3 py-2 text-sm">
           {status ?? "No matching commands."}
@@ -96,7 +96,7 @@ function renderItems(
               item={item}
               index={index}
               data-answers={answersQuery}
-              className="data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex w-full flex-col items-start rounded-md px-3 py-2 text-start text-sm outline-none"
+              className="data-[highlighted]:bg-muted data-[highlighted]:text-foreground flex w-full cursor-pointer flex-col items-start rounded-sm px-2 py-1.5 text-start text-sm outline-none select-none"
             >
               <span className="flex w-full min-w-0 items-center justify-between gap-2">
                 <span className="min-w-0 truncate font-medium">{item.label}</span>

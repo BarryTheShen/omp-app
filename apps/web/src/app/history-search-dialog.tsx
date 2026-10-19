@@ -85,9 +85,12 @@ export function HistorySearchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={descriptionId} className="max-w-xl">
+      <DialogContent
+        aria-describedby={descriptionId}
+        className="max-w-xl rounded-surface border border-foreground/10 shadow-none ring-0"
+      >
         <DialogHeader>
-          <DialogTitle>{HISTORY_SEARCH_MESSAGES.title}</DialogTitle>
+          <DialogTitle className="text-sm font-medium">{HISTORY_SEARCH_MESSAGES.title}</DialogTitle>
           <DialogDescription id={descriptionId}>
             {HISTORY_SEARCH_MESSAGES.description}
           </DialogDescription>

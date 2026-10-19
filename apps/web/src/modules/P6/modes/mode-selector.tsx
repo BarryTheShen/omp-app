@@ -157,9 +157,9 @@ export function QueueModeSelector({ port, open, onOpenChange }: QueueModeSelecto
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg rounded-surface border border-foreground/10 shadow-none ring-0">
         <DialogHeader>
-          <DialogTitle>Queue modes</DialogTitle>
+          <DialogTitle className="text-sm font-medium">Queue modes</DialogTitle>
           <DialogDescription>
             Modes apply to this session only. Steering interrupts the active turn; queued messages
             wait for the current turn to settle.

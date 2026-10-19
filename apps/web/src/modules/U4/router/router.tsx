@@ -90,7 +90,7 @@ function OAuthPrompt({ handoff, onDone }: OAuthPromptProps) {
   };
 
   return (
-    <div className="pointer-events-auto flex max-w-sm flex-col gap-3 rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-overlay">
+    <div className="pointer-events-auto flex max-w-sm flex-col gap-3 rounded-surface border border-foreground/10 bg-popover p-4 text-popover-foreground shadow-none">
       <div>
         <h2 className="text-base font-medium">Continue sign-in</h2>
         <p className="mt-1 text-sm text-muted-foreground">Destination: {destination.host}</p>
@@ -311,7 +311,7 @@ export class ExtensionUiRequestRouterController implements ExtensionUiRequestRou
     const overlay = this.overlay.open({
       kind: "toast",
       content: (
-        <div className="rounded-lg border border-border bg-popover px-3 py-2 text-sm text-popover-foreground">
+        <div className="rounded-surface border border-foreground/10 bg-popover px-3 py-2 text-sm text-popover-foreground">
           {message}
         </div>
       ),

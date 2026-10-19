@@ -603,7 +603,14 @@ export function SettingsScreen({
   };
 
   const closeButton = (
-    <Button aria-label="Close settings" type="button" size="sm" variant="outline" onClick={onClose}>
+    <Button
+      aria-label="Close settings"
+      className="h-8 rounded-control text-sm"
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={onClose}
+    >
       Close
     </Button>
   );
@@ -639,7 +646,7 @@ export function SettingsScreen({
       title="Settings"
       description="omp's settings, by tab."
       actions={closeButton}
-      className="max-h-[80dvh] min-w-0"
+      className="max-h-[80dvh] min-w-0 [&>header]:border-foreground/10 [&>header]:px-4 [&>header>div>h2]:!font-medium [&>header>div>p]:!text-sm"
       rootProps={{ "data-testid": "settings-screen" }}
     >
       <div className="flex min-w-0 flex-col gap-4">
@@ -655,7 +662,7 @@ export function SettingsScreen({
         >
           <Toolbar ariaLabel="Save settings to">
             <Button
-              type="button"
+              className="h-8 rounded-control border-0 bg-transparent px-3 text-sm text-muted-foreground hover:bg-transparent hover:text-foreground aria-pressed:bg-foreground/[0.06] aria-pressed:text-foreground"
               size="sm"
               variant={layer === "global" ? "default" : "outline"}
               aria-pressed={layer === "global"}
@@ -665,7 +672,7 @@ export function SettingsScreen({
               All workspaces
             </Button>
             <Button
-              type="button"
+              className="h-8 rounded-control border-0 bg-transparent px-3 text-sm text-muted-foreground hover:bg-transparent hover:text-foreground aria-pressed:bg-foreground/[0.06] aria-pressed:text-foreground"
               size="sm"
               variant={layer === "project" ? "default" : "outline"}
               aria-pressed={layer === "project"}
@@ -683,8 +690,9 @@ export function SettingsScreen({
               key={tab}
               type="button"
               size="sm"
-              variant={activeTab === tab ? "default" : "outline"}
+              variant="outline"
               aria-pressed={activeTab === tab}
+              className="h-8 rounded-control border-0 bg-transparent px-3 text-sm text-muted-foreground hover:bg-transparent hover:text-foreground aria-pressed:bg-foreground/[0.06] aria-pressed:text-foreground"
               onClick={() => selectTab(tab)}
             >
               {TAB_LABELS[tab]}
@@ -725,6 +733,7 @@ export function SettingsScreen({
                       id="settings-section-search"
                       type="search"
                       value={search}
+                      className="rounded-control text-sm"
                       placeholder="Search settings"
                       onChange={(event) => setSearch(event.currentTarget.value)}
                     />
