@@ -9,15 +9,33 @@ export function ManageSkillRenderer(props: ToolRendererProps) {
   const model = normalizeManageSkill(props.args, props.result);
   const decoded = decodeManageSkillArgs(props.args);
   const body = decoded.value?.body;
-  const summary = model.name.length > 0 ? `${model.action}: ${model.name}` : "Skill management";
+  const summary =
+    state.phase === "running"
+      ? "Managing skill…"
+      : state.phase === "partial"
+        ? "Skill change in progress"
+        : state.phase === "cancelled"
+          ? "Skill change cancelled"
+          : state.phase === "error"
+            ? "Skill change failed"
+            : "Manage skill";
+  const outcome =
+    model.name.length === 0
+      ? "No skill name was given."
+      : model.status === "created"
+        ? `Created managed skill "${model.name}".`
+        : model.status === "updated"
+          ? `Updated managed skill "${model.name}".`
+          : model.status === "deleted"
+            ? `Deleted managed skill "${model.name}".`
+            : `Managed skill: ${model.name}`;
   return (
     <div data-t6-memory-card data-t6-tool="manage_skill">
       <ToolCard rawResult={JSON.stringify(model.raw)} state={state} summary={summary}>
         <div className="text-muted-foreground py-1 text-xs">
-          <p className="text-foreground">
-            {model.name.length > 0 ? `${model.action} ${model.name}` : "Skill name unavailable"}
-          </p>
-          {model.status !== "unknown" && <p className="mt-1">Status: {model.status}</p>}
+          {state.phase !== "error" && outcome.length > 0 && (
+            <p className="text-foreground">{outcome}</p>
+          )}
           {body !== undefined && body.length > 0 && (
             <div className="mt-1 text-sm">
               <MarkdownContent text={body} variant="compact" />

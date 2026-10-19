@@ -144,7 +144,7 @@ export interface LearnModel {
   readonly memory: string;
   readonly scope: "project" | "global" | undefined;
   readonly skill: { readonly action?: "create" | "update"; readonly name?: string } | undefined;
-  readonly skillStatus: "stored" | "queued" | "created" | "updated" | "shadowed" | "unknown";
+  readonly skillStatus: "stored" | "queued" | "created" | "updated" | "unknown";
   readonly raw: unknown;
   readonly details: LearnDetails | undefined;
   readonly malformed: boolean;
@@ -152,7 +152,7 @@ export interface LearnModel {
 export interface ManageSkillModel {
   readonly action: "create" | "update" | "delete" | "unknown";
   readonly name: string;
-  readonly status: "created" | "updated" | "deleted" | "shadowed" | "unknown";
+  readonly status: "created" | "updated" | "deleted" | "unknown";
   readonly raw: unknown;
   readonly details: ManageSkillDetails | undefined;
   readonly malformed: boolean;
@@ -331,19 +331,17 @@ export function normalizeLearn(args: unknown, result: unknown): LearnModel {
     record && "details" in record ? record.details : undefined,
     "learn details",
   );
-  const skill = decoded.value?.skill;
   const text = contentText(record && "content" in record ? record.content : result);
-  const skillStatus = details.value?.shadowed
-    ? "shadowed"
-    : details.value?.skill
-      ? text.includes("Updated")
-        ? "updated"
-        : "created"
-      : text.includes("queued")
-        ? "queued"
-        : text.includes("stored")
-          ? "stored"
-          : "unknown";
+  const skill = decoded.value?.skill;
+  const skillStatus = details.value?.skill
+    ? text.includes("Updated")
+      ? "updated"
+      : "created"
+    : text.includes("queued")
+      ? "queued"
+      : text.includes("stored")
+        ? "stored"
+        : "unknown";
   return {
     memory: decoded.value?.memory ?? "",
     scope: decoded.value?.scope,
@@ -365,9 +363,8 @@ export function normalizeManageSkill(args: unknown, result: unknown): ManageSkil
   );
   const action = decoded.value?.action ?? details.value?.action ?? "unknown";
   const text = contentText(record && "content" in record ? record.content : result);
-  const status = details.value?.shadowed
-    ? "shadowed"
-    : action === "create" && text.includes("Created")
+  const status =
+    action === "create" && text.includes("Created")
       ? "created"
       : action === "update" && text.includes("Updated")
         ? "updated"

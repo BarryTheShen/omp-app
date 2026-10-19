@@ -28,9 +28,16 @@ export function LearnRenderer(props: ToolRendererProps) {
   const model = normalizeLearn(props.args, props.result);
   const decoded = decodeLearnArgs(props.args);
   const skillBody = decoded.value?.skill?.body;
-  const summary = model.memory
-    ? `Learned${model.scope === undefined ? "" : ` · ${model.scope}`}`
-    : "Memory lesson";
+  const summary =
+    state.phase === "running"
+      ? "Learning memory…"
+      : state.phase === "partial"
+        ? "Memory lesson in progress"
+        : state.phase === "cancelled"
+          ? "Memory learning cancelled"
+          : state.phase === "error"
+            ? "Memory learning failed"
+            : `Memory lesson${model.scope === undefined ? "" : ` · ${model.scope}`}`;
   const result = resultText(props.result);
   return (
     <div data-t6-memory-card data-t6-tool="learn">
@@ -42,17 +49,15 @@ export function LearnRenderer(props: ToolRendererProps) {
             <p>No memory lesson returned.</p>
           )}
           {model.skill?.name !== undefined && (
-            <p className="mt-1">
-              Skill {model.skill.action ?? "change"}: {model.skill.name} ({model.skillStatus})
-            </p>
+            <p className="mt-1">Managed skill: {model.skill.name}</p>
           )}
           {skillBody !== undefined && skillBody.length > 0 && (
             <div className="mt-1 text-sm">
               <MarkdownContent text={skillBody} variant="compact" />
             </div>
           )}
-          {result.length > 0 && model.memory.length === 0 && (
-            <p className="mt-1 truncate">{result}</p>
+          {result.length > 0 && state.phase !== "error" && state.phase !== "cancelled" && (
+            <p className="mt-1">{result}</p>
           )}
           {model.malformed && <p className="mt-1">Some lesson details were malformed.</p>}
         </div>

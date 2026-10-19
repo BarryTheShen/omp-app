@@ -67,7 +67,7 @@ const EMPTY_BRANCH_TEXT: Readonly<Partial<Record<string, string>>> = {
   "T6.reflect": "No synthesized answer returned.",
   "T6.retain": "No memory items returned.",
   "T6.learn": "No memory lesson returned.",
-  "T6.manage-skill": "Skill name unavailable",
+  "T6.manage-skill": "No skill name was given.",
 };
 
 function descriptorOf(fixture: T6LifecycleFixture) {

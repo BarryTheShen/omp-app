@@ -17,10 +17,10 @@ const RECALL_PROPS = {
     content: [
       {
         type: "text",
-        text: "Release decision: keep the browser client read-only.\nFollow-up: gate upstream collaboration.",
+        text: "Found 22 relevant memories (as of 2026-10-07 21:44 UTC):\n\n- Release decision: keep the browser client read-only.\n\n- Follow-up: gate upstream collaboration.\n\n- Memory detail three.\n\n- Memory detail four.\n\n- Memory detail five.\n\n- Memory detail six.\n\n- Memory detail seven.\n\n- Memory detail eight.\n\n- Memory detail nine.\n\n- Memory detail ten.",
       },
     ],
-    details: { count: 2 },
+    details: { count: 22 },
   },
   status: { type: "complete", reason: "stop" },
 } as unknown as ToolRendererProps;
@@ -90,7 +90,12 @@ Keep reviews compact.`,
   },
   argsText: '{"action":"update","name":"release"}',
   result: {
-    content: [{ type: "text", text: "Updated managed skill" }],
+    content: [
+      {
+        type: "text",
+        text: 'Updated managed skill "release" (managed-skills/release/SKILL.md).',
+      },
+    ],
     details: { action: "update", name: "release" },
   },
   status: { type: "complete", reason: "stop" },
@@ -102,8 +107,8 @@ const MEMORY_EDIT_PROPS = {
   args: { op: "forget", id: "memory-1" },
   argsText: '{"op":"forget","id":"memory-1"}',
   result: {
-    content: [{ type: "text", text: "Memory memory-1 forgotten." }],
-    details: { status: "forgotten", id: "memory-1" },
+    content: [{ type: "text", text: "Memory memory-1 was not found in bank project (working)." }],
+    details: { status: "not_found", id: "memory-1", bank: "project", store: "working" },
   },
   status: { type: "complete", reason: "stop" },
 } as unknown as ToolRendererProps;
