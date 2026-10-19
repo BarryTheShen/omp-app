@@ -9,6 +9,7 @@ import { type DebugArgs, type DebugDetails, decodeDebugArgs, decodeDebugDetails 
 const MAX_FRAMES = 6;
 const MAX_VARIABLES = 8;
 const MAX_THREADS = 6;
+const MAX_SESSIONS = 8;
 const MAX_BREAKPOINTS = 6;
 const MAX_TEXT_LINES = 40;
 
@@ -36,6 +37,7 @@ const STRUCTURED_ACTIONS: Record<string, true> = {
   stack_trace: true,
   threads: true,
   variables: true,
+  sessions: true,
   terminate: true,
 };
 
@@ -89,7 +91,7 @@ export function DebugCard({ rendererProps }: { readonly rendererProps: ToolRende
             {sections !== undefined && <DebugSections sections={sections} />}
             {showText && <TextOutput text={text} />}
             {showUnavailable && (
-              <p className="text-muted-foreground text-xs">Debug details unavailable.</p>
+              <p className="text-muted-foreground text-xs">Debug results aren't available.</p>
             )}
           </div>
         )}
@@ -116,6 +118,8 @@ interface Sections {
   readonly variableTotal: number;
   readonly threads: readonly Row[];
   readonly threadTotal: number;
+  readonly sessions: readonly Row[];
+  readonly sessionTotal: number;
   readonly breakpoints: readonly Row[];
   readonly breakpointTotal: number;
 }
@@ -124,6 +128,7 @@ function debugSections(details: DebugDetails): Sections {
   const frames = details.stackFrames ?? [];
   const variables = details.variables ?? [];
   const threads = details.threads ?? [];
+  const sessions = details.sessions ?? [];
   const breakpoints = [...(details.breakpoints ?? []), ...(details.functionBreakpoints ?? [])];
   const snapshot = snapshotLine(details);
   const evaluation =
@@ -137,6 +142,7 @@ function debugSections(details: DebugDetails): Sections {
       frames.length > 0 ||
       variables.length > 0 ||
       threads.length > 1 ||
+      sessions.length > 0 ||
       breakpoints.length > 0,
     snapshot,
     evaluation,
@@ -164,6 +170,19 @@ function debugSections(details: DebugDetails): Sections {
           }))
         : [],
     threadTotal: threads.length,
+    sessions: sessions.slice(0, MAX_SESSIONS).map((session, index) => ({
+      key: `s${index}`,
+      label: `Session ${rawText(session.id ?? String(index + 1))}`,
+      detail: [
+        session.status === undefined ? undefined : `Status: ${rawText(session.status)}`,
+        session.adapter === undefined ? undefined : `Adapter: ${rawText(session.adapter)}`,
+        session.cwd === undefined ? undefined : `Folder: ${rawText(session.cwd)}`,
+        session.program === undefined ? undefined : `Program: ${rawText(session.program)}`,
+      ]
+        .filter((part): part is string => part !== undefined)
+        .join(" · "),
+    })),
+    sessionTotal: sessions.length,
     breakpoints: breakpoints.slice(0, MAX_BREAKPOINTS).map((breakpoint, index) => ({
       key: `b${index}`,
       label:
@@ -240,6 +259,12 @@ function DebugSections({ sections }: { readonly sections: Sections }) {
         testId="t3-debug-threads"
         title="Threads"
         total={sections.threadTotal}
+      />
+      <RowList
+        rows={sections.sessions}
+        testId="t3-debug-sessions"
+        title="Sessions"
+        total={sections.sessionTotal}
       />
       <RowList
         rows={sections.breakpoints}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { T3_INVENTORY_COVERS, T3_LIVE_CAPABILITIES, T3_TOOL_DESCRIPTORS } from "./descriptor";
+import { T3_INVENTORY_COVERS, T3_TOOL_DESCRIPTORS } from "./descriptor";
 
 describe("T3 execution descriptors", () => {
   test("claims exactly the three T3 inventory rows once", () => {
@@ -11,7 +11,7 @@ describe("T3 execution descriptors", () => {
     expect(new Set(T3_TOOL_DESCRIPTORS.flatMap((descriptor) => descriptor.covers)).size).toBe(3);
   });
 
-  test("matches exact tool names and leaves live capabilities to runtime composition", () => {
+  test("matches exact tool names and leaves runtime capabilities out of descriptors", () => {
     expect(T3_TOOL_DESCRIPTORS.map((descriptor) => descriptor.match)).toEqual([
       { by: "name", name: "computer" },
       { by: "name", name: "debug" },
@@ -19,10 +19,5 @@ describe("T3 execution descriptors", () => {
     ]);
     expect(T3_TOOL_DESCRIPTORS.every((descriptor) => descriptor.requires.length === 0)).toBe(true);
     expect(T3_TOOL_DESCRIPTORS.every((descriptor) => descriptor.renderer)).toBe(true);
-    expect(T3_LIVE_CAPABILITIES).toMatchObject({
-      computer: "upstream.computer",
-      debug: "upstream.debug",
-      eval: "upstream.eval",
-    });
   });
 });

@@ -1,16 +1,9 @@
-import type { CapabilityKey, CapabilityMap } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import { z } from "zod";
 import { type OutputMeta, OutputMetaSchema } from "../U3/tool-card/output-meta";
 
 const UnknownRecord = z.record(z.string(), z.unknown());
 const MAX_PREVIEW = 4_000;
-
-export const T3_CAPABILITIES = {
-  eval: "upstream.eval" as CapabilityKey,
-  debug: "upstream.debug" as CapabilityKey,
-  computer: "upstream.computer" as CapabilityKey,
-} as const;
 
 export const EvalArgsSchema = z.looseObject({
   language: z.enum(["py", "js"]).nullish(),
@@ -19,7 +12,7 @@ export const EvalArgsSchema = z.looseObject({
   timeout: z.number().nonnegative().nullish(),
   reset: z.boolean().nullish(),
 });
-/** omp v18.6.1 `debug` parameters (packages/coding-agent/src/tools/debug.ts:69-138). */
+/** omp v18.9.1 `debug` parameters (packages/coding-agent/src/tools/debug.ts:99-137). */
 export const DebugArgsSchema = z.looseObject({
   action: z.string().optional(),
   program: z.string().optional(),
@@ -84,7 +77,7 @@ export const EvalDetailsSchema = z.looseObject({
     })
     .optional(),
 });
-/** omp v18.6.1 DAP shapes (packages/coding-agent/src/dap/types.ts:4,42-49,233-244,279-294,382-400,515-521,543-549,564-590). */
+/** omp v18.9.1 DAP session fields (packages/coding-agent/src/dap/types.ts:563-588). */
 const DapSourceSchema = z.looseObject({
   name: z.string().optional(),
   path: z.string().optional(),
@@ -126,9 +119,8 @@ const DebugBreakpointSchema = z.looseObject({
 });
 
 /**
- * omp v18.6.1 `DebugExecutionDetails` (packages/coding-agent/src/tools/debug.ts:143-171; base
- * `DebugToolDetails` in packages/tui/src/tools/debug.ts:38-42). Each action fills only its own
- * fields; the result's text content repeats them for the model.
+ * omp v18.9.1 `DebugExecutionDetails` (packages/coding-agent/src/tools/debug.ts:143-171;
+ * session output is formatted by `formatSessions` at :410-424 and returned at :979).
  */
 export const DebugDetailsSchema = z.looseObject({
   action: z.string().optional(),
@@ -293,15 +285,5 @@ export function mapT3Failure(error: unknown, toolName: string): AppFailure {
   );
 }
 
-export function capabilityAvailable(
-  capabilities: CapabilityMap,
-  capability: CapabilityKey,
-): boolean {
-  return capabilities[capability]?.state === "available";
-}
-
-export function capabilityFailure(capability: CapabilityKey, message: string): AppFailure {
-  return new AppFailure({ code: "unavailable", message, retryable: false, capability });
-}
 export type T3ToolArgs = EvalArgs | DebugArgs | ComputerArgs;
 export type T3ToolDetails = EvalDetails | DebugDetails | ComputerDetails;

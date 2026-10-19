@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { EvalCard } from "./eval";
+import { T3_SCRIPTED_EVAL_IMAGE_RESULT } from "./fixtures/scripted";
 
 afterEach(() => cleanup());
 
@@ -89,6 +90,21 @@ describe("EvalCard", () => {
       "Traceback",
     );
   });
+  test("renders omp's raw base64 image content with its declared media type", () => {
+    render(
+      <EvalCard
+        rendererProps={props({
+          args: T3_SCRIPTED_EVAL_IMAGE_RESULT.args,
+          result: T3_SCRIPTED_EVAL_IMAGE_RESULT.result,
+        })}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.getByRole("img", { name: "Evaluation result" }).getAttribute("src")).toBe(
+      `data:image/png;base64,${T3_SCRIPTED_EVAL_IMAGE_RESULT.result.content[1].data}`,
+    );
+  });
 
   test("renders only result-provided data images and leaves path-only images unavailable", () => {
     render(
@@ -111,7 +127,109 @@ describe("EvalCard", () => {
     expandToolCards();
 
     expect(screen.getByRole("img", { name: "Evaluation result" })).toBeTruthy();
-    expect(screen.getByText("Image output is unavailable from the typed result.")).toBeTruthy();
+    expect(screen.getByText("Image preview is unavailable.")).toBeTruthy();
+  });
+
+  test("uses the media type an image content part declares", () => {
+    const [text, image] = T3_SCRIPTED_EVAL_IMAGE_RESULT.result.content;
+    render(
+      <EvalCard
+        rendererProps={props({
+          args: T3_SCRIPTED_EVAL_IMAGE_RESULT.args,
+          result: {
+            ...T3_SCRIPTED_EVAL_IMAGE_RESULT.result,
+            content: [text, { ...image, mimeType: "image/jpeg" }],
+          },
+        })}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.getByRole("img", { name: "Evaluation result" }).getAttribute("src")).toBe(
+      `data:image/jpeg;base64,${image.data}`,
+    );
+  });
+
+  test("leaves an image unavailable when its bytes are not base64 or its type is not a browser image type", () => {
+    const [text, image] = T3_SCRIPTED_EVAL_IMAGE_RESULT.result.content;
+    render(
+      <EvalCard
+        rendererProps={props({
+          args: T3_SCRIPTED_EVAL_IMAGE_RESULT.args,
+          result: {
+            ...T3_SCRIPTED_EVAL_IMAGE_RESULT.result,
+            content: [
+              text,
+              { ...image, data: "not base64 !" },
+              { ...image, mimeType: "image/svg+xml" },
+            ],
+          },
+        })}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.queryByRole("img", { name: "Evaluation result" })).toBeNull();
+    expect(screen.getAllByText("Image preview is unavailable.")).toHaveLength(2);
+  });
+
+  test("draws one image when the same image arrives in the details and in the content", () => {
+    const [text, image] = T3_SCRIPTED_EVAL_IMAGE_RESULT.result.content;
+    render(
+      <EvalCard
+        rendererProps={props({
+          args: T3_SCRIPTED_EVAL_IMAGE_RESULT.args,
+          result: {
+            ...T3_SCRIPTED_EVAL_IMAGE_RESULT.result,
+            content: [text, image],
+            details: {
+              ...T3_SCRIPTED_EVAL_IMAGE_RESULT.result.details,
+              images: [{ image: `data:image/png;base64,${image.data}` }],
+            },
+          },
+        })}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.getAllByRole("img", { name: "Evaluation result" })).toHaveLength(1);
+  });
+
+  test("does not read a text content part as an image", () => {
+    const [text] = T3_SCRIPTED_EVAL_IMAGE_RESULT.result.content;
+    render(
+      <EvalCard
+        rendererProps={props({
+          args: T3_SCRIPTED_EVAL_IMAGE_RESULT.args,
+          result: { ...T3_SCRIPTED_EVAL_IMAGE_RESULT.result, content: [text] },
+        })}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.queryByRole("img", { name: "Evaluation result" })).toBeNull();
+    expect(screen.queryByText("Image preview is unavailable.")).toBeNull();
+  });
+  test("reports how many cells fit in the bounded preview", () => {
+    render(
+      <EvalCard
+        rendererProps={props({
+          result: {
+            details: {
+              cells: Array.from({ length: 129 }, (_, index) => ({
+                index,
+                code: `print(${index})`,
+                output: String(index),
+                status: "complete",
+              })),
+            },
+          },
+        })}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.getByText("Showing 128 of 129 cells.")).toBeTruthy();
   });
 
   test("makes malformed details visible and preserves the raw result preview", () => {

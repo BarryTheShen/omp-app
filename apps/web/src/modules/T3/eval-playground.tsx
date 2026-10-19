@@ -4,6 +4,7 @@ import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { EvalCard } from "./eval";
 
 const CHART_IMAGE = createChartImage();
+const CHART_IMAGE_DATA = CHART_IMAGE.slice(CHART_IMAGE.indexOf(",") + 1);
 
 function createChartImage(): string {
   const canvas = document.createElement("canvas");
@@ -36,9 +37,9 @@ function props(toolCallId: string, result: unknown, status: unknown): ToolRender
   } as unknown as ToolRendererProps;
 }
 
-function result(details: Record<string, unknown>, text = "hello") {
+function result(details: Record<string, unknown>, text = "hello", images: readonly unknown[] = []) {
   return {
-    content: [{ type: "text", text }],
+    content: [{ type: "text", text }, ...images],
     details,
   };
 }
@@ -104,27 +105,26 @@ function EvalPlayground() {
         <EvalCard
           rendererProps={props(
             "eval-success",
-            result({
-              language: "py",
-              cells: [
-                {
-                  index: 0,
-                  code: "print('done')",
-                  language: "py",
-                  status: "complete",
-                  output: "done",
-                  durationMs: 18,
-                  exitCode: 0,
-                },
-              ],
-              jsonOutputs: [{ ok: true, value: 42 }],
-              images: [
-                {
-                  image: CHART_IMAGE,
-                },
-              ],
-              async: { state: "completed", jobId: "job-success", type: "eval" },
-            }),
+            result(
+              {
+                language: "py",
+                cells: [
+                  {
+                    index: 0,
+                    code: "print('done')",
+                    language: "py",
+                    status: "complete",
+                    output: "done",
+                    durationMs: 18,
+                    exitCode: 0,
+                  },
+                ],
+                jsonOutputs: [{ ok: true, value: 42 }],
+                async: { state: "completed", jobId: "job-success", type: "eval" },
+              },
+              "done",
+              [{ type: "image", data: CHART_IMAGE_DATA, mimeType: "image/png" }],
+            ),
             { type: "complete" },
           )}
         />

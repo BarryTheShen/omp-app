@@ -75,6 +75,15 @@ async function expectCards(page: Page): Promise<void> {
   await expect(page.getByText("Showing 6 of 8")).toBeVisible();
   await expect(page.getByText("counter = 3")).toBeVisible();
   await expect(page.getByText("worker 1")).toBeVisible();
+  const sessions = page.getByTestId("t3-debug-sessions");
+  await expect(sessions).toContainText("debug-session-1");
+  await expect(sessions).toContainText("Status: stopped");
+  await expect(sessions).toContainText("Adapter: js-debug-adapter");
+  await expect(sessions).toContainText("Folder: <WORKSPACE>");
+  await expect(sessions).toContainText("Program: <WORKSPACE>/apps/web/server.ts");
+  await expect(sessions).toContainText("debug-session-2");
+  await expect(sessions).toContainText("Program: <WORKSPACE>/scripts/worker.py");
+  await expect(page.getByText("Debug results aren't available.")).toHaveCount(0);
   await expect(page.getByTestId("tool-card-debug-running")).toHaveAttribute(
     "data-phase",
     "running",

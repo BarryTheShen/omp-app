@@ -35,6 +35,7 @@ export function EvalCard({ rendererProps }: EvalCardProps) {
     [normalized.result, rendererProps.args, rendererProps.result],
   );
   const details = model.details;
+  const imagesFromContent = resultImages(model.raw);
   const phase = phaseFor(normalized, details, model.malformed);
   const outputMeta = outputMetaFor(details, normalized.outputMeta);
   const state = evalState(normalized, model, phase, outputMeta);
@@ -56,7 +57,7 @@ export function EvalCard({ rendererProps }: EvalCardProps) {
           />
           <EvalStatus details={details} />
           <EvalAsyncJob details={details} />
-          <EvalStructuredOutputs details={details} />
+          <EvalStructuredOutputs details={details} contentImages={imagesFromContent} />
           <EvalErrorDetails details={details} />
           <details className="text-muted-foreground text-xs" data-testid="t3-eval-raw-details">
             <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -257,7 +258,7 @@ function EvalCells({
       ))}
       {cells !== undefined && cells.length > MAX_CELLS && (
         <span className="text-muted-foreground text-xs">
-          Additional cells are available in the raw result.
+          Showing {visible.length} of {cells.length} cells.
         </span>
       )}
     </div>
@@ -353,9 +354,24 @@ function EvalAsyncJob({ details }: { readonly details: EvalDetails | undefined }
   );
 }
 
-function EvalStructuredOutputs({ details }: { readonly details: EvalDetails | undefined }) {
+function EvalStructuredOutputs({
+  details,
+  contentImages,
+}: {
+  readonly details: EvalDetails | undefined;
+  readonly contentImages: readonly unknown[];
+}) {
   const jsonOutputs = details?.jsonOutputs?.slice(0, MAX_OUTPUT_ITEMS) ?? [];
-  const images = details?.images?.slice(0, MAX_OUTPUT_ITEMS) ?? [];
+  const seenImages = new Set<string>();
+  const images = [...(details?.images ?? []), ...contentImages]
+    .filter((image) => {
+      const source = imageSource(image);
+      const identity = source ?? `unavailable-${boundedText(image)}`;
+      if (seenImages.has(identity)) return false;
+      seenImages.add(identity);
+      return true;
+    })
+    .slice(0, MAX_OUTPUT_ITEMS);
   if (jsonOutputs.length === 0 && images.length === 0) return null;
   return (
     <div className="flex min-w-0 flex-col gap-2" data-testid="t3-eval-structured-outputs">
@@ -365,8 +381,11 @@ function EvalStructuredOutputs({ details }: { readonly details: EvalDetails | un
       {images.map((image) => {
         const source = imageSource(image);
         return source === undefined ? (
-          <div className="text-muted-foreground text-xs" key="image-unavailable">
-            Image output is unavailable from the typed result.
+          <div
+            className="text-muted-foreground text-xs"
+            key={`image-unavailable-${boundedText(image)}`}
+          >
+            Image preview is unavailable.
           </div>
         ) : (
           <img
@@ -490,21 +509,32 @@ function outputText(value: unknown): string {
   }
 }
 
+/** omp v18.9.1 `ImageContent` is delivered in eval result content as raw bytes and a MIME type. */
+function resultImages(value: unknown): readonly unknown[] {
+  const content = asRecord(value)?.content;
+  return Array.isArray(content) ? content.filter((item) => asRecord(item)?.type === "image") : [];
+}
+
 function imageSource(value: unknown): string | undefined {
-  const candidate =
-    typeof value === "string"
-      ? value
-      : value !== null && typeof value === "object" && !Array.isArray(value)
-        ? "image" in value
-          ? value.image
-          : "data" in value
-            ? value.data
-            : "src" in value
-              ? value.src
-              : undefined
-        : undefined;
-  if (typeof candidate !== "string") return undefined;
-  return /^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(candidate) ? candidate : undefined;
+  if (typeof value === "string") {
+    return /^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(value) ? value : undefined;
+  }
+  const image = asRecord(value);
+  if (
+    image?.type === "image" &&
+    typeof image.data === "string" &&
+    image.data.length > 0 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(image.data) &&
+    typeof image.mimeType === "string" &&
+    /^image\/(?:png|jpeg|gif|webp)$/i.test(image.mimeType)
+  ) {
+    return `data:${image.mimeType.toLowerCase()};base64,${image.data}`;
+  }
+  const candidate = image?.image ?? image?.data ?? image?.src;
+  return typeof candidate === "string" &&
+    /^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(candidate)
+    ? candidate
+    : undefined;
 }
 
 function safeLanguage(language: string): string {

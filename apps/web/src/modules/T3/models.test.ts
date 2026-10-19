@@ -31,10 +31,11 @@ describe("T3 tolerant execution models", () => {
     });
   });
 
-  test("accepts omp v18.6.1's real debug details and tolerant computer results", () => {
+  test("accepts omp v18.9.1 debug results and tolerant computer results", () => {
     expect(decodeDebugArgs({ action: "launch", program: "node" }).ok).toBe(true);
     expect(decodeComputerArgs({ action: "run", code: "return 1", read_only: true }).ok).toBe(true);
-    // DebugExecutionDetails: omp packages/coding-agent/src/tools/debug.ts:143-171.
+    // DebugExecutionDetails and DapSessionSummary: packages/coding-agent/src/tools/debug.ts:143-171;
+    // packages/coding-agent/src/dap/types.ts:563-588.
     const debug = decodeDebugDetails({
       action: "stack_trace",
       success: true,

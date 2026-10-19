@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { DebugCard } from "./debug";
+import { T3_SCRIPTED_DEBUG_SESSIONS_RESULT } from "./fixtures/scripted";
 
 afterEach(cleanup);
 
@@ -108,6 +109,52 @@ describe("DebugCard", () => {
     expandToolCards();
     expect(screen.getByTestId("t3-debug-threads").textContent).toContain("worker");
   });
+  test("renders all available fields from structured debug sessions", () => {
+    render(
+      <DebugCard
+        rendererProps={props({ action: "sessions" }, T3_SCRIPTED_DEBUG_SESSIONS_RESULT)}
+      />,
+    );
+    expandToolCards();
+
+    const sessions = screen.getByTestId("t3-debug-sessions");
+    expect(sessions.textContent).toContain("debug-session-1");
+    expect(sessions.textContent).toContain("stopped");
+    expect(sessions.textContent).toContain("Adapter: js-debug-adapter");
+    expect(sessions.textContent).toContain("Folder: <WORKSPACE>");
+    expect(sessions.textContent).toContain("Program: <WORKSPACE>/apps/web/server.ts");
+    expect(sessions.textContent).toContain("debug-session-2");
+    expect(sessions.textContent).toContain("running");
+    expect(screen.queryByTestId("t3-debug-text")).toBeNull();
+    expect(screen.queryByText("Debug results aren't available.")).toBeNull();
+  });
+
+  test("lists at most eight sessions and says how many there are", () => {
+    const sessions = Array.from({ length: 9 }, (_, index) => ({
+      id: `debug-session-${index + 1}`,
+      adapter: "js-debug-adapter",
+      cwd: "<WORKSPACE>",
+      program: "<WORKSPACE>/apps/web/server.ts",
+      status: "stopped",
+    }));
+    render(
+      <DebugCard
+        rendererProps={props(
+          { action: "sessions" },
+          {
+            content: [{ type: "text", text: "9 debug sessions" }],
+            details: { action: "sessions", success: true, sessions },
+          },
+        )}
+      />,
+    );
+    expandToolCards();
+
+    const list = screen.getByTestId("t3-debug-sessions");
+    expect(list.textContent).toContain("Session debug-session-8");
+    expect(list.textContent).not.toContain("Session debug-session-9");
+    expect(list.textContent).toContain("Showing 8 of 9");
+  });
 
   test("uses plain words for the header", () => {
     render(
@@ -187,7 +234,7 @@ describe("DebugCard", () => {
     expandToolCards();
     expect(screen.getByText("Launch app")).toBeTruthy();
     expect(screen.getByTestId("tool-card-debug-1").getAttribute("data-phase")).toBe("error");
-    expect(screen.queryByText("Debug details unavailable.")).toBeNull();
+    expect(screen.queryByText("Debug results aren't available.")).toBeNull();
     expect(screen.getByRole("alert").textContent).toContain("No debugger adapter available.");
     expect(screen.queryByText(/upstream/)).toBeNull();
   });
@@ -202,7 +249,7 @@ describe("DebugCard", () => {
       />,
     );
     expandToolCards();
-    expect(screen.getByText("Debug details unavailable.")).toBeTruthy();
+    expect(screen.getByText("Debug results aren't available.")).toBeTruthy();
     expect(
       screen.queryByText(/"stackFrames"/, { ignore: "[data-slot='u3-tool-card-raw'] *" }),
     ).toBeNull();
@@ -215,6 +262,6 @@ describe("DebugCard", () => {
     expandToolCards();
     expect(screen.getByText("Step over")).toBeTruthy();
     expect(screen.getByTestId("tool-card-debug-1").getAttribute("data-phase")).toBe("running");
-    expect(screen.queryByText("Debug details unavailable.")).toBeNull();
+    expect(screen.queryByText("Debug results aren't available.")).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import "../../index.css";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { DebugCard } from "./debug";
+import { T3_SCRIPTED_DEBUG_SESSIONS_RESULT } from "./fixtures/scripted";
 
 function props(
   toolCallId: string,
@@ -100,6 +101,13 @@ function DebugPlayground() {
                 ],
               },
             },
+          )}
+        />
+        <DebugCard
+          rendererProps={props(
+            "debug-sessions",
+            { action: "sessions" },
+            T3_SCRIPTED_DEBUG_SESSIONS_RESULT,
           )}
         />
         <DebugCard

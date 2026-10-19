@@ -56,19 +56,28 @@ test("renders eval cells streamed output async jobs and images with light dark e
   await openAllToolCards(page);
   await expect(page.getByTestId("t3-eval-cell-0").first()).toBeVisible();
   await expect(page.getByTestId("t3-eval-async-job").first()).toContainText("job-running");
+  const image = page.getByRole("img", { name: "Evaluation result" });
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(image).toHaveAttribute("src", /^data:image\/png;base64,/);
   const style = await page
     .getByTestId("t3-eval-header")
     .first()
     .evaluate((node) => {
       const language = node.querySelector<HTMLElement>("[data-eval-language]");
-      const card = node.closest("[data-slot='t3-eval-details']");
+      const card = node.closest("[data-slot='u3-tool-card']");
       if (!language || !card) throw new Error("Eval style landmarks are missing");
       const languageStyle = getComputedStyle(language);
       const cardStyle = getComputedStyle(card);
       return { font: languageStyle.fontFamily, background: cardStyle.backgroundColor };
     });
   expect(style.font).toMatch(/mono/i);
-  expect(style.background).not.toBe("rgba(0, 0, 0, 0)");
+  await expect(page.getByTestId("t3-eval-playground")).toHaveCSS(
+    "background-color",
+    /^(rgb|oklch)/,
+  );
   await page.screenshot({ path: "../../.data/screenshots/t3.2-eval-light.png", fullPage: true });
 
   const darkPage = await page.context().newPage();
@@ -79,10 +88,20 @@ test("renders eval cells streamed output async jobs and images with light dark e
   await expect(darkPage.getByTestId("t3-eval-playground")).toBeVisible();
   await openAllToolCards(darkPage);
   await expect(darkPage.getByTestId("t3-eval-async-job").first()).toContainText("job-running");
+  await expect(darkPage.getByRole("img", { name: "Evaluation result" })).toBeVisible();
+  const darkBackground = await darkPage
+    .getByTestId("t3-eval-playground")
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+  expect(darkBackground).toMatch(/^(rgb|oklch)/);
   await darkPage.screenshot({ path: "../../.data/screenshots/t3.2-eval-dark.png", fullPage: true });
   await darkPage.close();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId("t3-eval-playground")).toBeVisible();
+  await expect(page.getByRole("img", { name: "Evaluation result" })).toBeVisible();
+  const narrowBackground = await page
+    .getByTestId("t3-eval-playground")
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+  expect(narrowBackground).toMatch(/^(rgb|oklch)/);
   await page.screenshot({ path: "../../.data/screenshots/t3.2-eval-narrow.png", fullPage: true });
 });

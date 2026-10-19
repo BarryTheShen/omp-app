@@ -40,10 +40,4 @@ export const T3_TOOL_DESCRIPTORS = [
   },
 ] as const satisfies readonly ToolRegistryDescriptor[];
 
-export const T3_LIVE_CAPABILITIES = {
-  computer: "upstream.computer" as const,
-  debug: "upstream.debug" as const,
-  eval: "upstream.eval" as const,
-};
-
 export type T3ToolDescriptor = (typeof T3_TOOL_DESCRIPTORS)[number];
