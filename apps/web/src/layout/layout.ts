@@ -44,6 +44,7 @@ export type SurfaceId =
   | "rewind"
   | "commandOutput"
   | "agents"
+  | "rules"
   | "executionModes"
   | "liveVoice";
 
@@ -58,7 +59,7 @@ export const LAYOUT: AppLayout = {
    * Right sidebar; with more than one panel they become tabs, in this order. An on-demand panel
    * (`Surface.open`) is listed only while it is open.
    */
-  panels: ["todo", "contextCard", "agents", "rewind", "commandOutput"],
+  panels: ["todo", "contextCard", "agents", "rules", "rewind", "commandOutput"],
   /** The inline control row inside the composer, left to right. */
   composerToolbar: ["model", "mode", "executionModes"],
   /** The queued messages, on a row of their own under the controls. The row is open only while a message waits. */

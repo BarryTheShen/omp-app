@@ -363,7 +363,7 @@ realTest(
 );
 
 realTest(
-  "the four tabs stay inside the sidebar at 1280 px; only the history panel draws Close, and it closes its tab",
+  "the five tabs stay inside the sidebar at 1280 px; only the history panel draws Close, and it closes its tab",
   async ({ realApp }) => {
     const page = await realApp.open();
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -374,20 +374,23 @@ realTest(
     await page.keyboard.press(CHORD);
     const sidebar = page.locator('[data-shell-sidebar="right"]');
     await expect(page.getByRole("tab", HISTORY_TAB)).toHaveAttribute("aria-selected", "true");
-    await expect(sidebar.getByRole("tab")).toHaveCount(4);
+    await expect(sidebar.getByRole("tab")).toHaveCount(5);
     await expectTabsInsideSidebar(page);
 
-    // The Todo checklist and the Agent Hub are tabs with nothing to close, so they draw no Close control.
+    // The Todo checklist, Rules and Agent Hub are tabs with nothing to close, so they draw no Close control.
+    await sidebar.getByRole("tab", { name: "Rules" }).click();
+    await expect(page.getByRole("region", { name: "Rules", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close Rules" })).toHaveCount(0);
     await sidebar.getByRole("tab", { name: "Todo checklist" }).click();
     await expect(page.getByRole("button", { name: "Close Todo checklist" })).toHaveCount(0);
     await sidebar.getByRole("tab", { name: "Agents" }).click();
     await expect(page.getByRole("region", { name: "Agent Hub" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Close Agent Hub" })).toHaveCount(0);
 
-    // The history panel's Close works: it closes its tab, and the other three remain.
+    // The history panel's Close works: it closes its tab, and the other four remain.
     await sidebar.getByRole("tab", HISTORY_TAB).click();
     await page.getByRole("button", { name: "Close Conversation history" }).click();
-    await expect(sidebar.getByRole("tab")).toHaveCount(3);
+    await expect(sidebar.getByRole("tab")).toHaveCount(4);
     await expect(page.getByRole("tab", HISTORY_TAB)).toHaveCount(0);
     expect(realApp.problems).toEqual([]);
   },

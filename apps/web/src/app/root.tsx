@@ -77,6 +77,8 @@ import { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { createDiagnosticCommandPort, ReportsPanel } from "@/modules/D6/reports";
 import { SecurityReportPanel } from "@/modules/D6/security";
 import { FAST_REFUSAL_NOTICE_SOURCE } from "@/modules/D7/modes";
+import { createRuleStoreAdapter } from "@/modules/I3/ports";
+import { RulesPanel, useRulesController } from "@/modules/I3/rules";
 import { useLiveVoiceSurfaces } from "@/modules/I5/live";
 import {
   NotificationFeedback,
@@ -1337,6 +1339,12 @@ function ActiveThreadReady({
   const queueAdapter = useMemo(() => createQueueAdapter(queueController), [queueController]);
   const queueOpen = useQueueOpen(queueAdapter);
   const todoStore = useChatTodoStore(store);
+  const rulesAdapter = useMemo(() => createRuleStoreAdapter(client), [client]);
+  const rulesController = useRulesController({
+    adapter: rulesAdapter,
+    folder: folder ?? ("" as FolderPath),
+    open: true,
+  });
   const todoSnapshot = useSyncExternalStore(
     (listener) => todoStore.subscribe(listener),
     () => todoStore.getSnapshot(),
@@ -1718,6 +1726,11 @@ function ActiveThreadReady({
       ),
     },
     agents: agentsSurface({ agents, reveal: agentsReveal, resolveProviderError }),
+    rules: {
+      title: "Rules",
+      grow: true,
+      render: () => <RulesPanel controller={rulesController} closable={false} />,
+    },
     rewind: useRewindPanel({
       threadId,
       store,

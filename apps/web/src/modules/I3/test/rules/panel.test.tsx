@@ -1,14 +1,17 @@
-import { AppFailure } from "@omp-app/contracts";
+import { AppFailure, type Rule } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { OverlayHost } from "@/overlay";
 import type { RulesController } from "../../rules/controller";
 import { RulesPanel } from "../../rules/panel";
 
-function controller(overrides: Partial<RulesController["state"]> = {}): RulesController {
+function controller(
+  overrides: Partial<RulesController["state"]> = {},
+  rulesFile = false,
+): RulesController {
   const rule = {
-    id: "release.md" as const,
-    name: "Release notes",
+    id: (rulesFile ? "RULES.md" : "release.md") as Rule["id"],
+    name: rulesFile ? "RULES.md" : "Release notes",
     scope: "project" as const,
     content: "Keep release notes factual.",
     enabled: true,
@@ -71,6 +74,22 @@ describe("rules panel", () => {
     expect(screen.getByRole("button", { name: "Disable rule" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete rule" })).toBeTruthy();
   });
+  test("shows the close control by default and omits it when the drawer owns tab closing", () => {
+    const closeable = render(
+      <OverlayHost>
+        <RulesPanel controller={controller()} />
+      </OverlayHost>,
+    );
+    expect(screen.getByRole("button", { name: "Close Rules" })).toBeTruthy();
+    closeable.unmount();
+
+    render(
+      <OverlayHost>
+        <RulesPanel controller={controller()} closable={false} />
+      </OverlayHost>,
+    );
+    expect(screen.queryByRole("button", { name: "Close Rules" })).toBeNull();
+  });
   test("keeps action failures inline and retries the failed save", () => {
     const current = controller({
       draft: "Unsaved rule.",
@@ -128,5 +147,33 @@ describe("rules panel", () => {
     );
     expect(screen.queryByText("No rules found")).toBeNull();
     expect(screen.getAllByText("Nothing here yet")).toHaveLength(1);
+  });
+  test("explains when RULES.md is applied or skipped", () => {
+    render(
+      <OverlayHost>
+        <RulesPanel controller={controller({}, true)} />
+      </OverlayHost>,
+    );
+    expect(screen.getByText("omp applies this file to every request.")).toBeTruthy();
+    cleanup();
+    render(
+      <OverlayHost>
+        <RulesPanel controller={controller({ enabled: false }, true)} />
+      </OverlayHost>,
+    );
+    expect(screen.getByText("omp does not use this file.")).toBeTruthy();
+  });
+  test("says nothing about RULES.md on any other rule file, enabled or not", () => {
+    for (const enabled of [true, false]) {
+      render(
+        <OverlayHost>
+          <RulesPanel controller={controller({ enabled })} />
+        </OverlayHost>,
+      );
+      expect(screen.getByText("Rule details")).toBeTruthy();
+      expect(screen.queryByText("omp applies this file to every request.")).toBeNull();
+      expect(screen.queryByText("omp does not use this file.")).toBeNull();
+      cleanup();
+    }
   });
 });

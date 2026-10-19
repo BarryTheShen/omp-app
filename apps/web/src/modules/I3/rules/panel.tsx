@@ -11,6 +11,7 @@ export interface RulesPanelProps {
   readonly controller: RulesController;
   readonly invokingFocus?: PanelFocusToken;
   readonly restoreFocus?: (token: PanelFocusToken) => void;
+  readonly closable?: boolean;
 }
 
 const SCOPES: readonly RuleScope[] = ["global", "project"];
@@ -24,7 +25,12 @@ function lifecycle(controller: RulesController): PanelState["lifecycle"] {
   return state.saving || state.deleting ? "updating" : "populated";
 }
 
-export function RulesPanel({ controller, invokingFocus, restoreFocus }: RulesPanelProps) {
+export function RulesPanel({
+  controller,
+  invokingFocus,
+  restoreFocus,
+  closable = true,
+}: RulesPanelProps) {
   const { state, actions } = controller;
   const panelState: PanelState = {
     open: state.open,
@@ -37,6 +43,7 @@ export function RulesPanel({ controller, invokingFocus, restoreFocus }: RulesPan
   };
   const disabled = state.loading || state.saving || state.deleting;
   const selected = state.selected;
+  const isRulesFile = selected?.id === "RULES.md";
   const retry = () => {
     if (state.errorAction === "save") return actions.save();
     if (state.errorAction === "delete") return actions.remove();
@@ -48,7 +55,11 @@ export function RulesPanel({ controller, invokingFocus, restoreFocus }: RulesPan
       state={panelState}
       invokingFocus={invokingFocus}
       restoreFocus={restoreFocus}
-      onOpenChange={(open, _reason: PanelOpenReason) => (open ? actions.open() : actions.close())}
+      onOpenChange={
+        closable
+          ? (open, _reason: PanelOpenReason) => (open ? actions.open() : actions.close())
+          : undefined
+      }
       onRetry={() => retry()}
       toolbar={
         <Button
@@ -62,7 +73,7 @@ export function RulesPanel({ controller, invokingFocus, restoreFocus }: RulesPan
         </Button>
       }
       body={
-        <div className="flex min-w-0 flex-col gap-4 p-4">
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-y-auto p-4">
           <Section heading="Rule scope" description="Choose the rules source to review.">
             <fieldset className="flex flex-wrap gap-2">
               <legend className="sr-only">Rule scope</legend>
@@ -136,6 +147,13 @@ export function RulesPanel({ controller, invokingFocus, restoreFocus }: RulesPan
               description="Changes are saved when you choose Save rule."
             >
               <div className="flex flex-col gap-3">
+                {isRulesFile ? (
+                  <p className="text-muted-foreground text-sm">
+                    {state.enabled
+                      ? "omp applies this file to every request."
+                      : "omp does not use this file."}
+                  </p>
+                ) : null}
                 <Textarea
                   aria-label="Rule content"
                   disabled={disabled}
