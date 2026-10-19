@@ -9,7 +9,6 @@ import type {
 import { SETTING_SECTIONS as OMP_SETTING_SECTIONS, SETTING_TABS } from "@omp-app/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ConflictBanner,
   EmptyState,
   InlineError,
   ListRow,
@@ -38,21 +37,8 @@ import {
   AppearanceSettingsView,
   useAppearanceSettingsController,
 } from "@/modules/S1/settings";
-import {
-  applyStatusLabel,
-  CONFLICT_BUTTON_LABELS,
-  environmentOverrideText,
-  SETTINGS_CONFLICT_DESCRIPTION,
-  SETTINGS_CONFLICT_HEADING,
-  SettingsSection,
-  type SettingsSectionDescriptor,
-  type StagedSettings,
-  saveLocationText,
-  settingLabels,
-  settingsConflictRows,
-  UnsavedSettingsNotice,
-  type ValidationResult,
-} from "@/modules/S1/settings-kit";
+import { type SettingsSectionDescriptor, saveLocationText } from "@/modules/S1/settings-kit";
+import { RuntimeSettingsSection } from "@/modules/S2/lsp";
 import { SETTINGS_SECTIONS } from "@/registry";
 import { ExtensionCenterSection, extensionCenterAvailable } from "./extension-center-section";
 import { ProviderLoginSection, providerLoginAvailable } from "./provider-login-section";
@@ -210,218 +196,6 @@ class SettingsRuntimePool {
     for (const runtime of this.runtimes.values()) runtime.dispose();
     this.runtimes.clear();
   }
-}
-
-function changedEdits(
-  before: StagedSettings | null,
-  after: StagedSettings,
-): readonly [string, StagedSettings["edits"][string]][] {
-  const previous = before?.edits ?? {};
-  return Object.entries(after.edits).filter(
-    ([key, value]) => JSON.stringify(previous[key]) !== JSON.stringify(value),
-  );
-}
-
-function phaseLabel(
-  phase: ReturnType<SettingsRuntime["getSnapshot"]>["phase"],
-): string | undefined {
-  switch (phase) {
-    case "loading":
-      return "Loading settings…";
-    case "saving":
-      return "Saving changes…";
-    case "conflict":
-      return SETTINGS_CONFLICT_HEADING;
-    case "error":
-      return "Settings unavailable";
-    default:
-      return undefined;
-  }
-}
-
-function runtimeError(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
-}
-
-function SettingsRuntimePanel({
-  pool,
-  descriptor,
-  layer,
-  onDirtyChange,
-}: {
-  readonly pool: SettingsRuntimePool;
-  readonly descriptor: SettingsSectionDescriptor;
-  readonly layer: SettingsLayer;
-  readonly onDirtyChange: (id: string, dirty: boolean) => void;
-}) {
-  const [runtime, setRuntime] = useState<SettingsRuntime | null>(null);
-  useEffect(() => {
-    setRuntime(pool.get(descriptor, layer));
-  }, [descriptor, layer, pool]);
-
-  if (runtime === null) {
-    return (
-      <EmptyState
-        title="Preparing settings…"
-        hint="Settings are read from omp."
-        variant="compact"
-      />
-    );
-  }
-  return (
-    <SettingsRuntimeEditor
-      descriptor={descriptor}
-      onDirtyChange={onDirtyChange}
-      runtime={runtime}
-    />
-  );
-}
-
-function SettingsRuntimeEditor({
-  descriptor,
-  onDirtyChange,
-  runtime,
-}: {
-  readonly descriptor: SettingsSectionDescriptor;
-  readonly onDirtyChange: (id: string, dirty: boolean) => void;
-  readonly runtime: SettingsRuntime;
-}) {
-  const snapshot = useSettingsRuntime(runtime);
-  const [localValidation, setLocalValidation] = useState<
-    Readonly<Record<string, ValidationResult>>
-  >({});
-  const [actionError, setActionError] = useState<string | null>(null);
-  const staged = snapshot.staged;
-  const dirty = staged !== null && Object.keys(staged.edits).length > 0;
-  const unsavedLabels = settingLabels(descriptor, snapshot.unsavedKeys);
-
-  useEffect(() => onDirtyChange(descriptor.id, dirty), [descriptor.id, dirty, onDirtyChange]);
-  useEffect(() => {
-    if (snapshot.phase !== "idle") return;
-    void runtime.read().catch((error: unknown) => {
-      setActionError(runtimeError(error, "Settings could not be loaded."));
-    });
-  }, [runtime, snapshot.phase]);
-
-  const clearValidation = (key: string): void => {
-    setLocalValidation((current) => {
-      if (!(key in current)) return current;
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
-  };
-  const retry = async (): Promise<void> => {
-    setActionError(null);
-    try {
-      await runtime.retry();
-    } catch (error) {
-      setActionError(runtimeError(error, "Settings could not be loaded."));
-    }
-  };
-  const save = (): void => {
-    setActionError(null);
-    void runtime.save().catch((error: unknown) => {
-      setActionError(runtimeError(error, "Settings could not be saved."));
-    });
-  };
-
-  if (snapshot.config === null || staged === null) {
-    const message = actionError ?? snapshot.error?.message;
-    return message ? (
-      <InlineError heading="Settings could not be loaded" message={message} onRetry={retry} />
-    ) : (
-      <EmptyState
-        title={phaseLabel(snapshot.phase) ?? "Loading settings…"}
-        hint="Settings are read from omp and saved to the selected location."
-        variant="compact"
-      />
-    );
-  }
-
-  const disabled =
-    snapshot.phase === "loading" || snapshot.phase === "saving" || snapshot.phase === "conflict";
-  const applied = snapshot.applyStatus
-    ? applyStatusLabel(snapshot.applyStatus)
-    : phaseLabel(snapshot.phase);
-  // A save that omp keeps overriding with the environment is not "Applied": the section states it in a sentence of its
-  // own, which wraps on a narrow screen (the status pill does not), and the pill keeps only a status other than applied.
-  const override = snapshot.environmentOverride;
-  const notice = override === null ? undefined : environmentOverrideText(override);
-  // In a conflict the conflict card below says what happened, so the section header shows no status pill.
-  const status =
-    snapshot.phase === "conflict"
-      ? undefined
-      : notice === undefined
-        ? applied
-        : snapshot.applyStatus && snapshot.applyStatus !== "applied"
-          ? applyStatusLabel(snapshot.applyStatus)
-          : undefined;
-  return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <SettingsSection
-        descriptor={descriptor}
-        snapshot={snapshot.config}
-        staged={staged}
-        disabled={disabled}
-        validation={{ ...snapshot.validation, ...localValidation }}
-        applyStatus={status}
-        notice={notice}
-        unsavedKeys={snapshot.unsavedKeys}
-        onStage={(next) => {
-          for (const [key, value] of changedEdits(staged, next)) {
-            const result = runtime.stage(key, value);
-            if (result.ok) clearValidation(key);
-            else setLocalValidation((current) => ({ ...current, [key]: result.validation }));
-          }
-        }}
-        onPreview={(key, result) => {
-          if (result.ok) clearValidation(key);
-          else setLocalValidation((current) => ({ ...current, [key]: result.validation }));
-        }}
-        onCommit={save}
-        onCancel={() => {
-          setActionError(null);
-          setLocalValidation({});
-          runtime.cancel();
-        }}
-      />
-      {snapshot.conflict ? (
-        <ConflictBanner
-          description={SETTINGS_CONFLICT_DESCRIPTION}
-          heading={SETTINGS_CONFLICT_HEADING}
-          keepMineLabel={CONFLICT_BUTTON_LABELS.keepMine}
-          onKeepMine={() => {
-            setActionError(null);
-            runtime.resolveConflict("keep-mine");
-          }}
-          onReload={() => {
-            setActionError(null);
-            runtime.resolveConflict("reload");
-          }}
-          reloadLabel={CONFLICT_BUTTON_LABELS.reload}
-          rows={settingsConflictRows(
-            descriptor,
-            snapshot.conflict.remote,
-            snapshot.conflict.changedKeys,
-          )}
-        />
-      ) : null}
-      {/* In a conflict the choice above is the only action, so the refusal is not repeated here. Retry re-reads omp's
-          values and would drop staged edits, so it is offered only when nothing is staged. */}
-      {unsavedLabels.length > 0 ? (
-        <UnsavedSettingsNotice
-          labels={unsavedLabels}
-          reason={actionError ?? snapshot.error?.message ?? ""}
-        />
-      ) : snapshot.phase !== "conflict" && (actionError || snapshot.error) ? (
-        <InlineError
-          message={actionError ?? snapshot.error?.message ?? "Settings could not be saved."}
-          onRetry={dirty ? undefined : retry}
-        />
-      ) : null}
-    </div>
-  );
 }
 
 function ModelSettingsPanel({
@@ -773,12 +547,10 @@ export function SettingsScreen({
                       pool={pool}
                     />
                   ) : (
-                    <SettingsRuntimePanel
+                    <RuntimeSettingsSection
                       key={`${layer}:${activeSection.id}`}
-                      descriptor={activeSection}
-                      layer={layer}
-                      onDirtyChange={reportDirty}
-                      pool={pool}
+                      runtime={pool.get(activeSection, layer)}
+                      onDirtyChange={(dirty) => reportDirty(activeSection.id, dirty)}
                     />
                   )}
                 </section>

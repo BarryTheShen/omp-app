@@ -684,6 +684,21 @@ describe("S2.3 LSP and Shell ConfigStore settings", () => {
     await screen.findByRole("checkbox", { name: "Lazy LSP Startup" });
     expect(screen.queryByRole("alert")).toBeNull();
   });
+  test("shows a failed retry action's message instead of the earlier read failure", async () => {
+    const { runtime, state } = createFakeRuntime(FILES_LSP_SECTION);
+    state.listFailures = 1;
+    await expect(runtime.read()).rejects.toBeInstanceOf(AppFailure);
+    runtime.retry = async () => {
+      throw new Error("The retry action failed.");
+    };
+    render(<FilesLspSection runtime={runtime} />);
+    await screen.findByText("Could not load settings", { exact: true });
+
+    await screen.getByRole("button", { name: "Retry" }).click();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("The retry action failed.");
+    expect(alert.textContent).not.toContain("The settings service is not reachable.");
+  });
 
   test("failed external reads use the refresh heading, not the save heading", async () => {
     const { runtime, state } = createFakeRuntime(FILES_LSP_SECTION);

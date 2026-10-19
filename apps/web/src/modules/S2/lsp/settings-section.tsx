@@ -8,12 +8,15 @@ import {
 import {
   applyStatusLabel,
   CONFLICT_BUTTON_LABELS,
+  environmentOverrideText,
   type PreviewResult,
   SETTINGS_CONFLICT_DESCRIPTION,
   SETTINGS_CONFLICT_HEADING,
   SettingsSection,
   type StagedSettings,
+  settingLabels,
   settingsConflictRows,
+  UnsavedSettingsNotice,
   type ValidationResult,
 } from "../../S1/settings-kit";
 
@@ -42,11 +45,18 @@ function changedEdits(
   );
 }
 
-export function RuntimeSettingsSection({ runtime }: { readonly runtime: SettingsRuntime }) {
+export function RuntimeSettingsSection({
+  runtime,
+  onDirtyChange,
+}: {
+  readonly runtime: SettingsRuntime;
+  readonly onDirtyChange?: (dirty: boolean) => void;
+}) {
   const snapshot = useSettingsRuntime(runtime);
   const [localValidation, setLocalValidation] = useState<
     Readonly<Record<string, ValidationResult>>
   >({});
+  const [actionError, setActionError] = useState<string | null>(null);
   const descriptor = snapshot.descriptor;
   const config = snapshot.config;
   const staged = snapshot.staged;
@@ -54,7 +64,11 @@ export function RuntimeSettingsSection({ runtime }: { readonly runtime: Settings
     snapshot.phase === "loading" || snapshot.phase === "saving" || snapshot.phase === "conflict";
   const hasStagedChanges =
     Object.keys(staged?.edits ?? {}).length > 0 || snapshot.unsavedKeys.length > 0;
+  const unsavedLabels = settingLabels(descriptor, snapshot.unsavedKeys);
 
+  useEffect(() => {
+    onDirtyChange?.(hasStagedChanges);
+  }, [hasStagedChanges, onDirtyChange]);
   useEffect(() => {
     if (snapshot.phase === "idle") void runtime.read().catch(() => undefined);
   }, [runtime, snapshot.phase]);
@@ -81,47 +95,35 @@ export function RuntimeSettingsSection({ runtime }: { readonly runtime: Settings
     else setLocalValidation((current) => ({ ...current, [key]: result.validation }));
   };
 
-  const apply = () => {
-    setLocalValidation({});
-    void runtime.save().catch(() => undefined);
+  const retry = async (): Promise<void> => {
+    setActionError(null);
+    try {
+      await runtime.retry();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Settings could not be loaded.");
+    }
   };
 
-  return (
-    <div className="flex min-w-0 flex-col gap-3" data-testid={`settings-runtime-${descriptor.id}`}>
-      {config && staged ? (
-        <SettingsSection
-          descriptor={descriptor}
-          snapshot={config}
-          staged={staged}
-          disabled={disabled}
-          validation={{ ...snapshot.validation, ...localValidation }}
-          applyStatus={
-            snapshot.phase === "conflict"
-              ? undefined
-              : snapshot.applyStatus
-                ? applyStatusLabel(snapshot.applyStatus)
-                : phaseLabel(snapshot.phase)
-          }
-          onStage={onStage}
-          onPreview={onPreview}
-          onCommit={apply}
-          onCancel={() => {
-            setLocalValidation({});
-            runtime.cancel();
-          }}
-        />
-      ) : (
+  const apply = (): void => {
+    setLocalValidation({});
+    setActionError(null);
+    void runtime.save().catch((error: unknown) => {
+      setActionError(error instanceof Error ? error.message : "Settings could not be saved.");
+    });
+  };
+
+  if (config === null || staged === null) {
+    return (
+      <div
+        className="flex min-w-0 flex-col gap-3"
+        data-testid={`settings-runtime-${descriptor.id}`}
+      >
         <Section heading={descriptor.title} headingId={`${descriptor.id}-loading-title`}>
           {snapshot.phase === "error" ? (
             <InlineError
               heading="Could not load settings"
-              message={snapshot.error?.message ?? "Settings could not be loaded."}
-              onRetry={() =>
-                runtime
-                  .retry()
-                  .then(() => undefined)
-                  .catch(() => undefined)
-              }
+              message={actionError ?? snapshot.error?.message ?? "Settings could not be loaded."}
+              onRetry={() => void retry()}
             />
           ) : (
             <p role="status" className="text-sm text-muted-foreground">
@@ -129,15 +131,58 @@ export function RuntimeSettingsSection({ runtime }: { readonly runtime: Settings
             </p>
           )}
         </Section>
-      )}
+      </div>
+    );
+  }
 
-      {snapshot.phase === "conflict" && snapshot.conflict ? (
+  const override =
+    snapshot.environmentOverride === null
+      ? undefined
+      : environmentOverrideText(snapshot.environmentOverride);
+  const applied = snapshot.applyStatus
+    ? applyStatusLabel(snapshot.applyStatus)
+    : phaseLabel(snapshot.phase);
+  const status =
+    snapshot.phase === "conflict"
+      ? undefined
+      : override === undefined
+        ? applied
+        : snapshot.applyStatus && snapshot.applyStatus !== "applied"
+          ? applyStatusLabel(snapshot.applyStatus)
+          : undefined;
+  return (
+    <div className="flex min-w-0 flex-col gap-3" data-testid={`settings-runtime-${descriptor.id}`}>
+      <SettingsSection
+        descriptor={descriptor}
+        snapshot={config}
+        staged={staged}
+        disabled={disabled}
+        validation={{ ...snapshot.validation, ...localValidation }}
+        applyStatus={status}
+        notice={override}
+        unsavedKeys={snapshot.unsavedKeys}
+        onStage={onStage}
+        onPreview={onPreview}
+        onCommit={apply}
+        onCancel={() => {
+          setActionError(null);
+          setLocalValidation({});
+          runtime.cancel();
+        }}
+      />
+      {snapshot.conflict ? (
         <ConflictBanner
           description={SETTINGS_CONFLICT_DESCRIPTION}
           heading={SETTINGS_CONFLICT_HEADING}
           keepMineLabel={CONFLICT_BUTTON_LABELS.keepMine}
-          onKeepMine={() => runtime.resolveConflict("keep-mine")}
-          onReload={() => runtime.resolveConflict("reload")}
+          onKeepMine={() => {
+            setActionError(null);
+            runtime.resolveConflict("keep-mine");
+          }}
+          onReload={() => {
+            setActionError(null);
+            runtime.resolveConflict("reload");
+          }}
           reloadLabel={CONFLICT_BUTTON_LABELS.reload}
           rows={settingsConflictRows(
             descriptor,
@@ -146,8 +191,15 @@ export function RuntimeSettingsSection({ runtime }: { readonly runtime: Settings
           )}
         />
       ) : null}
-
-      {snapshot.error && snapshot.phase !== "conflict" && config ? (
+      {snapshot.errorOperation === "save" &&
+      snapshot.phase !== "error" &&
+      unsavedLabels.length > 0 ? (
+        <UnsavedSettingsNotice
+          labels={unsavedLabels}
+          reason={actionError ?? snapshot.error?.message ?? ""}
+        />
+      ) : snapshot.phase !== "conflict" &&
+        (snapshot.phase === "error" || actionError || snapshot.error) ? (
         <InlineError
           heading={
             snapshot.errorOperation === "refresh"
@@ -155,14 +207,14 @@ export function RuntimeSettingsSection({ runtime }: { readonly runtime: Settings
               : "Could not save changes"
           }
           message={
-            snapshot.errorOperation === "refresh"
-              ? hasStagedChanges
-                ? `${snapshot.error.message} Your changes are still waiting to be saved.`
-                : snapshot.error.message
+            actionError ??
+            (snapshot.error === null
+              ? "Settings could not be saved."
               : hasStagedChanges
-                ? `${snapshot.error.message} Your changes are still waiting to be saved. Review them and try Save changes again.`
-                : snapshot.error.message
+                ? `${snapshot.error.message} Your changes are still waiting to be saved.`
+                : snapshot.error.message)
           }
+          onRetry={hasStagedChanges ? undefined : () => void retry()}
           variant="boxed"
         />
       ) : null}

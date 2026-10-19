@@ -2,6 +2,7 @@ import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   type CapabilityMap,
+  type ConfigChanged,
   type ConfigEntry,
   type ConfigWriteResult,
   JsonValue,
@@ -25,8 +26,13 @@ type FakeConfig = {
   failingReads: number;
   /** The keys written, in order. */
   writes: string[];
+  /** Layers used for writes, in order. */
+  writeLayers: string[];
+  /** Optional changed-event listeners for refresh tests. */
+  listeners?: Set<(change: ConfigChanged) => void>;
   /** Environment variables that supply a written key's value, by key: the write then reports that source. */
   environmentKeys?: Readonly<Record<string, string>>;
+  writeFailure?: unknown;
 };
 
 function fakeConfigStore(state: FakeConfig): ConfigStoreClient {
@@ -59,8 +65,12 @@ function fakeConfigStore(state: FakeConfig): ConfigStoreClient {
       if (state.refused.has(args.key)) {
         throw new AppFailure({ code: "invalid_args", message: REFUSAL, retryable: false });
       }
-      if (args.value.secret) throw new Error("The notification settings are not secrets.");
+      if (args.value.secret !== false) {
+        throw new Error("The notification settings are not secrets.");
+      }
+      if (state.writeFailure !== undefined) throw state.writeFailure;
       state.writes.push(args.key);
+      state.writeLayers.push(args.layer);
       const revision = `revision-${state.writes.length + 1}`;
       const variable = state.environmentKeys?.[args.key];
       const entry: ConfigEntry = {
@@ -94,7 +104,11 @@ function fakeAppClient(state: FakeConfig): AppClient {
     subscribe: async () => ({
       stream: "A1.configStore.changed:global",
       lastSeq: 0,
-      onEvent: () => () => undefined,
+      onEvent: (listener: (change: ConfigChanged) => void) => {
+        state.listeners ??= new Set();
+        state.listeners.add(listener);
+        return () => state.listeners?.delete(listener);
+      },
       unsubscribe: async () => undefined,
     }),
   } as unknown as AppClient;
@@ -110,6 +124,7 @@ function notificationsConfig(refused: readonly string[]): FakeConfig {
     refused: new Set(refused),
     failingReads: 0,
     writes: [],
+    writeLayers: [],
   };
 }
 
@@ -144,6 +159,150 @@ test("shows Git and Power settings when configuration is available", async () =>
   expect(await screen.findByRole("checkbox", { name: "Enable Git Integration" })).toBeTruthy();
   fireEvent.click(await screen.findByRole("option", { name: "Power" }));
   expect(await screen.findByRole("combobox", { name: "Sleep Prevention" })).toBeTruthy();
+});
+test("keeps the save-location buttons disabled while a generic section is dirty", async () => {
+  const state = notificationsConfig([]);
+  const onUnsavedChange = vi.fn();
+  render(
+    <SettingsScreen
+      client={fakeAppClient(state)}
+      capabilities={CAPABILITIES}
+      folder={"/workspace" as never}
+      onClose={() => undefined}
+      onUnsavedChange={onUnsavedChange}
+      threadId={null}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Interaction" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Notifications" }));
+  await screen.findByRole("combobox", { name: "Error Notification" });
+  await waitFor(() => expect(onUnsavedChange).toHaveBeenLastCalledWith(false));
+
+  fireEvent.change(screen.getByRole("combobox", { name: "Completion Notification" }), {
+    target: { value: "off" },
+  });
+  expect(screen.getByRole("button", { name: "All workspaces" }).hasAttribute("disabled")).toBe(
+    true,
+  );
+  expect(screen.getByRole("button", { name: "This workspace" }).hasAttribute("disabled")).toBe(
+    true,
+  );
+  expect(
+    screen.getByText("Save or cancel staged changes before changing where they are saved."),
+  ).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(onUnsavedChange).toHaveBeenLastCalledWith(false));
+  expect(onUnsavedChange.mock.calls.map(([dirty]) => dirty)).toEqual([false, true, false]);
+  expect(screen.getByRole("button", { name: "All workspaces" }).hasAttribute("disabled")).toBe(
+    false,
+  );
+  expect(screen.getByRole("button", { name: "This workspace" }).hasAttribute("disabled")).toBe(
+    false,
+  );
+});
+
+test("writes a generic section to the selected workspace layer", async () => {
+  const state = notificationsConfig([]);
+  render(
+    <SettingsScreen
+      client={fakeAppClient(state)}
+      capabilities={CAPABILITIES}
+      folder={"/workspace" as never}
+      onClose={() => undefined}
+      threadId={null}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Interaction" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Notifications" }));
+  await screen.findByRole("combobox", { name: "Error Notification" });
+  fireEvent.click(screen.getByRole("button", { name: "This workspace" }));
+  await screen.findByRole("combobox", { name: "Error Notification" });
+  fireEvent.change(screen.getByRole("combobox", { name: "Completion Notification" }), {
+    target: { value: "off" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(state.writes).toEqual(["completion.notify"]));
+  expect(state.writeLayers).toEqual(["project"]);
+});
+
+test("does not offer Retry when a refresh fails with staged edits", async () => {
+  const state = notificationsConfig([]);
+  render(
+    <SettingsScreen
+      client={fakeAppClient(state)}
+      capabilities={CAPABILITIES}
+      folder={null}
+      onClose={() => undefined}
+      threadId={null}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Interaction" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Notifications" }));
+  await screen.findByRole("combobox", { name: "Error Notification" });
+  fireEvent.change(screen.getByRole("combobox", { name: "Completion Notification" }), {
+    target: { value: "off" },
+  });
+  await waitFor(() => expect(state.listeners?.size).toBeGreaterThan(0));
+  state.failingReads = 100;
+  const entry = state.entries[0];
+  if (entry === undefined) throw new Error("Missing notification entry");
+  for (const listener of state.listeners ?? []) {
+    listener({
+      key: entry.key,
+      layer: "global",
+      folder: null,
+      revision: state.revision,
+      entry,
+    });
+  }
+  expect(await screen.findByText("Could not refresh settings")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+});
+
+test("shows the save action's message when the post-save reload also fails", async () => {
+  const state = notificationsConfig([]);
+  state.writeFailure = new Error("The storage rejected the save.");
+  render(
+    <SettingsScreen
+      client={fakeAppClient(state)}
+      capabilities={CAPABILITIES}
+      folder={null}
+      onClose={() => undefined}
+      threadId={null}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Interaction" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Notifications" }));
+  await screen.findByRole("combobox", { name: "Error Notification" });
+  fireEvent.change(screen.getByRole("combobox", { name: "Completion Notification" }), {
+    target: { value: "off" },
+  });
+  state.failingReads = 1;
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toContain("The storage rejected the save.");
+  expect(alert.textContent).not.toContain("The settings file could not be read.");
+});
+
+test("recovers the real screen after its first generic settings read fails", async () => {
+  const state = notificationsConfig([]);
+  state.failingReads = 100;
+  render(
+    <SettingsScreen
+      client={fakeAppClient(state)}
+      capabilities={CAPABILITIES}
+      folder={null}
+      onClose={() => undefined}
+      threadId={null}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Interaction" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Notifications" }));
+  expect(await screen.findByText("Could not load settings")).toBeTruthy();
+  state.failingReads = 0;
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByRole("combobox", { name: "Error Notification" })).toBeTruthy();
 });
 
 describe("the generic settings panel after a save omp refuses in part", () => {
