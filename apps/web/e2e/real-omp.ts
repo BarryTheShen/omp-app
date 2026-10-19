@@ -14,7 +14,7 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
@@ -431,6 +431,7 @@ export interface SeedWorkspace {
  * A spec that needs `@` file mentions seeds files with `realTest.use({ seedWorkspace: { files, gitRepo: true } })`; file search lists git files only.
  * A spec that needs omp's environment overrides (for example `PI_AUTO_QA=0`) starts the app with `realTest.use({ serverEnv: { PI_AUTO_QA: "0" } })`.
  * A spec that needs a value omp reads from the agent folder's `.env` file (not the process environment) writes it with `realTest.use({ seedAgentDotEnv: "PI_INTENT_TRACING=0\n" })` before the app starts.
+ * A spec can seed files in omp's agent folder before the fake provider and app server start with `realTest.use({ seedAgentFiles: { "RULES.md": text } })`.
  * A notice test can exercise the watcher-limit message with `realTest.use({ fileWatchFailure: "watcher-limit" })`.
  * A spec whose default folder is the home folder, as on the desktop (the server runs in it), uses `realTest.use({ serverInHome: true })`.
  */
@@ -442,6 +443,7 @@ export const realTest = test.extend<{
   seedToolResults: SeedToolResults | undefined;
   seedEntries: SeedEntries | undefined;
   seedExtensions: Readonly<Record<string, string>>;
+  seedAgentFiles: Readonly<Record<string, string>>;
   seedAgentDotEnv: string | undefined;
   seedWorkspace: SeedWorkspace | undefined;
   ompBinary: string | undefined;
@@ -460,6 +462,7 @@ export const realTest = test.extend<{
   seedToolResults: [undefined, { option: true }],
   seedEntries: [undefined, { option: true }],
   seedExtensions: [{}, { option: true }],
+  seedAgentFiles: [{}, { option: true }],
   seedAgentDotEnv: [undefined, { option: true }],
   seedWorkspace: [undefined, { option: true }],
   ompBinary: [undefined, { option: true }],
@@ -478,6 +481,7 @@ export const realTest = test.extend<{
       seedToolResults,
       seedEntries,
       seedExtensions,
+      seedAgentFiles,
       seedAgentDotEnv,
       seedWorkspace,
       ompBinary,
@@ -502,6 +506,10 @@ export const realTest = test.extend<{
     const folder = join(root, "workspace");
     const otherFolder = join(root, "other-workspace");
     await Promise.all([home, agentDir, appDataDir, folder, otherFolder].map((path) => mkdir(path)));
+    // Files omp discovers in its agent folder, written before the fake provider and app server start.
+    for (const [name, source] of Object.entries(seedAgentFiles)) {
+      await writeFile(join(agentDir, name), source);
+    }
     // A value omp reads from the agent folder's `.env`, written before the app and its server start.
     if (seedAgentDotEnv !== undefined) await writeFile(join(agentDir, ".env"), seedAgentDotEnv);
     // Fake files for omp's extension catalog: a file in `<agent>/extensions` is listed as an extension.
@@ -514,7 +522,9 @@ export const realTest = test.extend<{
     // Files for the chat's workspace folder, in a git repository when the spec asks for one.
     if (seedWorkspace !== undefined) {
       for (const [name, source] of Object.entries(seedWorkspace.files)) {
-        await writeFile(join(folder, name), source);
+        const target = join(folder, name);
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, source);
       }
       if (seedWorkspace.gitRepo) execFileSync("git", ["init", "-q"], { cwd: folder });
     }

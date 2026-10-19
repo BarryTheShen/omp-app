@@ -676,6 +676,8 @@ function reply(request: Request): Reply {
 
 const agentDir = process.argv[2];
 if (agentDir === undefined) throw new Error("usage: fake-openai-server.ts <agentDir>");
+// Next to the agent folder, not in it: omp watches its agent folder for settings changes, and a growing log there is noise to it.
+const requestLog = Bun.file(path.join(path.dirname(agentDir), "requests.jsonl")).writer();
 const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 };
 /**
  * The usage a reply reports. A latest user message holding `cache_warm` reads 800 tokens back from the prompt cache,
@@ -734,6 +736,8 @@ const server = Bun.serve({
     if (!url.pathname.endsWith("/chat/completions"))
       return new Response("not found", { status: 404 });
     const body = (await request.json()) as Request;
+    await requestLog.write(`${JSON.stringify(body)}\n`);
+    await requestLog.flush();
     const value = reply(body);
     if ("unauthorized" in value)
       return Response.json(
@@ -859,18 +863,15 @@ const server = Bun.serve({
     return new Response(payload, { headers: { "content-type": "text/event-stream" } });
   },
 });
+const disabledProviders =
+  process.env.FAKE_OPENAI_ENABLE_RULES === "1"
+    ? ["agents-md", "agents", "claude", "codex", "gemini", "github", "opencode"]
+    : ["agents-md", "agents", "native", "claude", "codex", "gemini", "github", "opencode"];
 await Bun.write(
   path.join(agentDir, "config.yml"),
   [
     "disabledProviders:",
-    "  - agents-md",
-    "  - agents",
-    "  - native",
-    "  - claude",
-    "  - codex",
-    "  - gemini",
-    "  - github",
-    "  - opencode",
+    ...disabledProviders.map((provider) => `  - ${provider}`),
     "",
     "retry:",
     "  maxRetries: 3",
@@ -916,4 +917,5 @@ await Bun.write(
 console.log(`READY ${server.port}`);
 for await (const _ of Bun.stdin.stream()) {
 }
+await requestLog.end();
 server.stop(true);
