@@ -170,9 +170,9 @@ realTest(
     await page.keyboard.press("Escape");
     await expect(page.locator(PALETTE)).toHaveCount(0);
 
-    await page.locator('button[aria-label="Hide sessions sidebar"]').click();
+    await page.getByRole("button", { name: "Hide sessions sidebar" }).click();
     expect(await page.evaluate(movingIn, ""), "the sidebar's hide under reduced motion").toBe(0);
-    await page.locator('button[aria-label="Show sessions sidebar"]').click();
+    await page.getByRole("button", { name: "Show sessions sidebar" }).click();
     expect(await page.evaluate(movingIn, ""), "the sidebar's show under reduced motion").toBe(0);
 
     const from = await chevron.evaluate(rotationOf);

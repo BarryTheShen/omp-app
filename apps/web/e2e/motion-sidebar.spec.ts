@@ -132,11 +132,11 @@ realTest(
     expect(declared.duration, "the sidebar uses --duration-base").toBe("0.18s");
 
     const hide = await toggle(page, () =>
-      page.locator('button[aria-label="Hide sessions sidebar"]').click(),
+      page.getByRole("button", { name: "Hide sessions sidebar" }).click(),
     );
     await expect(sidebar).toHaveAttribute("data-open", "false");
     const show = await toggle(page, () =>
-      page.locator('button[aria-label="Show sessions sidebar"]').click(),
+      page.getByRole("button", { name: "Show sessions sidebar" }).click(),
     );
     await expect(sidebar).toHaveAttribute("data-open", "true");
     expect(
@@ -170,7 +170,7 @@ realTest.describe("with reduced motion", () => {
     );
     expect(property, "no transition under reduced motion").toBe("none");
     const hide = await toggle(page, () =>
-      page.locator('button[aria-label="Hide sessions sidebar"]').click(),
+      page.getByRole("button", { name: "Hide sessions sidebar" }).click(),
     );
     expect(hide.frames, "frames in which the transcript column changed width").toBeLessThanOrEqual(
       2,
@@ -191,13 +191,13 @@ for (const variant of ["light", "dark", "narrow"] as const) {
       });
       if (variant === "narrow") {
         await page.setViewportSize({ width: 390, height: 844 });
-        await page.locator('button[aria-label="Show sessions sidebar"]').click();
+        await page.getByRole("button", { name: "Show sessions sidebar" }).click();
         await openChat(page);
         const drawerClose = page.locator('button[aria-label="Close open sidebar"]');
         if ((await drawerClose.count()) > 0) await drawerClose.click();
       } else {
         await openChat(page);
-        await page.locator('button[aria-label="Hide sessions sidebar"]').click();
+        await page.getByRole("button", { name: "Hide sessions sidebar" }).click();
       }
       await waitForFiniteAnimations(page);
       await mkdir(screenshots, { recursive: true });

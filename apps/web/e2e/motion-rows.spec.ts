@@ -174,7 +174,7 @@ realTest("a new message at 390 px is captured in light and dark", async ({ realA
   testInfo.setTimeout(240_000);
   const page = await realApp.open({ beforeLoad: (target) => target.addInitScript(recordFades) });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('button[aria-label="Show sessions sidebar"]').click();
+  await page.getByRole("button", { name: "Show sessions sidebar" }).click();
   const composer = await startChat(page);
   const drawerClose = page.locator('button[aria-label="Close open sidebar"]');
   if ((await drawerClose.count()) > 0) await drawerClose.click();

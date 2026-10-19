@@ -78,7 +78,7 @@ realTest("a streamed reply does not move the composer (390 px)", async ({ realAp
     beforeLoad: (target) => target.addInitScript(recordMotion, TRACKED),
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('button[aria-label="Show sessions sidebar"]').click();
+  await page.getByRole("button", { name: "Show sessions sidebar" }).click();
   const composer = await startChat(page);
   const drawerClose = page.locator('button[aria-label="Close open sidebar"]');
   if ((await drawerClose.count()) > 0) await drawerClose.click();

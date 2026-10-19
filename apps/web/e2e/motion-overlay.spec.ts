@@ -159,7 +159,7 @@ for (const variant of ["light", "dark", "narrow"] as const) {
       });
       if (variant === "narrow") {
         await page.setViewportSize({ width: 390, height: 844 });
-        await page.locator('button[aria-label="Show sessions sidebar"]').click();
+        await page.getByRole("button", { name: "Show sessions sidebar" }).click();
       }
       const composer = await startChat(page);
       if (variant === "narrow") {

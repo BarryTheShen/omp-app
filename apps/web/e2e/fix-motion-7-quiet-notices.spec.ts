@@ -182,7 +182,7 @@ realTest.describe("the notices line moves over its tokens", () => {
       },
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.locator('button[aria-label="Show sessions sidebar"]').click();
+    await page.getByRole("button", { name: "Show sessions sidebar" }).click();
     await startChat(page);
     const drawerClose = page.locator('button[aria-label="Close open sidebar"]');
     if ((await drawerClose.count()) > 0) await drawerClose.click();

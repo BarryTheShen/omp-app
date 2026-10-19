@@ -195,7 +195,7 @@ realTest.describe("the audit flow, one long chat", () => {
     const sessionsSidebar = page.locator('[data-shell-sidebar="left"]');
     const panelsSidebar = page.locator('[data-shell-sidebar="right"]');
     const sessionsHide = await step("row 3 sessions sidebar hides", async () => {
-      await page.locator('button[aria-label="Hide sessions sidebar"]').click();
+      await page.getByRole("button", { name: "Hide sessions sidebar" }).click();
       await expect(sessionsSidebar).toHaveAttribute("data-open", "false");
     });
     expectSidebarSlides(
@@ -206,7 +206,7 @@ realTest.describe("the audit flow, one long chat", () => {
       "the sessions sidebar hides",
     );
     const sessionsShow = await step("row 3 sessions sidebar shows", async () => {
-      await page.locator('button[aria-label="Show sessions sidebar"]').click();
+      await page.getByRole("button", { name: "Show sessions sidebar" }).click();
       await expect(sessionsSidebar).toHaveAttribute("data-open", "true");
     });
     expectSidebarSlides(
@@ -217,7 +217,7 @@ realTest.describe("the audit flow, one long chat", () => {
       "the sessions sidebar shows",
     );
     const panelsHide = await step("row 4 panels sidebar hides", async () => {
-      await page.locator('button[aria-label="Hide panels sidebar"]').click();
+      await page.getByRole("button", { name: "Hide panels sidebar" }).click();
       await expect(panelsSidebar).toHaveAttribute("data-open", "false");
     });
     expectSidebarSlides(
@@ -228,7 +228,7 @@ realTest.describe("the audit flow, one long chat", () => {
       "the panels sidebar hides",
     );
     const panelsShow = await step("row 4 panels sidebar shows", async () => {
-      await page.locator('button[aria-label="Show panels sidebar"]').click();
+      await page.getByRole("button", { name: "Show panels sidebar" }).click();
       await expect(panelsSidebar).toHaveAttribute("data-open", "true");
     });
     expectSidebarSlides(
