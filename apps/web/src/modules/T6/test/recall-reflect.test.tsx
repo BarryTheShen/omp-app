@@ -72,6 +72,17 @@ describe("T6 recall and reflect renderers", () => {
     expect(card?.querySelectorAll("ul > li")).toHaveLength(8);
     expect(screen.getByText("Showing 8 of 12 memories.")).toBeTruthy();
   });
+  test("caps headerless recall results at eight rows and reports the omitted count", () => {
+    const memories = Array.from({ length: 12 }, (_, index) => `Headerless memory ${index + 1}.`);
+    const result = {
+      content: [{ type: "text", text: memories.join("\n") }],
+      details: { count: 12 },
+    };
+    const { container } = render(<RecallRenderer {...props("recall", {}, result)} />);
+    expandToolCards();
+    expect(container.querySelectorAll('[data-t6-tool="recall"] ul > li')).toHaveLength(8);
+    expect(screen.getByText("Showing 8 of 12 memories.")).toBeTruthy();
+  });
 
   test("does not report hidden recall rows when the count matches the result", () => {
     const result = {
