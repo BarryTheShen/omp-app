@@ -26,17 +26,21 @@ function callProps(sample: {
 }
 
 describe("VibeSpawnRenderer", () => {
-  test("a call omp skipped shows its reason once, in the error line, and names no worker", () => {
+  test("a call omp skipped shows its reason once, calmly, and names no worker", () => {
     const skipped = T5_VIBE_REAL_RESULTS[0];
     if (skipped === undefined) throw new Error("no recorded vibe_spawn result");
     render(<VibeSpawnRenderer {...callProps(skipped)} />);
     expandToolCards();
     expect(screen.getByText("Vibe worker not started")).toBeTruthy();
     const reason = "Skipped due to queued user message";
-    const alerts = screen
-      .getAllByRole("alert")
-      .filter((alert) => alert.textContent?.includes(reason));
-    expect(alerts).toHaveLength(1);
+    // omp skipped the call before it started (#721): the card reads Skipped and shows omp's own sentence once in its
+    // calm box, not as an error alert. The collapsed raw details keep omp's raw text and are not counted.
+    expect(screen.getByTestId("u3-tool-card-interruption").textContent).toContain(reason);
+    const shown = screen
+      .getAllByText(new RegExp(reason))
+      .filter((element) => element.closest("[data-slot='u3-tool-card-raw']") === null);
+    expect(shown).toHaveLength(1);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   test("a spawn names the new session, its CLI and its turn job from omp's spawn details", () => {

@@ -51,14 +51,16 @@ describe("AskToolRenderer on recorded results", () => {
     ]);
   });
 
-  test("a call omp skipped shows its reason once, in the error line, and no answer rows", () => {
+  test("a call omp skipped shows its reason once, calmly, and no answer rows", () => {
     const sample = renderRecorded("ask: skipped before it ran");
     expect(screen.queryByTestId("u4-ask-tool-answers")).toBeNull();
     const reason = sample.shows[0] ?? "";
-    const alerts = screen
-      .getAllByRole("alert")
-      .filter((alert) => alert.textContent?.includes(reason));
-    expect(alerts).toHaveLength(1);
+    // omp skipped the call before it ran (#721): the card reads Skipped and shows omp's own sentence once in its calm
+    // box, not as an error alert. The collapsed raw details keep omp's raw text and are not counted.
+    const calm = screen.getAllByTestId("u3-tool-card-interruption");
+    expect(calm).toHaveLength(1);
+    expect(calm[0]?.textContent).toContain(reason);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
