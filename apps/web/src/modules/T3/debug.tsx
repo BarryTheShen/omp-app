@@ -265,6 +265,7 @@ function DebugSections({ sections }: { readonly sections: Sections }) {
         testId="t3-debug-sessions"
         title="Sessions"
         total={sections.sessionTotal}
+        wrapDetails
       />
       <RowList
         rows={sections.breakpoints}
@@ -282,12 +283,14 @@ function RowList({
   title,
   testId,
   mono = false,
+  wrapDetails = false,
 }: {
   readonly rows: readonly Row[];
   readonly total: number;
   readonly title: string;
   readonly testId: string;
   readonly mono?: boolean;
+  readonly wrapDetails?: boolean;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -304,7 +307,9 @@ function RowList({
             </span>
             {row.detail !== undefined && (
               <span
-                className="text-muted-foreground max-w-full truncate font-mono"
+                className={`text-muted-foreground max-w-full font-mono ${
+                  wrapDetails ? "whitespace-normal break-words" : "truncate"
+                }`}
                 title={row.detail}
               >
                 {row.detail}

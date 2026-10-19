@@ -155,6 +155,46 @@ describe("DebugCard", () => {
     expect(list.textContent).not.toContain("Session debug-session-9");
     expect(list.textContent).toContain("Showing 8 of 9");
   });
+  test("wraps session details but keeps frame details in the one-line grammar", () => {
+    render(
+      <DebugCard
+        rendererProps={props({ action: "sessions" }, T3_SCRIPTED_DEBUG_SESSIONS_RESULT)}
+      />,
+    );
+    expandToolCards();
+
+    const sessionDetail = screen
+      .getByTestId("t3-debug-sessions")
+      .querySelector("li span:nth-of-type(2)");
+    if (sessionDetail === null) throw new Error("Session detail row is missing.");
+    expect(sessionDetail.classList.contains("truncate")).toBe(false);
+    expect(sessionDetail.classList.contains("whitespace-normal")).toBe(true);
+    expect(sessionDetail.classList.contains("break-words")).toBe(true);
+
+    cleanup();
+    render(
+      <DebugCard
+        rendererProps={props(
+          { action: "stack_trace" },
+          {
+            content: [{ type: "text", text: "Stack trace" }],
+            details: {
+              action: "stack_trace",
+              success: true,
+              snapshot: stoppedSnapshot,
+              stackFrames: frames(1),
+            },
+          },
+        )}
+      />,
+    );
+    expandToolCards();
+    const frameDetail = screen
+      .getByTestId("t3-debug-stack")
+      .querySelector("li span:nth-of-type(2)");
+    if (frameDetail === null) throw new Error("Frame detail row is missing.");
+    expect(frameDetail.classList.contains("truncate")).toBe(true);
+  });
 
   test("uses plain words for the header", () => {
     render(

@@ -94,6 +94,19 @@ async function expectCards(page: Page): Promise<void> {
   await expect(page.getByText(/upstream\./)).toHaveCount(0);
 }
 
+async function expectPhoneSessionRows(page: Page): Promise<void> {
+  const detail = page.getByTestId("t3-debug-sessions").locator("li").first().locator("span").nth(1);
+  await expect
+    .poll(() =>
+      detail.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return element.scrollWidth === element.clientWidth && style.textOverflow !== "ellipsis";
+      }),
+    )
+    .toBe(true);
+  await expect(detail).toContainText("Folder: <WORKSPACE>");
+  await expect(detail).toContainText("Program: <WORKSPACE>/apps/web/server.ts");
+}
 test.beforeAll(buildPlaygroundPage);
 
 test("renders a stopped session, a running step, a failed launch and an evaluation in light/dark/narrow layouts", async ({
@@ -105,6 +118,11 @@ test("renders a stopped session, a running step, a failed launch and an evaluati
   await expectCards(page);
   await waitForFiniteAnimations(page);
   await page.screenshot({ path: "../../.data/screenshots/t3.3-debug-light.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectStyles(page);
+  await expectPhoneSessionRows(page);
+  await waitForFiniteAnimations(page);
+  await page.screenshot({ path: "../../.data/screenshots/t3.3-debug-narrow.png", fullPage: true });
 
   const darkPage = await page.context().newPage();
   const assertDarkNoConsoleErrors = failOnConsoleErrors(darkPage);
@@ -122,12 +140,15 @@ test("renders a stopped session, a running step, a failed launch and an evaluati
     path: "../../.data/screenshots/t3.3-debug-dark.png",
     fullPage: true,
   });
+  await darkPage.setViewportSize({ width: 390, height: 844 });
+  await expectStyles(darkPage);
+  await expectPhoneSessionRows(darkPage);
+  await waitForFiniteAnimations(darkPage);
+  await darkPage.screenshot({
+    path: "../../.data/screenshots/t3.3-debug-dark-narrow.png",
+    fullPage: true,
+  });
   assertDarkNoConsoleErrors();
   await darkPage.close();
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expectStyles(page);
-  await waitForFiniteAnimations(page);
-  await page.screenshot({ path: "../../.data/screenshots/t3.3-debug-narrow.png", fullPage: true });
   assertNoConsoleErrors();
 });
