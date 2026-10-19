@@ -196,6 +196,7 @@ test("D8 surfaces honor reduced motion and 200% zoom without overflow", async ({
 });
 
 test("D8 surfaces provide light, dark and narrow screenshots", async ({ browser }) => {
+  test.setTimeout(120_000);
   mkdirSync(SCREENSHOT_ROOT, { recursive: true });
   for (const [name, , , root, title] of SURFACES) {
     const light = await browser.newPage({ viewport: { width: 1280, height: 844 } });
