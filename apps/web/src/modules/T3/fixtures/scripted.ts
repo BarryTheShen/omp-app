@@ -1,3 +1,57 @@
+import type { RealToolResult } from "../../U3/tool-card/real-result";
+
+/** Scripted from omp v18.9.1 `formatDisplayJson` (tools/eval.ts:147-195, 995-1004). */
+const FULL_JSON = JSON.stringify(
+  Array.from({ length: 5_000 }, (_, index) => index),
+  null,
+  2,
+);
+const PREVIEW_HEAD = FULL_JSON.slice(0, 8_000 - 64);
+const PREVIEW = `${PREVIEW_HEAD}\n[…${FULL_JSON.length - PREVIEW_HEAD.length}ch elided…]`;
+const DISPLAY_TEXT = `display[1]:\n${PREVIEW}`;
+const TOTAL_LINES = FULL_JSON.split("\n").length;
+const PREVIEW_LINES = PREVIEW.split("\n").length;
+
+export const T3_SCRIPTED_LARGE_RESULTS: readonly RealToolResult[] = [
+  {
+    name: "eval: scripted v18.9.1 large display preview",
+    toolName: "eval",
+    args: { language: "js", code: "return Array.from({ length: 5000 }, (_, index) => index);" },
+    result: {
+      content: [{ type: "text", text: DISPLAY_TEXT }],
+      details: {
+        language: "js",
+        languages: ["js"],
+        cells: [
+          {
+            index: 0,
+            code: "return Array.from({ length: 5000 }, (_, index) => index);",
+            language: "js",
+            output: DISPLAY_TEXT,
+            status: "complete",
+            exitCode: 0,
+            durationMs: 240,
+          },
+        ],
+        jsonOutputs: [{ preview: PREVIEW, truncated: true, totalBytes: FULL_JSON.length }],
+        meta: {
+          truncation: {
+            direction: "tail",
+            truncatedBy: "bytes",
+            totalLines: TOTAL_LINES,
+            totalBytes: FULL_JSON.length,
+            outputLines: PREVIEW_LINES,
+            outputBytes: new TextEncoder().encode(PREVIEW).byteLength,
+            shownRange: { start: 1, end: PREVIEW_LINES },
+          },
+        },
+      },
+    },
+    isError: false,
+    shows: ["Structured result, 38,892 bytes (shortened here)"],
+  },
+];
+
 /**
  * Scripted from omp v18.9.1's EvalTool result construction because the existing real recordings
  * contain no eval image. EvalTool puts an ImageContent in `result.content`, with raw base64 bytes
