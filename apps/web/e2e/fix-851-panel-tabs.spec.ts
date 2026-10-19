@@ -29,10 +29,12 @@ realTest(
     const todo = row.getByRole("tab", { name: "Todo checklist" });
     const context = row.getByRole("tab", { name: "Context" });
     const agents = row.getByRole("tab", { name: "Agents" });
+    const rules = row.getByRole("tab", { name: "Rules" });
     await expect(todo).toHaveAttribute("aria-selected", "true");
     await expect(todo).toHaveAttribute("tabindex", "0");
     await expect(context).toHaveAttribute("tabindex", "-1");
     await expect(agents).toHaveAttribute("tabindex", "-1");
+    await expect(rules).toHaveAttribute("tabindex", "-1");
 
     await todo.focus();
     await page.keyboard.press("ArrowRight");
@@ -56,11 +58,15 @@ realTest(
     await expect(page.getByRole("region", { name: "Agent Hub" })).toBeVisible();
 
     await page.keyboard.press("ArrowRight");
+    await expect(rules).toBeFocused();
+    await expect(rules).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowRight");
     await expect(todo).toBeFocused();
+    await expect(todo).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText("Write the thing").first()).toBeVisible();
 
     await page.keyboard.press("End");
-    await expect(agents).toBeFocused();
+    await expect(rules).toBeFocused();
     await page.keyboard.press("Home");
     await expect(todo).toBeFocused();
 
@@ -69,7 +75,7 @@ realTest(
     await expect(context).not.toBeFocused();
     await expect(agents).not.toBeFocused();
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole("button", { name: "Show Panels sidebar" }).click();
+    await page.getByRole("button", { name: "Show panels sidebar" }).click();
     await expect(row).toBeVisible();
     await waitForFiniteAnimations(page);
     await page.screenshot({
