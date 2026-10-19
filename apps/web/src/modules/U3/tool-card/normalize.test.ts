@@ -75,6 +75,79 @@ describe("U3 tool-call normalizer", () => {
     });
   });
 
+  test.each([
+    ["assistant_stop_aborted", "interrupted", "Tool execution was aborted: Interrupted by user"],
+    ["interrupt_skipped", "skipped", "Skipped due to queued user message."],
+  ] as const)(
+    "keeps omp's %s synthetic completion as an error with a specific display marker",
+    (source, interruption, text) => {
+      const state = normalizeToolCall({
+        toolCallId: `call-${interruption}`,
+        toolName: "write",
+        result: {
+          content: [{ type: "text", text }],
+          details: { __synthetic: true, source, executed: false },
+        },
+        isError: true,
+        status: { type: "complete" },
+      });
+
+      expect(state).toMatchObject({
+        phase: "error",
+        isError: true,
+        interruption,
+        error: { message: text },
+      });
+    },
+  );
+
+  test("marks a started interrupt_skipped call as Interrupted and preserves omp's warning that work may exist", () => {
+    const text =
+      "Skipped due to queued user message. Do not count this skipped result as completed work or verification. After the queued message is handled on the next step, retry the skipped tool if it is still needed.";
+    const state = normalizeToolCall({
+      toolCallId: "started-skip",
+      toolName: "write",
+      result: {
+        content: [{ type: "text", text }],
+        details: { __interrupted: true, source: "interrupt_skipped", execution: "started" },
+      },
+      isError: true,
+      status: { type: "complete" },
+    });
+    expect(state).toMatchObject({
+      phase: "error",
+      interruption: "interrupted",
+      interruptionText: text,
+      error: { message: text },
+    });
+  });
+
+  test("keeps a non-synthetic cancelled call cancelled even when omp marks it as an error", () => {
+    const state = normalizeToolCall({
+      toolCallId: "cancelled-error",
+      toolName: "write",
+      toolState: toolState("cancelled-error", "cancelled", { isError: true }),
+    });
+    expect(state).toMatchObject({ phase: "cancelled", cancelled: true, isError: true });
+  });
+
+  test.each([
+    { __synthetic: true, source: "assistant_stop_error", executed: false },
+    { __synthetic: false, source: "assistant_stop_aborted", executed: false },
+    { __synthetic: true, source: "interrupt_skipped", executed: true },
+  ])("does not mark other synthetic failures or executed calls as interruptions: %o", (details) => {
+    const state = normalizeToolCall({
+      toolCallId: "call-not-an-interruption",
+      toolName: "write",
+      result: { content: [{ type: "text", text: "A terminal failure." }], details },
+      isError: true,
+      status: { type: "complete" },
+    });
+
+    expect(state).toMatchObject({ phase: "error", isError: true });
+    expect(state.interruption).toBeUndefined();
+  });
+
   test("keeps args-complete separate from execution-started", () => {
     const pending = normalizeToolCall({
       toolCallId: "pending",

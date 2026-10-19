@@ -11,7 +11,7 @@ import type {
   ToolRenderer,
   ToolRendererProps,
 } from "../U3/tool-card/contract";
-import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { interruptionOf, normalizeToolRendererProps } from "../U3/tool-card/normalize";
 import { omittedOf, type OutputMeta as ParsedOutputMeta } from "../U3/tool-card/output-meta";
 import { detailsSource, splitToolResult } from "../U3/tool-card/result";
 import type { ArtifactSlot, CopyKind } from "../U3/tool-card/slots";
@@ -56,15 +56,26 @@ export function WriteCard({ rendererProps, artifactSlot, onCopy, onOpenArtifact 
     !details.ok &&
     normalized.phase !== "running" &&
     normalized.phase !== "partial";
-  const state = writeState(
+  const baseState = writeState(
     normalized,
     settledMalformed ? details.error : undefined,
     appErrorFromResult(rawDetails),
     outputMeta,
   );
+  const interruption = baseState.phase === "error" ? interruptionOf(rawDetails) : undefined;
+  const state =
+    interruption === undefined
+      ? baseState
+      : {
+          ...baseState,
+          phase: "error" as const,
+          isError: true,
+          interruption: interruption.kind,
+          interruptionText: interruption.text,
+        };
   const rawResult = rawText(rawDetails);
-  // A plain file write needs no answer (the card shows the source). A device's answer, a worker's
-  // receipt or a process action is the whole point of the call, so the text omp returned is shown.
+  // A plain file write needs no answer. Show omp's text for device/process results and for synthetic interruptions,
+  // where its result is the only reliable account of what happened.
   const returnedText =
     detailsValue?.resolvedPath === undefined && state.phase === "success"
       ? splitToolResult(rawDetails).text
@@ -73,9 +84,13 @@ export function WriteCard({ rendererProps, artifactSlot, onCopy, onOpenArtifact 
   return (
     <div data-slot="t1-write-card" data-testid="t1-write-card">
       <ToolCard
-        className="[&_[data-slot='u3-tool-card-args']]:hidden [&_[data-slot='u3-tool-card-result']]:hidden [&_[data-slot='u3-tool-card-truncation']]:hidden [&_[data-slot='u3-tool-card-raw']]:hidden"
         rawResult={rawResult}
-        state={{ ...state, result: undefined, partialResult: undefined }}
+        state={{
+          ...state,
+          ...(state.interruption === undefined
+            ? { result: undefined, partialResult: undefined }
+            : {}),
+        }}
         summary={middleEllipsis(displayTarget)}
       >
         <WriteBody

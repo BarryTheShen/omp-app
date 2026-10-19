@@ -54,6 +54,8 @@ export function normalizeToolCall(input: NormalizeToolCallInput): ToolCardState 
     input.runActive === true &&
     input.toolState === undefined;
   const timedOut = isTimedOut(input.toolState?.result) || isTimedOut(input.result);
+  const interruption =
+    phase === "error" ? interruptionOf(input.toolState?.result ?? input.result) : undefined;
   const error = resolveError(input, phase, timedOut);
   const partialResult = resolvePartialResult(input, phase);
   const result = resolveFinalResult(input, phase);
@@ -78,6 +80,9 @@ export function normalizeToolCall(input: NormalizeToolCallInput): ToolCardState 
     ...(result === undefined ? {} : { result }),
     isError,
     ...(error === undefined ? {} : { error }),
+    ...(interruption === undefined
+      ? {}
+      : { interruption: interruption.kind, interruptionText: interruption.text }),
     ...(phase === "cancelled" ? { cancelled: true } : {}),
     ...(timedOut ? { timedOut: true } : {}),
     ...(input.outputMeta === undefined ? {} : { outputMeta: input.outputMeta }),
@@ -117,7 +122,17 @@ function malformedToolState(
 
 function resolvePhase(input: NormalizeToolCallInput): ToolCardPhase {
   const sourceStatus = input.toolState?.status;
+  const status = input.status;
   if (sourceStatus === "cancelled") return "cancelled";
+  if (status?.type === "incomplete" && status.reason === "cancelled") return "cancelled";
+
+  const settled =
+    sourceStatus === "success" ||
+    sourceStatus === "error" ||
+    status?.type === "complete" ||
+    status?.type === "incomplete";
+  if (settled && interruptionOf(input.toolState?.result ?? input.result) !== undefined)
+    return "error";
   if (input.toolState?.isError === true || input.isError === true) return "error";
   if (isTimedOut(input.toolState?.result) || isTimedOut(input.result)) return "error";
   if (sourceStatus !== undefined) {
@@ -125,18 +140,48 @@ function resolvePhase(input: NormalizeToolCallInput): ToolCardPhase {
     if (sourceStatus === "success") return "success";
     return sourceStatus;
   }
-  const status = input.status;
   if (status?.type === "running") return "running";
   if (status?.type === "requires-action") return "partial";
-  if (status?.type === "incomplete") {
-    return status.reason === "cancelled" ? "cancelled" : "error";
-  }
+  if (status?.type === "incomplete") return "error";
   if (input.result !== undefined) return isTimedOut(input.result) ? "error" : "success";
   // The message is complete and holds no result for this call. While its run is active omp may simply not have
   // started it yet (an exclusive call waits for the calls before it), so it is queued. Once the run has ended no
   // result can arrive, so the call is unrecorded.
   if (status?.type === "complete") return input.runActive === true ? "partial" : "unrecorded";
   return "partial";
+}
+
+export interface ToolInterruption {
+  readonly kind: "interrupted" | "skipped";
+  readonly text: string;
+}
+
+export function interruptionOf(result: unknown): ToolInterruption | undefined {
+  const split = splitToolResult(result);
+  const details = split.isEnvelope ? split.details : result;
+  if (details === null || typeof details !== "object" || Array.isArray(details)) return undefined;
+  const record = details as Record<string, unknown>;
+  const nested = record.details;
+  const metadata =
+    nested !== null && typeof nested === "object" && !Array.isArray(nested)
+      ? (nested as Record<string, unknown>)
+      : record;
+  const source = metadata.source;
+  const kind =
+    metadata.__synthetic === true &&
+    metadata.executed === false &&
+    source === "assistant_stop_aborted"
+      ? "interrupted"
+      : metadata.__synthetic === true &&
+          metadata.executed === false &&
+          source === "interrupt_skipped"
+        ? "skipped"
+        : metadata.__interrupted === true &&
+            source === "interrupt_skipped" &&
+            metadata.execution === "started"
+          ? "interrupted"
+          : undefined;
+  return kind === undefined ? undefined : { kind, text: split.text };
 }
 
 function resolveArgsComplete(input: NormalizeToolCallInput): boolean {

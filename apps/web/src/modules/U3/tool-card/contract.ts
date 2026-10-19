@@ -88,6 +88,10 @@ export interface ToolCardState {
   readonly cancelled?: boolean;
   readonly timedOut?: boolean;
   readonly outputMeta?: OutputMeta;
+  /** omp's exact result text for an interrupted or skipped call, retained when a renderer hides raw result data. */
+  readonly interruptionText?: string;
+  /** omp marked a synthetic call that did not run; this label leaves the underlying error phase unchanged. */
+  readonly interruption?: "interrupted" | "skipped";
   readonly messages?: readonly ThreadMessageLike[];
   readonly nested?: NestedTranscriptSource;
   /**

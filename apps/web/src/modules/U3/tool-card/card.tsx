@@ -11,6 +11,7 @@ import { Icons } from "../../../tokens";
 import type { OutputMeta, ToolCardPhase, ToolCardState } from "./contract";
 import { OutputCutNote, outputCutOf, useFullOutputFocus } from "./full-output";
 import type { CopyKind, CopySlot } from "./slots";
+import { TextOutput } from "./text-output";
 
 const MAX_REMEMBERED_DISCLOSURES = 256;
 const MAX_PREVIEW_LINES = 12;
@@ -46,10 +47,11 @@ const ERROR_TONE_CLASSES = {
   danger: "border-danger/30 bg-danger-surface text-danger-surface-foreground",
 } as const;
 
-/** What the call's work came to, for its chip: the words to show, in the colours of the phase they stand for. */
+/** What the call's work came to: the chip shows its label in its phase's colours, with a tone override for annotations. */
 export interface ToolCardOutcome {
   readonly label: string;
   readonly phase: ToolCardPhase;
+  readonly tone?: VisualState["tone"];
 }
 
 export interface ToolCardProps {
@@ -80,12 +82,24 @@ export function ToolCard({
   children,
 }: ToolCardProps) {
   const contentId = useId();
+  const interruptionOutcome: ToolCardOutcome | undefined =
+    state.interruption === undefined
+      ? undefined
+      : {
+          label: state.interruption === "interrupted" ? "Interrupted" : "Skipped",
+          phase: "error",
+          tone: "muted",
+        };
+  const shownOutcome = interruptionOutcome ?? outcome;
   const visual = state.queued === true ? QUEUED_VISUAL : VISUAL_BY_PHASE[state.phase];
   const shown =
-    outcome === undefined ? visual : { ...VISUAL_BY_PHASE[outcome.phase], label: outcome.label };
+    shownOutcome === undefined
+      ? visual
+      : { ...VISUAL_BY_PHASE[shownOutcome.phase], label: shownOutcome.label };
   const status = state.timedOut
     ? { ...shown, label: "Timed out", tone: "warning" as const }
-    : shown;
+    : { ...shown, ...(shownOutcome?.tone === undefined ? {} : { tone: shownOutcome.tone }) };
+  const calmInterruption = state.interruption !== undefined;
   const remembered = rememberedDisclosure.get(state.toolCallId);
   const policy = useTranscriptDisplayPolicy();
   // Every call starts as one line, running or finished: no call opens or folds by itself. A click or Enter on the
@@ -118,6 +132,7 @@ export function ToolCard({
   const full = useFullOutputFocus(cut, contentRef, "[data-u3-show-all]");
   const outputExpanded = expandedOutput || policy.expandTools;
   const output = previewOutput(resultRaw, state.outputMeta, outputExpanded);
+  const interruptionText = state.interruptionText ?? "";
   // A call with no result says so in the card's own words, whatever summary its family gave: that summary describes a
   // result there is none of, and it must not keep a success look.
   const isUnrecorded = state.phase === "unrecorded";
@@ -177,7 +192,9 @@ export function ToolCard({
         <span
           aria-hidden="true"
           className={cn(
-            state.phase === "error" ? "text-destructive" : TONE_CLASSES[status.tone],
+            !calmInterruption && state.phase === "error"
+              ? "text-destructive"
+              : TONE_CLASSES[status.tone],
             open && "rotate-90",
           )}
           data-slot="u3-tool-card-icon"
@@ -187,7 +204,7 @@ export function ToolCard({
         <span
           className={cn(
             "min-w-0 truncate",
-            state.phase === "error"
+            !calmInterruption && state.phase === "error"
               ? "text-destructive"
               : "text-muted-foreground group-hover/tool-card-trigger:text-foreground",
             (state.phase === "running" || state.phase === "partial") && "animate-pulse",
@@ -206,15 +223,12 @@ export function ToolCard({
           {summary}
         </span>
         <span
-          className={`ms-auto shrink-0 text-meta ${
-            state.phase === "error" || status.tone === "danger"
+          className={cn(
+            "ms-auto shrink-0 text-meta",
+            !calmInterruption && state.phase === "error"
               ? "text-destructive"
-              : status.tone === "info"
-                ? "text-info"
-                : status.tone === "warning"
-                  ? "text-warning"
-                  : "text-muted-foreground"
-          }`}
+              : TONE_CLASSES[status.tone],
+          )}
           data-slot="u3-tool-card-status"
           data-testid={`tool-state-chip-${state.phase}`}
         >
@@ -229,7 +243,7 @@ export function ToolCard({
       >
         <div className="min-h-0 overflow-hidden">
           <div className="border-foreground/10 ms-[0.3125rem] flex min-w-0 flex-col gap-3 border-s py-2 ps-4">
-            {state.error !== undefined && (
+            {state.error !== undefined && !calmInterruption && (
               <div
                 aria-live="assertive"
                 className={cn(
@@ -242,6 +256,9 @@ export function ToolCard({
                 <p className="font-medium">{state.error.message}</p>
                 {state.error.retryable && <p className="mt-1 text-xs">Retry is available.</p>}
               </div>
+            )}
+            {calmInterruption && interruptionText !== "" && (
+              <TextOutput text={interruptionText} testId="u3-tool-card-interruption" />
             )}
             {children}
             {state.phase === "partial" && resultRaw !== "" && (

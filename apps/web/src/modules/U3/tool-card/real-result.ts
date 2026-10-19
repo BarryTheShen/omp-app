@@ -13,6 +13,8 @@ export interface RealToolResult {
   readonly result: { readonly content: readonly unknown[]; readonly details?: unknown };
   /** omp marked the result as a failure. */
   readonly isError: boolean;
+  /** The muted marker shown for an omp synthetic interruption or skipped call. */
+  readonly reads?: "interrupted" | "skipped";
   /** Text the finished card must show: the facts a person needs from this result. */
   readonly shows: readonly string[];
 }
