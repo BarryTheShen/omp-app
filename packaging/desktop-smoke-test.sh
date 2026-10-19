@@ -365,8 +365,11 @@ wid=$(wait_window 120) || fail "T8: no window"
 info=$(server_info 90) || fail "T8: the server never answered"
 read -r side _ <<<"$info"
 sleep 5
-# The sidebar's New chat button: its place is fixed by the window's size and an empty workspace folder.
-xdotool mousemove --window "$wid" 241 169 click 1 || fail "T8: could not click New chat"
+# The sidebar's New chat button: its place is fixed by the window's size (1200 x 800, server.rs) and an empty workspace
+# folder. Measured in the app at that size after the UI redesign: the button's box is x 12, y 124, 215 x 32, so its
+# centre is (120, 140). Measure it again (a real-omp spec reading getByRole("button", { name: "New chat" })) when the
+# sidebar's layout changes.
+xdotool mousemove --window "$wid" 120 140 click 1 || fail "T8: could not click New chat"
 wait_log 'status=running' 90 || fail "T8: New chat did not start omp (the server logged no running omp)"
 omp_pid=$(grep -o 'status=running pid=[0-9]*' "$state/omp-app.log" | tail -n 1 | cut -d= -f3)
 [[ -n $omp_pid ]] || fail "T8: New chat did not start omp"
