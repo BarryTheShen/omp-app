@@ -27,9 +27,8 @@ declare global {
 /** The zero token is 0.01 ms: a transition that short is no motion. */
 const ZERO_SECONDS = 0.00001;
 const PALETTE = '[role="dialog"][aria-label="Command palette"]';
-/** The reasoning block's trigger (the attribute only this element carries) and the chevron that turns with it. */
 const TRIGGER = "[data-u1-reasoning-trigger]";
-const CHEVRON = `${TRIGGER} svg.transition-transform`;
+const CHEVRON = `${TRIGGER} span.transition-transform`;
 
 /** Runs in the page: the longest transition the element declares, in seconds. */
 function longestTransition(element: Element): number {

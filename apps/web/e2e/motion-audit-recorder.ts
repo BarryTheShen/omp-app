@@ -95,7 +95,7 @@ export const TRACKED = {
 export const PALETTE = '[role="dialog"][aria-label="Command palette"]';
 export const MODEL_DIALOG = '[role="dialog"][aria-label="Model and thinking"]';
 export const REASONING_TRIGGER = "[data-u1-reasoning-trigger]";
-export const CHEVRON = `${REASONING_TRIGGER} svg.transition-transform`;
+export const CHEVRON = `${REASONING_TRIGGER} span.transition-transform`;
 
 export const PROBES = {
   sessionsSidebar: { selector: '[data-shell-sidebar="left"]', read: "width" },

@@ -60,7 +60,7 @@ function ThoughtTrigger({
     <CollapsibleTrigger
       aria-label={label}
       className={cn(
-        "group/trigger my-1 flex w-full min-w-0 items-baseline gap-2 text-start font-mono text-trace outline-none [font-variant-ligatures:none] focus-visible:underline",
+        "group/trigger my-1 flex w-full min-w-0 items-baseline gap-2 text-start font-mono text-trace outline-none [font-variant-ligatures:none] focus-visible:underline transition-all motion-reduce:transition-none",
         active && "animate-pulse",
       )}
       data-u1-reasoning-trigger
