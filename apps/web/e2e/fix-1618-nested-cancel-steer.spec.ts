@@ -1,9 +1,11 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import {
   expect,
   openToolCard,
@@ -62,9 +64,11 @@ function buildNestedWidthPage(): void {
   );
 }
 
-realTest.beforeAll(() => {
-  buildNestedWidthPage();
-});
+realTest.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildNestedWidthPage();
+  }),
+);
 const WIDE = { width: 1280, height: 900 };
 const NARROW = { width: 390, height: 844 };
 

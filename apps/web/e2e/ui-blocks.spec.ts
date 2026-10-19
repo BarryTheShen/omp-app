@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -121,7 +122,7 @@ async function waitForFiniteAnimations(page: Page): Promise<void> {
   });
 }
 
-test.beforeAll(buildPlaygroundPages);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPages));
 test.describe.configure({ mode: "serial" });
 
 test("renders all shared blocks with token styles in light, dark, and narrow layouts", async ({

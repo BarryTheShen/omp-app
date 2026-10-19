@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -40,7 +42,7 @@ function buildPlaygroundPage(): void {
   );
 }
 
-test.beforeAll(() => buildPlaygroundPage());
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 test("renders URL metadata, untrusted Markdown, sources and truncation in light Chrome", async ({
   page,

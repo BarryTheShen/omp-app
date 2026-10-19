@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const SCREENSHOTS = join(APP_ROOT, "../../.data/screenshots");
@@ -43,7 +44,7 @@ async function buildPlayground(): Promise<void> {
   );
 }
 
-test.beforeAll(buildPlayground);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlayground));
 
 test("stored values the controls cannot parse show a recovery choice in light, dark and narrow layouts", async ({
   page,

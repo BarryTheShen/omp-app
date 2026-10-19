@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -93,7 +95,7 @@ function writeProjectConfig(path: string, yaml: string): void {
   writeFileSync(path, yaml);
 }
 
-realTest.beforeAll(() => buildPlaygroundPage());
+realTest.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 realTest(
   "reads and saves context settings through a real omp-backed ConfigStore",

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { ChatStream, settleChat } from "./n1-chat-stream";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { expect as realExpect, realTest, screenshots, startChat } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -65,7 +66,7 @@ async function topOf(locator: Locator): Promise<number> {
   return (await locator.boundingBox())?.y ?? Number.NaN;
 }
 
-test.beforeAll(buildPlaygroundPage);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 test("a widget sits above or below the composer, and notices keep focus in the composer", async ({
   page,

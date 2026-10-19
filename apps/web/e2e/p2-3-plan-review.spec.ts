@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -48,9 +50,11 @@ function buildPlaygroundPage(): void {
   );
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 test.describe("P2.3 PlanReviewPanel playground", () => {
   test("captures light, dark and narrow plan review layouts", async ({ page }) => {

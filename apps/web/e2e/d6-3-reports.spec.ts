@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -43,9 +45,11 @@ function buildPlaygroundPage(): void {
   );
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 /** Opens one playground state in one theme; the playground applies the theme before its first render. */
 async function open(page: Page, state: string, theme: "light" | "dark" = "light"): Promise<void> {

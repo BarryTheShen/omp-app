@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -130,10 +132,12 @@ async function expectCollapsedThinkingBody(page: Page): Promise<void> {
   );
   await expect(root.locator("[data-u1-reasoning-body]")).not.toBeVisible();
 }
-test.beforeAll(() => {
-  buildPlaygroundPage();
-  buildRowsPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+    buildRowsPlaygroundPage();
+  }),
+);
 
 test("renders fixture empty, streaming, settled and AppFailure states", async ({ page }) => {
   const pageErrors: string[] = [];

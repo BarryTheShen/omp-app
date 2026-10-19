@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -43,7 +45,7 @@ function buildPlaygroundPage(): void {
   );
 }
 
-test.beforeAll(buildPlaygroundPage);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 async function expectPopoverSurface(page: Page, surface: Locator): Promise<void> {
   const tokens = await page.evaluate(() => {

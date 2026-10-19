@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import type { Browser, Download, Page } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import type { RealApp } from "./real-omp";
 import {
   expect,
@@ -70,9 +72,11 @@ function buildCheckPage(): void {
   );
 }
 
-realTest.beforeAll(() => {
-  buildCheckPage();
-});
+realTest.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildCheckPage();
+  }),
+);
 
 realTest.setTimeout(300_000);
 

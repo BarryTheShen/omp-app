@@ -1,9 +1,11 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { realTest, screenshots, sendPrompt, startChat } from "./real-omp";
 
 const WEB_ROOT = process.cwd();
@@ -133,10 +135,12 @@ async function expectTitlesInOneColumn(page: Page): Promise<void> {
 }
 
 test.describe("P1.5 Agent Hub playground", () => {
-  test.beforeAll(() => {
-    mkdirSync(screenshots, { recursive: true });
-    buildPlaygrounds();
-  });
+  test.beforeAll(() =>
+    ensurePlaygroundBuilt(() => {
+      mkdirSync(screenshots, { recursive: true });
+      buildPlaygrounds();
+    }),
+  );
 
   test("the populated hub lists every state with its inspector, opened without a badge", async ({
     page,

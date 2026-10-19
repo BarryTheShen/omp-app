@@ -1,9 +1,11 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -84,7 +86,7 @@ async function captureState(
   await page.close();
 }
 
-test.beforeAll(buildPlayground);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlayground));
 
 test("restore plan, U4 confirmation and result are captured in light, dark and narrow themes", async ({
   browser,

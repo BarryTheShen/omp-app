@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -62,7 +63,7 @@ async function assertStyled(page: Page): Promise<void> {
   expect(style.radius).not.toBe("0px");
 }
 
-test.beforeAll(() => buildPlayground());
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlayground));
 
 test("shows context pressure, usage details and compaction controls", async ({ page }) => {
   await page.goto("/p7-context-playground.html");

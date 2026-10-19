@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -78,7 +80,7 @@ async function expectReport(page: Page): Promise<void> {
   await expect(page.getByText("xhigh")).toHaveCount(0);
 }
 
-test.beforeAll(() => buildPlayground());
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlayground));
 
 test("shows ordered command output and safe updates in light, dark, and narrow layouts", async ({
   page,

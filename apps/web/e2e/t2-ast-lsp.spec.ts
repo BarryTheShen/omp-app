@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -88,7 +90,7 @@ async function expectCards(page: Page): Promise<void> {
   await Promise.all(details.map((raw) => expect(raw).toBeHidden()));
 }
 
-test.beforeAll(buildPlaygroundPage);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 test("renders ast_grep matches and lsp hover, diagnostics, references and running in light/dark/narrow layouts", async ({
   page,

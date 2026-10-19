@@ -1,9 +1,11 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { type Browser, expect, type Page } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
 const WEB_ROOT = process.cwd();
@@ -78,9 +80,11 @@ async function expectTokenBackground(page: Page): Promise<void> {
   expect(colors.background).toBe(colors.token);
 }
 
-realTest.beforeAll(() => {
-  buildAdvisorPage();
-});
+realTest.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildAdvisorPage();
+  }),
+);
 
 realTest(
   "real omp: advisor settings save and reload, and the live surface works in light, dark, and narrow views",

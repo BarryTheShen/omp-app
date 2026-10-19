@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -59,7 +61,7 @@ async function expectStyles(page: Page): Promise<void> {
   );
 }
 
-test.beforeAll(buildPlaygroundPage);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 test("renders linked glob files, missing paths and truncation in light/dark/narrow layouts", async ({
   page,

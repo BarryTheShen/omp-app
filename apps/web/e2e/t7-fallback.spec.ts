@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -77,9 +79,11 @@ async function darkInit(page: Page): Promise<void> {
   });
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 test.describe("T7 fallback", () => {
   test("renders safe unavailable fallback in dark and light themes", async ({ page }) => {

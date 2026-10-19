@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -61,7 +63,7 @@ async function expectSidebarToken(page: Page): Promise<void> {
   expect(colors.actual).toBe(colors.token);
 }
 
-test.beforeAll(() => buildPlaygroundPage());
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 test.describe("I4.3 collaboration panel", () => {
   test("shows unavailable controls in light and dark themes", async ({ page }) => {

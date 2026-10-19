@@ -1,9 +1,11 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { realTest } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -66,9 +68,11 @@ async function expectCardToken(page: Page): Promise<void> {
   expect(normalizeColor(colors.background)).toBe(normalizeColor(colors.token));
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 test("S2.3 sections render ConfigStore state and descriptor-backed apply reports", async ({
   page,

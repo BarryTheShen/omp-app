@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -76,9 +78,11 @@ async function darkInit(page: Page): Promise<void> {
   });
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 test.describe("U5.6 todo reminders and board", () => {
   test("renders passive reminder and board in dark then light themes", async ({ page }) => {

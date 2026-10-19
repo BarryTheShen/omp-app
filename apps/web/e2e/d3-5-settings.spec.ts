@@ -4,6 +4,7 @@ import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "@playwright/test";
 import { APP_TOKEN_STORAGE_KEY } from "../src/launch/token";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -29,7 +30,7 @@ function buildPlaygroundPage(): void {
   );
 }
 
-test.beforeAll(() => buildPlaygroundPage());
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 realTest("shows source-aware provider settings in real omp", async ({ realApp }) => {
   const page = await realApp.open();

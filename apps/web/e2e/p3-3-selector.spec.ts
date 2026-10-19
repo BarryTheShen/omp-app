@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -108,7 +110,7 @@ async function openSelector(page: Page, expectedText = FIXTURE_TEXT) {
   return dialog;
 }
 
-test.beforeAll(buildPlaygroundPage);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 test.describe.configure({ mode: "serial" });
 
 test("selects an earlier message, restores focus, and edits its exact source", async ({ page }) => {

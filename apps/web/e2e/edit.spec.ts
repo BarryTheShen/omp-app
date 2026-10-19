@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { openAllToolCards, waitForFiniteAnimations } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -42,9 +44,11 @@ function buildPlaygroundPage(): void {
   );
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 test("renders edit and apply_patch diffs in light, dark and narrow layouts", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 1400 });

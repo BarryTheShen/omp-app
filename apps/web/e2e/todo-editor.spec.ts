@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -82,9 +84,11 @@ async function openEditor(page: Page): Promise<void> {
   await expect(page.getByRole("textbox", { name: "Edit todo list" })).toHaveValue(/## Build/);
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 test.describe("U5.5 todo Markdown editor", () => {
   test("opens U4 editor in dark-before-goto and light themes with loaded styles", async ({

@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { expect, realOmpEnabled, realTest } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -57,10 +58,12 @@ function buildMcpPlayground(): void {
   );
 }
 
-realTest.beforeAll(() => {
-  if (!realOmpEnabled) return;
-  buildMcpPlayground();
-});
+realTest.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    if (!realOmpEnabled) return;
+    buildMcpPlayground();
+  }),
+);
 
 realTest("uses live MCP catalogs and host registrations with real omp", async ({ realApp }) => {
   writeFileSync(

@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Page, test, expect as visualExpect } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { expect as realExpect, realTest } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -83,9 +85,11 @@ async function expectTokenBackground(page: Page): Promise<void> {
   visualExpect(usesSidebarToken).toBe(true);
 }
 
-test.beforeAll(() => {
-  buildGoalPlaygrounds();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildGoalPlaygrounds();
+  }),
+);
 
 test("goal panel shows its objective, status and budget in light, dark and narrow layouts", async ({
   page,

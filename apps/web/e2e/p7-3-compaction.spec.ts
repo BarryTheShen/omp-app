@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -89,7 +91,7 @@ async function expandSummary(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Current work" })).toBeVisible();
 }
 
-test.beforeAll(() => buildPlayground());
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlayground));
 
 test("shows compaction progress and where the conversation continues in all themes and widths", async ({
   page,

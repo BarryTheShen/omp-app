@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 test.describe.configure({ mode: "serial" });
 
@@ -72,9 +74,11 @@ async function assertStyled(page: import("@playwright/test").Page): Promise<void
   expect(evidence.selectColor ?? evidence.selectFill).not.toBe("rgba(0, 0, 0, 0)");
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 test("renders complete voice and speech settings with provenance in light mode", async ({
   page,

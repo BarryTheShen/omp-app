@@ -1,9 +1,11 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { openAllToolCards, openToolCard, realTest, sendPrompt, startChat } from "./real-omp";
 
 const WEB_ROOT = process.cwd();
@@ -73,10 +75,12 @@ async function expectTokenBackground(page: Page): Promise<void> {
 }
 
 test.describe("nested transcript playground", () => {
-  test.beforeAll(() => {
-    mkdirSync(SCREENSHOTS, { recursive: true });
-    buildPlaygroundPage();
-  });
+  test.beforeAll(() =>
+    ensurePlaygroundBuilt(() => {
+      mkdirSync(SCREENSHOTS, { recursive: true });
+      buildPlaygroundPage();
+    }),
+  );
 
   test("renders task transcripts under their cards with real renderers and bounded states", async ({
     page,

@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { narrowTo, openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -40,7 +42,7 @@ function buildMemoryPlayground(): void {
   );
 }
 
-test.beforeAll(() => buildMemoryPlayground());
+test.beforeAll(() => ensurePlaygroundBuilt(buildMemoryPlayground));
 
 test("renders all T6 memory cards in light, dark and narrow states", async ({ page }) => {
   await page.goto("/t6-memory-playground.html");

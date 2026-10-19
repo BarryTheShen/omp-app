@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -87,9 +89,11 @@ async function expectPanelContrast(page: Page) {
   expect(contrastRatio(ratio.foreground, ratio.background)).toBeGreaterThanOrEqual(4.5);
 }
 
-test.beforeAll(() => {
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildPlaygroundPage();
+  }),
+);
 
 test.describe("U5.2 PanelShell playground", () => {
   test("captures ready/loading/error states and checks light/dark contrast", async ({ page }) => {

@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -46,7 +48,7 @@ async function settleAnimations(page: Page): Promise<void> {
   });
 }
 
-test.beforeAll(() => buildModePlayground());
+test.beforeAll(() => ensurePlaygroundBuilt(buildModePlayground));
 
 test("renders session queue modes in light, dark and narrow states", async ({ page }) => {
   await page.goto("/p6-mode-playground.html");

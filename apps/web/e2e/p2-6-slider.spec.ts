@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -33,7 +35,7 @@ function sliderIn(page: Page, scene: string) {
 
 // One block, one worker: the page is built once, not once per parallel worker.
 test.describe.configure({ mode: "serial" });
-test.beforeAll(buildPlayground);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlayground));
 
 for (const variant of ["light", "dark", "narrow"] as const) {
   test(`P2.6 execution tier slider, ${variant}`, async ({ page }) => {

@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -107,7 +109,7 @@ async function expectPhoneSessionRows(page: Page): Promise<void> {
   await expect(detail).toContainText("Folder: <WORKSPACE>");
   await expect(detail).toContainText("Program: <WORKSPACE>/apps/web/server.ts");
 }
-test.beforeAll(buildPlaygroundPage);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygroundPage));
 
 test("renders a stopped session, a running step, a failed launch and an evaluation in light/dark/narrow layouts", async ({
   page,

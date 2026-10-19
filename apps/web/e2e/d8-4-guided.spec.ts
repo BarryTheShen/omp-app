@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { expect as realExpect, realTest } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -144,7 +146,7 @@ async function expectNoHorizontalOverflow(page: Page): Promise<void> {
   expect(overflows).toBe(false);
 }
 
-test.beforeAll(buildGuidedPlaygrounds);
+test.beforeAll(() => ensurePlaygroundBuilt(buildGuidedPlaygrounds));
 
 test("the interview asks each question in a dialog, a blank answer is asked again, and a confirmed goal is created, in light, dark and narrow layouts", async ({
   page,

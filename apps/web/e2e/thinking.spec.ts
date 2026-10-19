@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -59,7 +61,7 @@ async function assertStyled(page: Page): Promise<void> {
   expect(style.color).toMatch(/^(ok|rgb)/);
   expect(style.radius).not.toBe("0px");
 }
-test.beforeAll(() => buildPlayground());
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlayground));
 test("renders model-supported thinking levels and session scope", async ({ page }) => {
   await page.goto("/d1-thinking-playground.html");
   await expect(page.getByRole("heading", { name: "Thinking level" })).toBeVisible();

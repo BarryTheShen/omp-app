@@ -1,7 +1,9 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import {
   expect,
   realTest,
@@ -68,9 +70,11 @@ function buildCheckPage(): void {
   );
 }
 
-realTest.beforeAll(() => {
-  buildCheckPage();
-});
+realTest.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    buildCheckPage();
+  }),
+);
 
 realTest.setTimeout(240_000);
 

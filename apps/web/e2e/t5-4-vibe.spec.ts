@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 import { openAllToolCards } from "./real-omp";
 
 const APP_ROOT = process.cwd();
@@ -44,10 +46,12 @@ function buildPlaygroundPage(): void {
   );
 }
 
-test.beforeAll(() => {
-  mkdirSync(SCREENSHOTS, { recursive: true });
-  buildPlaygroundPage();
-});
+test.beforeAll(() =>
+  ensurePlaygroundBuilt(() => {
+    mkdirSync(SCREENSHOTS, { recursive: true });
+    buildPlaygroundPage();
+  }),
+);
 
 test("the four vibe cards show omp's source-derived results in light, dark and narrow layouts", async ({
   page,

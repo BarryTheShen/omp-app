@@ -1,8 +1,10 @@
 /// <reference types="node" />
+
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import { ensurePlaygroundBuilt } from "./playground-build";
 
 const APP_ROOT = process.cwd();
 const DIST_ROOT = join(APP_ROOT, "dist");
@@ -126,7 +128,7 @@ async function assertFocusStaysIn(page: Page, selector: string): Promise<void> {
   }
 }
 
-test.beforeAll(buildPlaygrounds);
+test.beforeAll(() => ensurePlaygroundBuilt(buildPlaygrounds));
 
 test("D8 surfaces work with keyboard only and guided focus is trapped and restored", async ({
   page,
