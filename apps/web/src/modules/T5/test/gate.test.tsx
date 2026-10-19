@@ -205,6 +205,31 @@ describe("T5 public descriptors and W4/CC8 coverage", () => {
     expect(container.querySelector("input,textarea")).toBeNull();
   });
 
+  test("a populated nested task card renders its recorded worker without controls", () => {
+    const fixture = T5_LIFECYCLE_FIXTURES.find(
+      (item) =>
+        item.name.includes("task: one agent started in the background") &&
+        item.expect.phase === "success",
+    );
+    if (fixture === undefined) throw new Error("No populated task fixture");
+    const Renderer = descriptorOf(fixture).renderer;
+    const props = {
+      type: "tool-call",
+      ...fixture.input,
+      nested: { depth: 1, messages: [] },
+    } as unknown as ToolRendererProps;
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={() => []}>
+        <Renderer {...props} />
+      </TaskSubagentsContext.Provider>,
+    );
+    const text = visibleText(container);
+    expect(text).toContain("Running · 1 agent");
+    expect(text).toContain("BuilderTwo");
+    expect(text).toContain("Pending");
+    expect(container.querySelector('button[aria-label*="Stop" i]')).toBeNull();
+    expect(container.querySelector("input,textarea")).toBeNull();
+  });
   test("two calls of different tools in one tree each show only their own facts and keep distinct disclosure ids", () => {
     const pick = (needle: string): T5LifecycleFixture => {
       const found = T5_LIFECYCLE_FIXTURES.find(

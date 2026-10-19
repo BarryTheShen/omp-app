@@ -1,4 +1,9 @@
-import { AppFailure, type CapabilityMap, validateRegistry } from "@omp-app/contracts";
+import {
+  AppFailure,
+  type CapabilityKey,
+  type CapabilityMap,
+  validateRegistry,
+} from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { T5_TOOL_DESCRIPTORS } from "./descriptor";
 import { T5_REAL_RESULTS } from "./fixtures/real-results";
@@ -228,6 +233,12 @@ describe("T5 vibe and yield models", () => {
     };
     expect(hasT5Capability(capabilities, T5CapabilityKeys.subagentEvents)).toBe(true);
     expect(hasT5Capability(capabilities, T5CapabilityKeys.commandGateway)).toBe(false);
+  });
+
+  test("an unreported subagent capability is unavailable and uses the contract key", () => {
+    const contractKey: CapabilityKey = "omp.subagent-events";
+    expect(T5CapabilityKeys.subagentEvents).toBe(contractKey);
+    expect(hasT5Capability({}, T5CapabilityKeys.subagentEvents)).toBe(false);
   });
 });
 

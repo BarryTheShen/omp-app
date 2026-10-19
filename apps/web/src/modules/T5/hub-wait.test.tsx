@@ -27,6 +27,41 @@ describe("T5.3 wait card on recorded results", () => {
     );
   });
 
+  test("a wait result with no reported jobs says so", () => {
+    const props = alteredResult("wait: a message from another agent", ["details", "waited"], null);
+    render(<WaitCard rendererProps={props} />);
+    expandToolCards();
+    expect(screen.getByText("No jobs reported")).toBeTruthy();
+  });
+
+  test("raw details stop at 4,000 characters", async () => {
+    const props = alteredResult(
+      "wait: a message from another agent",
+      ["details", "waited", "body"],
+      "x".repeat(5_000),
+    );
+    const { container } = render(<WaitCard rendererProps={props} />);
+    expandToolCards();
+    const rawDetailsToggle = container.querySelector("[data-slot='t5-raw-details'] summary");
+    if (rawDetailsToggle === null) throw new Error("No raw-details disclosure.");
+    fireEvent.click(rawDetailsToggle);
+    const raw = await waitFor(() => {
+      const pre = container.querySelector("[data-slot='t5-raw-details'] pre:last-child");
+      if (pre === null) throw new Error("No raw result details.");
+      return pre;
+    });
+    expect(raw?.textContent).toHaveLength(4_000);
+    expect(raw?.textContent?.endsWith("…")).toBe(true);
+  });
+
+  test("the hub summary says who sent a recorded message", () => {
+    const props = { ...recorded("wait: a message from another agent"), toolName: "hub" };
+    render(<HubCard rendererProps={props} />);
+    expandToolCards();
+    expect(screen.getByText("Message from BuilderOne")).toBeTruthy();
+    expect(screen.queryByText("Message to BuilderOne")).toBeNull();
+  });
+
   test("running jobs and a finished command show their status, progress and result", () => {
     render(<WaitCard rendererProps={recorded("wait: two running tasks and a finished command")} />);
     expandToolCards();

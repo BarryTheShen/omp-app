@@ -80,6 +80,10 @@ describe("vibe cards show what omp returned", () => {
     expect(screen.getByRole("status").textContent).toBe(
       "No turn settled before the wait ran out. Wait again to keep waiting.",
     );
+    const trigger = container.querySelector('[data-slot="u3-tool-card-trigger"]');
+    expect(trigger?.querySelector("span[title]")?.textContent).toBe(
+      "No turn settled before the wait ran out",
+    );
     expect(container.querySelector('[data-slot="t5-vibe-settled"]')).toBeNull();
   });
 
@@ -174,6 +178,20 @@ describe("vibe cards show what omp returned", () => {
       expect(screen.getAllByText("Cancelled").length).toBeGreaterThan(0);
       cut.unmount();
     }
+  });
+  test("a cancelled vibe call's summary reads Cancelled", () => {
+    const { container } = render(
+      <VibeWaitRenderer
+        {...withStatus(propsFor(sampleNamed("vibe_wait: the wait ran out")), {
+          type: "incomplete",
+          reason: "cancelled",
+        })}
+      />,
+    );
+    expandToolCards();
+    expect(
+      container.querySelector('[data-slot="u3-tool-card-trigger"] [title="Cancelled"]'),
+    ).toBeTruthy();
   });
 });
 

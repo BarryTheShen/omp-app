@@ -6,7 +6,7 @@ import {
   BackgroundJobCommandContext,
 } from "@/modules/U3/tool-card/background-job";
 import { keptStopOutcome, resolveStopOutcome } from "../U3/tool-card/stopped-jobs";
-import { JobRows } from "./coordination";
+import { formatDuration, JobRows } from "./coordination";
 import {
   type BackgroundJobKeptStops,
   BackgroundJobKeptStopsContext,
@@ -39,6 +39,12 @@ function renderJobs(
     </BackgroundJobCommandContext.Provider>,
   );
 }
+
+describe("T5 duration labels", () => {
+  test("durations under one second are shown in milliseconds", () => {
+    expect(formatDuration(500)).toBe("500ms");
+  });
+});
 
 describe("T5 Tasks view: stopping background jobs", () => {
   test("a kept stop does not override failed or completed row snapshots", () => {

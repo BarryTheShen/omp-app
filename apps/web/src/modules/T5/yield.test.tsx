@@ -206,4 +206,22 @@ describe("T5.5 yield submission card", () => {
       [],
     );
   });
+
+  test("a large section list shows its 20 labels and the count left out", () => {
+    const fixture = YIELD_FIXTURES.find((candidate) => candidate.id === "section");
+    if (fixture === undefined || fixture.result === undefined) {
+      throw new Error("No recorded incremental-section result.");
+    }
+    const result = structuredClone(fixture.result) as {
+      details: { type: string[] };
+    };
+    const labels = Array.from({ length: 21 }, (_, index) => `finding-${index + 1}`);
+    result.details.type = labels;
+    const largeFixture = { ...fixture, args: { type: labels }, result };
+    const { container } = render(<YieldToolRenderer {...yieldRendererProps(largeFixture)} />);
+    expandToolCards();
+    expect(container.querySelectorAll("[data-slot='t5-yield-sections'] li")).toHaveLength(20);
+    expect(screen.getByText("Showing 20 of 21 sections · +1 more")).toBeTruthy();
+    expect(screen.queryByText("finding-21")).toBeNull();
+  });
 });

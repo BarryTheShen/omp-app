@@ -34,6 +34,59 @@ function workerSource(agent: AgentRef, message: string): FocusedAgentRuntime {
   };
 }
 
+/** A foreground SingleResult inside omp's recorded task result details. */
+function taskPropsWithResult(result: Record<string, unknown>) {
+  const props = recorded("task: one agent started in the background");
+  const details = (props.result as { details: { results: unknown[] } }).details;
+  details.results.push(result);
+  return props;
+}
+
+function foregroundResult(overrides: Record<string, unknown>) {
+  return {
+    index: 0,
+    id: "FinishedOne",
+    agent: "task",
+    exitCode: 0,
+    output: "Finished output",
+    stderr: "",
+    truncated: false,
+    durationMs: 500,
+    ...overrides,
+  };
+}
+
+describe("T5 task foreground results", () => {
+  test("a result with exit code zero reads Completed and keeps its millisecond duration", () => {
+    const { container } = render(
+      <TaskCard rendererProps={taskPropsWithResult(foregroundResult({}))} />,
+    );
+    expandToolCards();
+    const row = container.querySelector("[data-slot='t5-task-results'] li");
+    expect(row?.textContent).toContain("Completed");
+    expect(row?.textContent).toContain("500ms");
+    expect(row?.textContent).not.toContain("Failed");
+  });
+
+  test("an aborted result reads Aborted rather than Failed", () => {
+    const { container } = render(
+      <TaskCard
+        rendererProps={taskPropsWithResult(
+          foregroundResult({
+            exitCode: 1,
+            aborted: true,
+            abortReason: "The worker was stopped.",
+          }),
+        )}
+      />,
+    );
+    expandToolCards();
+    const row = container.querySelector("[data-slot='t5-task-results'] li");
+    expect(row?.textContent).toContain("Aborted");
+    expect(row?.textContent).not.toContain("Failed");
+  });
+});
+
 describe("T5 task card on recorded results", () => {
   test("one agent started in the background shows its job, its status and its counts", () => {
     render(<TaskCard rendererProps={recorded("task: one agent started in the background")} />);
