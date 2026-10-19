@@ -126,4 +126,29 @@ describe("T7 tolerant domain models", () => {
       retryable: false,
     });
   });
+  test("maps checkpoint calls to the published checkpoint capability", () => {
+    expect(capabilityForT7Tool("checkpoint")).toBe("host.checkpoints");
+    expect(unavailableForT7Tool("checkpoint").appError).toMatchObject({
+      capability: "host.checkpoints",
+    });
+  });
+
+  test("maps goal calls to the upstream goal capability", () => {
+    expect(capabilityForT7Tool("goal")).toBe("upstream.goal");
+    expect(unavailableForT7Tool("goal").appError).toMatchObject({
+      capability: "upstream.goal",
+    });
+  });
+
+  test("describes an unknown recorded tool action as unavailable", () => {
+    expect(unavailableForT7Tool("unknown recorded action").appError.message).toBe(
+      "This recorded tool action is unavailable.",
+    );
+  });
+
+  test("describes a known capability as unavailable for this runtime", () => {
+    expect(unavailableForT7Tool("checkpoint").appError.message).toBe(
+      "host.checkpoints is unavailable for this runtime.",
+    );
+  });
 });

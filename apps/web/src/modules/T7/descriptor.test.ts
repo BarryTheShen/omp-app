@@ -1,6 +1,12 @@
 import { ToolDescriptor } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, test } from "vitest";
+import { expandToolCards } from "@/modules/U3/tool-card/test-support";
+import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { T7_TOOL_DESCRIPTORS } from "./descriptor";
+
+afterEach(cleanup);
 
 describe("T7 descriptors", () => {
   test("claims eight inventory rows, one fallback, and two MCP name prefixes", () => {
@@ -41,5 +47,36 @@ describe("T7 descriptors", () => {
       by: "name",
       name: "security_scan",
     });
+  });
+  test("renders reject calls through the resolve renderer owned by its descriptor", () => {
+    const descriptor = T7_TOOL_DESCRIPTORS.find((item) => item.id === "T7.reject");
+    if (descriptor === undefined) throw new Error("Reject descriptor is missing");
+    const Renderer = descriptor.renderer;
+    const args = { action: "discard", reason: "Operator rejected the request" };
+    render(
+      createElement(Renderer, {
+        type: "tool-call",
+        toolCallId: "reject-through-descriptor",
+        toolName: "reject",
+        args,
+        argsText: JSON.stringify(args),
+        result: {
+          content: [
+            { type: "text", text: "Discarded: Edit. Reason: Operator rejected the request" },
+          ],
+          details: {
+            action: "discard",
+            reason: "Operator rejected the request",
+            sourceToolName: "ast_edit",
+            label: "Edit",
+          },
+        },
+        status: { type: "complete" },
+      } as unknown as ToolRendererProps),
+    );
+    expandToolCards();
+    expect(screen.getByTestId("t7-resolve-status-reject-through-descriptor").textContent).toContain(
+      "Rejected",
+    );
   });
 });
