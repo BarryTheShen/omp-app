@@ -112,9 +112,14 @@ realTest(
     await expect(thread).toBeFocused();
 
     // The reader's place is kept: the newest row did not move by the height of the older rows.
-    const after = await newest.boundingBox();
-    expect(after).not.toBeNull();
-    expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(5);
+    await expect
+      .poll(async () => {
+        const after = await newest.boundingBox();
+        return after === null || before === null
+          ? Number.POSITIVE_INFINITY
+          : Math.abs(after.y - before.y);
+      })
+      .toBeLessThan(5);
   },
 );
 

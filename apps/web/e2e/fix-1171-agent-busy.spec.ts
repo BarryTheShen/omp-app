@@ -24,7 +24,7 @@ interface Frames {
   readonly promptIds: string[];
 }
 
-/** Hides every event of the first turn from the page until the second prompt goes out; every frame is logged. */
+/** Hides all session events after the first prompt is sent, so the page cannot observe that turn becoming busy. */
 async function hideFirstTurn(page: Page, frames: Frames): Promise<void> {
   await page.routeWebSocket(/\/ws/, (ws) => {
     const server = ws.connectToServer();
@@ -41,7 +41,9 @@ async function hideFirstTurn(page: Page, frames: Frames): Promise<void> {
     server.onMessage((message) => {
       const text = String(message);
       const frame = JSON.parse(text) as Record<string, unknown>;
-      const hidden = frame.type === "event" && frames.promptIds.length === 1;
+      const hidden =
+        (frame.type === "event" || frame.type === "extension_ui_request") &&
+        frames.promptIds.length > 0;
       frames.lines.push(`in${hidden ? " (hidden)" : ""} ${text}`);
       if (!hidden) ws.send(message);
     });
@@ -55,10 +57,21 @@ function callSentAs(frames: Frames, delivery: "followUp" | "steer"): string | un
   );
   return line === undefined ? undefined : /"id":"([^"]+)"/.exec(line)?.[1];
 }
+function promptTextSentAs(frames: Frames, delivery: "followUp" | "steer"): string | undefined {
+  const line = frames.lines.find(
+    (entry) => entry.startsWith("out ") && entry.includes(`"streamingBehavior":"${delivery}"`),
+  );
+  if (line === undefined) return undefined;
+  const frame = JSON.parse(line.slice(4)) as { args?: { command?: { message?: unknown } } };
+  const message = frame.args?.command?.message;
+  return typeof message === "string" ? message : undefined;
+}
 
 /** Sends the open question, waits until omp admits it, then sends a second prompt that omp refuses as busy. */
 async function refusedSecondPrompt(page: Page, composer: Locator, frames: Frames): Promise<void> {
   await sendPrompt(composer, QUESTION_TURN);
+  // The frame reaches this process asynchronously, so wait until the prompt's id has arrived.
+  await expect.poll(() => frames.promptIds.length).toBeGreaterThan(0);
   const firstId = frames.promptIds[0] ?? "";
   await expect
     .poll(() =>
@@ -128,6 +141,7 @@ realTest("Interrupt and send sends the same text as a steer", async ({ realApp }
 
   await page.getByRole("button", { name: "Interrupt and send" }).click();
   await expect.poll(() => callSentAs(frames, "steer") !== undefined).toBe(true);
+  await expect.poll(() => promptTextSentAs(frames, "steer")).toBe("hi");
   const callId = callSentAs(frames, "steer") ?? "";
   await expect
     .poll(() =>

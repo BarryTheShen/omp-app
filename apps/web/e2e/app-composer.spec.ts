@@ -69,8 +69,10 @@ realTest(": lists emoji, and inserting one writes the character", async ({ realA
   const page = await realApp.open();
   const composer = await startChat(page);
   await composer.pressSequentially("say :smil");
-  await expect(page.getByRole("listbox", { name: "Emoji suggestions" })).toBeVisible();
-  await page.getByText(/:smile:/).click();
+  const emoji = page.getByRole("option", { name: /:smile:/ });
+  await expect(emoji).toBeVisible();
+  await expect(emoji).toBeEnabled();
+  await emoji.click();
   await expect(composer).toHaveValue("say 😄 ");
 });
 

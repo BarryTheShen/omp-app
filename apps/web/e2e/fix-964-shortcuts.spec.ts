@@ -154,6 +154,7 @@ realTest(
     await page.evaluate(() => navigator.clipboard.writeText("pasted line"));
     await composer.fill("ab");
     await composer.press("ArrowLeft");
+    await expect(composer).toBeFocused();
 
     await page.keyboard.press("Alt+Shift+V");
     await expect(composer).toHaveValue("apasted lineb");

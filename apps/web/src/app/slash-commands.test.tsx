@@ -423,6 +423,7 @@ describe("D2.3 the list inside the composer's trigger root", () => {
 
     const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "/us" } });
+    await waitFor(() => expect(input.value).toBe("/us"));
     input.setSelectionRange(3, 3);
     await waitFor(() =>
       expect(screen.getByRole("listbox", { name: "Slash commands" })).toBeTruthy(),

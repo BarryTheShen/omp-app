@@ -108,6 +108,7 @@ realTest(
     await editIntoNewChat(page);
 
     await startChat(page);
+    await expect(page.getByText("No messages yet.")).toBeVisible({ timeout: 60_000 });
     await expect(editNotice(page)).toHaveCount(0);
 
     await page.getByRole("option", { name: /count_reply second/ }).click();
