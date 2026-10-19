@@ -19,7 +19,19 @@ const DARK_THEME = (): void => {
   window.localStorage.setItem("omp-app.theme", "dark");
 };
 
-/** Streams one long reply in this chat and returns what the page recorded during it. */
+async function establishMessageBaseline(page: Page, composer: Locator): Promise<void> {
+  await expect(page.locator('[data-empty-chat="true"]')).toBeVisible({ timeout: 60_000 });
+  const emptyTop = await page.locator('[data-shell-region="composer"]').boundingBox();
+  await sendPrompt(composer, "baseline message");
+  await expect(page.locator('[data-slot="u1-message-row"][data-role="user"]').first()).toBeVisible({
+    timeout: 60_000,
+  });
+  const messageTop = await page.locator('[data-shell-region="composer"]').boundingBox();
+  expect(emptyTop?.y).toBeDefined();
+  expect(messageTop?.y).toBeDefined();
+  expect(Math.abs((emptyTop?.y ?? 0) - (messageTop?.y ?? 0))).toBeGreaterThan(1);
+}
+
 async function streamReply(
   page: Page,
   composer: Locator,
@@ -51,6 +63,7 @@ realTest("a streamed reply does not move the composer (light)", async ({ realApp
     beforeLoad: (target) => target.addInitScript(recordMotion, TRACKED),
   });
   const composer = await startChat(page);
+  await establishMessageBaseline(page, composer);
   const { step, sawComposer } = await streamReply(page, composer, "light", "visible");
   expect(sawComposer, "the recorder followed the composer").toBe(true);
   expect(step.movedPx.composer ?? 0, "composer movement while the reply streams (px)").toBe(0);
@@ -66,6 +79,7 @@ realTest("a streamed reply does not move the composer (dark)", async ({ realApp 
     },
   });
   const composer = await startChat(page);
+  await establishMessageBaseline(page, composer);
   const { step, sawComposer } = await streamReply(page, composer, "dark", "visible");
   expect(sawComposer, "the recorder followed the composer").toBe(true);
   expect(step.movedPx.composer ?? 0, "composer movement while the reply streams (px)").toBe(0);
@@ -82,6 +96,7 @@ realTest("a streamed reply does not move the composer (390 px)", async ({ realAp
   const composer = await startChat(page);
   const drawerClose = page.locator('button[aria-label="Close open sidebar"]');
   if ((await drawerClose.count()) > 0) await drawerClose.click();
+  await establishMessageBaseline(page, composer);
   const { step, sawComposer } = await streamReply(page, composer, "narrow", "hidden");
   expect(sawComposer, "the recorder followed the composer").toBe(true);
   expect(step.movedPx.composer ?? 0, "composer movement while the reply streams (px)").toBe(0);
@@ -97,6 +112,7 @@ realTest(
     });
     await page.setViewportSize({ width: 1024, height: 800 });
     const composer = await startChat(page);
+    await establishMessageBaseline(page, composer);
     const { step, sawComposer } = await streamReply(page, composer, "wide-both-sidebars", "hidden");
     expect(sawComposer, "the recorder followed the composer").toBe(true);
     expect(step.movedPx.composer ?? 0, "composer movement while the reply streams (px)").toBe(0);

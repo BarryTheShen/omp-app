@@ -347,10 +347,13 @@ function RuntimeStateSurface({
   if (snapshot.messageOrder.length === 0) {
     return (
       <div
-        className="animate-in fade-in slide-in-from-bottom-1 mx-auto mb-8 flex w-full max-w-(--layout-thread-width) flex-1 flex-col items-center justify-center text-center px-6 duration-200"
+        className="animate-in fade-in slide-in-from-bottom-1 mx-auto flex w-full max-w-(--layout-thread-width) flex-1 flex-col items-center justify-end text-center px-6 duration-200"
         data-slot="u1-thread-empty"
       >
-        <p className="font-display text-2xl leading-snug font-[550] tracking-[-0.01em] text-balance lg:text-[1.75rem]">
+        <p
+          className="font-display text-2xl leading-snug font-[550] tracking-[-0.01em] text-balance lg:text-[1.75rem]"
+          data-empty-chat="true"
+        >
           How can I help you today?
         </p>
         <span className="sr-only">No messages yet.</span>

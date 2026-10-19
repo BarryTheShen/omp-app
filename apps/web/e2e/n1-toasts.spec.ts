@@ -10,8 +10,7 @@ realTest(
     const chat = new ChatStream();
     const page = await realApp.open({ beforeLoad: (target) => chat.route(target) });
     await startChat(page);
-    await settleChat(chat);
-
+    await expect(page.locator('[data-empty-chat="true"]')).toBeVisible({ timeout: 60_000 });
     chat.notify(Array.from({ length: 7 }, (_, index) => `Update ${index + 1}`));
     const feedback = page.getByTestId("n1-notices");
     await expect(feedback.getByText("Update 7")).toBeVisible();

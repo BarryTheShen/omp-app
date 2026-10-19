@@ -81,7 +81,7 @@ interface ComposerMetrics {
     readonly color: string;
     readonly width: number;
     readonly textWidth: number;
-  };
+  } | null;
 }
 
 async function openTheme(realApp: Pick<RealApp, "open">, theme: Theme): Promise<Page> {
@@ -121,8 +121,7 @@ async function measureComposer(page: Page): Promise<ComposerMetrics> {
       !activeMode ||
       !status ||
       !context ||
-      !modelControl ||
-      !editButton
+      !modelControl
     ) {
       throw new Error("The composer acceptance surfaces are missing");
     }
@@ -173,9 +172,10 @@ async function measureComposer(page: Page): Promise<ComposerMetrics> {
       card.querySelectorAll("button"),
       (button) => button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "",
     );
-    const editTextRange = document.createRange();
-    editTextRange.selectNodeContents(editButton);
-    const editStyle = getComputedStyle(editButton);
+    const editTextRange = editButton === undefined ? null : document.createRange();
+    if (editTextRange !== null && editButton !== undefined)
+      editTextRange.selectNodeContents(editButton);
+    const editStyle = editButton === undefined ? null : getComputedStyle(editButton);
     return {
       card: {
         width: card.getBoundingClientRect().width,
@@ -240,16 +240,19 @@ async function measureComposer(page: Page): Promise<ComposerMetrics> {
         activeModeBackground: activeStyle.backgroundColor,
         expectedActiveModeBackground: resolveColorMix("--foreground", "6%"),
       },
-      editButton: {
-        height: editButton.getBoundingClientRect().height,
-        paddingInline: editStyle.paddingInline,
-        fontSize: editStyle.fontSize,
-        borderWidth: editStyle.borderTopWidth,
-        backgroundColor: editStyle.backgroundColor,
-        color: editStyle.color,
-        width: editButton.getBoundingClientRect().width,
-        textWidth: editTextRange.getBoundingClientRect().width,
-      },
+      editButton:
+        editButton === undefined || editStyle === null || editTextRange === null
+          ? null
+          : {
+              height: editButton.getBoundingClientRect().height,
+              paddingInline: editStyle.paddingInline,
+              fontSize: editStyle.fontSize,
+              borderWidth: editStyle.borderTopWidth,
+              backgroundColor: editStyle.backgroundColor,
+              color: editStyle.color,
+              width: editButton.getBoundingClientRect().width,
+              textWidth: editTextRange.getBoundingClientRect().width,
+            },
       statusFontSize: getComputedStyle(status).fontSize,
       contextFontSize: getComputedStyle(context).fontSize,
       modelTextClipped: Array.from(modelControl.querySelectorAll(":scope > span")).some(
@@ -299,15 +302,8 @@ async function assertMetrics(
     paddingBottom: "8px",
     placeholderColor: metrics.input.expectedPlaceholderColor,
   });
-  expect(metrics.editButton).toMatchObject({
-    height: 28,
-    paddingInline: "8px",
-    fontSize: "13px",
-    borderWidth: "0px",
-    backgroundColor: "rgba(0, 0, 0, 0)",
-  });
-  expect(metrics.editButton.color).toBe(metrics.input.expectedPlaceholderColor);
-  expect(metrics.editButton.width).toBeLessThanOrEqual(metrics.editButton.textWidth + 16);
+  expect(metrics.editButton?.height).toBe(0);
+  await expect(page.locator('[data-slot="p3-previous-message-selector"]')).toBeHidden();
   expect(metrics.buttons.attachment).toEqual({ width: 28, height: 28, radius: "8px" });
   expect(metrics.buttons.send).toMatchObject({
     width: 28,

@@ -338,7 +338,7 @@ export function AppShell({
 
       <main
         aria-label="Conversation"
-        className="col-start-1 row-start-1 grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
+        className="group/main col-start-1 row-start-1 grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden has-[[data-empty-chat='true']]:grid-rows-[auto_minmax(0,1fr)_auto_auto_minmax(0,1fr)] has-[[data-empty-chat='true']]:[&_[data-slot=p3-previous-message-selector]]:hidden has-[[data-empty-chat='true']]:[&_[data-slot=u1-thread-footer]>div:last-child]:py-0"
         data-shell-main="true"
         id="main-content"
         style={{ gridColumn: isNarrow ? "1" : "2" }}
@@ -351,11 +351,15 @@ export function AppShell({
           {threadHeader}
           {!rightShown && <SidebarToggle side="right" onToggle={toggleRight} />}
         </header>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none hidden group-has-[[data-empty-chat='true']]/main:block"
+        />
         {/* A labelled region, not role="log": a log is a live region, so every streamed token
             would be announced. U1.8's polite status announces new content instead. */}
         <section
           aria-label="Conversation transcript"
-          className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
+          className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain group-has-[[data-empty-chat='true']]/main:overflow-visible group-has-[[data-empty-chat='true']]/main:[&_[data-slot=u1-thread-viewport]]:overflow-visible"
           data-shell-region="transcript"
         >
           {transcript}
@@ -366,8 +370,14 @@ export function AppShell({
           data-shell-region="composer"
         >
           {/* The composer shares the conversation's width, so its edges line up with the messages. */}
-          <div className="mx-auto w-full max-w-(--layout-thread-width) px-6 py-3">{composer}</div>
+          <div className="mx-auto w-full max-w-(--layout-thread-width) px-6 py-3 group-has-[[data-empty-chat='true']]/main:py-0">
+            {composer}
+          </div>
         </section>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none hidden group-has-[[data-empty-chat='true']]/main:block"
+        />
       </main>
 
       {/* Its own column: a hidden sessions sidebar must not pull this one into the first column. */}
