@@ -40,7 +40,7 @@ export const VibeSpawnRenderer: ToolRenderer = (props) => {
           {spawned !== undefined && (
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               {spawned.cli !== undefined && <span>CLI: {spawned.cli}</span>}
-              {spawned.jobId !== undefined && <span>Turn job: {spawned.jobId}</span>}
+              {spawned.jobId !== undefined && <span>Background turn</span>}
             </div>
           )}
           {state.phase !== "error" && split.text.trim().length > 0 && (

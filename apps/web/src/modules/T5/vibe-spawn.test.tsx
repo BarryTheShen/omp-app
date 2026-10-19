@@ -71,6 +71,7 @@ describe("VibeSpawnRenderer", () => {
     expandToolCards();
     expect(screen.getByText("Vibe worker fast-1")).toBeTruthy();
     expect(screen.getByText("CLI: fast")).toBeTruthy();
-    expect(screen.getByText("Turn job: job-1")).toBeTruthy();
+    expect(screen.getByText("Background turn").textContent).not.toContain("job-1");
+    expect(screen.getByText("Background turn")).toBeTruthy();
   });
 });

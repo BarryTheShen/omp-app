@@ -87,7 +87,7 @@ describe("T5 Tasks view: stopping background jobs", () => {
     expect(
       screen.getByText("The background command stopped before its result came back."),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop background job 1" })).toBeNull();
   });
 
   test("a stop recorded before a reused job id launch is ignored", () => {
@@ -98,7 +98,7 @@ describe("T5 Tasks view: stopping background jobs", () => {
       { stops: new Map([["bg_1", stop]]), launchedAt: new Map([["bg_1", 20]]) },
     );
     expect(screen.getByText("Running")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop background job 1" })).toBeTruthy();
   });
 
   test("a kept stop with no known launch time is ignored", () => {
@@ -109,16 +109,36 @@ describe("T5 Tasks view: stopping background jobs", () => {
       { stops: new Map([["bg_1", stop]]), launchedAt: new Map() },
     );
     expect(screen.getByText("Running")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop background job 1" })).toBeTruthy();
   });
   test("a running job has a named Stop control; a finished job has none", () => {
     renderJobs(
       [job("bg_1", "running"), job("bg_2", "completed")],
       vi.fn(async () => []),
     );
-    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Stop background job bg_2" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop background job 1" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop background job 2" })).toBeNull();
     expect(screen.getByRole("button", { name: "Stop all background jobs" })).toBeTruthy();
+  });
+
+  test("unnamed rows use plain position labels for people and controls", () => {
+    const { container } = renderJobs(
+      [
+        { ...job("internal-id-1", "running"), label: "" },
+        { ...job("internal-id-2", "running"), label: "" },
+      ],
+      vi.fn(async () => []),
+    );
+    expect(container.textContent).not.toContain("internal-id-1");
+    expect(container.textContent).not.toContain("internal-id-2");
+    expect(screen.getByText("Background job 1")).toBeTruthy();
+    expect(screen.getByText("Background job 2")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Stop background job 1" }).getAttribute("aria-label"),
+    ).not.toContain("internal-id-1");
+    expect(
+      screen.getByRole("button", { name: "Stop background job 2" }).getAttribute("aria-label"),
+    ).not.toContain("internal-id-2");
   });
 
   test("a chat with no command gateway offers no Stop, and nothing to stop all", () => {
@@ -129,15 +149,15 @@ describe("T5 Tasks view: stopping background jobs", () => {
   test("Stop sends /jobs kill for that job, shows omp's words, and the control goes away", async () => {
     const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled background job bg_1."]);
     renderJobs([job("bg_1", "running"), job("bg_2", "running")], gateway);
-    fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job 1" }));
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toBe(
         "The background command stopped before its result came back.",
       ),
     );
     expect(gateway).toHaveBeenCalledWith("/jobs kill bg_1");
-    expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Stop background job bg_2" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop background job 1" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop background job 2" })).toBeTruthy();
   });
 
   test("Stop all sends /jobs kill all and says how many omp stopped", async () => {
@@ -156,19 +176,19 @@ describe("T5 Tasks view: stopping background jobs", () => {
       throw new Error("the command gateway is closed");
     });
     renderJobs([job("bg_1", "running")], gateway);
-    fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job 1" }));
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toBe(
         "Could not stop background job bg_1: the command gateway is closed",
       ),
     );
-    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop background job 1" })).toBeTruthy();
   });
 
   test("a job omp stopped reads Cancelled in its row, and the job still running reads Running", async () => {
     const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled background job bg_1."]);
     renderJobs([job("bg_1", "running"), job("bg_2", "running")], gateway);
-    fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job 1" }));
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toBe(
         "The background command stopped before its result came back.",
@@ -183,7 +203,7 @@ describe("T5 Tasks view: stopping background jobs", () => {
       'No running background job with id "bg_1".',
     ]);
     renderJobs([job("bg_1", "running")], gateway);
-    fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job 1" }));
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toBe(
         "Already finished: omp has no running job with id bg_1.",
@@ -233,8 +253,8 @@ describe("T5 Tasks view: stopping background jobs", () => {
     // each keeps its Stop control so it can still be stopped.
     expect(screen.getAllByText("Running")).toHaveLength(2);
     expect(screen.queryByText("Cancelled")).toBeNull();
-    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Stop background job bg_2" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop background job 1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop background job 2" })).toBeTruthy();
     expect(
       screen.getByText(
         "omp did not say which of these jobs it stopped, so their statuses may be out of date.",
@@ -248,7 +268,7 @@ describe("T5 Tasks view: stopping background jobs", () => {
       .mockResolvedValueOnce(["Cancelled background job bg_1."])
       .mockResolvedValueOnce(["Cancelled 1 background job."]);
     renderJobs([job("bg_1", "running"), job("bg_2", "running")], gateway);
-    fireEvent.click(screen.getByRole("button", { name: "Stop background job bg_1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job 1" }));
     await waitFor(() => expect(screen.getByText("Cancelled")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Stop all background jobs" }));
     await waitFor(() => expect(screen.getByText("Stopped 1 background job.")).toBeTruthy());

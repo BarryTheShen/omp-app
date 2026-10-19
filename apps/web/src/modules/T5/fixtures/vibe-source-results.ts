@@ -78,7 +78,7 @@ export const T5_VIBE_SOURCE_RESULTS: readonly RealToolResult[] = [
     shows: [
       "Turn started on fast-1",
       "A new turn",
-      "job-7",
+      "Background turn",
       "Run the unit tests and report the failures.",
     ],
   },
@@ -213,7 +213,7 @@ export const T5_VIBE_SOURCE_RESULTS: readonly RealToolResult[] = [
       "1 turn settled",
       "fast-1",
       "Completed",
-      "Turn job job-7",
+      "Background turn",
       "Still running: `good-2`",
       "The unit tests pass.",
     ],

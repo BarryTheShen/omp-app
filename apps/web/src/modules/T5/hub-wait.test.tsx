@@ -218,7 +218,7 @@ describe("T5.3 hub card on recorded results", () => {
     );
     expandToolCards();
     expect(screen.getByText("1 running")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Stop background job AuditOne" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop background job 1" }));
     await waitFor(() => expect(screen.getByText("1 cancelled")).toBeTruthy());
     expect(gateway).toHaveBeenCalledWith("/jobs kill AuditOne");
   });

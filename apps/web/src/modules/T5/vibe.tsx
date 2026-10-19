@@ -217,7 +217,9 @@ export const VibeSendRenderer: ToolRenderer = (props) => {
       <section className="flex min-w-0 flex-col gap-2 py-2">
         {worker !== undefined && <Fact label="Worker" value={worker} />}
         {send !== undefined && <Fact label="Delivered as" value={DELIVERY_LABEL[send.mode]} />}
-        {send?.jobId !== undefined && <Fact label="Turn job" value={send.jobId} />}
+        {send?.jobId !== undefined && (
+          <p className="text-muted-foreground text-sm">Background turn</p>
+        )}
         {message.success && (
           <blockquote className="min-w-0 whitespace-pre-wrap break-words text-sm">
             {message.data.message}
@@ -298,7 +300,7 @@ export const VibeWaitRenderer: ToolRenderer = (props) => {
             >
               <span className="min-w-0 break-all font-mono">{turn.id}</span>
               <StatusChip value={turn.status} />
-              <span className="text-xs text-muted-foreground">Turn job {turn.jobId}</span>
+              <span className="text-xs text-muted-foreground">Background turn</span>
             </li>
           ))}
         </ul>

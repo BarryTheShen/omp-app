@@ -89,12 +89,16 @@ describe("T5 task foreground results", () => {
 
 describe("T5 task card on recorded results", () => {
   test("one agent started in the background shows its job, its status and its counts", () => {
-    render(<TaskCard rendererProps={recorded("task: one agent started in the background")} />);
+    const { container } = render(
+      <TaskCard rendererProps={recorded("task: one agent started in the background")} />,
+    );
     expandToolCards();
     expect(screen.getByTestId("t5-task-card")).toBeTruthy();
     expect(screen.getByText("Running · 1 agent")).toBeTruthy();
-    expect(screen.getByText("Background job BuilderTwo")).toBeTruthy();
-    expect(screen.getByText("BuilderTwo")).toBeTruthy();
+    expect(screen.getByText("Background job")).toBeTruthy();
+    expect(container.querySelector('[data-slot="t5-task-job"]')?.textContent).not.toContain(
+      "BuilderTwo",
+    );
     expect(screen.getByText("Pending")).toBeTruthy();
     expect(screen.getByText("Build one part of the app and open its pull request.")).toBeTruthy();
   });

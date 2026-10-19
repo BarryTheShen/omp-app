@@ -112,9 +112,7 @@ function TaskBody({
       {details.async !== undefined && (
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs" data-slot="t5-task-job">
           <StatusChip value={jobState(details, subagents) ?? details.async.state} />
-          <span className="min-w-0 break-all text-muted-foreground">
-            Background job {details.async.jobId}
-          </span>
+          <span className="min-w-0 break-all text-muted-foreground">Background job</span>
           {details.totalDurationMs !== undefined && details.totalDurationMs > 0 && (
             <span className="text-muted-foreground">{formatDuration(details.totalDurationMs)}</span>
           )}

@@ -92,8 +92,8 @@ describe("ToolRunScope", () => {
 
     await waitFor(() => expect(screen.getByText("Cancelled")).toBeTruthy());
     expect(screen.getByText("Running")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Stop background job bg_1" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Stop background job bg_2" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop background job 1" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stop background job 2" })).toBeNull();
   });
   test("gives the tool calls the chat's prompt flag, and follows it as the run starts and ends", () => {
     const store = new OmpRuntimeStore({ threadId: ThreadId.parse("thread-run") });

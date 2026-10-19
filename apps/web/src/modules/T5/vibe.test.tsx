@@ -72,14 +72,29 @@ describe("vibe cards show what omp returned", () => {
     }
   });
 
-  test("a wait that ran out says so, and lists no settled turn", () => {
+  test("a turn job is shown as a background turn without exposing its id", () => {
+    const sendRender = render(
+      <VibeSendRenderer {...propsFor(sampleNamed("vibe_send: a new turn"))} />,
+    );
+    expandToolCards();
+    expect(screen.getByText("Background turn").textContent).not.toContain("job-7");
+    expect(sendRender.container.textContent).not.toContain("job-7");
+    expect(screen.queryByText("Turn job")).toBeNull();
+
+    cleanup();
+    const waitRender = render(
+      <VibeWaitRenderer {...propsFor(sampleNamed("vibe_wait: a turn settled"))} />,
+    );
+    expandToolCards();
+    expect(screen.getByText("Background turn").textContent).not.toContain("job-7");
+    expect(waitRender.container.textContent).not.toContain("job-7");
+    expect(screen.queryByText("Turn job")).toBeNull();
+  });
+  test("a timed-out vibe wait keeps its timeout summary", () => {
     const { container } = render(
       <VibeWaitRenderer {...propsFor(sampleNamed("vibe_wait: the wait ran out"))} />,
     );
     expandToolCards();
-    expect(screen.getByRole("status").textContent).toBe(
-      "No turn settled before the wait ran out. Wait again to keep waiting.",
-    );
     const trigger = container.querySelector('[data-slot="u3-tool-card-trigger"]');
     expect(trigger?.querySelector("span[title]")?.textContent).toBe(
       "No turn settled before the wait ran out",

@@ -202,7 +202,15 @@ export function RecipientRows({ receipts }: { readonly receipts: readonly IrcRec
 }
 
 /** The Stop control of one job row, and omp's answer to the stop asked for it. */
-function JobStopLine({ job, stops }: { readonly job: JobSnapshot; readonly stops: JobStops }) {
+function JobStopLine({
+  job,
+  position,
+  stops,
+}: {
+  readonly job: JobSnapshot;
+  readonly position: number;
+  readonly stops: JobStops;
+}) {
   const outcome = stops.outcomeOf(job);
   const stoppable = stops.canStop(job);
   if (!stoppable && outcome === undefined) return null;
@@ -210,7 +218,7 @@ function JobStopLine({ job, stops }: { readonly job: JobSnapshot; readonly stops
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       {stoppable && (
         <Button
-          aria-label={`Stop background job ${job.id}`}
+          aria-label={`Stop background job ${position}`}
           disabled={stops.pending}
           onClick={() => void stops.stop(job.id)}
           size="sm"
@@ -269,11 +277,11 @@ export function JobRows({
       )}
       {note !== undefined && <p className="text-xs text-muted-foreground">{note}</p>}
       <ul className="grid gap-2 text-xs">
-        {jobs.slice(0, MAX_ITEMS).map((job) => (
+        {jobs.slice(0, MAX_ITEMS).map((job, index) => (
           <li className="bg-muted/30 flex min-w-0 flex-col gap-1 rounded p-2" key={job.id}>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="min-w-0 break-all font-medium text-foreground">
-                {job.label.length > 0 ? job.label : job.id}
+                {job.label.length > 0 ? job.label : `Background job ${index + 1}`}
               </span>
               <span className="text-muted-foreground" title={job.type}>
                 {TYPE_LABELS[job.type] ?? job.type}
@@ -289,7 +297,7 @@ export function JobRows({
                 </span>
               )}
             </div>
-            <JobStopLine job={job} stops={stops} />
+            <JobStopLine job={job} position={index + 1} stops={stops} />
             <JobTexts job={job} />
           </li>
         ))}
