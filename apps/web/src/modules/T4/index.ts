@@ -3,10 +3,10 @@ export { T4_TOOL_DESCRIPTORS, type T4ToolDescriptor } from "./descriptor";
 export { GithubCard, GithubToolRenderer } from "./github";
 export {
   BrowserAction,
-  type BrowserObservation,
-  BrowserObservationSchema,
   type BrowserPreludeDetails,
   BrowserPreludeDetailsSchema,
+  type BrowserScreenshot,
+  BrowserScreenshotSchema,
   type BrowserToolArgs,
   BrowserToolArgsSchema,
   GhOperation,

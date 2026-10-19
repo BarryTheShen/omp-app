@@ -13,6 +13,8 @@ import {
   type SearchResponse,
   type SearchSource,
   safeRetrievalUrl,
+  searchAuthLabel,
+  searchProviderLabel,
 } from "./models";
 
 const MAX_SOURCES = 32;
@@ -140,7 +142,7 @@ function SearchBody({
   const response = details?.response;
   const answer = response?.answer?.slice(0, MAX_ANSWER_CHARS);
   const sourceCount = response?.sources.length ?? 0;
-  const provider = response?.provider;
+  const provider = searchProviderLabel(response?.provider);
   const copyText = answer ?? fallbackText ?? "";
   return (
     <section className="flex min-w-0 flex-col gap-3 py-2" data-slot="t4-web-search-body">
@@ -265,7 +267,8 @@ function SourceTree({
 
 function SourceLink({ source }: { readonly source: SearchSource }) {
   const safe = safeRetrievalUrl(source.url);
-  const label = source.title ?? source.domain ?? sourceHost(source) ?? "Untitled source";
+  const label =
+    source.title?.trim() || source.domain?.trim() || sourceHost(source) || "Untitled source";
   if (safe === undefined) return <span className="font-medium text-foreground">{label}</span>;
   return (
     <a
@@ -317,13 +320,13 @@ function RelatedQuestions({ questions }: { readonly questions: readonly string[]
 function UsageMetadata({ response }: { readonly response: SearchResponse }) {
   const usage = response.usage;
   const metadata: string[] = [
-    response.provider ? `Provider: ${response.provider}` : undefined,
+    response.provider ? `Provider: ${searchProviderLabel(response.provider)}` : undefined,
     `${response.sources.length} result${response.sources.length === 1 ? "" : "s"}`,
     usage?.searchRequests !== undefined ? `Search requests: ${usage.searchRequests}` : undefined,
     usage?.inputTokens !== undefined ? `Input tokens: ${usage.inputTokens}` : undefined,
     usage?.outputTokens !== undefined ? `Output tokens: ${usage.outputTokens}` : undefined,
-    usage?.cost !== undefined ? `Cost: ${usage.cost}` : undefined,
-    response.authMode ? `Auth: ${response.authMode}` : undefined,
+    usage?.totalTokens !== undefined ? `Total tokens: ${usage.totalTokens}` : undefined,
+    response.authMode ? `Auth: ${searchAuthLabel(response.authMode)}` : undefined,
   ].filter((item): item is string => item !== undefined);
   return (
     <div

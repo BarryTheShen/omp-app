@@ -1,39 +1,8 @@
 import { createRoot } from "react-dom/client";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { BrowserToolCard } from "./browser";
+import { BROWSER_RESULT } from "./fixtures/v18.9.1-results";
 
-function mockBrowserScreenshot(): string {
-  const canvas = document.createElement("canvas");
-  canvas.width = 320;
-  canvas.height = 200;
-  const context = canvas.getContext("2d");
-  if (!context) return "";
-  context.fillStyle = "white";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = "royalblue";
-  context.fillRect(0, 0, canvas.width, 34);
-  context.fillStyle = "white";
-  context.fillText("example.test", 16, 22);
-  context.fillStyle = "black";
-  context.fillText("Retrieved documentation", 16, 70);
-  context.fillStyle = "slategray";
-  context.fillRect(16, 106, 210, 8);
-  context.fillRect(16, 126, 180, 8);
-  return canvas.toDataURL("image/png");
-}
-
-const browserResult = {
-  kind: "browser",
-  action: "run",
-  name: "docs",
-  url: "https://example.test/docs",
-  observations: [{ text: "Navigation complete" }, { value: { title: "Retrieved docs" } }],
-  screenshots: [
-    {
-      data: mockBrowserScreenshot(),
-    },
-  ],
-};
 const rendererProps = {
   type: "tool-call",
   toolCallId: "browser-playground",
@@ -41,11 +10,11 @@ const rendererProps = {
   args: {
     action: "run",
     name: "docs",
-    url: "https://example.test/docs",
+    url: "https://bun.sh/docs",
     code: "return document.title",
   },
-  argsText: JSON.stringify({ action: "run", name: "docs", url: "https://example.test/docs" }),
-  result: browserResult,
+  argsText: JSON.stringify({ action: "run", name: "docs", url: "https://bun.sh/docs" }),
+  result: BROWSER_RESULT,
   status: { type: "complete" },
 } as unknown as ToolRendererProps;
 
@@ -58,11 +27,11 @@ export function T4BrowserPlayground() {
       <div className="mx-auto w-full max-w-3xl space-y-4">
         <header>
           <p className="text-muted-foreground text-xs font-medium uppercase tracking-widest">
-            T4.3 browser
+            T4 browser
           </p>
           <h1 className="mt-2 text-2xl font-semibold">Browser action</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Render-only action, observation and screenshot state.
+            Render-only action, returned value and screenshot metadata.
           </p>
         </header>
         <BrowserToolCard {...rendererProps} />

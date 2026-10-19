@@ -46,19 +46,27 @@ test.beforeAll(() => {
   buildPlaygroundPage();
 });
 
-test("renders GitHub operations and captures light dark narrow screenshots", async ({ page }) => {
+test("renders source-shaped GitHub operations and captures light dark narrow screenshots", async ({
+  page,
+}) => {
   await page.goto(PLAYGROUND);
   await expect(page.getByTestId("t4-github-playground")).toBeVisible();
   await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(1);
   await openAllToolCards(page);
-  await expect(page.getByTestId("t4-github-header").first()).toContainText("owner/repo");
-  await expect(page.getByTestId("t4-github-pr")).toContainText("Improve GitHub card");
+  await expect(page.getByTestId("t4-github-header").first()).toContainText("example/repository");
+  await expect(
+    page.getByTestId("t4-github-card-github-push").getByTestId("t4-github-result"),
+  ).toContainText("Pushed feature/t4-results to origin:feature/t4-results.");
   await expect(
     page.getByTestId("t4-github-card-github-watch").getByTestId("t4-github-actions"),
   ).toContainText("CI");
-  await expect(
-    page.getByTestId("t4-github-card-github-failure").getByTestId("t4-github-failed-log"),
-  ).toContainText("remote rejected");
+  const chipWidths = () =>
+    page
+      .getByTestId("t4-github-card-github-watch")
+      .getByTestId("t4-github-status-chip")
+      .evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().width)));
+  // A status chip is as wide as its words, never a bar across the card.
+  expect(Math.max(...(await chipWidths()))).toBeLessThan(160);
   const style = await page
     .getByTestId("t4-github-header")
     .first()
@@ -68,7 +76,10 @@ test("renders GitHub operations and captures light dark narrow screenshots", asy
       const computed = getComputedStyle(card);
       return { background: computed.backgroundColor, font: computed.fontFamily };
     });
-  expect(style.background).not.toBe("rgba(0, 0, 0, 0)");
+  await expect(page.getByTestId("t4-github-playground")).toHaveCSS(
+    "background-color",
+    /^(rgb|oklch)/,
+  );
   expect(style.font).toMatch(/ui|sans/i);
   await page.screenshot({ path: "../../.data/screenshots/t4.4-github-light.png", fullPage: true });
 
@@ -78,6 +89,7 @@ test("renders GitHub operations and captures light dark narrow screenshots", asy
   await darkPage.evaluate(() => document.documentElement.classList.add("dark"));
   await expect(darkPage.locator("html")).toHaveClass(/dark/);
   await expect(darkPage.getByTestId("t4-github-playground")).toBeVisible();
+  await openAllToolCards(darkPage);
   await darkPage.screenshot({
     path: "../../.data/screenshots/t4.4-github-dark.png",
     fullPage: true,
@@ -85,5 +97,6 @@ test("renders GitHub operations and captures light dark narrow screenshots", asy
   await darkPage.close();
 
   await page.setViewportSize({ width: 390, height: 844 });
+  expect(Math.max(...(await chipWidths()))).toBeLessThan(160);
   await page.screenshot({ path: "../../.data/screenshots/t4.4-github-narrow.png", fullPage: true });
 });

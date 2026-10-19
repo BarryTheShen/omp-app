@@ -1,47 +1,60 @@
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
+import { BROWSER_RESULT, GITHUB_PUSH_RESULT, SEARCH_RESULT } from "./fixtures/v18.9.1-results";
 import {
   BrowserPreludeDetailsSchema,
   BrowserToolArgsSchema,
   GhToolArgsSchema,
+  GhToolDetailsSchema,
   mapT4Failure,
   ReadUrlToolDetailsSchema,
   SearchRenderDetailsSchema,
   safeRetrievalUrl,
+  searchAuthLabel,
+  searchProviderLabel,
 } from "./models";
 
 describe("T4 normalized tool models", () => {
-  test("accepts tolerant URL, browser, GitHub and search details", () => {
+  test("parses source-derived v18.9.1 result details", () => {
     expect(
       ReadUrlToolDetailsSchema.parse({
         kind: "url",
         url: "https://example.test/docs",
-        finalUrl: "https://example.test/docs#section",
         contentType: "text/markdown",
         method: "GET",
         truncated: false,
-        unknownBackendField: { retained: true },
       }),
-    ).toMatchObject({ kind: "url", contentType: "text/markdown" });
+    ).toMatchObject({ kind: "url" });
     expect(
-      BrowserToolArgsSchema.parse({ action: "run", code: "return 1", extra: true }),
+      BrowserToolArgsSchema.parse({ action: "targets", app: { target: "docs" } }),
     ).toMatchObject({
-      action: "run",
+      action: "targets",
     });
-    expect(GhToolArgsSchema.parse({ op: "search_issues", query: "bug" })).toMatchObject({
-      op: "search_issues",
+    expect(BrowserPreludeDetailsSchema.parse(BROWSER_RESULT.details)).toMatchObject({
+      value: "Get started with Bun",
+      screenshots: [{ dest: "<TMP>/browser-screenshot.png", mimeType: "image/png", bytes: 2048 }],
     });
-    expect(
-      SearchRenderDetailsSchema.parse({
-        query: "omp",
-        response: { provider: "test", sources: [], answer: "No sources" },
-      }),
-    ).toMatchObject({ response: { sources: [] } });
-    expect(
-      BrowserPreludeDetailsSchema.parse({ action: "tabs", observations: [{ title: "tab" }] }),
-    ).toMatchObject({
-      action: "tabs",
+    expect(GhToolArgsSchema.parse({ op: "pr_push", branch: "feature/t4-results" })).toMatchObject({
+      op: "pr_push",
     });
+    expect(GhToolDetailsSchema.parse(GITHUB_PUSH_RESULT.details)).toMatchObject({
+      branch: "feature/t4-results",
+      remote: "origin",
+      remoteBranch: "feature/t4-results",
+    });
+    expect(SearchRenderDetailsSchema.parse(SEARCH_RESULT.details)).toMatchObject({
+      response: { provider: "perplexity", usage: { totalTokens: 560, searchRequests: 2 } },
+    });
+  });
+
+  test("uses readable labels for provider and authentication ids", () => {
+    expect(searchProviderLabel("exa")).toBe("Exa");
+    expect(searchProviderLabel("perplexity")).toBe("Perplexity");
+    expect(searchProviderLabel("unknown-provider")).toBe("Web search");
+    expect(searchAuthLabel("api_key")).toBe("API");
+    expect(searchAuthLabel("oauth")).toBe("OAuth");
+    expect(searchAuthLabel("anonymous")).toBe("Anonymous");
+    expect(searchAuthLabel("unknown-auth")).toBe("Authentication");
   });
 
   test("accepts retrieval links only and does not invent citations", () => {

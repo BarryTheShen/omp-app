@@ -3,7 +3,8 @@ import type { RealToolResult } from "../../U3/tool-card/real-result";
 /**
  * Scripted from omp v18.9.1 builders: web-search formatting uses formatForLLM (web/search/index.ts:60-110),
  * browser display/value uses runInTab and BrowserPreludeDetails (tools/browser.ts:147-156,645-671),
- * repo/file text uses formatRepoView and executeFileRead (tools/gh-view.ts:312-336; tools/gh.ts:193-291).
+ * repo/file text uses formatRepoView and executeFileRead (tools/gh-view.ts:312-336; tools/gh.ts:193-291),
+ * and GitHub watcher details use GhToolDetails (packages/tui/src/tools/github.ts:601-617).
  */
 const SEARCH_SOURCES = Array.from({ length: 33 }, (_, index) => ({
   title: `Reference ${index + 1}`,
@@ -47,6 +48,39 @@ const CITATION_TEXT = [
       `[${index + 1}] ${citation.title}\n    ${citation.url}\n    ${citation.citedText}`,
   ),
 ].join("\n");
+
+/** [scripted] Checkout summaries follow omp v18.9.1 packages/tui/src/tools/github.ts:619-629 (GhPrCheckoutSummary). */
+export const GITHUB_CHECKOUT_RESULT: RealToolResult = {
+  name: "github: [scripted] pull request checkout results",
+  toolName: "github",
+  args: { op: "pr_checkout", repo: "octo/example", pr: 42 },
+  result: {
+    content: [{ type: "text", text: "Checkout details are available below." }],
+    details: {
+      repo: "octo/example",
+      checkouts: [
+        {
+          prNumber: 42,
+          url: "https://github.com/octo/example/pull/42",
+          branch: "feature/42",
+          worktreePath: "/workspace/checkouts/pr-42",
+          remote: "origin",
+          remoteBranch: "feature/42",
+          reused: false,
+        },
+        {
+          branch: "feature/without-number",
+          worktreePath: "/workspace/checkouts/feature-without-number",
+          remote: "origin",
+          remoteBranch: "feature/without-number",
+          reused: false,
+        },
+      ],
+    },
+  },
+  isError: false,
+  shows: ["Check out pull request", "Pull request #42", "Pull request checkout"],
+};
 
 export const T4_SCRIPTED_RESULTS: readonly RealToolResult[] = [
   {
@@ -160,7 +194,7 @@ export const T4_SCRIPTED_RESULTS: readonly RealToolResult[] = [
       details: { meta: { source: { type: "url", value: "https://github.com/octo/example" } } },
     },
     isError: false,
-    shows: ["octo/example", "Repository", "Complete"],
+    shows: ["octo/example", "View repository", "Complete"],
   },
   {
     name: "github: scripted long text-file result through the contents API",
@@ -177,8 +211,20 @@ export const T4_SCRIPTED_RESULTS: readonly RealToolResult[] = [
       },
     },
     isError: false,
-    shows: ["octo/example", "File", "main"],
+    shows: ["octo/example", "Read file", "main"],
   },
+  {
+    name: "github: scripted cancelled Actions watcher result",
+    toolName: "github",
+    args: { op: "run_watch", repo: "octo/example", run: "4" },
+    result: {
+      content: [{ type: "text", text: "Workflow run #4 was cancelled." }],
+      details: { repo: "octo/example", conclusion: "cancelled", runId: 4 },
+    },
+    isError: false,
+    shows: ["Watch GitHub Actions", "Cancelled", "GitHub operation cancelled."],
+  },
+  GITHUB_CHECKOUT_RESULT,
 ];
 
 export const T4_SCRIPTED_LIMITS = {

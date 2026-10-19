@@ -1,8 +1,13 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { BrowserToolCard } from "./browser";
+import {
+  BROWSER_ERROR_RESULT,
+  BROWSER_MANY_SCREENSHOTS_RESULT,
+  BROWSER_RESULT,
+} from "./fixtures/v18.9.1-results";
 
 afterEach(() => cleanup());
 
@@ -20,41 +25,35 @@ function props(result: unknown, extra: Record<string, unknown> = {}): ToolRender
 }
 
 describe("BrowserToolCard", () => {
-  test("renders action/tab, highlighted JavaScript, observations and screenshots", async () => {
-    render(
-      <BrowserToolCard
-        {...props({
-          kind: "browser",
-          action: "run",
-          name: "docs",
-          url: "https://example.test/docs",
-          observations: [{ text: "Page title" }],
-          screenshots: [{ data: "data:image/png;base64,AAAA" }],
-        })}
-      />,
-    );
+  test("reads value and screenshot metadata from result.details", () => {
+    render(<BrowserToolCard {...props(BROWSER_RESULT)} />);
     expandToolCards();
-    expect(screen.getByTestId("t4-browser-card")).toBeTruthy();
-    expect(screen.getByText("Run · docs · https://example.test/docs")).toBeTruthy();
-    expect(screen.getByText("return document.title")).toBeTruthy();
-    expect(screen.getByTestId("t4-browser-observations").textContent).toContain("Page title");
-    expect(screen.getByRole("img", { name: "Browser screenshot 1" })).toBeTruthy();
-    screen.getByRole("button", { name: "Open browser screenshot 1" }).click();
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Browser screenshot 1" })).toBeTruthy(),
+
+    expect(screen.getByText("Run · docs · https://bun.sh/docs")).toBeTruthy();
+    expect(screen.getAllByText("Get started with Bun")).toHaveLength(2);
+    expect(screen.getByText("Returned value")).toBeTruthy();
+    expect(screen.getByTestId("t4-browser-value").textContent).toContain("Returned value");
+    expect(screen.getByTestId("t4-browser-screenshots").textContent).toContain(
+      "Screenshot 1: image/png, 1280 × 800, 2048 bytes",
     );
-    screen.getByRole("button", { name: "Close" }).click();
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await waitFor(() => expect(screen.getByText("Result")).toBeTruthy());
+    expect(screen.getByTestId("t4-browser-screenshots").textContent).not.toContain("<TMP>");
   });
 
-  test("preserves a typed browser failure in the U3 error state", () => {
-    render(
-      <BrowserToolCard
-        {...props({ kind: "browser", action: "open", error: "Browser permission denied" })}
-      />,
-    );
+  test("caps screenshot metadata at four while reporting the remaining count", () => {
+    render(<BrowserToolCard {...props(BROWSER_MANY_SCREENSHOTS_RESULT)} />);
     expandToolCards();
+    const screenshots = screen.getByTestId("t4-browser-screenshots");
+    const shown = [...screenshots.querySelectorAll("li")].filter((item) =>
+      item.textContent?.startsWith("Screenshot "),
+    );
+    expect(shown).toHaveLength(4);
+    expect(screenshots.textContent).toContain("Showing 4 of 5 screenshots");
+  });
+
+  test("preserves a browser error from the result envelope", () => {
+    render(<BrowserToolCard {...props(BROWSER_ERROR_RESULT, { isError: true })} />);
+    expandToolCards();
+    expect(screen.getByRole("button", { name: "browser: Error" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Browser permission denied");
   });
 });

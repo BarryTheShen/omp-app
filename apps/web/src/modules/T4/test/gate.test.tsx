@@ -42,7 +42,7 @@ const EXPECTED_T4: Readonly<
 const EXPECTED_PHASES: Readonly<Record<T4DescriptorId, readonly string[]>> = {
   "T4.browser": ["running", "success", "error"],
   "T4.github": ["running", "success"],
-  "T4.webSearch": ["running", "success"],
+  "T4.webSearch": ["running", "success", "error"],
   "T4.webFetch": ["running", "success", "error"],
 };
 const LIMITED_T4_DESCRIPTORS = ["T4.browser", "T4.github", "T4.webSearch"];
@@ -137,7 +137,7 @@ describe("T4 descriptors and W4 coverage", () => {
     expect(Object.keys(T4).sort()).toEqual(
       [
         "BrowserAction",
-        "BrowserObservationSchema",
+        "BrowserScreenshotSchema",
         "BrowserPreludeDetailsSchema",
         "BrowserToolArgsSchema",
         "BrowserToolCard",

@@ -4,7 +4,7 @@ import type { RealToolResult } from "../../U3/tool-card/real-result";
 import { T4_TOOL_DESCRIPTORS, type T4ToolDescriptor } from "../descriptor";
 import { WEB_FETCH_DESCRIPTOR } from "../web-fetch";
 import { T4_BROWSER_RESULTS } from "./browser-results";
-import { T4_REAL_RESULTS } from "./real-results";
+import { T4_REAL_RESULTS, T4_RECORDED_RESULTS, T4_SCRIPTED_SEARCH_RESULTS } from "./real-results";
 import { T4_SCRIPTED_RESULTS } from "./scripted";
 import { T4_WEB_FETCH_REAL_RESULTS } from "./web-fetch-real-results";
 
@@ -52,6 +52,13 @@ function hasProviderError(result: unknown): boolean {
   );
 }
 
+function hasCancelledConclusion(result: unknown): boolean {
+  if (typeof result !== "object" || result === null) return false;
+  const details = Reflect.get(result, "details");
+  if (typeof details !== "object" || details === null) return false;
+  return Reflect.get(details, "conclusion") === "cancelled";
+}
+
 function lifecycleOf(
   sample: RealToolResult,
   index: number,
@@ -59,7 +66,11 @@ function lifecycleOf(
 ): T4LifecycleFixture[] {
   const descriptor = descriptorFor(sample.toolName);
   const sourceName =
-    basis === "recorded-older-omp" ? `older-omp recording: ${sample.name}` : sample.name;
+    basis === "recorded-older-omp"
+      ? `older-omp recording: ${sample.name}`
+      : basis === "scripted"
+        ? `scripted: ${sample.name}`
+        : sample.name;
   const size = LARGE_RESULTS[sample.name] === true ? "large" : "normal";
   const call = {
     toolCallId: `t4-${index}-${sample.toolName}`,
@@ -79,7 +90,11 @@ function lifecycleOf(
     },
   ];
   const normalizedPhase = sample.isError ? "error" : "success";
-  const renderPhase = hasProviderError(sample.result) ? "error" : normalizedPhase;
+  const renderPhase = hasProviderError(sample.result)
+    ? "error"
+    : hasCancelledConclusion(sample.result)
+      ? "cancelled"
+      : normalizedPhase;
   fixtures.push({
     name: `${normalizedPhase}: ${sourceName}`,
     descriptor,
@@ -121,7 +136,7 @@ const SCRIPTED_URL_EMPTY: RealToolResult = {
 };
 
 export const T4_URL_FIXTURES: readonly T4UrlFixture[] = [
-  ...T4_REAL_RESULTS.filter((sample) => sample.toolName === "read").map((sample) => ({
+  ...T4_RECORDED_RESULTS.filter((sample) => sample.toolName === "read").map((sample) => ({
     name: sample.name,
     basis: "recorded" as const,
     sample,
@@ -139,8 +154,11 @@ export const T4_LIFECYCLE_FIXTURES: readonly T4LifecycleFixture[] = [
   ...T4_BROWSER_RESULTS.flatMap((sample, index) =>
     lifecycleOf(sample, index, "recorded-older-omp"),
   ),
-  ...T4_REAL_RESULTS.filter((sample) => sample.toolName === "web_search").flatMap((sample, index) =>
-    lifecycleOf(sample, index + T4_BROWSER_RESULTS.length, "recorded"),
+  ...T4_RECORDED_RESULTS.filter((sample) => sample.toolName === "web_search").flatMap(
+    (sample, index) => lifecycleOf(sample, index + T4_BROWSER_RESULTS.length, "recorded"),
+  ),
+  ...T4_SCRIPTED_SEARCH_RESULTS.flatMap((sample, index) =>
+    lifecycleOf(sample, index + T4_BROWSER_RESULTS.length + T4_RECORDED_RESULTS.length, "scripted"),
   ),
   ...T4_WEB_FETCH_REAL_RESULTS.flatMap((sample, index) =>
     lifecycleOf(sample, index + T4_BROWSER_RESULTS.length + T4_REAL_RESULTS.length, "recorded"),

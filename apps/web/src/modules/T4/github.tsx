@@ -7,12 +7,13 @@ import type {
   ToolRendererProps,
 } from "../U3/tool-card/contract";
 import { normalizeToolRendererProps } from "../U3/tool-card/normalize";
+import { splitToolResult } from "../U3/tool-card/result";
+import { TextOutput } from "../U3/tool-card/text-output";
 import {
   type GhToolArgs,
   GhToolArgsSchema,
   type GhToolDetails,
   GhToolDetailsSchema,
-  mapT4Failure,
   safeRetrievalUrl,
 } from "./models";
 
@@ -26,16 +27,17 @@ export interface GithubCardProps {
 /** Render-only GitHub card. It never calls gh, opens a URL, or performs a repository mutation. */
 export function GithubCard({ rendererProps }: GithubCardProps) {
   const normalized = normalizeToolRendererProps(rendererProps);
+  const result = rendererProps.result ?? normalized.result ?? normalized.partialResult;
   const model = useMemo(
-    () => decodeModel(rendererProps.args, rendererProps.result ?? normalized.result),
-    [normalized.result, rendererProps.args, rendererProps.result],
+    () => decodeModel(rendererProps.args, result),
+    [rendererProps.args, result],
   );
   const details = model.details;
   const args = model.args;
   const phase = phaseFor(normalized, details, model.malformed);
   const state = githubState(normalized, model, phase);
-  const operation = details?.op ?? args?.op ?? "github";
-  const repository = details?.repository ?? args?.repo;
+  const operation = args?.op ?? "github";
+  const repository = details?.repo ?? args?.repo;
 
   return (
     <div data-slot="t4-github-card" data-testid={`t4-github-card-${normalized.toolCallId}`}>
@@ -44,12 +46,6 @@ export function GithubCard({ rendererProps }: GithubCardProps) {
         state={state}
         summary={summaryFor(operation, repository, details)}
       >
-        <details className="text-muted-foreground text-xs" data-testid="t4-github-raw-details">
-          <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            Raw details
-          </summary>
-          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">{model.rawPreview}</pre>
-        </details>
         <div className="flex min-w-0 flex-col gap-3 py-2" data-slot="t4-github-details">
           <GithubHeader
             args={args}
@@ -57,11 +53,20 @@ export function GithubCard({ rendererProps }: GithubCardProps) {
             operation={operation}
             repository={repository}
           />
-          <PullRequestView details={details} />
-          <SearchRows details={details} />
+          {model.resultText !== "" ? (
+            <TextOutput testId="t4-github-result" text={model.resultText} />
+          ) : null}
           <CheckoutPushView details={details} operation={operation} />
           <ActionsWatchView details={details} />
           <SourceLinks details={details} />
+          <details className="text-muted-foreground text-xs" data-testid="t4-github-raw-details">
+            <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Raw details
+            </summary>
+            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap">
+              {model.rawPreview}
+            </pre>
+          </details>
         </div>
       </ToolCard>
     </div>
@@ -75,19 +80,19 @@ type GithubModel = {
   readonly details: GhToolDetails | undefined;
   readonly malformed: boolean;
   readonly rawPreview: string;
+  readonly resultText: string;
 };
 
 function decodeModel(argsRaw: unknown, resultRaw: unknown): GithubModel {
   const args = GhToolArgsSchema.safeParse(argsRaw);
-  const resultRecord = record(resultRaw);
-  const detailsRaw = resultRecord?.details ?? resultRaw;
-  const details = GhToolDetailsSchema.safeParse(detailsRaw);
+  const split = splitToolResult(resultRaw);
+  const details = GhToolDetailsSchema.safeParse(split.isEnvelope ? split.details : undefined);
   return {
     args: args.success ? args.data : undefined,
     details: details.success ? details.data : undefined,
-    // A call with no result has no details to decode: it is unrecorded, not malformed.
-    malformed: !args.success || (resultRaw !== undefined && !details.success),
+    malformed: !args.success || (split.details !== undefined && !details.success),
     rawPreview: bounded(resultRaw),
+    resultText: split.text,
   };
 }
 
@@ -96,7 +101,6 @@ function githubState(
   model: GithubModel,
   phase: ToolCardPhase,
 ): ToolCardState {
-  const rawError = model.details?.error;
   const error =
     phase === "cancelled"
       ? { code: "cancelled" as const, message: "GitHub operation cancelled.", retryable: false }
@@ -107,7 +111,10 @@ function githubState(
             retryable: false,
           }
         : phase === "error"
-          ? errorFor(rawError, model.details?.failedLogTail)
+          ? (normalized.error ?? {
+              message: safeText(model.resultText || "GitHub operation failed."),
+              retryable: false,
+            })
           : undefined;
   return {
     ...normalized,
@@ -117,23 +124,6 @@ function githubState(
     isError: phase === "error",
     ...(error === undefined ? {} : { error }),
     ...(phase === "cancelled" ? { cancelled: true } : {}),
-  };
-}
-
-function errorFor(raw: unknown, failedLogTail: string | undefined): ToolCardState["error"] {
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    return {
-      code: "omp_error",
-      message: safeText(failedLogTail === undefined ? raw : `${raw}: ${failedLogTail}`),
-      retryable: false,
-    };
-  }
-  const failure = mapT4Failure(raw, failedLogTail ?? "GitHub operation failed.");
-  return {
-    code: failure.appError.code,
-    message: failure.appError.message,
-    retryable: failure.appError.retryable,
-    timeout: failure.appError.code === "timeout",
   };
 }
 
@@ -168,38 +158,21 @@ function summaryFor(
 
 function operationLabel(operation: string): string {
   const labels: Record<string, string> = {
-    repo_view: "Repository",
-    file_read: "File",
-    pr_create: "Pull request",
-    pr_checkout: "Checkout",
-    pr_push: "Push",
-    search_issues: "Issue search",
-    search_prs: "Pull request search",
-    search_code: "Code search",
-    search_commits: "Commit search",
-    search_repos: "Repository search",
-    run_watch: "Actions run",
+    repo_view: "View repository",
+    file_read: "Read file",
+    pr_create: "Create pull request",
+    pr_checkout: "Check out pull request",
+    pr_push: "Push pull request branch",
+    search_issues: "Search issues",
+    search_prs: "Search pull requests",
+    search_code: "Search code",
+    search_commits: "Search commits",
+    search_repos: "Search repositories",
+    run_watch: "Watch GitHub Actions",
   };
   return labels[operation] ?? "GitHub";
 }
-function stateLabel(state: string): string {
-  const normalized = state.toLowerCase();
-  if (normalized === "open") return "Open";
-  if (normalized === "closed") return "Closed";
-  if (normalized === "merged") return "Merged";
-  return safeText(state);
-}
 
-function stateClass(state: string): string {
-  const normalized = state.toLowerCase();
-  if (normalized === "open" || normalized === "merged") {
-    return "border-success/30 bg-success-surface text-success-surface-foreground";
-  }
-  if (normalized === "closed") {
-    return "border-danger/30 bg-danger-surface text-danger-surface-foreground";
-  }
-  return "border-border bg-muted text-muted-foreground";
-}
 function statusLabel(status: string): string {
   const normalized = status.toLowerCase();
   if (normalized === "in_progress" || normalized === "running") return "In progress";
@@ -232,7 +205,10 @@ function statusClass(status: string): string {
 
 function StatusChip({ status }: { readonly status: string }) {
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(status)}`}>
+    <span
+      className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(status)}`}
+      data-testid="t4-github-status-chip"
+    >
       {statusLabel(status)}
     </span>
   );
@@ -249,14 +225,13 @@ function GithubHeader({
   readonly operation: string;
   readonly repository: string | undefined;
 }) {
-  const pr = record(details?.pullRequest);
-  const prNumber = pr?.number ?? args?.pr;
+  const prNumber = args?.pr;
   const query = args?.query;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="t4-github-header">
       <span
         className="border-border bg-muted text-muted-foreground rounded border px-2 py-0.5 text-sm font-medium"
-        title={`GitHub operation: ${operation}`}
+        title={`GitHub operation: ${operationLabel(operation)}`}
       >
         {operationLabel(operation)}
       </span>
@@ -274,112 +249,6 @@ function GithubHeader({
   );
 }
 
-function PullRequestView({ details }: { readonly details: GhToolDetails | undefined }) {
-  const pullRequest = record(details?.pullRequest);
-  const diff = record(details?.diff) ?? record(pullRequest?.diff);
-  if (pullRequest === undefined && diff === undefined) return null;
-  const title = text(pullRequest?.title);
-  const state = text(pullRequest?.state);
-  const additions = number(diff?.additions ?? pullRequest?.additions);
-  const deletions = number(diff?.deletions ?? pullRequest?.deletions);
-  const changedFiles = number(diff?.changedFiles ?? pullRequest?.changedFiles);
-  const allFiles = arrayOfRecords(diff?.files ?? pullRequest?.files);
-  const files = allFiles.slice(0, MAX_ROWS);
-  return (
-    <section className="flex min-w-0 flex-col gap-2 p-2" data-testid="t4-github-pr">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <h3 className="min-w-0 truncate text-sm font-medium">{title ?? "Pull request"}</h3>
-        {state !== undefined && (
-          <span className={`rounded-full border px-2 py-0.5 text-xs ${stateClass(state)}`}>
-            {stateLabel(state)}
-          </span>
-        )}
-      </div>
-      {(additions !== undefined || deletions !== undefined || changedFiles !== undefined) && (
-        <div className="flex flex-wrap gap-2 text-xs">
-          {additions !== undefined && (
-            <span className="text-diff-add-foreground bg-diff-add-surface rounded px-2 py-1">
-              +{additions}
-            </span>
-          )}
-          {deletions !== undefined && (
-            <span className="text-diff-remove-foreground bg-diff-remove-surface rounded px-2 py-1">
-              −{deletions}
-            </span>
-          )}
-          {changedFiles !== undefined && (
-            <span className="text-muted-foreground rounded bg-muted px-2 py-1">
-              {changedFiles} {changedFiles === 1 ? "file" : "files"}
-            </span>
-          )}
-        </div>
-      )}
-      {files.length > 0 && (
-        <ul
-          className="divide-border/70 max-h-56 overflow-auto divide-y text-xs"
-          data-testid="t4-github-files"
-        >
-          {files.map((file) => (
-            <li
-              className="flex min-w-0 items-center justify-between gap-2 py-1.5"
-              key={`${text(file.path) ?? "file"}:${text(file.status) ?? "changed"}`}
-            >
-              <span className="min-w-0 truncate font-mono">
-                {safeText(text(file.path) ?? "changed file")}
-              </span>
-              <span className="shrink-0 text-muted-foreground">
-                {file.status === undefined ? "changed" : safeText(String(file.status))}
-              </span>
-            </li>
-          ))}
-          {allFiles.length > files.length && (
-            <li className="text-muted-foreground py-1.5">+{allFiles.length - files.length} more</li>
-          )}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function SearchRows({ details }: { readonly details: GhToolDetails | undefined }) {
-  const source = detailsRecordArray(details, ["results", "issues", "pullRequests", "files"]);
-  if (source.length === 0) return null;
-  return (
-    <section className="flex min-w-0 flex-col gap-2 p-2" data-testid="t4-github-search-results">
-      <h3 className="text-sm font-medium">
-        {source.length} {source.length === 1 ? "result" : "results"}
-      </h3>
-      <ul className="divide-border/70 max-h-64 overflow-auto divide-y text-xs">
-        {source.slice(0, MAX_ROWS).map((item) => (
-          <li
-            className="flex min-w-0 flex-col gap-0.5 py-2"
-            key={`${text(item.title) ?? text(item.name) ?? "result"}:${text(item.repository) ?? ""}`}
-          >
-            <span className="truncate font-medium">
-              {safeText(text(item.title) ?? text(item.name) ?? "GitHub result")}
-            </span>
-            {text(item.repository) !== undefined && (
-              <span className="text-muted-foreground truncate">
-                {safeText(text(item.repository) ?? "")}
-              </span>
-            )}
-            {text(item.snippet) !== undefined && (
-              <span className="text-muted-foreground line-clamp-2">
-                {safeText(text(item.snippet) ?? "")}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-      {source.length > MAX_ROWS && (
-        <span className="text-muted-foreground text-xs">
-          Showing {MAX_ROWS} of {source.length}
-        </span>
-      )}
-    </section>
-  );
-}
-
 function CheckoutPushView({
   details,
   operation,
@@ -387,109 +256,169 @@ function CheckoutPushView({
   readonly details: GhToolDetails | undefined;
   readonly operation: string;
 }) {
-  const worktree = record(details?.worktree);
-  const remote = record(details?.remote);
-  if (worktree === undefined && remote === undefined && details?.headSha === undefined) return null;
+  const checkouts = details?.checkouts ?? [];
+  const hasFields =
+    details?.branch !== undefined ||
+    details?.worktreePath !== undefined ||
+    details?.remote !== undefined ||
+    details?.remoteBranch !== undefined ||
+    details?.headSha !== undefined ||
+    checkouts.length > 0;
+  if (!hasFields) return null;
   return (
     <section
-      className="flex min-w-0 flex-wrap gap-2 p-2 text-xs"
+      className="flex min-w-0 flex-col gap-2 p-2 text-xs"
       data-testid="t4-github-checkout-push"
     >
       <span className="font-medium">{operationLabel(operation)}</span>
-      {worktree !== undefined && (
+      {details?.branch !== undefined ? (
+        <span className="text-muted-foreground truncate">Branch: {safeText(details.branch)}</span>
+      ) : null}
+      {details?.worktreePath !== undefined ? (
         <span className="text-muted-foreground truncate">
-          worktree {safeText(text(worktree.path) ?? "updated")}
+          Worktree: {safeText(details.worktreePath)}
         </span>
-      )}
-      {remote !== undefined && (
+      ) : null}
+      {details?.remote !== undefined ? (
+        <span className="text-muted-foreground truncate">Remote: {safeText(details.remote)}</span>
+      ) : null}
+      {details?.remoteBranch !== undefined ? (
         <span className="text-muted-foreground truncate">
-          remote {safeText(text(remote.name) ?? text(remote.url) ?? "updated")}
+          Remote branch: {safeText(details.remoteBranch)}
         </span>
-      )}
-      {details?.headSha !== undefined && (
+      ) : null}
+      {details?.headSha !== undefined ? (
         <code className="text-muted-foreground">{safeText(details.headSha)}</code>
-      )}
+      ) : null}
+      {checkouts.slice(0, MAX_ROWS).map((checkout) => (
+        <div
+          className="flex min-w-0 flex-wrap gap-2"
+          key={`${checkout.branch}:${checkout.worktreePath}`}
+        >
+          <span>
+            {checkout.prNumber === undefined
+              ? "Pull request checkout"
+              : `Pull request #${checkout.prNumber}`}
+          </span>
+          <span className="text-muted-foreground truncate">
+            Branch: {safeText(checkout.branch)}
+          </span>
+          <span className="text-muted-foreground truncate">
+            Worktree: {safeText(checkout.worktreePath)}
+          </span>
+          <span className="text-muted-foreground truncate">
+            Remote: {safeText(checkout.remote)}:{safeText(checkout.remoteBranch)}
+          </span>
+        </div>
+      ))}
+      {checkouts.length > MAX_ROWS ? (
+        <span>
+          Showing {MAX_ROWS} of {checkouts.length}
+        </span>
+      ) : null}
     </section>
   );
 }
 
 function ActionsWatchView({ details }: { readonly details: GhToolDetails | undefined }) {
-  const run = record(details?.run);
-  const jobs = details?.jobs?.slice(0, MAX_ROWS) ?? [];
-  const hasWatch = run !== undefined || jobs.length > 0;
-  const runStatus = run === undefined ? undefined : (text(run.conclusion) ?? text(run.status));
-  if (!hasWatch && details?.failedLogTail === undefined) return null;
+  const watch = record(details?.watch);
+  const watchRun = record(watch?.run);
+  const runs = arrayOfRecords(watch?.runs ?? (watchRun === undefined ? [] : [watchRun]));
+  const failedLogs = arrayOfRecords(watch?.failedLogs);
+  const failedJobs = details?.failedJobs ?? [];
+  const hasWatch =
+    watch !== undefined ||
+    details?.runId !== undefined ||
+    details?.runIds !== undefined ||
+    details?.status !== undefined ||
+    details?.conclusion !== undefined ||
+    failedJobs.length > 0;
+  if (!hasWatch && failedLogs.length === 0) return null;
   return (
     <section className="flex min-w-0 flex-col gap-2 p-2" data-testid="t4-github-actions">
-      {hasWatch && <h3 className="text-sm font-medium">Actions watch</h3>}
-      {run !== undefined && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {text(run.name) !== undefined && <span>{safeText(text(run.name) ?? "run")}</span>}
-          {runStatus !== undefined && <StatusChip status={runStatus} />}
-        </div>
-      )}
-      {jobs.length > 0 && (
+      {hasWatch ? <h3 className="text-sm font-medium">Actions watch</h3> : null}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {watch?.state !== undefined ? <StatusChip status={String(watch.state)} /> : null}
+        {details?.status !== undefined ? <StatusChip status={details.status} /> : null}
+        {details?.conclusion !== undefined ? <StatusChip status={details.conclusion} /> : null}
+        {details?.runId !== undefined ? <span>Run #{details.runId}</span> : null}
+        {details?.runIds && details.runIds.length > 0 ? (
+          <span>
+            {details.runIds.length} {details.runIds.length === 1 ? "run" : "runs"}
+          </span>
+        ) : null}
+      </div>
+      {watch?.note !== undefined ? (
+        <p className="text-muted-foreground text-xs">{safeText(String(watch.note))}</p>
+      ) : null}
+      {runs.length > 0 ? (
         <ul className="divide-border/70 divide-y text-xs">
-          {jobs.map((job) => (
-            <li
-              className="flex min-w-0 flex-wrap items-center gap-2 py-1.5"
-              key={`${text(job.name) ?? "job"}:${text(job.status) ?? "unknown"}`}
-            >
-              <span className="min-w-0 truncate">{safeText(text(job.name) ?? "Job")}</span>
-              <StatusChip status={text(job.conclusion) ?? text(job.status) ?? "unknown"} />
-            </li>
-          ))}
+          {runs.slice(0, MAX_ROWS).map((run) => {
+            const runJobs = arrayOfRecords(run.jobs);
+            const title = text(run.workflowName) ?? text(run.displayTitle) ?? "Workflow run";
+            const status = text(run.conclusion) ?? text(run.status);
+            return (
+              <li
+                className="flex min-w-0 flex-col items-start gap-1 py-2"
+                key={`${title}:${text(run.headSha) ?? ""}`}
+              >
+                <span className="truncate font-medium">{safeText(title)}</span>
+                {status !== undefined ? <StatusChip status={status} /> : null}
+                {runJobs.map((job) => {
+                  const name = text(job.name) ?? "Job";
+                  const jobStatus = text(job.conclusion) ?? text(job.status);
+                  return (
+                    <span
+                      className="flex min-w-0 items-center gap-2"
+                      key={`${name}:${String(job.id ?? job.url ?? jobStatus ?? "job")}`}
+                    >
+                      <span className="truncate">{safeText(name)}</span>
+                      {jobStatus !== undefined ? <StatusChip status={jobStatus} /> : null}
+                    </span>
+                  );
+                })}
+              </li>
+            );
+          })}
         </ul>
-      )}
-      {details?.failedLogTail !== undefined && (
-        <>
-          <h3 className="text-sm font-medium">Log</h3>
+      ) : null}
+      {failedJobs.length > 0 ? (
+        <p className="text-danger-surface-foreground text-xs" data-testid="t4-github-failed-jobs">
+          Failed jobs: {failedJobs.slice(0, MAX_ROWS).map(safeText).join(", ")}
+        </p>
+      ) : null}
+      {failedLogs.map((log) => {
+        const tail = text(log.tail);
+        return tail === undefined ? null : (
           <pre
             className="bg-danger-surface text-danger-surface-foreground max-h-48 overflow-auto rounded p-2 text-xs"
             data-testid="t4-github-failed-log"
+            key={`${String(log.runId ?? "")}:${text(log.jobName) ?? "job"}`}
           >
-            {safeText(details.failedLogTail)}
+            {safeText(tail)}
           </pre>
-        </>
-      )}
+        );
+      })}
     </section>
   );
 }
 
 function SourceLinks({ details }: { readonly details: GhToolDetails | undefined }) {
-  const links =
-    details?.sourceLinks
-      ?.map(safeRetrievalUrl)
-      .filter((link): link is string => link !== undefined) ?? [];
-  if (links.length === 0) return null;
+  const source = details?.meta?.source;
+  const link = source?.type === "url" ? safeRetrievalUrl(source.value) : undefined;
+  if (link === undefined) return null;
   return (
     <div className="flex min-w-0 flex-wrap gap-2 text-xs" data-testid="t4-github-source-links">
-      {links.slice(0, MAX_ROWS).map((link) => (
-        <a
-          className="text-primary underline underline-offset-2"
-          href={link}
-          key={link}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {safeText(link)}
-        </a>
-      ))}
+      <a
+        className="text-primary underline underline-offset-2"
+        href={link}
+        rel="noreferrer"
+        target="_blank"
+      >
+        Open GitHub result
+      </a>
     </div>
   );
-}
-
-function detailsRecordArray(
-  details: GhToolDetails | undefined,
-  keys: readonly string[],
-): Record<string, unknown>[] {
-  const record = detailsRecord(details);
-  if (record === undefined) return [];
-  for (const key of keys) {
-    const value = record[key];
-    if (Array.isArray(value)) return arrayOfRecords(value);
-  }
-  return [];
 }
 
 function arrayOfRecords(value: unknown): Record<string, unknown>[] {
@@ -500,10 +429,6 @@ function arrayOfRecords(value: unknown): Record<string, unknown>[] {
     : [];
 }
 
-function detailsRecord(details: GhToolDetails | undefined): Record<string, unknown> | undefined {
-  return record(details);
-}
-
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -512,10 +437,6 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-function number(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function safeText(value: string): string {

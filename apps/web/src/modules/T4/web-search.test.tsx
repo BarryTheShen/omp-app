@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
+import { T4_SCRIPTED_SEARCH_RESULTS } from "./fixtures/real-results";
+import { SEARCH_RESULT } from "./fixtures/v18.9.1-results";
 import { WebSearchCard } from "./web-search";
 
 afterEach(() => cleanup());
@@ -10,6 +12,7 @@ function props(
   result: unknown,
   args: unknown = { query: "omp app" },
   status: ToolRendererProps["status"] = { type: "complete" },
+  isError = false,
 ): ToolRendererProps {
   return {
     type: "tool-call",
@@ -19,123 +22,103 @@ function props(
     argsText: JSON.stringify(args),
     result,
     status,
+    isError,
   } as unknown as ToolRendererProps;
 }
 
-const successResult = {
-  kind: "web_search",
-  query: "omp app",
-  response: {
-    provider: "test-provider",
-    model: "test-model",
-    answer: "# Answer\n\nUse [the safe source](https://example.com/docs).",
-    sources: [
-      {
-        title: "Safe source",
-        url: "https://example.com/docs",
-        domain: "example.com",
-        snippet: "A retrieval-provided snippet.",
-        author: "Ada",
-      },
-      { title: "Unsafe source", url: "javascript:alert(1)" },
-    ],
-    citations: [
-      { title: "Safe source", url: "https://example.com/docs", citedText: "the cited text" },
-    ],
-    relatedQuestions: ["What is omp?"],
-    usage: { inputTokens: 12, outputTokens: 34, searchRequests: 1 },
-    authMode: "managed",
-  },
-};
+function scriptedSearchResult(name: string): unknown {
+  const item = T4_SCRIPTED_SEARCH_RESULTS.find((entry) => entry.name === name);
+  if (!item) throw new Error(`Missing scripted search result: ${name}`);
+  return item.result;
+}
 
 describe("WebSearchCard", () => {
-  test("renders query, compact Markdown, source tree, citations and usage metadata", () => {
-    render(<WebSearchCard rendererProps={props(successResult)} />);
+  test("renders source-shaped provider, auth and total-token labels", () => {
+    render(<WebSearchCard rendererProps={props(SEARCH_RESULT)} />);
     expandToolCards();
 
-    expect(screen.getByRole("button", { name: "web_search: Complete" })).toBeTruthy();
-    expect(screen.getAllByText("omp app").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "Answer" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "the safe source" }).getAttribute("rel")).toContain(
-      "noopener",
-    );
-    expect(screen.getAllByRole("link", { name: "Safe source" })[0]?.getAttribute("href")).toBe(
-      "https://example.com/docs",
-    );
-    expect(screen.getByText("Unsafe source")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Unsafe source" })).toBeNull();
-    expect(screen.getByText("[1]")).toBeTruthy();
-    expect(screen.getByText("Provider: test-provider")).toBeTruthy();
-    expect(screen.getAllByText("2 results").length).toBeGreaterThan(0);
-    expect(screen.getByText("Search requests: 1")).toBeTruthy();
-    expect(screen.queryByText(/"response"/)).toBeNull();
+    expect(screen.getByText("Provider: Perplexity")).toBeTruthy();
+    expect(screen.getByText("Auth: API")).toBeTruthy();
+    expect(screen.getByText("Total tokens: 560")).toBeTruthy();
+    expect(screen.getByText("Search requests: 2")).toBeTruthy();
+    expect(screen.queryByText("perplexity")).toBeNull();
+    expect(screen.queryByText(/Cost:/)).toBeNull();
   });
 
-  test("shows an explicit zero-source warning", () => {
+  test("uses the host label when a scripted source has a blank title", () => {
     render(
       <WebSearchCard
-        rendererProps={props({
-          kind: "web_search",
-          query: "nothing",
-          response: { provider: "test-provider", answer: "No results.", sources: [] },
-        })}
+        rendererProps={props(scriptedSearchResult("web_search: an answer with sources"))}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.getByRole("link", { name: "www.example.test" }).getAttribute("href")).toBe(
+      "https://www.example.test/docs/syllabus.pdf",
+    );
+    expect(screen.getByText("Exa")).toBeTruthy();
+    expect(screen.queryByText("exa")).toBeNull();
+  });
+
+  test("shows zero-source warnings and readable anonymous auth from a recording", () => {
+    render(
+      <WebSearchCard
+        rendererProps={props(
+          scriptedSearchResult("web_search: the answer omp's anonymous search gives (no sources)"),
+        )}
       />,
     );
     expandToolCards();
 
     expect(screen.getByText("No sources were returned for this search.")).toBeTruthy();
-    expect(screen.getAllByText("0 results").length).toBeGreaterThan(0);
+    expect(screen.getByText("Provider: Perplexity")).toBeTruthy();
+    expect(screen.getByText("Auth: Anonymous")).toBeTruthy();
   });
 
-  test("surfaces a provider failure in a typed error state", () => {
-    render(
+  test("shows an interrupted search with raw output when omp supplies no details", () => {
+    const { container } = render(
       <WebSearchCard
-        rendererProps={props({
-          kind: "web_search",
-          query: "blocked",
-          response: { provider: "test-provider", sources: [] },
-          error: "Provider rejected the request",
-        })}
+        rendererProps={props(
+          scriptedSearchResult("web_search: an interrupted call with no details"),
+          { query: "interrupted search" },
+          { type: "complete" },
+          true,
+        )}
       />,
     );
     expandToolCards();
 
     expect(screen.getByRole("button", { name: "web_search: Error" })).toBeTruthy();
-    expect(screen.getAllByText("Provider rejected the request").length).toBeGreaterThan(0);
+    expect(screen.getByRole("alert").textContent).toContain("Tool execution was aborted");
+    expect(container.querySelector('[data-slot="t4-web-search-body"]')).toBeNull();
   });
 
-  test("keeps streaming raw output visible until structured details arrive", () => {
+  test("keeps raw streaming output visible before structured details arrive", () => {
     render(
       <WebSearchCard
         rendererProps={props("answer fragment", { query: "streaming" }, { type: "running" })}
       />,
     );
     expandToolCards();
-
     expect(screen.getByRole("button", { name: "web_search: Running" })).toBeTruthy();
     expect(screen.getByText("answer fragment")).toBeTruthy();
   });
 
-  test("maps malformed settled results to an error state while retaining raw output", () => {
+  test("maps malformed settled results to an error while retaining raw output", () => {
     render(<WebSearchCard rendererProps={props("not-an-object")} />);
     expandToolCards();
-
     expect(screen.getByRole("button", { name: "web_search: Error" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Malformed web-search result");
     expect(screen.getByText("not-an-object")).toBeTruthy();
   });
 
-  test("copies the answer through the explicit callback", async () => {
+  test("copies the source-shaped answer through the explicit callback", async () => {
     const onCopy = vi.fn().mockResolvedValue(undefined);
-    render(<WebSearchCard onCopy={onCopy} rendererProps={props(successResult)} />);
+    render(<WebSearchCard onCopy={onCopy} rendererProps={props(SEARCH_RESULT)} />);
     expandToolCards();
-
     fireEvent.click(screen.getByRole("button", { name: "Copy answer" }));
     await waitFor(() =>
-      expect(onCopy).toHaveBeenCalledWith(
-        "# Answer\n\nUse [the safe source](https://example.com/docs).",
-        "code",
-      ),
+      expect(onCopy).toHaveBeenCalledWith(SEARCH_RESULT.details.response.answer, "code"),
     );
   });
 });
