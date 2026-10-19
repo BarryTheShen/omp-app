@@ -7,9 +7,13 @@ import {
   type ConfigWriteResult,
   type FolderPath,
 } from "@omp-app/contracts";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createSettingsRuntime, type SettingsRuntime } from "../../runtime";
-import { SETTINGS_READ_TIMEOUT_MS, type SettingsSectionDescriptor } from "../../settings-kit";
+import {
+  SETTINGS_READ_TIMEOUT_MS,
+  type SettingControl,
+  type SettingsSectionDescriptor,
+} from "../../settings-kit";
 
 const descriptor: SettingsSectionDescriptor = {
   id: "S1.runtimeTest",
@@ -55,6 +59,7 @@ type FakeState = {
   writes: ConfigWriteArgs[];
   scopes: string[];
   listeners: Set<(change: ConfigChanged) => void>;
+  listCalls: number;
   nextListFailure: AppFailure | null;
   /** The next list never answers, so a read has to end in the timeout. */
   hangNextList: boolean;
@@ -73,6 +78,7 @@ function fakeState(): FakeState {
     writes: [],
     scopes: [],
     listeners: new Set(),
+    listCalls: 0,
     nextListFailure: null,
     hangNextList: false,
     refusedKeys: new Set(),
@@ -90,6 +96,7 @@ function fakeClient(state: FakeState): AppClient {
       return entry;
     },
     list: async (_args: { readonly folder: string | null }) => {
+      state.listCalls += 1;
       if (state.hangNextList) {
         state.hangNextList = false;
         return Promise.withResolvers<never>().promise;
@@ -176,10 +183,17 @@ function fakeClient(state: FakeState): AppClient {
 }
 
 function emit(state: FakeState, change: ConfigChanged): void {
+  if (change.layer === "default") {
+    const index = state.entries.findIndex((entry) => entry.key === change.key);
+    if (index < 0) state.entries.push(change.entry);
+    else state.entries[index] = change.entry;
+  }
   for (const listener of state.listeners) listener(change);
 }
 
 async function settle(): Promise<void> {
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
+  await vi.runAllTimersAsync();
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
@@ -193,8 +207,10 @@ function change(
 }
 
 const runtimes: SettingsRuntime[] = [];
+beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.dispose();
+  vi.useRealTimers();
 });
 
 describe("S1.2 ConfigStore runtime", () => {
@@ -280,6 +296,142 @@ describe("S1.2 ConfigStore runtime", () => {
     });
     await runtime.save();
     expect(state.writes[0]?.expectedRevision).toBe("revision-external");
+    expect(runtime.getSnapshot().phase).toBe("ready");
+  });
+  test("applies a default-layer event for a key absent from the loaded section without dropping another edit", async () => {
+    const lateControl = descriptor.controls.find((control) => control.key === "appearance.mode");
+    if (!lateControl) throw new Error("missing appearance.mode control");
+    const lateDescriptor: SettingsSectionDescriptor = {
+      ...descriptor,
+      controls: [...descriptor.controls, { ...lateControl, key: "late.mode" } as SettingControl],
+    };
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor: lateDescriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    runtime.stage("appearance.mode", { secret: false, value: "dark" });
+    emit(state, {
+      key: "late.mode",
+      layer: "default",
+      folder: null,
+      revision: "revision-defaults",
+      entry: {
+        key: "late.mode",
+        secret: false,
+        value: "system",
+        source: "default",
+        overrides: [],
+      },
+    });
+    await settle();
+    expect(runtime.getSnapshot().config?.entries).toContainEqual({
+      key: "late.mode",
+      secret: false,
+      value: "system",
+      source: "default",
+      overrides: [],
+    });
+    expect(runtime.getSnapshot().staged?.edits).toEqual({
+      "appearance.mode": { secret: false, value: "dark" },
+    });
+    expect(runtime.getSnapshot().phase).toBe("editing");
+  });
+  test("coalesces a burst of changes into one list read", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    state.listCalls = 0;
+    for (let index = 0; index < 20; index += 1) {
+      emit(state, {
+        key: "appearance.mode",
+        layer: "default",
+        folder: null,
+        revision: `revision-${index}`,
+        entry: {
+          key: "appearance.mode",
+          secret: false,
+          value: index % 2 === 0 ? "system" : "dark",
+          source: "default",
+          overrides: [],
+        },
+      });
+    }
+    await settle();
+    expect(state.listCalls).toBe(1);
+  });
+
+  test("a runtime closed while a burst waits reads nothing more", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    state.listCalls = 0;
+    emit(state, {
+      key: "appearance.mode",
+      layer: "default",
+      folder: null,
+      revision: "revision-late",
+      entry: {
+        key: "appearance.mode",
+        secret: false,
+        value: "dark",
+        source: "default",
+        overrides: [],
+      },
+    });
+    runtime.dispose();
+    await settle();
+    expect(state.listCalls).toBe(0);
+  });
+
+  test("ignores another folder and keys outside the section", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: "/workspace/project" as FolderPath,
+      layer: "project",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    state.listCalls = 0;
+    emit(state, {
+      key: "appearance.mode",
+      layer: "project",
+      revision: "revision-other-folder",
+      folder: "/workspace/other" as FolderPath,
+      entry: {
+        key: "appearance.mode",
+        secret: false,
+        value: "dark",
+        source: "project",
+        overrides: [],
+      },
+    });
+    emit(
+      state,
+      change("outside.key", "revision-outside", {
+        key: "outside.key",
+        secret: false,
+        value: "ignored",
+        source: "default",
+        overrides: [],
+      }),
+    );
+    await settle();
+    expect(state.listCalls).toBe(0);
     expect(runtime.getSnapshot().phase).toBe("ready");
   });
 

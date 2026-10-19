@@ -172,6 +172,8 @@ export class SettingsRuntime {
   private writing = false;
   private inFlightSave: Promise<CommitResult> | undefined;
   private disposed = false;
+  private readonly changedEvents = new Map<string, ConfigChanged>();
+  private changeTimer: ReturnType<typeof setTimeout> | undefined;
 
   public constructor(
     client: ConfigStoreClient,
@@ -412,14 +414,39 @@ export class SettingsRuntime {
     this.unsubscribeChanged?.();
     this.unsubscribeChanged = undefined;
     this.listeners.clear();
+    clearTimeout(this.changeTimer);
+    this.changeTimer = undefined;
+    this.changedEvents.clear();
   }
 
-  private async handleChanged(change: ConfigChanged): Promise<void> {
-    if (this.disposed) return;
-    if (this.writing) {
+  private handleChanged(change: ConfigChanged): void {
+    if (this.disposed || this.writing) return;
+    const appliesToScope = change.layer !== "project" || change.folder === this.folder;
+    const keyMatches = this.descriptor.controls.some(
+      (control) => control.key === change.key || control.key.startsWith(`${change.key}.`),
+    );
+    if (!appliesToScope || !keyMatches) {
       return;
     }
+    if (change.layer !== "default") {
+      void this.reconcileChanged([change]);
+      return;
+    }
+    this.changedEvents.set(change.key, change);
+    clearTimeout(this.changeTimer);
+    this.changeTimer = setTimeout(() => {
+      this.changeTimer = undefined;
+      const changes = [...this.changedEvents.values()];
+      this.changedEvents.clear();
+      void this.reconcileChanged(changes);
+    }, 50);
+  }
+
+  private async reconcileChanged(changes: readonly ConfigChanged[]): Promise<void> {
+    if (this.disposed || this.writing || changes.length === 0) return;
     const operation = ++this.operation;
+    const lastChange = changes.at(-1);
+    if (!lastChange) return;
     try {
       const remote = await readSection(this.client, this.descriptor, this.folder);
       if (operation !== this.operation || this.disposed) return;
@@ -432,7 +459,7 @@ export class SettingsRuntime {
           conflict: { local: staged, remote, changedKeys },
           error: null,
           errorOperation: undefined,
-          lastChange: change,
+          lastChange,
           unsavedKeys: [],
         });
       } else {
@@ -446,7 +473,7 @@ export class SettingsRuntime {
           error: this.snapshot.unsavedKeys.length > 0 ? this.snapshot.error : null,
           errorOperation:
             this.snapshot.unsavedKeys.length > 0 ? this.snapshot.errorOperation : undefined,
-          lastChange: change,
+          lastChange,
           unsavedKeys: this.snapshot.unsavedKeys,
         });
       }
@@ -456,7 +483,7 @@ export class SettingsRuntime {
         phase: "error",
         error: failure.appError,
         errorOperation: "refresh",
-        lastChange: change,
+        lastChange,
       });
     }
   }
