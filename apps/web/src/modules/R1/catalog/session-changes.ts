@@ -58,19 +58,50 @@ export function watchSessionFileChanges(
   return watchSubscription(client, "changed", listener);
 }
 
-function refreshCatalog(catalog: SessionCatalogModel): void {
+function refreshCatalog(catalog: SessionCatalogModel, limit = 50): void {
   const snapshot = catalog.getSnapshot();
-  void catalog.list({ filter: snapshot.filter, limit: 50 }).catch(() => undefined);
+  void catalog.list({ filter: snapshot.filter, limit }).catch(() => undefined);
+}
+
+/**
+ * Coalesces the running-change and completed-turn signals that can accompany one finished chat.
+ * The trailing read observes the file after the last signal, so a concurrent list is never the only
+ * refresh when the session file is being written.
+ */
+export function createSessionCatalogRefreshScheduler(): {
+  readonly request: (catalog: SessionCatalogModel, limit?: number) => void;
+  readonly dispose: () => void;
+} {
+  const pending = new Map<
+    SessionCatalogModel,
+    { readonly timer: number; readonly limit: number }
+  >();
+  const request = (catalog: SessionCatalogModel, limit = 50): void => {
+    const previous = pending.get(catalog);
+    const nextLimit = Math.max(limit, previous?.limit ?? limit);
+    if (previous !== undefined) window.clearTimeout(previous.timer);
+    const timer = window.setTimeout(() => {
+      pending.delete(catalog);
+      refreshCatalog(catalog, nextLimit);
+    }, 50);
+    pending.set(catalog, { timer, limit: nextLimit });
+  };
+  const dispose = (): void => {
+    for (const { timer } of pending.values()) window.clearTimeout(timer);
+    pending.clear();
+  };
+  return { request, dispose };
 }
 
 /** Re-read only held catalogs whose scope contains the folder from this file-less turn event. */
 export function refreshCatalogsForRunningChange(
   catalogs: ReadonlyMap<FolderPath, SessionCatalogModel>,
   change: SessionRunningChanged,
+  requestRefresh: (catalog: SessionCatalogModel, limit?: number) => void = refreshCatalog,
 ): void {
   for (const catalog of catalogs.values()) {
     if (sessionFolderInScope(catalog.getSnapshot().scope, change.folder, catalog.getSnapshot().git))
-      refreshCatalog(catalog);
+      requestRefresh(catalog);
   }
 }
 
@@ -85,9 +116,10 @@ export function refreshCatalogsAfterReconnect(
 export function watchSessionRunningChanges(
   client: AppClient,
   catalogs: ReadonlyMap<FolderPath, SessionCatalogModel>,
+  requestRefresh: (catalog: SessionCatalogModel, limit?: number) => void = refreshCatalog,
 ): () => void {
   const stopEvent = watchSubscription(client, "runningChanged", (change) =>
-    refreshCatalogsForRunningChange(catalogs, change),
+    refreshCatalogsForRunningChange(catalogs, change, requestRefresh),
   );
   const stopResync = client.onResync(() => refreshCatalogsAfterReconnect(catalogs));
   let wasOpen = client.connectionState === "open";

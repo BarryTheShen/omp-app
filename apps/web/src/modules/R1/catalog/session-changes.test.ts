@@ -6,10 +6,14 @@ import type {
 } from "@omp-app/client";
 import type { GitState, SessionFileChanged, SessionRunningChanged } from "@omp-app/contracts";
 import { FolderPath, SessionFilePath, SessionFileStore, ThreadId } from "@omp-app/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { SessionScope } from "../contract";
 import type { SessionCatalogModel } from "./catalog";
-import { watchSessionFileChanges, watchSessionRunningChanges } from "./session-changes";
+import {
+  createSessionCatalogRefreshScheduler,
+  watchSessionFileChanges,
+  watchSessionRunningChanges,
+} from "./session-changes";
 
 type EventListener = (payload: unknown, sequence: number) => void;
 
@@ -267,5 +271,31 @@ describe("session change subscriptions", () => {
     await released.promise;
     expect(unsubscribes).toBe(1);
     expect(listeners.size).toBe(0);
+  });
+  test("coalesces running and answered-turn refresh requests into one trailing list read", async () => {
+    vi.useFakeTimers();
+    const scheduler = createSessionCatalogRefreshScheduler();
+    const fake = fakeClient();
+    const current = catalogFor(folder);
+    const stop = watchSessionRunningChanges(
+      fake.client,
+      new Map([[folder, current.catalog]]),
+      scheduler.request,
+    );
+    try {
+      await settle();
+      fake.emit("runningChanged", { ...runningChanged, busy: true });
+      scheduler.request(current.catalog, 100);
+      fake.emit("runningChanged", { ...runningChanged, busy: false });
+
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(current.listCalls).toHaveLength(1);
+      expect(current.listCalls[0]).toMatchObject({ filter: { scope: { folder } }, limit: 100 });
+    } finally {
+      stop();
+      scheduler.dispose();
+      vi.useRealTimers();
+    }
   });
 });

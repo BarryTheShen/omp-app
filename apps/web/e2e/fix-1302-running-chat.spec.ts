@@ -30,7 +30,9 @@ function runningRow(page: Page): Locator {
 
 /** The selected row has its style: a transparent background would mean the style did not load. */
 async function expectSelectedRowStyled(page: Page, text: string): Promise<void> {
-  const row = page.locator('[role="listbox"][aria-label="Session list"] [data-selected="true"]');
+  const row = page.locator(
+    '[role="listbox"][aria-label="Session list"] [data-slot="r1-running-row"][data-selected="true"]',
+  );
   await expect(row).toContainText(text);
   expect(await row.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
     "rgba(0, 0, 0, 0)",
@@ -56,6 +58,7 @@ realTest(
     // The running chat has its row, marked as running and selected, and the empty text is gone.
     await expect(runningRow(page)).toHaveCount(1, { timeout: 30_000 });
     await expect(runningRow(page).getByText("Running")).toBeVisible();
+    await expect(runningRow(page).locator("time")).toHaveCount(0);
     await expect(runningRow(page)).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText("No sessions in this folder")).toHaveCount(0);
     await expectSelectedRowStyled(page, "New chat");
@@ -95,10 +98,10 @@ realTest(
     await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0, {
       timeout: 120_000,
     });
-    await expect(sessionList(page).getByRole("option", { name: new RegExp(PROMPT) })).toHaveCount(
-      1,
-      { timeout: 60_000 },
-    );
+    const answeredRow = sessionList(page).getByRole("option", { name: new RegExp(PROMPT) });
+    await expect(answeredRow).toHaveCount(1, { timeout: 60_000 });
+    await expect(answeredRow).toContainText(PROMPT);
+    await expect(answeredRow.locator("time")).toHaveAttribute("datetime", /^\d{4}-\d{2}-\d{2}T/);
     await expect(runningRow(page)).toHaveCount(0);
     await expect(sessionList(page).getByText("Running")).toHaveCount(0);
     expect(realApp.problems).toEqual([]);

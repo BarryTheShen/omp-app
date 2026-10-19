@@ -36,6 +36,8 @@ export interface SessionCatalogSidebarProps {
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
   /** Asks before a chat is deleted; the chat is deleted only when this resolves true. `title` is the chat's name. */
   readonly confirmDelete?: (session: SessionMetadata, title: string) => Promise<boolean> | boolean;
+  /** Coalesces catalog refreshes that can arrive from the active-thread and running-change watchers. */
+  readonly requestRefresh?: (catalog: SessionCatalogModel, limit?: number) => void;
   /**
    * Whether the open chat's turn runs now, read when a delete starts. An open chat whose turn runs is not left: the
    * delete says why it cannot be deleted, in that chat.
@@ -185,6 +187,7 @@ export function SessionCatalogSidebar({
   onOpenFailed,
   onPinChange,
   confirmDelete,
+  requestRefresh,
   currentTurnRunning,
 }: SessionCatalogSidebarProps) {
   const snapshot = catalog.getSnapshot();
@@ -257,8 +260,9 @@ export function SessionCatalogSidebar({
     if (listed) return;
     // A branch/rewind creates a new omp file without a SessionFileChanged event; reread the current
     // folder once when the active thread is not in the already-loaded catalog.
-    void catalog.list({ filter: current.filter, limit: 100 }).catch(() => undefined);
-  }, [catalog, currentThreadId, snapshot.isLoaded, snapshot.isLoading]);
+    if (requestRefresh) requestRefresh(catalog, 100);
+    else void catalog.list({ filter: current.filter, limit: 100 }).catch(() => undefined);
+  }, [catalog, currentThreadId, requestRefresh, snapshot.isLoaded, snapshot.isLoading]);
 
   useEffect(() => {
     if (!menuSessionId) return;

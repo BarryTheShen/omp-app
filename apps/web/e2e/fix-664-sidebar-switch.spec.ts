@@ -126,7 +126,9 @@ async function routeWire(page: Page): Promise<Wire> {
 
 /** The row the page shows as selected has its style: a transparent background would mean the style did not load. */
 async function expectSelectedRowStyled(page: Page, title: string): Promise<void> {
-  const row = page.locator('[role="listbox"][aria-label="Session list"] [data-selected="true"]');
+  const row = page.locator(
+    '[role="listbox"][aria-label="Session list"] [data-slot="r1-session-row"][data-selected="true"]',
+  );
   await expect(row).toContainText(title);
   expect(await row.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
     "rgba(0, 0, 0, 0)",
@@ -164,7 +166,7 @@ async function switchTo(
     .waitForFunction(
       (label) => {
         const row = document.querySelector<HTMLElement>(
-          '[role="listbox"][aria-label="Session list"] [data-selected="true"]',
+          '[role="listbox"][aria-label="Session list"] [data-slot="r1-session-row"][data-selected="true"]',
         );
         return row?.textContent?.includes(label) ? Date.now() : false;
       },
@@ -288,7 +290,9 @@ realTest(
     const perClick: Switch[] = [];
     try {
       await list.getByRole("option").nth(0).click();
-      await expect(page.locator('[data-selected="true"]').first()).toBeVisible({ timeout: 60_000 });
+      await expect(list.locator('[data-slot="r1-session-row"][data-selected="true"]')).toBeVisible({
+        timeout: 60_000,
+      });
       await expect(page.getByRole("textbox", { name: "Message input" })).toBeVisible({
         timeout: 60_000,
       });

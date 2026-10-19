@@ -118,6 +118,7 @@ import { type StoppedQueue, useOmpRuntime } from "@/modules/R0/runtime";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
 import {
+  createSessionCatalogRefreshScheduler,
   watchSessionFileChanges,
   watchSessionRunningChanges,
 } from "@/modules/R1/catalog/session-changes";
@@ -2095,13 +2096,14 @@ function ConnectedApp({
     catalogCache.models.set(folder, created);
     return created;
   }, [catalogCache, folder]);
+  const catalogRefresh = useMemo(() => createSessionCatalogRefreshScheduler(), []);
+  useEffect(() => () => catalogRefresh.dispose(), [catalogRefresh]);
   const controller = useMemo<SelectedThreadHistoryController | null>(() => {
     if (!folder) return null;
     // The open folder's list is read again, so each row shows the state its chat has now.
     const readList = () => {
       const list = catalogCache.models.get(folder);
-      if (list)
-        void list.list({ filter: list.getSnapshot().filter, limit: 100 }).catch(() => undefined);
+      if (list) catalogRefresh.request(list, 100);
     };
     return createSelectedThreadHistoryController({
       client,
@@ -2114,7 +2116,7 @@ function ConnectedApp({
       // A turn ended after its chat was left: the list gets the row the chat wrote, not when the person comes back.
       onTurnSettled: readList,
     });
-  }, [catalogCache, client, folder]);
+  }, [catalogCache, catalogRefresh, client, folder]);
   // Records a chat whose saved model omp cannot restore. With no chat open, the empty screen shows its sentence and the
   // picker, and the chat is the one this browser had open, so a reload or restart shows it again. With another chat open,
   // that chat stays on screen: the picker opens over it, with the sentence first, and the saved chat id stays the open chat's.
@@ -2251,15 +2253,13 @@ function ConnectedApp({
       const listed = catalog
         .getSnapshot()
         .sessions.some((session) => session.id === snapshot.threadId);
-      if (finished || !listed) {
-        void catalog
-          .list({ filter: catalog.getSnapshot().filter, limit: 100 })
-          .catch(() => undefined);
-      }
+      // A listed chat gets its terminal state from the runningChanged event; only an unlisted chat
+      // needs the turn watcher to create its first row.
+      if (!listed) catalogRefresh.request(catalog, 100);
     };
     look();
     return store.subscribe(look);
-  }, [catalog, folder, history.store]);
+  }, [catalog, catalogRefresh, folder, history.store]);
   useEffect(() => {
     const instanceId = client.instanceId;
     if (connection.state !== "connected" || instanceId === undefined) return;
@@ -2282,12 +2282,16 @@ function ConnectedApp({
     const stopFileChanges = watchSessionFileChanges(client, (change) => {
       for (const list of catalogCache.models.values()) void list.reconcile(change);
     });
-    const stopRunningChanges = watchSessionRunningChanges(client, catalogCache.models);
+    const stopRunningChanges = watchSessionRunningChanges(
+      client,
+      catalogCache.models,
+      catalogRefresh.request,
+    );
     return () => {
       stopFileChanges();
       stopRunningChanges();
     };
-  }, [catalogCache, client]);
+  }, [catalogCache, catalogRefresh, client]);
   // A list that failed while the connection was down is loaded again once the app is back.
   useEffect(() => {
     if (connection.state !== "connected" || catalog === null) return;
@@ -2595,6 +2599,7 @@ function ConnectedApp({
             currentTurnRunning={() =>
               controller?.getSnapshot().store?.getSnapshot().prompt.streaming === true
             }
+            requestRefresh={catalogRefresh.request}
             remote={remote}
             onNewChatStatus={reportNewChat}
             onOpenFailed={reportOpenFailure}
