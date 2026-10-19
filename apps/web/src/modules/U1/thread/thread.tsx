@@ -300,7 +300,13 @@ function RuntimeFailure({ snapshot, onRetry, onRestartOmp }: RuntimeFailureProps
   );
 }
 
-/** The loading or empty copy at the top of the thread. A failure is said in the footer instead. */
+function ThreadSkeleton({ className }: { readonly className: string }) {
+  return (
+    <div aria-hidden="true" className={cn("animate-pulse rounded-control bg-muted", className)} />
+  );
+}
+
+/** The loading, empty or greeting surface at the top of the thread. A failure is said in the footer instead. */
 function RuntimeStateSurface({
   snapshot,
   historyLoading,
@@ -318,11 +324,22 @@ function RuntimeStateSurface({
     return (
       <div
         aria-live="polite"
-        className="text-muted-foreground mx-auto flex min-h-32 w-full max-w-(--layout-thread-width) items-center justify-center px-6 py-12 text-sm"
+        className="animate-in fade-in fill-mode-both mx-auto flex w-full max-w-(--layout-thread-width) flex-col gap-y-6 px-6 [animation-delay:150ms] [animation-duration:200ms] motion-reduce:animate-none"
         data-slot="u1-thread-loading"
         role="status"
       >
-        Loading conversation…
+        <span className="sr-only">Loading conversation…</span>
+        <ThreadSkeleton className="rounded-thread ms-auto h-9 w-2/5 motion-reduce:animate-none" />
+        <div className="flex flex-col gap-y-2">
+          <ThreadSkeleton className="h-4 w-11/12 motion-reduce:animate-none" />
+          <ThreadSkeleton className="h-4 w-4/5 motion-reduce:animate-none" />
+          <ThreadSkeleton className="h-4 w-3/5 motion-reduce:animate-none" />
+        </div>
+        <ThreadSkeleton className="rounded-thread ms-auto h-9 w-1/3 motion-reduce:animate-none" />
+        <div className="flex flex-col gap-y-2">
+          <ThreadSkeleton className="h-4 w-10/12 motion-reduce:animate-none" />
+          <ThreadSkeleton className="h-4 w-2/3 motion-reduce:animate-none" />
+        </div>
       </div>
     );
   }
@@ -330,10 +347,13 @@ function RuntimeStateSurface({
   if (snapshot.messageOrder.length === 0) {
     return (
       <div
-        className="text-muted-foreground mx-auto flex min-h-32 w-full max-w-(--layout-thread-width) items-center justify-center px-6 py-12 text-sm"
+        className="animate-in fade-in slide-in-from-bottom-1 mx-auto mb-8 flex w-full max-w-(--layout-thread-width) flex-1 flex-col items-center justify-center text-center px-6 duration-200"
         data-slot="u1-thread-empty"
       >
-        No messages yet.
+        <p className="font-display text-2xl leading-snug font-[550] tracking-[-0.01em] text-balance lg:text-[1.75rem]">
+          How can I help you today?
+        </p>
+        <span className="sr-only">No messages yet.</span>
       </div>
     );
   }
@@ -344,14 +364,14 @@ function RuntimeStateSurface({
 function RuntimeSettledStatus({ snapshot }: { readonly snapshot: RuntimeSnapshot }) {
   if (snapshot.prompt.streaming) {
     return (
-      <div aria-live="polite" className="text-muted-foreground px-2 text-xs" role="status">
+      <div aria-live="polite" className="sr-only" role="status">
         Assistant is working…
       </div>
     );
   }
   if (snapshot.messageOrder.length > 0 && snapshot.process.status === "ready") {
     return (
-      <div aria-live="polite" className="text-muted-foreground px-2 text-xs" role="status">
+      <div aria-live="polite" className="sr-only" role="status">
         Conversation settled
       </div>
     );
@@ -714,7 +734,7 @@ export function ThreadShell({
                 </NoticePlacementProvider>
               </div>
               <ThreadPrimitive.ViewportFooter
-                className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 flex-col border-t border-border bg-background"
+                className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 flex-col bg-background"
                 data-slot="u1-thread-footer"
               >
                 <RuntimeFailure

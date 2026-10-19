@@ -170,10 +170,20 @@ const markdownComponents = memoizeMarkdownComponents({
     </p>
   ),
   table: ({ children, ...props }: HTMLAttributes<HTMLTableElement>) => (
-    <div className="my-3 max-w-full overflow-x-auto" data-markdown-table>
-      <table {...props} className="w-full min-w-max border-separate border-spacing-0 text-sm">
-        {children}
-      </table>
+    <div
+      className="border-foreground/10 rounded-document my-3 max-w-full overflow-hidden border"
+      data-markdown-table
+    >
+      <div className="border-foreground/10 bg-foreground/[0.025] dark:bg-foreground/[0.04] rounded-t-document flex h-9 min-w-0 items-center justify-between gap-2 border-b px-3">
+        <span className="text-muted-foreground min-w-0 truncate font-mono text-meta [font-variant-ligatures:none]">
+          table
+        </span>
+      </div>
+      <div className="max-w-full overflow-x-auto">
+        <table {...props} className="w-full min-w-max border-separate border-spacing-0 text-sm">
+          {children}
+        </table>
+      </div>
     </div>
   ),
   td: ({ children, ...props }: HTMLAttributes<HTMLTableCellElement>) => (

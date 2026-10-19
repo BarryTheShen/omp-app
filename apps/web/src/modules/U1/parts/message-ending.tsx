@@ -98,13 +98,21 @@ export function MessageEndingNote({ ending }: { readonly ending: MessageEnding }
   switch (ending.kind) {
     case "credential":
       return (
-        <div data-ending="credential" data-slot="u1-message-ending">
+        <div
+          className="mt-2 border-l-2 pl-3 text-sm border-destructive/60 text-destructive"
+          data-ending="credential"
+          data-slot="u1-message-ending"
+        >
           <CredentialFailureNotice failure={ending.failure} variant="message" />
         </div>
       );
     case "error":
       return (
-        <div data-ending="error" data-slot="u1-message-ending">
+        <div
+          className="mt-2 border-l-2 pl-3 text-sm border-destructive/60 text-destructive"
+          data-ending="error"
+          data-slot="u1-message-ending"
+        >
           <InlineError
             heading="The model stopped with an error"
             message={

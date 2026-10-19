@@ -48,7 +48,7 @@ import {
 } from "@/app/rewind/no-switch-notice";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { ToolRunScope } from "@/app/tool-run-scope";
-import { EmptyState, Notice } from "@/components/blocks";
+import { Notice } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import {
   AppConnectionGate,
@@ -392,7 +392,23 @@ function EmptyTranscript({
   readonly copy: EmptyStateCopy;
   readonly action?: ReactNode;
 }) {
-  return <EmptyState title={copy.title} hint={copy.detail} action={action} variant="large" />;
+  return (
+    <div
+      className="mx-auto flex h-full w-full max-w-(--layout-thread-width) flex-col items-center justify-center px-6 py-12 text-center"
+      role="status"
+    >
+      <p
+        className="font-display text-2xl leading-snug font-[550] tracking-[-0.01em] text-balance lg:text-[1.75rem]"
+        title={copy.title}
+      >
+        {copy.title}
+      </p>
+      <p className="text-muted-foreground mt-2 max-w-[40ch] text-md leading-relaxed text-pretty">
+        {copy.detail}
+      </p>
+      {action ? <div className="mt-2">{action}</div> : null}
+    </div>
+  );
 }
 
 function RouterBridge({

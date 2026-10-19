@@ -259,7 +259,7 @@ function TurnUsageRow({ fields }: { readonly fields: TurnUsageFields }): ReactNo
   return (
     <output
       aria-label={label}
-      className="text-muted-foreground mt-2 flex min-w-0 flex-wrap gap-x-2 text-xs font-mono"
+      className="text-muted-foreground mt-2 flex min-w-0 flex-wrap gap-x-2 text-meta font-mono"
       data-slot="u1-turn-usage"
       title={label}
     >
@@ -271,6 +271,10 @@ function TurnUsageRow({ fields }: { readonly fields: TurnUsageFields }): ReactNo
     </output>
   );
 }
+
+// Keep the Step 4 heading sizes on this surface; the registry copy of markdown-text computes its other sizes and is not edited by hand.
+const ASSISTANT_SURFACE_CLASS =
+  "min-w-0 w-full text-md leading-relaxed wrap-break-word [&_h1]:text-xl [&_h1]:leading-7 [&_h2]:text-lg [&_h2]:leading-7 [&_h3]:text-base [&_h3]:leading-6";
 
 /** Renders one assistant-ui message with U1's role grammar and U3's tool boundary. */
 export function MessageParts({
@@ -305,11 +309,11 @@ export function MessageParts({
   const groupBy = useTurnGroupBy(!isUser && !isSystem);
   const className = isUser
     ? nested
-      ? "ms-auto min-w-0 max-w-full rounded-2xl bg-muted px-3 py-2.5"
-      : "ms-auto max-w-[min(42rem,85%)] rounded-2xl bg-muted px-4 py-2.5"
+      ? "ms-auto min-w-0 max-w-full rounded-thread bg-muted px-3 py-2.5"
+      : "ms-auto max-w-[80%] rounded-thread bg-muted px-4 py-2 text-md"
     : isSystem
       ? "border-border bg-muted/40 text-muted-foreground rounded-md border px-3 py-2 text-sm"
-      : "min-w-0 w-full";
+      : ASSISTANT_SURFACE_CLASS;
   const rowClassName = nested
     ? "mx-auto w-full min-w-0 py-1"
     : "mx-auto w-full min-w-0 max-w-(--layout-thread-width) px-6 py-3";

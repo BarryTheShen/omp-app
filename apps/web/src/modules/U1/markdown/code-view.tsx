@@ -1,7 +1,6 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { ThemedToken } from "shiki/core";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Icons } from "@/tokens";
 import {
@@ -156,36 +155,40 @@ export function CodeView({
   const copyStatus = copy === "copied" ? "Copied" : copy === "failed" ? "Copy unavailable" : "";
   return (
     <div
-      className={cn("border-border bg-muted/30 overflow-hidden rounded-lg border", className)}
+      className={cn("border-foreground/10 rounded-document my-3 overflow-hidden border", className)}
       data-code-view
     >
-      <div className="border-border/60 bg-muted/60 flex min-w-0 items-center justify-between gap-2 border-b px-3 py-1.5 text-xs">
-        <span className="text-muted-foreground min-w-0 truncate font-mono" data-code-language>
+      <div className="border-foreground/10 bg-foreground/[0.025] dark:bg-foreground/[0.04] rounded-t-document flex h-9 min-w-0 items-center justify-between gap-2 border-b px-3">
+        <span
+          className="text-muted-foreground min-w-0 truncate font-mono text-meta [font-variant-ligatures:none]"
+          data-code-language
+        >
           {label}
         </span>
         <div className="flex shrink-0 items-center gap-2">
-          <span aria-live="polite" className="text-muted-foreground" role="status">
+          <span aria-live="polite" className="sr-only" role="status">
             {copyStatus}
           </span>
-          <Button
+          <button
             aria-label={copyLabel}
-            className="text-foreground"
+            className={cn(
+              "text-muted-foreground hover:text-foreground rounded-control grid size-6 shrink-0 place-items-center transition-colors",
+              copy === "failed" && "text-destructive",
+            )}
             onClick={() => void copyCode()}
-            size="icon-xs"
             title={copyLabel}
             type="button"
-            variant="ghost"
           >
             {copy === "copied" ? (
-              <Icons.check aria-hidden="true" />
+              <Icons.check aria-hidden="true" className="size-3.5" />
             ) : (
-              <Icons.copy aria-hidden="true" />
+              <Icons.copy aria-hidden="true" className="size-3.5" />
             )}
-          </Button>
+          </button>
         </div>
       </div>
       <pre
-        className="max-w-full overflow-x-auto p-3 text-sm leading-relaxed"
+        className="max-w-full overflow-x-auto px-3.5 py-3 text-code leading-relaxed"
         data-code-state={coloured ? "highlighted" : "plain"}
       >
         <code className="font-mono text-(--code-foreground)">

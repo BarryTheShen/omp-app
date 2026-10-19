@@ -5,7 +5,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 /** Muted at rest, full strength on hover and focus. The controls are always drawn, so touch and keyboard reach them. */
-const ACTION_CLASS = "text-muted-foreground hover:text-foreground focus-visible:text-foreground";
+const ACTION_CLASS =
+  "text-muted-foreground hover:text-foreground focus-visible:text-foreground disabled:pointer-events-none disabled:opacity-40 p-1 transition-colors";
 
 export interface OtherVersion {
   readonly threadId: ThreadId;
@@ -34,18 +35,18 @@ export function P3MessageActions({
   if (role === "user") {
     if (running || (onEdit === undefined && otherVersions.length === 0)) return null;
     return (
-      <div className="flex flex-col items-end gap-1 px-2 py-1" data-slot="p3-message-actions">
+      <div className="mt-2 flex flex-wrap justify-end gap-1.5" data-slot="p3-message-actions">
         <div className="flex flex-wrap justify-end gap-1">
           {onEdit === undefined ? null : (
             <Button
               className={ACTION_CLASS}
               onClick={(event) => onEdit(event.currentTarget)}
-              size="sm"
+              size="icon-xs"
               type="button"
               variant="ghost"
             >
-              <PencilIcon aria-hidden="true" />
-              Edit
+              <PencilIcon aria-hidden="true" className="size-4" />
+              <span className="sr-only">Edit</span>
             </Button>
           )}
           {otherVersions.length === 0 ? null : (
@@ -64,7 +65,7 @@ export function P3MessageActions({
         {versionsOpen ? (
           <ul
             aria-label="Other versions"
-            className="border-border bg-popover text-popover-foreground flex max-w-full flex-col gap-1 rounded-md border p-1 text-left shadow-sm"
+            className="bg-popover text-popover-foreground border-foreground/10 rounded-surface flex max-w-full flex-col gap-1 border p-1 text-left"
           >
             {otherVersions.map((version) => (
               <li key={version.threadId}>
@@ -90,7 +91,7 @@ export function P3MessageActions({
   if (role === "assistant") {
     return (
       <ActionBarPrimitive.Root
-        className="flex justify-start px-2 py-1"
+        className="mt-2 flex items-center gap-1.5"
         data-slot="p3-message-actions"
       >
         <ActionBarPrimitive.Reload
@@ -98,14 +99,14 @@ export function P3MessageActions({
             <Button
               aria-label="Regenerate response"
               className={ACTION_CLASS}
-              size="sm"
+              size="icon-xs"
               type="button"
               variant="ghost"
             />
           }
         >
-          <RefreshCwIcon aria-hidden="true" />
-          Regenerate
+          <RefreshCwIcon aria-hidden="true" className="size-4" />
+          <span className="sr-only">Regenerate</span>
         </ActionBarPrimitive.Reload>
       </ActionBarPrimitive.Root>
     );

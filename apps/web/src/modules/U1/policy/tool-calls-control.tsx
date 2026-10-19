@@ -16,11 +16,12 @@ export function ToolCallsControl() {
   if (!hasToolCalls) return null;
   return (
     <Button
+      className="text-muted-foreground hover:text-foreground rounded-control h-7 px-2 text-xs font-normal transition-colors"
       data-slot="u1-tool-calls-toggle"
       onClick={toggleExpandTools}
       size="sm"
       type="button"
-      variant="outline"
+      variant="ghost"
     >
       {expandTools ? "Collapse all tool calls" : "Expand all tool calls"}
     </Button>
