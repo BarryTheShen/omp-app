@@ -199,7 +199,7 @@ export function ToolCard({
         aria-controls={contentId}
         aria-expanded={open}
         aria-label={`${label}: ${status.label}`}
-        className="group/tool-card-trigger my-1 flex w-full min-w-0 items-baseline gap-2 text-start font-mono text-trace outline-none [font-variant-ligatures:none] focus-visible:underline"
+        className="group/tool-card-trigger my-1 flex w-full min-w-0 flex-wrap items-baseline gap-2 text-start font-mono text-trace outline-none [font-variant-ligatures:none] focus-visible:underline"
         data-slot="u3-tool-card-trigger"
       >
         <span
@@ -227,7 +227,9 @@ export function ToolCard({
         </span>
         <span
           className={cn(
-            "min-w-0 flex-1 truncate text-muted-foreground",
+            // Under 20rem (a narrow side panel) the summary takes its own line under the label and chip, indented to the
+            // label; from 20rem it sits between the label and the chip. An empty summary takes no line under 20rem.
+            "order-5 min-w-0 basis-full truncate ps-4 text-muted-foreground empty:hidden @xs/tool-card:order-2 @xs/tool-card:flex-1 @xs/tool-card:ps-0 @xs/tool-card:empty:block",
             state.phase === "unrecorded" && "break-words",
             summaryTone,
           )}
@@ -237,7 +239,7 @@ export function ToolCard({
         </span>
         <span
           className={[
-            "ms-auto shrink-0 text-meta",
+            "ms-auto shrink-0 text-meta @xs/tool-card:order-3",
             !calmInterruption && state.phase === "error"
               ? "text-destructive"
               : calmInterruption

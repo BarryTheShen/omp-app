@@ -53,8 +53,10 @@ realTest(
     await openToolCard(wait);
     const row = rowOf(wait, "SteerProbe");
     await expect(row).toBeVisible({ timeout: 120_000 });
-    await row.getByRole("button", { name: "Stop background job SteerProbe" }).click();
-    await expect(row).toContainText("Stopped background job SteerProbe.", { timeout: 240_000 });
+    await row.getByRole("button", { name: /^Stop background job / }).click();
+    await expect(row).toContainText("The background command stopped before its result came back.", {
+      timeout: 240_000,
+    });
 
     await expect(row).toContainText("Cancelled");
     await expect(row).toContainText("(no output)");

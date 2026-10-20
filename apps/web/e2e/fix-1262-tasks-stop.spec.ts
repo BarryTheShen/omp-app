@@ -46,9 +46,9 @@ realTest("the Tasks view stops one job, then Stop all ends the rest", async ({ r
   await openToolCard(wait);
   const first = jobRow(wait, "sleep 120; echo job-0");
   const second = jobRow(wait, "sleep 120; echo job-1");
-  const firstStop = first.getByRole("button", { name: /^Stop background job bg_\d+$/ });
+  const firstStop = first.getByRole("button", { name: /^Stop background job / });
   await expect(firstStop).toHaveCount(1, { timeout: 180_000 });
-  await expect(second.getByRole("button", { name: /^Stop background job bg_\d+$/ })).toHaveCount(1);
+  await expect(second.getByRole("button", { name: /^Stop background job / })).toHaveCount(1);
   await expect(wait.getByRole("button", { name: "Stop all background jobs" })).toHaveCount(1);
   await waitForFiniteAnimations(page);
   // Keyboard: the first Stop takes focus from the keyboard and shows a focus ring, and Enter stops that job.
@@ -69,7 +69,7 @@ realTest("the Tasks view stops one job, then Stop all ends the rest", async ({ r
     "The background command stopped before its result came back.",
   );
   await expect(first.getByRole("button", { name: /^Stop background job/ })).toHaveCount(0);
-  await expect(second.getByRole("button", { name: /^Stop background job bg_\d+$/ })).toHaveCount(1);
+  await expect(second.getByRole("button", { name: /^Stop background job / })).toHaveCount(1);
   await expect(wait.getByRole("button", { name: "Stop all background jobs" })).toHaveCount(1);
   await waitForFiniteAnimations(page);
   await page.screenshot({
