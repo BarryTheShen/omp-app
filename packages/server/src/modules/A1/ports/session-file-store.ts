@@ -25,7 +25,7 @@ function mapSubagent(transcript: InternalSubagentTranscript): ContractSubagentTr
     parent: transcript.parent,
     sessionFile: transcript.sessionFile as ContractSubagentTranscript["sessionFile"],
     leafId: transcript.leafId,
-    entryCount: transcript.entries.length,
+    entryCount: transcript.entryCount,
     aborted: transcript.aborted,
     status: transcript.status,
     endedAt: transcript.endedAt,

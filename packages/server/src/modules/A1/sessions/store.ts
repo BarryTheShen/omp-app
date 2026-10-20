@@ -12,7 +12,6 @@ import {
 } from "@omp-app/contracts";
 import { headerTimestamp, lastMessageTimestamp } from "./activity";
 import { detectSessionLiveness } from "./liveness";
-import { isJsonObject, parseSessionContent } from "./parser";
 import {
   defaultSessionOwnersRoot,
   defaultSessionsRoot,
@@ -21,12 +20,7 @@ import {
 } from "./paths";
 import { readSubagentPage, type SubagentPage, subagentTranscriptPath } from "./subagent-read";
 import { collectSubagentTranscripts, type WorkerLeaseProbe } from "./subagents";
-import {
-  promptLine,
-  readSessionHeader,
-  type SessionSummary,
-  summarizeSessionFile,
-} from "./summary";
+import { readSessionHeader, type SessionSummary, summarizeSessionFile } from "./summary";
 import type {
   ListFoldersArgs,
   ListSessionsArgs,
@@ -36,10 +30,8 @@ import type {
   SessionFileStoreOptions,
   SessionFolder,
   SessionFoldersResult,
-  SessionHeader,
   SessionLeaseState,
   SessionListResult,
-  SessionStatus,
   SessionTurn,
   SubagentListResult,
 } from "./types";
@@ -47,11 +39,6 @@ import {
   readEntryOutput as readOutputFromFile,
   readEntryWindow as readWindowFromFile,
 } from "./window";
-
-interface SessionFileStat {
-  readonly size: number;
-  readonly mtimeIso: string;
-}
 
 export interface SessionReadOutcome {
   readonly file?: SessionFile;
@@ -191,55 +178,6 @@ function turnFields(
 ): { readonly turn?: SessionTurn } {
   const turn = options.turnOf?.(sessionId);
   return turn === undefined ? {} : { turn };
-}
-
-function statusFromEntries(entries: readonly unknown[]): SessionStatus {
-  for (let index = entries.length - 1; index >= 0; index--) {
-    const entry = entries[index];
-    if (!isJsonObject(entry) || entry.type !== "message" || !isJsonObject(entry.message)) continue;
-    const message = entry.message;
-    switch (message.role) {
-      case "assistant": {
-        if (message.stopReason === "error") return "error";
-        if (message.stopReason === "aborted") return "aborted";
-        if (message.stopReason === "length") return "interrupted";
-        if (
-          Array.isArray(message.content) &&
-          message.content.some((content) => isJsonObject(content) && content.type === "toolCall")
-        ) {
-          return "interrupted";
-        }
-        return "complete";
-      }
-      case "toolResult":
-        return "interrupted";
-      case "user":
-        return "pending";
-      default:
-        return "unknown";
-    }
-  }
-  return "unknown";
-}
-
-function messageCounts(entries: readonly unknown[]): {
-  messageCount: number;
-  assistantTurns: number;
-  firstPrompt: string | null;
-} {
-  let messageCount = 0;
-  let assistantTurns = 0;
-  let firstPrompt: string | null = null;
-  for (const entry of entries) {
-    if (!isJsonObject(entry) || entry.type !== "message") continue;
-    messageCount++;
-    if (!isJsonObject(entry.message)) continue;
-    if (entry.message.role === "assistant") assistantTurns++;
-    if (firstPrompt === null && entry.message.role === "user") {
-      firstPrompt = promptLine(entry.message.content);
-    }
-  }
-  return { messageCount, assistantTurns, firstPrompt };
 }
 
 /** What the list cache remembers about a file: valid while the file's size and time are unchanged. */
@@ -1039,64 +977,51 @@ export class SessionFileStore {
       ...turnFields(this.#options, header.id),
       subagents: [],
       parseWarnings: summary.parseWarnings,
-      entries: [],
     };
     return { file, parseWarnings: file.parseWarnings, missing: false };
   }
 
   async #readSessionFile(sessionFile: string): Promise<SessionReadOutcome> {
-    let stat: SessionFileStat;
-    let mtimeMs: number;
-    let content: string;
+    let fileStat: Stats;
     try {
-      const fileStat = await fs.stat(sessionFile);
-      mtimeMs = fileStat.mtimeMs;
-      stat = {
-        size: fileStat.size,
-        mtimeIso: new Date(fileStat.mtimeMs).toISOString(),
-      };
-      content = await fs.readFile(sessionFile, "utf8");
+      fileStat = await fs.stat(sessionFile);
     } catch (error) {
       if (isMissing(error)) return { parseWarnings: [], missing: true };
       return { parseWarnings: [warningForReadFailure(sessionFile, error)], missing: false };
     }
-
-    const parsed = parseSessionContent(content, sessionFile);
-    if (!parsed.header) return { parseWarnings: parsed.parseWarnings, missing: false };
-
-    const subagents = await collectSubagentTranscripts(sessionFile, this.#workerLease);
-    const header = parsed.header as SessionHeader;
+    let summary: SessionSummary;
+    try {
+      summary = await summarizeSessionFile(sessionFile);
+    } catch (error) {
+      return { parseWarnings: [warningForReadFailure(sessionFile, error)], missing: false };
+    }
+    const header = summary.header;
+    if (header === undefined) return { parseWarnings: summary.parseWarnings, missing: false };
     const serverProcess = serverOwnsSession(this.#options, header.id, sessionFile);
     const lease = serverProcess
       ? ({ lease: "held" } satisfies { lease: SessionLeaseState })
       : await detectSessionLiveness(header.id, sessionFile, this.#options.leaseProbe);
-    const counts = messageCounts(parsed.entries);
-    const updatedAt = await this.#activityIso(sessionFile, stat.size, mtimeMs);
+    const updatedAt = await this.#activityIso(sessionFile, fileStat.size, fileStat.mtimeMs);
     const file: SessionFile = {
       id: header.id,
       sessionFile,
       version: header.version ?? 1,
       title: header.title,
       cwd: header.cwd,
-      createdAt: header.timestamp ?? stat.mtimeIso,
+      createdAt: header.timestamp ?? new Date(fileStat.mtimeMs).toISOString(),
       updatedAt,
       parentSession: header.parentSession,
-      messageCount: counts.messageCount,
-      assistantTurns: counts.assistantTurns,
-      firstPrompt: counts.firstPrompt,
-      sizeBytes: stat.size,
-      status: statusFromEntries(parsed.entries),
+      messageCount: summary.messageCount,
+      assistantTurns: summary.assistantTurns,
+      firstPrompt: summary.firstPrompt,
+      sizeBytes: fileStat.size,
+      status: summary.status,
       liveness: { lease: lease.lease, serverProcess },
       ...turnFields(this.#options, header.id),
-      subagents: subagents.subagents,
-      parseWarnings: [...parsed.parseWarnings, ...subagents.parseWarnings],
-      entries: parsed.entries,
+      subagents: [],
+      parseWarnings: summary.parseWarnings,
     };
-    return {
-      file,
-      parseWarnings: file.parseWarnings,
-      missing: false,
-    };
+    return { file, parseWarnings: file.parseWarnings, missing: false };
   }
 }
 

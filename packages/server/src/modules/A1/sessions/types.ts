@@ -83,7 +83,7 @@ export interface SubagentTranscript {
   readonly path: string;
   readonly id?: string;
   readonly header?: SessionHeader;
-  readonly entries: readonly unknown[];
+  readonly entryCount: number;
   readonly leafId: string | null;
   readonly aborted: boolean;
   /** How the worker ended, from its own records; see `finalStatusOf` in `subagents.ts`. */
@@ -116,10 +116,9 @@ export interface SessionFile {
   readonly liveness: SessionLiveness;
   /** A turn of this server's omp on the chat; absent when this server runs no omp for the chat. */
   readonly turn?: SessionTurn;
+  /** Nested transcripts are empty in readSession; use listSubagents to load them. */
   readonly subagents: readonly SubagentTranscript[];
   readonly parseWarnings: readonly ParseWarning[];
-  /** Full logical records are available to direct store callers. */
-  readonly entries: readonly unknown[];
 }
 
 /** Backwards-compatible local name for the listing object. */

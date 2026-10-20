@@ -32,6 +32,7 @@ const TestPort = definePort({
   methods: {
     crash: { args: z.object({}).strict(), result: z.null() },
     refuse: { args: z.object({}).strict(), result: z.null() },
+    slow: { args: z.object({}).strict(), result: z.null() },
   },
   events: {},
 });
@@ -72,6 +73,7 @@ async function callBoth(
         refuse: async () => {
           throw refuse;
         },
+        slow: async () => undefined,
       },
     },
   ]);
@@ -108,6 +110,55 @@ async function callBoth(
   await done;
   dispatcher.close(session);
   return { frames: socket.frames };
+}
+async function callSlow(dir: string): Promise<void> {
+  const logger = createLogger({ dir });
+  const registry = createPortRegistry([
+    {
+      port: TestPort,
+      handlers: {
+        crash: async () => null,
+        refuse: async () => null,
+        slow: async () => {
+          await Bun.sleep(300);
+          return null;
+        },
+      },
+    },
+  ]);
+  const dispatcher = new Dispatcher({
+    registry,
+    replay: new EventReplayHub(2),
+    welcome: WelcomeFrame.parse({
+      type: "welcome",
+      protocol: "omp-app/1",
+      instanceId: "instance-1",
+      serverVersion: "test",
+      omp: null,
+      capabilities: CapabilityMap.parse({}),
+    }),
+    logger,
+  });
+  const { socket, done } = socketAwaiting("abcdef12-3456-7890-abcd-ef1234567890", 1);
+  const session = dispatcher.open(socket);
+  session.receive(
+    serializeFrame({
+      type: "hello",
+      protocols: ["omp-app/1"],
+      client: { name: "test", version: "1" },
+    }),
+  );
+  session.receive(
+    JSON.stringify({
+      type: "call",
+      id: "call-slow",
+      port: "A0.dispatchertest",
+      method: "slow",
+      args: {},
+    }),
+  );
+  await done;
+  dispatcher.close(session);
 }
 
 describe("the dispatcher's fallback for an unexpected error", () => {
@@ -186,5 +237,15 @@ describe("the dispatcher's fallback for an unexpected error", () => {
     expect(text).toContain("cause=");
     expect(text).not.toContain("abcdefghijklmnop1234");
     expect(text).not.toContain("hunter2pass");
+  });
+  test("logs slow calls with method, duration, memory and loop lag without arguments", async () => {
+    const dir = await tempDir();
+    // This deliberately uses wall time: the slow-call threshold is an integration boundary around an awaited handler.
+    await callSlow(dir);
+    const text = readLogTail(dir, 20);
+    expect(text).toMatch(
+      /WARN {2}port\.slow call=A0\.dispatchertest\.slow ms=\d+ rss_before_mb=\d+ rss_after_mb=\d+ loop_lag_ms=\d+/,
+    );
+    expect(text).not.toContain("args");
   });
 });

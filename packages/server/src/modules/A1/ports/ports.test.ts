@@ -143,7 +143,6 @@ function internalSessionFile() {
     liveness: { lease: "free" as const, serverProcess: false },
     subagents: [],
     parseWarnings: [],
-    entries: [],
   };
 }
 

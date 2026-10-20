@@ -131,8 +131,8 @@ describe("streaming session summary", () => {
         continue;
       }
       expect(listed, `${name}: listed`).toBeDefined();
-      const { subagents: _s1, entries: _e1, ...expected } = whole.file;
-      const { subagents: _s2, entries: _e2, ...actual } = listed ?? whole.file;
+      const { subagents: _s1, ...expected } = whole.file;
+      const { subagents: _s2, ...actual } = listed ?? whole.file;
       expect(actual, name).toEqual(expected);
     }
   });

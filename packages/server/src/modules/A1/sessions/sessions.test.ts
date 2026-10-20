@@ -297,9 +297,7 @@ describe("SessionFileStore", () => {
         tempRoot: path.join(root, "tmp"),
       });
       const listing = await store.readSession(sessionFile);
-      expect(listing?.subagents.map((agent) => agent.key)).toEqual(["ToolAsk", "ToolAsk/Helper"]);
-      expect(listing?.subagents[0]?.aborted).toBe(true);
-      expect(listing?.subagents.some((agent) => agent.key.includes("advisor"))).toBe(false);
+      expect(listing?.subagents).toEqual([]);
       const subagents = await store.listSubagents(sessionFile);
       expect(subagents.sessionFile).toBe(path.resolve(sessionFile));
       expect(subagents.transcripts.map((agent) => agent.key)).toEqual([

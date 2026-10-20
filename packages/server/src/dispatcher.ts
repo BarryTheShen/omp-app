@@ -275,6 +275,13 @@ export class DispatcherSession {
     args: unknown,
     controller: AbortController,
   ): Promise<void> {
+    const startedAt = performance.now();
+    const rssBeforeMb = Math.round(process.memoryUsage().rss / 1_048_576);
+    const lagStartedAt = Date.now();
+    let loopLagMs = 0;
+    const lagTimer = setTimeout(() => {
+      loopLagMs = Math.max(0, Date.now() - lagStartedAt - 10);
+    }, 10);
     try {
       const result = await handler(args, {
         signal: controller.signal,
@@ -316,6 +323,18 @@ export class DispatcherSession {
         });
       }
       this.#sendError(id, appErrorFromUnknown(error));
+    } finally {
+      clearTimeout(lagTimer);
+      const ms = performance.now() - startedAt;
+      if (ms > 250) {
+        this.#logger?.warn("port.slow", {
+          call: label,
+          ms: Math.round(ms),
+          rss_before_mb: rssBeforeMb,
+          rss_after_mb: Math.round(process.memoryUsage().rss / 1_048_576),
+          loop_lag_ms: Math.round(loopLagMs),
+        });
+      }
     }
   }
 
