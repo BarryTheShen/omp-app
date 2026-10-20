@@ -123,6 +123,8 @@ export type ConfigSnapshot = {
   readonly folder: FolderPath | null;
   readonly revision: Revision;
   readonly entries: readonly ConfigEntry[];
+  /** Every key returned by omp's loaded registry; absent when defaults have not loaded yet. */
+  readonly availableKeys?: readonly string[];
 };
 
 export type StagedSettings = {
@@ -198,6 +200,13 @@ function withReadDeadline<T>(read: Promise<T>): Promise<T> {
   }, SETTINGS_READ_TIMEOUT_MS);
   return Promise.race([read, deadline.promise]).finally(() => clearTimeout(timer));
 }
+export type SettingAvailability = "available" | "unavailable" | "unknown";
+
+/** Whether omp's loaded registry says a descriptor key exists; missing registry data stays unknown. */
+export function settingAvailability(snapshot: ConfigSnapshot, key: string): SettingAvailability {
+  if (snapshot.availableKeys === undefined) return "unknown";
+  return snapshot.availableKeys.includes(key) ? "available" : "unavailable";
+}
 
 export async function readSection(
   client: ConfigStoreClient,
@@ -209,6 +218,9 @@ export async function readSection(
   return Object.freeze({
     folder,
     revision: result.revision,
+    ...(result.availableKeys === undefined
+      ? {}
+      : { availableKeys: Object.freeze(result.availableKeys) }),
     entries: Object.freeze(result.entries.filter((entry) => keys.has(entry.key))),
   });
 }
@@ -265,6 +277,16 @@ export function stage(
     return {
       ok: false,
       validation: { valid: false, code: "unknown-key", message: `Unknown setting ${key}` },
+    };
+  }
+  if (settingAvailability(state.snapshot, key) === "unavailable") {
+    return {
+      ok: false,
+      validation: {
+        valid: false,
+        code: "unavailable",
+        message: "This omp version does not have this setting.",
+      },
     };
   }
   if (control.readOnly) {
@@ -379,6 +401,16 @@ export async function commit(
     const value = state.edits[control.key];
     return value ? [{ control, value }] : [];
   });
+  const unavailable = writes.find(
+    ({ control }) => settingAvailability(state.snapshot, control.key) === "unavailable",
+  );
+  if (unavailable !== undefined) {
+    throw new AppFailure({
+      code: "unavailable",
+      message: "This omp version does not have this setting.",
+      retryable: false,
+    });
+  }
   for (const { control, value } of writes) {
     const validation = validate(control, value, state.snapshot, {
       phase: "commit",

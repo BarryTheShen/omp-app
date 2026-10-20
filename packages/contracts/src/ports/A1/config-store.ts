@@ -63,6 +63,8 @@ export type ConfigListArgs = z.infer<typeof ConfigListArgs>;
 export const ConfigListResult = z.strictObject({
   entries: z.array(ConfigEntry),
   revision: Revision,
+  /** Keys from omp's loaded registry; omitted when registered defaults are unavailable. */
+  availableKeys: z.array(ConfigKey).readonly().optional(),
 });
 export type ConfigListResult = z.infer<typeof ConfigListResult>;
 

@@ -117,7 +117,13 @@ describe("omp ConfigStore defaults", () => {
       value: "user-value",
       source: "global",
     });
+    // A setting without a default is in omp's registry, so it is available, and it still has no entry.
     await expectNotFound(store, "noDefault");
+    expect((await store.list({ folder: null })).availableKeys).toEqual([
+      "model",
+      "compaction.enabled",
+      "noDefault",
+    ]);
     expect(warnings).toEqual([]);
   });
 
@@ -314,6 +320,26 @@ describe("omp ConfigStore defaults: a slow first run", () => {
     expect(warnings).toEqual([expect.stringContaining("trying again in the background")]);
     expect(await fileLines(runs)).toHaveLength(2);
     expect(await leftoverDefaultsFolders(root)).toEqual([]);
+  });
+  test("an empty retry keeps the registry unavailable and is asked after the first timeout", async () => {
+    const root = await temporaryRoot();
+    const runs = join(root, "runs-empty");
+    const binary = await fakeOmp(
+      root,
+      [
+        LIST_GUARD,
+        `echo run >> "${runs}"`,
+        `if [ "$(wc -l < "${runs}")" -le 1 ]; then exec /bin/sleep 30; fi`,
+        `printf '%s\\n' '{}'`,
+      ].join("\n"),
+    );
+    const { store } = await serverStore(root, binary, 50, {
+      patientTimeoutMs: 5_000,
+      patientDeadlineMs: 20_000,
+    });
+    await untilOsEvent(async () => (await fileLines(runs)).length === 2);
+    expect((await store.list({ folder: null })).availableKeys).toBeUndefined();
+    await expectNotFound(store, "noDefault");
   });
 
   // The test waits for the give-up warning itself. The budget is a hang guard, not a wait: the retry runs on real timers,

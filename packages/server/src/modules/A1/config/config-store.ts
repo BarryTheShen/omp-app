@@ -89,6 +89,8 @@ export interface ConfigStoreOptions {
   readonly overlayValues?: Readonly<Record<string, unknown>>;
   /** Optional schema defaults; omp's full registry remains the source of truth. */
   readonly defaultValues?: Readonly<Record<string, unknown>>;
+  /** All keys from omp's registry, including settings whose default value is absent. */
+  readonly registryKeys?: readonly string[];
   /** Environment values declared as fallback settings, which rank below global/project. */
   readonly fallbackEnvironmentKeys?: readonly string[] | ReadonlySet<string>;
   /** Additional keys known to be marked `credential` or `ui.secret` by omp's schema. */
@@ -440,6 +442,8 @@ export class ConfigStoreService {
   private readonly runtimeValues: LayerValues;
   private readonly overlayValues: LayerValues;
   private defaultValues: LayerValues;
+  private registryKeys: readonly string[] | undefined;
+  private defaultsLoaded: boolean;
   private readonly fallbackEnvironmentKeys: ReadonlySet<string>;
   private readonly secretKeys: ReadonlySet<string>;
   private readonly subscriptions = new Map<number, Subscription>();
@@ -455,6 +459,8 @@ export class ConfigStoreService {
     this.runtimeValues = mapValues(options.runtimeValues);
     this.overlayValues = mapValues(options.overlayValues);
     this.defaultValues = mapValues(options.defaultValues);
+    this.registryKeys = options.registryKeys === undefined ? undefined : [...options.registryKeys];
+    this.defaultsLoaded = options.defaultValues !== undefined;
     this.fallbackEnvironmentKeys = new Set(options.fallbackEnvironmentKeys ?? []);
     this.secretKeys = new Set(options.secretKeys ?? []);
   }
@@ -469,7 +475,13 @@ export class ConfigStoreService {
     const folder = this.validateFolder(args.folder);
     const scope = await this.readScope(folder);
     const entries = this.entriesForScope(scope, args.prefix);
-    return { entries, revision: scope.revision };
+    return {
+      entries,
+      revision: scope.revision,
+      ...(this.defaultsLoaded
+        ? { availableKeys: this.registryKeys ?? [...this.defaultValues.keys()] }
+        : {}),
+    };
   }
 
   async write(args: ConfigWriteRequest): Promise<ConfigWriteResult> {
@@ -555,7 +567,12 @@ export class ConfigStoreService {
    * Each subscriber hears about every setting whose entry changed (its value, its source, or the defaults it overrides),
    * so an open settings panel shows the default.
    */
-  async setDefaults(defaults: Readonly<Record<string, unknown>>): Promise<void> {
+  async setDefaults(
+    defaults: Readonly<Record<string, unknown>>,
+    registryKeys?: readonly string[],
+  ): Promise<void> {
+    if (registryKeys !== undefined) this.registryKeys = [...registryKeys];
+    this.defaultsLoaded = true;
     const next = mapValues(defaults);
     const keys = mapKeys(this.defaultValues, next).filter(
       (key) => !valuesEqual(this.defaultValues.get(key), next.get(key)),

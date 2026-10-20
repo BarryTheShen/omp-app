@@ -46,7 +46,10 @@ export interface OmpDefaultsProbeOptions {
  * ran out of time, so asking again may get an answer.
  */
 type Loaded =
-  | { readonly defaults: Readonly<Record<string, unknown>> }
+  | {
+      readonly defaults: Readonly<Record<string, unknown>>;
+      readonly registryKeys: readonly string[];
+    }
   | { readonly cause: string; readonly timedOut?: boolean };
 
 interface LoadResult {
@@ -67,7 +70,9 @@ export async function createConfigStoreWithOmpDefaults(
   const first = await loadOmpDefaults(probe);
   const store = createConfigStore({
     ...options,
-    ...("defaults" in first.loaded ? { defaultValues: first.loaded.defaults } : {}),
+    ...("defaults" in first.loaded
+      ? { defaultValues: first.loaded.defaults, registryKeys: first.loaded.registryKeys }
+      : {}),
   });
   const leftover = first.leftover ? [LEFTOVER_FOLDER_WARNING] : [];
   if ("defaults" in first.loaded) {
@@ -106,7 +111,7 @@ async function retryPatiently(
     if (store.disposeSignal.aborted) return;
     if (attempt.leftover) reportWarnings(probe, [LEFTOVER_FOLDER_WARNING]);
     if ("defaults" in attempt.loaded) {
-      await store.setDefaults(attempt.loaded.defaults);
+      await store.setDefaults(attempt.loaded.defaults, attempt.loaded.registryKeys);
       return;
     }
     cause = attempt.loaded.cause;
@@ -239,15 +244,17 @@ function parseDefaults(output: string): Loaded {
   const parsed = ConfigListSchema.safeParse(input);
   if (!parsed.success) return { cause: "omp's output had an unexpected shape" };
 
+  const registryKeys = Object.keys(parsed.data);
+  if (registryKeys.length === 0) return { cause: "omp listed no settings" };
   const entries: [string, unknown][] = [];
   for (const [key, setting] of Object.entries(parsed.data)) {
     if (setting.value !== undefined) entries.push([key, setting.value]);
   }
-  return entries.length === 0
-    ? { cause: "omp listed no settings" }
-    : { defaults: Object.fromEntries(entries) };
+  return {
+    defaults: Object.fromEntries(entries),
+    registryKeys,
+  };
 }
-
 function normalizeTimeout(timeoutMs: number | undefined): number {
   if (timeoutMs === undefined || !Number.isFinite(timeoutMs)) return DEFAULTS_TIMEOUT_MS;
   return Math.max(1, Math.floor(timeoutMs));

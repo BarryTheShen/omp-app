@@ -30,6 +30,7 @@ import {
   effectiveEntry,
   provenanceLabel,
   secretSummary,
+  settingAvailability,
   settingSourceLabel,
   stage,
   validate,
@@ -142,7 +143,10 @@ export function SettingsSection({
     });
   };
   const shown = (key: string): ValidationResult | undefined => checks[key] ?? validation[key];
-  const hasError = descriptor.controls.some((control) => shown(control.key)?.valid === false);
+  const visibleControls = descriptor.controls.filter(
+    (control) => settingAvailability(snapshot, control.key) !== "unavailable",
+  );
+  const hasError = visibleControls.some((control) => shown(control.key)?.valid === false);
   return (
     <Section
       heading={descriptor.title}
@@ -157,7 +161,7 @@ export function SettingsSection({
     >
       {notice ? <p className="text-foreground mb-3 text-sm">{notice}</p> : null}
       <div className="divide-border/60 divide-y">
-        {descriptor.controls.map((control) => (
+        {visibleControls.map((control) => (
           <SettingControlRow
             key={control.key}
             control={control}

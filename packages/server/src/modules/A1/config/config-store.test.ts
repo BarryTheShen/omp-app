@@ -415,6 +415,22 @@ describe("credential names and value types", () => {
 });
 
 describe("ConfigStoreService defaults handed over after creation", () => {
+  test("omits registry keys until defaults load, including an empty loaded registry", async () => {
+    const root = await temporaryDirectory();
+    const store = new ConfigStoreService({
+      agentDir: join(root, "agent"),
+      appDataDir: join(root, "app"),
+    });
+    try {
+      expect((await store.list({ folder: null })).availableKeys).toBeUndefined();
+      await store.setDefaults({});
+      expect((await store.list({ folder: null })).availableKeys).toEqual([]);
+      await store.setDefaults({ model: "omp-default" });
+      expect((await store.list({ folder: null })).availableKeys).toEqual(["model"]);
+    } finally {
+      store.dispose();
+    }
+  });
   test("setDefaults publishes each setting whose entry changed; a user value still wins", async () => {
     const root = await temporaryDirectory();
     const agent = join(root, "agent");
