@@ -44,6 +44,7 @@ export interface SessionHistoryLoaderOptions {
   readonly readOutput?: SessionOutputReader;
   readonly threadId: ThreadId;
   readonly store: OmpRuntimeStore;
+  readonly onLeafSwap?: () => void;
   /** Called when an automatic (`watchNeedsRefetch`) refetch fails; cancellations are never reported. */
   readonly onRefetchError?: (error: AppFailure) => void;
 }
@@ -102,6 +103,7 @@ export class SessionHistoryLoader {
   private readonly outputs: SessionOutputReader | undefined;
   private readonly threadId: ThreadId;
   private readonly store: OmpRuntimeStore;
+  private readonly onLeafSwap: (() => void) | undefined;
   private readonly onRefetchError: ((error: AppFailure) => void) | undefined;
   private inFlight: InFlight | undefined;
   /** The open thread's session file, from `get_state`: where windows are read. */
@@ -115,6 +117,7 @@ export class SessionHistoryLoader {
     this.outputs = options.readOutput;
     this.threadId = options.threadId;
     this.store = options.store;
+    this.onLeafSwap = options.onLeafSwap;
     this.onRefetchError = options.onRefetchError;
   }
 
@@ -277,6 +280,7 @@ export class SessionHistoryLoader {
       this.store.setHasOlder(false);
       return;
     }
+    if (leafId !== newest.leafId) this.onLeafSwap?.();
     const window =
       leafId === newest.leafId ? newest : await this.windows({ sessionFile, leafId }, { signal });
     const entries = [...window.entries, ...live.entries];

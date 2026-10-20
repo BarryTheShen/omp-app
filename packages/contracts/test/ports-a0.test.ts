@@ -330,6 +330,20 @@ describe("AppPort", () => {
     ).toBe(false);
     expect(AppPort.methods.capabilities.result.safeParse({}).success).toBe(true);
     expect(AppPort.methods.health.result.safeParse({ status: "ok" }).success).toBe(true);
+    expect(
+      AppPort.methods.reportClientTrace.args.safeParse({
+        marks: { click: 12.5, composer_typable: 23 },
+        gaps: [54.2],
+        supported: ["layout-shift"],
+      }).success,
+    ).toBe(true);
+    expect(
+      AppPort.methods.reportClientTrace.args.safeParse({
+        marks: { "chat text": 12 },
+        gaps: [],
+        supported: [],
+      }).success,
+    ).toBe(false);
     expect(AppHealth.safeParse({ status: "broken" }).success).toBe(false);
     expect(AppPort.methods.health.args.safeParse({ unexpected: true }).success).toBe(false);
   });

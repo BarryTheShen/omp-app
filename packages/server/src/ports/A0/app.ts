@@ -5,6 +5,7 @@ import {
   AppServerInfo,
   CapabilityMap,
   type ClientErrorReport,
+  type ClientTraceReport,
   type DebugReport,
   UsableModels,
 } from "@omp-app/contracts";
@@ -65,6 +66,18 @@ export function createAppPortRegistration(context: A0PortContext): PortRegistrat
           stack: report.stack === undefined ? undefined : truncate(report.stack, 2_000),
           page: report.page,
         });
+        return null;
+      },
+      reportClientTrace: (args: unknown, _call: PortHandlerContext): null => {
+        const report = args as ClientTraceReport;
+        const fields: Record<string, string | number | readonly (string | number)[]> = {
+          gaps: report.gaps,
+          supported: report.supported,
+        };
+        for (const [name, value] of Object.entries(report.marks)) {
+          fields[`mark_${name}`] = value;
+        }
+        context.logger?.info("trace", fields);
         return null;
       },
       debugReport: async (_args: unknown, _call: PortHandlerContext): Promise<DebugReport> => {

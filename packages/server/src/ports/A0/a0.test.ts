@@ -2437,6 +2437,40 @@ describe("A0.7 AppPort handlers", () => {
     // 30 a minute at most (the first report counts): the rest are dropped.
     expect(events.filter((event) => event.event === "client.error")).toHaveLength(30);
   });
+  test("browser performance traces reach the log with names and numbers only", () => {
+    const events: Array<{ readonly event: string; readonly fields: Record<string, unknown> }> = [];
+    const logger: Logger = {
+      path: "/log/omp-app.log",
+      info: (event, fields) => events.push({ event, fields: { ...fields } }),
+      warn: () => undefined,
+      error: () => undefined,
+      addSecret: () => undefined,
+      tail: () => "",
+    };
+    const created: FakeProcess[] = [];
+    const app = handlersFor({ ...context(created), logger }, 1);
+    expect(
+      getHandler(app, "reportClientTrace")(
+        {
+          marks: { click: 1, newest_20_painted: 44 },
+          gaps: [52],
+          supported: ["layout-shift"],
+        },
+        call("app"),
+      ),
+    ).toBeNull();
+    expect(events).toEqual([
+      {
+        event: "trace",
+        fields: {
+          mark_click: 1,
+          mark_newest_20_painted: 44,
+          gaps: [52],
+          supported: ["layout-shift"],
+        },
+      },
+    ]);
+  });
 
   test("the debug report comes from the composition's seam, and is unavailable without one", async () => {
     const created: FakeProcess[] = [];

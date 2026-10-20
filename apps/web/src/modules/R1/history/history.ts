@@ -42,10 +42,19 @@ export interface SelectedThreadHistoryState {
   readonly openedNew: boolean;
 }
 
+export type HistoryPerfMark =
+  | "first_feedback"
+  | "window_applied"
+  | "newest_20_painted"
+  | "rpc_open_returned"
+  | "composer_typable"
+  | "leaf_swap";
+
 export interface SelectedThreadHistoryOptions {
   readonly client: AppClient;
   readonly folder: FolderPath;
   readonly onThreadIdChange?: (threadId: ThreadId | undefined) => void;
+  readonly onPerfMark?: (name: HistoryPerfMark) => void;
   readonly createStore?: (threadId: ThreadId, session: RpcSessionClient) => OmpRuntimeStore;
   readonly createLoader?: (
     threadId: ThreadId,
@@ -507,6 +516,7 @@ export class SelectedThreadHistoryController {
     try {
       const result = await this.rpc.open(args);
       openedCapabilities = result.capabilities;
+      this.options.onPerfMark?.("rpc_open_returned");
       openedId = result.threadId;
       if (keepShown) {
         await this.closeNow(true);
@@ -533,6 +543,13 @@ export class SelectedThreadHistoryController {
           openedNew,
         });
         shownStore = store;
+        this.options.onPerfMark?.("first_feedback");
+        requestAnimationFrame(() => {
+          if (
+            document.querySelector('textarea[aria-label="Message input"]:not([disabled])') !== null
+          )
+            this.options.onPerfMark?.("composer_typable");
+        });
         // The chat is on screen: a send that waited for it may go now, though its history still loads below.
         settle();
       }
@@ -545,6 +562,8 @@ export class SelectedThreadHistoryController {
       await this.recordStateFrames(threadId, store);
       await loader.loadInitial();
       this.historyRetryThread = undefined;
+      this.options.onPerfMark?.("window_applied");
+      requestAnimationFrame(() => this.options.onPerfMark?.("newest_20_painted"));
       this.stopRefetchWatch = loader.watchNeedsRefetch();
       this.commit({
         threadId,
@@ -643,6 +662,7 @@ export class SelectedThreadHistoryController {
       store,
       readWindow,
       readOutput,
+      onLeafSwap: () => this.options.onPerfMark?.("leaf_swap"),
     });
   }
 

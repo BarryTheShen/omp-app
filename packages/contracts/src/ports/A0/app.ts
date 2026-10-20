@@ -53,6 +53,16 @@ export const ClientErrorReport = z
   .strict();
 export type ClientErrorReport = z.infer<typeof ClientErrorReport>;
 
+/** An opt-in browser performance trace: names, durations and supported observer types only. */
+export const ClientTraceReport = z
+  .object({
+    marks: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), z.number().finite().nonnegative()),
+    gaps: z.array(z.number().finite().nonnegative()).max(200),
+    supported: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)).max(100),
+  })
+  .strict();
+export type ClientTraceReport = z.infer<typeof ClientTraceReport>;
+
 /** The debug log as one text file the browser can save and a person can attach to a bug report. */
 export const DebugReport = z.object({ fileName: z.string().min(1), text: z.string() }).strict();
 export type DebugReport = z.infer<typeof DebugReport>;
@@ -83,6 +93,10 @@ export const AppPort = definePort({
     },
     reportClientError: {
       args: ClientErrorReport,
+      result: z.null(),
+    },
+    reportClientTrace: {
+      args: ClientTraceReport,
       result: z.null(),
     },
     debugReport: {

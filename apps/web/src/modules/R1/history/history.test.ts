@@ -1,5 +1,6 @@
 import type { AppClient, AppClientSubscription, SubscribeOptions } from "@omp-app/client";
 import type {
+  CapabilityMap,
   FolderPath,
   OpenQuestionRecord,
   OpenThreadArgs,
@@ -11,6 +12,7 @@ import { AppFailure, SessionFileStore, ThreadId as ThreadIdSchema } from "@omp-a
 import { describe, expect, test, vi } from "vitest";
 import { SessionHistoryLoader } from "@/modules/R0/history/history";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
+import type { SelectedThreadHistoryController } from ".";
 import { createSelectedThreadHistoryController } from ".";
 import { pickedModelFor, rememberPickedModel } from "./picked-model";
 
@@ -1462,6 +1464,88 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
     });
     return { controller, subscriptions, saved, reads };
   }
+  test("keeps the opened chat's capabilities when its history fails after a kept switch", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    const previousCapabilities: CapabilityMap = {
+      "omp.protocol.v2": { state: "fallback", via: "client" },
+    };
+    const openedCapabilities: CapabilityMap = {
+      "omp.protocol.v2": { state: "available", via: "rpc" },
+    };
+    let historyReads = 0;
+    const rpc = createRpc(
+      (args) => ({
+        threadId: "threadId" in args ? args.threadId : threadOne,
+        sessionFile: null,
+        capabilities:
+          "threadId" in args && args.threadId === threadTwo
+            ? openedCapabilities
+            : previousCapabilities,
+      }),
+      [],
+      [],
+      undefined,
+      () => {
+        historyReads += 1;
+        return historyReads === 2
+          ? new AppFailure({
+              code: "omp_exited",
+              message: "omp exited (signal SIGKILL)",
+              retryable: true,
+            })
+          : undefined;
+      },
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    await controller.openExisting(threadTwo);
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadTwo,
+      capabilities: openedCapabilities,
+      error: { code: "omp_exited" },
+    });
+  });
+
+  test("a successful initial history load clears a pending restart retry", async () => {
+    const subscriptions: SubscriptionRecord[] = [];
+    let controller: SelectedThreadHistoryController;
+    let loads = 0;
+    const rpc = createRpc(() => ({ threadId: threadOne, sessionFile: null, capabilities: {} }));
+    controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+      createLoader: (threadId, session, store) => {
+        const loader = new SessionHistoryLoader({
+          send: session.send,
+          readWindow: async () => {
+            throw new Error("not used for an in-memory session");
+          },
+          threadId,
+          store,
+        });
+        const loadInitial = loader.loadInitial.bind(loader);
+        loader.loadInitial = async (options) => {
+          loads += 1;
+          await loadInitial(options);
+          // Simulate a restart failure racing with the successful initial history refresh.
+          const internals = controller as unknown as {
+            historyRetryThread: ThreadId | undefined;
+          };
+          internals.historyRetryThread = threadId;
+        };
+        return loader;
+      },
+    });
+    await controller.openExisting(threadOne);
+    const ready = subscriptions[0]?.listeners[0];
+    if (ready === undefined) throw new Error("history subscription did not attach");
+    ready({ kind: "process", status: "ready" } as RpcSessionEvent, 2);
+    expect(controller.getSnapshot().isLoading).toBe(false);
+    expect(loads).toBe(1);
+  });
   test("a switch whose new chat stops during its history load keeps that chat on screen with the error, and Try again reloads it", async () => {
     const { controller, subscriptions, saved, reads } = switchWhereTheNewChatStops();
     await controller.openExisting(threadOne);

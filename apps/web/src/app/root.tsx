@@ -233,6 +233,7 @@ import { type NewChatOutcome, type NewChatTicket, openNewChatTicket } from "./ne
 import { deliverWhenChatOpen } from "./open-chat-delivery";
 import { useChatSessionInfo, useChatTodoStore } from "./owned-stores";
 import { useRetryShortcut } from "./p3-retry-shortcut";
+import { installPerfTrace, perfMark, perfTraceEnabled, perfTraceStart } from "./perf-trace";
 import { openProviderSignIn, requireProviderLogin } from "./provider-login-section";
 import { useQueueDequeueShortcut } from "./queue-dequeue-shortcut";
 import {
@@ -1721,16 +1722,17 @@ function ActiveThreadReady({
           text: withPastedText(intent.text, attachments.complete),
           attachmentRefs: attachments.refs,
         });
-        return;
+      } else {
+        await runSlashRoute({
+          route,
+          intent,
+          provider: slashProvider,
+          showStatus: setCommandStatus,
+          showReport: showCommandOutput,
+          runMode: (request, options) => commandGateway.modeChange({ threadId, request }, options),
+        });
       }
-      await runSlashRoute({
-        route,
-        intent,
-        provider: slashProvider,
-        showStatus: setCommandStatus,
-        showReport: showCommandOutput,
-        runMode: (request, options) => commandGateway.modeChange({ threadId, request }, options),
-      });
+      perfMark("send_delivered");
     },
     [
       appSlashCommands,
@@ -1752,6 +1754,7 @@ function ActiveThreadReady({
   );
   const submit = async (intent: PromptIntent): Promise<void> => {
     onPromptSent();
+    perfMark("send_accepted");
     // Sending shows the newest message, wherever the reader had scrolled to; the transcript then
     // keeps following by itself because it is at the bottom.
     scrollController.jumpToLatest();
@@ -2232,6 +2235,7 @@ function ConnectedApp({
       folder,
       onThreadIdChange: (threadId) =>
         writeSessionValue(THREAD_KEY, threadId ? String(threadId) : null),
+      onPerfMark: perfMark,
       // A chat left while its turn runs: its file is written after the turn starts, so no change event announces the
       // turn. The list is read now, and the row shows the turn as running.
       onLeftRunning: readList,
@@ -2504,6 +2508,7 @@ function ConnectedApp({
   // screen), so that failure is not raised again here. Any other refusal, such as no folder being selected, still is.
   const openSidebarChat = useCallback(
     async (threadId: ThreadId): Promise<void> => {
+      perfTraceStart();
       setNewChatThreadId(null);
       try {
         await openThread(threadId);
@@ -2538,6 +2543,7 @@ function ConnectedApp({
     (status: NewChatStatus): void => {
       setNewChat(status);
       if (status.state === "opening") {
+        perfTraceStart();
         const shownThreadId = controller?.getSnapshot().threadId;
         if (shownThreadId !== undefined) setNewChatFrom(shownThreadId);
         for (const release of newChatHolds.current.splice(0)) release();
@@ -2650,6 +2656,7 @@ function ConnectedApp({
         retryable: false,
       });
     }
+    perfTraceStart();
     const initialized = await remote.initialize("new");
     const started = initialized.remoteId as ThreadId;
     setNewChatThreadId(started);
@@ -2931,6 +2938,13 @@ function ConnectedRoot() {
     // From here on, errors in the page land in the app's debug log next to the server's own lines.
     setClientErrorSink((report) => app.reportClientError(report));
     return () => setClientErrorSink(undefined);
+  }, [client]);
+  useEffect(() => {
+    if (!client || !perfTraceEnabled()) return;
+    const app = client.port(AppPort);
+    return installPerfTrace(true, (trace) => {
+      void app.reportClientTrace(trace);
+    });
   }, [client]);
   // The page reads the server's watches now and then, so the notice shows and clears while the app runs.
   const readHealth = useMemo(
