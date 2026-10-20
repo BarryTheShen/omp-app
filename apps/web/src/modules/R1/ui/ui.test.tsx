@@ -1866,6 +1866,29 @@ describe("SessionCatalogSidebar running chats", () => {
     expect(screen.queryByRole("menu", { name: "Actions for New chat" })).toBeNull();
     expect(document.activeElement).toBe(more);
   });
+  test("a running chat's menu ignores programmatic scroll and closes on person scrolling", async () => {
+    renderSidebar({
+      catalog: modelWithRunning(["first-reply"]),
+      currentThreadId: ThreadIdSchema.parse("first-reply"),
+      confirmDeleteRunning: () => true,
+      stopRunning: async () => undefined,
+      deleteAvailable: true,
+    });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    const menuName = "Actions for New chat";
+    const more = screen.getByRole("button", { name: "More actions for New chat" });
+    fireEvent.click(more);
+    expect(screen.getByRole("menu", { name: menuName })).toBeTruthy();
+    const list = screen.getByRole("listbox", { name: "Session list" });
+    fireEvent.scroll(window);
+    fireEvent.scroll(list);
+    expect(screen.getByRole("menu", { name: menuName })).toBeTruthy();
+    fireEvent.wheel(list);
+    expect(screen.queryByRole("menu", { name: menuName })).toBeNull();
+    fireEvent.click(more);
+    fireEvent.keyDown(list, { key: "PageDown" });
+    expect(screen.queryByRole("menu", { name: menuName })).toBeNull();
+  });
 
   test("a running chat that the list holds shows once, as its listed row", async () => {
     renderSidebar({

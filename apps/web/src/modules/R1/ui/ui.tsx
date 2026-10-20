@@ -1,7 +1,7 @@
 import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import { type AppError, AppFailure, type RunningSession, type ThreadId } from "@omp-app/contracts";
 import { Loader2Icon, PinIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -211,6 +211,39 @@ export function SessionCatalogSidebar({
   const rowElements = useRef(new Map<ThreadId, HTMLDivElement>());
   const moreButtons = useRef(new Map<ThreadId, HTMLButtonElement>());
   const [menuSessionId, setMenuSessionId] = useState<ThreadId | undefined>();
+  const [menuPosition, setMenuPosition] = useState<{
+    readonly left: number;
+    readonly top: number;
+  } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const openMenu = useCallback((id: ThreadId, button: HTMLButtonElement): void => {
+    const rect = button.getBoundingClientRect();
+    setMenuSessionId(id);
+    setMenuPosition({ left: Math.max(4, rect.right - 112), top: rect.bottom + 4 });
+  }, []);
+  useLayoutEffect(() => {
+    if (menuSessionId === undefined || menuPosition === null || menuRef.current === null) return;
+    const button = moreButtons.current.get(menuSessionId);
+    if (button === undefined) return;
+    const buttonRect = button.getBoundingClientRect();
+    const menuRect = menuRef.current.getBoundingClientRect();
+    const top =
+      window.innerHeight - buttonRect.bottom >= menuRect.height + 4 ||
+      buttonRect.top < menuRect.height + 4
+        ? buttonRect.bottom + 4
+        : buttonRect.top - menuRect.height - 4;
+    const left = Math.min(
+      Math.max(4, buttonRect.right - menuRect.width),
+      Math.max(4, window.innerWidth - menuRect.width - 4),
+    );
+    if (top !== menuPosition.top || left !== menuPosition.left) setMenuPosition({ left, top });
+  }, [menuPosition, menuSessionId]);
+  useEffect(() => {
+    if (menuSessionId === undefined) return;
+    const close = (): void => setMenuSessionId(undefined);
+    window.addEventListener("resize", close);
+    return () => window.removeEventListener("resize", close);
+  }, [menuSessionId]);
   const previousCatalog = useRef(catalog);
   const refreshedMissingThread = useRef<{
     readonly catalog: SessionCatalogModel;
@@ -709,7 +742,24 @@ export function SessionCatalogSidebar({
           className="-mx-3 min-h-0 flex-1 overflow-y-auto px-3"
           data-focus-scope={R1_SESSION_LIST_SCOPE}
           role="listbox"
-          onKeyDown={onListKeyDown}
+          onKeyDown={(event) => {
+            if (
+              menuSessionId !== undefined &&
+              (event.key === "PageUp" ||
+                event.key === "PageDown" ||
+                event.key === "Home" ||
+                event.key === "End")
+            ) {
+              setMenuSessionId(undefined);
+            }
+            onListKeyDown(event);
+          }}
+          onWheel={() => {
+            if (menuSessionId !== undefined) setMenuSessionId(undefined);
+          }}
+          onTouchMove={() => {
+            if (menuSessionId !== undefined) setMenuSessionId(undefined);
+          }}
           onScroll={(event) => scrollPositions.set(catalog, event.currentTarget.scrollTop)}
         >
           {grouped.map(([cwd, group]) => (
@@ -771,7 +821,8 @@ export function SessionCatalogSidebar({
                               onMouseDown={(event) => event.stopPropagation()}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                setMenuSessionId(menuOpen ? undefined : chat.id);
+                                if (menuOpen) setMenuSessionId(undefined);
+                                else openMenu(chat.id, event.currentTarget);
                               }}
                               onKeyDown={(event) => {
                                 // Escape closes the menu this button opened; the focus stays on the button (issue 973).
@@ -792,8 +843,14 @@ export function SessionCatalogSidebar({
                       {menuOpen && (
                         <div
                           aria-label={`Actions for ${title}`}
-                          className="bg-popover text-popover-foreground rounded-surface z-50 min-w-28 overflow-hidden border p-1 absolute end-1 top-8 flex flex-col gap-0.5"
+                          className="bg-popover text-popover-foreground rounded-surface z-50 min-w-28 overflow-hidden border p-1 fixed flex flex-col gap-0.5"
+                          ref={menuRef}
                           role="menu"
+                          style={
+                            menuPosition === null
+                              ? undefined
+                              : { left: menuPosition.left, top: menuPosition.top }
+                          }
                           onKeyDown={(event) => {
                             if (event.key === "Escape") {
                               event.preventDefault();
@@ -969,7 +1026,8 @@ export function SessionCatalogSidebar({
                               onClick={(event) => {
                                 event.stopPropagation();
                                 catalog.setActionError(undefined);
-                                setMenuSessionId(menuOpen ? undefined : session.id);
+                                if (menuOpen) setMenuSessionId(undefined);
+                                else openMenu(session.id, event.currentTarget);
                               }}
                               onKeyDown={(event) => {
                                 // Escape closes the menu this button opened; the focus stays on the button (issue 973).
@@ -988,8 +1046,14 @@ export function SessionCatalogSidebar({
                       {menuOpen && (
                         <div
                           aria-label={`Actions for ${title}`}
-                          className="bg-popover text-popover-foreground border-foreground/10 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out rounded-surface z-50 min-w-28 overflow-hidden border p-1 absolute end-1 top-8 flex flex-col gap-0.5"
+                          className="bg-popover text-popover-foreground border-foreground/10 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out rounded-surface z-50 min-w-28 overflow-hidden border p-1 fixed flex flex-col gap-0.5"
+                          ref={menuRef}
                           role="menu"
+                          style={
+                            menuPosition === null
+                              ? undefined
+                              : { left: menuPosition.left, top: menuPosition.top }
+                          }
                           onKeyDown={(event) => {
                             if (event.key === "Escape") {
                               event.preventDefault();
