@@ -244,6 +244,48 @@ interface NotificationSubscription {
   readonly listener: RuntimeNotificationListener;
 }
 
+/** A presentation frame (see `isPresentationFrame`) that no listener was attached for when it arrived. */
+interface UndeliveredFrame {
+  readonly type: string;
+  readonly frame: RuntimeNotificationFrame;
+  readonly seq: number;
+  readonly replayed: boolean;
+}
+
+/** An omp event that no listener was attached for when it arrived. */
+interface UndeliveredEvent {
+  readonly event: OmpEvent;
+  readonly seq: number;
+  readonly replayed: boolean;
+}
+
+/** The most undelivered items kept per store: the oldest go first. */
+const MAX_UNDELIVERED = 200;
+
+/**
+ * Extension UI methods that only present state (a notice, a status, a widget or a title). Applying one again is harmless
+ * and no answer is owed, so a listener attached later may be given the ones that arrived before it.
+ */
+const PRESENTATION_METHODS: Readonly<Record<string, true>> = {
+  notify: true,
+  setStatus: true,
+  setTitle: true,
+  setWidget: true,
+};
+
+function isPresentationFrame(frame: Record<string, unknown>): boolean {
+  return (
+    frame.type === "extension_ui_request" &&
+    typeof frame.method === "string" &&
+    PRESENTATION_METHODS[frame.method] === true
+  );
+}
+
+function keepUndelivered<T>(queue: T[], item: T): void {
+  queue.push(item);
+  if (queue.length > MAX_UNDELIVERED) queue.splice(0, queue.length - MAX_UNDELIVERED);
+}
+
 /** The A0 methods needed by this store; all other runtime actions belong to later R0 parts. */
 export interface OmpRuntimeTransport {
   readonly send?: RpcSessionSend;
@@ -1030,6 +1072,10 @@ export class OmpRuntimeStore {
   private promptEventSeq = 0;
   /** Sequences the passthrough delivered across a gap, so a replay of one is not delivered again. */
   private readonly forwardedAcrossGap = new Set<number>();
+  /** Presentation frames no listener was attached for when they arrived: kept for the first listener (`subscribeNotifications`). */
+  private undeliveredFrames: UndeliveredFrame[] = [];
+  /** Omp events no listener was attached for when they arrived: kept for the first listener (`subscribeOmpEvents`). */
+  private undeliveredEvents: UndeliveredEvent[] = [];
 
   public constructor(options: OmpRuntimeStoreOptions);
   public constructor(threadId: ThreadId, options?: Omit<OmpRuntimeStoreOptions, "threadId">);
@@ -1068,6 +1114,16 @@ export class OmpRuntimeStore {
       listener,
     };
     this.notificationSubscriptions.add(subscription);
+    // A presentation frame that arrived before a listener of its type was attached is given to this one, once, in order.
+    // A chat's start-up frames are applied as its stream opens, which can be before its page subscribes (issue 2181).
+    const waiting: UndeliveredFrame[] = [];
+    const kept: UndeliveredFrame[] = [];
+    for (const item of this.undeliveredFrames) {
+      if (subscription.types.has(item.type)) waiting.push(item);
+      else kept.push(item);
+    }
+    this.undeliveredFrames = kept;
+    for (const item of waiting) listener(item.frame, item.seq, item.replayed);
     return () => this.notificationSubscriptions.delete(subscription);
   }
 
@@ -1084,6 +1140,16 @@ export class OmpRuntimeStore {
       listener,
     };
     this.ompEventSubscriptions.add(subscription);
+    // Events that arrived before any listener was attached are given to this one, once, in order (see `forwardOmpEvent`).
+    const waiting: UndeliveredEvent[] = [];
+    const kept: UndeliveredEvent[] = [];
+    for (const item of this.undeliveredEvents) {
+      if (subscription.types === undefined || subscription.types.has(item.event.type))
+        waiting.push(item);
+      else kept.push(item);
+    }
+    this.undeliveredEvents = kept;
+    for (const item of waiting) listener(item.event, item.seq, item.replayed);
     return () => this.ompEventSubscriptions.delete(subscription);
   }
 
@@ -1543,19 +1609,28 @@ export class OmpRuntimeStore {
 
   private forwardNotification(rawFrame: unknown, seq: number, replayed: boolean): void {
     if (!isRecord(rawFrame) || typeof rawFrame.type !== "string") return;
+    const frame = rawFrame as unknown as RuntimeNotificationFrame;
+    let heard = false;
     for (const subscription of this.notificationSubscriptions) {
       if (subscription.types.has(rawFrame.type)) {
-        subscription.listener(rawFrame as unknown as RuntimeNotificationFrame, seq, replayed);
+        heard = true;
+        subscription.listener(frame, seq, replayed);
       }
+    }
+    if (!heard && isPresentationFrame(rawFrame)) {
+      keepUndelivered(this.undeliveredFrames, { type: rawFrame.type, frame, seq, replayed });
     }
   }
 
   private forwardOmpEvent(event: OmpEvent, seq: number, replayed: boolean): void {
+    let heard = false;
     for (const subscription of this.ompEventSubscriptions) {
       if (subscription.types === undefined || subscription.types.has(event.type)) {
+        heard = true;
         subscription.listener(event, seq, replayed);
       }
     }
+    if (!heard) keepUndelivered(this.undeliveredEvents, { event, seq, replayed });
   }
 
   private reducePromptResult(next: MutableSnapshot, rawEvent: unknown): void {

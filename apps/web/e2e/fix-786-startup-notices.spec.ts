@@ -77,9 +77,10 @@ realTest(
     await expect(page.getByText("pong", { exact: true })).toHaveCount(1, { timeout: 60_000 });
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toHaveCount(2, { timeout: 60_000 });
-    await expect(page.getByTestId("n1-notices").getByText(TURN_NOTICE)).toHaveCount(2, {
-      timeout: 60_000,
-    });
+    // Both turns send the same notice, so it is one entry that counts both (issue 2181: a repeat joins its entry).
+    const notices = page.getByTestId("n1-notices");
+    await expect(notices.getByText(TURN_NOTICE)).toHaveCount(1, { timeout: 60_000 });
+    await expect(notices.getByText("×2", { exact: true })).toBeVisible();
     expect(realApp.problems).toEqual([]);
   },
 );

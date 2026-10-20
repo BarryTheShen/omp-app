@@ -36,6 +36,8 @@ export interface AppShellProps {
   readonly composer?: ReactNode;
   readonly rightSidebar?: ReactNode;
   readonly statusBar?: ReactNode;
+  /** The notices row, between the transcript and the composer: a chat with messages draws its notices here. */
+  readonly notices?: ReactNode;
   /** The selected chat was opened as a brand-new session, before any saved history exists. */
   readonly newChat?: boolean;
 }
@@ -210,6 +212,7 @@ export function AppShell({
   composer = <DefaultComposer />,
   rightSidebar = <DefaultRightSidebar />,
   statusBar,
+  notices,
   newChat = false,
 }: AppShellProps) {
   const isNarrow = useMediaQuery(NARROW_QUERY);
@@ -461,7 +464,7 @@ export function AppShell({
 
       <main
         aria-label="Conversation"
-        className="group/main relative col-start-1 row-start-1 grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden has-[[data-empty-chat='true']]:grid-rows-[auto_minmax(0,1fr)_auto_auto_minmax(0,1fr)] has-[[data-empty-chat='true']]:[&_[data-slot=p3-previous-message-selector]]:hidden has-[[data-empty-chat='true']]:[&_[data-slot=u1-thread-viewport]]:static has-[[data-empty-chat='true']]:[&_[data-slot=u1-thread-footer]>div:last-child]:py-0 has-[[data-empty-chat='true']]:[&_[data-slot=u1-thread-footer]]:static has-[[data-empty-chat='true']]:[&_[data-layout-area]]:bottom-auto has-[[data-empty-chat='true']]:[&_[data-layout-area]]:top-12"
+        className="group/main relative col-start-1 row-start-1 grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden has-[[data-empty-chat='true']]:grid-rows-[auto_minmax(0,1fr)_auto_auto_minmax(0,1fr)] has-[[data-empty-chat='true']]:[&_[data-slot=p3-previous-message-selector]]:hidden has-[[data-empty-chat='true']]:[&_[data-slot=u1-thread-viewport]]:static has-[[data-empty-chat='true']]:[&_[data-slot=u1-thread-footer]>div:last-child]:py-0 has-[[data-empty-chat='true']]:[&_[data-slot=u1-thread-footer]]:static has-[[data-empty-chat='true']]:[&_[data-layout-area]]:bottom-auto has-[[data-empty-chat='true']]:[&_[data-layout-area]]:top-12"
         data-new-chat={newChat || undefined}
         data-shell-main="true"
         id="main-content"
@@ -488,6 +491,14 @@ export function AppShell({
         >
           {transcript}
         </section>
+        {notices === undefined ? null : (
+          <div
+            className="mx-auto flex w-full min-w-0 max-w-(--layout-thread-width) shrink-0 flex-col px-6"
+            data-shell-region="notices"
+          >
+            {notices}
+          </div>
+        )}
         <section
           aria-label="Composer"
           className="shrink-0 bg-background"

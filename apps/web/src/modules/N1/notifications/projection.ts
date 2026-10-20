@@ -471,15 +471,15 @@ function freezeProjectionError(error: AppFailure): AppError {
  * keeps only browser presentation state; transcript, todo, and session truth remain owned by R0/U1/U5.
  */
 export class NotificationProjector {
-  private readonly source: RuntimeSnapshotSource;
+  private source: RuntimeSnapshotSource;
   private readonly bus: NotificationBus;
   private readonly transcript = new TranscriptNotices();
   private readonly onEditorText: NotificationProjectorOptions["onEditorText"];
   private readonly now: () => number;
   private readonly listeners = new Set<(snapshot: NotificationProjectionSnapshot) => void>();
   private readonly seenReminders = new Set<string>();
-  private readonly stopSource: () => void;
-  private readonly stopEvents: (() => void) | undefined;
+  private stopSource: () => void;
+  private stopEvents: (() => void) | undefined;
   private runtimeSnapshot: RuntimeSnapshot;
   private snapshot: NotificationProjectionSnapshot;
   private lastEventSequence = 0;
@@ -533,6 +533,43 @@ export class NotificationProjector {
     this.stopEvents?.();
     this.bus.clearForThread(this.snapshot.threadId);
     this.listeners.clear();
+  }
+
+  /**
+   * Follows the store of the chat on screen. A page opens each chat on its own store, so the projector that the page keeps
+   * must read the store it is shown with: its events and state are the ones projected from then on. The bus is shared, so
+   * the notices of other chats stay where they are; the feedback shows only the chat on screen. What belongs to one chat's
+   * stream starts again here: its statuses, widgets, title, error and todo reminders, and the sequence gate, because a new
+   * stream numbers its events from the start (`ingest`).
+   */
+  public follow(source: RuntimeSnapshotSource & NormalizedRuntimeEventSource): void {
+    if (source === this.source) return;
+    this.stopSource();
+    this.stopEvents?.();
+    this.source = source;
+    this.runtimeSnapshot = source.getSnapshot();
+    this.seenReminders.clear();
+    for (const reminder of this.runtimeSnapshot.todoReminders) {
+      this.seenReminders.add(identityForReminder(reminder));
+    }
+    this.lastEventSequence = 0;
+    this.ttsrRules = [];
+    this.statuses = new Map();
+    this.widgets = new Map();
+    this.title = null;
+    this.snapshot = projectionSnapshot(undefined, {
+      threadId: this.runtimeSnapshot.threadId,
+      session: this.runtimeSnapshot.session,
+      statuses: EMPTY_PROJECTION_STATUSES,
+      widgets: EMPTY_PROJECTION_WIDGETS,
+      title: null,
+      error: null,
+    });
+    this.stopSource = source.subscribe(this.onRuntimeSnapshot);
+    this.stopEvents = source.subscribeOmpEvents(undefined, (event, seq, replayed) => {
+      this.ingest(event, { threadId: this.runtimeSnapshot.threadId, sequence: seq, replayed });
+    });
+    for (const listener of this.listeners) listener(this.snapshot);
   }
 
   /** Apply one raw Omp event; unrelated Omp event kinds are silently ignored. */
@@ -627,9 +664,8 @@ export class NotificationProjector {
   /** Implements U4's non-modal presentation sink without answering or correlating requests. */
   public present(
     handoff: Exclude<PresentationHandoff, { readonly kind: "open_url" }>,
-    context: PresentationContext,
+    projectionContext: PresentationContext,
   ): void {
-    const projectionContext = { ...context, threadId: this.snapshot.threadId };
     try {
       switch (handoff.kind) {
         case "setStatus": {

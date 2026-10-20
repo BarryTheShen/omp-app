@@ -15,6 +15,7 @@ export type LayoutAreaName =
   | "composerFooter"
   | "threadFooter"
   | "threadOverlay"
+  | "threadNotices"
   | "statusBar";
 
 /** Every placeable piece of UI, by a short stable id. */
@@ -71,9 +72,16 @@ export const LAYOUT: AppLayout = {
   threadFooter: ["toolsHidden", "connection", "watchNotice", "editRun", "scrollFollow"],
   /**
    * Over the end of the transcript, just above its footer: the notices float here and never cover the
-   * footer's controls (Jump to latest), and the composer and the status bar do not move for them.
+   * footer's controls (Jump to latest), and the composer and the status bar do not move for them. Used by an empty
+   * chat only; a chat with messages draws its notices in `threadNotices`.
    */
   threadOverlay: ["notices"],
+  /**
+   * Between the transcript and the composer, in a row of its own outside the transcript's scroll: the notices take their
+   * own space, so nothing is drawn over a message and the composer does not move. A chat with messages draws them here;
+   * an empty chat draws them in `threadOverlay`.
+   */
+  threadNotices: ["notices"],
   /** The bottom bar, left to right. */
   statusBar: ["notifications", "statusSegments", "context"],
 };

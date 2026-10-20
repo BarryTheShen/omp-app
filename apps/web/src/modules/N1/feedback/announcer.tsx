@@ -1,3 +1,4 @@
+import type { ThreadId } from "@omp-app/contracts";
 import { useEffect, useRef, useState } from "react";
 import type { Notification } from "../contract";
 import { type NotificationProjector, PROJECTION_ERROR_KEY } from "../notifications";
@@ -44,6 +45,7 @@ function announcementKey(notification: Notification): string {
 export function announcementsPass(
   previous: ReadonlySet<string>,
   notifications: readonly Notification[],
+  chat?: ThreadId,
 ): AnnouncementPass {
   const present = new Set<string>();
   const polite: string[] = [];
@@ -53,7 +55,7 @@ export function announcementsPass(
     if (notification.dedupeKey === PROJECTION_ERROR_KEY) continue;
     const key = announcementKey(notification);
     present.add(key);
-    if (previous.has(key)) continue;
+    if (previous.has(key) || (chat !== undefined && notification.threadId !== chat)) continue;
     if (notification.live === "assertive") assertive.push(notification.message);
     else polite.push(notification.message);
   }
@@ -85,7 +87,11 @@ export function LiveAnnouncer({ projector }: { readonly projector: NotificationP
         return { id: nextId.current, text };
       });
     return bus.subscribe((snapshot) => {
-      const pass = announcementsPass(present, snapshot.notifications);
+      const pass = announcementsPass(
+        present,
+        snapshot.notifications,
+        projector.getSnapshot().threadId,
+      );
       present = pass.present;
       if (pass.polite.length > 0) {
         const added = numbered(pass.polite);

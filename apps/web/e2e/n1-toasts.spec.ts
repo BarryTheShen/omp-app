@@ -120,7 +120,7 @@ realTest.describe("notices over a real transcript", () => {
   realTest.use({ seedLongTurn: 60 });
 
   realTest(
-    "notices float over the transcript: the composer and the context bar keep their place",
+    "notices draw in their own row: the composer and the context bar keep their place",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(240_000);
       const chat = new ChatStream();
@@ -160,7 +160,7 @@ realTest.describe("notices over a real transcript", () => {
   );
 
   realTest(
-    "in the dark theme the notices float and the composer does not move",
+    "in the dark theme the notices show and the composer does not move",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(240_000);
       const chat = new ChatStream();
@@ -182,7 +182,7 @@ realTest.describe("notices over a real transcript", () => {
   );
 
   realTest(
-    "Jump to latest is the hit target while three notices show, and the wheel over them scrolls the transcript",
+    "Jump to latest is the hit target while three notices show, and the wheel over them does not scroll the transcript",
     async ({ realApp }, testInfo) => {
       testInfo.setTimeout(240_000);
       const chat = new ChatStream();
@@ -208,9 +208,10 @@ realTest.describe("notices over a real transcript", () => {
       const transcript = page.getByRole("region", { name: "Messages" });
       const scrollTop = () => transcript.evaluate((element) => element.scrollTop);
       const before = await scrollTop();
+      // The notices are a row under the transcript, not over it: a wheel over them scrolls nothing.
       await feedback.hover();
       await page.mouse.wheel(0, -300);
-      await expect.poll(scrollTop).toBeLessThan(before);
+      await expect.poll(scrollTop).toBe(before);
 
       await jump.click();
       await expect

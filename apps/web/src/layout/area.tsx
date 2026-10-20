@@ -46,6 +46,9 @@ const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   // Above the transcript's sticky footer, so it follows that footer. It takes no pointer events itself:
   // only what is drawn in it (the notices) catches them, so the footer and the transcript stay usable.
   threadOverlay: "pointer-events-none absolute inset-x-0 bottom-full flex min-w-0 flex-col px-6",
+  // The notices row: in flow between the transcript and the composer, so it takes its own space. The shell (`AppShell`)
+  // gives it its width and draws it only in a chat with messages.
+  threadNotices: "flex min-w-0 flex-col",
   // A size container: the context meter asks how wide the status bar is (a container query), not the viewport (issue 1607).
   statusBar: "@container flex min-w-0 flex-1 flex-nowrap items-center gap-3",
 };

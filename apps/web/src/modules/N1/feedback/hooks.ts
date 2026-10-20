@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import type { Notification } from "../contract";
 import type {
   NotificationBusSnapshot,
   NotificationProjectionSnapshot,
@@ -35,4 +36,17 @@ export function useExpiry(projector: NotificationProjector): void {
     const timer = window.setInterval(() => projector.getBus().expire(), EXPIRY_CHECK_MS);
     return () => window.clearInterval(timer);
   }, [projector]);
+}
+
+/**
+ * The notices of the chat on screen. The bus keeps every chat's notices, so a page that has been in several chats holds
+ * them all; each chat's notices are shown only while that chat is open (issue 2181).
+ */
+export function useChatNotifications(projector: NotificationProjector): readonly Notification[] {
+  const snapshot = useNotificationSnapshot(projector);
+  const chat = useProjectionSnapshot(projector).threadId;
+  return useMemo(
+    () => snapshot.notifications.filter((notification) => notification.threadId === chat),
+    [snapshot, chat],
+  );
 }

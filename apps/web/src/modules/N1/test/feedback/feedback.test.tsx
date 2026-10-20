@@ -448,7 +448,7 @@ describe("notice stacks keep focus and pause on their own terms", () => {
   });
 });
 
-describe("the notices stack over the transcript", () => {
+describe("the notices stack", () => {
   test("draws the newest three notices and counts the rest", () => {
     const projector = makeProjector();
     render(<NotificationNotices projector={projector} />);
@@ -508,6 +508,51 @@ describe("the notices stack over the transcript", () => {
       projector.present({ kind: "setTitle", title: "   " }, { threadId });
     });
     expect(screen.getByTestId("n1-notices").hidden).toBe(true);
+    projector.dispose();
+  });
+});
+
+describe("a repeated notice and another chat's notices (issue 2181)", () => {
+  test("a repeated notice is one entry with its count, and dismissing it removes every copy", async () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback projector={projector} />);
+    // Each repeat arrives with its own sequence, as omp's stream sends it, so it is a second notice of the same text.
+    for (const sequence of [1, 2]) {
+      act(() => {
+        projector.present(
+          { kind: "notify", message: "Disk is almost full", notifyType: "warning" },
+          { threadId, sequence },
+        );
+      });
+    }
+    expect(strip().getAllByText(/^Disk is almost full/)).toHaveLength(1);
+    expect(strip().getByText("×2")).toBeTruthy();
+    expect(dismissButtons()).toHaveLength(1);
+    fireEvent.click(dismissButtons()[0] as HTMLElement);
+    // The entry fades out first; then every copy is gone from the bus.
+    await waitFor(() => expect(projector.getBus().getSnapshot().notifications).toHaveLength(0));
+    projector.dispose();
+  });
+
+  test("a chat shows only its own notices, and the others stay in the bus", () => {
+    const projector = makeProjector();
+    render(<NotificationFeedback projector={projector} />);
+    notify(projector, "Here");
+    const elsewhere = ThreadIdSchema.parse("thread-n1-elsewhere");
+    act(() => {
+      projector.getBus().publish({
+        threadId: elsewhere,
+        dedupeKey: "elsewhere",
+        severity: "warning",
+        placement: "toast",
+        message: "Elsewhere",
+        live: "polite",
+        focus: "preserve",
+      });
+    });
+    expect(strip().getByText(/^Here/)).toBeTruthy();
+    expect(strip().queryByText("Elsewhere")).toBeNull();
+    expect(projector.getBus().getSnapshot().notifications).toHaveLength(2);
     projector.dispose();
   });
 });

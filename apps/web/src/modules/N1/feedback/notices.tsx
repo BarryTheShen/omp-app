@@ -18,7 +18,8 @@ import {
   PROJECTION_ERROR_KEY,
 } from "../notifications";
 import { sessionDrawnNotices } from "./drawn-notices";
-import { useExpiry, useNotificationSnapshot } from "./hooks";
+import { useChatNotifications, useExpiry } from "./hooks";
+import { type NoticeEntry, noticeEntries } from "./repeats";
 
 /** The newest toasts shown at once; the rest are counted and can be opened. */
 export const MAX_VISIBLE_TOASTS = 3;
@@ -42,6 +43,9 @@ const FOCUSABLE =
 
 /** The composer's message input, under the name every person hears for it. */
 const COMPOSER_INPUT = '[aria-label="Message input"]';
+
+/** The entry's key, as the presence list reads it: a stable callback, so the list keeps its identity. */
+const entryKey = (entry: NoticeEntry): string => entry.key;
 
 /** True when the element and each of its ancestors is drawn: none is `hidden` or `display: none`. */
 function isShown(element: HTMLElement): boolean {
@@ -79,29 +83,25 @@ function shownFocusableBefore(element: HTMLElement): HTMLElement | null {
   return previous;
 }
 
-function keyOf(notification: Notification): string {
-  return notificationKey(notification.threadId, notification.dedupeKey);
-}
-
-function noticeElement(root: HTMLElement, key: string): HTMLElement | null {
+function entryElement(root: HTMLElement, key: string): HTMLElement | null {
   for (const item of Array.from(root.querySelectorAll<HTMLElement>("[data-notice-key]"))) {
     if (item.dataset.noticeKey === key) return item;
   }
   return null;
 }
 
-/** The notice after `key` in `shown`, or the one before it when `key` is the last. */
-function neighbourKey(shown: readonly Notification[], key: string): string | undefined {
-  const keys = shown.map(keyOf);
+/** The entry after `key` in `shown`, or the one before it when `key` is the last. */
+function neighbourKey(shown: readonly NoticeEntry[], key: string): string | undefined {
+  const keys = shown.map((entry) => entry.key);
   const index = keys.indexOf(key);
   if (index < 0) return undefined;
   return keys[index + 1] ?? keys[index - 1];
 }
 
 interface FocusHandoff {
-  /** The notice to focus next, when one remains in the same stack. */
+  /** The entry to focus next, when one remains in the same stack. */
   readonly nextKey: string | undefined;
-  /** Where focus goes when no notice in the stack remains. */
+  /** Where focus goes when no entry in the stack remains. */
   readonly fallback: HTMLElement | null;
 }
 
@@ -128,8 +128,45 @@ function NoticeText({ text }: { readonly text: string }) {
   );
 }
 
+/** How many notices an entry holds, when the text came more than once: the count, read as a repeat. */
+function RepeatCount({ count }: { readonly count: number }) {
+  if (count < 2) return null;
+  return (
+    <span
+      className="ml-1 whitespace-nowrap text-xs text-muted-foreground"
+      data-notice-repeats={count}
+    >
+      <span aria-hidden="true">×{count}</span>
+      <span className="sr-only"> repeated {count} times</span>
+    </span>
+  );
+}
+
+/**
+ * Dismisses a notice after its lifetime, unless someone is reading it (`paused`). It is keyed by the notice drawn, so a repeat
+ * of the text starts a new lifetime: a notice is never taken away while it is read, and a repeat gets its full time.
+ */
+function NoticeLifetime({
+  paused,
+  onExpire,
+}: {
+  readonly paused: boolean;
+  readonly onExpire: () => void;
+}) {
+  const expireRef = useRef(onExpire);
+  useEffect(() => {
+    expireRef.current = onExpire;
+  });
+  useEffect(() => {
+    if (paused) return;
+    const timer = window.setTimeout(() => expireRef.current(), TOAST_LIFETIME_MS);
+    return () => window.clearTimeout(timer);
+  }, [paused]);
+  return null;
+}
+
 interface NoticeItemProps {
-  readonly notification: Notification;
+  readonly entry: NoticeEntry;
   readonly expires: boolean;
   /** Fading out: the notice stays drawn, but inert, until it is removed. */
   readonly leaving: boolean;
@@ -138,27 +175,22 @@ interface NoticeItemProps {
   readonly onDismiss: (fromKeyboard: boolean) => void;
 }
 
-function NoticeItem({ notification, expires, leaving, entering, onDismiss }: NoticeItemProps) {
+function NoticeItem({ entry, expires, leaving, entering, onDismiss }: NoticeItemProps) {
+  // A notice fades in the first time it is drawn in this tab. The decision is taken at mount, so a later render never cuts
+  // the fade short; a notice that a remount draws again (the notices move with the chat's first message) does not fade twice.
+  const [enters] = useState(entering);
+  const { latest } = entry;
   // Hovering and focusing are separate reasons to wait: a notice leaves six seconds after the last of
   // them ends, so a pointer that moves away never takes a notice that still has keyboard focus.
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const paused = hovered || focused;
   // Warnings and errors stay until someone dismisses them, and so does everything in a stack that does not expire.
-  const sticky =
-    !expires || notification.severity === "warning" || notification.severity === "error";
+  const sticky = !expires || latest.severity === "warning" || latest.severity === "error";
   const dismissRef = useRef(onDismiss);
   useEffect(() => {
     dismissRef.current = onDismiss;
   });
-
-  // The timer starts again when the last reason to wait ends, so a notice is never taken away while
-  // someone is reading it.
-  useEffect(() => {
-    if (sticky || paused) return;
-    const timer = window.setTimeout(() => dismissRef.current(false), TOAST_LIFETIME_MS);
-    return () => window.clearTimeout(timer);
-  }, [paused, sticky]);
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key !== "Escape") return;
@@ -169,9 +201,9 @@ function NoticeItem({ notification, expires, leaving, entering, onDismiss }: Not
   return (
     <article
       aria-hidden={leaving || undefined}
-      className={`flex min-w-0 items-start gap-2 rounded-surface border border-foreground/10 bg-muted/30 px-3 py-2 text-sm ${NOTICE_TONE[notification.severity]} ${leaving ? LEAVE_FADE : entering ? ENTER_FADE : ""}`}
-      data-notice-key={keyOf(notification)}
-      data-notification-placement={notification.placement}
+      className={`flex min-w-0 items-start gap-2 rounded-surface border border-foreground/10 bg-muted/30 px-3 py-2 text-sm ${NOTICE_TONE[latest.severity]} ${leaving ? LEAVE_FADE : enters ? ENTER_FADE : ""}`}
+      data-notice-key={entry.key}
+      data-notification-placement={latest.placement}
       inert={leaving || undefined}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
@@ -179,8 +211,16 @@ function NoticeItem({ notification, expires, leaving, entering, onDismiss }: Not
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {sticky ? null : (
+        <NoticeLifetime
+          key={latest.dedupeKey}
+          onExpire={() => dismissRef.current(false)}
+          paused={paused}
+        />
+      )}
       <p className="min-w-0 flex-1 break-words whitespace-pre-wrap">
-        <NoticeText text={notification.message} />
+        <NoticeText text={latest.message} />
+        <RepeatCount count={entry.members.length} />
       </p>
       <Button
         aria-label="Dismiss notification"
@@ -206,12 +246,15 @@ interface NoticeStackProps {
   readonly expires: boolean;
 }
 
+/** The tab's drawn notices as this page loaded them: a notice drawn before a reload is drawn again without a fade. */
+const pageDrawnNotices = sessionDrawnNotices();
+
 /**
- * The newest `limit` notices of one placement, with the rest counted. "+N more" opens them all in a
- * scrollable list and "Show fewer" closes it; neither moves focus. Escape or the dismiss control removes
- * a notice, and focus moves to a neighbour. When the stack empties the list closes, and focus that was
- * inside the stack returns to the composer.
- * A notice that an earlier load of this tab drew is drawn again without a fade (see `drawn-notices.ts`).
+ * The newest `limit` entries of one placement, with the rest counted. A notice whose text is drawn already joins its
+ * entry, which counts up. "+N more" opens them all in a scrollable list and "Show fewer" closes it; neither moves focus.
+ * Escape or the dismiss control removes an entry (every notice in it), and focus moves to a neighbour. When the stack
+ * empties the list closes, and focus that was inside the stack returns to the composer.
+ * An entry that an earlier load of this tab drew is drawn again without a fade (see `drawn-notices.ts`).
  */
 function NoticeStack({
   notifications,
@@ -225,31 +268,33 @@ function NoticeStack({
   const rootRef = useRef<HTMLElement | null>(null);
   const handoff = useRef<FocusHandoff | null>(null);
   const focusInside = useRef(false);
-  const present = usePresentItems(notifications, keyOf, LEAVE_MS);
-  const [drawn] = useState(() => sessionDrawnNotices());
-  // The notices this stack has drawn are remembered for a reload, and forgotten once they have left.
+  const entries = useMemo(() => noticeEntries(notifications), [notifications]);
+  const present = usePresentItems(entries, entryKey, LEAVE_MS);
+  // The entries this stack has drawn are remembered for a reload, and forgotten once they have left. The tab's record is the
+  // one the page loaded with, so a stack that mounts again (the notices move when a chat gets its first message) draws what
+  // it has not drawn itself.
   const drawnKeys = useRef<Set<string>>(new Set());
   useLayoutEffect(() => {
-    const keys = new Set(present.map((entry) => keyOf(entry.item)));
+    const keys = new Set(present.map((entry) => entry.item.key));
     for (const key of keys) {
-      if (!drawnKeys.current.has(key)) drawn.drew(key);
+      if (!drawnKeys.current.has(key)) pageDrawnNotices.drew(key);
     }
     for (const key of drawnKeys.current) {
-      if (!keys.has(key)) drawn.left(key);
+      if (!keys.has(key)) pageDrawnNotices.left(key);
     }
     drawnKeys.current = keys;
-  }, [present, drawn]);
+  }, [present]);
   const shown = expanded ? present : present.slice(-limit);
-  // A notice that is leaving is neither counted, focused nor dismissed again.
+  // An entry that is leaving is neither counted, focused nor dismissed again.
   const liveShown = shown.filter((entry) => !entry.leaving).map((entry) => entry.item);
-  const hidden = notifications.length - liveShown.length;
+  const hidden = entries.length - liveShown.length;
 
   useEffect(() => {
-    if (notifications.length === 0) setExpanded(false);
-  }, [notifications.length]);
+    if (entries.length === 0) setExpanded(false);
+  }, [entries.length]);
 
   useLayoutEffect(() => {
-    if (notifications.length > 0 || !focusInside.current) return;
+    if (entries.length > 0 || !focusInside.current) return;
     focusInside.current = false;
     // Focus that the person moved elsewhere stays where it is; focus still on a control of this stack, or
     // lost to the page, moves to the composer.
@@ -257,7 +302,7 @@ function NoticeStack({
     const heldHere = active !== null && rootRef.current?.contains(active) === true;
     const lost = active === null || active === document.body || !active.isConnected;
     if (heldHere || lost) composerFocus()?.focus();
-  }, [notifications.length]);
+  }, [entries.length]);
 
   useLayoutEffect(() => {
     const pending = handoff.current;
@@ -265,24 +310,25 @@ function NoticeStack({
     handoff.current = null;
     const root = rootRef.current;
     const next =
-      root === null || pending.nextKey === undefined ? null : noticeElement(root, pending.nextKey);
+      root === null || pending.nextKey === undefined ? null : entryElement(root, pending.nextKey);
     const target = next?.querySelector<HTMLElement>("[data-notice-dismiss]") ?? pending.fallback;
     target?.focus();
   });
 
-  function dismiss(notification: Notification, fromKeyboard: boolean) {
-    const key = keyOf(notification);
+  function dismiss(entry: NoticeEntry, fromKeyboard: boolean) {
     const root = rootRef.current;
-    const item = root === null ? null : noticeElement(root, key);
+    const item = root === null ? null : entryElement(root, entry.key);
     // Only a keyboard or assistive-technology dismissal moves focus on. After a pointer click the browser
     // puts focus where it likes, and a focused notice is held, so handing focus on would pin a neighbour.
     if (fromKeyboard && root?.contains(item) && item?.contains(document.activeElement)) {
       handoff.current = {
-        nextKey: neighbourKey(liveShown, key),
+        nextKey: neighbourKey(liveShown, entry.key),
         fallback: composerFocus() ?? (root === null ? null : shownFocusableBefore(root)),
       };
     }
-    projector.getBus().retire(notification.threadId, notification.dedupeKey);
+    for (const member of entry.members) {
+      projector.getBus().retire(member.threadId, member.dedupeKey);
+    }
   }
 
   return (
@@ -302,22 +348,22 @@ function NoticeStack({
       ref={rootRef}
     >
       <div className="flex max-h-[30dvh] min-w-0 flex-col gap-1 overflow-y-auto">
-        {shown.map((entry) => (
+        {shown.map((item) => (
           <NoticeItem
             entering={
-              entry.entering &&
               performance.now() >= NOTICE_SETTLE_MS &&
-              !drawn.isRestored(keyOf(entry.item))
+              !pageDrawnNotices.isRestored(item.item.key) &&
+              !drawnKeys.current.has(item.item.key)
             }
+            entry={item.item}
             expires={expires}
-            key={keyOf(entry.item)}
-            leaving={entry.leaving}
-            notification={entry.item}
-            onDismiss={(fromKeyboard) => dismiss(entry.item, fromKeyboard)}
+            key={item.item.key}
+            leaving={item.leaving}
+            onDismiss={(fromKeyboard) => dismiss(item.item, fromKeyboard)}
           />
         ))}
       </div>
-      {notifications.length > limit || expanded ? (
+      {entries.length > limit || expanded ? (
         <Button
           aria-expanded={expanded}
           className="self-start bg-background motion-reduce:transition-none"
@@ -356,8 +402,12 @@ export function usePanelLeaving(notifications: readonly Notification[]): boolean
       ),
     [notifications],
   );
-  return usePresentItems(fading, keyOf, LEAVE_MS).some((entry) => entry.leaving);
+  return usePresentItems(fading, notificationKeyOf, LEAVE_MS).some((entry) => entry.leaving);
 }
+
+/** The notice's key in the bus, as the presence list reads it. */
+const notificationKeyOf = (notification: Notification): string =>
+  notificationKey(notification.threadId, notification.dedupeKey);
 
 /** Whether a notice is informational: it is kept in the omp notices line rather than drawn as a card. */
 export function isQuietNotice(notification: Notification): boolean {
@@ -369,7 +419,11 @@ export function isQuietNotice(notification: Notification): boolean {
  * by themselves after a few seconds, unless someone is reading them.
  */
 export function NotificationToasts({ projector }: { readonly projector: NotificationProjector }) {
-  const snapshot = useNotificationSnapshot(projector);
+  const notifications = useChatNotifications(projector);
+  const toasts = useMemo(
+    () => notifications.filter((notification) => notification.placement === "toast"),
+    [notifications],
+  );
   useExpiry(projector);
   return (
     <NoticeStack
@@ -377,9 +431,7 @@ export function NotificationToasts({ projector }: { readonly projector: Notifica
       label="Recent notices"
       limit={MAX_VISIBLE_TOASTS}
       moreTestId="n1-feedback-more"
-      notifications={snapshot.notifications.filter(
-        (notification) => notification.placement === "toast",
-      )}
+      notifications={toasts}
       projector={projector}
     />
   );
@@ -390,16 +442,21 @@ export function NotificationToasts({ projector }: { readonly projector: Notifica
  * a retry in progress or an error that needs attention. They never expire.
  */
 export function NotificationBanners({ projector }: { readonly projector: NotificationProjector }) {
-  const snapshot = useNotificationSnapshot(projector);
+  const notifications = useChatNotifications(projector);
+  const banners = useMemo(
+    () =>
+      notifications.filter(
+        (notification) => notification.placement === "banner" && isStackNotice(notification),
+      ),
+    [notifications],
+  );
   return (
     <NoticeStack
       expires={false}
       label="Important notices"
       limit={MAX_VISIBLE_BANNERS}
       moreTestId="n1-feedback-banners-more"
-      notifications={snapshot.notifications.filter(
-        (notification) => notification.placement === "banner" && isStackNotice(notification),
-      )}
+      notifications={banners}
       projector={projector}
     />
   );
@@ -407,21 +464,19 @@ export function NotificationBanners({ projector }: { readonly projector: Notific
 
 /**
  * The informational notices omp sends, collapsed into one quiet line: "3 notices from omp". Opening it lists them, each
- * cut where it is long. The line fades in when its first notice arrives and fades out once they are all dismissed; its
- * list opens and closes over the motion tokens. The line is never read aloud, and a notice that was shown is not shown
- * again when its chat is reopened or the page reloads (see `NotificationBus.publish`). Dismissing the line dismisses
- * them all.
+ * cut where it is long, and a repeated one with its count. The line fades in when its first notice arrives and fades out
+ * once they are all dismissed; its list opens and closes over the motion tokens. The line is never read aloud, and a
+ * notice that was shown is not shown again when its chat is reopened or the page reloads (see `NotificationBus.publish`).
+ * Dismissing the line dismisses them all.
  */
 export function NotificationQuiet({ projector }: { readonly projector: NotificationProjector }) {
-  const snapshot = useNotificationSnapshot(projector);
+  const notifications = useChatNotifications(projector);
   const listId = useId();
   const [open, setOpen] = useState(false);
   // A dismissed notice stays drawn for its fade (`LEAVE_MS`), so the line fades out with it instead of vanishing.
-  const quiet = useMemo(
-    () => snapshot.notifications.filter(isQuietNotice),
-    [snapshot.notifications],
-  );
-  const present = usePresentItems(quiet, keyOf, LEAVE_MS);
+  const quiet = useMemo(() => notifications.filter(isQuietNotice), [notifications]);
+  const entries = useMemo(() => noticeEntries(quiet), [quiet]);
+  const present = usePresentItems(entries, entryKey, LEAVE_MS);
   const live = present.filter((entry) => !entry.leaving).map((entry) => entry.item);
   const count = live.length;
   useEffect(() => {
@@ -452,8 +507,10 @@ export function NotificationQuiet({ projector }: { readonly projector: Notificat
           aria-label="Dismiss notices from omp"
           className="motion-reduce:transition-none"
           onClick={() => {
-            for (const notification of live) {
-              projector.getBus().dismiss(notification.threadId, notification.dedupeKey);
+            for (const entry of live) {
+              for (const member of entry.members) {
+                projector.getBus().dismiss(member.threadId, member.dedupeKey);
+              }
             }
           }}
           size="icon-sm"
@@ -472,13 +529,14 @@ export function NotificationQuiet({ projector }: { readonly projector: Notificat
             id={listId}
             inert={!open || undefined}
           >
-            {live.map((notification) => (
+            {live.map((entry) => (
               <li
                 className="min-w-0 break-words whitespace-pre-wrap"
-                data-notice-key={keyOf(notification)}
-                key={keyOf(notification)}
+                data-notice-key={entry.key}
+                key={entry.key}
               >
-                <NoticeText text={notification.message} />
+                <NoticeText text={entry.latest.message} />
+                <RepeatCount count={entry.members.length} />
               </li>
             ))}
           </ul>

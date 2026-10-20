@@ -517,7 +517,7 @@ describe("NotificationProjector", () => {
     expect(projector.getSnapshot().error).toBeNull();
     projector.dispose();
   });
-  test("clears retry state after a refetch and keeps projection on its store thread", () => {
+  test("clears retry state after a refetch; a presentation is recorded under the chat it came from", () => {
     const store = new OmpRuntimeStore({ threadId });
     const projector = new NotificationProjector({ source: store, events: store });
     publishRuntimeEvent(
@@ -546,13 +546,14 @@ describe("NotificationProjector", () => {
       { kind: "notify", message: "on the right thread", notifyType: "info" },
       { threadId: otherThread },
     );
+    expect(projector.getSnapshot().threadId).toBe(threadId);
     expect(
       projector
         .getBus()
         .getSnapshot()
         .notifications.find((notification) => notification.message === "on the right thread")
         ?.threadId,
-    ).toBe(threadId);
+    ).toBe(otherThread);
     projector.dispose();
   });
 

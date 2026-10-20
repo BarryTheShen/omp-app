@@ -312,6 +312,11 @@ function useNotificationProjector(
       retired: sessionRetiredNotices(window.sessionStorage, instanceId),
     });
   }
+  // The page keeps one projector for its life, and each chat has its own store: the projector follows the store of the
+  // chat on screen (`NotificationProjector.follow`), so the chat's events and state are the ones it projects.
+  useLayoutEffect(() => {
+    projectorRef.current?.follow(store);
+  }, [store]);
   useEffect(() => {
     const projector = projectorRef.current;
     const generation = ++generationRef.current;
@@ -1597,6 +1602,13 @@ function ActiveThreadReady({
   const notificationProjector = useNotificationProjector(store, setEditorText, () =>
     instanceIdOf.current(),
   );
+  // A chat with messages draws its notices in the row above the composer; an empty chat keeps them over its footer, as
+  // it did before, so there is one instance of the notices at a time.
+  const chatHasMessages = useSyncExternalStore(
+    (listener) => store.subscribe(listener),
+    () => store.getSnapshot().messageOrder.length > 0,
+    () => store.getSnapshot().messageOrder.length > 0,
+  );
   // A Fast mode change omp refuses leaves omp's own notice; the Execution modes dialog already says it, so it goes.
   const retireFastRefusalNotice = useCallback(() => {
     notificationProjector?.getBus().retireQuietFrom(threadId, FAST_REFUSAL_NOTICE_SOURCE);
@@ -2086,6 +2098,7 @@ function ActiveThreadReady({
                   leftSidebar={leftSidebar}
                   statusBar={area("statusBar")}
                   threadHeader={area("header")}
+                  notices={chatHasMessages ? area("threadNotices") : undefined}
                   rightSidebar={
                     <>
                       {area("panels")}
@@ -2119,10 +2132,14 @@ function ActiveThreadReady({
                                 openedNew: newChat,
                               }}
                               footer={
-                                <>
-                                  {area("threadFooter")}
-                                  {area("threadOverlay")}
-                                </>
+                                chatHasMessages ? (
+                                  area("threadFooter")
+                                ) : (
+                                  <>
+                                    {area("threadFooter")}
+                                    {area("threadOverlay")}
+                                  </>
+                                )
                               }
                               onLoadOlder={onLoadOlder}
                               onLoadFullOutput={onLoadFullOutput}

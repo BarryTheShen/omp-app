@@ -1,7 +1,7 @@
 import type { Notification } from "../contract";
 import type { NotificationProjector } from "../notifications";
 import { LiveAnnouncer } from "./announcer";
-import { useNotificationSnapshot, useProjectionSnapshot } from "./hooks";
+import { useChatNotifications, useProjectionSnapshot } from "./hooks";
 import {
   isQuietNotice,
   isStackNotice,
@@ -20,8 +20,8 @@ export interface NotificationFeedbackProps {
   /** The widgets this strip draws. The default draws both placements, as the status bar always has. */
   readonly widgets?: WidgetScope;
   /**
-   * Whether the strip draws the banners and toasts too. The app draws them with `NotificationNotices`,
-   * over the transcript's footer, so it passes "none".
+   * Whether the strip draws the banners and toasts too. The app draws them with `NotificationNotices` (in the chat's notices
+   * row, or over an empty chat's footer), so it passes "none".
    */
   readonly notices?: "all" | "none";
 }
@@ -39,14 +39,14 @@ export function NotificationFeedback({
   notices = "all",
 }: NotificationFeedbackProps) {
   const projection = useProjectionSnapshot(projector);
-  const notifications = useNotificationSnapshot(projector);
-  const leaving = usePanelLeaving(notifications.notifications);
+  const notifications = useChatNotifications(projector);
+  const leaving = usePanelLeaving(notifications);
   const showsNotices = notices === "all";
   const hasContent =
     projection.error !== null ||
     projection.statuses.length > 0 ||
     projection.widgets.some((widget) => widgets === "all" || widgets === widget.placement) ||
-    (showsNotices && (hasPanelNotice(notifications.notifications) || leaving));
+    (showsNotices && (hasPanelNotice(notifications) || leaving));
 
   return (
     <>
@@ -74,22 +74,21 @@ export function NotificationFeedback({
 }
 
 /**
- * The banners and toasts as one solid panel, which the app draws over the transcript's footer (the
- * layout's `threadOverlay` area). It floats above the footer, so the footer's controls stay clickable, and
- * it takes no room in the composer or the status bar: showing or expiring a notice never moves either.
- * The panel catches the pointer and paints its gaps, so the transcript under it cannot show through; the
- * empty space around it passes clicks and the wheel on to the transcript. The live region is the one the
- * status strip mounts, which stays mounted in the status bar, so the panel needs no announcer of its own.
+ * The banners and toasts as one solid panel. A chat with messages draws it in the notices row between the transcript and
+ * the composer, where it takes its own room: the composer does not move, and nothing is drawn over a message. An empty chat
+ * draws it over the footer (the layout's `threadOverlay` area), where it floats above the footer's controls. The live
+ * region is the one the status strip mounts, which stays mounted in the status bar, so the panel needs no announcer of its
+ * own.
  */
 export function NotificationNotices({ projector }: { readonly projector: NotificationProjector }) {
-  const notifications = useNotificationSnapshot(projector);
-  const leaving = usePanelLeaving(notifications.notifications);
+  const notifications = useChatNotifications(projector);
+  const leaving = usePanelLeaving(notifications);
   return (
     <section
       aria-label="Notices"
       className="pointer-events-auto mb-2 flex min-w-0 flex-col gap-1 bg-background"
       data-testid="n1-notices"
-      hidden={!(hasPanelNotice(notifications.notifications) || leaving)}
+      hidden={!(hasPanelNotice(notifications) || leaving)}
     >
       <NotificationBanners projector={projector} />
       <NotificationToasts projector={projector} />
