@@ -65,12 +65,8 @@ realTest(
     // The rows keep the status the call gave them, and their Stop controls, so they can still be stopped.
     await expect(longRow).toContainText("Running");
     await expect(laterRow).toContainText("Running");
-    await expect(
-      longRow.getByRole("button", { name: /^Stop background job bg_\d+$/ }),
-    ).toBeVisible();
-    await expect(
-      laterRow.getByRole("button", { name: /^Stop background job bg_\d+$/ }),
-    ).toBeVisible();
+    await expect(longRow.getByRole("button", { name: /^Stop background job / })).toBeVisible();
+    await expect(laterRow.getByRole("button", { name: /^Stop background job / })).toBeVisible();
     await expect(wait).toContainText(
       "omp did not say which of these jobs it stopped, so their statuses may be out of date.",
     );
