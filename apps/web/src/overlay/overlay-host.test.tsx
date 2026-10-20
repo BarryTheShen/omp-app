@@ -477,6 +477,34 @@ describe("useStableOverlayHost", () => {
   });
 });
 
+describe("OverlayHost updates", () => {
+  test("undefined patch fields do not clear values beside a changed field", async () => {
+    function UpdateFixture() {
+      const host = useOverlayHost();
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            const result = host.open({
+              kind: "modal",
+              label: "Original label",
+              content: <p>Original content</p>,
+            });
+            host.update(result.id, { label: "Updated label", content: undefined });
+          }}
+        >
+          Open and update
+        </button>
+      );
+    }
+
+    renderHost(<UpdateFixture />);
+    fireEvent.click(screen.getByRole("button", { name: "Open and update" }));
+    const dialog = await screen.findByRole("dialog", { name: "Updated label" });
+    expect(screen.getByText("Original content").closest('[role="dialog"]')).toBe(dialog);
+  });
+});
+
 describe("OverlayHost outside press", () => {
   function EditingFixture({ portal = false }: { readonly portal?: boolean }) {
     const host = useOverlayHost();

@@ -1,10 +1,11 @@
 import type { AppClient } from "@omp-app/client";
 import type { FolderPath } from "@omp-app/contracts";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { INPUT_SETTINGS_SECTION } from "@/modules/S1/interaction";
 import { createSettingsRuntime, type SettingsRuntimeSnapshot } from "@/modules/S1/runtime";
 import { DEFAULT_LARGE_PASTE_LINE_THRESHOLD } from "@/modules/U2/attachments";
 import { LargePasteMenuThresholdContext } from "@/modules/U2/composer";
+import type { SettingsClosedSignal } from "./settings-closed-signal";
 
 /** omp's key for Settings > Interaction > Large Paste Menu. */
 const LARGE_PASTE_MENU_KEY = "paste.largeMenuThreshold";
@@ -31,15 +32,19 @@ export function LargePasteMenuProvider({
 }: {
   readonly client: AppClient;
   readonly folder: FolderPath | null;
-  /** How many times the Settings screen has closed. Each change replaces the reader, which reads the value again. */
-  readonly settingsClosed: number;
+  readonly settingsClosed: SettingsClosedSignal;
   readonly children: ReactNode;
 }) {
   const [threshold, setThreshold] = useState(DEFAULT_LARGE_PASTE_LINE_THRESHOLD);
+  const settingsClosedCount = useSyncExternalStore(
+    settingsClosed.subscribe,
+    settingsClosed.count,
+    settingsClosed.count,
+  );
   return (
     <LargePasteMenuThresholdContext.Provider value={threshold}>
       <ThresholdReader
-        key={settingsClosed}
+        key={settingsClosedCount}
         client={client}
         folder={folder}
         onThreshold={setThreshold}

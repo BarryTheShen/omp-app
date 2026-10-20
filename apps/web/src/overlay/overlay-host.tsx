@@ -95,6 +95,7 @@ interface OverlayRecord extends OverlaySnapshot {
 }
 
 const OverlayHostContext = createContext<OverlayHostApi | null>(null);
+const OverlayHostStableContext = createContext<OverlayHostApi | null>(null);
 let nextOverlayId = 0;
 
 function createOverlayId(): string {
@@ -383,12 +384,21 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
 
   const update = useCallback(
     (id: string, patch: Partial<Omit<OverlayOpenOptions, "kind">>) => {
+      const target = recordsRef.current.find((record) => record.id === id);
+      if (target === undefined) return;
+      const definedPatch = Object.fromEntries(
+        Object.entries(patch).filter(([, value]) => value !== undefined),
+      ) as Partial<Omit<OverlayOpenOptions, "kind">>;
+      const unchanged = Object.entries(definedPatch).every(
+        ([key, value]) => (target as unknown as Record<string, unknown>)[key] === value,
+      );
+      if (unchanged) return;
       commit(
         recordsRef.current.map((record) => {
           if (record.id !== id) return record;
           return {
             ...record,
-            ...patch,
+            ...definedPatch,
             closeOnEscape: patch.closeOnEscape ?? record.closeOnEscape,
             closeOnOutsidePointer: patch.closeOnOutsidePointer ?? record.closeOnOutsidePointer,
             focus: patch.focus ?? record.focus,
@@ -542,6 +552,27 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
     }),
     [close, closeTopmost, open, records, update],
   );
+  const stableApi = useMemo<OverlayHostApi>(
+    () => ({
+      get overlays() {
+        return recordsRef.current
+          .filter((record) => record.leaving !== true)
+          .map(({ id, kind, status, closeOnEscape, closeOnOutsidePointer, focus }) => ({
+            id,
+            kind,
+            status,
+            closeOnEscape,
+            closeOnOutsidePointer,
+            focus,
+          }));
+      },
+      open,
+      close,
+      closeTopmost,
+      update,
+    }),
+    [close, closeTopmost, open, update],
+  );
 
   useLayoutEffect(() => {
     const background = backgroundRef.current;
@@ -642,29 +673,31 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
   }, []);
   return (
     <OverlayHostContext.Provider value={api}>
-      <div ref={backgroundRef} data-overlay-background="true">
-        {children}
-      </div>
-      {portal
-        ? createPortal(
-            <div data-overlay-stack="true">
-              {shown.map((record, index) => (
-                <OverlayView
-                  key={record.id}
-                  record={record}
-                  index={index}
-                  onClose={close}
-                  onUpdate={update}
-                  onRequestClose={requestClose}
-                  onKeepEditing={keepEditing}
-                  onExited={exited}
-                  onInside={markInside}
-                />
-              ))}
-            </div>,
-            portal,
-          )
-        : null}
+      <OverlayHostStableContext.Provider value={stableApi}>
+        <div ref={backgroundRef} data-overlay-background="true">
+          {children}
+        </div>
+        {portal
+          ? createPortal(
+              <div data-overlay-stack="true">
+                {shown.map((record, index) => (
+                  <OverlayView
+                    key={record.id}
+                    record={record}
+                    index={index}
+                    onClose={close}
+                    onUpdate={update}
+                    onRequestClose={requestClose}
+                    onKeepEditing={keepEditing}
+                    onExited={exited}
+                    onInside={markInside}
+                  />
+                ))}
+              </div>,
+              portal,
+            )
+          : null}
+      </OverlayHostStableContext.Provider>
     </OverlayHostContext.Provider>
   );
 }
@@ -683,23 +716,9 @@ export function useOverlayHost(): OverlayHostApi {
  * latest API.
  */
 export function useStableOverlayHost(): OverlayHostApi {
-  const overlay = useOverlayHost();
-  const latest = useRef(overlay);
-  useLayoutEffect(() => {
-    latest.current = overlay;
-  });
-  return useMemo<OverlayHostApi>(
-    () => ({
-      get overlays() {
-        return latest.current.overlays;
-      },
-      open: (options) => latest.current.open(options),
-      close: (id, reason) => latest.current.close(id, reason),
-      closeTopmost: (reason) => latest.current.closeTopmost(reason),
-      update: (id, patch) => latest.current.update(id, patch),
-    }),
-    [],
-  );
+  const context = useContext(OverlayHostStableContext);
+  if (!context) throw new Error("useStableOverlayHost must be used inside OverlayHost");
+  return context;
 }
 
 export { OVERLAY_KINDS };

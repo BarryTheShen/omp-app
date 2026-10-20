@@ -254,6 +254,7 @@ import { openSavedChatModelPicker } from "./saved-chat-model-picker";
 import { openSessionModelDialog, SessionModelControl, SessionStatusBar } from "./session-controls";
 import { useSessionModelShortcuts } from "./session-model-shortcuts";
 import { useSessionTitle } from "./session-title";
+import { createSettingsClosedSignal } from "./settings-closed-signal";
 import { SettingsScreen } from "./settings-screen";
 import { useShareFromChat } from "./share/use-share-from-chat";
 import {
@@ -2671,8 +2672,8 @@ function ConnectedApp({
     await openThread(started);
     return started;
   }, [openThread, remote]);
-  // How many times the Settings screen has closed. The Large Paste Menu is read again each time (see RunOnExit).
-  const [settingsClosed, setSettingsClosed] = useState(0);
+  // Settings saves through its own runtime; the external signal refreshes only the paste reader after the exit.
+  const settingsClosed = useMemo(() => createSettingsClosedSignal(), []);
   const openSettings = useCallback(
     (threadId: ThreadId | null, restoreFocus?: HTMLElement) => {
       overlay.open({
@@ -2682,7 +2683,7 @@ function ConnectedApp({
         width: "viewport",
         className: SETTINGS_FRAME_CLASS,
         content: ({ close, requestClose, update }) => (
-          <RunOnExit onExit={() => setSettingsClosed((count) => count + 1)}>
+          <RunOnExit onExit={() => settingsClosed.bump()}>
             <SettingsScreen
               capabilities={capabilities}
               client={client}
@@ -2700,7 +2701,7 @@ function ConnectedApp({
         ),
       });
     },
-    [capabilities, client, folder, overlay, startChat],
+    [capabilities, client, folder, overlay, settingsClosed, startChat],
   );
   // The palette's commands with no chat open (see `idleCommandHandlers`). Once a chat opens, its own host takes over.
   const idleHandlers = useMemo(
