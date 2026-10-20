@@ -1,4 +1,5 @@
 import "./thread-scroll.css";
+import { useAuiState } from "@assistant-ui/react";
 import { ArrowDownIcon } from "lucide-react";
 import { Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
@@ -18,22 +19,25 @@ export interface ScrollFollowControlsProps {
  * short of rows drawn lazily on the way. The layout supplies this view to the thread footer.
  */
 export function ScrollFollowControls({ isAtBottom, onFollowLatest }: ScrollFollowControlsProps) {
+  const hasMessages = useAuiState((state) => state.thread.messages.length > 0);
+  const showButton = hasMessages && !isAtBottom;
   return (
-    <div className="min-h-8" data-slot="u1-scroll-follow-controls">
+    <div className={showButton ? "min-h-8" : "min-h-0"} data-slot="u1-scroll-follow-controls">
       <TranscriptLiveStatus />
-      <Toolbar ariaLabel="Transcript actions" alignment="end">
-        <Button
-          aria-label="Jump to latest message"
-          className="border-foreground/10 bg-background hover:border-foreground/25 rounded-control absolute -top-11 start-1/2 z-10 grid size-8 -translate-x-1/2 place-items-center border transition-colors disabled:hidden"
-          data-slot="u1-scroll-to-bottom"
-          disabled={isAtBottom}
-          onClick={() => onFollowLatest()}
-          type="button"
-          variant="ghost"
-        >
-          <ArrowDownIcon aria-hidden="true" className="size-4" />
-          <span className="sr-only">Jump to latest</span>
-        </Button>
+      <Toolbar ariaLabel="Transcript actions">
+        {showButton ? (
+          <Button
+            aria-label="Jump to latest message"
+            className="border-foreground/10 bg-background hover:border-foreground/25 rounded-control absolute -top-11 start-1/2 z-10 grid size-8 -translate-x-1/2 place-items-center border transition-colors"
+            data-slot="u1-scroll-to-bottom"
+            onClick={() => onFollowLatest()}
+            type="button"
+            variant="ghost"
+          >
+            <ArrowDownIcon aria-hidden="true" className="size-4" />
+            <span className="sr-only">Jump to latest</span>
+          </Button>
+        ) : null}
       </Toolbar>
     </div>
   );

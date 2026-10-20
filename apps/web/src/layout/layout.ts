@@ -54,15 +54,13 @@ export const LAYOUT: AppLayout = {
   /** Left sidebar, top to bottom; the theme control sits at the bottom. */
   sidebar: ["folder", "sessions", "theme"],
   /** Above the conversation, left to right; the title takes the free space. */
-  header: ["title", "settings"],
+  header: ["title", "toolCalls", "settings"],
   /**
    * Right sidebar; with more than one panel they become tabs, in this order. An on-demand panel
    * (`Surface.open`) is listed only while it is open.
    */
   panels: ["todo", "contextCard", "agents", "rules", "rewind", "commandOutput"],
-  /** The inline control row inside the composer, left to right. */
   composerToolbar: ["model", "mode", "executionModes"],
-  /** The queued messages, on a row of their own under the controls. The row is open only while a message waits. */
   composerQueue: ["queue"],
   /** Under the controls and the queue, at the foot of the composer. */
   composerFooter: ["editHandoff", "attachments"],
@@ -70,15 +68,7 @@ export const LAYOUT: AppLayout = {
    * At the bottom of the transcript. The hidden-tools line comes first: while tool activity is shown it is empty, so
    * the controls on the right stay where they were.
    */
-  threadFooter: [
-    "toolsHidden",
-    "connection",
-    "watchNotice",
-    "editRun",
-    "toolCalls",
-    "scrollFollow",
-    "liveVoice",
-  ],
+  threadFooter: ["toolsHidden", "connection", "watchNotice", "editRun", "scrollFollow"],
   /**
    * Over the end of the transcript, just above its footer: the notices float here and never cover the
    * footer's controls (Jump to latest), and the composer and the status bar do not move for them.

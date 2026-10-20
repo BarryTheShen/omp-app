@@ -69,6 +69,7 @@ export interface ComposerSurfaceProps {
    */
   readonly attachmentHoldReason?: string;
   readonly attachmentManager?: AttachmentAdapter;
+  readonly voice?: ReactNode;
   readonly showAttachmentNames?: boolean;
   readonly toolbar?: ReactNode;
   /**
@@ -206,11 +207,12 @@ export function ComposerSurface({
   sendBlockedReason,
   attachmentHoldReason,
   attachmentManager,
+  voice,
   showAttachmentNames = true,
   toolbar,
   queue,
-  onDoubleLeftArrow,
   savePasteFile,
+  onDoubleLeftArrow,
   children,
 }: ComposerSurfaceProps): ReactNode {
   const aui = useAui();
@@ -527,7 +529,7 @@ export function ComposerSurface({
         render={
           <div
             data-composer-card="true"
-            className="border-foreground/10 bg-muted/30 focus-within:border-foreground/25 focus-within:ring-2 focus-within:ring-ring/50 focus-within:ring-offset-2 data-[dragging=true]:border-foreground/40 rounded-thread flex w-full cursor-text flex-col border outline-none transition-colors data-[dragging=true]:border-dashed"
+            className="border-foreground/10 bg-muted/30 focus-within:border-foreground/25 focus-within:shadow-[inset_0_0_0_2px_var(--ring)] data-[dragging=true]:border-foreground/40 rounded-thread flex w-full cursor-text flex-col border outline-none transition-colors data-[dragging=true]:border-dashed"
           />
         }
       >
@@ -655,6 +657,7 @@ export function ComposerSurface({
             </p>
           )}
           <div className="ms-auto flex shrink-0 items-center gap-(--space-xs)">
+            {voice}
             {canCancel ? (
               <Button
                 type="button"

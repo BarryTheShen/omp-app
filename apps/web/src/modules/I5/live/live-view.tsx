@@ -62,6 +62,7 @@ export function LiveVoiceControl({
             type="button"
             variant="outline"
             size="icon"
+            className="rounded-control size-7"
             aria-label={muteLabel}
             title={muteLabel}
             onClick={onToggleMute}
@@ -72,6 +73,7 @@ export function LiveVoiceControl({
             type="button"
             variant="outline"
             size="icon"
+            className="rounded-control size-7"
             aria-label="Stop live voice"
             title="Stop live voice"
             onClick={onStop}
@@ -84,9 +86,10 @@ export function LiveVoiceControl({
           type="button"
           variant="outline"
           size="icon"
+          className="rounded-control size-7"
           aria-label="Start live voice"
-          title={unavailableReason ?? "Start live voice"}
           disabled={unavailableReason !== undefined}
+          title={unavailableReason ?? "Start live voice"}
           onClick={onStart}
         >
           <MicIcon />

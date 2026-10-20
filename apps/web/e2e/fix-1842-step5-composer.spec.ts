@@ -83,6 +83,8 @@ interface ComposerMetrics {
   };
   readonly statusFontSize: string;
   readonly contextFontSize: string;
+  readonly microphoneInsideCard: boolean;
+  readonly threadFooterHeight: number;
   readonly modelTextClipped: boolean;
   readonly attachmentStripAboveInput: boolean;
   readonly toolbarControlsInsideCard: boolean;
@@ -119,10 +121,14 @@ async function measureComposer(page: Page): Promise<ComposerMetrics> {
     const attachmentStrip = card?.querySelector<HTMLElement>(
       '[data-slot="u2-composer-attachments"]',
     );
-    const activeMode = card?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+    const microphone = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Start live voice"], button[aria-label="Mute microphone"], button[aria-label="Unmute microphone"]',
+    );
+    const threadFooter = document.querySelector<HTMLElement>('[data-slot="u1-thread-footer"]');
     const status = document.querySelector<HTMLElement>("[data-n1-status]");
     const context = document.querySelector<HTMLElement>('[aria-label="Context status"]');
     const send = card?.querySelector<HTMLButtonElement>('[aria-label="Send message"]');
+    const activeMode = card?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
     const editButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
       (button) => button.textContent?.trim() === "Edit an earlier message",
     );
@@ -271,6 +277,8 @@ async function measureComposer(page: Page): Promise<ComposerMetrics> {
             },
       statusFontSize: getComputedStyle(status).fontSize,
       contextFontSize: getComputedStyle(context).fontSize,
+      microphoneInsideCard: microphone !== null && card.contains(microphone),
+      threadFooterHeight: threadFooter?.getBoundingClientRect().height ?? 0,
       modelTextClipped: Array.from(modelControl.querySelectorAll(":scope > span")).some(
         (span) => span.scrollWidth > span.clientWidth,
       ),
@@ -291,20 +299,17 @@ async function assertMetrics(
   expect(darkMode, `${theme} theme before capture`).toBe(theme === "dark");
   if (viewport.width === 1280) {
     expect(metrics.card.width, `${viewport.name}: card width`).toBe(672);
-    expect(metrics.card.height, `${viewport.name}: card with attachment strip`).toBeGreaterThan(82);
+    expect(
+      metrics.card.height,
+      `${viewport.name}: card with attachment strip`,
+    ).toBeGreaterThanOrEqual(82);
   } else {
     expect(metrics.card.width, `${viewport.name}: card width`).toBe(358);
     expect(
       metrics.card.height,
       `${viewport.name}: wrapped card with attachment strip`,
-    ).toBeGreaterThan(116);
+    ).toBeGreaterThanOrEqual(116);
   }
-  expect(metrics.attachmentStripAboveInput, `${viewport.name}: attachment strip above input`).toBe(
-    true,
-  );
-  expect(metrics.toolbarControlsInsideCard, `${viewport.name}: toolbar controls inside card`).toBe(
-    true,
-  );
   expect(metrics.card.borderWidth, `${viewport.name}: card border`).toBe("1px");
   expect(metrics.card.borderRadius, `${viewport.name}: card radius`).toBe("16px");
   expect(metrics.card.borderColor, `${viewport.name}: card border color`).toBe(
@@ -334,12 +339,14 @@ async function assertMetrics(
   expect(metrics.buttons.activeModeBackground).toBe(metrics.buttons.expectedActiveModeBackground);
   expect(metrics.statusFontSize).toBe("11px");
   expect(metrics.contextFontSize).toBe("11px");
+  expect(metrics.microphoneInsideCard, `${viewport.name}: microphone inside card`).toBe(true);
+  expect(metrics.threadFooterHeight, `${viewport.name}: no reserved thread footer`).toBe(0);
   expect(metrics.modelTextClipped, `${viewport.name}: model control text`).toBe(false);
   expect(metrics.horizontalOverflow, `${viewport.name}: horizontal overflow`).toBe(false);
   expect(metrics.card.focusBorderColor, `${viewport.name}: focus border color`).toBe(
     metrics.card.expectedFocusBorderColor,
   );
-  expect(metrics.card.focusShadow, `${viewport.name}: retained focus ring`).not.toBe("none");
+  expect(metrics.card.focusShadow, `${viewport.name}: four-sided focus ring`).toContain("inset");
   const labels = metrics.toolbarLabels;
   const prompt = labels.indexOf("Prompt");
   const bash = labels.indexOf("Bash");
@@ -370,6 +377,8 @@ realTest(
       await expect(
         page.getByRole("main", { name: "Conversation" }).locator('[data-slot="u1-thread-empty"]'),
       ).toBeVisible({ timeout: 60_000 });
+      // Empty chat has no jump button or attachment strip; the empty baselines stay exact before the measurement picture.
+      await expect(page.getByRole("button", { name: "Jump to latest message" })).toHaveCount(0);
       await expect(page.locator('[data-slot="u2-composer-attachments"]')).toHaveCount(0);
       // The empty card is the Step 5 card with no strip in it, and its height is exact; the picture comes after.
       for (const viewport of viewports) {

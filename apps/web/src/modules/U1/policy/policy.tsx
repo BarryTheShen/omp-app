@@ -40,7 +40,7 @@ export interface TranscriptDisplayPolicy {
 }
 
 export interface TranscriptDisplayPolicyProviderProps {
-  readonly threadId: string;
+  readonly threadId: string | undefined;
   readonly storage?: ThinkingVisibilityStore;
   readonly children: ReactNode;
 }
@@ -100,7 +100,10 @@ export function TranscriptDisplayPolicyProvider({
 }: TranscriptDisplayPolicyProviderProps) {
   const resolvedStorage = useMemo(() => storage ?? browserStorage(), [storage]);
   const initial = useMemo(
-    () => readVisibility(resolvedStorage, threadId),
+    () =>
+      threadId === undefined
+        ? { value: "visible" as const }
+        : readVisibility(resolvedStorage, threadId),
     [resolvedStorage, threadId],
   );
   const [activeThreadId, setActiveThreadId] = useState(threadId);
@@ -111,7 +114,10 @@ export function TranscriptDisplayPolicyProvider({
 
   useEffect(() => {
     if (activeThreadId === threadId) return;
-    const next = readVisibility(resolvedStorage, threadId);
+    const next =
+      threadId === undefined
+        ? { value: "visible" as const }
+        : readVisibility(resolvedStorage, threadId);
     setActiveThreadId(threadId);
     setThinking(next.value);
     setStorageError(next.error);
@@ -120,7 +126,8 @@ export function TranscriptDisplayPolicyProvider({
   }, [activeThreadId, resolvedStorage, threadId]);
 
   useEffect(() => {
-    if (activeThreadId !== threadId || resolvedStorage === undefined) return;
+    if (activeThreadId !== threadId || threadId === undefined || resolvedStorage === undefined)
+      return;
     try {
       resolvedStorage.set(storageKey(threadId), thinking === "visible");
       setStorageError(undefined);
@@ -141,7 +148,7 @@ export function TranscriptDisplayPolicyProvider({
   const toggleExpandTools = useCallback(() => setExpandTools((value) => !value), []);
   const value = useMemo<TranscriptDisplayPolicy>(
     () => ({
-      threadId,
+      threadId: threadId ?? "unbound",
       thinking,
       tools,
       expandTools,

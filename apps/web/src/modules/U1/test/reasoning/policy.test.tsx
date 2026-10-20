@@ -18,6 +18,15 @@ function PolicyView() {
   );
 }
 
+class RecordingStore extends MemoryThinkingVisibilityStore {
+  public readonly writes: string[] = [];
+
+  public override set(key: string, value: boolean): void {
+    this.writes.push(`${key}=${value}`);
+    super.set(key, value);
+  }
+}
+
 afterEach(cleanup);
 
 describe("TranscriptDisplayPolicy", () => {
@@ -48,5 +57,17 @@ describe("TranscriptDisplayPolicy", () => {
       </TranscriptDisplayPolicyProvider>,
     );
     expect(screen.getByTestId("thinking-state").textContent).toBe("visible");
+  });
+
+  test("does not write visibility before a chat opens", () => {
+    const storage = new RecordingStore();
+
+    render(
+      <TranscriptDisplayPolicyProvider storage={storage} threadId={undefined}>
+        <PolicyView />
+      </TranscriptDisplayPolicyProvider>,
+    );
+
+    expect(storage.writes).toEqual([]);
   });
 });

@@ -352,7 +352,7 @@ function RuntimeStateSurface({
   if (snapshot.messageOrder.length === 0) {
     return (
       <div
-        className="animate-in fade-in slide-in-from-bottom-1 mx-auto flex w-full max-w-(--layout-thread-width) flex-1 flex-col items-center justify-end text-center px-6 duration-200"
+        className="animate-in fade-in slide-in-from-bottom-1 mx-auto flex w-full max-w-(--layout-thread-width) flex-1 flex-col items-center justify-end px-6 pb-8 text-center duration-200"
         data-slot="u1-thread-empty"
       >
         <p
@@ -747,7 +747,7 @@ export function ThreadShell({
                 </NoticePlacementProvider>
               </div>
               <ThreadPrimitive.ViewportFooter
-                className="sticky bottom-0 z-10 mt-auto flex min-h-8 shrink-0 flex-col bg-background"
+                className="sticky bottom-0 z-10 mt-auto flex min-h-0 shrink-0 flex-col bg-background"
                 data-slot="u1-thread-footer"
               >
                 <RuntimeFailure
@@ -756,7 +756,7 @@ export function ThreadShell({
                   onRetry={onRetry}
                   onRestartOmp={onRestartOmp}
                 />
-                <div className="flex items-center justify-between gap-(--space-md) px-4 py-2 md:px-6">
+                <div className="flex items-center justify-between gap-(--space-md) px-4 py-0 md:px-6">
                   <RuntimeSettledStatus snapshot={snapshot} />
                   {footer}
                 </div>

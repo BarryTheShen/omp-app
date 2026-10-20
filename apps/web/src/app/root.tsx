@@ -533,6 +533,7 @@ function DraftComposer({
   cancel,
   policy,
   toolbar,
+  voice,
   queue,
   footer,
   footerOpen,
@@ -551,9 +552,8 @@ function DraftComposer({
   readonly submit: (intent: PromptIntent) => Promise<void>;
   readonly cancel: () => Promise<void>;
   readonly policy: SubmitPolicy;
-  /** The composer's areas from the layout (`composerToolbar`, `composerQueue`, `composerFooter`). */
   readonly toolbar: ReactNode;
-  /** The queued messages' row (`composerQueue`), under the controls. */
+  readonly voice: ReactNode;
   readonly queue: ReactNode;
   readonly footer: ReactNode;
   readonly footerOpen: boolean;
@@ -613,6 +613,7 @@ function DraftComposer({
       submitPrompt={submit}
       savePasteFile={savePasteFile}
       toolbar={toolbar}
+      voice={voice}
       queue={queue}
       onDoubleLeftArrow={onDoubleLeftArrow}
     >
@@ -1912,6 +1913,7 @@ function ActiveThreadReady({
           sendBlockedReason={sendBlockedReason}
           submit={submit}
           toolbar={area("composerToolbar")}
+          voice={threadSurfaces.liveVoice?.render() ?? null}
           queue={area("composerQueue")}
         />
       </ComposerHistory>
@@ -1935,49 +1937,49 @@ function ActiveThreadReady({
   );
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <CommandPaletteHost
-        capabilities={capabilities}
-        handlers={commandHandlers}
-        unavailableReasons={commandUnavailableReasons}
-      />
-      <RouterBridge
-        dialogHost={dialogHost}
-        notificationProjector={notificationProjector}
-        queueController={queueController}
-        store={store}
-        threadId={threadId}
-        askDialogOffered={richAskOffered(capabilities)}
-        send={guardedSend}
-      />
-      <ToolRunScope
-        loadBackgroundJobStops={loadBackgroundJobStops}
-        runBackgroundJobCommand={runBackgroundJobCommand}
-        store={store}
-      >
-        <TaskSubagentsScope agents={agents}>
-          <TurnCancelScope cancel={cancel}>
-            <ProviderErrorResolverProvider resolver={resolveProviderError}>
-              <AppShell
-                composer={composer}
-                newChat={newChat}
-                leftSidebar={leftSidebar}
-                statusBar={area("statusBar")}
-                threadHeader={area("header")}
-                rightSidebar={
-                  <>
-                    {area("panels")}
-                    <RevealAgentHub reveal={agentsReveal} />
-                    <RevealCommandOutput reveal={commandOutputReveal} />
-                    <FocusDiagnosticPanelOnReveal
-                      open={diagnosticPanelOpen}
-                      reveal={diagnosticPanelReveal}
-                      title={diagnosticPanel === "reports" ? "Reports" : "Security"}
-                    />
-                  </>
-                }
-                transcript={
-                  store && threadId ? (
-                    <TranscriptDisplayPolicyProvider threadId={threadId}>
+      <TranscriptDisplayPolicyProvider threadId={history.threadId}>
+        <CommandPaletteHost
+          capabilities={capabilities}
+          handlers={commandHandlers}
+          unavailableReasons={commandUnavailableReasons}
+        />
+        <RouterBridge
+          dialogHost={dialogHost}
+          notificationProjector={notificationProjector}
+          queueController={queueController}
+          store={store}
+          threadId={threadId}
+          askDialogOffered={richAskOffered(capabilities)}
+          send={guardedSend}
+        />
+        <ToolRunScope
+          loadBackgroundJobStops={loadBackgroundJobStops}
+          runBackgroundJobCommand={runBackgroundJobCommand}
+          store={store}
+        >
+          <TaskSubagentsScope agents={agents}>
+            <TurnCancelScope cancel={cancel}>
+              <ProviderErrorResolverProvider resolver={resolveProviderError}>
+                <AppShell
+                  composer={composer}
+                  newChat={newChat}
+                  leftSidebar={leftSidebar}
+                  statusBar={area("statusBar")}
+                  threadHeader={area("header")}
+                  rightSidebar={
+                    <>
+                      {area("panels")}
+                      <RevealAgentHub reveal={agentsReveal} />
+                      <RevealCommandOutput reveal={commandOutputReveal} />
+                      <FocusDiagnosticPanelOnReveal
+                        open={diagnosticPanelOpen}
+                        reveal={diagnosticPanelReveal}
+                        title={diagnosticPanel === "reports" ? "Reports" : "Security"}
+                      />
+                    </>
+                  }
+                  transcript={
+                    store && threadId ? (
                       <TranscriptShortcuts followLatest={scrollController.followLatest}>
                         <div className="flex h-full min-h-0 flex-col" ref={transcriptRootRef}>
                           {history.error ? (
@@ -2076,18 +2078,18 @@ function ActiveThreadReady({
                           </div>
                         </div>
                       </TranscriptShortcuts>
-                    </TranscriptDisplayPolicyProvider>
-                  ) : (
-                    <EmptyTranscript
-                      copy={emptyStateCopy({ opening: history.isLoading, error: history.error })}
-                    />
-                  )
-                }
-              />
-            </ProviderErrorResolverProvider>
-          </TurnCancelScope>
-        </TaskSubagentsScope>
-      </ToolRunScope>
+                    ) : (
+                      <EmptyTranscript
+                        copy={emptyStateCopy({ opening: history.isLoading, error: history.error })}
+                      />
+                    )
+                  }
+                />
+              </ProviderErrorResolverProvider>
+            </TurnCancelScope>
+          </TaskSubagentsScope>
+        </ToolRunScope>
+      </TranscriptDisplayPolicyProvider>
     </AssistantRuntimeProvider>
   );
 }
