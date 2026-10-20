@@ -536,6 +536,35 @@ export class SessionFileStore {
     const match = headers.find((candidate) => candidate !== undefined);
     return match === undefined ? undefined : (await this.#listingEntry(match)).file;
   }
+  /** Resolves only the cwd and session path from each candidate's bounded header scan. */
+  async resolveThread(
+    sessionId: string,
+  ): Promise<{ readonly cwd: string; readonly sessionFile: string } | undefined> {
+    const candidates = await this.#candidates(undefined, [], false);
+    const named = candidates.filter((candidate) =>
+      path.basename(candidate.file).includes(sessionId),
+    );
+    const readHeader = async (
+      candidate: SessionCandidate,
+    ): Promise<{ readonly cwd: string; readonly sessionFile: string } | undefined> => {
+      try {
+        const header = await readSessionHeader(candidate.file);
+        return header?.id === sessionId
+          ? { cwd: header.cwd, sessionFile: candidate.file }
+          : undefined;
+      } catch (error) {
+        if (fileErrorCode(error) === undefined) throw error;
+        return undefined;
+      }
+    };
+    for (const candidate of named) {
+      const match = await readHeader(candidate);
+      if (match !== undefined) return match;
+    }
+    const others = candidates.filter((candidate) => !named.includes(candidate));
+    const headers = await inBatches(others, readHeader);
+    return headers.find((candidate) => candidate !== undefined);
+  }
 
   /**
    * The newest entries of one branch, from a session file this store lists. Any other path, including
@@ -879,6 +908,7 @@ export class SessionFileStore {
   async #candidates(
     folder: string | undefined,
     warnings: ParseWarning[],
+    withActivity = true,
   ): Promise<SessionCandidate[]> {
     const names: string[] = [];
     for (const sessionDir of await this.#sessionDirectories(folder, warnings)) {
@@ -899,7 +929,9 @@ export class SessionFileStore {
     const found = await inBatches(names, async (file): Promise<SessionCandidate | undefined> => {
       try {
         const stat = await fs.stat(file);
-        const updatedAt = await this.#activityIso(file, stat.size, stat.mtimeMs);
+        const updatedAt = withActivity
+          ? await this.#activityIso(file, stat.size, stat.mtimeMs)
+          : new Date(stat.mtimeMs).toISOString();
         const activityMs = Date.parse(updatedAt);
         return {
           file,

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs/promises";
 import { appendFile, mkdir, mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { sessionLeaseProbe } from "../../../process";
@@ -690,6 +691,55 @@ describe("SessionFileStore", () => {
       expect((await store.listSessions({ folder: cwd })).sessions[0]?.updatedAt).toBe(
         at.toISOString(),
       );
+    } finally {
+      await removeRoot(root);
+    }
+  });
+  test("resolves named and fallback chats from bounded headers without summaries", async () => {
+    const root = await makeTempRoot();
+    try {
+      const home = path.join(root, "home");
+      const sessionsRoot = path.join(root, "sessions");
+      const cwd = path.join(home, "project");
+      const bucket = path.join(sessionsRoot, "-project");
+      const target = path.join(bucket, "target.jsonl");
+      const fallback = path.join(bucket, "renamed.jsonl");
+      for (let index = 0; index < 20; index += 1) {
+        await writeSession(path.join(bucket, `decoy-${index}.jsonl`), {
+          id: `decoy-${index}`,
+          cwd,
+          timestamp: "2026-10-01T08:00:00.000Z",
+        });
+      }
+      await writeSession(target, { id: "target", cwd, timestamp: "2026-10-01T08:00:00.000Z" });
+      await writeSession(fallback, { id: "hidden-id", cwd, timestamp: "2026-10-01T08:00:00.000Z" });
+      await appendFile(fallback, `${"x".repeat(2 * 1024 * 1024)}\n`, "utf8");
+      const store = new SessionFileStore({ sessionsRoot, home, tempRoot: path.join(root, "tmp") });
+      const originalOpen = fs.open.bind(fs);
+      const readCalls: unknown[][][] = [];
+      const openSpy = spyOn(fs, "open").mockImplementation(async (...args) => {
+        const handle = await originalOpen(...args);
+        const readSpy = spyOn(handle, "read");
+        readCalls.push(readSpy.mock.calls as unknown[][]);
+        return handle;
+      });
+      try {
+        expect(await store.resolveThread("target")).toEqual({ cwd, sessionFile: target });
+        const targetOpens = openSpy.mock.calls.map(([file]) => String(file));
+        expect(targetOpens).toEqual([target]);
+        openSpy.mockClear();
+        expect(await store.resolveThread("hidden-id")).toEqual({ cwd, sessionFile: fallback });
+        const fallbackOpens = openSpy.mock.calls.map(([file]) => String(file));
+        expect(fallbackOpens).toContain(fallback);
+        expect(fallbackOpens.filter((file) => file === target)).toHaveLength(1);
+        const readLengths = readCalls
+          .flat()
+          .map((args) => (typeof args[2] === "number" ? args[2] : 0));
+        expect(Math.max(0, ...readLengths)).toBeLessThanOrEqual(256 * 1024);
+        expect(await store.resolveThread("missing")).toBeUndefined();
+      } finally {
+        openSpy.mockRestore();
+      }
     } finally {
       await removeRoot(root);
     }

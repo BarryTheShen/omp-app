@@ -226,7 +226,7 @@ export async function createCompositionServer(
   const replay = new EventReplayHub();
 
   const resolveThread: A0PortContext["resolveThread"] = async (threadId, _signal) => {
-    const file = await sessionFileStore.findSession(threadId);
+    const file = await sessionFileStore.resolveThread(threadId);
     if (file === undefined) return undefined;
     return {
       threadId,
