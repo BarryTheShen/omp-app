@@ -1926,6 +1926,134 @@ describe("SessionCatalogSidebar running chats", () => {
   });
 });
 
+describe("SessionCatalogSidebar focus across a refresh", () => {
+  /** A catalog whose listed files and running chats are read from `state` on every refresh. */
+  function modelFrom(state: { files: SessionFile[]; running: string[] }): SessionCatalogModel {
+    return new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async ({ folder: listed }) => ({
+          sessions: state.files,
+          nextCursor: null,
+          running: state.running.map((id) => ({ id: ThreadIdSchema.parse(id), folder: listed })),
+        }),
+        readSession: async ({ sessionFile }) => {
+          const file = state.files.find((item) => item.sessionFile === sessionFile);
+          if (!file) throw new Error(`No session file ${sessionFile}.`);
+          return file;
+        },
+      },
+    });
+  }
+
+  async function refresh(catalog: SessionCatalogModel): Promise<void> {
+    await act(async () => {
+      await catalog.list({ filter: { scope, query: "" }, limit: 50 });
+    });
+  }
+
+  test("a focused running row keeps the focus when its listed row takes its place", async () => {
+    const state: { files: SessionFile[]; running: string[] } = {
+      files: [],
+      running: ["first-reply"],
+    };
+    const catalog = modelFrom(state);
+    renderSidebar({ catalog });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    screen.getByRole("option", { name: /New chat/ }).focus();
+    // The turn ends: the chat's file is listed and the chat is no longer running.
+    state.files = [session("first-reply", "2026-10-05T00:00:00.000Z", "First reply")];
+    state.running = [];
+    await refresh(catalog);
+    await waitFor(() => expect(screen.getByRole("option", { name: /First reply/ })).toBeTruthy());
+    expect(document.activeElement).toBe(screen.getByRole("option", { name: /First reply/ }));
+  });
+
+  test("a focused row keeps the focus when a chat updated above it pushes the row down", async () => {
+    const state: { files: SessionFile[]; running: string[] } = {
+      files: [
+        session("new", "2026-10-05T00:00:00.000Z", "Newest chat"),
+        session("old", "2026-10-01T00:00:00.000Z", "Old chat"),
+      ],
+      running: [],
+    };
+    const catalog = modelFrom(state);
+    renderSidebar({ catalog });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    screen.getByRole("option", { name: /Newest chat/ }).focus();
+    // The old chat is updated and sorts first, so the focused row moves down the list.
+    state.files = [
+      session("old", "2026-10-09T00:00:00.000Z", "Old chat"),
+      session("new", "2026-10-05T00:00:00.000Z", "Newest chat"),
+    ];
+    await refresh(catalog);
+    await waitFor(() =>
+      expect(screen.getAllByRole("option")[1]?.textContent).toContain("Newest chat"),
+    );
+    expect(document.activeElement).toBe(screen.getByRole("option", { name: /Newest chat/ }));
+  });
+
+  test("focus that falls to the body during a refresh is given back to the row that had it", async () => {
+    const state: { files: SessionFile[]; running: string[] } = {
+      files: [
+        session("new", "2026-10-05T00:00:00.000Z", "Newest chat"),
+        session("old", "2026-10-01T00:00:00.000Z", "Old chat"),
+      ],
+      running: [],
+    };
+    const catalog = modelFrom(state);
+    renderSidebar({ catalog });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const oldRow = screen.getByRole("option", { name: /Old chat/ });
+    oldRow.focus();
+    oldRow.blur();
+    expect(document.activeElement).toBe(document.body);
+    // A refresh that re-renders the list, with the focus on the body.
+    state.files = [
+      session("new", "2026-10-05T00:00:00.000Z", "Newest chat renamed"),
+      session("old", "2026-10-01T00:00:00.000Z", "Old chat"),
+    ];
+    await refresh(catalog);
+    await waitFor(() => expect(screen.getByRole("option", { name: /renamed/ })).toBeTruthy());
+    expect(document.activeElement).toBe(screen.getByRole("option", { name: /Old chat/ }));
+  });
+
+  test("focus the person moved to another control is not taken back by a refresh", async () => {
+    const state: { files: SessionFile[]; running: string[] } = {
+      files: [],
+      running: ["first-reply"],
+    };
+    const catalog = modelFrom(state);
+    renderSidebar({ catalog });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    screen.getByRole("option", { name: /New chat/ }).focus();
+    const search = screen.getByRole("textbox", { name: "Search sessions" });
+    search.focus();
+    state.files = [session("first-reply", "2026-10-05T00:00:00.000Z", "First reply")];
+    state.running = [];
+    await refresh(catalog);
+    await waitFor(() => expect(screen.getByRole("option", { name: /First reply/ })).toBeTruthy());
+    expect(document.activeElement).toBe(search);
+  });
+
+  test("a press outside the focused row ends the list's claim on the focus", async () => {
+    const state: { files: SessionFile[]; running: string[] } = {
+      files: [],
+      running: ["first-reply"],
+    };
+    const catalog = modelFrom(state);
+    renderSidebar({ catalog });
+    await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
+    screen.getByRole("option", { name: /New chat/ }).focus();
+    fireEvent.pointerDown(document.body);
+    state.files = [session("first-reply", "2026-10-05T00:00:00.000Z", "First reply")];
+    state.running = [];
+    await refresh(catalog);
+    await waitFor(() => expect(screen.getByRole("option", { name: /First reply/ })).toBeTruthy());
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
 describe("SessionCatalogSidebar entrance fade", () => {
   const fadesIn = (row: Element): boolean => row.className.includes("starting:opacity-0");
   const rowOf = (title: string): Element => {

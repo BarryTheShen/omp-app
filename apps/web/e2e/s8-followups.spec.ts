@@ -147,7 +147,10 @@ realTest("S8-11 opening an existing chat closes the narrow drawer", async ({ rea
     await expect
       .poll(async () => drawer.locator('[role="option"]:visible').count())
       .toBeGreaterThan(0);
-    await page.waitForTimeout(1_000);
+    // The event the 1 s pause stood for: the turn has ended and the list has refreshed once no row shows a running turn.
+    await expect(drawer.locator('[data-slot="r1-session-running"]:visible')).toHaveCount(0, {
+      timeout: 60_000,
+    });
     const option = drawer.locator('[role="option"]:visible').first();
     await expect(option).toBeVisible({ timeout: 60_000 });
     await option.focus();

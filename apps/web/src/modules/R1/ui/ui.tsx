@@ -212,6 +212,10 @@ export function SessionCatalogSidebar({
   const [renaming, setRenaming] = useState(false);
   const renamingRef = useRef(false);
   const [focusRowId, setFocusRowId] = useState<ThreadId | undefined>();
+  // The chat whose row option holds keyboard focus in the list, for as long as nothing else has taken the focus or a
+  // press. A refresh can take that element out of the document (a running row is replaced by its listed row, or the
+  // list moves the row); the layout effect below gives the focus back to the same chat's row.
+  const focusOwner = useRef<ThreadId | undefined>(undefined);
   const rowElements = useRef(new Map<ThreadId, HTMLDivElement>());
   const moreButtons = useRef(new Map<ThreadId, HTMLButtonElement>());
   const [menuSessionId, setMenuSessionId] = useState<ThreadId | undefined>();
@@ -379,6 +383,44 @@ export function SessionCatalogSidebar({
     setFocusRowId(undefined);
   }, [focusRowId]);
 
+  // Focus that moves to an element outside the list, or a press outside the owner's row, is the person's choice: the
+  // owner lets go of it, so the list does not take the focus back later.
+  useEffect(() => {
+    const focusMoved = (event: FocusEvent): void => {
+      if (!(event.target instanceof Node) || listRef.current?.contains(event.target) !== true) {
+        focusOwner.current = undefined;
+      }
+    };
+    const pressed = (event: PointerEvent): void => {
+      const owner = focusOwner.current;
+      if (owner === undefined) return;
+      const row = rowElements.current.get(owner);
+      if (!(event.target instanceof Node) || row?.contains(event.target) !== true) {
+        focusOwner.current = undefined;
+      }
+    };
+    document.addEventListener("focusin", focusMoved, true);
+    document.addEventListener("pointerdown", pressed, true);
+    return () => {
+      document.removeEventListener("focusin", focusMoved, true);
+      document.removeEventListener("pointerdown", pressed, true);
+    };
+  }, []);
+
+  // A refresh can take the focused row out of the document: a running row is replaced by its listed row, or the list
+  // moves the row. The focus then falls to the body within the same commit, so before paint the owner's row (the same
+  // chat, wherever it now is) takes it again. It does not scroll: the reader's place in the list stays where it was.
+  useLayoutEffect(() => {
+    const owner = focusOwner.current;
+    if (owner === undefined) return;
+    const active = document.activeElement;
+    if (active !== null && active !== document.body && active.isConnected) return;
+    rowElements.current
+      .get(owner)
+      ?.querySelector<HTMLElement>('[role="option"]')
+      ?.focus({ preventScroll: true });
+  });
+
   // A delete asks for focus through the catalog (see requestFocus), so the request lands here even when a chat switch
   // rebuilt the sidebar, and a row that is not in the list yet takes it when it arrives.
   const focusRequest = snapshot.focus;
@@ -541,6 +583,12 @@ export function SessionCatalogSidebar({
       (id) =>
         rowElements.current.get(id)?.querySelector<HTMLElement>('[role="option"]') === element,
     );
+
+  /** The chat whose row holds this element, if any: the row's option or one of its controls. */
+  const rowIdOf = (element: EventTarget): ThreadId | undefined => {
+    if (!(element instanceof Node)) return undefined;
+    return rowIds.find((id) => rowElements.current.get(id)?.contains(element) === true);
+  };
 
   const onListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (rowIds.length === 0) return;
@@ -774,6 +822,12 @@ export function SessionCatalogSidebar({
             if (menuSessionId !== undefined) setMenuSessionId(undefined);
           }}
           onScroll={(event) => scrollPositions.set(catalog, event.currentTarget.scrollTop)}
+          onFocus={(event) => {
+            // Only a row's option owns the focus. Its controls (More actions, menu items, the rename box) do not.
+            const isOption =
+              event.target instanceof HTMLElement && event.target.getAttribute("role") === "option";
+            focusOwner.current = isOption ? rowIdOf(event.target) : undefined;
+          }}
         >
           {grouped.map(([cwd, group]) => (
             <Section
