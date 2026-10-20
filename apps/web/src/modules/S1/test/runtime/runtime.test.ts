@@ -397,7 +397,7 @@ describe("S1.2 ConfigStore runtime", () => {
     expect(state.listCalls).toBe(0);
   });
 
-  test("ignores another folder and keys outside the section", async () => {
+  test("ignores another folder, and re-reads the section for any change in its own scope", async () => {
     const state = fakeState();
     const runtime = createSettingsRuntime(fakeClient(state), {
       descriptor,
@@ -420,6 +420,7 @@ describe("S1.2 ConfigStore runtime", () => {
         overrides: [],
       },
     });
+    expect(state.listCalls).toBe(0);
     emit(
       state,
       change("outside.key", "revision-outside", {
@@ -431,7 +432,41 @@ describe("S1.2 ConfigStore runtime", () => {
       }),
     );
     await settle();
-    expect(state.listCalls).toBe(0);
+    expect(state.listCalls).toBe(1);
+    expect(runtime.getSnapshot().phase).toBe("ready");
+  });
+
+  test("an outside rewrite reported under an unrelated key still shows the section's new value", async () => {
+    const state = fakeState();
+    const runtime = createSettingsRuntime(fakeClient(state), {
+      descriptor,
+      folder: null,
+      layer: "global",
+    });
+    runtimes.push(runtime);
+    await runtime.read();
+    // omp rewrites the file: the section's value changes, and a key that is not in the section is the one reported.
+    state.entries = state.entries.map((entry) =>
+      entry.key === "appearance.mode" ? { ...entry, value: "dark" } : entry,
+    );
+    emit(
+      state,
+      change("disabledProviders", "revision-rewrite", {
+        key: "disabledProviders",
+        secret: false,
+        value: [],
+        source: "global",
+        overrides: [],
+      }),
+    );
+    await settle();
+    expect(runtime.getSnapshot().config?.entries).toContainEqual({
+      key: "appearance.mode",
+      secret: false,
+      value: "dark",
+      source: "global",
+      overrides: [],
+    });
     expect(runtime.getSnapshot().phase).toBe("ready");
   });
 

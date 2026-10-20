@@ -422,12 +422,9 @@ export class SettingsRuntime {
   private handleChanged(change: ConfigChanged): void {
     if (this.disposed || this.writing) return;
     const appliesToScope = change.layer !== "project" || change.folder === this.folder;
-    const keyMatches = this.descriptor.controls.some(
-      (control) => control.key === change.key || control.key.startsWith(`${change.key}.`),
-    );
-    if (!appliesToScope || !keyMatches) {
-      return;
-    }
+    // The server reports one changed key per file write, and it can be a key outside this section (a rewrite that also
+    // drops other keys). So every change in scope re-reads the section; filtering by that key drops the section's own change.
+    if (!appliesToScope) return;
     if (change.layer !== "default") {
       void this.reconcileChanged([change]);
       return;
