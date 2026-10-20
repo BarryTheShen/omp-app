@@ -6,13 +6,13 @@ import { expect, realTest, screenshots, waitForFiniteAnimations } from "./real-o
 /**
  * #1439 on real omp: while a section is disabled, its dropdowns, checkbox rows and structured editors' dropdowns must
  * look disabled the way its text boxes do. A Thinking Level conflict disables the Model tab's Thinking section, whose
- * number box is the reference. A Tool Approval conflict disables the Interaction tab's Tool Approval section, which
- * also holds a structured editor (Policy 1) beside its mode dropdown.
+ * number box is the reference. A tool approval conflict disables the Interaction tab's Approvals section (renamed from
+ * Tool Approval by #644), which also holds a structured editor (Policy 1) beside its Approval Mode dropdown.
  */
 
 const CONFLICT = "Settings changed elsewhere";
 const APPROVAL_CONFLICT = "Settings changed elsewhere";
-// The Tool Approval section starts with one per-tool policy, so its structured editor has a row to draw.
+// The Approvals section starts with one per-tool policy, so its structured editor has a row to draw.
 const APPROVAL_START = "tools:\n  approvalMode: yolo\n  approval:\n    bash: allow\n";
 
 type Look = { readonly opacity: string; readonly background: string; readonly cursor: string };
@@ -60,15 +60,15 @@ async function writeSettingsFile(agentDir: string, content: string): Promise<voi
   await rename(`${target}.tmp`, target);
 }
 
-// Opens Tool Approval, stages a mode change, then has another writer change the same setting: the section holds a
+// Opens Approvals, stages a mode change, then has another writer change the same setting: the section holds a
 // conflict, which shows its heading and disables every control in the section.
 async function reachApprovalConflict(page: Page, agentDir: string): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByTestId("settings-screen");
   await expect(settings).toBeVisible();
   await settings.getByRole("button", { name: "Interaction", exact: true }).click();
-  await page.getByRole("option", { name: "Tool Approval", exact: true }).click();
-  const mode = settings.getByRole("combobox", { name: "Tool Approval", exact: true });
+  await page.getByRole("option", { name: "Approvals", exact: true }).click();
+  const mode = settings.getByRole("combobox", { name: "Approval Mode", exact: true });
   const policy = settings.getByRole("combobox", {
     name: "Tool Approval Policies: Policy 1",
     exact: true,
@@ -120,7 +120,7 @@ async function expectLooksEnabled(controls: readonly Locator[]): Promise<void> {
   }
 }
 
-// The reference is a disabled control the kit already draws: the number box, or the Tool Approval mode dropdown. It is
+// The reference is a disabled control the kit already draws: the number box, or the Approval Mode dropdown. It is
 // half opacity, muted, with the not-allowed cursor. The number box's cursor is only computed, not shown: its pointer
 // events are off while it is disabled (disabled:pointer-events-none), so a person never sees that cursor on it. The
 // dropdowns and checkbox rows are seen, so each must compute the same look as the reference, cursor included.
@@ -200,7 +200,7 @@ realTest(
     const page = await realApp.open();
     await page.setViewportSize({ width: 1280, height: 1100 });
     const settings = await reachApprovalConflict(page, realApp.agentDir);
-    const mode = settings.getByRole("combobox", { name: "Tool Approval", exact: true });
+    const mode = settings.getByRole("combobox", { name: "Approval Mode", exact: true });
     const policy = settings.getByRole("combobox", {
       name: "Tool Approval Policies: Policy 1",
       exact: true,
