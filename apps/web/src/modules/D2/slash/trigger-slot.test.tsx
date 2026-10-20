@@ -388,6 +388,72 @@ describe("D2.3 SlashTriggerSlot", () => {
     base.dispose();
   });
 
+  test("an arrow key that moves the highlight scrolls the highlighted command into view, once per move", async () => {
+    const scrolled: string[] = [];
+    const scrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+    const provider = providerWith(available);
+    try {
+      render(
+        <RuntimeHarness>
+          <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+            <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+          </SlashTriggerSlot>
+        </RuntimeHarness>,
+      );
+      const input = composerInput();
+      fireEvent.change(input, { target: { value: "/" } });
+      input.setSelectionRange(1, 1);
+      const listbox = await screen.findByRole("listbox");
+      await waitFor(() => expect(listbox.getAttribute("aria-activedescendant")).not.toBeNull());
+      const first = listbox.getAttribute("aria-activedescendant");
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      await waitFor(() => expect(scrolled).toHaveLength(1));
+      const second = listbox.getAttribute("aria-activedescendant");
+      expect(second).not.toBe(first);
+      expect(scrolled).toEqual([second]);
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      await waitFor(() => expect(scrolled).toHaveLength(2));
+      expect(scrolled).toEqual([second, first]);
+    } finally {
+      Element.prototype.scrollIntoView = scrollIntoView;
+      provider.dispose();
+    }
+  });
+
+  test("a pointer move over a command moves the highlight, and the list does not scroll", async () => {
+    const scrolled: string[] = [];
+    const scrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+    const provider = providerWith(available);
+    try {
+      render(
+        <RuntimeHarness>
+          <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+            <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+          </SlashTriggerSlot>
+        </RuntimeHarness>,
+      );
+      const input = composerInput();
+      fireEvent.change(input, { target: { value: "/" } });
+      input.setSelectionRange(1, 1);
+      const listbox = await screen.findByRole("listbox");
+      await waitFor(() => expect(listbox.getAttribute("aria-activedescendant")).not.toBeNull());
+      const third = screen.getAllByRole("option")[2];
+      if (third === undefined) throw new Error("the list has fewer than three commands");
+      fireEvent.mouseMove(third);
+      await waitFor(() => expect(listbox.getAttribute("aria-activedescendant")).toBe(third.id));
+      expect(scrolled).toEqual([]);
+    } finally {
+      Element.prototype.scrollIntoView = scrollIntoView;
+      provider.dispose();
+    }
+  });
+
   test("while omp's list has not answered, `/` shows a loading line: no option, no no-match text, and Enter is kept", async () => {
     const release = Promise.withResolvers<void>();
     let searching = false;

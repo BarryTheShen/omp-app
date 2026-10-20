@@ -4,7 +4,7 @@ import {
   type Unstable_TriggerItem,
   unstable_useLiveCompletionAdapter,
 } from "@assistant-ui/react";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ComposerTriggerCandidate,
   ComposerTriggerProvider,
@@ -78,13 +78,56 @@ function awaitsAnswer(items: readonly Unstable_TriggerItem[], answers: AnswerQue
   return items.length === 0 && answers.get(items) === undefined;
 }
 
+/**
+ * The list's box. An arrow key that moves the highlight scrolls the highlighted command into view, so the command that
+ * Enter would choose can be seen. A pointer move over a row moves the highlight too, and that never scrolls the list.
+ */
+function ListBox({ children }: { readonly children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const listbox = box.current?.closest('[role="listbox"]');
+    if (!listbox) return undefined;
+    // An arrow key marks the move it causes. The highlight changes in the same turn, and the mark ends after that turn.
+    let fromArrow = false;
+    let timer: number | undefined;
+    const markArrow = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      fromArrow = true;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        fromArrow = false;
+      }, 0);
+    };
+    const reveal = () => {
+      if (!fromArrow) return;
+      fromArrow = false;
+      const id = listbox.getAttribute("aria-activedescendant");
+      const row = id === null ? null : document.getElementById(id);
+      row?.scrollIntoView?.({ block: "nearest" });
+    };
+    const observer = new MutationObserver(reveal);
+    observer.observe(listbox, { attributes: true, attributeFilter: ["aria-activedescendant"] });
+    document.addEventListener("keydown", markArrow, true);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("keydown", markArrow, true);
+      window.clearTimeout(timer);
+    };
+  }, []);
+  return (
+    <div ref={box} className={POPOVER_BOX}>
+      {children}
+    </div>
+  );
+}
+
 function renderItems(
   items: readonly Unstable_TriggerItem[],
   status: string | null,
   answersQuery: string | undefined,
 ): ReactNode {
   return (
-    <div className={POPOVER_BOX}>
+    <ListBox>
       {items.length === 0 ? (
         <p className="text-muted-foreground px-3 py-2 text-sm">
           {status ?? "No matching commands."}
@@ -130,7 +173,7 @@ function renderItems(
           {status}
         </p>
       )}
-    </div>
+    </ListBox>
   );
 }
 
