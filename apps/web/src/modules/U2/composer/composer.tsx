@@ -46,6 +46,7 @@ import { offeredFiles, refusalNotice } from "./refused-files";
 import { useRemeasureOnWidthChange } from "./remeasure";
 
 export interface ComposerSurfaceProps {
+  readonly placeholder?: string;
   readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
   readonly cancel: () => Promise<void> | void;
   readonly policy?: SubmitPolicy;
@@ -214,6 +215,7 @@ export function ComposerSurface({
   savePasteFile,
   onDoubleLeftArrow,
   children,
+  placeholder = "Send a message...",
 }: ComposerSurfaceProps): ReactNode {
   const aui = useAui();
   const composer = aui.composer;
@@ -555,7 +557,7 @@ export function ComposerSurface({
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Send a message..."
+            placeholder={placeholder}
             rows={1}
             submitMode="none"
             className="aui-composer-input caret-primary placeholder:text-muted-foreground max-h-[min(13rem,35dvh)] min-h-8 w-full resize-none overflow-y-auto border-0 bg-transparent px-4 pt-3 pb-2 text-base leading-6 focus:outline-none"

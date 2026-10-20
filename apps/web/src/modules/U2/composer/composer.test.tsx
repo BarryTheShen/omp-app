@@ -29,10 +29,11 @@ function renderComposer(
   running: boolean,
   submitPrompt: (intent: PromptIntent) => Promise<void>,
   cancel: () => Promise<void> | void = async () => undefined,
+  placeholder?: string,
 ) {
   return render(
     <RuntimeProvider running={running}>
-      <ComposerSurface submitPrompt={submitPrompt} cancel={cancel} />
+      <ComposerSurface submitPrompt={submitPrompt} cancel={cancel} placeholder={placeholder} />
     </RuntimeProvider>,
   );
 }
@@ -40,6 +41,27 @@ function renderComposer(
 const BLOCKED_REASON = "Can't send yet. Your message stays here until omp-app reconnects.";
 
 describe("U2.2 ComposerSurface", () => {
+  test("applies the placeholder prop and keeps the original default", () => {
+    renderComposer(
+      false,
+      vi.fn(async () => undefined),
+      undefined,
+      "Type / for commands",
+    );
+    expect(screen.getByRole("textbox", { name: "Message input" }).getAttribute("placeholder")).toBe(
+      "Type / for commands",
+    );
+
+    cleanup();
+    renderComposer(
+      false,
+      vi.fn(async () => undefined),
+    );
+    expect(screen.getByRole("textbox", { name: "Message input" }).getAttribute("placeholder")).toBe(
+      "Send a message...",
+    );
+  });
+
   test("submits on Enter but leaves Shift+Enter as a newline gesture", async () => {
     const submitPrompt = vi.fn(async () => undefined);
     renderComposer(false, submitPrompt);

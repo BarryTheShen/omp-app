@@ -63,6 +63,7 @@ import {
   WatchNotice,
 } from "@/launch";
 import { LayoutArea, type LayoutAreaName, type Surface, type SurfaceMap } from "@/layout";
+import { useSlashTip } from "@/modules/D2/slash/tip";
 import type { CredentialActions } from "@/modules/D3/auth/credential-actions";
 import { readProviderSignIns } from "@/modules/D3/auth/sign-in";
 import { D3_LOGIN_COMMAND } from "@/modules/D3/descriptors";
@@ -553,6 +554,7 @@ function DraftComposer({
   sendBlockedReason,
   onDoubleLeftArrow,
   savePasteFile,
+  placeholder,
 }: {
   readonly controller: DraftController;
   /** The chat the draft belongs to (see `useChatDraft`): a different one once the person switches chats. */
@@ -576,6 +578,7 @@ function DraftComposer({
   readonly sendBlockedReason?: string;
   /** Saves a large paste's full text as a file the chat's agent reads; the composer puts the reference in the box. */
   readonly savePasteFile?: (text: string) => Promise<string>;
+  readonly placeholder: string | undefined;
   readonly onDoubleLeftArrow: () => void;
 }) {
   const aui = useAui();
@@ -625,6 +628,7 @@ function DraftComposer({
       voice={voice}
       queue={queue}
       onDoubleLeftArrow={onDoubleLeftArrow}
+      placeholder={placeholder}
     >
       <DraftNotice
         onResolve={onResolve}
@@ -842,6 +846,7 @@ function ActiveThreadReady({
 }: ActiveThreadProps) {
   const store = history.store as OmpRuntimeStore;
   const threadId = history.threadId as ThreadId;
+  const slashTip = useSlashTip();
   const otherVersions = useOtherVersions(catalog, threadId);
   const [lastUserVersions] = useState(createLastUserVersions);
   const connection = useAppConnection();
@@ -1731,6 +1736,7 @@ function ActiveThreadReady({
           showReport: showCommandOutput,
           runMode: (request, options) => commandGateway.modeChange({ threadId, request }, options),
         });
+        slashTip.recordSlashSend();
       }
       perfMark("send_delivered");
     },
@@ -1741,6 +1747,7 @@ function ActiveThreadReady({
       showCommandOutput,
       slashProvider,
       threadId,
+      slashTip.recordSlashSend,
     ],
   );
   // The view for the chat on screen registers how a send reaches it, and how a rewind's note reaches it (see `deliverToOpenChat`).
@@ -2050,6 +2057,7 @@ function ActiveThreadReady({
           toolbar={area("composerToolbar")}
           voice={threadSurfaces.liveVoice?.render() ?? null}
           queue={area("composerQueue")}
+          placeholder={slashTip.placeholder}
         />
       </ComposerHistory>
       <HistorySearchDialog

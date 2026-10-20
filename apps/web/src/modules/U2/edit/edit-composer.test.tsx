@@ -68,6 +68,7 @@ describe("U2.7 EditComposer", () => {
       />,
     );
     const input = screen.getByRole("textbox", { name: "Edit message" });
+    expect(input.getAttribute("placeholder")).toBe("Send a message...");
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("original text"));
     await waitFor(() => expect(screen.getByText("notes.txt")).toBeTruthy());
   });
