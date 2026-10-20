@@ -1,24 +1,32 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createAppClient, type WebSocketLike } from "@omp-app/client";
 import { AppPort, ConfigStore, FolderPath, RpcSessionPort, WelcomeFrame } from "@omp-app/contracts";
-import { type CompositionServer, createCompositionServer } from "../../scripts/dev";
+import {
+  type CompositionServer,
+  type CompositionServerOptions,
+  createCompositionServer,
+} from "../../scripts/dev";
 
 const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
 const servers: CompositionServer[] = [];
 
 const FAKE_OMP = `#!/usr/bin/env bun
+require("node:fs").appendFileSync(import.meta.path + ".spawnlog", Bun.argv.slice(2).join(" ") + "\\n");
 if (Bun.argv.includes("--version")) {
   process.stdout.write("omp 18.6.1\\n");
   process.exit(0);
 }
 if (Bun.argv.slice(-3).join(" ") === "config list --json") {
-  process.stdout.write(JSON.stringify({ model: { type: "string", value: "fake-default" } }));
+  process.stdout.write(JSON.stringify({ model: { type: "string", value: "fake-default" }, "registry.only": { type: "string" } }));
   process.exit(0);
 }
 console.log(JSON.stringify({ type: "ready", protocolVersion: 1, supportedProtocolVersions: [1, 2], maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 }));
+const slowCommand = Bun.env.FAKE_SLOW_COMMAND;
+const slowMs = Number(Bun.env.FAKE_SLOW_MS ?? 0);
+const silentCommand = Bun.env.FAKE_SILENT_COMMAND;
 let pending = "";
 function respond(command) {
   if (command.type === "negotiate_protocol") {
@@ -39,7 +47,15 @@ for await (const chunk of Bun.stdin.stream()) {
   pending += new TextDecoder().decode(chunk);
   const lines = pending.split("\\n");
   pending = lines.pop() ?? "";
-  for (const line of lines) if (line.trim()) respond(JSON.parse(line));
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const command = JSON.parse(line);
+    if (command.type === silentCommand) continue;
+    if (command.type === slowCommand) {
+      // This child-process timer exercises the server's real timeout boundary; parent fake timers cannot control it.
+      setTimeout(() => respond(command), slowMs);
+    } else respond(command);
+  }
 }
 `;
 
@@ -60,12 +76,16 @@ async function fakeOmp(root: string): Promise<string> {
 async function startServer(
   ompBin: string,
   environment: Readonly<Record<string, string>> = {},
+  sharedRoot?: string,
+  capabilityProbeSettings?: CompositionServerOptions["capabilityProbeSettings"],
 ): Promise<CompositionServer> {
-  const root = await temporaryRoot("capabilities-server-");
+  const root = sharedRoot ?? (await temporaryRoot("capabilities-server-"));
   const home = join(root, "home");
   const agentDir = join(root, "agent");
   const appDataDir = join(root, "app-data");
-  await Promise.all([mkdir(home), mkdir(agentDir), mkdir(appDataDir)]);
+  await Promise.all(
+    [root, home, agentDir, appDataDir].map((path) => mkdir(path, { recursive: true })),
+  );
   const env = {
     ...Bun.env,
     HOME: home,
@@ -81,6 +101,7 @@ async function startServer(
     appDataDir,
     ompBin,
     staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
+    ...(capabilityProbeSettings === undefined ? {} : { capabilityProbeSettings }),
   });
   servers.push(server);
   return server;
@@ -161,6 +182,71 @@ describe("composition capability wiring", () => {
     client.dispose();
   });
 
+  test("reuses omp probe output on an unchanged second server start and keeps no-default registry keys", async () => {
+    const root = await temporaryRoot("capabilities-cache-");
+    const binary = await fakeOmp(root);
+    const environment = {};
+    const firstServer = await startServer(binary, environment, root);
+    const firstClient = clientFor(firstServer);
+    const firstKeys = (await firstClient.port(ConfigStore).list({ folder: null })).availableKeys;
+    firstClient.dispose();
+
+    const secondServer = await startServer(binary, environment, root);
+    const secondClient = clientFor(secondServer);
+    const secondKeys = (await secondClient.port(ConfigStore).list({ folder: null })).availableKeys;
+    secondClient.dispose();
+
+    expect(firstKeys).toContain("registry.only");
+    expect(secondKeys).toEqual(firstKeys);
+    const invocations = (await readFile(`${binary}.spawnlog`, "utf8")).trim().split("\n");
+    expect(invocations.filter((args) => args === "--version")).toHaveLength(2);
+    expect(invocations.filter((args) => args === "config list --json")).toHaveLength(1);
+    expect(invocations.filter((args) => args.startsWith("--mode rpc-ui"))).toHaveLength(1);
+    expect(invocations).toHaveLength(4);
+  });
+  test("entire capability timeouts make server health unhealthy and are not cached", async () => {
+    const root = await temporaryRoot("capabilities-entire-timeout-");
+    const binary = await fakeOmp(root);
+    const server = await startServer(binary, { FAKE_SILENT_COMMAND: "negotiate_protocol" }, root, {
+      timeoutMs: 200,
+      deadlineMs: 400,
+      patient: { timeoutMs: 200, deadlineMs: 400 },
+    });
+    const client = clientFor(server);
+    expect(await client.port(AppPort).health({})).toMatchObject({
+      status: "unhealthy",
+      detail: expect.stringContaining("did not answer the app's checks"),
+    });
+    client.dispose();
+    expect(
+      await readFile(join(root, "app-data", "omp-probe-cache.json"), "utf8").catch(() => undefined),
+    ).toBeUndefined();
+  });
+
+  test("partial capability timeouts keep health ok and are not cached", async () => {
+    const root = await temporaryRoot("capabilities-partial-timeout-");
+    const binary = await fakeOmp(root);
+    const server = await startServer(
+      binary,
+      { FAKE_SLOW_COMMAND: "get_state", FAKE_SLOW_MS: "1800" },
+      root,
+      {
+        timeoutMs: 1_500,
+        deadlineMs: 30_000,
+        patient: { timeoutMs: 1_500, deadlineMs: 30_000 },
+      },
+    );
+    const client = clientFor(server);
+    expect(await client.port(AppPort).health({})).toEqual({ status: "ok" });
+    expect(await client.port(AppPort).capabilities({})).toMatchObject({
+      "omp.cmd.get_state": { state: "unavailable", via: "rpc" },
+      "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
+    });
+    client.dispose();
+    expect(
+      await readFile(join(root, "app-data", "omp-probe-cache.json"), "utf8").catch(() => undefined),
+    ).toBeUndefined();
+  });
   test("reports unhealthy and rejects open when omp is missing", async () => {
     const root = await temporaryRoot("capabilities-missing-");
     const server = await startServer(join(root, "missing-omp"));

@@ -10,7 +10,11 @@ import {
 import type { RpcSession } from "@omp-app/omp-rpc";
 import serverPackage from "../package.json";
 import {
+  type CapabilityProbeResult,
+  capabilityProbeResultFromRaw,
+  type PatientProbeOptions,
   probeCapabilitiesPatiently,
+  probeGithubRefs,
   probeRanOutOfTime,
   probeTimedOutEntirely,
 } from "../src/capabilities";
@@ -36,8 +40,10 @@ import { BackgroundJobStopStoreService } from "../src/modules/A1/background-jobs
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
 import {
   createConfigStoreWithOmpDefaults,
+  type OmpDefaultsProbeResult,
   ompEnvironmentValues,
   ompEnvironmentVariableNames,
+  probeOmpDefaults,
 } from "../src/modules/A1/config";
 import { createDraftStore } from "../src/modules/A1/drafts";
 import { createExtensionCatalog } from "../src/modules/A1/extensions";
@@ -59,6 +65,13 @@ import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore } from "../src/modules/A1/usage-limits";
 import { type A0PortContext, createA0Runtime } from "../src/ports/A0";
+import {
+  type ProbeCacheHit,
+  type ProbeCacheIdentity,
+  probeCacheIdentity,
+  readProbeCache,
+  writeProbeCache,
+} from "../src/probe-cache";
 import {
   findExternalOmp,
   logOmpProcess,
@@ -90,6 +103,11 @@ export interface CompositionServerOptions {
   readonly logger?: Logger;
   /** How often the memory and process figures are logged; the default is 30 seconds. */
   readonly statsIntervalMs?: number;
+  /** Test seam for short capability-probe deadlines; normal launches use the production defaults. */
+  readonly capabilityProbeSettings?: Pick<
+    PatientProbeOptions,
+    "timeoutMs" | "deadlineMs" | "patient"
+  >;
   /** Test and embedding override for how watched files are opened and recorded; the default watches the real files. */
   readonly fileWatch?: FileWatchRegistry;
 }
@@ -156,54 +174,134 @@ export async function createCompositionServer(
     // A busy computer can need longer than a quiet one: it is asked once more, patiently.
     onRetry: (waitedMs) => logger.warn("omp.probe_retry", { waited_ms: waitedMs }),
   });
+  const ompProbeMs = Math.round(performance.now() - probeStarted);
+  const defaultsProbe = {
+    binary: ompBinary,
+    launchDirectory: launchFolder,
+    pathEnvironment: env.PATH ?? "",
+  };
+  let cacheStatus: "hit" | "miss" = "miss";
+  let cacheIdentity: ProbeCacheIdentity | undefined;
+  let cacheHit: ProbeCacheHit | undefined;
+  let defaultsResult: OmpDefaultsProbeResult;
+  let capabilityResult: CapabilityProbeResult | undefined;
+  let health = probe.health;
+  if (probe.health.status === "ok" && probe.version !== null) {
+    try {
+      cacheIdentity = await probeCacheIdentity(ompBinary, probe.version, env);
+      cacheHit = await readProbeCache(appDataDir, cacheIdentity);
+    } catch {
+      cacheIdentity = undefined;
+      cacheHit = undefined;
+    }
+    if (cacheHit !== undefined) {
+      cacheStatus = "hit";
+      defaultsResult = cacheHit.defaults;
+      logger.info("omp.defaults_probe", { ms: 0, cache: cacheStatus });
+      const capabilityStarted = performance.now();
+      const githubAvailable = await probeGithubRefs({ env });
+      capabilityResult = capabilityProbeResultFromRaw(cacheHit.raw, { githubAvailable });
+      logger.info("capabilities.probe", {
+        protocol: capabilityResult.protocolVersion,
+        available: Object.values(capabilityResult.capabilities).filter(
+          (capability) => capability?.state === "available",
+        ).length,
+        unavailable: Object.values(capabilityResult.capabilities).filter(
+          (capability) => capability?.state !== "available",
+        ).length,
+        partial_timeouts: false,
+        ms: Math.round(performance.now() - capabilityStarted),
+        cache: cacheStatus,
+      });
+    } else {
+      const capabilityStarted = performance.now();
+      const capabilityPromise = probeCapabilitiesPatiently({
+        cwd: FolderPath.parse(appDataDir),
+        ompBin: ompBinary,
+        env,
+        ...options.capabilityProbeSettings,
+        onRetry: (waitedMs) => logger.warn("capabilities.probe_retry", { waited_ms: waitedMs }),
+      });
+      const defaultsStarted = performance.now();
+      const defaultsPromise = probeOmpDefaults(defaultsProbe);
+      try {
+        capabilityResult = await capabilityPromise;
+      } catch (error) {
+        health = await unhealthyAfterFailedChecks(ompBinary, env, launchFolder);
+        logger.error("capabilities.probe_failed", {
+          message: error instanceof Error ? error.message : String(error),
+          ms: Math.round(performance.now() - capabilityStarted),
+          no_model: health.code === "no_model",
+          cache: cacheStatus,
+        });
+      }
+      defaultsResult = await defaultsPromise;
+      logger.info("omp.defaults_probe", {
+        ms: Math.round(performance.now() - defaultsStarted),
+        cache: cacheStatus,
+      });
+      if (capabilityResult !== undefined) {
+        logger.info("capabilities.probe", {
+          protocol: capabilityResult.protocolVersion,
+          available: Object.values(capabilityResult.capabilities).filter(
+            (capability) => capability?.state === "available",
+          ).length,
+          unavailable: Object.values(capabilityResult.capabilities).filter(
+            (capability) => capability?.state !== "available",
+          ).length,
+          partial_timeouts: probeRanOutOfTime(capabilityResult),
+          ms: Math.round(performance.now() - capabilityStarted),
+          cache: cacheStatus,
+        });
+      }
+    }
+  } else {
+    const defaultsStarted = performance.now();
+    defaultsResult = await probeOmpDefaults(defaultsProbe);
+    logger.info("omp.defaults_probe", {
+      ms: Math.round(performance.now() - defaultsStarted),
+      cache: cacheStatus,
+    });
+  }
   logger.info("omp.probe", {
     status: probe.health.status,
     version: probe.version,
     detail: probe.health.detail,
-    ms: Math.round(performance.now() - probeStarted),
+    ms: ompProbeMs,
+    cache: cacheStatus,
   });
   let capabilities = CapabilityMap.parse({});
   let protocolVersion: 1 | 2 = 1;
-  let health = probe.health;
-  if (health.status === "ok") {
-    const capabilityStarted = performance.now();
-    try {
-      const capabilityProbe = await probeCapabilitiesPatiently({
-        cwd: FolderPath.parse(appDataDir),
-        ompBin: ompBinary,
-        env,
-        onRetry: (waitedMs) => logger.warn("capabilities.probe_retry", { waited_ms: waitedMs }),
-      });
-      if (probeTimedOutEntirely(capabilityProbe)) {
-        // Reporting "ok" with every omp feature unavailable would cripple the app until a restart
-        // and say nothing about why.
-        health = { status: "unhealthy", detail: OMP_PROBLEM.checksTimedOut };
-        logger.error("capabilities.probe_failed", {
-          message: "the capability probe ran out of time twice",
-          ms: Math.round(performance.now() - capabilityStarted),
-        });
-      } else {
-        capabilities = capabilityProbe.capabilities;
-        protocolVersion = capabilityProbe.protocolVersion;
-        const states = Object.values(capabilities).flatMap((capability) =>
-          capability === undefined ? [] : [capability.state],
-        );
-        logger.info("capabilities.probe", {
-          protocol: protocolVersion,
-          available: states.filter((state) => state === "available").length,
-          unavailable: states.filter((state) => state !== "available").length,
-          partial_timeouts: probeRanOutOfTime(capabilityProbe),
-          ms: Math.round(performance.now() - capabilityStarted),
-        });
-      }
-    } catch (error) {
-      health = await unhealthyAfterFailedChecks(ompBinary, env, launchFolder);
+  if (capabilityResult !== undefined) {
+    if (probeTimedOutEntirely(capabilityResult)) {
+      health = { status: "unhealthy", detail: OMP_PROBLEM.checksTimedOut };
       logger.error("capabilities.probe_failed", {
-        message: error instanceof Error ? error.message : String(error),
-        ms: Math.round(performance.now() - capabilityStarted),
-        no_model: health.code === "no_model",
+        message: "the capability probe ran out of time twice",
+        cache: cacheStatus,
       });
+    } else {
+      capabilities = capabilityResult.capabilities;
+      protocolVersion = capabilityResult.protocolVersion;
     }
+  }
+  if (
+    cacheIdentity !== undefined &&
+    capabilityResult !== undefined &&
+    health.status === "ok" &&
+    !probeRanOutOfTime(capabilityResult) &&
+    "defaults" in defaultsResult.loaded
+  ) {
+    await writeProbeCache(
+      appDataDir,
+      cacheIdentity,
+      capabilityResult.raw,
+      defaultsResult.loaded.defaults,
+      defaultsResult.loaded.registryKeys,
+    ).catch((error: unknown) =>
+      logger.warn("omp.probe_cache_write_failed", {
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
   }
   const instanceId = crypto.randomUUID();
   const omp =
@@ -324,6 +422,7 @@ export async function createCompositionServer(
       launchDirectory: launchFolder,
       pathEnvironment: env.PATH ?? "",
     },
+    defaultsResult,
   );
   const draftStore = createDraftStore({
     env,

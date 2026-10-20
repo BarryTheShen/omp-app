@@ -42,32 +42,38 @@ export interface OmpDefaultsProbeOptions {
 }
 
 /**
- * The defaults, or the reason they could not be loaded (a few words, no output from omp). `timedOut` means omp
- * ran out of time, so asking again may get an answer.
+ * The result of one isolated `omp config list --json` attempt, including registered defaults and
+ * every registry key. The caller may persist the successful result with its omp identity.
  */
-type Loaded =
+export type OmpDefaultsLoaded =
   | {
       readonly defaults: Readonly<Record<string, unknown>>;
       readonly registryKeys: readonly string[];
     }
   | { readonly cause: string; readonly timedOut?: boolean };
 
-interface LoadResult {
-  readonly loaded: Loaded;
-  /** The temporary folder could not be removed; the defaults are unaffected. */
+export interface OmpDefaultsProbeResult {
+  readonly loaded: OmpDefaultsLoaded;
   readonly leftover: boolean;
 }
 
 function defaultsWarning(cause: string): string {
   return `omp setting defaults could not be loaded (${cause}); continuing without registered defaults.`;
 }
+/** Runs one isolated `omp config list --json` attempt without creating a ConfigStore. */
+export async function probeOmpDefaults(
+  options: OmpDefaultsProbeOptions,
+): Promise<OmpDefaultsProbeResult> {
+  return loadOmpDefaults(options);
+}
 
 /** Creates the server's ConfigStore with omp's registered defaults when available. */
 export async function createConfigStoreWithOmpDefaults(
   options: Omit<ConfigStoreOptions, "defaultValues">,
   probe: OmpDefaultsProbeOptions,
+  initial?: OmpDefaultsProbeResult,
 ): Promise<ConfigStoreService> {
-  const first = await loadOmpDefaults(probe);
+  const first = initial ?? (await probeOmpDefaults(probe));
   const store = createConfigStore({
     ...options,
     ...("defaults" in first.loaded
@@ -130,9 +136,9 @@ function reportWarnings(probe: OmpDefaultsProbeOptions, messages: readonly strin
 async function loadOmpDefaults(
   options: OmpDefaultsProbeOptions,
   signal?: AbortSignal,
-): Promise<LoadResult> {
+): Promise<OmpDefaultsProbeResult> {
   let temporaryRoot: string | undefined;
-  let loaded: Loaded;
+  let loaded: OmpDefaultsLoaded;
   try {
     temporaryRoot = await mkdtemp(
       join(options.temporaryDirectoryBase ?? tmpdir(), "omp-app-config-defaults-"),
@@ -167,7 +173,7 @@ async function runConfigList(
   agent: string,
   temp: string,
   signal?: AbortSignal,
-): Promise<Loaded> {
+): Promise<OmpDefaultsLoaded> {
   const binary = resolveBinary(options.binary, options.launchDirectory);
   const env = {
     PATH: options.pathEnvironment,
@@ -234,7 +240,7 @@ function stopProcessGroup(child: Bun.Subprocess<"pipe", "pipe", "pipe">): void {
   }
 }
 
-function parseDefaults(output: string): Loaded {
+function parseDefaults(output: string): OmpDefaultsLoaded {
   let input: unknown;
   try {
     input = JSON.parse(output);

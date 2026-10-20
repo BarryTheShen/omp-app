@@ -13,7 +13,7 @@ import {
   ThreadId,
 } from "@omp-app/contracts";
 import { RpcSession } from "@omp-app/omp-rpc";
-import { type OmpProcess, type OmpProcessOptions, spawnOmpProcess } from "../process";
+import { spawnOmpProcess } from "../process";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
 const DEFAULT_GH_TIMEOUT_MS = 2_000;
@@ -191,7 +191,6 @@ export interface CapabilityProbeOptions {
   readonly deadlineMs?: number;
   readonly ghBinary?: string;
   readonly hostCapabilities?: readonly CapabilityKey[];
-  readonly createProcess?: (options: OmpProcessOptions) => OmpProcess;
 }
 
 export interface CapabilityProbeEvidenceResult {
@@ -201,10 +200,21 @@ export interface CapabilityProbeEvidenceResult {
   readonly source: string;
 }
 
+export interface CapabilityProbeCommandResult {
+  readonly available: boolean;
+  readonly reason?: string;
+}
+
+export interface CapabilityProbeRawResult {
+  readonly commandResults: Readonly<Record<OmpCommandName, CapabilityProbeCommandResult>>;
+  readonly protocolVersion: 1 | 2;
+}
+
 export interface CapabilityProbeResult {
   readonly capabilities: CapabilityMap;
   readonly protocolVersion: 1 | 2;
   readonly evidence: readonly CapabilityProbeEvidenceResult[];
+  readonly raw: CapabilityProbeRawResult;
 }
 
 /** True when any answer of the probe came from running out of time, so the probe cannot be trusted. */
@@ -222,10 +232,7 @@ export function probeTimedOutEntirely(result: CapabilityProbeResult): boolean {
   );
 }
 
-interface CommandProbeResult {
-  readonly available: boolean;
-  readonly reason?: string;
-}
+type CommandProbeResult = CapabilityProbeCommandResult;
 
 function unavailable(detail: string): CapabilityStatus {
   return { state: "unavailable", via: "rpc", detail };
@@ -375,6 +382,106 @@ function addUnavailableUpstreamCapabilities(map: Record<string, CapabilityStatus
     addCapability(map, key as CapabilityKey, { state: "unavailable", via: "upstream", detail });
   }
 }
+export function capabilityProbeResultFromRaw(
+  raw: CapabilityProbeRawResult,
+  options: {
+    readonly hostCapabilities?: readonly CapabilityKey[];
+    readonly githubAvailable?: boolean;
+  } = {},
+): CapabilityProbeResult {
+  const hostCapabilities = options.hostCapabilities ?? DEFAULT_HOST_CAPABILITIES;
+  const capabilities: Record<string, CapabilityStatus> = {};
+  const evidence: CapabilityProbeEvidenceResult[] = [];
+  const timedOut = Object.values(raw.commandResults).some(
+    (result) => result.reason === PROBE_TIMEOUT_REASON,
+  );
+  for (const command of OMP_COMMAND_NAMES) {
+    const result = raw.commandResults[command];
+    const unprobed = UNPROBED_COMMANDS.has(command);
+    const reason = timedOut
+      ? PROBE_TIMEOUT_REASON
+      : result?.reason === PROBE_TIMEOUT_REASON || result?.reason === COMMAND_TIMEOUT_REASON
+        ? result.reason
+        : unprobed
+          ? NOT_PROBED_REASON
+          : (result?.reason ?? "command unavailable");
+    addCapability(
+      capabilities,
+      commandCapability(command),
+      unprobed || result?.available !== true ? unavailable(reason) : available("rpc"),
+    );
+    evidence.push({
+      command,
+      status: unprobed || result?.available !== true ? "unavailable" : "available",
+      ...(reason === "command unavailable" ? {} : { reason }),
+      source: COMMAND_PROBE_EVIDENCE[command].source,
+    });
+  }
+  addCapability(
+    capabilities,
+    "omp.protocol.v2",
+    timedOut
+      ? unavailable(PROBE_TIMEOUT_REASON)
+      : raw.protocolVersion === 2
+        ? available("rpc")
+        : unavailable("omp did not negotiate protocol v2 (omp-v18.9.1:docs/rpc.md:40-58)"),
+  );
+  addCapability(
+    capabilities,
+    "omp.ui",
+    timedOut ? unavailable(PROBE_TIMEOUT_REASON) : available("rpc"),
+  );
+  const featureProbes: ReadonlyArray<readonly [CapabilityKey, OmpCommandName]> = [
+    ["omp.host-tools", "set_host_tools"],
+    ["omp.host-uris", "set_host_uri_schemes"],
+    ["omp.subagent-events", "set_subagent_subscription"],
+    ["omp.live-voice", "live_stop"],
+  ];
+  for (const [feature, command] of featureProbes) {
+    const result = raw.commandResults[command];
+    addCapability(
+      capabilities,
+      feature,
+      timedOut
+        ? unavailable(PROBE_TIMEOUT_REASON)
+        : result?.available === true
+          ? available("rpc")
+          : unavailable(result?.reason ?? `the ${command} probe was unavailable`),
+    );
+  }
+  for (const key of hostCapabilities) {
+    if (key !== "host.github-refs") addCapability(capabilities, key, available("host"));
+  }
+  addCapability(
+    capabilities,
+    "host.github-refs",
+    options.githubAvailable === true
+      ? available("host")
+      : {
+          state: "fallback",
+          via: "host",
+          detail:
+            "gh --version is unavailable; GitHub references use their explicit fallback path.",
+        },
+  );
+  addUnavailableUpstreamCapabilities(capabilities);
+  return {
+    capabilities: CapabilityMap.parse(capabilities),
+    protocolVersion: raw.protocolVersion,
+    evidence,
+    raw,
+  };
+}
+
+export async function probeGithubRefs(
+  options: {
+    readonly ghBinary?: string;
+    readonly env?: Readonly<Record<string, string | undefined>>;
+    readonly timeoutMs?: number;
+  } = {},
+): Promise<boolean> {
+  return probeGh(options.ghBinary ?? "gh", options.env, options.timeoutMs ?? DEFAULT_GH_TIMEOUT_MS);
+}
 
 function isolatedProbeEnvironment(
   base: Readonly<Record<string, string | undefined>>,
@@ -395,37 +502,10 @@ function timedOutProbeResult(
   hostCapabilities: readonly CapabilityKey[],
   reason: string,
 ): CapabilityProbeResult {
-  const capabilities: Record<string, CapabilityStatus> = {};
-  const evidence = OMP_COMMAND_NAMES.map((command) => ({
-    command,
-    status: "unavailable" as const,
-    reason,
-    source: COMMAND_PROBE_EVIDENCE[command].source,
-  }));
-  for (const command of OMP_COMMAND_NAMES) {
-    addCapability(capabilities, commandCapability(command), unavailable(reason));
-  }
-  for (const feature of [
-    "omp.protocol.v2",
-    "omp.ui",
-    "omp.host-tools",
-    "omp.host-uris",
-    "omp.subagent-events",
-    "omp.live-voice",
-  ] as const) {
-    addCapability(capabilities, feature, unavailable(reason));
-  }
-  for (const key of hostCapabilities) {
-    addCapability(
-      capabilities,
-      key,
-      key === "host.github-refs"
-        ? { state: "fallback", via: "host", detail: "gh probe skipped because omp probe timed out" }
-        : available("host"),
-    );
-  }
-  addUnavailableUpstreamCapabilities(capabilities);
-  return { capabilities: CapabilityMap.parse(capabilities), protocolVersion: 1, evidence };
+  const commandResults = Object.fromEntries(
+    OMP_COMMAND_NAMES.map((command) => [command, { available: false, reason }]),
+  ) as Record<OmpCommandName, CapabilityProbeCommandResult>;
+  return capabilityProbeResultFromRaw({ commandResults, protocolVersion: 1 }, { hostCapabilities });
 }
 
 /**
@@ -447,9 +527,8 @@ export async function probeCapabilities(
   const timeoutMs = options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
   const deadlineAt = Date.now() + (options.deadlineMs ?? DEFAULT_PROBE_DEADLINE_MS);
   const hostCapabilities = options.hostCapabilities ?? DEFAULT_HOST_CAPABILITIES;
-  const createProcess = options.createProcess ?? spawnOmpProcess;
   const threadId = ThreadId.parse(`capability-probe-${crypto.randomUUID()}`);
-  const process = createProcess({
+  const process = spawnOmpProcess({
     threadId,
     folder: FolderPath.parse(probeCwd),
     ompBin: options.ompBin,
@@ -473,74 +552,19 @@ export async function probeCapabilities(
       throw cause;
     }
     const commandResults = new Map<OmpCommandName, CommandProbeResult>();
-    const evidence: CapabilityProbeEvidenceResult[] = [];
     for (const command of OMP_COMMAND_NAMES) {
       if (UNPROBED_COMMANDS.has(command)) {
         commandResults.set(command, { available: false, reason: NOT_PROBED_REASON });
-        evidence.push({
-          command,
-          status: "unavailable",
-          reason: NOT_PROBED_REASON,
-          source: COMMAND_PROBE_EVIDENCE[command].source,
-        });
         continue;
       }
       if (Date.now() >= deadlineAt)
         return timedOutProbeResult(hostCapabilities, PROBE_TIMEOUT_REASON);
       const result = await probeCommand(session, command, Math.min(timeoutMs, remainingMs()));
       commandResults.set(command, result);
-      evidence.push({
-        command,
-        status: result.available ? "available" : "unavailable",
-        ...(result.reason === undefined ? {} : { reason: result.reason }),
-        source: COMMAND_PROBE_EVIDENCE[command].source,
-      });
       if (Date.now() >= deadlineAt)
         return timedOutProbeResult(hostCapabilities, PROBE_TIMEOUT_REASON);
     }
 
-    const capabilities: Record<string, CapabilityStatus> = {};
-    for (const command of OMP_COMMAND_NAMES) {
-      const result = commandResults.get(command);
-      if (result?.available === true)
-        addCapability(capabilities, commandCapability(command), available("rpc"));
-      else
-        addCapability(
-          capabilities,
-          commandCapability(command),
-          unavailable(result?.reason ?? "command unavailable"),
-        );
-    }
-    addCapability(
-      capabilities,
-      "omp.protocol.v2",
-      session.protocolVersion === 2
-        ? available("rpc")
-        : unavailable("omp did not negotiate protocol v2 (omp-v18.9.1:docs/rpc.md:40-58)"),
-    );
-    addCapability(capabilities, "omp.ui", available("rpc"));
-
-    const featureProbes: ReadonlyArray<readonly [CapabilityKey, OmpCommandName]> = [
-      ["omp.host-tools", "set_host_tools"],
-      ["omp.host-uris", "set_host_uri_schemes"],
-      ["omp.subagent-events", "set_subagent_subscription"],
-      ["omp.live-voice", "live_stop"],
-    ];
-    for (const [feature, command] of featureProbes) {
-      const result = commandResults.get(command);
-      addCapability(
-        capabilities,
-        feature,
-        result?.available === true
-          ? available("rpc")
-          : unavailable(result?.reason ?? `the ${command} probe was unavailable`),
-      );
-    }
-
-    for (const key of hostCapabilities) {
-      if (key === "host.github-refs") continue;
-      addCapability(capabilities, key, available("host"));
-    }
     if (Date.now() >= deadlineAt)
       return timedOutProbeResult(hostCapabilities, PROBE_TIMEOUT_REASON);
     const ghAvailable = await probeGh(
@@ -548,24 +572,14 @@ export async function probeCapabilities(
       probeEnv,
       Math.min(DEFAULT_GH_TIMEOUT_MS, remainingMs()),
     );
-    addCapability(
-      capabilities,
-      "host.github-refs",
-      ghAvailable
-        ? available("host")
-        : {
-            state: "fallback",
-            via: "host",
-            detail:
-              "gh --version is unavailable; GitHub references use their explicit fallback path.",
-          },
-    );
-    addUnavailableUpstreamCapabilities(capabilities);
-    return {
-      capabilities: CapabilityMap.parse(capabilities),
+    const raw = {
+      commandResults: Object.fromEntries(commandResults.entries()) as Record<
+        OmpCommandName,
+        CapabilityProbeCommandResult
+      >,
       protocolVersion: session.protocolVersion,
-      evidence,
-    };
+    } satisfies CapabilityProbeRawResult;
+    return capabilityProbeResultFromRaw(raw, { hostCapabilities, githubAvailable: ghAvailable });
   } finally {
     await session.close();
     await rm(probeCwd, { recursive: true, force: true });
