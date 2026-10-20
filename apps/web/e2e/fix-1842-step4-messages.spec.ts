@@ -728,19 +728,13 @@ realTest(
           .first();
         await expect(newChat).toBeVisible();
         await newChat.click();
-        const animations = await reducedPage.waitForFunction(
-          () => {
-            const loading = document.querySelector<HTMLElement>('[data-slot="u1-thread-loading"]');
-            const skeleton = loading?.querySelector<HTMLElement>("[aria-hidden='true']");
-            if (loading === null || skeleton === null || skeleton === undefined) return null;
-            return [
-              getComputedStyle(loading).animationName,
-              getComputedStyle(skeleton).animationName,
-            ];
-          },
-          { timeout: 10_000 },
-        );
-        expect(await animations.jsonValue()).toEqual(["none", "none"]);
+        await expect(reducedPage.locator('[data-slot="u1-thread-loading"]')).toHaveCount(0);
+        await expect(reducedPage.locator('[data-empty-chat="true"]')).toBeVisible({
+          timeout: 60_000,
+        });
+        await expect(
+          reducedPage.locator('[data-shell-main="true"][data-new-chat="true"]'),
+        ).toBeAttached();
       } finally {
         await reducedPage.close();
       }

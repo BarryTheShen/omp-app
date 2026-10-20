@@ -89,6 +89,8 @@ export interface ThreadReadingPlace {
   /** The place a reload that reopens this chat returns to; null for every other open. */
   readonly resumeAt: ReadingPlace | null;
   readonly historyLoading: boolean;
+  /** True while omp is opening a brand-new chat with no saved session to read. */
+  readonly openedNew?: boolean;
 }
 
 export interface ThreadShellProps {
@@ -310,16 +312,19 @@ function ThreadSkeleton({ className }: { readonly className: string }) {
 function RuntimeStateSurface({
   snapshot,
   historyLoading,
+  openedNew,
 }: {
   readonly snapshot: RuntimeSnapshot;
   readonly historyLoading: boolean;
+  readonly openedNew: boolean;
 }) {
   if (footerFailure(snapshot) !== null) return null;
 
-  // Until the chat's history is read, an empty list does not mean the chat is empty.
+  // Until a saved chat's history is read, an empty list does not mean it is empty. A brand-new chat has no history to wait for.
   if (
-    snapshot.process.status === "starting" ||
-    (historyLoading && snapshot.messageOrder.length === 0)
+    !openedNew &&
+    (snapshot.process.status === "starting" ||
+      (historyLoading && snapshot.messageOrder.length === 0))
   ) {
     return (
       <div
@@ -608,6 +613,7 @@ export function ThreadShell({
   );
   const viewportRef = useRef<HTMLDivElement>(null);
   const historyLoading = readingPlace?.historyLoading ?? false;
+  const openedNew = readingPlace?.openedNew ?? false;
   const place = useReadingPlace({
     viewportRef,
     threadId: readingPlace?.threadId,
@@ -717,7 +723,11 @@ export function ThreadShell({
               {/* The loading and empty states sit inside the message list, not above it: a state removed from above the list moved
                   the whole transcript up when the first message replaced it (a 128 px jump, the reply-start shift in issue 1710). */}
               <div className="flex min-h-0 flex-1 flex-col" data-slot="u1-thread-messages">
-                <RuntimeStateSurface snapshot={snapshot} historyLoading={historyLoading} />
+                <RuntimeStateSurface
+                  historyLoading={historyLoading}
+                  openedNew={openedNew}
+                  snapshot={snapshot}
+                />
                 {onLoadOlder !== undefined && (snapshot.transcript.hasOlder || earlierInFlight) && (
                   <EarlierMessagesControl onLoad={loadEarlier} />
                 )}

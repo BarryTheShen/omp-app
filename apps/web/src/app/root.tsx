@@ -649,6 +649,8 @@ interface ActiveThreadProps {
   readonly deliverNote: (note: NoSwitchNote) => void;
   readonly client: NonNullable<ReturnType<typeof useAppConnection>["client"]>;
   readonly history: SelectedThreadHistoryState;
+  /** A brand-new chat with no saved session: its empty surface is centered even while omp starts. */
+  readonly newChat: boolean;
   /** A New chat started from the chat on screen has not replaced it yet: the composer's draft is the folder's new-chat draft. */
   readonly newChatStarting: boolean;
   /** Loads the page of messages older than the ones shown; the thread offers it while history is older. */
@@ -743,6 +745,7 @@ function ActiveThreadReady({
   folder,
   catalog,
   history,
+  newChat,
   newChatStarting,
   leftSidebar,
   onPromptSent,
@@ -1956,6 +1959,7 @@ function ActiveThreadReady({
             <ProviderErrorResolverProvider resolver={resolveProviderError}>
               <AppShell
                 composer={composer}
+                newChat={newChat}
                 leftSidebar={leftSidebar}
                 statusBar={area("statusBar")}
                 threadHeader={area("header")}
@@ -1990,6 +1994,7 @@ function ActiveThreadReady({
                                 threadId,
                                 resumeAt: resumePlace,
                                 historyLoading: history.isLoading,
+                                openedNew: newChat,
                               }}
                               footer={
                                 <>
@@ -2114,6 +2119,7 @@ function ConnectedApp({
   const [newChat, setNewChat] = useState<NewChatStatus>({ state: "idle" });
   // The chat on screen when a New chat started: its composer takes the new chat's draft until another chat replaces it.
   const [newChatFrom, setNewChatFrom] = useState<ThreadId | null>(null);
+  const [newChatThreadId, setNewChatThreadId] = useState<ThreadId | null>(null);
   const [recentFolders, setRecentFolders] = useState<readonly FolderPath[]>([]);
   const sessionFiles = useMemo(() => client.port(SessionFileStore), [client]);
   const rpc = useMemo(() => client.port(RpcSessionPort), [client]);
@@ -2254,6 +2260,7 @@ function ConnectedApp({
     started: false,
   });
   const onPromptSent = useCallback(() => {
+    setNewChatThreadId(null);
     turnWatch.current = {
       armed: true,
       before: finishedAnswerAt(history.store?.getSnapshot()),
@@ -2422,6 +2429,7 @@ function ConnectedApp({
   // screen), so that failure is not raised again here. Any other refusal, such as no folder being selected, still is.
   const openSidebarChat = useCallback(
     async (threadId: ThreadId): Promise<void> => {
+      setNewChatThreadId(null);
       try {
         await openThread(threadId);
       } catch (error) {
@@ -2434,8 +2442,10 @@ function ConnectedApp({
   // A switch to a chat a branch or a rewind made (a regenerate, an edit, a rewind). The chat on screen can still be the
   // source's store: omp moves the running session to the branch in place, so the chat is always opened again (PR 1645).
   const switchChat = useCallback(
-    (threadId: ThreadId): Promise<void> =>
-      openHistoryChatThrough(threadId, (history) => history.openExisting(threadId)),
+    (threadId: ThreadId): Promise<void> => {
+      setNewChatThreadId(null);
+      return openHistoryChatThrough(threadId, (history) => history.openExisting(threadId));
+    },
     [openHistoryChatThrough],
   );
   // The sidebar's New chat holds the chat switch from its click until its chat's open is requested, so a send made
@@ -2471,6 +2481,7 @@ function ConnectedApp({
   // for it), so the New chat's own hold ends here, before the history of the chat loads.
   const openNewChatFromSidebar = useCallback(
     (threadId: ThreadId): Promise<void> => {
+      setNewChatThreadId(threadId);
       newChatHolds.current.at(-1)?.();
       newChatTicketRef.current?.settle("opened");
       newChatTicketRef.current = null;
@@ -2566,6 +2577,7 @@ function ConnectedApp({
     }
     const initialized = await remote.initialize("new");
     const started = initialized.remoteId as ThreadId;
+    setNewChatThreadId(started);
     await openThread(started);
     return started;
   }, [openThread, remote]);
@@ -2713,6 +2725,11 @@ function ConnectedApp({
           client={client}
           folder={folder}
           history={displayedHistory}
+          newChat={
+            displayedHistory.openedNew ||
+            (displayedHistory.threadId !== undefined &&
+              displayedHistory.threadId === newChatThreadId)
+          }
           newChatStarting={
             newChatFrom !== null &&
             newChat.state === "opening" &&
