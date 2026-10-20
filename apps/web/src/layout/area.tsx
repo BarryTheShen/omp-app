@@ -37,7 +37,7 @@ export type SurfaceMap = Readonly<Partial<Record<SurfaceId, Surface>>>;
 /** How each area arranges its pieces: the one place area spacing and direction are set. */
 const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   sidebar: "flex min-h-0 flex-1 flex-col gap-(--space-md)",
-  header: "flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1",
+  header: "flex min-w-0 flex-1 flex-nowrap items-center gap-x-3",
   panels: "flex min-h-0 flex-1 flex-col",
   composerToolbar: "flex min-w-0 flex-wrap items-center gap-(--space-xs)",
   composerQueue: "flex min-w-0 flex-col",

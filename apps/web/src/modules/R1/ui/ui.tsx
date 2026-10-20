@@ -35,8 +35,12 @@ export interface SessionCatalogSidebarProps {
   readonly onOpenFailed?: (threadId: ThreadId, error: AppError) => void;
   readonly onDeletedOpenThread?: () => Promise<void> | void;
   readonly onPinChange?: (threadId: ThreadId, pinned: boolean) => Promise<void> | void;
-  /** Asks before a chat is deleted; the chat is deleted only when this resolves true. `title` is the chat's name. */
-  readonly confirmDelete?: (session: SessionMetadata, title: string) => Promise<boolean> | boolean;
+  /** Asks before deletion; `restoreFocus` returns focus to the invoking row action if cancelled. */
+  readonly confirmDelete?: (
+    session: SessionMetadata,
+    title: string,
+    restoreFocus?: HTMLElement,
+  ) => Promise<boolean> | boolean;
   readonly confirmDeleteRunning?: (title: string) => Promise<boolean> | boolean;
   /** Coalesces catalog refreshes that can arrive from the active-thread and running-change watchers. */
   readonly requestRefresh?: (catalog: SessionCatalogModel, limit?: number) => void;
@@ -592,7 +596,10 @@ export function SessionCatalogSidebar({
   /** Deletes a chat. `confirm` asks first (the More actions item and Mod+Shift+Backspace); Mod+Backspace deletes at once. */
   const deleteSession = async (session: SessionMetadata, confirm: boolean): Promise<void> => {
     if (!canDelete) return;
-    if (confirm && !(await confirmDelete?.(session, sessionTitle(session)))) return;
+    const trigger = moreButtons.current.get(session.id);
+    if (confirm && !(await confirmDelete?.(session, sessionTitle(session), trigger ?? undefined))) {
+      return;
+    }
     // Focus moves to the neighbouring row once the chat is gone: the next row, else the one above.
     const index = rowIds.indexOf(session.id);
     const neighbour = index < 0 ? undefined : (rowIds[index + 1] ?? rowIds[index - 1]);
@@ -656,13 +663,14 @@ export function SessionCatalogSidebar({
 
   return (
     <aside
-      aria-label="Sessions"
+      aria-label="Session list"
       className="flex min-h-0 w-full flex-col bg-sidebar px-3 text-sidebar-foreground"
     >
       <div className="flex shrink-0 items-center">
         <Button
           ref={newChatRef}
           className="border-foreground/10 bg-background hover:border-foreground/25 rounded-control flex h-8 w-full shrink-0 items-center justify-start gap-2 border px-2.5 text-sm transition-colors"
+          data-shell-new-chat="true"
           type="button"
           variant="outline"
           onClick={() => void createNewChat()}
@@ -722,7 +730,12 @@ export function SessionCatalogSidebar({
           title="No sessions in this folder"
           hint="Start a new chat to create an omp session."
           action={
-            <Button type="button" size="sm" onClick={() => void createNewChat()}>
+            <Button
+              data-shell-new-chat="true"
+              type="button"
+              size="sm"
+              onClick={() => void createNewChat()}
+            >
               New chat
             </Button>
           }
@@ -791,7 +804,7 @@ export function SessionCatalogSidebar({
                       <ListRow
                         title="New chat"
                         detail={
-                          <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground flex w-full min-w-0 items-center gap-1">
+                          <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground group-hover:text-foreground flex w-full min-w-0 items-center gap-1">
                             <Loader2Icon
                               aria-hidden="true"
                               className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
@@ -920,12 +933,19 @@ export function SessionCatalogSidebar({
                       data-slot="r1-session-row"
                       inert={leaving || undefined}
                       key={session.id}
+                      onClick={(event) => {
+                        const target = event.target as Element;
+                        if (target.closest("button, input, [role='menu']") === null) {
+                          void openSession({ id: session.id });
+                        }
+                      }}
                       ref={(element) => rememberRow(session.id, element)}
                     >
                       <ListRow
                         title={
                           isEditing ? (
                             <Input
+                              className="w-full focus-visible:ring-inset"
                               aria-busy={isEditing && renaming ? true : undefined}
                               aria-label={`Rename ${title}`}
                               autoFocus
@@ -971,7 +991,7 @@ export function SessionCatalogSidebar({
                                   {marker.text}
                                 </span>
                               )}
-                              <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground flex w-full min-w-0 items-center gap-1 truncate">
+                              <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground group-hover:text-foreground flex w-full min-w-0 items-center gap-1 truncate">
                                 {running && (
                                   <span className="flex shrink-0 items-center" title="Running">
                                     <Loader2Icon

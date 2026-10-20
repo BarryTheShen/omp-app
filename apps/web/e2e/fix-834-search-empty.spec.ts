@@ -14,7 +14,7 @@ const NO_MATCH = 'No chats match "zzzz"';
 
 /** Types a search that matches no chat, and checks the list says so without the folder's prompt. */
 async function searchWithoutMatch(page: Page): Promise<void> {
-  const sidebar = page.getByRole("complementary", { name: "Sessions" });
+  const sidebar = page.getByRole("complementary", { name: "Session list" });
   await expect(sidebar.getByRole("option").first()).toBeVisible({ timeout: 30_000 });
   await sidebar.getByRole("textbox", { name: "Search sessions" }).fill("zzzz");
   await expect(sidebar.getByText(NO_MATCH, { exact: true })).toBeVisible();
@@ -32,7 +32,7 @@ realTest(
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-834-search-empty-light.png") });
 
-    const sidebar = page.getByRole("complementary", { name: "Sessions" });
+    const sidebar = page.getByRole("complementary", { name: "Session list" });
     await sidebar.getByRole("textbox", { name: "Search sessions" }).fill("");
     await expect(
       sidebar.getByRole("listbox", { name: "Session list" }).getByRole("option").first(),

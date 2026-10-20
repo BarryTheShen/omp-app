@@ -208,7 +208,7 @@ export interface ListRowProps {
 }
 
 const listRowControlClass =
-  "flex min-w-0 flex-1 items-start gap-1 rounded-lg px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed";
+  "flex w-full min-w-0 flex-1 items-start gap-1 rounded-lg px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed";
 
 /** One row of a list of things to pick from (sessions): selectable when `onSelect` is given. */
 export function ListRow({

@@ -696,7 +696,7 @@ export function ThreadShell({
             ref={viewportRef}
             data-slot="u1-thread-viewport"
             className={cn(
-              "relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain",
+              "relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               // While the reader is away, or a reload's place settles, the app keeps the reader's row in place itself
               // (thread-scroll-controller.ts). The browser's scroll anchoring would move that row again when the rows
               // above are drawn, so it is off then (issue 1165). While the thread follows the newest message, it stays on.

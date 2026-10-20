@@ -99,7 +99,7 @@ realTest(
               '[data-shell-region="composer"] textarea',
             );
             const railHeader = rail?.firstElementChild;
-            const railBody = rail?.querySelector<HTMLElement>('aside[aria-label="Sessions"]');
+            const railBody = rail?.querySelector<HTMLElement>('aside[aria-label="Session list"]');
             const brand = railHeader?.querySelector("span");
             const brandMark = railHeader?.querySelector("img");
             const title = header?.querySelector("h1");

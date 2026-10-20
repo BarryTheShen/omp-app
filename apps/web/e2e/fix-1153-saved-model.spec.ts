@@ -180,7 +180,7 @@ realTest(
   async ({ realApp }) => {
     await mkdir(screenshots, { recursive: true });
     const page: Page = await realApp.open();
-    const sessions = page.getByRole("complementary", { name: "Sessions" });
+    const sessions = page.getByRole("complementary", { name: "Session list" });
     await sessions.getByRole("button", { name: "New chat" }).click();
     await expect(transcript(page).getByText("No messages yet.")).toBeVisible({ timeout: 60_000 });
 
@@ -235,7 +235,7 @@ realTest(
   "with another chat open, the model picked for the chat whose model is gone opens that chat",
   async ({ realApp }) => {
     const page: Page = await realApp.open();
-    const sessions = page.getByRole("complementary", { name: "Sessions" });
+    const sessions = page.getByRole("complementary", { name: "Session list" });
     await sessions.getByRole("button", { name: "New chat" }).click();
     await expect(transcript(page).getByText("No messages yet.")).toBeVisible({ timeout: 60_000 });
 

@@ -1060,7 +1060,9 @@ function ActiveThreadReady({
               await openThread(selectedThreadId);
               close("programmatic");
             }}
-            confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
+            confirmDelete={(_session, title, restoreFocus) =>
+              openChatDeleteConfirm(overlay, title, undefined, restoreFocus)
+            }
             currentTurnRunning={() => store.getSnapshot().prompt.streaming === true}
             remote={remote}
           />
@@ -1671,7 +1673,7 @@ function ActiveThreadReady({
       title: "Conversation",
       grow: true,
       render: () => (
-        <div className="relative min-w-0">
+        <div className="relative min-w-0 flex-1">
           <h1 className="min-w-0 truncate text-sm font-medium">{title}</h1>
           {/* Messages about the shortcuts and about a command float over the top of the chat, so the header keeps its height. */}
           {(shortcutPreferenceError !== undefined ||
@@ -2650,7 +2652,9 @@ function ConnectedApp({
             currentThreadId={history.threadId}
             onNewChat={openNewChatFromSidebar}
             onOpenThread={openSidebarChat}
-            confirmDelete={(_session, title) => openChatDeleteConfirm(overlay, title)}
+            confirmDelete={(_session, title, restoreFocus) =>
+              openChatDeleteConfirm(overlay, title, undefined, restoreFocus)
+            }
             confirmDeleteRunning={(title) =>
               openChatDeleteConfirm(
                 overlay,
@@ -2683,7 +2687,7 @@ function ConnectedApp({
       title: "Conversation",
       grow: true,
       render: () => (
-        <div className="relative min-w-0">
+        <div className="relative min-w-0 flex-1">
           <h1 className="min-w-0 truncate text-sm font-medium">New conversation</h1>
           {shortcutPreferenceError !== undefined && (
             <div className="absolute start-0 top-full z-10 flex w-max max-w-[min(26rem,calc(100vw-4.5rem))] flex-col pt-1">

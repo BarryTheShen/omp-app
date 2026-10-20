@@ -75,7 +75,7 @@ async function expectStylesLoaded(page: Page): Promise<void> {
     /\/assets\/.+\.css$/,
   );
   const background = await page
-    .locator('[data-testid="r1-session-sidebar"] aside[aria-label="Sessions"]')
+    .locator('[data-testid="r1-session-sidebar"] aside[aria-label="Session list"]')
     .evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(background).not.toBe("rgba(0, 0, 0, 0)");
 }

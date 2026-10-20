@@ -170,7 +170,7 @@ test("captures the migrated R1 list, empty state, and narrow drawer", async ({ p
   const sidebar = page.locator('[data-testid="r1-session-sidebar"]');
   await expect(sidebar.getByRole("option", { name: /Pinned project kickoff/ })).toBeVisible();
   await expectTokenBackground(
-    page.locator('[data-testid="r1-session-sidebar"] aside[aria-label="Sessions"]'),
+    page.locator('[data-testid="r1-session-sidebar"] aside[aria-label="Session list"]'),
     "--sidebar",
   );
   await waitForFiniteAnimations(page);
@@ -196,7 +196,7 @@ test("captures the migrated R1 list, empty state, and narrow drawer", async ({ p
     sidebar.getByRole("menu", { name: "Actions for Pinned project kickoff" }),
   ).toBeVisible();
   await expectTokenBackground(
-    page.locator('[data-testid="r1-session-sidebar"] aside[aria-label="Sessions"]'),
+    page.locator('[data-testid="r1-session-sidebar"] aside[aria-label="Session list"]'),
     "--sidebar",
   );
   await waitForFiniteAnimations(page);
@@ -212,7 +212,7 @@ test("captures the migrated R1 list, empty state, and narrow drawer", async ({ p
   await expect(page.locator('[data-shell-sidebar="left"]')).toBeVisible();
   await expect(sidebar.getByRole("option", { name: /Pinned project kickoff/ })).toBeVisible();
   await expectTokenBackground(
-    page.locator('[data-testid="r1-session-sidebar"] aside[aria-label="Sessions"]'),
+    page.locator('[data-testid="r1-session-sidebar"] aside[aria-label="Session list"]'),
     "--sidebar",
   );
   await waitForFiniteAnimations(page);

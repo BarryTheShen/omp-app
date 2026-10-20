@@ -58,6 +58,7 @@ export function openChatDeleteConfirm(
   overlay: OverlayOpener,
   chatTitle: string,
   notice?: string,
+  restoreFocus?: HTMLElement,
 ): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const content: OverlayContent = ({ close }) => (
@@ -71,6 +72,12 @@ export function openChatDeleteConfirm(
         onGone={() => resolve(false)}
       />
     );
-    overlay.open({ kind: "modal", label: "Delete chat", width: "content", content });
+    overlay.open({
+      kind: "modal",
+      label: "Delete chat",
+      width: "content",
+      content,
+      restoreFocus,
+    });
   });
 }

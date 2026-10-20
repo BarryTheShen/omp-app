@@ -424,6 +424,27 @@ export function AppShell({
           width: sidebarWidth("left", leftShown),
           zIndex: isNarrow ? zIndexTokens.overlay : undefined,
         }}
+        onClickCapture={(event) => {
+          if (!isNarrow) return;
+          const target = event.target as HTMLElement;
+          if (
+            target.closest("input, textarea, [contenteditable='true']") === null &&
+            (target.closest('[role="option"]') || target.closest('[data-shell-new-chat="true"]'))
+          ) {
+            setDrawer(null);
+          }
+        }}
+        onKeyDownCapture={(event) => {
+          const target = event.target as HTMLElement;
+          if (
+            isNarrow &&
+            (event.key === "Enter" || event.key === " ") &&
+            target.closest("input, textarea, [contenteditable='true']") === null &&
+            target.closest('[role="option"]')
+          ) {
+            setDrawer(null);
+          }
+        }}
       >
         <SidebarHeader side="left" open={leftShown} onToggle={closeLeft} />
         <div className="flex min-h-0 flex-1 flex-col">{leftSidebar}</div>
