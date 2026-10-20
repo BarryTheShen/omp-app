@@ -387,4 +387,67 @@ describe("D2.3 SlashTriggerSlot", () => {
     );
     base.dispose();
   });
+
+  test("while omp's list has not answered, `/` shows a loading line: no option, no no-match text, and Enter is kept", async () => {
+    const release = Promise.withResolvers<void>();
+    let searching = false;
+    const base = providerWith(available);
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: (query) => {
+        searching = true;
+        return release.promise.then(() => base.searchTyped(query));
+      },
+    };
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/us" } });
+    input.setSelectionRange(3, 3);
+    await waitFor(() => expect(searching).toBe(true));
+    expect(screen.getByText("Loading commands…").getAttribute("role")).toBe("status");
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.queryByText("No matching commands.")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(submitPrompt).not.toHaveBeenCalled();
+
+    release.resolve();
+    await waitFor(() => expect(screen.getByRole("option", { name: /^\/usage/ })).toBeTruthy());
+    expect(screen.queryByText("Loading commands…")).toBeNull();
+    base.dispose();
+  });
+
+  test("a list that fails to answer replaces the loading line with the reason", async () => {
+    const release = Promise.withResolvers<void>();
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient({
+        commands: () => release.promise.then(() => Promise.reject(new Error("omp refused"))),
+      }).client,
+      threadId,
+      capabilities: () => available,
+    });
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/us" } });
+    input.setSelectionRange(3, 3);
+    await waitFor(() => expect(screen.getByText("Loading commands…")).toBeTruthy());
+    release.resolve();
+    await waitFor(() =>
+      expect(screen.getByText("Slash commands could not be loaded.")).toBeTruthy(),
+    );
+    expect(screen.queryByText("Loading commands…")).toBeNull();
+    provider.dispose();
+  });
 });

@@ -22,6 +22,10 @@ import type { SlashCommandProvider } from "./provider";
 /** The typed text from the start of the message up to the caret, on one line: `/name` or `/name args`. */
 const SLASH_TYPING = /^\/\S*(?:[ \t][^\n]*)?$/u;
 
+/** The popover's box: the rows, the no-match line and the loading line share it, so its look is set in one place. */
+const POPOVER_BOX =
+  "bg-popover text-popover-foreground border-foreground/10 max-h-72 min-w-64 max-w-[min(28rem,90vw)] overflow-y-auto rounded-surface border p-1";
+
 interface TriggerItemsResult {
   readonly items: readonly Unstable_TriggerItem[];
   readonly candidates: ReadonlyMap<string, TriggerCandidate>;
@@ -69,7 +73,7 @@ function directiveFormatter(): Unstable_DirectiveFormatter {
   };
 }
 
-/** An empty list that no search has answered shows nothing: "No matching commands." is said only after a search has answered with none. */
+/** An empty list that no search has answered is still loading, and the popover says so. "No matching commands." is said only after a search has answered with none. */
 function awaitsAnswer(items: readonly Unstable_TriggerItem[], answers: AnswerQueries): boolean {
   return items.length === 0 && answers.get(items) === undefined;
 }
@@ -80,7 +84,7 @@ function renderItems(
   answersQuery: string | undefined,
 ): ReactNode {
   return (
-    <div className="bg-popover text-popover-foreground border-foreground/10 max-h-72 min-w-64 max-w-[min(28rem,90vw)] overflow-y-auto rounded-surface border p-1">
+    <div className={POPOVER_BOX}>
       {items.length === 0 ? (
         <p className="text-muted-foreground px-3 py-2 text-sm">
           {status ?? "No matching commands."}
@@ -219,11 +223,20 @@ function SlashPopover({
         onInserted={handleInserted}
       />
       <ComposerPrimitive.Unstable_TriggerPopoverItems>
-        {(items) =>
-          quiet.current || awaitsAnswer(items, answers)
-            ? null
-            : renderItems(items, status.current, answers.get(items))
-        }
+        {(items) => {
+          if (quiet.current) return null;
+          // Until the list has answered, the popover says so. It is open on the keystroke, so the line shows with it.
+          if (awaitsAnswer(items, answers)) {
+            return (
+              <div className={POPOVER_BOX}>
+                <p role="status" className="text-muted-foreground px-3 py-2 text-sm">
+                  Loading commands…
+                </p>
+              </div>
+            );
+          }
+          return renderItems(items, status.current, answers.get(items));
+        }}
       </ComposerPrimitive.Unstable_TriggerPopoverItems>
     </ComposerPrimitive.Unstable_TriggerPopover>
   );
