@@ -21,8 +21,11 @@ interface TriggerKeyScopeValue {
    * settles a kept Enter; a list that passes none drops it.
    */
   readonly loading: (delta: 1 | -1, answer?: () => KeptEnterAnswer) => void;
-  /** Presses Enter in the composer again once a choose has committed, so the chosen command is sent. */
-  readonly sendAfterChoose: () => void;
+  /**
+   * Presses Enter in the composer again once a choose has committed, so the chosen command is sent. Returns true, and
+   * sends nothing, when a Tab made the choose: Tab only completes the command.
+   */
+  readonly sendAfterChoose: () => boolean;
   /** The composer's textarea, read when it is needed: the caret and the text are current only there. */
   readonly composerTextarea: () => HTMLTextAreaElement | null;
 }
@@ -138,6 +141,8 @@ export function TriggerKeyScope({
   const element = useRef<HTMLDivElement>(null);
   const pending = useRef(0);
   const kept = useRef<KeptEnter | null>(null);
+  // Set by a Tab choose until sendAfterChoose consumes it, or until the next key or pointer press in the scope.
+  const tabChose = useRef(false);
   // The newest row check, read by the key handler, which is created once for the scope.
   const rowIsCurrent = useRef(isCurrentRow);
   useLayoutEffect(() => {
@@ -158,11 +163,17 @@ export function TriggerKeyScope({
         queueMicrotask(() => settleKeptEnter(enter, answer));
       },
       sendAfterChoose: () => {
+        // A choose that Tab made stops at the completed name: nothing is sent here, and Enter sends it later.
+        if (tabChose.current) {
+          tabChose.current = false;
+          return true;
+        }
         // After the choose has committed (the list has gone quiet), Enter is pressed again: the composer sends.
         queueMicrotask(() => {
           const textarea = element.current?.querySelector("textarea");
           if (textarea) pressEnterAgain(textarea);
         });
+        return false;
       },
       composerTextarea: () => element.current?.querySelector("textarea") ?? null,
     }),
@@ -170,6 +181,8 @@ export function TriggerKeyScope({
   );
   const onKeyDownCapture = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (replayed.has(event.nativeEvent)) return;
+    // Any key ends a Tab choose's mark: the mark covers that one choose, not later keys or presses.
+    tabChose.current = false;
     // Any key that can change the text drops a held Enter, so only the text the person confirmed with Enter is ever sent (issue 866).
     if (!Object.hasOwn(TEXT_UNCHANGING_KEYS, event.key)) kept.current = null;
     // While an input method composes a word, its keys belong to the IME (issue 1334): no list moves or chooses for one,
@@ -206,6 +219,8 @@ export function TriggerKeyScope({
     if (option) {
       event.preventDefault();
       event.stopPropagation();
+      // Tab only completes: the choose it makes is marked, so sendAfterChoose does not send the command.
+      if (event.key === "Tab") tabChose.current = true;
       option.click();
       return;
     }
@@ -222,6 +237,9 @@ export function TriggerKeyScope({
         className={className}
         data-trigger-scope=""
         onKeyDownCapture={onKeyDownCapture}
+        onPointerDownCapture={() => {
+          tabChose.current = false;
+        }}
       >
         {children}
       </div>
@@ -243,10 +261,13 @@ export function useTriggerListLoading(loading: boolean, answer?: () => KeptEnter
   }, [loading, scope, answer]);
 }
 
-/** A function that presses Enter again in the composer once a chosen command has committed, so the command runs. */
-export function useSendAfterChoose(): () => void {
+/**
+ * A function that presses Enter again in the composer once a chosen command has committed, so the command runs. It
+ * returns true, and sends nothing, when Tab made the choose.
+ */
+export function useSendAfterChoose(): () => boolean {
   const scope = useContext(TriggerKeyScopeContext);
-  return useCallback(() => scope?.sendAfterChoose(), [scope]);
+  return useCallback(() => scope?.sendAfterChoose() ?? false, [scope]);
 }
 
 /** The composer's textarea inside this scope, for a list action that reads or moves the caret. */

@@ -182,6 +182,13 @@ describe("D2.3 SlashTriggerSlot", () => {
     return provider;
   }
 
+  /** Lets the work that a key press queued in microtasks run: a macrotask runs only after every queued microtask. */
+  function settle(): Promise<void> {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 0);
+    return promise;
+  }
+
   test("a command with no arguments runs when it is chosen by Enter, and the list goes quiet", async () => {
     const provider = loginProvider();
     const submitPrompt = vi.fn(async () => undefined);
@@ -217,6 +224,114 @@ describe("D2.3 SlashTriggerSlot", () => {
     input.setSelectionRange(6, 6);
     fireEvent.click(await screen.findByRole("option", { name: /^\/login/ }));
     await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    provider.dispose();
+  });
+
+  test("Tab completes a command with no arguments without sending it, and Enter then sends it", async () => {
+    const provider = loginProvider();
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/login" } });
+    input.setSelectionRange(6, 6);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => expect(input.value).toBe("/login "));
+    // A send would run after a microtask: let the queued work run, then check that nothing was sent.
+    await settle();
+    expect(submitPrompt).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    provider.dispose();
+  });
+
+  test("Tab, then Enter at once: the command is sent once", async () => {
+    const provider = loginProvider();
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/login" } });
+    input.setSelectionRange(6, 6);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Tab" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    await settle();
+    expect(submitPrompt).toHaveBeenCalledTimes(1);
+    provider.dispose();
+  });
+
+  test("after Tab completes a command, rows that a search answers for the completed text do not reopen the list", async () => {
+    const base = loginProvider();
+    // Every search answers with the /login row: a search for the completed text would reopen the list.
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: () => base.searchTyped("/login"),
+    };
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/login" } });
+    input.setSelectionRange(6, 6);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => expect(input.value).toBe("/login "));
+    await settle();
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(submitPrompt).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  test("after Tab completes a command, one typed character searches again and the list comes back", async () => {
+    const base = loginProvider();
+    const searched: string[] = [];
+    const submitPrompt = vi.fn(async () => undefined);
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: (query) => {
+        searched.push(query);
+        return base.searchTyped("/login");
+      },
+    };
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/login" } });
+    input.setSelectionRange(6, 6);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => expect(input.value).toBe("/login "));
+    await settle();
+    expect(submitPrompt).not.toHaveBeenCalled();
+    const searchesBeforeTyping = searched.length;
+    fireEvent.change(input, { target: { value: "/login x" } });
+    input.setSelectionRange(8, 8);
+    // The typed text searches again, and the list comes back with the row that the search answers with.
+    await waitFor(() => expect(searched.length).toBeGreaterThan(searchesBeforeTyping));
+    await screen.findByRole("option", { name: /^\/login/ });
     provider.dispose();
   });
 

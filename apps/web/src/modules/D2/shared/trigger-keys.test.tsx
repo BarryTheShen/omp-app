@@ -11,7 +11,7 @@ import { ComposerSurface } from "@/modules/U2/composer";
 import type { MentionProvider, TriggerCandidate, TriggerSearchResult } from "../contract";
 import { type LocalProvider, LocalTriggerSlot } from "../local";
 import { MentionComposerSlot } from "../mentions";
-import { TriggerKeyScope } from "./trigger-keys";
+import { TriggerKeyScope, useSendAfterChoose } from "./trigger-keys";
 
 /** The mention lists under a trigger root of their own, as a test mounts them on their own. */
 function MentionTriggerSlot(props: ComponentProps<typeof MentionComposerSlot>) {
@@ -29,6 +29,38 @@ function RuntimeHarness({ children }: { readonly children: ReactNode }) {
     onCancel: async () => undefined,
   });
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
+}
+
+/** A list row: it chooses, and after the choose asks the composer to send, unless it is a row that does not send. */
+function ChoosingRow({
+  id,
+  label,
+  sends = true,
+}: {
+  readonly id: string;
+  readonly label: string;
+  readonly sends?: boolean;
+}) {
+  const sendAfterChoose = useSendAfterChoose();
+  return (
+    <button
+      type="button"
+      role="option"
+      id={id}
+      onClick={() => {
+        if (sends) sendAfterChoose();
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Lets the work that a key press queued in microtasks run: a macrotask runs only after every queued microtask. */
+function settle(): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, 0);
+  return promise;
 }
 
 afterEach(() => cleanup());
@@ -498,6 +530,40 @@ describe("#1566: an Enter with an open, answered list chooses a row and never se
     );
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Tab" });
     expect(chosen).not.toHaveBeenCalled();
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  test("a choose that Tab makes does not send the text", async () => {
+    const sent = vi.fn();
+    render(
+      <TriggerKeyScope>
+        <textarea aria-label="Message input" aria-activedescendant="usage-row" onKeyDown={sent} />
+        <div role="listbox">
+          <ChoosingRow id="usage-row" label="/usage" />
+        </div>
+      </TriggerKeyScope>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Tab" });
+    // A send would press Enter again after a microtask: let that queued work run before judging.
+    await settle();
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  test("a pointer press clears a Tab's choose, so a click on a row that sends still sends", async () => {
+    const sent = vi.fn();
+    render(
+      <TriggerKeyScope>
+        <textarea aria-label="Message input" aria-activedescendant="quiet-row" onKeyDown={sent} />
+        <div role="listbox">
+          <ChoosingRow id="quiet-row" label="/quiet" sends={false} />
+          <ChoosingRow id="send-row" label="/send" />
+        </div>
+      </TriggerKeyScope>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Tab" });
+    fireEvent.pointerDown(screen.getByRole("option", { name: "/send" }));
+    fireEvent.click(screen.getByRole("option", { name: "/send" }));
+    await settle();
     expect(sent).toHaveBeenCalledTimes(1);
   });
 });

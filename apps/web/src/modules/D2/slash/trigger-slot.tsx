@@ -61,11 +61,17 @@ function statusLine(result: TriggerSearchResult): string | null {
   return result.error ? result.error.error.message : null;
 }
 
-function directiveFormatter(): Unstable_DirectiveFormatter {
+/**
+ * The directive text of a chosen command. A command with no arguments records its completed name here, before the text
+ * reaches the matcher, so a Tab that completes it leaves the list closed (see the matcher in SlashPopover).
+ */
+function directiveFormatter(completed: { current: string | null }): Unstable_DirectiveFormatter {
   return {
     serialize(item) {
       const insertion = item.metadata?.insertText;
-      return typeof insertion === "string" ? insertion.trimEnd() : item.label;
+      const text = typeof insertion === "string" ? insertion.trimEnd() : item.label;
+      if (typeof item.metadata?.argumentHint !== "string") completed.current = text;
+      return text;
     },
     parse(text) {
       return [{ kind: "text", text }];
@@ -205,6 +211,8 @@ function SlashPopover({
   const quiet = useRef(false);
   // Whether the list's first command is exactly the text typed: only then does an Enter kept while it loaded choose it.
   const typedIsFirst = useRef(false);
+  // The composer's text when Tab last completed a command with no arguments: the list stays closed while it is unchanged.
+  const completedText = useRef<string | null>(null);
   const [, redraw] = useState(0);
   const fetcher = useCallback(
     async (query: string): Promise<readonly Unstable_TriggerItem[]> => {
@@ -233,7 +241,7 @@ function SlashPopover({
   );
   useTriggerListLoading(completion.isLoading, answerKeptEnter);
   const sendAfterChoose = useSendAfterChoose();
-  const formatter = useMemo(() => directiveFormatter(), []);
+  const formatter = useMemo(() => directiveFormatter(completedText), []);
   const handleInserted = useCallback(
     (item: Unstable_TriggerItem) => {
       const candidate = candidateMap.current.get(item.id);
@@ -246,7 +254,10 @@ function SlashPopover({
       if (typeof candidate.metadata?.argumentHint !== "string") {
         quiet.current = true;
         redraw((count) => count + 1);
-        sendAfterChoose();
+        // A Tab keeps the completed name in the composer, so the list stays closed for it (see the matcher); a send clears it.
+        if (sendAfterChoose())
+          completedText.current = (candidate.insertText ?? `${candidate.label} `).trimEnd();
+        else completedText.current = null;
       }
     },
     [onSelect, sendAfterChoose],
@@ -255,7 +266,12 @@ function SlashPopover({
   return (
     <ComposerPrimitive.Unstable_TriggerPopover
       char="/"
-      matcher={(text, _char, cursorPosition) => slashMatcher(text, cursorPosition)}
+      matcher={(text, _char, cursorPosition) => {
+        // A command with no arguments that was completed (see directiveFormatter) keeps the list closed until the text changes.
+        if (completedText.current !== null && text.trimEnd() !== completedText.current)
+          completedText.current = null;
+        return completedText.current === null ? slashMatcher(text, cursorPosition) : null;
+      }}
       adapter={completion.adapter}
       isLoading={completion.isLoading}
       aria-label="Slash commands"
