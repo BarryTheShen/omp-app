@@ -35,20 +35,24 @@ async function storedSessionText(agentDir: string): Promise<string> {
 }
 
 /**
- * The composer card's background is the `--card` token, resolved on this page. Styles that did not load show the
- * browser's default colors, and the two would differ.
+ * The composer card's background is the muted surface the redesign uses (`bg-muted/30`), resolved on this page. Styles
+ * that did not load show the browser's default colors, and the two would differ.
  */
 async function expectCardToken(page: Page): Promise<void> {
-  const colors = await page.locator('[data-composer-card="true"]').evaluate((card) => {
-    const probe = document.createElement("div");
-    probe.style.backgroundColor = "var(--card)";
-    card.append(probe);
-    const token = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return { background: getComputedStyle(card).backgroundColor, token };
-  });
-  expect(colors.token).not.toBe("");
-  expect(colors.background).toBe(colors.token);
+  // The card fades to the new theme's colour (transition-colors), so the comparison waits until the fade has finished.
+  await expect
+    .poll(async () => {
+      const colors = await page.locator('[data-composer-card="true"]').evaluate((card) => {
+        const probe = document.createElement("div");
+        probe.style.backgroundColor = "color-mix(in oklab, var(--muted) 30%, transparent)";
+        card.append(probe);
+        const token = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return { background: getComputedStyle(card).backgroundColor, token };
+      });
+      return colors.token !== "" && colors.background === colors.token;
+    })
+    .toBe(true);
 }
 
 realTest(

@@ -36,23 +36,27 @@ async function storedSessionText(agentDir: string): Promise<string> {
 }
 
 /**
- * The transcript chip's background is the `--card` token, resolved on this page. Styles that did not load show the
- * browser's default colors, and the two would differ.
+ * The transcript chip's background is the muted surface the redesign uses (`bg-muted/30`), resolved on this page. Styles
+ * that did not load show the browser's default colors, and the two would differ.
  */
 async function expectChipToken(page: Page): Promise<void> {
-  const colors = await page
-    .locator(TRANSCRIPT_CHIP)
-    .first()
-    .evaluate((chip) => {
-      const probe = document.createElement("div");
-      probe.style.backgroundColor = "var(--card)";
-      chip.append(probe);
-      const token = getComputedStyle(probe).backgroundColor;
-      probe.remove();
-      return { background: getComputedStyle(chip).backgroundColor, token };
-    });
-  expect(colors.token).not.toBe("");
-  expect(colors.background).toBe(colors.token);
+  // The chip fades to the new theme's colour, so the comparison waits until the fade has finished.
+  await expect
+    .poll(async () => {
+      const colors = await page
+        .locator(TRANSCRIPT_CHIP)
+        .first()
+        .evaluate((chip) => {
+          const probe = document.createElement("div");
+          probe.style.backgroundColor = "color-mix(in oklab, var(--muted) 30%, transparent)";
+          chip.append(probe);
+          const token = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return { background: getComputedStyle(chip).backgroundColor, token };
+        });
+      return colors.token !== "" && colors.background === colors.token;
+    })
+    .toBe(true);
 }
 
 /** Sends a wrapped paste with a typed line, and waits for omp's reply. */
