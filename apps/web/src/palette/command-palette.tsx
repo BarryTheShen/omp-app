@@ -253,11 +253,14 @@ function CommandPaletteDialog({
                 aria-selected={activeIndex === index}
                 aria-disabled={!entry.available || isRunning}
                 aria-describedby={entry.reason === undefined ? undefined : reasonId}
-                variant={activeIndex === index ? "secondary" : "ghost"}
+                variant="ghost"
                 className={cn(
                   "h-auto w-full flex-col items-stretch justify-start gap-(--space-2xs) rounded-sm px-2 py-1.5 text-sm whitespace-normal text-start hover:bg-muted focus:bg-muted",
-                  // The secondary surface is the panel's own colour in the dark theme, so the highlighted row takes the accent there.
-                  activeIndex === index && "dark:bg-accent dark:hover:bg-accent",
+                  // The highlighted row is the panel tinted 8% toward the text colour, opaque so its colour does not depend on what is behind it.
+                  // The secondary surface gives 1.06:1 against the panel in light (tokens.css --secondary), so it cannot mark the row there.
+                  // The dark theme keeps the accent surface.
+                  activeIndex === index &&
+                    "bg-[color-mix(in_oklch,var(--popover),var(--foreground)_8%)] hover:bg-[color-mix(in_oklch,var(--popover),var(--foreground)_8%)] dark:bg-accent dark:hover:bg-accent",
                   entry.available && !isRunning
                     ? "cursor-pointer text-foreground"
                     : "cursor-not-allowed text-muted-foreground",
