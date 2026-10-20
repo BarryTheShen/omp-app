@@ -20,8 +20,8 @@ function skillFile(name: string): string {
 }
 
 /**
- * Writes the skill folders and a plugin package before omp starts. The plugin root is the folder beside the
- * agent folder (`<root>/plugins`), where omp's catalog looks for plugin packages.
+ * Writes the skill folders and a plugin package before omp starts. Plugins live under omp's configuration root,
+ * `<home>/.omp/plugins` (omp v18.9.1 getPluginsDir; the app's catalog reads the same folder since #1287).
  */
 async function seedOrigins(agentDir: string): Promise<void> {
   const skills = join(agentDir, "skills", "own-skill");
@@ -30,7 +30,7 @@ async function seedOrigins(agentDir: string): Promise<void> {
   const managed = join(agentDir, "managed-skills", "managed-skill");
   await mkdir(managed, { recursive: true });
   await writeFile(join(managed, "SKILL.md"), skillFile("managed-skill"));
-  const plugins = join(dirname(agentDir), "plugins");
+  const plugins = join(dirname(agentDir), "home", ".omp", "plugins");
   const plugin = join(plugins, "node_modules", "demo-plugin");
   await mkdir(plugin, { recursive: true });
   await writeFile(

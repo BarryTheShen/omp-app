@@ -38,7 +38,7 @@ realTest(
   "each copy of a shared plugin id is its own row: a click shows that copy's details and selects only that row",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
-    await writePackage(join(dirname(realApp.agentDir), "plugins"), GLOBAL_VERSION);
+    await writePackage(join(dirname(realApp.agentDir), "home", ".omp", "plugins"), GLOBAL_VERSION);
     await writePackage(join(realApp.folder, ".omp", "plugins"), PROJECT_VERSION);
     const page = await realApp.open();
     await page.setViewportSize({ width: 1280, height: 900 });
