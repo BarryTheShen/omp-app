@@ -91,14 +91,12 @@ import {
   createP3Runs,
   endNoticeOnPrompt,
   lastSavedUserEntryId,
-  otherVersionsFor,
   P3EditSurface,
   type P3EditTarget,
   P3MessageActions,
   P3RunStatusSurface,
   type P3Runs,
   p3EditTargetFromSelection,
-  storedEntryId,
   useP3RunHandlers,
 } from "@/modules/P3/runs";
 import { captureP3EditSource } from "@/modules/P3/runs/source";
@@ -117,7 +115,7 @@ import {
 } from "@/modules/P7/compaction";
 import { createQueueController, type QueueController } from "@/modules/R0/actions";
 import { type StoppedQueue, useOmpRuntime } from "@/modules/R0/runtime";
-import type { OmpRuntimeStore } from "@/modules/R0/store";
+import type { OmpRuntimeStore, RuntimeSnapshot } from "@/modules/R0/store";
 import { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
 import {
   createSessionCatalogRefreshScheduler,
@@ -145,7 +143,7 @@ import {
   useThreadScrollController,
 } from "@/modules/U1/scroll";
 import { TranscriptShortcuts } from "@/modules/U1/shortcuts";
-import { ThreadShell, TurnCancelScope } from "@/modules/U1/thread";
+import { type ThreadRowSlots, ThreadShell, TurnCancelScope } from "@/modules/U1/thread";
 import { type ToolRendererResolver, ToolRendererResolverContext } from "@/modules/U1/tool-slots";
 import {
   AttachmentChips,
@@ -274,6 +272,11 @@ import {
 } from "./slash-commands";
 import { finishedAnswerAt } from "./turn-end";
 import { useGoalCommands } from "./use-goal-command";
+import {
+  createLastUserVersions,
+  type LastUserVersions,
+  useOtherVersions,
+} from "./use-other-versions";
 
 const FOLDER_KEY = "omp.app.root.folder";
 const THREAD_KEY = "omp.app.root.thread";
@@ -740,6 +743,68 @@ function FocusDiagnosticPanelOnReveal({
   return null;
 }
 
+/** The records of one store snapshot by row id, each with its saved entry: the answer `storedEntryId` gives, built once per snapshot. */
+const savedEntryIndexes = new WeakMap<RuntimeSnapshot, ReadonlyMap<string, EntryId | undefined>>();
+
+function savedEntryIndex(snapshot: RuntimeSnapshot): ReadonlyMap<string, EntryId | undefined> {
+  const cached = savedEntryIndexes.get(snapshot);
+  if (cached !== undefined) return cached;
+  const index = new Map<string, EntryId | undefined>();
+  for (const key of snapshot.messageOrder) {
+    const record = snapshot.messages[key];
+    if (record === undefined) continue;
+    if (!index.has(record.key)) index.set(record.key, record.entryId);
+    if (record.rowKey !== undefined && !index.has(record.rowKey)) {
+      index.set(record.rowKey, record.entryId);
+    }
+  }
+  savedEntryIndexes.set(snapshot, index);
+  return index;
+}
+
+/** The entry the store saved for one row, or null. Read at each store change, so a row sees an entry saved after it was drawn. */
+function savedEntryOf(snapshot: RuntimeSnapshot, rowId: string): EntryId | null {
+  const entryId = savedEntryIndex(snapshot).get(rowId);
+  return entryId !== undefined && snapshot.transcript.entries[entryId] !== undefined
+    ? entryId
+    : null;
+}
+
+/**
+ * One row's actions. The row's saved entry is read from the store at each change, so an entry saved after the row was
+ * drawn shows its actions at once, and the row itself is not drawn again for it. The version switcher is read from the
+ * chat's last user message (see `createLastUserVersions`).
+ */
+function RowActions({
+  rowId,
+  role,
+  store,
+  versions,
+  onEdit,
+  onOpenOtherVersion,
+}: {
+  readonly rowId: string;
+  readonly role: string;
+  readonly store: OmpRuntimeStore;
+  readonly versions: LastUserVersions;
+  readonly onEdit: (entryId: EntryId, trigger: HTMLButtonElement) => void;
+  readonly onOpenOtherVersion: (threadId: ThreadId) => void;
+}) {
+  const subscribe = useCallback((listener: () => void) => store.subscribe(listener), [store]);
+  const entryId = useSyncExternalStore(subscribe, () => savedEntryOf(store.getSnapshot(), rowId));
+  const otherVersions = useSyncExternalStore(versions.subscribe, () =>
+    entryId === null ? undefined : versions.versionsFor(entryId),
+  );
+  if (entryId === null) return null;
+  return (
+    <P3MessageActions
+      onEdit={role === "user" ? (trigger) => onEdit(entryId, trigger) : undefined}
+      onOpenOtherVersion={onOpenOtherVersion}
+      otherVersions={otherVersions}
+    />
+  );
+}
+
 function ActiveThreadReady({
   client,
   capabilities,
@@ -771,15 +836,8 @@ function ActiveThreadReady({
 }: ActiveThreadProps) {
   const store = history.store as OmpRuntimeStore;
   const threadId = history.threadId as ThreadId;
-  const catalogSessions = useSyncExternalStore(
-    useCallback((listener) => catalog?.subscribe(listener) ?? (() => undefined), [catalog]),
-    useCallback(() => catalog?.getSnapshot().sessions ?? [], [catalog]),
-    useCallback(() => catalog?.getSnapshot().sessions ?? [], [catalog]),
-  );
-  const otherVersions = useMemo(
-    () => otherVersionsFor(catalogSessions, threadId),
-    [catalogSessions, threadId],
-  );
+  const otherVersions = useOtherVersions(catalog, threadId);
+  const [lastUserVersions] = useState(createLastUserVersions);
   const connection = useAppConnection();
   const providerErrors = useMemo(() => client.port(ProviderErrorPort), [client]);
   const resolveProviderError = useCallback(
@@ -851,20 +909,27 @@ function ActiveThreadReady({
       };
     }),
   );
-  const rowActions = (row: { readonly id: string; readonly role: string }): ReactNode => {
-    if (!branchAvailable) return undefined;
-    const entryId = storedEntryId(store, row.id);
-    if (entryId === null) return undefined;
-    return (
-      <P3MessageActions
-        onEdit={row.role === "user" ? (trigger) => setEditing({ entryId, trigger }) : undefined}
-        otherVersions={
-          row.role === "user" && entryId === lastUserEntryId ? otherVersions : undefined
-        }
-        onOpenOtherVersion={(otherThreadId) => void openThread(otherThreadId)}
-      />
-    );
-  };
+  // The last user message and its other versions, published after the chat draws: a layout effect, so no row shows them
+  // late. Each row reads its own answer from the store (RowActions), so a change draws two rows, not the transcript.
+  useLayoutEffect(() => {
+    lastUserVersions.publish(lastUserEntryId, otherVersions);
+  }, [lastUserEntryId, lastUserVersions, otherVersions]);
+  const rowActions = useCallback(
+    (row: { readonly id: string; readonly role: string }): ReactNode => {
+      if (!branchAvailable) return undefined;
+      return (
+        <RowActions
+          onEdit={(entryId, trigger) => setEditing({ entryId, trigger })}
+          onOpenOtherVersion={(otherThreadId) => void openThread(otherThreadId)}
+          role={row.role}
+          rowId={row.id}
+          store={store}
+          versions={lastUserVersions}
+        />
+      );
+    },
+    [branchAvailable, lastUserVersions, openThread, store],
+  );
   // A header message about a palette command goes away on its own; an error that stayed until the
   // next command left "could not be started" on screen long after the moment had passed.
   useEffect(() => {
@@ -1375,6 +1440,59 @@ function ActiveThreadReady({
         ),
       ),
     [],
+  );
+  // The chat's row slots. Stable while nothing they read changes (rowActions, toolRenderers), so a row whose message did
+  // not change is not drawn again when the chat renders for another reason (thread.tsx, MemoMessageRow).
+  const slots = useMemo<ThreadRowSlots>(
+    () => ({
+      renderMessage: (message, renderNested) => {
+        const branchSummary = branchSummaryOfRow(message);
+        if (branchSummary !== undefined)
+          return <BranchSummaryRow message={message} summary={branchSummary} />;
+        const compactionSummary = compactionSummaryOfRow(message);
+        if (compactionSummary !== undefined)
+          return <CompactionSummaryRow message={message} summary={compactionSummary} />;
+        const { ompCustomType, ompCustomDetails } = message.metadata.custom;
+        if (ompCustomType === "lsp-late-diagnostic")
+          return (
+            <div data-message-id={message.id}>
+              <LateDiagnosticsCard
+                identity={message.id}
+                snapshot={{ customType: ompCustomType, details: ompCustomDetails }}
+              />
+            </div>
+          );
+        return (
+          <>
+            <CacheMissRow message={message} />
+            <MessageParts
+              message={message}
+              actions={rowActions(message)}
+              renderNested={(part) =>
+                part.messages === undefined
+                  ? undefined
+                  : renderNested?.(part.messages, part.toolCallId, part.toolName)
+              }
+              toolRenderers={toolRenderers}
+            />
+          </>
+        );
+      },
+      renderNested: (messages, taskId, toolName) => {
+        const parsedTaskId = ToolCallId.safeParse(taskId);
+        return (
+          <NestedTranscript
+            depth={0}
+            key={taskId}
+            messages={messages}
+            parentTaskId={parsedTaskId.success ? parsedTaskId.data : undefined}
+            taskName={toolName}
+            toolRenderers={toolRenderers}
+          />
+        );
+      },
+    }),
+    [rowActions, toolRenderers],
   );
   const draftStore = useMemo(() => createDraftStoreAdapter(client), [client]);
   // Unsent text is also kept in this tab, so it survives the app's server stopping before the autosave saves it.
@@ -2010,71 +2128,7 @@ function ActiveThreadReady({
                               onLoadFullOutput={onLoadFullOutput}
                               onRestartOmp={restartOmp}
                               notices={transcriptNotices}
-                              slots={{
-                                renderMessage: (message, renderNested) => {
-                                  const branchSummary = branchSummaryOfRow(message);
-                                  if (branchSummary !== undefined)
-                                    return (
-                                      <BranchSummaryRow message={message} summary={branchSummary} />
-                                    );
-                                  const compactionSummary = compactionSummaryOfRow(message);
-                                  if (compactionSummary !== undefined)
-                                    return (
-                                      <CompactionSummaryRow
-                                        message={message}
-                                        summary={compactionSummary}
-                                      />
-                                    );
-                                  const { ompCustomType, ompCustomDetails } =
-                                    message.metadata.custom;
-                                  if (ompCustomType === "lsp-late-diagnostic")
-                                    return (
-                                      <div data-message-id={message.id}>
-                                        <LateDiagnosticsCard
-                                          identity={message.id}
-                                          snapshot={{
-                                            customType: ompCustomType,
-                                            details: ompCustomDetails,
-                                          }}
-                                        />
-                                      </div>
-                                    );
-                                  return (
-                                    <>
-                                      <CacheMissRow message={message} />
-                                      <MessageParts
-                                        message={message}
-                                        actions={rowActions(message)}
-                                        renderNested={(part) =>
-                                          part.messages === undefined
-                                            ? undefined
-                                            : renderNested?.(
-                                                part.messages,
-                                                part.toolCallId,
-                                                part.toolName,
-                                              )
-                                        }
-                                        toolRenderers={toolRenderers}
-                                      />
-                                    </>
-                                  );
-                                },
-                                renderNested: (messages, taskId, toolName) => {
-                                  const parsedTaskId = ToolCallId.safeParse(taskId);
-                                  return (
-                                    <NestedTranscript
-                                      depth={0}
-                                      key={taskId}
-                                      messages={messages}
-                                      parentTaskId={
-                                        parsedTaskId.success ? parsedTaskId.data : undefined
-                                      }
-                                      taskName={toolName}
-                                      toolRenderers={toolRenderers}
-                                    />
-                                  );
-                                },
-                              }}
+                              slots={slots}
                               store={store}
                             />
                           </div>

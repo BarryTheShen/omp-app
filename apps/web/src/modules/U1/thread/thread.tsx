@@ -15,6 +15,7 @@ import type { DescriptorId } from "@omp-app/contracts";
 import { AppFailure } from "@omp-app/contracts";
 import {
   createContext,
+  memo,
   type ReactNode,
   useContext,
   useEffect,
@@ -450,6 +451,9 @@ function MessageRow({ message, slots }: { message: MessageState; slots?: ThreadR
   return <DescriptorMessageBoundary descriptorId={descriptorId} fallback={fallback} />;
 }
 
+/** A row is drawn again only when its message or its slots change: memo compares the two props shallowly. */
+const MemoMessageRow = memo(MessageRow);
+
 /** A click on "Show earlier messages": the row the reader was on, kept until the older rows land. */
 interface PendingEarlierLoad {
   readonly hadFocus: boolean;
@@ -568,7 +572,7 @@ function PlacedRow({
   const noticesAfter = placement.after.get(message.id);
   return (
     <>
-      <MessageRow message={message} slots={slots} />
+      <MemoMessageRow message={message} slots={slots} />
       {noticesAfter === undefined ? null : source.renderGroup(noticesAfter)}
     </>
   );
