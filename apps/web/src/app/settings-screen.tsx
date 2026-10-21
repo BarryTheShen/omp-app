@@ -312,6 +312,7 @@ export function SettingsScreen({
   threadId,
   onStartChat,
 }: SettingsScreenProps) {
+  const [contextVisited, setContextVisited] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingTab>("appearance");
   const [layer, setLayer] = useState<SettingsLayer>("global");
   const [search, setSearch] = useState("");
@@ -343,6 +344,18 @@ export function SettingsScreen({
       (descriptor) => unavailableReason(descriptor, capabilities) === undefined,
     ),
   );
+  const contextAvailable = shownTabs.includes("context");
+  useEffect(() => {
+    if (!contextAvailable || contextVisited) return undefined;
+    if (typeof window.requestIdleCallback === "function") {
+      const idleHandle = window.requestIdleCallback(() => setContextVisited(true), {
+        timeout: 100,
+      });
+      return () => window.cancelIdleCallback(idleHandle);
+    }
+    const timeoutHandle = window.setTimeout(() => setContextVisited(true), 0);
+    return () => window.clearTimeout(timeoutHandle);
+  }, [contextAvailable, contextVisited]);
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const visibleSections = useMemo(() => {
     if (normalizedSearch.length === 0) return sections;
@@ -365,6 +378,7 @@ export function SettingsScreen({
   }, [hasDirtySections, onUnsavedChange]);
 
   const selectTab = (tab: SettingTab): void => {
+    if (tab === "context") setContextVisited(true);
     setActiveTab(tab);
     setSearch("");
   };
@@ -481,7 +495,7 @@ export function SettingsScreen({
         ) : (
           <>
             {appearance}
-            {shownTabs.includes("context") ? context : null}
+            {contextAvailable && (contextVisited || activeTab === "context") ? context : null}
             {activeTab !== "appearance" && activeTab !== "context" ? (
               <div className="flex min-w-0 flex-col gap-4">
                 {activeTab === "tools" && extensionCenterAvailable(capabilities) ? (

@@ -78,6 +78,28 @@ describe("the Context tab in the Settings screen", () => {
     }
   });
 
+  test("loads Context after the Settings open paints, before the first Context click", async () => {
+    render(
+      <SettingsScreen
+        client={appClient(configStore([]))}
+        capabilities={HOST_CONFIG_AVAILABLE}
+        folder={null}
+        onClose={() => undefined}
+        threadId={null}
+      />,
+    );
+
+    const contextTabs = await screen.findByRole("tablist", {
+      name: "Context sections",
+      hidden: true,
+    });
+    expect(within(contextTabs).getAllByRole("tab", { hidden: true })).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "Context" }));
+
+    expect(await screen.findByRole("tab", { name: "General" })).toBeTruthy();
+    expect(screen.queryByText("Loading context settings…")).toBeNull();
+  });
+
   test("is not listed when the host cannot read settings", async () => {
     render(
       <SettingsScreen

@@ -3,6 +3,7 @@ import {
   type AppError,
   AppFailure,
   type ConfigChanged,
+  type ConfigListResult,
   ConfigStore,
   type ConfigWriteLayer,
   type FolderPath,
@@ -106,9 +107,48 @@ function emptyValidation(message: string): {
   return { ok: false, validation: { valid: false, code: "not-ready", message } };
 }
 
+/** Identical config-list calls share a result only within the task that issued them. */
+const pendingConfigLists = new WeakMap<AppClient, Map<string, Promise<ConfigListResult>>>();
+
 /** Real A0.8 ConfigStore adapter; all persistence remains behind the typed A1 port. */
 export function createConfigStoreClient(client: AppClient): ConfigStoreClient {
-  return client.port(ConfigStore);
+  const port = client.port(ConfigStore);
+  let pending = pendingConfigLists.get(client);
+  if (pending === undefined) {
+    pending = new Map();
+    pendingConfigLists.set(client, pending);
+  }
+  const inFlight = pending;
+  return {
+    read: (args, options) => (options === undefined ? port.read(args) : port.read(args, options)),
+    list: (args, options) => {
+      if (options?.signal !== undefined) return port.list(args, options);
+      const key = JSON.stringify(args) ?? "";
+      const existing = inFlight.get(key);
+      if (existing !== undefined) return existing;
+      const request = options === undefined ? port.list(args) : port.list(args, options);
+      inFlight.set(key, request);
+      const clear = (): void => {
+        if (inFlight.get(key) === request) inFlight.delete(key);
+      };
+      const clearAfterTask = setTimeout(clear, 0);
+      void request.then(
+        () => {
+          clear();
+          clearTimeout(clearAfterTask);
+        },
+        () => {
+          clear();
+          clearTimeout(clearAfterTask);
+        },
+      );
+      return request;
+    },
+    write: (args, options) => {
+      inFlight.clear();
+      return options === undefined ? port.write(args) : port.write(args, options);
+    },
+  };
 }
 
 /**

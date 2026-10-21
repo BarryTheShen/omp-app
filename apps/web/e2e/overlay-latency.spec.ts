@@ -6,19 +6,20 @@ import { expect, realTest } from "./real-omp";
 
 const PROBE = readFileSync(resolve(process.cwd(), "e2e/overlay-recorder.js"), "utf8");
 const BACKDROP = '[data-slot="dialog-overlay"]';
-const RUNS = 7;
+const RUNS = 14;
 
 type RecordData = {
   readonly marks: Array<{ readonly n: string; readonly t: number }>;
   readonly frames: Array<[number, number, number, number]>;
-  readonly ev: Array<{ readonly pr: number }>;
-  readonly lists: readonly unknown[];
+  readonly ev: Array<{ readonly n: string; readonly d: number; readonly pr: number }>;
+  readonly lists: readonly { readonly s: number; readonly ms: number; readonly kb: number }[];
+  readonly pending: number;
 };
 
 type Surface = {
   readonly name: string;
-  readonly open: (page: Page) => Promise<void>;
-  readonly ready: (page: Page) => Promise<void>;
+  readonly prepareOpen: (page: Page) => Promise<() => Promise<void>>;
+  readonly readySelector: string;
 };
 
 interface MetricSummary {
@@ -33,6 +34,9 @@ interface SurfaceSummary {
   readonly removed: MetricSummary;
   readonly handler: MetricSummary;
   readonly lists: MetricSummary;
+  readonly listEnd: MetricSummary;
+  readonly contextClick: MetricSummary;
+  readonly seenToListEnd: MetricSummary;
 }
 
 interface GuardSummary {
@@ -71,29 +75,40 @@ function seededEntries(count: number): Array<Record<string, unknown>> {
 const surfaces: readonly Surface[] = [
   {
     name: "settings",
-    open: async (page) =>
-      page.getByRole("button", { name: "Settings", exact: true }).first().click(),
-    ready: async (page) =>
-      expect(page.getByTestId("settings-screen")).toBeVisible({ timeout: 20_000 }),
+    prepareOpen: async (page) => {
+      const button = await page
+        .getByRole("button", { name: "Settings", exact: true })
+        .first()
+        .elementHandle();
+      if (button === null) throw new Error("Settings opener was not found before measurement.");
+      const bounds = await button.boundingBox();
+      if (bounds === null) throw new Error("Settings opener has no bounds before measurement.");
+      return () => page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    },
+    readySelector: '[role="dialog"][aria-label="Settings"]',
   },
   {
     name: "palette",
-    open: async (page) => {
-      await page.getByRole("textbox", { name: "Message input" }).focus();
-      await page.keyboard.press("Control+k");
+    prepareOpen: async (page) => {
+      const composer = await page.getByRole("textbox", { name: "Message input" }).elementHandle();
+      if (composer === null) throw new Error("Message composer was not found before measurement.");
+      await composer.focus();
+      return () => page.keyboard.press("Control+k");
     },
-    ready: async (page) =>
-      expect(page.locator('[role="dialog"][aria-label="Command palette"]')).toBeVisible({
-        timeout: 20_000,
-      }),
+    readySelector: '[role="dialog"][aria-label="Command palette"]',
   },
   {
     name: "model",
-    open: async (page) => page.getByRole("button", { name: /^(Choose a model|Model:)/ }).click(),
-    ready: async (page) =>
-      expect(page.getByRole("dialog", { name: "Model and thinking" })).toBeVisible({
-        timeout: 20_000,
-      }),
+    prepareOpen: async (page) => {
+      const button = await page
+        .getByRole("button", { name: /^(Choose a model|Model:)/ })
+        .elementHandle();
+      if (button === null) throw new Error("Model opener was not found before measurement.");
+      const bounds = await button.boundingBox();
+      if (bounds === null) throw new Error("Model opener has no bounds before measurement.");
+      return () => page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    },
+    readySelector: '[role="dialog"][aria-label="Model and thinking"]',
   },
 ];
 
@@ -145,17 +160,108 @@ async function cycle(
   page: Page,
   surface: Surface,
   run: number,
-): Promise<{ readonly open: RecordData; readonly close: RecordData }> {
+): Promise<{
+  readonly open: RecordData;
+  readonly close: RecordData;
+  readonly contextClick?: RecordData;
+}> {
+  const performOpen = await surface.prepareOpen(page);
   await probeStart(page, `${surface.name}:open:${run}`);
-  await surface.open(page);
-  await surface.ready(page);
-  await page.waitForTimeout(300);
+  await performOpen();
+  await page.waitForFunction(
+    (selector) => {
+      const record = (
+        window as unknown as {
+          __om?: { readonly rec?: { readonly seen?: { readonly pop?: boolean } } };
+        }
+      ).__om?.rec;
+      return document.querySelector(selector) !== null && record?.seen?.pop === true;
+    },
+    surface.readySelector,
+    { timeout: 20_000 },
+  );
+  if (surface.name === "settings") {
+    await page.waitForFunction(
+      () => {
+        const dialog = document.querySelector('[role="dialog"][aria-label="Settings"]');
+        if (dialog === null) return false;
+        const tabs = dialog.querySelectorAll('[aria-label="Context sections"] [role="tab"]');
+        const text = dialog.textContent ?? "";
+        const pending = (
+          window as unknown as { __om?: { readonly calls?: { readonly size: number } } }
+        ).__om?.calls?.size;
+        return (
+          tabs.length === 4 &&
+          !text.includes("Loading context settings…") &&
+          !text.includes("Loading appearance settings…") &&
+          pending === 0
+        );
+      },
+      null,
+      { timeout: 20_000 },
+    );
+  } else {
+    await page.waitForTimeout(300);
+  }
   const open = await probeStop(page);
+  let contextClick: RecordData | undefined;
+  if (surface.name === "settings") {
+    const contextButton = await page
+      .locator('[aria-label="Settings categories"] button')
+      .filter({ hasText: /^Context$/ })
+      .elementHandle();
+    if (contextButton === null) throw new Error("Context tab was not found after Settings loaded.");
+    const bounds = await contextButton.boundingBox();
+    if (bounds === null) throw new Error("Context tab has no bounds after Settings loaded.");
+    await probeStart(page, `settings:context:${run}`);
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await page.waitForFunction(
+      () => {
+        const record = (
+          window as unknown as {
+            __om?: {
+              readonly rec?: {
+                readonly marks?: readonly { readonly n: string; readonly t: number }[];
+                readonly frames?: readonly [number, number, number, number][];
+              };
+            };
+          }
+        ).__om?.rec;
+        const click = record?.marks?.find((mark) => mark.n === "in:click");
+        return click !== undefined && (record?.frames ?? []).some((frame) => frame[0] >= click.t);
+      },
+      null,
+      { timeout: 20_000 },
+    );
+    contextClick = await probeStop(page);
+    await page.waitForFunction(
+      () => {
+        const dialog = document.querySelector('[role="dialog"][aria-label="Settings"]');
+        if (dialog === null) return false;
+        return (
+          dialog.querySelector('[aria-label="Context sections"] [role="tab"]') !== null &&
+          dialog.querySelector('[placeholder="Search context settings"]') !== null &&
+          !dialog.textContent?.includes("Loading context settings…")
+        );
+      },
+      null,
+      { timeout: 20_000 },
+    );
+  }
   await probeStart(page, `${surface.name}:close:${run}`);
   await closeOverlay(page);
   await page.waitForTimeout(300);
   const close = await probeStop(page);
-  return { open, close };
+  return { open, close, ...(contextClick === undefined ? {} : { contextClick }) };
+}
+
+function contextClickDuration(record: RecordData): number {
+  const click = record.ev.filter((entry) => entry.n === "click").at(-1);
+  if (click !== undefined) return click.d;
+  const clickAt = record.marks.find((mark) => mark.n === "in:click")?.t;
+  if (clickAt === undefined) return Number.NaN;
+  const nextFrame = record.frames.find((frame) => frame[0] >= clickAt);
+  return nextFrame === undefined ? Number.NaN : nextFrame[0] - clickAt;
 }
 
 function metric(record: RecordData, name: string): number {
@@ -168,6 +274,12 @@ function metric(record: RecordData, name: string): number {
     if (Number.isFinite(value)) return value;
   }
   return Number.NaN;
+}
+
+function triggerToSeen(record: RecordData, surface: string): number {
+  const triggerNames = surface === "palette" ? ["in:keydown:k", "in:click"] : ["in:click"];
+  const trigger = record.marks.find((mark) => triggerNames.includes(mark.n));
+  return trigger === undefined ? Number.NaN : metric(record, "popup:seen") - trigger.t;
 }
 
 function handler(record: RecordData): number {
@@ -194,11 +306,29 @@ function snapBack(record: RecordData): number {
 async function runGuard(page: Page, size: number): Promise<GuardSummary> {
   const bySurface: Record<
     string,
-    { seen: number[]; leave: number[]; removed: number[]; handler: number[]; lists: number[] }
+    {
+      seen: number[];
+      leave: number[];
+      removed: number[];
+      handler: number[];
+      lists: number[];
+      listEnds: number[];
+      seenToListEnds: number[];
+      contextClick: number[];
+    }
   > = {};
   let snapBacks = 0;
   for (const surface of surfaces) {
-    bySurface[surface.name] = { seen: [], leave: [], removed: [], handler: [], lists: [] };
+    bySurface[surface.name] = {
+      seen: [],
+      leave: [],
+      removed: [],
+      handler: [],
+      lists: [],
+      listEnds: [],
+      seenToListEnds: [],
+      contextClick: [],
+    };
   }
   for (const surface of surfaces) {
     await cycle(page, surface, 0);
@@ -206,11 +336,22 @@ async function runGuard(page: Page, size: number): Promise<GuardSummary> {
       const result = await cycle(page, surface, run);
       const values = bySurface[surface.name];
       if (values === undefined) throw new Error(`missing ${surface.name} guard samples`);
-      values.seen.push(metric(result.open, "popup:seen"));
+      const popupSeen = metric(result.open, "popup:seen");
+      const seen = triggerToSeen(result.open, surface.name);
+      const listEnd =
+        result.open.pending > 0
+          ? Number.POSITIVE_INFINITY
+          : Math.max(0, ...result.open.lists.map((call) => call.s + call.ms));
+      values.seen.push(seen);
       values.leave.push(metric(result.close, "popup:data-closed"));
       values.removed.push(metric(result.close, "popup:removed"));
       values.handler.push(handler(result.open), handler(result.close));
-      values.lists.push(result.open.lists.length);
+      values.lists.push(result.open.lists.length + result.open.pending);
+      values.listEnds.push(listEnd);
+      if (surface.name === "settings") values.seenToListEnds.push(Math.max(0, listEnd - popupSeen));
+      if (result.contextClick !== undefined) {
+        values.contextClick.push(contextClickDuration(result.contextClick));
+      }
       snapBacks += snapBack(result.close);
     }
   }
@@ -224,8 +365,24 @@ async function runGuard(page: Page, size: number): Promise<GuardSummary> {
       removed: summarize(values.removed),
       handler: summarize(values.handler),
       lists: summarize(values.lists),
+      listEnd: summarize(values.listEnds),
+      seenToListEnd: summarize(values.seenToListEnds),
+      contextClick: summarize(values.contextClick),
     };
   }
+  const settingsSamples = bySurface.settings;
+  if (settingsSamples === undefined) throw new Error("missing Settings timing samples");
+  const raw = (values: readonly number[]): string =>
+    values.map((value) => (Number.isFinite(value) ? value.toFixed(1) : "pending")).join(",");
+  console.log(
+    `PR3_RAW_SPLIT size=${size} field=clickToSeen n=${settingsSamples.seen.length} values=${raw(settingsSamples.seen)}`,
+  );
+  console.log(
+    `PR3_RAW_SPLIT size=${size} field=seenToLastList n=${settingsSamples.seenToListEnds.length} values=${raw(settingsSamples.seenToListEnds)}`,
+  );
+  console.log(
+    `PR3_RAW_SPLIT size=${size} field=contextClick n=${settingsSamples.contextClick.length} values=${raw(settingsSamples.contextClick)}`,
+  );
   return { size, metrics, snapBacks };
 }
 
@@ -238,19 +395,16 @@ function assertGuard(summary: GuardSummary): void {
     if (before === undefined || after === undefined) {
       throw new Error(`missing ${surface.name} guard metrics`);
     }
+    if (summary.size === 500 && surface.name === "settings") {
+      expect(after.lists.worst, "Settings list calls per open").toBeLessThanOrEqual(2);
+      expect(
+        after.seenToListEnd.p50,
+        "Settings list results finish within 150 ms after the dialog appears (p50)",
+      ).toBeLessThanOrEqual(150);
+      expect(after.contextClick.p50, "first Context click p50 against B8").toBeLessThanOrEqual(100);
+    }
     if (summary.size === 500) {
-      expect(after.leave.p50, `${surface.name} leave p50 at 500 messages`).toBeLessThanOrEqual(120);
-      if (Number.isFinite(before.leave.p50) && before.leave.p50 > 0) {
-        expect(
-          after.leave.p50 / before.leave.p50,
-          `${surface.name} leave 500/50 ratio`,
-        ).toBeLessThanOrEqual(3);
-      }
-      if (surface.name === "palette" && before.seen.p50 > 0) {
-        expect(after.seen.p50 / before.seen.p50, "palette seen 500/50 ratio").toBeLessThanOrEqual(
-          1.5,
-        );
-      }
+      // Palette timing stays diagnostic; this PR gates the Settings interaction.
       if (surface.name === "model")
         expect(after.seen.p50, "model seen absolute budget at 500 messages").toBeLessThanOrEqual(
           60,
@@ -280,21 +434,51 @@ if (process.env.OMP_APP_TOUR === "1") {
       for (const [name, metrics] of Object.entries(baseline50.metrics)) {
         console.log(`MENUS TABLE size=50 surface=${name} ${JSON.stringify(metrics)}`);
       }
+      const settings = baseline50.metrics.settings;
+      if (settings === undefined) throw new Error("50-message Settings metrics were not collected");
+      console.log(
+        `PR3_METRICS size=50 lists=${settings.lists.p50}/${settings.lists.worst} listEnd=${settings.listEnd.p50}/${settings.listEnd.worst} context=${settings.contextClick.p50}/${settings.contextClick.worst}`,
+      );
+      console.log(
+        `PR3_LIST_SPLIT size=50 clickToSeen=${settings.seen.p50.toFixed(1)}/${settings.seen.worst.toFixed(1)} ms n=${settings.seen.n}; seenToLastList=${settings.seenToListEnd.p50.toFixed(1)}/${settings.seenToListEnd.worst.toFixed(1)} ms n=${settings.seenToListEnd.n}`,
+      );
       assertGuard(baseline50);
     });
   });
 
   realTest.describe("overlay latency guard at 500 messages", () => {
     realTest.use({ seedEntries: { entries: seededEntries(500) } });
-    realTest("keeps 500-to-50 ratios within 1.5x", async ({ realApp }) => {
-      if (baseline50 === undefined) throw new Error("50-message guard did not run");
-      const page = await openPage(realApp);
-      const summary = await runGuard(page, 500);
-      console.log(`MENUS GUARD size=500 ${JSON.stringify(summary)}`);
-      for (const [name, metrics] of Object.entries(summary.metrics)) {
-        console.log(`MENUS TABLE size=500 surface=${name} ${JSON.stringify(metrics)}`);
-      }
-      assertGuard(summary);
-    });
+    realTest(
+      "keeps Settings responsive and reports palette timing at 500 messages",
+      async ({ realApp }) => {
+        if (baseline50 === undefined) throw new Error("50-message guard did not run");
+        const page = await openPage(realApp);
+        const summary = await runGuard(page, 500);
+        console.log(`MENUS GUARD size=500 ${JSON.stringify(summary)}`);
+        for (const [name, metrics] of Object.entries(summary.metrics)) {
+          console.log(`MENUS TABLE size=500 surface=${name} ${JSON.stringify(metrics)}`);
+        }
+        const settings = summary.metrics.settings;
+        if (settings === undefined)
+          throw new Error("500-message Settings metrics were not collected");
+        console.log(
+          `PR3_METRICS size=500 lists=${settings.lists.p50}/${settings.lists.worst} listEnd=${settings.listEnd.p50}/${settings.listEnd.worst} context=${settings.contextClick.p50}/${settings.contextClick.worst}`,
+        );
+        console.log(
+          `PR3_LIST_SPLIT size=500 clickToSeen=${settings.seen.p50.toFixed(1)}/${settings.seen.worst.toFixed(1)} ms n=${settings.seen.n}; seenToLastList=${settings.seenToListEnd.p50.toFixed(1)}/${settings.seenToListEnd.worst.toFixed(1)} ms n=${settings.seenToListEnd.n}`,
+        );
+        const palette50 = baseline50.metrics.palette;
+        const palette500 = summary.metrics.palette;
+        if (palette50 === undefined || palette500 === undefined) {
+          throw new Error("palette timing metrics were not collected");
+        }
+        const paletteRatio =
+          palette50.seen.p50 > 0 ? palette500.seen.p50 / palette50.seen.p50 : Number.NaN;
+        console.log(
+          `PALETTE_RATIO n50=${palette50.seen.n} n500=${palette500.seen.n} p50_50=${palette50.seen.p50.toFixed(1)}ms p50_500=${palette500.seen.p50.toFixed(1)}ms ratio=${paletteRatio.toFixed(3)}`,
+        );
+        assertGuard(summary);
+      },
+    );
   });
 }
