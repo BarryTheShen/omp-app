@@ -6,7 +6,7 @@ import type {
   DescriptorId,
 } from "@omp-app/contracts";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useLayoutEffect } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { OverlayHost } from "@/overlay";
 import { DESCRIPTORS, RENDERERS, registry } from "@/registry";
@@ -413,5 +413,22 @@ describe("U0 command palette: commands a feature registers", () => {
     renderPalette(capabilitiesFor([TREE], "available"));
     await openPalette();
     expect(screen.queryByRole("option", { name: /Conversation tree/ })).toBeNull();
+  });
+});
+
+/** Presses Ctrl+K on the page from a layout effect: the moment the shell is committed, when a key press can land. */
+function CtrlKPressedAsTheShellPaints() {
+  useLayoutEffect(() => {
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true, cancelable: true }),
+    );
+  }, []);
+  return null;
+}
+
+describe("issue 2266: the palette's chord is armed in the commit that paints the shell", () => {
+  test("a Ctrl+K dispatched in that commit, after the palette host, opens the palette", async () => {
+    renderPalette({}, new Map(), new Map(), <CtrlKPressedAsTheShellPaints />);
+    expect(await screen.findByRole("dialog", { name: "Command palette" })).toBeTruthy();
   });
 });

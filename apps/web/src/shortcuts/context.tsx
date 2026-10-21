@@ -4,7 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useSyncExternalStore,
 } from "react";
@@ -60,7 +60,10 @@ export function useShortcutPreferenceError() {
 
 export function useShortcutScope(scope: string): void {
   const registry = useShortcutRegistry();
-  useEffect(() => {
+  // A layout effect: the listener is attached in the commit that paints the shell, before the browser paints it, so a
+  // key pressed as the shell appears reaches the scope (issue 2266). Layout effects of one commit run in tree order, as
+  // passive ones did, so scopes that are active together keep their order.
+  useLayoutEffect(() => {
     const listener = (event: KeyboardEvent) => registry.dispatch(event, scope);
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);

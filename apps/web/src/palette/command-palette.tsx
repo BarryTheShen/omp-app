@@ -5,7 +5,7 @@ import type {
   DescriptorId,
 } from "@omp-app/contracts";
 import { cn } from "cn";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type OverlayCloseReason, type OverlayOpenResult, useOverlayHost } from "@/overlay";
@@ -311,7 +311,9 @@ export function CommandPaletteHost({
   const activeOverlay = useRef<OverlayOpenResult | null>(null);
   useShortcutScope("global");
 
-  useEffect(() => {
+  // Registered in the commit that paints the shell, not after it: a Ctrl+K pressed as the shell appears needs this action
+  // already in place (issue 2266).
+  useLayoutEffect(() => {
     const binding = shortcutRegistry
       .bindings()
       .find(({ id }) => id === U0_COMMAND_PALETTE_SHORTCUT.id);
