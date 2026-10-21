@@ -484,6 +484,78 @@ function wordsRefusal(message: string): AppFailure {
   return new AppFailure({ code: "invalid_args", message, retryable: false });
 }
 
+/** The conversation-history panel `/tree` and `/branch` open. It is offered only while omp has the tree and branch commands. */
+export interface HistoryPanel {
+  available(): boolean;
+  open(): void;
+}
+
+/**
+ * `/tree`: opens the conversation-history panel, where the messages are browsed. omp's terminal moves the current point of the
+ * tree in place (selector-controller.ts:1504-1675); RPC cannot do that, so the panel offers Rewind and Fork instead.
+ */
+export function treeSlashCommand({ panel }: { readonly panel: HistoryPanel }): SlashAppCommand {
+  return {
+    name: "tree",
+    description: "Browse this chat's messages, to rewind or fork from one",
+    takesArguments: true,
+    run: async ({ args }) => {
+      if (args !== undefined) throw wordsRefusal(takesNothing("tree"));
+      if (!panel.available()) {
+        throw new AppFailure({
+          code: "unavailable",
+          message: "Browsing earlier messages isn't available with this version of omp.",
+          retryable: false,
+        });
+      }
+      panel.open();
+      return {
+        message: "Browse this chat's messages here. Rewinding opens a new chat and keeps this one.",
+      };
+    },
+  };
+}
+
+/**
+ * `/branch`, and its alias `/rewind`: opens the same panel, to rewind to one of the person's messages. omp's terminal rewinds
+ * in place (selector-controller.ts:1407-1445); the panel's Rewind makes a new chat from before the message and keeps this one.
+ * While a turn runs, the panel does not open: the header says to wait.
+ */
+export function branchSlashCommand({
+  panel,
+  isBusy,
+}: {
+  readonly panel: HistoryPanel;
+  readonly isBusy: () => boolean;
+}): SlashAppCommand {
+  return {
+    name: "branch",
+    aliases: ["rewind"],
+    description: "Rewind this chat to one of your messages. This chat is kept.",
+    takesArguments: true,
+    run: async ({ args }) => {
+      if (args !== undefined) {
+        throw wordsRefusal(
+          "/branch and /rewind don't take anything after them, so nothing was sent. Type /branch on its own.",
+        );
+      }
+      if (!panel.available()) {
+        throw new AppFailure({
+          code: "unavailable",
+          message: "Rewinding isn't available with this version of omp.",
+          retryable: false,
+        });
+      }
+      if (isBusy()) return { message: "Wait for this chat's turn to finish, then rewind it." };
+      panel.open();
+      return {
+        message:
+          "Choose one of your messages to rewind to. Your files are not changed, and this chat is kept.",
+      };
+    },
+  };
+}
+
 /**
  * Opens a new chat in place of the deleted one: the lifecycle's new session, the same one the sidebar's own New chat
  * starts. A new session that cannot start is the failure the person sees.

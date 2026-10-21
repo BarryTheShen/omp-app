@@ -10,11 +10,9 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
 // omp 18.12.2 is at this path in every the test machine job.
 realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 
-/** The 33 typed names that get a note: 29 terminal-only commands with no app row, and their 4 aliases. `queue` has none: the app answers `/queue` itself. */
+/** The 30 typed names that get a note: 27 terminal-only commands with no app row, and their 3 aliases. `queue` has none: the app answers `/queue` itself. */
 const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = [
   { name: "agents", does: "Open the agents hub (per-agent model, prewalk, and advisor)" },
-  { name: "branch", does: "Rewind to a previous message, keeping the old path as a branch" },
-  { name: "rewind", does: "Rewind to a previous message, keeping the old path as a branch" },
   { name: "btw", does: "Ask a side question, or browse this session's BTW history" },
   { name: "cleanse", does: "Detect and fix project diagnostics with weighted parallel subagents" },
   { name: "clear", does: "Clear the conversation context in place, keeping the session" },
@@ -46,7 +44,6 @@ const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = 
   { name: "setup", does: "Open provider setup" },
   { name: "skills", does: "Search, install, and update skills from the skills.omp.sh registry" },
   { name: "tan", does: "Run a full background agent on tangential work" },
-  { name: "tree", does: "Navigate session tree (switch branches)" },
   {
     name: "vibe",
     does: "Toggle vibe mode (direct persistent fast/good worker sessions; read-only toolset)",

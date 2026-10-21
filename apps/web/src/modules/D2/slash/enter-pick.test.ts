@@ -22,21 +22,29 @@ const GOLDEN_PATH = resolve(process.cwd(), "src/modules/D2/slash/enter-pick.gold
 function appCommand(
   name: string,
   description: string,
-  flags: { readonly unlisted?: true; readonly takesArguments?: true } = {},
+  flags: {
+    readonly unlisted?: true;
+    readonly takesArguments?: true;
+    readonly aliases?: readonly string[];
+  } = {},
 ): SlashAppCommand {
   return { name, description, ...flags, run: async () => ({}) };
 }
 
 /**
  * The app's own commands as the composition hands them to the composer (app/root.tsx `appSlashCommands`, main 1ffa8d473,
- * with S9a's `delete`). The first 14 are listed rows; the rest are unlisted, guarded forms that still route when typed. An
- * unlisted form does not replace omp's row of its name (provider.ts `listEntries`), so `wt` and `worktree` leave omp's `wt` row listed.
+ * with S9a's `delete` and S9b's `tree` and `branch`). The first 16 are listed rows; the rest are unlisted, guarded forms that still
+ * route when typed. An unlisted form does not replace omp's row of its name (provider.ts `listEntries`), so `wt` and `worktree` leave omp's `wt` row listed.
  */
 const APP_COMMANDS: readonly SlashAppCommand[] = [
   appCommand("new", "Start a new chat"),
   appCommand("fresh", "Start a fresh connection to the model"),
   appCommand("share", "Share this chat as a link"),
   appCommand("copy", "Copy from this chat"),
+  appCommand("tree", "Browse this chat's messages, to rewind or fork from one"),
+  appCommand("branch", "Rewind this chat to one of your messages. This chat is kept.", {
+    aliases: ["rewind"],
+  }),
   appCommand("export", "Export this chat"),
   appCommand("dump", "Save omp's dump of this chat.", { takesArguments: true }),
   appCommand("open", "Open the last link from the conversation in your browser."),
@@ -73,7 +81,10 @@ function typedPrefixes(): readonly string[] {
     words.add(command.name);
     for (const alias of command.aliases ?? []) words.add(alias);
   }
-  for (const app of APP_COMMANDS) words.add(app.name);
+  for (const app of APP_COMMANDS) {
+    words.add(app.name);
+    for (const alias of app.aliases ?? []) words.add(alias);
+  }
   const prefixes = new Set<string>("abcdefghijklmnopqrstuvwxyz");
   for (const word of words) {
     if (/\s/u.test(word)) continue;
@@ -103,13 +114,15 @@ async function picksForEveryPrefix(): Promise<Record<string, string>> {
 }
 
 describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.2 list", () => {
-  test("the app's commands are the 14 listed rows and the unlisted guarded forms", () => {
+  test("the app's commands are the 16 listed rows and the unlisted guarded forms", () => {
     const listed = APP_COMMANDS.filter((app) => app.unlisted !== true).map((app) => app.name);
     expect(listed).toEqual([
       "new",
       "fresh",
       "share",
       "copy",
+      "tree",
+      "branch",
       "export",
       "dump",
       "open",

@@ -8,6 +8,8 @@ import type { SlashListEntry } from "./rank";
  */
 export interface SlashAppCommand {
   readonly name: string;
+  /** Other names that run the command, typed as `/alias` (`rewind` runs `branch`). */
+  readonly aliases?: readonly string[];
   readonly description: string;
   /** Set for a command that reads the text after its name (`/goal ship the release`). Without it, `/name text` is not the app's. */
   readonly takesArguments?: true;
@@ -197,11 +199,6 @@ export interface TerminalOnlyNote {
 
 const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, TerminalOnlyEntry>> = {
   agents: { does: "Open the agents hub (per-agent model, prewalk, and advisor)" },
-  branch: { does: "Rewind to a previous message, keeping the old path as a branch" },
-  rewind: {
-    aliasOf: "branch",
-    does: "Rewind to a previous message, keeping the old path as a branch",
-  },
   btw: { does: "Ask a side question, or browse this session's BTW history" },
   cleanse: { does: "Detect and fix project diagnostics with weighted parallel subagents" },
   clear: {
@@ -250,7 +247,6 @@ const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, TerminalOnlyEntry>> = 
   setup: { does: "Open provider setup" },
   skills: { does: "Search, install, and update skills from the skills.omp.sh registry" },
   tan: { does: "Run a full background agent on tangential work" },
-  tree: { does: "Navigate session tree (switch branches)" },
   vibe: {
     does: "Toggle vibe mode (direct persistent fast/good worker sessions; read-only toolset)",
   },
@@ -310,14 +306,15 @@ export function routeSlashText(
   const trimmed = text.trimEnd();
   for (const app of appCommands) {
     // A name with a space is a guarded form (`usage reset`): only guardedRoute answers it, so its bare words stay omp's.
-    if (app.name.includes(" ") || trimmed !== `/${app.name}`) continue;
+    if (app.name.includes(" ")) continue;
+    if (![app.name, ...(app.aliases ?? [])].some((name) => trimmed === `/${name}`)) continue;
     return { kind: "app", command: app };
   }
   // omp reads a name up to its first whitespace or colon (parse.ts): `/goal:pause` is `/goal pause`.
   const named = /^\/([^\s:]*)/u.exec(trimmed)?.[1] ?? "";
   // A command that takes arguments is the app's when text follows its name. The bare name is matched above, unchanged.
   for (const app of appCommands) {
-    if (app.takesArguments === true && named === app.name) {
+    if (app.takesArguments === true && [app.name, ...(app.aliases ?? [])].includes(named)) {
       const args = trimmed
         .slice(named.length + 1)
         .replace(/^:/u, "")

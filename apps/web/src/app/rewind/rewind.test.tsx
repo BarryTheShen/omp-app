@@ -9,6 +9,7 @@ import type {
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { type HistoryPanel, treeSlashCommand } from "@/app/slash-commands";
 import { LayoutArea, type SurfaceMap } from "@/layout";
 import type { TreeNode } from "@/modules/P4/contract";
 import { P4_DESCRIPTORS } from "@/modules/P4/contract";
@@ -486,5 +487,26 @@ describe("rewind panel", () => {
     await waitFor(() =>
       expect(screen.queryByRole("tree", { name: "Conversation messages" })).toBeNull(),
     );
+  });
+
+  test("S9b /tree opens the conversation tree, focuses a row, and Escape returns focus to the message box", async () => {
+    const { composer, registry } = renderRewind({ send: fakeOmp([]) });
+    composer.focus();
+    const panel: HistoryPanel = {
+      available: () => registry().commandFor(REWIND_COMMAND) !== undefined,
+      open: () => void registry().commandFor(REWIND_COMMAND)?.run(),
+    };
+
+    const result = await act(async () => treeSlashCommand({ panel }).run({}));
+    expect(result).toEqual({
+      message: "Browse this chat's messages here. Rewinding opens a new chat and keeps this one.",
+    });
+
+    const tree = await screen.findByRole("tree", { name: "Conversation messages" });
+    await waitFor(() => expect(tree.contains(document.activeElement)).toBe(true));
+    expect(document.activeElement?.getAttribute("role")).toBe("treeitem");
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(composer));
   });
 });

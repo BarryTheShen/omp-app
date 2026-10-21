@@ -270,14 +270,11 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
       "live",
       "logout",
       "fork",
-      "tree",
       "copy",
       "open",
       "exit",
       "quit",
       "q",
-      "branch",
-      "rewind",
       "agents",
       "extensions",
       "status",
@@ -428,11 +425,9 @@ describe("#1273 a command typed with a colon is read the way omp reads it, up to
 });
 
 describe("#2199 a typed terminal-only name has a note; the refusal keeps its text", () => {
-  /** The 33 terminal-only commands and their 4 aliases: the names the table answers. */
+  /** The 31 terminal-only commands and their 3 aliases: the names the table answers. */
   const terminalOnlyNames = [
     "agents",
-    "branch",
-    "rewind",
     "btw",
     "cleanse",
     "clear",
@@ -465,7 +460,6 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     "setup",
     "skills",
     "tan",
-    "tree",
     "vibe",
   ];
   /** The app's own alternative that the refusal names, where there is one. */
@@ -487,8 +481,8 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   }
 
-  test("each of the 37 names has omp's description in its note, except queue, which the app answers itself", () => {
-    expect(terminalOnlyNames).toHaveLength(37);
+  test("each of the 34 names has omp's description in its note, except queue, which the app answers itself", () => {
+    expect(terminalOnlyNames).toHaveLength(34);
     for (const name of terminalOnlyNames) {
       if (name === "queue") {
         expect(terminalOnlyNote(name)).toBeNull();
@@ -499,11 +493,9 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
   });
 
   test("an alias's note names the omp command it stands for", () => {
-    expect(terminalOnlyNote("rewind")?.aliasOf).toBe("branch");
     expect(terminalOnlyNote("status")?.aliasOf).toBe("extensions");
     expect(terminalOnlyNote("providers")?.aliasOf).toBe("setup");
     expect(terminalOnlyNote("q")?.aliasOf).toBe("quit");
-    expect(terminalOnlyNote("branch")?.aliasOf).toBeNull();
   });
 
   test("only an exact name or alias, with no space, has a note", () => {
@@ -518,7 +510,7 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   });
 
-  test("the refusal keeps today's text for each of the 37 names", async () => {
+  test("the refusal keeps today's text for each of the 34 names", async () => {
     for (const name of terminalOnlyNames) {
       const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
       const alternative = alternatives[name];
@@ -538,6 +530,40 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     for (const names of listed) {
       for (const name of terminalOnlyNames) expect(names, name).not.toContain(name);
     }
+  });
+});
+
+describe("S9b /tree, /branch and /rewind are the app's commands, and /rewind is branch's alias", () => {
+  const branch: SlashAppCommand = {
+    name: "branch",
+    aliases: ["rewind"],
+    description: "Rewind this chat to one of your messages. This chat is kept.",
+    takesArguments: true,
+    run: async () => ({}),
+  };
+
+  test("the bare name and the alias run branch, words after either are its args, and /rewinds is still a prompt", () => {
+    expect(routeSlashText("/branch", [], [branch])).toEqual({ kind: "app", command: branch });
+    expect(routeSlashText("/rewind", [], [branch])).toEqual({ kind: "app", command: branch });
+    expect(routeSlashText("/rewind now", [], [branch])).toEqual({
+      kind: "app",
+      command: branch,
+      args: "now",
+    });
+    expect(routeSlashText("/rewind:x", [], [branch])).toEqual({
+      kind: "app",
+      command: branch,
+      args: "x",
+    });
+    expect(routeSlashText("/rewinds", [], [branch])).toBeNull();
+  });
+
+  test("an omp file command named rewind does not take the app's alias away from the app", () => {
+    const fileRewind = SlashCommand.parse({ name: "rewind", source: "file" });
+    expect(routeSlashText("/rewind", [fileRewind], [branch])).toEqual({
+      kind: "app",
+      command: branch,
+    });
   });
 });
 

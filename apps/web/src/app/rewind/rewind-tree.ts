@@ -38,6 +38,15 @@ export function isStreaming(store: OmpRuntimeStore): boolean {
   return Object.keys(store.getSnapshot().streaming).length > 0;
 }
 
+/**
+ * A turn is running in this conversation: the prompt is streaming, or admitted and not settled, or omp is streaming. It is the
+ * test the transition port applies before it rewinds, forks or clears (`P4/transitions/transitions.ts`, `prepare`).
+ */
+export function conversationBusy(store: OmpRuntimeStore): boolean {
+  const { prompt } = store.getSnapshot();
+  return prompt.streaming || (prompt.admitted && !prompt.sessionSettled) || isStreaming(store);
+}
+
 export function transcriptEntryCount(store: OmpRuntimeStore): number {
   return Object.keys(store.getSnapshot().transcript.entries).length;
 }

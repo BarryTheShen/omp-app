@@ -47,6 +47,7 @@ import {
   type NoSwitchNote,
   showNoSwitchNote,
 } from "@/app/rewind/no-switch-notice";
+import { conversationBusy } from "@/app/rewind/rewind-tree";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { ToolRunScope } from "@/app/tool-run-scope";
 import { Notice } from "@/components/blocks";
@@ -261,9 +262,11 @@ import { useShareFromChat } from "./share/use-share-from-chat";
 import {
   agentHubSlashCommand,
   askFirstSlashCommands,
+  branchSlashCommand,
   copySlashCommand,
   freshSlashCommand,
   guardOmpSend,
+  type HistoryPanel,
   hotkeysSlashCommand,
   loginSlashCommand,
   mcpReloadSlashCommand,
@@ -272,6 +275,7 @@ import {
   runSlashRoute,
   settingsSlashCommand,
   shareSlashCommand,
+  treeSlashCommand,
   useSlashCommands,
 } from "./slash-commands";
 import { finishedAnswerAt } from "./turn-end";
@@ -1639,6 +1643,14 @@ function ActiveThreadReady({
     previousCommandOutputReveal.current = commandOutputReveal;
     if (diagnosticPanel !== null) closeDiagnosticPanel();
   }, [closeDiagnosticPanel, commandOutputReveal, diagnosticPanel]);
+  // The conversation-history panel `/tree` and `/branch` open: the registry's own command, offered while omp has it.
+  const historyPanel = useMemo<HistoryPanel>(
+    () => ({
+      available: () => shortcutRegistry.commandFor("P4.treeCommand") !== undefined,
+      open: () => void shortcutRegistry.commandFor("P4.treeCommand")?.run(),
+    }),
+    [shortcutRegistry],
+  );
   // Slash commands for this chat: omp's list (with MCP prompts) and the app's own `/new` and `/fresh`.
   const appSlashCommands = useMemo(
     () => [
@@ -1646,6 +1658,8 @@ function ActiveThreadReady({
       freshSlashCommand({ lifecycle }),
       shareSlashCommand({ run: () => runShareCommand(shareController) }),
       copySlashCommand({ copy: () => runCopyFromChat(shortcutRegistry) }),
+      treeSlashCommand({ panel: historyPanel }),
+      branchSlashCommand({ panel: historyPanel, isBusy: () => conversationBusy(store) }),
       ...exportCommands,
       loginSlashCommand({ openLogin }),
       settingsSlashCommand({
@@ -1676,6 +1690,7 @@ function ActiveThreadReady({
       commandGateway,
       exportCommands,
       goalCommand,
+      historyPanel,
       lifecycle,
       onOpenSettings,
       openAgentHub,
@@ -1685,6 +1700,7 @@ function ActiveThreadReady({
       shareController,
       shortcutRegistry,
       showCommandOutput,
+      store,
       threadId,
       title,
     ],

@@ -40,11 +40,13 @@ import { ComposerTriggers } from "./composer-triggers";
 import {
   askFirstSlashCommand,
   askFirstSlashCommands,
+  branchSlashCommand,
   copySlashCommand,
   deleteSlashCommand,
   describeResetTarget,
   freshSlashCommand,
   guardOmpSend,
+  type HistoryPanel,
   hotkeysSlashCommand,
   loginSlashCommand,
   mcpReloadSlashCommand,
@@ -54,6 +56,7 @@ import {
   sessionDeleteSlashCommand,
   settingsSlashCommand,
   shareSlashCommand,
+  treeSlashCommand,
   useSlashCommands,
 } from "./slash-commands";
 
@@ -1286,5 +1289,95 @@ describe("#2263 the chat's `/` list and routing read only omp's command list", (
     expect(typed).not.toContain("/docs:summarize");
     await expect(provider.route("/docs:summarize")).resolves.toBeNull();
     expect(mcpCalls).toEqual([]);
+  });
+});
+
+describe("S9b `/tree` and `/branch` open the history panel, or say why they cannot", () => {
+  /** A panel that records each open, and says whether omp has the panel. */
+  function historyPanel(available: boolean) {
+    const open = vi.fn();
+    const panel: HistoryPanel = { available: () => available, open };
+    return { panel, open };
+  }
+
+  test("`/tree` opens the panel once and returns the /tree header sentence", async () => {
+    const { panel, open } = historyPanel(true);
+    await expect(treeSlashCommand({ panel }).run({})).resolves.toEqual({
+      message: "Browse this chat's messages here. Rewinding opens a new chat and keeps this one.",
+    });
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test("`/tree` refuses with the version sentence when omp has no panel, and opens nothing", async () => {
+    const { panel, open } = historyPanel(false);
+    await expect(treeSlashCommand({ panel }).run({})).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message: "Browsing earlier messages isn't available with this version of omp.",
+      },
+    });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test("words after `/tree` are refused as invalid args, and the panel does not open", async () => {
+    const { panel, open } = historyPanel(true);
+    await expect(treeSlashCommand({ panel }).run({ args: "x" })).rejects.toMatchObject({
+      appError: {
+        code: "invalid_args",
+        message:
+          "/tree doesn't take anything after it, so nothing was sent. Type /tree on its own.",
+      },
+    });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test("`/branch` is named branch, answers to rewind, and takes arguments", () => {
+    const command = branchSlashCommand({ panel: historyPanel(true).panel, isBusy: () => false });
+    expect(command.name).toBe("branch");
+    expect(command.aliases).toEqual(["rewind"]);
+    expect(command.takesArguments).toBe(true);
+    expect(command.unlisted).toBeUndefined();
+  });
+
+  test("an idle `/branch` opens the panel once and returns the /branch header sentence", async () => {
+    const { panel, open } = historyPanel(true);
+    await expect(branchSlashCommand({ panel, isBusy: () => false }).run({})).resolves.toEqual({
+      message:
+        "Choose one of your messages to rewind to. Your files are not changed, and this chat is kept.",
+    });
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test("a `/branch` while a turn runs says to wait, and opens nothing", async () => {
+    const { panel, open } = historyPanel(true);
+    await expect(branchSlashCommand({ panel, isBusy: () => true }).run({})).resolves.toEqual({
+      message: "Wait for this chat's turn to finish, then rewind it.",
+    });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test("a missing panel is refused before the busy test, so a busy `/branch` still names the version gap", async () => {
+    const { panel, open } = historyPanel(false);
+    await expect(branchSlashCommand({ panel, isBusy: () => true }).run({})).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message: "Rewinding isn't available with this version of omp.",
+      },
+    });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test("words after `/branch` or `/rewind` are refused with the branch sentence, and the panel does not open", async () => {
+    const { panel, open } = historyPanel(true);
+    await expect(
+      branchSlashCommand({ panel, isBusy: () => false }).run({ args: "now" }),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "invalid_args",
+        message:
+          "/branch and /rewind don't take anything after them, so nothing was sent. Type /branch on its own.",
+      },
+    });
+    expect(open).not.toHaveBeenCalled();
   });
 });

@@ -81,12 +81,14 @@ export function createSlashCommandProvider(
   };
 
   /**
-   * omp's commands, minus each one that a listed app command of the same name replaces. An unlisted app command (a
+   * omp's commands, minus each one that a listed app command of the same name or alias replaces. An unlisted app command (a
    * guarded form such as `wt`) keeps omp's row: typing the form still runs the app's, because `guardedRoute` runs first.
    */
   const listEntries = (): readonly SlashListEntry[] => {
     const listedNames = new Set(
-      (options.appCommands?.() ?? []).filter((app) => app.unlisted !== true).map((app) => app.name),
+      (options.appCommands?.() ?? [])
+        .filter((app) => app.unlisted !== true)
+        .flatMap((app) => [app.name, ...(app.aliases ?? [])]),
     );
     return catalog
       .getSnapshot()
@@ -101,6 +103,7 @@ export function createSlashCommandProvider(
         name: app.name,
         source: "client",
         description: app.description,
+        ...(app.aliases === undefined ? {} : { aliases: app.aliases }),
       }));
 
   const searchTyped = async (

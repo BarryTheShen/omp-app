@@ -400,3 +400,34 @@ describe("S9a /delete is the app's own row, and its name has no terminal-only no
     bare.dispose();
   });
 });
+
+describe("S9b /branch is the app's row, with rewind as its alias", () => {
+  const branch: SlashAppCommand = {
+    name: "branch",
+    aliases: ["rewind"],
+    description: "Rewind this chat to one of your messages. This chat is kept.",
+    takesArguments: true,
+    run: async () => ({}),
+  };
+
+  test("a provider with branch lists one /branch row, ranks it first for rew, and hides an omp file command named rewind", async () => {
+    const fileRewind = { name: "rewind", description: "Rewind from a file", source: "file" };
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient({
+        commands: async () => ({ commands: [...REAL_COMMAND_LIST, fileRewind] }),
+      }).client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [branch],
+    });
+    const branches = (await provider.searchTyped("branch")).candidates.filter(
+      (candidate) => candidate.label === "/branch",
+    );
+    expect(branches).toHaveLength(1);
+    const { candidates } = await provider.searchTyped("rew");
+    expect(candidates[0]?.label).toBe("/branch");
+    expect(candidates.some((candidate) => candidate.label === "/rewind")).toBe(false);
+    expect(await provider.route("/rewind")).toEqual({ kind: "app", command: branch });
+    provider.dispose();
+  });
+});
