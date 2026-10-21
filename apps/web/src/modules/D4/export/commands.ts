@@ -164,7 +164,8 @@ export function createExportSlashCommands(deps: ExportCommandDeps): readonly Sla
     },
     {
       name: "open",
-      description: "Only runs in omp's terminal",
+      description:
+        "Open the last link from the conversation in your browser (or pick one with /copy). Only runs in omp's terminal; nothing is sent from here.",
       run: () =>
         Promise.reject(
           new AppFailure({
@@ -176,7 +177,8 @@ export function createExportSlashCommands(deps: ExportCommandDeps): readonly Sla
     },
     {
       name: "record",
-      description: "Only runs in omp's terminal",
+      description:
+        "Start or stop recording this screen to a replayable file (omp play). Only runs in omp's terminal; nothing is sent from here.",
       run: () =>
         Promise.reject(
           new AppFailure({

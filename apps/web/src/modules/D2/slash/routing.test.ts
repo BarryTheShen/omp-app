@@ -1,7 +1,8 @@
 import { AppFailure } from "@omp-app/contracts";
 import { describe, expect, test } from "vitest";
 import { SlashCommand } from "../contract";
-import { guardedForm, routeSlashText, type SlashAppCommand } from "./routing";
+import capturedWithMcp from "../fixtures/real-get-available-commands-with-skill-and-mcp.json";
+import { guardedForm, routeSlashText, type SlashAppCommand, terminalOnlyNote } from "./routing";
 import { REAL_COMMAND_LIST } from "./test-support";
 
 const entries = REAL_COMMAND_LIST.map((raw) => SlashCommand.parse(raw));
@@ -435,6 +436,122 @@ describe("#1273 a command typed with a colon is read the way omp reads it, up to
     });
     for (const text of ["/nosuch:read summarize", "/etc:hosts", "/:force", ":force read"]) {
       expect(routeSlashText(text, entries, []), text).toBeNull();
+    }
+  });
+});
+
+describe("#2199 a typed terminal-only name has a note; the refusal keeps its text", () => {
+  /** The 34 terminal-only commands and their 4 aliases: the names the table answers. */
+  const terminalOnlyNames = [
+    "agents",
+    "branch",
+    "rewind",
+    "btw",
+    "cleanse",
+    "clear",
+    "collab",
+    "copy",
+    "debug",
+    "delete",
+    "exit",
+    "extensions",
+    "status",
+    "fork",
+    "git",
+    "guided-goal",
+    "join",
+    "leave",
+    "live",
+    "logout",
+    "loop",
+    "omfg",
+    "open",
+    "pause",
+    "plan",
+    "plan-review",
+    "providers",
+    "q",
+    "queue",
+    "quit",
+    "record",
+    "restart",
+    "resume",
+    "setup",
+    "skills",
+    "tan",
+    "tree",
+    "vibe",
+  ];
+  /** The app's own alternative that the refusal names, where there is one. */
+  const alternatives: Readonly<Record<string, string>> = {
+    clear: "Use New chat instead.",
+    copy: "Use Copy from this chat instead.",
+    delete: "Delete a chat from the session list instead.",
+    logout: "Provider sign-in is in Settings.",
+    resume: "Use the session list instead.",
+  };
+  /** The message the app's refusal carries for a typed terminal-only command when no app command is registered. */
+  async function refusalWithoutApp(text: string): Promise<string | undefined> {
+    const route = routeSlashText(text, [], []);
+    if (route?.kind !== "app") return undefined;
+    try {
+      await route.command.run({});
+      return "ran";
+    } catch (error) {
+      return error instanceof AppFailure ? error.appError.message : undefined;
+    }
+  }
+
+  test("each of the 38 names has omp's description in its note, except queue, which the app answers itself", () => {
+    expect(terminalOnlyNames).toHaveLength(38);
+    for (const name of terminalOnlyNames) {
+      if (name === "queue") {
+        expect(terminalOnlyNote(name)).toBeNull();
+      } else {
+        expect(terminalOnlyNote(name)?.does, name).toMatch(/\S/u);
+      }
+    }
+  });
+
+  test("an alias's note names the omp command it stands for", () => {
+    expect(terminalOnlyNote("rewind")?.aliasOf).toBe("branch");
+    expect(terminalOnlyNote("status")?.aliasOf).toBe("extensions");
+    expect(terminalOnlyNote("providers")?.aliasOf).toBe("setup");
+    expect(terminalOnlyNote("q")?.aliasOf).toBe("quit");
+    expect(terminalOnlyNote("branch")?.aliasOf).toBeNull();
+  });
+
+  test("only an exact name or alias, with no space, has a note", () => {
+    expect(terminalOnlyNote("clear")).toEqual({
+      name: "clear",
+      aliasOf: null,
+      does: "Clear the conversation context in place, keeping the session",
+      instead: "Use New chat instead.",
+    });
+    for (const typed of ["clea", "cl", "clear now", "clear:now", "Clear", ""]) {
+      expect(terminalOnlyNote(typed), JSON.stringify(typed)).toBeNull();
+    }
+  });
+
+  test("the refusal keeps today's text for each of the 38 names", async () => {
+    for (const name of terminalOnlyNames) {
+      const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
+      const alternative = alternatives[name];
+      expect(await refusalWithoutApp(`/${name}`), name).toBe(
+        alternative === undefined ? sentence : `${sentence} ${alternative}`,
+      );
+    }
+  });
+
+  test("no terminal-only name is in omp's own list, in either captured list, so a note never hides a command omp runs", () => {
+    const listed = [
+      entries.map((entry) => entry.name),
+      (capturedWithMcp.commands as readonly { readonly name: string }[]).map(
+        (command) => command.name,
+      ),
+    ];
+    for (const names of listed) {
+      for (const name of terminalOnlyNames) expect(names, name).not.toContain(name);
     }
   });
 });

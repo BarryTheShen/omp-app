@@ -18,6 +18,7 @@ import {
   useTriggerListLoading,
 } from "../shared/trigger-keys";
 import type { SlashCommandProvider } from "./provider";
+import type { TerminalOnlyNote } from "./routing";
 
 /** The typed text from the start of the message up to the caret, on one line: `/name` or `/name args`. */
 const SLASH_TYPING = /^\/\S*(?:[ \t][^\n]*)?$/u;
@@ -127,11 +128,45 @@ function ListBox({ children }: { readonly children: ReactNode }) {
   );
 }
 
+/**
+ * The note for a typed name that only omp's terminal runs. It has a row's look but is not an option (no option role,
+ * nothing to highlight), so Enter, Tab and click cannot choose it. It gives omp's description and the app's alternative.
+ */
+function TerminalOnlyNoteBlock({ note }: { readonly note: TerminalOnlyNote }) {
+  const lead = note.aliasOf === null ? "" : `/${note.name} is /${note.aliasOf} in omp. `;
+  const alternative = note.instead === null ? "" : ` ${note.instead}`;
+  return (
+    <div
+      data-terminal-only-note={note.name}
+      className="flex w-full flex-col items-start rounded-sm px-2 py-1.5 text-start text-sm select-none"
+    >
+      <span className="flex w-full min-w-0 items-center justify-between gap-2">
+        <span className="min-w-0 truncate font-medium">/{note.name}</span>
+        <span className="border-border bg-muted text-muted-foreground shrink-0 rounded-full border px-2 py-0.5 text-xs">
+          Terminal only
+        </span>
+      </span>
+      <span className="text-muted-foreground w-full text-xs">{`${lead}${note.does}`}</span>
+      <span className="text-muted-foreground w-full text-xs">
+        {`Only runs in omp's terminal; nothing is sent from here.${alternative}`}
+      </span>
+    </div>
+  );
+}
+
 function renderItems(
   items: readonly Unstable_TriggerItem[],
   status: string | null,
   answersQuery: string | undefined,
+  note: TerminalOnlyNote | null,
 ): ReactNode {
+  if (note !== null) {
+    return (
+      <ListBox>
+        <TerminalOnlyNoteBlock note={note} />
+      </ListBox>
+    );
+  }
   return (
     <ListBox>
       {items.length === 0 ? (
@@ -207,6 +242,8 @@ function SlashPopover({
 }) {
   const candidateMap = useRef<ReadonlyMap<string, TriggerCandidate>>(new Map());
   const status = useRef<string | null>(null);
+  // The note for the typed name when only omp's terminal runs it: the list then shows the note and no row.
+  const terminalNote = useRef<TerminalOnlyNote | null>(null);
   // True while arguments follow a command and nothing matches them: no list, so Enter sends the message.
   const quiet = useRef(false);
   // Whether the list's first command is exactly the text typed: only then does an Enter kept while it loaded choose it.
@@ -217,6 +254,18 @@ function SlashPopover({
   const fetcher = useCallback(
     async (query: string): Promise<readonly Unstable_TriggerItem[]> => {
       if (!provider) return [];
+      const note = await provider.terminalOnlyNote(query);
+      terminalNote.current = note;
+      if (note !== null) {
+        // A name only omp's terminal runs is answered by its note alone: no row is offered, so Enter can only refuse.
+        const none: readonly Unstable_TriggerItem[] = [];
+        answers.set(none, query);
+        candidateMap.current = new Map();
+        status.current = null;
+        quiet.current = false;
+        typedIsFirst.current = false;
+        return none;
+      }
       const result = await provider.searchTyped(query);
       const next = resultItems(result);
       answers.set(next.items, query);
@@ -294,7 +343,7 @@ function SlashPopover({
               </div>
             );
           }
-          return renderItems(items, status.current, answers.get(items));
+          return renderItems(items, status.current, answers.get(items), terminalNote.current);
         }}
       </ComposerPrimitive.Unstable_TriggerPopoverItems>
     </ComposerPrimitive.Unstable_TriggerPopover>

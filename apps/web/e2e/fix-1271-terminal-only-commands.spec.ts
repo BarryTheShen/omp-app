@@ -38,8 +38,9 @@ async function sessionFilesText(realApp: RealApp): Promise<string> {
 }
 
 /**
- * Types a message, then presses Enter until `answer` shows. An Enter pressed while the slash list is loading is dropped
- * for text that is no command, and the list can load again after it first answers, so one Enter is not enough. A dropped
+ * Types a message, then presses Enter until `answer` shows. `ready` shows that the list has answered: the note for a
+ * terminal-only name, else "No matching commands.". An Enter pressed while the slash list is loading is dropped for
+ * text that is no command, and the list can load again after it first answers, so one Enter is not enough. A dropped
  * Enter sends nothing, and a send that worked clears the composer, so pressing again is safe.
  */
 async function typeCommand(
@@ -47,9 +48,10 @@ async function typeCommand(
   composer: Locator,
   text: string,
   answer: Locator,
+  ready: Locator = page.getByText("No matching commands."),
 ): Promise<void> {
   await composer.fill(text);
-  await expect(page.getByText("No matching commands.")).toBeVisible({ timeout: 60_000 });
+  await expect(ready).toBeVisible({ timeout: 60_000 });
   await expect(async () => {
     await composer.press("Enter");
     await expect(answer).toBeVisible({ timeout: 3_000 });
@@ -75,6 +77,7 @@ realTest(
       composer,
       "/clear",
       composerError(page).filter({ hasText: CLEAR_REFUSAL }),
+      page.locator('[data-terminal-only-note="clear"]'),
     );
     await expect(composerError(page)).toHaveText(CLEAR_REFUSAL, { timeout: 60_000 });
     // The text stays in the composer; the fake model never answered it and no session file holds it.
@@ -91,6 +94,7 @@ realTest(
       composer,
       "/loop",
       composerError(page).filter({ hasText: LOOP_REFUSAL }),
+      page.locator('[data-terminal-only-note="loop"]'),
     );
     await expect(composerError(page)).toHaveText(LOOP_REFUSAL);
     await expect(page.getByText("pong")).toHaveCount(0);
@@ -116,6 +120,7 @@ realTest(
       composer,
       "/clear",
       composerError(page).filter({ hasText: CLEAR_REFUSAL }),
+      page.locator('[data-terminal-only-note="clear"]'),
     );
     await expect(composerError(page)).toHaveText(CLEAR_REFUSAL, { timeout: 60_000 });
     await expect(page.locator("html")).toHaveClass(/dark/);

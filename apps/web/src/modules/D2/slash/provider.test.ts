@@ -328,3 +328,31 @@ describe("#1371 a typed command is held, not sent to the model, when omp's comma
     provider.dispose();
   });
 });
+
+describe("#2199 the note for a typed terminal-only name", () => {
+  test("a typed terminal-only name has its note, and a listed row with that name takes the note away", async () => {
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+    });
+    expect(await provider.terminalOnlyNote("/clear")).toMatchObject({
+      name: "clear",
+      instead: "Use New chat instead.",
+    });
+    expect(await provider.terminalOnlyNote("/usage")).toBeNull();
+    provider.dispose();
+
+    const ownPlan = { name: "plan", description: "Plan this change from a file", source: "file" };
+    const withOwnPlan = createSlashCommandProvider({
+      client: fakeSlashClient({
+        commands: async () => ({ commands: [...REAL_COMMAND_LIST, ownPlan] }),
+      }).client,
+      threadId,
+      capabilities: () => available,
+    });
+    expect(await withOwnPlan.terminalOnlyNote("/plan")).toBeNull();
+    expect(await withOwnPlan.terminalOnlyNote("/tree")).toMatchObject({ name: "tree" });
+    withOwnPlan.dispose();
+  });
+});

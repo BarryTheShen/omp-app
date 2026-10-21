@@ -79,7 +79,7 @@ realTest(
 
     await input.fill("/clear");
     await input.press("Enter");
-    await expect(page.getByRole("listbox")).toContainText("No matching commands.", {
+    await expect(page.getByRole("listbox")).toContainText("Only runs in omp's terminal", {
       timeout: 30_000,
     });
     await expect(input).toHaveValue("/clear");

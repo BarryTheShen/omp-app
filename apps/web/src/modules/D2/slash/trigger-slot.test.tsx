@@ -13,7 +13,7 @@ import { ComposerSurface } from "../../U2/composer/composer";
 import { LocalComposerSlot } from "../local/trigger-slot";
 import { MentionComposerSlot } from "../mentions/trigger-slot";
 import { createSlashCommandProvider, type SlashCommandProvider } from "./provider";
-import { fakeSlashClient } from "./test-support";
+import { fakeSlashClient, REAL_COMMAND_LIST } from "./test-support";
 import { SlashComposerSlot, SlashTriggerSlot } from "./trigger-slot";
 
 function RuntimeHarness({
@@ -629,6 +629,78 @@ describe("D2.3 SlashTriggerSlot", () => {
       expect(screen.getByText("Slash commands could not be loaded.")).toBeTruthy(),
     );
     expect(screen.queryByText("Loading commands…")).toBeNull();
+    provider.dispose();
+  });
+});
+
+describe("#2199 a typed terminal-only name shows its note in the list", () => {
+  test("typed /clear shows its note, with no row and no 'No matching commands.'", async () => {
+    const provider = providerWith(available);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "/clear" } });
+    (input as HTMLTextAreaElement).setSelectionRange(6, 6);
+    await waitFor(() => expect(screen.getByText("Terminal only")).toBeTruthy());
+    expect(screen.getByText(/Use New chat instead\./)).toBeTruthy();
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.queryByText("No matching commands.")).toBeNull();
+    provider.dispose();
+  });
+
+  test("Enter on a typed terminal-only name sends it as typed, and no row is chosen", async () => {
+    const provider = providerWith(available);
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "/clear" } });
+    (input as HTMLTextAreaElement).setSelectionRange(6, 6);
+    await waitFor(() => expect(screen.getByText("Terminal only")).toBeTruthy());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    provider.dispose();
+  });
+
+  test("/tree shows its note alone: a command its letters match is not offered, so Enter cannot pick it", async () => {
+    const autoresearch = {
+      name: "autoresearch",
+      description: "Run an autoresearch loop",
+      source: "builtin",
+    };
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient({
+        commands: async () => ({ commands: [...REAL_COMMAND_LIST, autoresearch] }),
+      }).client,
+      threadId,
+      capabilities: () => available,
+    });
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "/tree" } });
+    (input as HTMLTextAreaElement).setSelectionRange(5, 5);
+    await waitFor(() => expect(screen.getByText("Terminal only")).toBeTruthy());
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.queryByText("/autoresearch")).toBeNull();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
     provider.dispose();
   });
 });

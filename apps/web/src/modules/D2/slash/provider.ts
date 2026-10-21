@@ -17,7 +17,14 @@ import type {
 } from "../contract";
 import { createSlashCommandCatalog, type SlashCommandCatalogController } from "./catalog";
 import { rankSlashEntries, type SlashListEntry } from "./rank";
-import { guardedRoute, routeSlashText, type SlashAppCommand, type SlashRoute } from "./routing";
+import {
+  guardedRoute,
+  routeSlashText,
+  type SlashAppCommand,
+  type SlashRoute,
+  type TerminalOnlyNote,
+  terminalOnlyNote,
+} from "./routing";
 
 export interface SlashCommandProviderOptions {
   readonly client: AppClient;
@@ -36,6 +43,8 @@ export interface SlashCommandProvider extends TriggerProvider {
   readonly catalog: SlashCommandCatalogController;
   /** Decides where a submitted message goes: a known command, or null for a normal prompt. */
   readonly route: (text: string) => Promise<SlashRoute | null>;
+  /** The note for a typed name that only omp's terminal runs (`/clear`), or null: a listed row with that name hides it. */
+  readonly terminalOnlyNote: (query: string) => Promise<TerminalOnlyNote | null>;
   /** Runs an omp command through A1's gateway. The result carries omp's output and whether the model ran. */
   readonly execute: (command: string, options?: PortCallOptions) => Promise<CommandRunResult>;
   readonly dispose: () => void;
@@ -167,12 +176,29 @@ export function createSlashCommandProvider(
     return gateway.run({ threadId: options.threadId, command: parsed.data }, callOptions);
   };
 
+  /**
+   * The note for a typed name that only omp's terminal runs, or null. A listed row with that name or alias takes the
+   * name instead: that row is the command (a user's own `/plan` file command, for example).
+   */
+  const noteFor = async (query: string): Promise<TerminalOnlyNote | null> => {
+    const typed = query.replace(/^\/+/u, "");
+    const note = terminalOnlyNote(typed);
+    if (note === null) return null;
+    await ensureCatalog();
+    const listed = [...(await listEntries()), ...appEntries()];
+    const taken = listed.some(
+      (entry) => entry.name === typed || (entry.aliases ?? []).includes(typed),
+    );
+    return taken ? null : note;
+  };
+
   return {
     trigger: "/",
     kind: "slash",
     source: "builtin",
     search: async (query) => (await searchTyped(query)).candidates,
     searchTyped,
+    terminalOnlyNote: noteFor,
     catalog,
     route,
     execute,

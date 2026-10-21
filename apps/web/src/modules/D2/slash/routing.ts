@@ -171,56 +171,120 @@ export function guardedRoute(
  * omp's commands that only its terminal runs: the top-level builtins with a `handleTui` and no text `handle` in omp
  * v18.9.1, the same at v18.8.9 (builtin-*.ts). omp leaves them out of its list, and its RPC prompt has no handler for
  * them, so it hands their text to the model (acp-builtins.ts:66, rpc-mode.ts:1798-1838). The app answers each one
- * itself. The value is the app's own control for the same job, or null. Names the app already answers (`/new`,
- * `/settings`, `/login`, `/hotkeys`, `/hub`, `/goal`) are not listed, so their other forms stay prompts.
+ * itself. `does` is omp's own description of the command, `instead` the app's control for the same job (or none), and
+ * `aliasOf` the command an alias stands for. Names the app already answers (`/new`, `/settings`, `/login`, `/hotkeys`,
+ * `/hub`, `/goal`) are not listed, so their other forms stay prompts.
  */
-const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, string | null>> = {
-  agents: null,
-  branch: null,
-  rewind: null,
-  btw: null,
-  cleanse: null,
-  clear: "Use New chat instead.",
-  collab: null,
-  copy: "Use Copy from this chat instead.",
-  debug: null,
-  delete: "Delete a chat from the session list instead.",
-  exit: null,
-  extensions: null,
-  status: null,
-  fork: null,
-  git: null,
-  "guided-goal": null,
-  join: null,
-  leave: null,
-  live: null,
-  logout: "Provider sign-in is in Settings.",
-  loop: null,
-  omfg: null,
-  open: null,
-  pause: null,
-  plan: null,
-  "plan-review": null,
-  providers: null,
-  q: null,
-  queue: null,
-  quit: null,
-  record: null,
-  restart: null,
-  resume: "Use the session list instead.",
-  setup: null,
-  skills: null,
-  tan: null,
-  tree: null,
-  vibe: null,
+interface TerminalOnlyEntry {
+  readonly does: string;
+  readonly instead?: string;
+  readonly aliasOf?: string;
+  /** The app answers this name in the composer itself (`/queue` is its queued-message command): no note, but the refusal stands. */
+  readonly answeredByApp?: true;
+}
+
+/** The note the composer shows for a typed terminal-only name: the name, omp's description and the app's alternative. */
+export interface TerminalOnlyNote {
+  /** The name as typed, without the slash. */
+  readonly name: string;
+  /** The omp name an alias stands for (`branch` for `rewind`), or null. */
+  readonly aliasOf: string | null;
+  /** omp's description of the command. */
+  readonly does: string;
+  /** The app's own control for the same job, or null. */
+  readonly instead: string | null;
+}
+
+const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, TerminalOnlyEntry>> = {
+  agents: { does: "Open the agents hub (per-agent model, prewalk, and advisor)" },
+  branch: { does: "Rewind to a previous message, keeping the old path as a branch" },
+  rewind: {
+    aliasOf: "branch",
+    does: "Rewind to a previous message, keeping the old path as a branch",
+  },
+  btw: { does: "Ask a side question, or browse this session's BTW history" },
+  cleanse: { does: "Detect and fix project diagnostics with weighted parallel subagents" },
+  clear: {
+    does: "Clear the conversation context in place, keeping the session",
+    instead: "Use New chat instead.",
+  },
+  collab: { does: "Share this session live via a relay" },
+  copy: {
+    does: "Pick text or code from the conversation to copy",
+    instead: "Use Copy from this chat instead.",
+  },
+  debug: { does: "Open debug tools selector" },
+  delete: {
+    does: "Delete the current session and start a new one",
+    instead: "Delete a chat from the session list instead.",
+  },
+  exit: { does: "Exit the application" },
+  extensions: { does: "Open Extension Control Center dashboard" },
+  status: { aliasOf: "extensions", does: "Open Extension Control Center dashboard" },
+  fork: { does: "Fork this session, or open it in a multiplexer pane or window" },
+  git: { does: "Open the git UI (split diff viewer, staging, commit composer)" },
+  "guided-goal": { does: "Have the agent interview you in chat, then set up goal mode" },
+  join: { does: "Join a shared collab session" },
+  leave: { does: "Leave the collab session" },
+  live: { does: "Start Codex-backed realtime voice mode" },
+  logout: {
+    does: "Logout from OAuth provider",
+    instead: "Provider sign-in is in Settings.",
+  },
+  loop: {
+    does: "Toggle loop mode: the next prompt you send re-submits after every yield. A count, a duration, or --until or --while with a command bounds it.",
+  },
+  omfg: { does: "Forge a TTSR rule from a complaint to stop a recurring behavior" },
+  open: {
+    does: "Open the last link from the conversation in your browser (or pick one with /copy)",
+  },
+  pause: { does: "Freeze all agents (main, subagents, advisor) until resumed" },
+  plan: { does: "Toggle plan mode (agent plans before executing)" },
+  "plan-review": { does: "Re-open the plan review for the latest plan (plan mode only)" },
+  providers: { aliasOf: "setup", does: "Open provider setup" },
+  q: { aliasOf: "quit", does: "Quit the application" },
+  queue: { does: "Queue a message for after the agent yields", answeredByApp: true },
+  quit: { does: "Quit the application" },
+  record: { does: "Start or stop recording this screen to a replayable file (omp play)" },
+  restart: { does: "Restart omp with the same launch flags, resuming this session" },
+  resume: {
+    does: "Resume a different session",
+    instead: "Use the session list instead.",
+  },
+  setup: { does: "Open provider setup" },
+  skills: { does: "Search, install, and update skills from the skills.omp.sh registry" },
+  tan: { does: "Run a full background agent on tangential work" },
+  tree: { does: "Navigate session tree (switch branches)" },
+  vibe: {
+    does: "Toggle vibe mode (direct persistent fast/good worker sessions; read-only toolset)",
+  },
 };
+
+/**
+ * The note for a typed name that only omp's terminal runs, given without its slash: an exact name or alias, and no
+ * space. Any other text has no note. The provider hides the note when a listed row takes the same name.
+ */
+export function terminalOnlyNote(typed: string): TerminalOnlyNote | null {
+  const entry = Object.hasOwn(TERMINAL_ONLY_OMP_COMMANDS, typed)
+    ? TERMINAL_ONLY_OMP_COMMANDS[typed]
+    : undefined;
+  if (entry === undefined || entry.answeredByApp === true) return null;
+  return {
+    name: typed,
+    aliasOf: entry.aliasOf ?? null,
+    does: entry.does,
+    instead: entry.instead ?? null,
+  };
+}
 
 /** The app's answer to a typed name that only omp's terminal runs: one plain sentence, and nothing sent to omp. */
 function terminalOnlyRoute(name: string): SlashRoute | null {
-  if (!Object.hasOwn(TERMINAL_ONLY_OMP_COMMANDS, name)) return null;
-  const equivalent = TERMINAL_ONLY_OMP_COMMANDS[name] ?? null;
+  const entry = Object.hasOwn(TERMINAL_ONLY_OMP_COMMANDS, name)
+    ? TERMINAL_ONLY_OMP_COMMANDS[name]
+    : undefined;
+  if (entry === undefined) return null;
   const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
-  const message = equivalent === null ? sentence : `${sentence} ${equivalent}`;
+  const message = entry.instead === undefined ? sentence : `${sentence} ${entry.instead}`;
   return {
     kind: "app",
     command: {
