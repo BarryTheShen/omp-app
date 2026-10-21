@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
@@ -259,6 +259,30 @@ describe("OmpProcess spawn and stdio", () => {
     });
     expect(process.status).toBe("error");
     expect(events.at(-1)).toMatchObject({ status: "error", error: { code: "omp_exited" } });
+  });
+
+  test("starts omp although a folder in the app data cannot be read", async () => {
+    const folder = await temporaryFolder();
+    const appData = join(folder, "app-data");
+    const drafts = join(appData, "drafts");
+    await mkdir(drafts, { recursive: true });
+    await chmod(drafts, 0o000);
+    try {
+      const process = track(
+        spawnOmpProcess({
+          threadId,
+          folder,
+          homeDir: folder,
+          ompBin: FAKE_OMP,
+          env: { OMP_APP_DATA_DIR: appData },
+        }),
+      );
+      await process.start();
+      await waitForFrame(process, (frame) => frame.type === "ready");
+      expect(process.status).toBe("running");
+    } finally {
+      await chmod(drafts, 0o755);
+    }
   });
 
   test("round-trips a written command as the fake's echoed response", async () => {

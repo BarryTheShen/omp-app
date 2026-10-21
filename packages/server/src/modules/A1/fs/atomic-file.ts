@@ -439,12 +439,22 @@ async function removeStaleTempFile(path: string, name: string): Promise<void> {
   if (Date.now() - modifiedMs > ATOMIC_TEMP_STALE_MS) await unlinkTempFile(path);
 }
 
+/**
+ * Removes the stale temp and lock files under `directory`. A folder this process cannot list holds nothing this sweep
+ * can remove, so it is skipped: one locked folder must not fail the write or the chat start that runs this sweep.
+ */
 export async function cleanupAtomicTempFiles(directory: string): Promise<void> {
   let entries: Dirent[];
   try {
     entries = await fs.readdir(directory, { withFileTypes: true });
   } catch (error) {
-    if (hasErrorCode(error, "ENOENT")) return;
+    if (
+      hasErrorCode(error, "ENOENT") ||
+      hasErrorCode(error, "EACCES") ||
+      hasErrorCode(error, "EPERM")
+    ) {
+      return;
+    }
     throw error;
   }
   await Promise.all(
@@ -480,7 +490,19 @@ function removeStaleTempFileSync(path: string, name: string): void {
 
 export function cleanupAtomicTempFilesSync(directory: string): void {
   if (!existsSync(directory)) return;
-  const entries = readdirSync(directory, { withFileTypes: true });
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch (error) {
+    if (
+      hasErrorCode(error, "ENOENT") ||
+      hasErrorCode(error, "EACCES") ||
+      hasErrorCode(error, "EPERM")
+    ) {
+      return;
+    }
+    throw error;
+  }
   for (const entry of entries) {
     const entryPath = resolve(directory, entry.name);
     if (entry.isDirectory()) {

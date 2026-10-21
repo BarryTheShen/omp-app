@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { watch } from "node:fs";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readdir,
@@ -234,6 +235,26 @@ describe("atomic files", () => {
     await leaveTemporaryFile(directory, 60 * 60_000);
     ensureAppDataDirSync(directory);
     expect(await temporaryFileNames(directory)).toEqual([recent]);
+  });
+
+  test("a sweep skips a folder it cannot read, and still removes the stale temp files it can reach", async () => {
+    const directory = await makeTemporaryDirectory();
+    const locked = join(directory, "drafts");
+    await mkdir(locked);
+    await leaveTemporaryFile(locked, 60 * 60_000);
+    await chmod(locked, 0o000);
+    try {
+      await leaveTemporaryFile(directory, 60 * 60_000);
+      await ensureAppDataDir(directory);
+      expect(await temporaryFileNames(directory)).toEqual([]);
+
+      await leaveTemporaryFile(directory, 60 * 60_000);
+      ensureAppDataDirSync(directory);
+      expect(await temporaryFileNames(directory)).toEqual([]);
+    } finally {
+      await chmod(locked, 0o755);
+    }
+    expect(await temporaryFileNames(locked)).toHaveLength(1);
   });
 });
 
