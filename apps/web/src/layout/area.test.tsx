@@ -75,6 +75,20 @@ describe("LayoutArea", () => {
     expect(screen.queryByRole("button", { name: "Model" })).toBeNull();
   });
 
+  test("in the header, a control that does not grow keeps its width, and the growing title gives way", () => {
+    const { container } = render(
+      <LayoutArea
+        area="header"
+        layout={layoutWith({ header: ["title", "model"] })}
+        surfaces={surfaces}
+      />,
+    );
+    const wrapper = (id: string) => container.querySelector(`[data-surface="${id}"]`);
+    expect(wrapper("model")?.classList.contains("flex-none")).toBe(true);
+    expect(wrapper("title")?.classList.contains("flex-none")).toBe(false);
+    expect(wrapper("title")?.classList.contains("flex-[1_1_12rem]")).toBe(true);
+  });
+
   test("leaves out surfaces whose capabilities are missing and ids with no surface", () => {
     const layout = layoutWith({ statusBar: ["context", "mode"] });
     expect(areaSurfaces("statusBar", surfaces, {}, layout)).toEqual([]);

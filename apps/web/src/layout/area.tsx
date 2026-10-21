@@ -87,6 +87,9 @@ function surfaceClass(area: LayoutAreaName, surface: Surface): string {
   // truncates inside itself; other row areas give growing surfaces a readable 12rem basis, then let them shrink and truncate.
   if (area === "statusBar") return cn("min-w-0", surface.grow ? "flex-1" : "flex-none");
   const row = ROW_AREAS[area] === true;
+  // The header is one line that never wraps (issue 1515): its surfaces that do not grow keep their width, so the growing
+  // title takes the room that is left and no control is squeezed under the next one.
+  if (area === "header" && !surface.grow) return "min-w-0 flex-none";
   return cn("min-w-0", surface.grow && (row ? "flex-[1_1_12rem]" : "flex min-h-0 flex-1 flex-col"));
 }
 
