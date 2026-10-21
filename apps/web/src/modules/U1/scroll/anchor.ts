@@ -125,6 +125,44 @@ export function keepReaderPlace(viewport: HTMLElement): void {
 }
 
 /**
+ * A scroll the reader did not make (the app's move, a jump) may land on rows the browser has not drawn yet: until a row is drawn
+ * its height is an estimate. A place captured at that scroll would hold the estimates, and the layout that draws the rows would
+ * then move the view to keep them. The place is dropped instead, and taken again after that layout (issue 1165).
+ */
+const placeDueAfterLayout = new WeakSet<HTMLElement>();
+
+/** Drops the place a scroll the reader did not make has left, until the layout that draws its rows has run. */
+export function dropPlaceUntilLayout(viewport: HTMLElement): void {
+  placeDueAfterLayout.add(viewport);
+  readerPlaces.delete(viewport);
+}
+
+/** Takes a dropped place again, now that the layout has drawn the rows. Returns whether a place was due. */
+export function takePlaceAfterLayout(viewport: HTMLElement): boolean {
+  if (!placeDueAfterLayout.delete(viewport)) return false;
+  rememberReaderPlace(viewport, captureVisibleMessageAnchor(viewport));
+  return true;
+}
+
+/**
+ * A layout change while the app holds no place for the reader. A dropped place is taken again here, after the layout. At the
+ * start of the chat nothing lies above the reader: the view stays at the start and the place is taken again where it is, so a
+ * row that grew does not pull the top of the chat out of view. Anywhere else the place is kept as before.
+ */
+export function keepUnheldReaderPlace(viewport: HTMLElement): void {
+  if (isHoldingPlace(viewport)) {
+    keepReaderPlace(viewport);
+    return;
+  }
+  if (takePlaceAfterLayout(viewport)) return;
+  if (viewport.scrollTop < 1) {
+    rememberReaderPlace(viewport, captureVisibleMessageAnchor(viewport));
+    return;
+  }
+  keepReaderPlace(viewport);
+}
+
+/**
  * True when the scroll is the one a retain just made: the app's move, not the reader's. The scroll that reports it consumes
  * the mark, so a later scroll to the same position is the reader's. A scroll to another position leaves the mark alone, so
  * the retain's own scroll is still recognised when its event comes after an unrelated one.

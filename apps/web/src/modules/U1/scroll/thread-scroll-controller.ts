@@ -3,12 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   captureVisibleMessageAnchor,
+  dropPlaceUntilLayout,
   forgetRetainedScroll,
   holdPressedToggle,
   isHoldingPlace,
   keepReaderPlace,
+  keepUnheldReaderPlace,
   readerPlaceOf,
   rememberReaderPlace,
+  takePlaceAfterLayout,
   takeRetainedScroll,
 } from "./anchor";
 import { isViewportAtBottom } from "./reading-place";
@@ -28,6 +31,9 @@ const RESUME_PX = 64;
 
 /** How long a toggle the reader pressed is held where it was pressed, while the card it opens or closes settles (issue 1165). */
 const PRESS_SETTLE_MS = 2_000;
+
+/** A press ends when the pointer or the finger is released, wherever that is. */
+const PRESS_END = ["pointerup", "pointercancel", "touchend", "touchcancel"] as const;
 
 /** The content below the viewport's bottom edge, in pixels. */
 function distanceFromBottom(viewport: HTMLElement): number {
@@ -121,6 +127,23 @@ export function useThreadScrollController(
     // resumes it near the bottom. A scroll down that the reader did not make (assistant-ui following a streamed reply during
     // the reader's upward gesture) resumes nothing (issue 1183).
     const READER_GESTURE_MS = 250;
+    // The reader's input (a wheel step, a key, a touch or a press) is their scroll while it lasts; a press lasts until released.
+    let readerInputAt = Number.NEGATIVE_INFINITY;
+    let pressHeld = false;
+    const readerIsScrolling = (): boolean =>
+      pressHeld || performance.now() - readerInputAt <= READER_GESTURE_MS;
+    // The layout that draws the rows of a scroll the reader did not make has run two frames later at the latest.
+    let takeFrames = false;
+    const scheduleTakePlace = (): void => {
+      if (takeFrames) return;
+      takeFrames = true;
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          takeFrames = false;
+          if (viewport.isConnected) takePlaceAfterLayout(viewport);
+        });
+      });
+    };
     let readerUpUntil = 0;
     let readerDownUntil = 0;
     // The scroll position at the previous scroll tells a step up, which is the reader's: a step up off the bottom pauses
@@ -134,9 +157,17 @@ export function useThreadScrollController(
         previousScrollTop = viewport.scrollTop;
         return;
       }
-      // A scroll a retain made is the app moving the reader's row back, not the reader: the place stays (issue 1165).
-      if (!takeRetainedScroll(viewport))
-        rememberReaderPlace(viewport, captureVisibleMessageAnchor(viewport));
+      // A scroll a retain made is the app moving the reader's row back, not the reader: the place stays (issue 1165). The
+      // reader's own scroll is placed where it lands. Any other scroll (the app's move, a jump) may land on rows the browser
+      // has not drawn yet, so its place is taken again after the layout that draws them.
+      if (!takeRetainedScroll(viewport)) {
+        if (readerIsScrolling())
+          rememberReaderPlace(viewport, captureVisibleMessageAnchor(viewport));
+        else {
+          dropPlaceUntilLayout(viewport);
+          scheduleTakePlace();
+        }
+      }
       const steppedUp = viewport.scrollTop < previousScrollTop;
       previousScrollTop = viewport.scrollTop;
       const now = performance.now();
@@ -173,7 +204,7 @@ export function useThreadScrollController(
       }
       if (isViewportAtBottom(viewport)) return;
       // The place keeps the offset it was given, even when the retain fell short: the next layout change restores it.
-      keepReaderPlace(viewport);
+      keepUnheldReaderPlace(viewport);
     };
     // Track the viewport and direct message rows, never tool-card descendants.
     const resizeObserver =
@@ -210,6 +241,8 @@ export function useThreadScrollController(
     const stopFollowing = (event: Event): void => {
       if (event.target instanceof Element && event.target.closest(TEXT_ENTRY_SELECTOR) !== null)
         return;
+      readerInputAt = performance.now();
+      if (event.type === "pointerdown" || event.type === "touchstart") pressHeld = true;
       followingRef.current = false;
       // The reader's input supersedes the place the app kept: the next scroll is theirs (issue 1165).
       forgetRetainedScroll(viewport);
@@ -220,6 +253,12 @@ export function useThreadScrollController(
     };
     for (const name of READER_INPUT)
       viewport.addEventListener(name, stopFollowing, { passive: true });
+
+    // A press ends wherever the pointer or the finger is released, so its release is listened for on the window.
+    const releasePress = (): void => {
+      pressHeld = false;
+    };
+    for (const name of PRESS_END) window.addEventListener(name, releasePress, { passive: true });
 
     // A toggle above the reader's row changes its card at once while the reader is away: an animated change there moves the
     // reader's row frame by frame, and the scroll correction does not keep up (issue 1240). The card's panel reads the mark
@@ -270,6 +309,7 @@ export function useThreadScrollController(
       viewport.removeEventListener("pointerdown", handlePress);
       viewport.removeEventListener("keydown", handleToggleKey);
       for (const name of READER_INPUT) viewport.removeEventListener(name, stopFollowing);
+      for (const name of PRESS_END) window.removeEventListener(name, releasePress);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
       pressHold?.();

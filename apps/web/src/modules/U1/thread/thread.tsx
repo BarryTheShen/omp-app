@@ -25,6 +25,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { flushSync } from "react-dom";
 import { File } from "@/components/assistant-ui/elements/file";
 import { Image } from "@/components/assistant-ui/elements/image";
 import { MarkdownText } from "@/components/assistant-ui/elements/markdown-text";
@@ -62,6 +63,16 @@ import {
 import type { ReadingPlace } from "../scroll/reading-place";
 import { useReadingPlace } from "../scroll/use-reading-place";
 import { type NoticePlacement, placeNotices, type ThreadNotice } from "./notice-placement";
+import {
+  changeRowSlices,
+  drawWithinBudget,
+  mountNextSlice,
+  nextChunk,
+  openRowSlices,
+  SLICE_BUDGET_MS,
+  START_CHUNK,
+  scheduleSlice,
+} from "./row-slices";
 import { TurnCancelContext } from "./turn-cancel";
 
 const MESSAGE_DESCRIPTOR_BY_ROLE = {
@@ -578,6 +589,154 @@ function PlacedRow({
   );
 }
 
+/** What a drawn row reads from the thread: the slots and the notice source, given to every row once through this context. */
+interface MountedRowsValue {
+  readonly slots?: ThreadRowSlots;
+  readonly source: ThreadNoticeSource;
+}
+
+const MountedRowsContext = createContext<MountedRowsValue>({ source: NO_NOTICES });
+
+/** One message of the thread as a row, read from the message's own assistant-ui scope. */
+function SlicedRow() {
+  const message = useAuiState((state) => state.message);
+  const { slots, source } = useContext(MountedRowsContext);
+  return <PlacedRow message={message} slots={slots} source={source} />;
+}
+
+/** The row component `MessageSlices` mounts: one stable object, so a row keeps its identity while more rows are drawn. */
+const SLICED_ROW_COMPONENTS = { Message: SlicedRow } as const;
+
+/**
+ * The ids of the thread's messages, oldest first. The same array until an id changes, so a token streamed into a message
+ * does not render the list again.
+ */
+function useMessageIds(): readonly string[] {
+  const ids = useRef<readonly string[]>([]);
+  return useAuiState((state) => {
+    const next = state.thread.messages.map((message) => message.id);
+    const current = ids.current;
+    const unchanged =
+      current.length === next.length && next.every((id, index) => id === current[index]);
+    if (!unchanged) ids.current = next;
+    return ids.current;
+  });
+}
+
+/** Rows per block: a slice re-renders the block its rows join, not every row drawn so far. */
+const BLOCK_ROWS = 32;
+
+/**
+ * The rows of one block of the thread, from `start` to `end` (absolute message indexes). Memoized on its bounds, so a slice
+ * that draws rows in another block leaves this block alone.
+ */
+const MessageBlock = memo(function MessageBlock({
+  ids,
+  start,
+  end,
+}: {
+  readonly ids: readonly string[];
+  readonly start: number;
+  readonly end: number;
+}) {
+  const rows: ReactNode[] = [];
+  for (let index = start; index < end; index += 1) {
+    const id = ids[index];
+    if (id !== undefined) {
+      rows.push(
+        <ThreadPrimitive.MessageByIndex
+          key={id}
+          components={SLICED_ROW_COMPONENTS}
+          index={index}
+        />,
+      );
+    }
+  }
+  return <>{rows}</>;
+});
+
+/**
+ * The thread's rows: the newest rows of the chat first, then the rest in slices above them (row-slices.ts). Each slice is one
+ * React commit of a few milliseconds and reads no layout of its own: the thread scroll controller keeps the reader's place
+ * through every layout change above the reader (its resize observer runs before the browser paints), and a read between
+ * commits forced a layout per slice. After the last slice every row is drawn and the top notices are placed, so the DOM is
+ * the one the thread drew before slices existed.
+ */
+function MessageSlices({
+  threadKey,
+  mountAll,
+  slots,
+  source,
+}: {
+  readonly threadKey: string | undefined;
+  /** Draw every row at once: a reading place is restored from a row above the newest one. */
+  readonly mountAll: boolean;
+  readonly slots?: ThreadRowSlots;
+  readonly source: ThreadNoticeSource;
+}) {
+  const messageIds = useMessageIds();
+  const change = { key: threadKey, firstId: messageIds[0], total: messageIds.length, mountAll };
+  const [stored, setStored] = useState(() => openRowSlices(change));
+  const slices = changeRowSlices(stored, change);
+  if (slices !== stored) setStored(slices);
+  const latest = useRef(slices);
+  const chunk = useRef(START_CHUNK);
+  useLayoutEffect(() => {
+    latest.current = slices;
+  });
+  // A pump draws slices until the time budget of its task (or animation frame) is spent, then asks for the next one. It keys
+  // on the thread's rows, not on its own commits, so one slice never starts a second pump.
+  const total = slices.total;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new thread, or a change of its rows, starts the pump again.
+  useEffect(() => {
+    let live = true;
+    let cancelNext: (() => void) | undefined;
+    const drawSlice = (): boolean => {
+      const before = latest.current;
+      if (!live || before.mounted >= before.total) return false;
+      const started = performance.now();
+      flushSync(() => setStored((current) => mountNextSlice(current, chunk.current)));
+      chunk.current = nextChunk(
+        chunk.current,
+        latest.current.mounted - before.mounted,
+        performance.now() - started,
+      );
+      return latest.current.mounted < latest.current.total;
+    };
+    const pump = (): void => {
+      if (live && drawWithinBudget(drawSlice, SLICE_BUDGET_MS)) cancelNext = scheduleSlice(pump);
+    };
+    if (latest.current.mounted < latest.current.total) cancelNext = scheduleSlice(pump);
+    return (): void => {
+      live = false;
+      cancelNext?.();
+    };
+  }, [threadKey, mountAll, total]);
+  const rowsValue = useMemo(() => ({ slots, source }), [slots, source]);
+  const from = slices.total - slices.mounted;
+  const blocks: ReactNode[] = [];
+  for (
+    let block = Math.floor(from / BLOCK_ROWS) * BLOCK_ROWS;
+    block < slices.total;
+    block += BLOCK_ROWS
+  ) {
+    blocks.push(
+      <MessageBlock
+        key={block}
+        ids={messageIds}
+        start={Math.max(from, block)}
+        end={Math.min(slices.total, block + BLOCK_ROWS)}
+      />,
+    );
+  }
+  return (
+    <MountedRowsContext.Provider value={rowsValue}>
+      {slices.mounted >= slices.total ? <PlacedNotices at="top" source={source} /> : null}
+      {blocks}
+    </MountedRowsContext.Provider>
+  );
+}
+
 /**
  * Renders inside the caller's assistant-ui runtime provider and supplies stable message rows. The
  * composer is intentionally not included: U2 owns that surface and consumes this thread runtime.
@@ -736,17 +895,12 @@ export function ThreadShell({
                   <EarlierMessagesControl onLoad={loadEarlier} />
                 )}
                 <NoticePlacementProvider notices={noticeList} rowOrder={rowOrder}>
-                  <PlacedNotices at="top" source={noticeSource} />
-                  <ThreadPrimitive.Messages>
-                    {({ message }) => (
-                      <PlacedRow
-                        key={message.id}
-                        message={message}
-                        slots={slots}
-                        source={noticeSource}
-                      />
-                    )}
-                  </ThreadPrimitive.Messages>
+                  <MessageSlices
+                    mountAll={place.startsAtPlace || place.resuming}
+                    slots={slots}
+                    source={noticeSource}
+                    threadKey={snapshot.threadId}
+                  />
                   <PlacedNotices at="end" source={noticeSource} />
                 </NoticePlacementProvider>
               </div>

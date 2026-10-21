@@ -2,13 +2,16 @@ import { describe, expect, test, vi } from "vitest";
 import {
   captureVisibleMessageAnchor,
   claimOwnAnchoring,
+  dropPlaceUntilLayout,
   forgetRetainedScroll,
   holdReaderPlace,
   isHoldingPlace,
   keepReaderPlace,
+  keepUnheldReaderPlace,
   readerPlaceOf,
   rememberReaderPlace,
   retainVisibleMessageAnchor,
+  takePlaceAfterLayout,
   takeRetainedScroll,
 } from "./anchor";
 
@@ -280,5 +283,94 @@ describe("own anchoring claims", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the place after a scroll the reader did not make", () => {
+  /** The fixture's row, with the viewport spanning 100 to 500 on screen so that the probe in its middle finds the row. */
+  function probedFixture(options: { scrollTop: number; rowTop: number }) {
+    const fixed = fixture(options);
+    const { viewport, row, state } = fixed;
+    row.dataset.messageId = "entry:thread:row";
+    viewport.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 500, left: 0, right: 400, width: 400, height: 400 }) as DOMRect;
+    row.getBoundingClientRect = () =>
+      ({
+        top: 100 + state.rowTop,
+        bottom: 300 + state.rowTop,
+        left: 0,
+        right: 400,
+        width: 400,
+        height: 200,
+      }) as DOMRect;
+    return fixed;
+  }
+
+  /** Runs `run` with the probe finding `row` wherever it looks. */
+  function withProbe(row: HTMLElement, run: () => void): void {
+    const original = document.elementFromPoint;
+    document.elementFromPoint = () => row;
+    try {
+      run();
+    } finally {
+      document.elementFromPoint = original;
+    }
+  }
+
+  test("a dropped place is taken again after the layout that drew the rows, and that layout does not move the view", () => {
+    const { viewport, row, state } = probedFixture({ scrollTop: 1_000, rowTop: 30 });
+    withProbe(row, () => {
+      rememberReaderPlace(viewport, { row, offset: 30, scrollTop: 1_000 });
+      dropPlaceUntilLayout(viewport);
+      expect(readerPlaceOf(viewport)).toBeNull();
+      // The layout drew the rows above the row: they are taller than their estimates.
+      state.rowTop += 120;
+      keepUnheldReaderPlace(viewport);
+      expect(state.scrollTop).toBe(1_000);
+      expect(readerPlaceOf(viewport)?.offset).toBe(150);
+    });
+  });
+
+  test("the place taken after the layout is kept through the layout changes that follow", () => {
+    const { viewport, row, state } = probedFixture({ scrollTop: 1_000, rowTop: 30 });
+    withProbe(row, () => {
+      rememberReaderPlace(viewport, { row, offset: 30, scrollTop: 1_000 });
+      dropPlaceUntilLayout(viewport);
+      state.rowTop += 120;
+      keepUnheldReaderPlace(viewport);
+      state.rowTop += 80;
+      keepUnheldReaderPlace(viewport);
+      expect(state.scrollTop).toBe(1_080);
+    });
+  });
+
+  test("at the start of the chat a layout change leaves the view at the start", () => {
+    const { viewport, row, state } = probedFixture({ scrollTop: 0, rowTop: 30 });
+    withProbe(row, () => {
+      rememberReaderPlace(viewport, { row, offset: 30, scrollTop: 0 });
+      // The rows above the row were drawn at their real heights: 468 px taller than their estimates.
+      state.rowTop += 468;
+      keepUnheldReaderPlace(viewport);
+      expect(state.scrollTop).toBe(0);
+    });
+  });
+
+  test("while the app holds the place, a layout change at the start is still undone, as before", () => {
+    const { viewport, row, state } = probedFixture({ scrollTop: 0, rowTop: 30 });
+    withProbe(row, () => {
+      rememberReaderPlace(viewport, { row, offset: 30, scrollTop: 0 });
+      const endHold = holdReaderPlace(viewport, 60_000);
+      state.rowTop += 120;
+      keepUnheldReaderPlace(viewport);
+      expect(state.scrollTop).toBe(120);
+      endHold();
+    });
+  });
+
+  test("a dropped place is taken once", () => {
+    const { viewport } = probedFixture({ scrollTop: 0, rowTop: 30 });
+    dropPlaceUntilLayout(viewport);
+    expect(takePlaceAfterLayout(viewport)).toBe(true);
+    expect(takePlaceAfterLayout(viewport)).toBe(false);
   });
 });
