@@ -1959,6 +1959,164 @@ describe("SelectedThreadHistoryController when omp stops while a chat opens", ()
   });
 });
 
+describe("SelectedThreadHistoryController when omp stops after a settled turn", () => {
+  const settle = { kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent;
+  const omExit = (): AppFailure =>
+    new AppFailure({ code: "omp_exited", message: "omp exited (signal SIGKILL)", retryable: true });
+
+  /** The ids of the tool rows a store shows: the rows a refresh must leave as they are. */
+  function toolRows(store: OmpRuntimeStore): string[] {
+    return Object.values(store.getSnapshot().tools).map((tool) => tool.toolCallId);
+  }
+
+  /** Runs the promise chain a settled turn starts to its end: each step is a promise, so no timer is needed. */
+  async function flushPromises(): Promise<void> {
+    for (let index = 0; index < 100; index += 1) await Promise.resolve();
+  }
+
+  test("a refresh after a settled turn that omp's exit cuts short sets no history error, and the rows stay", async () => {
+    let refreshFails = false;
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      calls,
+      [],
+      undefined,
+      () => (refreshFails ? omExit() : undefined),
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    const listener = subscriptions[0]?.listeners[0];
+    if (!listener) throw new Error("subscription did not attach");
+    listener({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 1);
+    listener(
+      {
+        kind: "omp",
+        event: {
+          type: "tool_execution_start",
+          toolCallId: "bash-1",
+          toolName: "bash",
+          args: { command: "echo done" },
+        },
+      } as RpcSessionEvent,
+      2,
+    );
+    const rows = toolRows(store);
+    expect(rows).toEqual(["bash-1"]);
+    refreshFails = true;
+    calls.length = 0;
+    listener(settle, 3);
+    // The refresh reads omp's state and then its entries, which omp's exit fails. Wait for the entries request, then let
+    // the promise chain after it run to its end.
+    await vi.waitFor(() =>
+      expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]),
+    );
+    await flushPromises();
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      isLoading: false,
+      error: null,
+    });
+    expect(toolRows(store)).toEqual(rows);
+  });
+
+  test("a refresh after a settled turn that fails for another reason still reports it", async () => {
+    let refreshFails = false;
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      [],
+      [],
+      undefined,
+      () =>
+        refreshFails
+          ? new AppFailure({
+              code: "internal",
+              message: "the history read broke",
+              retryable: false,
+            })
+          : undefined,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    const listener = subscriptions[0]?.listeners[0];
+    if (!listener) throw new Error("subscription did not attach");
+    refreshFails = true;
+    listener(settle, 1);
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().error).toMatchObject({
+        code: "internal",
+        message: "the history read broke",
+      }),
+    );
+  });
+
+  test("the refresh an omp exit cuts short reloads the chat once when omp is back, with no error and the rows kept", async () => {
+    let refreshFails = false;
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const subscriptions: SubscriptionRecord[] = [];
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      calls,
+      [],
+      undefined,
+      () => (refreshFails ? omExit() : undefined),
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const store = await controller.openExisting(threadOne);
+    const listener = subscriptions[0]?.listeners[0];
+    if (!listener) throw new Error("subscription did not attach");
+    listener({ kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent, 1);
+    listener(
+      {
+        kind: "omp",
+        event: {
+          type: "tool_execution_start",
+          toolCallId: "bash-1",
+          toolName: "bash",
+          args: { command: "echo done" },
+        },
+      } as RpcSessionEvent,
+      2,
+    );
+    const rows = toolRows(store);
+    refreshFails = true;
+    calls.length = 0;
+    listener(settle, 3);
+    await vi.waitFor(() =>
+      expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]),
+    );
+    await flushPromises();
+    expect(controller.getSnapshot()).toMatchObject({ isLoading: false, error: null });
+
+    // omp is back: its process is ready again, and the chat reloads by itself, once.
+    refreshFails = false;
+    calls.length = 0;
+    listener({ kind: "process", status: "ready" } as RpcSessionEvent, 4);
+    await vi.waitFor(() =>
+      expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]),
+    );
+    await flushPromises();
+    expect(calls.map((call) => call.type)).toEqual(["get_state", "get_entries"]);
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      isLoading: false,
+      error: null,
+    });
+    expect(toolRows(store)).toEqual(rows);
+  });
+});
+
 describe("SelectedThreadHistoryController turns that run after the chat is left", () => {
   const settle = { kind: "session_settled", event: { type: "session_settled" } } as RpcSessionEvent;
   const start = { kind: "omp", event: { type: "agent_start" } } as RpcSessionEvent;

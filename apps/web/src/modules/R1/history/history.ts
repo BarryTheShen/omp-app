@@ -776,7 +776,15 @@ export class SelectedThreadHistoryController {
       if (payload.kind === "session_settled" && this.loader && !this.state.isLoading) {
         void this.loader.refreshAfterTurn().catch((error: unknown) => {
           const failure = asFailure(error, "Refreshing the session after the turn failed");
-          if (failure.appError.code !== "cancelled") this.commit({ error: failure.appError });
+          if (failure.appError.code === "cancelled") return;
+          // omp's exit is the chat's banner, so the refresh does not repeat it under "Earlier messages could not be
+          // loaded." (issue 981). The rows stay. The refresh is redone when omp is back: the restart path reloads the chat
+          // on omp's ready event, as it does after a failed first load.
+          if (failure.appError.code === "omp_exited") {
+            this.historyRetryThread = threadId;
+            return;
+          }
+          this.commit({ error: failure.appError });
         });
       }
       const nextThreadId = this.sessionIdFromEvent(payload);
