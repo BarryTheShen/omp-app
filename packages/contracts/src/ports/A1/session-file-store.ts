@@ -51,6 +51,8 @@ export const SubagentTranscript = z.strictObject({
   agent: z.string().min(1).nullable(),
   /** Why a failed worker failed, from the failure its transcript keeps; never omp's saved-request path. */
   reason: z.string().min(1).optional(),
+  /** The outcome omp recorded for this worker in its parent's session (its `<task-result status>`); absent when none is recorded. */
+  recordedStatus: z.enum(["completed", "failed", "aborted"]).optional(),
 });
 export type SubagentTranscript = z.infer<typeof SubagentTranscript>;
 

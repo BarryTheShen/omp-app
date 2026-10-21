@@ -529,3 +529,60 @@ describe("reading a worker transcript from a byte cursor", () => {
       expect(subagents.map((worker) => worker.agentId)).toEqual(["Real"]);
     }));
 });
+
+describe("a worker's recorded outcome comes from the task result its parent records", () => {
+  /** An async result the parent records for a worker, as omp writes it when the background job settles. */
+  function asyncResult(agentId: string, status: string): Record<string, unknown> {
+    return {
+      type: "custom_message",
+      id: `async-${agentId}-${status}`,
+      parentId: null,
+      timestamp: AT,
+      customType: "async-result",
+      content: `<system-notice>\nBackground job ${agentId} has completed.\n<task-result id="${agentId}" agent="task" status="${status}" duration="1ms">\n\n<output>\nDone.\n</output>\n</task-result>\n</system-notice>`,
+    };
+  }
+
+  async function writeChat(fixture: Fixture, records: readonly Record<string, unknown>[]): Promise<void> {
+    await writeFile(fixture.chat, `${[header("main"), ...records].map(line).join("\n")}\n`, "utf8");
+  }
+
+  test("a worker that ends in plain text takes the completed status the parent records for it", () =>
+    withFixture(async (fixture) => {
+      await writeChat(fixture, [asyncResult("Done", "completed")]);
+      await writeWorker(path.join(workerDir(fixture), "Done.jsonl"), [assistant("stop")]);
+      const worker = await workerNamed(fixture, "Done");
+      expect(worker).toMatchObject({ status: "stopped", recordedStatus: "completed" });
+      expect(worker.endedAt).not.toBeNull();
+    }));
+
+  test("the last record the parent makes for a worker is the one that counts", () =>
+    withFixture(async (fixture) => {
+      await writeChat(fixture, [asyncResult("Done", "failed"), asyncResult("Done", "completed")]);
+      await writeWorker(path.join(workerDir(fixture), "Done.jsonl"), [assistant("stop")]);
+      expect((await workerNamed(fixture, "Done")).recordedStatus).toBe("completed");
+    }));
+
+  test("a worker the parent records as aborted keeps that outcome", () =>
+    withFixture(async (fixture) => {
+      await writeChat(fixture, [asyncResult("Cut", "aborted")]);
+      await writeWorker(path.join(workerDir(fixture), "Cut.jsonl"), [assistant("stop")]);
+      expect((await workerNamed(fixture, "Cut")).recordedStatus).toBe("aborted");
+    }));
+
+  test("a worker the parent records nothing about has no recorded status, and keeps its transcript's own", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Quiet.jsonl"), [assistant("stop")]);
+      const worker = await workerNamed(fixture, "Quiet");
+      expect(worker.recordedStatus).toBeUndefined();
+      expect(worker.status).toBe("stopped");
+    }));
+
+  test("a nested worker's outcome is recorded by its parent worker's own file", () =>
+    withFixture(async (fixture) => {
+      await writeWorker(path.join(workerDir(fixture), "Outer.jsonl"), [asyncResult("Inner", "completed")]);
+      await writeWorker(path.join(workerDir(fixture), "Outer", "Inner.jsonl"), [assistant("stop")]);
+      const inner = await workerNamed(fixture, "Inner");
+      expect(inner).toMatchObject({ status: "stopped", recordedStatus: "completed" });
+    }));
+});

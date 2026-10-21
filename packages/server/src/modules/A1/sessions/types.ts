@@ -77,6 +77,8 @@ export type SessionStatus =
 
 export type SubagentFinalStatus = "completed" | "failed" | "aborted" | "stopped" | "unknown";
 
+export type RecordedWorkerStatus = "completed" | "failed" | "aborted";
+
 export interface SubagentTranscript {
   readonly key: string;
   readonly agentId: string;
@@ -96,6 +98,8 @@ export interface SubagentTranscript {
   readonly agent: string | null;
   /** Why a failed worker failed: the failure its last assistant message keeps, without omp's saved-request path. */
   readonly reason?: string;
+  /** The outcome omp recorded for the worker in its parent's session (its `<task-result status>`); absent when none is recorded. */
+  readonly recordedStatus?: RecordedWorkerStatus;
   readonly parseWarnings: readonly ParseWarning[];
 }
 

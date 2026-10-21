@@ -1,21 +1,23 @@
-import { expect, realTest, sendPrompt, startChat } from "./real-omp";
+import { expect, openToolCard, realTest, sendPrompt, startChat } from "./real-omp";
 
 /** The notice a finished worker's line goes in: the one that names the worker and how it ended. */
 const NOTICE = '[data-slot="u1-custom-note"]';
 
 /*
- * Issue 781. A worker that stopped without calling yield, and whose session omp disposed, records no end, so the
- * Agent Hub listed nothing for it after a reload. It now sits under Recent as Stopped, and its transcript opens.
+ * Issue 781. A worker whose omp shut down before it ended records no end, so the Agent Hub listed nothing for it after
+ * a reload. It sits under Recent as Stopped, and its transcript opens. Issue 2300: a worker that finished with a
+ * plain-text answer has that answer recorded in its parent chat (omp's `<task-result status="completed">`), so after a
+ * restart or a reload it reads as Finished, as it did live. Only a worker with no recorded outcome is Stopped.
  */
 realTest(
-  "real omp: a worker that stopped without a yield is listed as Stopped under Recent after a reload, and its transcript opens",
+  "real omp: a worker that finished with a plain-text answer is listed as Finished under Recent after a restart, and its transcript opens",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);
     const page = await realApp.open();
     const composer = await startChat(page);
     await sendPrompt(composer, "spawn_quiet_subagent");
-    // The task returns while the worker still runs in the background. Once its turn ends it is idle, and omp keeps
-    // its session open until the app stops.
+    // The task returns while the worker still runs in the background. Its final answer finishes it, and omp keeps its
+    // session open until the app stops.
     await expect(
       page.locator(NOTICE).filter({ hasText: "QuietProbe finished." }).first(),
     ).toBeVisible({
@@ -31,20 +33,20 @@ realTest(
       .getByRole("listbox", { name: "Session list" })
       .getByRole("option", { name: /spawn_quiet_subagent/ })
       .click();
-    // The restart stopped the worker, so the notice it left reads as stopped.
+    // The chat recorded the worker's answer before the restart, so its notice still reads as finished.
     await expect(
-      reopened.locator(NOTICE).filter({ hasText: "QuietProbe was stopped." }).first(),
+      reopened.locator(NOTICE).filter({ hasText: "QuietProbe finished." }).first(),
     ).toBeVisible({
       timeout: 120_000,
     });
     await reopened.getByRole("tab", { name: "Agents" }).click();
     const hub = reopened.getByRole("region", { name: "Agent Hub" });
-    const stopped = hub.getByRole("option", { name: /Stopped.*QuietProbe/ });
-    await expect(stopped).toHaveCount(1, { timeout: 120_000 });
-    await expect(hub.getByRole("option", { name: /Failed|Cancelled/ })).toHaveCount(0);
+    const finished = hub.getByRole("option", { name: /Finished.*QuietProbe/ });
+    await expect(finished).toHaveCount(1, { timeout: 120_000 });
+    await expect(hub.getByRole("option", { name: /Failed|Cancelled|Stopped/ })).toHaveCount(0);
     await expect(hub.getByText("Nothing here yet")).toHaveCount(0);
 
-    await stopped.click();
+    await finished.click();
     await hub.getByRole("button", { name: "Open transcript" }).click();
     const transcript = reopened.getByRole("region", { name: /^Transcript of QuietProbe/ });
     await expect(transcript).toBeVisible({ timeout: 60_000 });
@@ -55,12 +57,12 @@ realTest(
 );
 
 /*
- * Issue 781, review item 1: a page reload with omp still running. The worker is idle, its session is still open and
- * nothing has been disposed, so the hub must still list it as Stopped (not "Nothing here yet"), and its card must not say
- * Complete. The earlier case restarts the app, which disposes the session; this one does not.
+ * Issue 781, review item 1: a page reload with omp still running. The worker finished with a plain-text answer, which the
+ * chat records, so the hub lists it as Finished and its card says Complete, as it did live. The restart cases below
+ * dispose the session; this one does not.
  */
 realTest(
-  "real omp: after a plain page reload, with omp still running, an idle worker is listed as Stopped under Recent and its card does not say Complete",
+  "real omp: after a plain page reload, with omp still running, a worker that finished with a plain-text answer is listed as Finished under Recent and its card says Complete",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(300_000);
     const page = await realApp.open();
@@ -80,15 +82,70 @@ realTest(
       .click();
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
-    const stopped = hub.getByRole("option", { name: /Stopped.*QuietProbe/ });
-    await expect(stopped).toHaveCount(1, { timeout: 120_000 });
+    const finished = hub.getByRole("option", { name: /Finished.*QuietProbe/ });
+    await expect(finished).toHaveCount(1, { timeout: 120_000 });
     await expect(hub.getByText("Nothing here yet")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^task: Complete/ })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /^task: Stopped/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^task: Complete/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^task: Stopped/ })).toHaveCount(0);
+
+    await finished.click();
+    await hub.getByRole("button", { name: "Open transcript" }).click();
+    await expect(page.getByRole("region", { name: /^Transcript of QuietProbe/ })).toBeVisible({
+      timeout: 60_000,
+    });
+  },
+);
+
+/*
+ * Issue 781, the case that stays Stopped: omp shuts down while the worker is still on its one slow step. The worker
+ * never finishes, so the chat records no outcome for it, and after the restart the hub lists it as Stopped. Its card
+ * must not say Complete.
+ */
+realTest(
+  "real omp: a worker whose omp shut down mid-turn is listed as Stopped under Recent after a restart, and its card does not say Complete",
+  async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    const page = await realApp.open();
+    const composer = await startChat(page);
+    await sendPrompt(composer, "spawn_long_subagent");
+    await page.getByRole("tab", { name: "Agents" }).click();
+    const running = page.getByRole("region", { name: "Agent Hub" });
+    await expect(running.getByRole("option", { name: /Running.*LongProbe/ })).toHaveCount(1, {
+      timeout: 120_000,
+    });
+    // A plain page reload with omp still running: the worker is still on its slow step, so the hub lists it as Running
+    // and its task card's job row says Running, not Completed. (The card's label is the spawn call's, so it reads Complete
+    // while the job runs.)
+    await page.reload();
+    await page
+      .getByRole("listbox", { name: "Session list" })
+      .getByRole("option", { name: /spawn_long_subagent/ })
+      .click();
+    await page.getByRole("tab", { name: "Agents" }).click();
+    await expect(
+      page.getByRole("region", { name: "Agent Hub" }).getByRole("option", { name: /Running.*LongProbe/ }),
+    ).toHaveCount(1, { timeout: 120_000 });
+    await openToolCard(page.getByTestId("t5-task-card").first());
+    await expect(page.locator('[data-slot="t5-task-job"]').first()).toContainText("Running");
+    await expect(page.locator('[data-slot="t5-task-job"]').first()).not.toContainText("Completed");
+
+    realApp.allowProblem(/WebSocket connection to .* failed/);
+    await realApp.restartServer();
+    const reopened = await realApp.open();
+    await reopened
+      .getByRole("listbox", { name: "Session list" })
+      .getByRole("option", { name: /spawn_long_subagent/ })
+      .click();
+    await reopened.getByRole("tab", { name: "Agents" }).click();
+    const hub = reopened.getByRole("region", { name: "Agent Hub" });
+    const stopped = hub.getByRole("option", { name: /Stopped.*LongProbe/ });
+    await expect(stopped).toHaveCount(1, { timeout: 120_000 });
+    await expect(hub.getByRole("option", { name: /Finished/ })).toHaveCount(0);
+    await expect(reopened.getByRole("button", { name: /^task: Complete/ })).toHaveCount(0);
 
     await stopped.click();
     await hub.getByRole("button", { name: "Open transcript" }).click();
-    await expect(page.getByRole("region", { name: /^Transcript of QuietProbe/ })).toBeVisible({
+    await expect(reopened.getByRole("region", { name: /^Transcript of LongProbe/ })).toBeVisible({
       timeout: 60_000,
     });
   },

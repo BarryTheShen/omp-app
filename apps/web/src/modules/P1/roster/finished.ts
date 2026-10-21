@@ -29,9 +29,14 @@ export interface FinishedWorkerSourceOptions {
   readonly files: SessionTranscriptFiles;
 }
 
-/** A transcript that ended, as a roster entry. One that records no end may still be running. */
+/**
+ * A transcript that ended, as a roster entry. The outcome omp recorded for the worker in its parent's task result wins,
+ * the same record the task card reads; without one, the transcript's own end decides. One that records no end may
+ * still be running.
+ */
 function finishedWorker(threadId: ThreadId, transcript: SubagentTranscript): FinishedWorker[] {
-  const { status, endedAt } = transcript;
+  const status = transcript.recordedStatus ?? transcript.status;
+  const { endedAt } = transcript;
   if (endedAt === null) return [];
   if (status === "unknown") return [];
   const endedMs = Date.parse(endedAt);

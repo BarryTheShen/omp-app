@@ -129,6 +129,36 @@ describe("finished workers read from the chat's transcripts", () => {
     expect(finished?.agent).toMatchObject({ id: "Broken", status: "failed", reason });
   });
 
+  test("a worker the parent records as completed is finished, though its transcript ends in plain text", async () => {
+    const source = createFinishedWorkerSource({
+      threadId,
+      sessionFile: async () => chat,
+      files: files([worker("Plain", { status: "stopped", recordedStatus: "completed" })]),
+    });
+    const [finished] = await source.list();
+    expect(finished?.agent).toMatchObject({ id: "Plain", status: "completed" });
+  });
+
+  test("a worker the parent records as aborted is cancelled, whatever its transcript says", async () => {
+    const source = createFinishedWorkerSource({
+      threadId,
+      sessionFile: async () => chat,
+      files: files([worker("Cut", { status: "stopped", recordedStatus: "aborted" })]),
+    });
+    const [finished] = await source.list();
+    expect(finished?.agent).toMatchObject({ id: "Cut", status: "aborted" });
+  });
+
+  test("a worker the parent records nothing about keeps the status its transcript records", async () => {
+    const source = createFinishedWorkerSource({
+      threadId,
+      sessionFile: async () => chat,
+      files: files([worker("Quiet", { status: "stopped" })]),
+    });
+    const [finished] = await source.list();
+    expect(finished?.agent).toMatchObject({ id: "Quiet", status: "stopped" });
+  });
+
   test("reads a page of a finished worker's transcript through the page schema", async () => {
     const source = createFinishedWorkerSource({
       threadId,

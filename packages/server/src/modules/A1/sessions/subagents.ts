@@ -1,10 +1,12 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { recordedOutcomesOf } from "./recorded-outcomes";
 import type { ScannedSubagent } from "./subagent-scanner";
 import { scanSubagentTranscript } from "./subagent-scanner";
 import type {
   ParseWarning,
+  RecordedWorkerStatus,
   SessionLeaseState,
   SubagentFinalStatus,
   SubagentTranscript,
@@ -92,6 +94,10 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
   const childDirectories = new Set(
     entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name),
   );
+  const parentFile = `${context.root}.jsonl`;
+  const outcomes = files.some(isCollectedTranscriptName)
+    ? await recordedOutcomesOf(parentFile)
+    : new Map<string, RecordedWorkerStatus>();
 
   for (const name of files) {
     if (!isCollectedTranscriptName(name)) continue;
@@ -100,6 +106,7 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
     const sessionFile = path.join(context.root, name);
     const aborted = files.includes(tombstoneName(name));
     const endedAtFiles = [sessionFile, path.join(context.root, tombstoneName(name))];
+    const recordedStatus = outcomes.get(agentId);
     let scanned: ScannedSubagent;
     try {
       scanned = await scanSubagentTranscript(sessionFile, aborted, null);
@@ -118,7 +125,10 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
         sessionFile,
         context.leaseOf,
       );
-      const endedAt = status === "unknown" ? null : await lastWrittenAt(endedAtFiles);
+      const endedAt =
+        status === "unknown" && recordedStatus === undefined
+          ? null
+          : await lastWrittenAt(endedAtFiles);
       const transcript: SubagentTranscript = {
         key,
         agentId,
@@ -134,6 +144,7 @@ async function walkSubagentDirectory(context: WalkContext): Promise<void> {
         endedAt,
         agent: scanned.agent,
         ...(scanned.reason === undefined ? {} : { reason: scanned.reason }),
+        ...(recordedStatus === undefined ? {} : { recordedStatus }),
         parseWarnings: scanned.parseWarnings,
       };
       context.output.push(transcript);
