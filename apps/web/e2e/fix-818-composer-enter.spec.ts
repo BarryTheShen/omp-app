@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
+import { holdFileSearch, newHeldFileSearch } from "./hold-file-search";
 import {
   expect,
   realTest,
@@ -15,55 +16,34 @@ realTest.use({
   seedWorkspace: { files: { "README.md": "# demo\n", "REPORT.md": "# report\n" }, gitRepo: true },
 });
 
-/** The emoji list above the composer, once its first emoji has loaded. */
+/**
+ * The first row is highlighted a moment after the rows render (`waitForHighlight` in trigger-keys.test.tsx): an arrow key
+ * pressed before that moves nothing, so the test waits for the highlight before it presses one.
+ */
+async function expectHighlighted(page: Page): Promise<void> {
+  const composer = page.getByRole("textbox", { name: "Message input" });
+  await expect(composer).toHaveAttribute("aria-activedescendant", /.+/, { timeout: 30_000 });
+}
+
+/** The emoji list above the composer, once its first emoji has loaded and is highlighted. */
 async function emojiOptions(page: Page): Promise<Locator> {
   const options = page.getByRole("listbox", { name: "Emoji suggestions" }).getByRole("option");
   await expect(options.first()).toBeVisible({ timeout: 30_000 });
+  await expectHighlighted(page);
   return options;
 }
 
-/** The file list above the composer, once its first file has loaded. */
+/** The file list above the composer, once its first file has loaded and is highlighted. */
 async function fileOptions(page: Page): Promise<Locator> {
   const options = page.getByRole("listbox", { name: "File suggestions" }).getByRole("option");
   await expect(options.first()).toBeVisible({ timeout: 30_000 });
+  await expectHighlighted(page);
   return options;
 }
 
 /** The conversation's messages: where a sent message appears (the composer's own text is not a message). */
 function transcript(page: Page): Locator {
   return page.getByRole("region", { name: "Conversation transcript" });
-}
-
-/** The frames of a message that is a JSON object, with no type checks: a message that is not one has no fields. */
-function frameOf(message: string | Buffer): Record<string, unknown> {
-  const value: unknown = JSON.parse(String(message));
-  return typeof value === "object" && value !== null
-    ? Object.fromEntries(Object.entries(value))
-    : {};
-}
-
-/** Delays the answer to each file search by `ms`, so the file list is still loading for that long. */
-async function delayFileSearchAnswer(page: Page, ms: number): Promise<void> {
-  await page.routeWebSocket(/\/ws/, (socket) => {
-    const server = socket.connectToServer();
-    const searches = new Set<unknown>();
-    socket.onMessage((message) => {
-      const frame = frameOf(message);
-      if (frame.type === "call" && frame.port === "A1.fileSearch") searches.add(frame.id);
-      server.send(message);
-    });
-    server.onMessage((message) => {
-      const frame = frameOf(message);
-      if (frame.type === "result" && searches.has(frame.id)) {
-        searches.delete(frame.id);
-        setTimeout(() => {
-          socket.send(message);
-        }, ms);
-        return;
-      }
-      socket.send(message);
-    });
-  });
 }
 
 /** The shell draws with the app's own background, not the browser's default: a transparent one means no styles loaded. */
@@ -97,9 +77,11 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
     await composer.fill(":smi");
-    await emojiOptions(page);
+    const options = await emojiOptions(page);
 
     await composer.press("ArrowDown");
+    // Enter chooses once the highlight has moved to the second emoji.
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
     await composer.press("Enter");
     // The second emoji for ":smi" is 😸 (:smile_cat:); the first, 😄, must not be inserted.
     await expect(composer).toHaveValue(/😸/);
@@ -111,12 +93,20 @@ realTest(
   "#818: ArrowDown then Enter inserts the file that is highlighted",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
-    const page = await realApp.open();
+    // The file search's answer is held back, so the first list shown is the answer for "RE" (not cached files).
+    const hold = newHeldFileSearch();
+    const page = await realApp.open({ beforeLoad: (target) => holdFileSearch(target, hold) });
     const composer = await startChat(page);
     await composer.fill("@RE");
-    await fileOptions(page);
+    const list = page.getByRole("listbox", { name: "File suggestions" });
+    await expect(list.getByRole("status")).toHaveText("Searching files…");
+    hold.release();
+    const options = await fileOptions(page);
+    // The list shows the answer for "RE" before the highlight moves: README.md first, then REPORT.md.
+    await expect(options).toHaveText([/README\.md/, /REPORT\.md/]);
 
     await composer.press("ArrowDown");
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
     await composer.press("Enter");
     await expect(composer).toHaveValue("@REPORT.md ");
     await expect(transcript(page).getByText("@RE", { exact: true })).toHaveCount(0);
@@ -127,22 +117,29 @@ realTest(
   "#818: keys pressed while the file list is still loading do not send the text",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
-    // The list's answer comes 2 s late, so the list is still loading when ArrowDown and Enter arrive.
-    const page = await realApp.open({
-      beforeLoad: (target) => delayFileSearchAnswer(target, 2_000),
-    });
+    // The file search's answer is held back, so the list is still loading when the keys arrive.
+    const hold = newHeldFileSearch();
+    const page = await realApp.open({ beforeLoad: (target) => holdFileSearch(target, hold) });
     const composer = await startChat(page);
     await composer.fill("@RE");
-    // A key that arrives before the list has opened goes to the composer, so the keys wait for the list to open.
-    await expect(page.getByRole("listbox", { name: "File suggestions" })).toBeVisible();
+    const list = page.getByRole("listbox", { name: "File suggestions" });
+    await expect(list.getByRole("status")).toHaveText("Searching files…");
     await composer.press("ArrowDown");
     await composer.press("Enter");
-    // Once the list has loaded, the text is still in the composer: nothing was sent.
-    await fileOptions(page);
+    // Still loading: the keys chose nothing and sent nothing.
     await expect(composer).toHaveValue("@RE");
     await expect(transcript(page).getByText("@RE", { exact: true })).toHaveCount(0);
 
+    // The answer arrives. The Enter kept while it loaded is dropped, so the text is still in the composer.
+    hold.release();
+    const options = await fileOptions(page);
+    await expect(composer).toHaveValue("@RE");
+    await expect(transcript(page).getByText("@RE", { exact: true })).toHaveCount(0);
+    // The answer for "RE" is on screen before the highlight moves: README.md first, then REPORT.md.
+    await expect(options).toHaveText([/README\.md/, /REPORT\.md/]);
+
     await composer.press("ArrowDown");
+    await expect(options.nth(1)).toHaveAttribute("aria-selected", "true");
     await composer.press("Enter");
     await expect(composer).toHaveValue("@REPORT.md ");
   },

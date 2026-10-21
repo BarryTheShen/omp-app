@@ -163,6 +163,20 @@ describe("ComposerTriggers in the composer", () => {
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("before @src/app.ts "));
   });
 
+  test("the first focus asks for the folder's files once, and an @ typed after it finds them with no searching line (issue 2214)", async () => {
+    const search = vi.fn(async (_args: unknown) => oneFile);
+    render(<Composed capabilities={EVERYTHING} client={fakeClient(search)} />);
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.focus(input);
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+    await pause();
+    fireEvent.change(input, { target: { value: "before @" } });
+    (input as HTMLTextAreaElement).setSelectionRange(8, 8);
+    await waitFor(() => expect(screen.getByText("src/app.ts")).toBeTruthy());
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Searching files…")).toBeNull();
+  });
+
   test(": lists emoji, and inserting one writes the character", async () => {
     render(<Composed capabilities={{}} client={fakeClient(async () => oneFile)} />);
     const input = screen.getByRole("textbox", { name: "Message input" });

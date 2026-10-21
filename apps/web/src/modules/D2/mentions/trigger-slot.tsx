@@ -68,6 +68,7 @@ function renderItems(
   items: readonly Unstable_TriggerItem[],
   trigger: "@" | "#",
   status: string | undefined,
+  searching: boolean,
 ): React.ReactNode {
   return (
     <div className="bg-popover text-popover-foreground border-foreground/10 max-h-72 min-w-64 overflow-y-auto rounded-surface border p-1">
@@ -77,7 +78,13 @@ function renderItems(
         </p>
       )}
       {items.length === 0 && status === undefined ? (
-        <p className="text-muted-foreground px-3 py-2 text-sm">No matches</p>
+        searching ? (
+          <p role="status" className="text-muted-foreground px-3 py-2 text-sm">
+            {trigger === "@" ? "Searching files…" : "Searching…"}
+          </p>
+        ) : (
+          <p className="text-muted-foreground px-3 py-2 text-sm">No matches</p>
+        )
       ) : (
         items.map((item, index) => (
           <ComposerPrimitive.Unstable_TriggerPopoverItem
@@ -95,6 +102,34 @@ function renderItems(
       )}
     </div>
   );
+}
+
+/** The query each list answer was fetched for, keyed by the answer's items (the items the library shows for it). */
+type AnswerQueries = WeakMap<readonly Unstable_TriggerItem[], string>;
+
+/**
+ * A list's items and their empty state. An empty list is still searching until it has answered for the query now
+ * typed: an empty answer for an earlier query is not "No matches" for this one, and nothing says "No matches" while a
+ * search runs.
+ */
+function TriggerItemList({
+  items,
+  trigger,
+  status,
+  answered,
+  answers,
+}: {
+  readonly items: readonly Unstable_TriggerItem[];
+  readonly trigger: "@" | "#";
+  readonly status: string | undefined;
+  /** Whether a search for this list has settled at all (see `TriggerPopoverView`). */
+  readonly answered: boolean;
+  readonly answers: AnswerQueries;
+}) {
+  const { query, isLoading } = unstable_useTriggerPopoverScopeContext();
+  const answeredFor = answers.get(items);
+  const staleAnswer = answeredFor !== undefined && answeredFor !== query;
+  return <>{renderItems(items, trigger, status, !answered || isLoading || staleAnswer)}</>;
 }
 
 function hashMatcher(text: string, triggerChar: string, cursorPosition: number) {
@@ -167,20 +202,30 @@ function TriggerPopoverView({
   const candidateMap = useRef<ReadonlyMap<string, TriggerCandidate>>(new Map());
   // Why the last search could not answer: shown in the list, never as a row to choose.
   const [status, setStatus] = useState<string | undefined>(undefined);
+  // The list the adapter keeps its items for. A search for it that has settled is an answer, an empty one too.
+  const cacheKey = `${provider?.source ?? "none"}:${provider?.kind ?? "none"}:${trigger}`;
+  const [answeredKey, setAnsweredKey] = useState<string | undefined>(undefined);
+  const [answers] = useState<AnswerQueries>(() => new WeakMap());
   const fetcher = useCallback(
     async (query: string): Promise<readonly Unstable_TriggerItem[]> => {
       if (!provider) return [];
-      const result = await provider.searchTyped(query);
-      const next = resultItems(result, trigger);
-      candidateMap.current = next.candidates;
-      setStatus(next.status);
-      return next.items;
+      try {
+        const result = await provider.searchTyped(query);
+        const next = resultItems(result, trigger);
+        answers.set(next.items, query);
+        candidateMap.current = next.candidates;
+        setStatus(next.status);
+        return next.items;
+      } finally {
+        // A search that throws has settled too: the list must not say it is searching for good.
+        setAnsweredKey(cacheKey);
+      }
     },
-    [provider, trigger],
+    [provider, trigger, cacheKey, answers],
   );
   const completion = unstable_useLiveCompletionAdapter({
     fetcher,
-    cacheKey: `${provider?.source ?? "none"}:${provider?.kind ?? "none"}:${trigger}`,
+    cacheKey,
     debounceMs: 60,
     enabled: provider !== undefined,
   });
@@ -209,6 +254,27 @@ function TriggerPopoverView({
     document.addEventListener("beforeinput", onBeforeInput, true);
     return () => document.removeEventListener("beforeinput", onBeforeInput, true);
   }, [composerTextarea, history, trigger]);
+
+  // The first focus of the composer in a page asks the file list for its first answer: the request the first `@`
+  // would make, made earlier. The adapter keeps that answer, so an `@` typed after it opens with its files.
+  const warmed = useRef(false);
+  const { adapter } = completion;
+  useEffect(() => {
+    if (trigger !== "@" || provider === undefined) return undefined;
+    const warm = () => {
+      if (warmed.current) return;
+      warmed.current = true;
+      adapter.search?.("");
+    };
+    const onFocus = (event: FocusEvent) => {
+      if (event.target === composerTextarea()) warm();
+    };
+    const focused = document.activeElement;
+    if (focused !== null && focused === composerTextarea()) warm();
+    document.addEventListener("focus", onFocus, true);
+    return () => document.removeEventListener("focus", onFocus, true);
+  }, [adapter, composerTextarea, provider, trigger]);
+
   // A GitHub row replaces the reference at the caret with its link, the typed `pr` or `issue` word included: the
   // directive would leave that word in front of the link. The row is done here only while the caret is on its #.
   const insertReference = useCallback(
@@ -276,7 +342,15 @@ function TriggerPopoverView({
       />
       {trigger === "#" && <PromptActionOverride runAction={runAction} />}
       <ComposerPrimitive.Unstable_TriggerPopoverItems>
-        {(items) => renderItems(items, trigger, status)}
+        {(items) => (
+          <TriggerItemList
+            items={items}
+            trigger={trigger}
+            status={status}
+            answered={answeredKey === cacheKey}
+            answers={answers}
+          />
+        )}
       </ComposerPrimitive.Unstable_TriggerPopoverItems>
     </ComposerPrimitive.Unstable_TriggerPopover>
   );

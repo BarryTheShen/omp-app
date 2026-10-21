@@ -60,6 +60,15 @@ function pause(): Promise<void> {
   return promise;
 }
 
+/** A search whose answer the test gives itself, so a list can be seen while its search has not answered. */
+function heldSearch(...candidates: TriggerSearchResult["candidates"]) {
+  const answer = Promise.withResolvers<TriggerSearchResult>();
+  return {
+    search: vi.fn((_query: string) => answer.promise),
+    release: () => answer.resolve({ state: "ready", candidates, revision: "held" }),
+  };
+}
+
 /** The real GitHub provider on a host that finds nothing, so its five action rows are its only candidates. */
 function realGithubProvider(): MentionProvider {
   const client = {
@@ -212,6 +221,161 @@ describe("D2.4 MentionTriggerSlot", () => {
     expect(screen.getByRole("listbox")).toBeTruthy();
     expect(screen.queryByText("No matches")).toBeNull();
     expect((input as HTMLTextAreaElement).value).toBe("before @src");
+  });
+
+  test("while the file search has not answered, @ says it is searching; No matches comes only with an answer that has no files (issue 2214)", async () => {
+    const held = heldSearch();
+    const files: MentionProvider = {
+      trigger: "@",
+      kind: "file",
+      source: "a1.file-search",
+      search: async () => [],
+      searchTyped: held.search,
+    };
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot {...quiet} providers={[files]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "before @src" } });
+    (input as HTMLTextAreaElement).setSelectionRange(11, 11);
+    await waitFor(() => expect(screen.getByRole("listbox")).toBeTruthy());
+    expect(screen.getByText("Searching files…").getAttribute("role")).toBe("status");
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.queryByText("No matches")).toBeNull();
+    held.release();
+    await waitFor(() => expect(screen.getByText("No matches")).toBeTruthy());
+    expect(screen.queryByText("Searching files…")).toBeNull();
+    expect((input as HTMLTextAreaElement).value).toBe("before @src");
+  });
+
+  test("while the GitHub search has not answered, # says Searching, and No matches comes after its answer (issue 2214)", async () => {
+    const held = heldSearch();
+    const github: MentionProvider = {
+      trigger: "#",
+      kind: "github",
+      source: "a1.github-refs",
+      search: async () => [],
+      searchTyped: held.search,
+    };
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot {...quiet} providers={[github]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.change(input, { target: { value: "fix #1" } });
+    (input as HTMLTextAreaElement).setSelectionRange(6, 6);
+    await waitFor(() => expect(screen.getByText("Searching…")).toBeTruthy());
+    expect(screen.queryByText("No matches")).toBeNull();
+    held.release();
+    await waitFor(() => expect(screen.getByText("No matches")).toBeTruthy());
+  });
+
+  test("the first focus of the composer asks the file list once, so an @ typed after it has its files and no searching line (issue 2214)", async () => {
+    const searched = vi.fn(
+      async (_query: string): Promise<TriggerSearchResult> => ({
+        state: "ready",
+        candidates: [
+          {
+            id: "file:src/app.ts",
+            kind: "file",
+            source: "a1.file-search",
+            label: "src/app.ts",
+            insertText: "@src/app.ts ",
+          },
+        ],
+      }),
+    );
+    const files: MentionProvider = {
+      trigger: "@",
+      kind: "file",
+      source: "a1.file-search",
+      search: async () => [],
+      searchTyped: searched,
+    };
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot {...quiet} providers={[files]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    const searchingSeen: boolean[] = [];
+    const watch = new MutationObserver(() => {
+      searchingSeen.push(screen.queryByText("Searching files…") !== null);
+    });
+    watch.observe(document.body, { childList: true, subtree: true, characterData: true });
+    fireEvent.focus(input);
+    await waitFor(() => expect(searched).toHaveBeenCalledWith(""));
+    await pause();
+    fireEvent.change(input, { target: { value: "before @" } });
+    (input as HTMLTextAreaElement).setSelectionRange(8, 8);
+    await waitFor(() => expect(screen.getByText("src/app.ts")).toBeTruthy());
+    watch.disconnect();
+    expect(searched).toHaveBeenCalledTimes(1);
+    expect(searchingSeen).not.toContain(true);
+  });
+
+  test("an empty answer for an earlier query is not No matches for the query now typed: the list searches until its own answer (issue 2214)", async () => {
+    const files: TriggerSearchResult = {
+      state: "ready",
+      candidates: [
+        {
+          id: "file:src/app.ts",
+          kind: "file",
+          source: "a1.file-search",
+          label: "src/app.ts",
+          insertText: "@src/app.ts ",
+        },
+      ],
+    };
+    const empty: TriggerSearchResult = { state: "ready", candidates: [] };
+    // The answer for "@@" is held: only the first answers come back at once.
+    const later = Promise.withResolvers<TriggerSearchResult>();
+    const searched = vi.fn(async (query: string): Promise<TriggerSearchResult> => {
+      if (query === "") return files;
+      if (query === "@") return empty;
+      return later.promise;
+    });
+    const provider: MentionProvider = {
+      trigger: "@",
+      kind: "file",
+      source: "a1.file-search",
+      search: async () => [],
+      searchTyped: searched,
+    };
+    render(
+      <RuntimeHarness>
+        <MentionTriggerSlot {...quiet} providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={async () => undefined} cancel={() => undefined} />
+        </MentionTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" }) as HTMLTextAreaElement;
+    fireEvent.focus(input);
+    await waitFor(() => expect(searched).toHaveBeenCalledWith(""));
+    await pause();
+    fireEvent.change(input, { target: { value: "@" } });
+    input.setSelectionRange(1, 1);
+    await waitFor(() => expect(screen.getByText("src/app.ts")).toBeTruthy());
+    fireEvent.change(input, { target: { value: "@@" } });
+    input.setSelectionRange(2, 2);
+    await waitFor(() => expect(screen.getByText("No matches")).toBeTruthy());
+    // The text is now "@@@": its query "@@" has no answer yet. The first render shows the answer on screen (for "@"),
+    // which is empty; it must not read "No matches" for "@@", so the list searches.
+    fireEvent.change(input, { target: { value: "@@@" } });
+    expect(screen.queryByText("No matches")).toBeNull();
+    expect(screen.getByText("Searching files…")).toBeTruthy();
+    later.resolve(empty);
+    await waitFor(() => expect(screen.getByText("No matches")).toBeTruthy());
+    expect(screen.queryByText("Searching files…")).toBeNull();
   });
 
   test("a # reference ends at its first space: the text past it never searches or opens a list", async () => {

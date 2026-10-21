@@ -53,7 +53,6 @@ const KNOWN: Readonly<Record<string, KnownCeiling>> = {
   "A/mention-warm": { longFrameP50: 66 },
   "A/mention-escape-open": { longFrameP50: 77 },
   "A/tool-expand": { longFrameP50: 72 },
-  "A/mention-cold": { content: "allow-known-cold-shell" },
 };
 
 const BUDGET = {
@@ -411,6 +410,11 @@ async function measureMentions(
       await prepare(page);
     }
     const input = page.getByRole("textbox", { name: "Message input" });
+    // A reload restores the draft the previous run left in the composer (its early `@`), so typing here would make a
+    // mention query such as `@@`, not a cold `@` into an empty composer. The composer is emptied first, so every run is
+    // the cold case the row measures (the cold check's answer for `@@` is "No matches": no file has an `@`).
+    await input.fill("");
+    await input.blur();
     await input.focus();
     await page.waitForTimeout(350);
     const late = await recordInteraction(page, "mention", () => page.keyboard.type("@"), 1_200);
