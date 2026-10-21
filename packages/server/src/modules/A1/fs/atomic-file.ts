@@ -23,6 +23,8 @@ const ATOMIC_LOCK_FILE_PATTERN = /^\.omp-atomic-lock-[a-f0-9]{32}\.lock$/;
 const SELF_WRITE_RETENTION_MS = 5_000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_WAIT_TIMEOUT_MS = 15_000;
+/** Attempts to remove a lock file at release; a file that stays is stale to this process (see `lockOwnerIsStale`). */
+const LOCK_RELEASE_ATTEMPTS = 3;
 /**
  * A temp file last written this long ago was left by a writer that died: a live writer renames its file moments
  * after writing it. A sweep also never removes a temp file this process is still writing (`temporaryFilesInUse`).
@@ -30,6 +32,8 @@ const LOCK_WAIT_TIMEOUT_MS = 15_000;
 const ATOMIC_TEMP_STALE_MS = 60_000;
 /** The names of the temp files this process is writing and has not yet renamed or removed. */
 const temporaryFilesInUse = new Set<string>();
+/** The lock files this process holds: from their create until the release that removes them has run. */
+const lockFilesInUse = new Set<string>();
 
 export type AtomicFileContent = string | Uint8Array;
 export type ExpectedFileHash = string | null;
@@ -117,6 +121,16 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Whether the process that wrote a lock file has gone. This process's own lock is held only while an operation of
+ * this process holds it, so one it still names after that operation has released it is stale. Another process's
+ * lock is held for as long as that process runs.
+ */
+function lockOwnerIsStale(lockPath: string, pid: number): boolean {
+  if (pid === process.pid) return !lockFilesInUse.has(lockPath);
+  return !processIsAlive(pid);
+}
+
 async function lockIsStale(lockPath: string): Promise<boolean> {
   let contents: string;
   try {
@@ -126,7 +140,7 @@ async function lockIsStale(lockPath: string): Promise<boolean> {
     throw error;
   }
   const pid = Number.parseInt(contents.trim(), 10);
-  if (Number.isInteger(pid) && pid > 0) return !processIsAlive(pid);
+  if (Number.isInteger(pid) && pid > 0) return lockOwnerIsStale(lockPath, pid);
   try {
     const metadata = await fs.stat(lockPath);
     return Date.now() - metadata.mtimeMs > LOCK_STALE_MS;
@@ -146,18 +160,9 @@ async function acquireFileLock(filePath: string): Promise<FileLock> {
   const lockPath = lockPathFor(filePath);
   const startedAt = Date.now();
   for (;;) {
+    let handle: FileHandle;
     try {
-      const handle = await fs.open(lockPath, "wx", 0o600);
-      try {
-        await handle.writeFile(`${process.pid}\n`);
-        await handle.sync();
-      } catch (error) {
-        await handle.close();
-        await unlinkTempFile(lockPath);
-        throw error;
-      }
-      await handle.close();
-      return { path: lockPath };
+      handle = await fs.open(lockPath, "wx", 0o600);
     } catch (error) {
       if (!hasErrorCode(error, "EEXIST")) throw error;
       if (await lockIsStale(lockPath)) {
@@ -168,12 +173,43 @@ async function acquireFileLock(filePath: string): Promise<FileLock> {
         throw appError("conflict", "Cannot write: another writer still holds the file.", true);
       }
       await waitForLock();
+      continue;
     }
+    // Marked before the pid is written, so a sweep that reads the pid already finds the lock held.
+    lockFilesInUse.add(lockPath);
+    try {
+      try {
+        await handle.writeFile(`${process.pid}\n`);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+    } catch (error) {
+      await releaseFileLock({ path: lockPath });
+      throw error;
+    }
+    return { path: lockPath };
   }
 }
 
+/**
+ * Removes a lock file this process holds, retrying a refused removal. The lock stops counting as held whatever the
+ * outcome: a file that stays is then stale to this process (see `lockOwnerIsStale`), so the next save takes it over.
+ */
 async function releaseFileLock(lock: FileLock): Promise<void> {
-  await unlinkTempFile(lock.path);
+  try {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await unlinkTempFile(lock.path);
+        return;
+      } catch (error) {
+        if (attempt === LOCK_RELEASE_ATTEMPTS) throw error;
+        await waitForLock();
+      }
+    }
+  } finally {
+    lockFilesInUse.delete(lock.path);
+  }
 }
 
 async function withFileLock<T>(path: string, operation: () => Promise<T>): Promise<T> {
@@ -414,7 +450,7 @@ function lockIsStaleSync(lockPath: string): boolean {
     throw error;
   }
   const pid = Number.parseInt(contents.trim(), 10);
-  if (Number.isInteger(pid) && pid > 0) return !processIsAlive(pid);
+  if (Number.isInteger(pid) && pid > 0) return lockOwnerIsStale(lockPath, pid);
   try {
     return Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS;
   } catch (error) {

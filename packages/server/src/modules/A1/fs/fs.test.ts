@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { watch } from "node:fs";
+import { promises as fsPromises, type PathLike, watch } from "node:fs";
 import {
   chmod,
   mkdir,
@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppFailure } from "@omp-app/contracts";
 import {
+  cleanupAtomicTempFiles,
   compareAndSwapFile,
   ensureAppDataDir,
   ensureAppDataDirSync,
@@ -255,6 +256,145 @@ describe("atomic files", () => {
       await chmod(locked, 0o755);
     }
     expect(await temporaryFileNames(locked)).toHaveLength(1);
+  });
+});
+
+/** The lock files in a folder, by name. */
+async function lockFileNames(directory: string): Promise<string[]> {
+  const names = await readdir(directory);
+  return names.filter((name) => name.startsWith(".omp-atomic-lock-"));
+}
+
+/**
+ * Refuses the next `times` removals of a lock file with EACCES, as a folder that denies removal does, and lets every
+ * other removal through. `spy.mockRestore()` puts the real `unlink` back; `state.refused` counts the refusals.
+ */
+function refuseLockRemovals(times: number) {
+  const realUnlink = fsPromises.unlink;
+  const state = { refused: 0 };
+  const spy = spyOn(fsPromises, "unlink").mockImplementation(async (path: PathLike) => {
+    if (state.refused < times && String(path).includes(".omp-atomic-lock-")) {
+      state.refused += 1;
+      throw Object.assign(new Error(`EACCES: permission denied, unlink '${String(path)}'`), {
+        code: "EACCES",
+      });
+    }
+    return realUnlink(path);
+  });
+  return { spy, state };
+}
+
+describe("atomic file locks", () => {
+  test("a save whose lock removal fails once does not hold up the next save", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "draft.json");
+    const removals = refuseLockRemovals(1);
+    try {
+      // The save may report the refused removal. Under the bug the next save waits out the 15 s lock timeout,
+      // so this test's own time limit is what reports it.
+      await writeFileAtomic(path, "first").catch(() => undefined);
+      expect(removals.state.refused).toBe(1);
+    } finally {
+      removals.spy.mockRestore();
+    }
+
+    await writeFileAtomic(path, "second");
+    expect(await readFile(path, "utf8")).toBe("second");
+  });
+
+  test("a lock removal refused once is retried, so the save succeeds and leaves no lock", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "draft.json");
+    const removals = refuseLockRemovals(1);
+    try {
+      await writeFileAtomic(path, "saved");
+    } finally {
+      removals.spy.mockRestore();
+    }
+
+    expect(removals.state.refused).toBe(1);
+    expect(await lockFileNames(directory)).toEqual([]);
+    expect(await readFile(path, "utf8")).toBe("saved");
+  });
+
+  test("a lock that a failed removal leaves behind does not block the next save", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "draft.json");
+    const removals = refuseLockRemovals(Number.POSITIVE_INFINITY);
+    try {
+      const failure = await writeFileAtomic(path, "first").then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(failure).toMatchObject({ code: "EACCES" });
+      expect(await lockFileNames(directory)).toHaveLength(1);
+    } finally {
+      removals.spy.mockRestore();
+    }
+
+    await writeFileAtomic(path, "second");
+    expect(await readFile(path, "utf8")).toBe("second");
+  });
+
+  test("the sweep removes a lock this process left behind after a failed removal", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "draft.json");
+    const removals = refuseLockRemovals(Number.POSITIVE_INFINITY);
+    try {
+      await writeFileAtomic(path, "first").catch(() => undefined);
+    } finally {
+      removals.spy.mockRestore();
+    }
+    expect(await lockFileNames(directory)).toHaveLength(1);
+
+    await cleanupAtomicTempFiles(directory);
+    expect(await lockFileNames(directory)).toEqual([]);
+  });
+
+  test("the sweep keeps the lock of another live process", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "draft.json");
+    const moduleUrl = new URL("./index.ts", import.meta.url).href;
+    // The child reports once it holds the lock, then blocks before its rename until it is killed.
+    const script = [
+      `import { writeFileAtomic } from ${JSON.stringify(moduleUrl)};`,
+      `await writeFileAtomic(${JSON.stringify(path)}, "held", {`,
+      `  beforeRename: () => { console.log("held"); return Promise.withResolvers().promise; },`,
+      "});",
+    ].join("\n");
+    const holder = Bun.spawn(["bun", "-e", script], { stderr: "pipe", stdout: "pipe" });
+    try {
+      const reader = holder.stdout.getReader();
+      const decoder = new TextDecoder();
+      let output = "";
+      while (!output.includes("held")) {
+        const result = await reader.read();
+        if (result.done) break;
+        output += decoder.decode(result.value);
+      }
+      expect(output).toContain("held");
+      expect(await lockFileNames(directory)).toHaveLength(1);
+
+      await cleanupAtomicTempFiles(directory);
+      expect(await lockFileNames(directory)).toHaveLength(1);
+    } finally {
+      holder.kill();
+      await holder.exited;
+    }
+  });
+
+  test("a sweep during this process's own save keeps the lock that save holds", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "draft.json");
+    let locksDuringSave = -1;
+    await writeFileAtomic(path, "saved", {
+      beforeRename: async () => {
+        await cleanupAtomicTempFiles(directory);
+        locksDuringSave = (await lockFileNames(directory)).length;
+      },
+    });
+    expect(locksDuringSave).toBe(1);
+    expect(await readFile(path, "utf8")).toBe("saved");
   });
 });
 
