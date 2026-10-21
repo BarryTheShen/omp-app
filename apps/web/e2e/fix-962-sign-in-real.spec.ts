@@ -32,7 +32,11 @@ async function runFromPalette(page: Page, query: string): Promise<void> {
 async function expectSignInOpen(page: Page): Promise<void> {
   await expect(page.getByText("Provider login").first()).toBeVisible({ timeout: 60_000 });
   const providerList = page.getByTestId("d3-provider-list");
-  await expect(providerList.getByRole("listitem").filter({ hasText: "Anthropic" })).toBeVisible();
+  // The list follows the chat's start, which waits for omp's first answers. A loaded machine can take longer than the
+  // default 5 s (issue 2275). The wait still ends on the row, so a real hang fails, at 30 s.
+  await expect(providerList.getByRole("listitem").filter({ hasText: "Anthropic" })).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 realTest(
