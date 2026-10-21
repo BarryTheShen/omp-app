@@ -36,13 +36,14 @@ async function storedSessionText(agentDir: string): Promise<string> {
 
 /**
  * The composer card's background is the muted surface the redesign uses (`bg-muted/30`), resolved on this page. Styles
- * that did not load show the browser's default colors, and the two would differ.
+ * that did not load make both colours transparent, so the two would match: the token must be a real colour too.
  */
 async function expectCardToken(page: Page): Promise<void> {
   // The card fades to the new theme's colour (transition-colors), so the comparison waits until the fade has finished.
+  let colors = { background: "", token: "" };
   await expect
     .poll(async () => {
-      const colors = await page.locator('[data-composer-card="true"]').evaluate((card) => {
+      colors = await page.locator('[data-composer-card="true"]').evaluate((card) => {
         const probe = document.createElement("div");
         probe.style.backgroundColor = "color-mix(in oklab, var(--muted) 30%, transparent)";
         card.append(probe);
@@ -53,6 +54,8 @@ async function expectCardToken(page: Page): Promise<void> {
       return colors.token !== "" && colors.background === colors.token;
     })
     .toBe(true);
+  // With no stylesheet both colours are rgba(0, 0, 0, 0) and match, so the token itself must be a real colour.
+  expect(colors.token).not.toBe("rgba(0, 0, 0, 0)");
 }
 
 realTest(
@@ -166,7 +169,17 @@ async function storedDraftAttachments(appDataDir: string): Promise<string[]> {
       continue; // no draft has been saved in this folder yet
     }
     for (const file of files) {
-      const value: unknown = JSON.parse(await readFile(join(dir, file), "utf8"));
+      // The app writes each file through a `.omp-atomic-*` temporary file and renames it into place: skip those.
+      if (file.startsWith(".omp-atomic-")) continue;
+      let text: string;
+      try {
+        text = await readFile(join(dir, file), "utf8");
+      } catch (error) {
+        // Renamed away between the listing and the read: the poll asks again.
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+        throw error;
+      }
+      const value: unknown = JSON.parse(text);
       if (
         typeof value === "object" &&
         value !== null &&

@@ -8,7 +8,8 @@ import { expect, realTest, screenshots } from "./real-omp";
  * link replaced by a restart shows. Now a link the app never printed says it is not valid, and only a link an
  * earlier start printed says it has expired.
  */
-realTest.use({ serverPort: Number(process.env.E2E_PORT ?? 4173) + 1 });
+// Port 0: the fixture picks a free port and keeps it across a restart, so parallel runs cannot collide on a pinned port.
+realTest.use({ serverPort: 0 });
 realTest.setTimeout(300_000);
 
 const NOT_VALID = "This launch link is not valid";

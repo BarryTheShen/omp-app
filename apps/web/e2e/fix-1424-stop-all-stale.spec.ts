@@ -12,8 +12,9 @@ import {
 
 /**
  * Issue 1424. After Stop all, a Tasks row read Running and lost its Stop control when omp's count of the jobs it stopped
- * differed from the running rows the card showed. `run_stale_background` starts three jobs: the first ends after four
- * seconds, so the wait card lists the other two as running; the third ends on its own after 25 seconds, before Stop all.
+ * differed from the running rows the card showed. `run_stale_then_wait` starts three jobs and waits in the same turn: the
+ * first ends after four seconds, so the wait card lists all three rows (the first finished, the other two running); the
+ * third ends on its own after 25 seconds, before Stop all.
  * Stop all then stops the one job still running, so omp's count (1) differs from the card's rows (2). The rows keep
  * their Stop controls, and the card says their statuses may be out of date.
  */
@@ -41,9 +42,10 @@ realTest(
     const page = await realApp.open();
     await page.setViewportSize({ width: 1280, height: 1000 });
     const composer = await startChat(page);
-    await sendPrompt(composer, "run_stale_background");
+    // The wait runs in the same turn as the three starts (see run_stale_then_wait in the fake model), so it begins before
+    // the first job ends. A separate wait prompt could arrive after that, and then the card would list only two jobs.
+    await sendPrompt(composer, "run_stale_then_wait");
     await expect(page.getByText("background jobs started")).toBeVisible({ timeout: 120_000 });
-    await sendPrompt(composer, "wait_for_jobs");
 
     const wait = page.getByTestId("t5-wait-card");
     await expect(wait).toBeVisible({ timeout: 120_000 });

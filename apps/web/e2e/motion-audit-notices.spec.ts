@@ -8,13 +8,14 @@ import {
   measure,
   NOTICE_PROBES,
   recordAudit,
+  round,
   showedIn,
   summaryOf,
   TRACKED,
   takesBaseToken,
   trailOf,
 } from "./motion-audit-recorder";
-import { recordMotion } from "./motion-metrics";
+import { readLog, recordMotion } from "./motion-metrics";
 import {
   APP_ROOT,
   expect,
@@ -83,7 +84,8 @@ realTest.describe("row 7, the notices", () => {
       );
       await waitForFiniteAnimations(page);
       const arrived = await measure(page, "row 7 notices arrive with a turn", async () => {
-        await sendPrompt(composer, "pong");
+        // A slow tool turn: its reply lands 30 s later, after the notices' fades, so the reply's own layout is not measured here.
+        await sendPrompt(composer, "slow_tool 30");
         await expect(page.getByRole("button", { name: "3 notices from omp" })).toBeVisible({
           timeout: 60_000,
         });
@@ -147,8 +149,26 @@ realTest.describe("row 7, the notices", () => {
           "row 7: the toast starts its exit fade",
         )
         .toBe(true);
+      // The notices' own motion runs from their first fade to the last one's end. The turn's reply can move the composer
+      // before the notices arrive (in every run that failed, the reply landed first), so the criterion reads that span only.
+      const noticeNames = ["n1-quiet", "notice:toast"];
+      const noticeRuns = arrived.audit.animations.filter(
+        (animation) => animation.kind === "run" && noticeNames.includes(animation.name),
+      );
+      const noticeEnds = arrived.audit.ends.filter((end) => noticeNames.includes(end.name));
+      expect(noticeRuns.length, "row 7: the notices' fade-in is recorded").toBeGreaterThan(0);
+      expect(noticeEnds.length, "row 7: the notices' fade-out is recorded").toBeGreaterThan(0);
+      const noticesFrom = Math.min(...noticeRuns.map((animation) => animation.at));
+      const noticesTo = Math.max(...noticeEnds.map((end) => end.at));
+      const noticesShift = round(
+        (await readLog(page)).shifts
+          .filter((shift) => !shift.afterInput && shift.at >= noticesFrom && shift.at <= noticesTo)
+          .reduce((sum, shift) => sum + shift.value, 0),
+      );
+      expect
+        .soft(noticesShift, "row 7: layout shift that no input caused (arrived)")
+        .toBeLessThan(0.02);
       const checked: [string, Measured][] = [
-        ["arrived", arrived],
         ["quiet leave", quietLeave],
         ["toast leave", toastLeave],
       ];

@@ -39,7 +39,17 @@ async function storedNewChatDraft(appDataDir: string): Promise<string | null> {
     return null;
   }
   for (const file of files) {
-    const value: unknown = JSON.parse(await readFile(join(folder, file), "utf8"));
+    // The app writes each draft through `.omp-atomic-*` temporary and lock files and renames them into place: skip those.
+    if (file.startsWith(".omp-atomic-")) continue;
+    let text: string;
+    try {
+      text = await readFile(join(folder, file), "utf8");
+    } catch (error) {
+      // Renamed away between the listing and the read: the poll asks again.
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+      throw error;
+    }
+    const value: unknown = JSON.parse(text);
     if (
       typeof value === "object" &&
       value !== null &&

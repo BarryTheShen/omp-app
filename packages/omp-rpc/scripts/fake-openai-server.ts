@@ -214,9 +214,10 @@ function backgroundStarts(count: number): Reply {
 }
 
 /**
- * `run_stale_background` starts three jobs: one ends after four seconds, one runs for fifteen minutes, and one ends
- * after 25 seconds. A wait returns at the first job to end, so a card made then still lists the other two as running.
- * The long job outlasts the wait for the third job's notice, even on a loaded machine.
+ * `run_stale_background` and `run_stale_then_wait` start three jobs: one ends after four seconds, one runs for fifteen
+ * minutes, and one ends after 25 seconds. A wait returns at the first job to end. `run_stale_then_wait` puts that wait in
+ * the same turn as the starts, so it begins before the first job ends and its card lists all three jobs. The long job
+ * outlasts the wait for the third job's notice, even on a loaded machine.
  */
 function staleBackgroundStarts(): Reply {
   return {
@@ -314,6 +315,14 @@ function reply(request: Request): Reply {
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
     if (done === 0) return named;
     return { text: "background job started" };
+  }
+  if (text(messages[lastUser]?.content).includes("run_stale_then_wait")) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done === 0) return staleBackgroundStarts();
+    // After the three starts, in the same turn: the wait covers all three jobs, not only those still running later.
+    if (done === 3)
+      return { tool: "wait", args: {}, thinking: "I should wait for the background jobs to end." };
+    return { text: "background jobs started" };
   }
   if (text(messages[lastUser]?.content).includes("run_stale_background")) {
     const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;

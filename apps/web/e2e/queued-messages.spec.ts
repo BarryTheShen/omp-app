@@ -58,18 +58,22 @@ async function expectOwnLine(page: Page): Promise<void> {
 /** The queue bar's background is the muted surface of the current theme (`bg-muted/30`), so a screenshot shows our styles, not browser defaults. */
 async function expectCardToken(page: Page): Promise<void> {
   // The bar fades to the new theme's colour, so the comparison waits until the fade has finished.
+  let colors = { background: "", expected: "" };
   await expect
-    .poll(() =>
-      queueBar(page).evaluate((bar) => {
+    .poll(async () => {
+      colors = await queueBar(page).evaluate((bar) => {
         const probe = document.createElement("div");
         probe.style.backgroundColor = "color-mix(in oklab, var(--muted) 30%, transparent)";
         document.body.append(probe);
         const expected = getComputedStyle(probe).backgroundColor;
         probe.remove();
-        return getComputedStyle(bar).backgroundColor === expected;
-      }),
-    )
+        return { background: getComputedStyle(bar).backgroundColor, expected };
+      });
+      return colors.background === colors.expected;
+    })
     .toBe(true);
+  // With no stylesheet both colours are rgba(0, 0, 0, 0) and match, so the expected token itself must be a real colour.
+  expect(colors.expected).not.toBe("rgba(0, 0, 0, 0)");
 }
 
 /** Sends `run_queued_pair` and waits until the turn is in progress: the composer offers Stop while it runs. */

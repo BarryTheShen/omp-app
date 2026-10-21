@@ -37,13 +37,14 @@ async function storedSessionText(agentDir: string): Promise<string> {
 
 /**
  * The transcript chip's background is the muted surface the redesign uses (`bg-muted/30`), resolved on this page. Styles
- * that did not load show the browser's default colors, and the two would differ.
+ * that did not load make both colours transparent, so the two would match: the token must be a real colour too.
  */
 async function expectChipToken(page: Page): Promise<void> {
   // The chip fades to the new theme's colour, so the comparison waits until the fade has finished.
+  let colors = { background: "", token: "" };
   await expect
     .poll(async () => {
-      const colors = await page
+      colors = await page
         .locator(TRANSCRIPT_CHIP)
         .first()
         .evaluate((chip) => {
@@ -57,6 +58,8 @@ async function expectChipToken(page: Page): Promise<void> {
       return colors.token !== "" && colors.background === colors.token;
     })
     .toBe(true);
+  // With no stylesheet both colours are rgba(0, 0, 0, 0) and match, so the token itself must be a real colour.
+  expect(colors.token).not.toBe("rgba(0, 0, 0, 0)");
 }
 
 /** Sends a wrapped paste with a typed line, and waits for omp's reply. */
