@@ -32,7 +32,6 @@ import {
 import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { modeOutcomeText } from "@/modules/D7/modes";
 import type { GoalRpcArgs, GoalRpcResult } from "@/modules/D8/contract";
-import { createMcpProtocolCatalogs } from "@/modules/I1/protocol";
 import type { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
 import { sessionTitle } from "@/modules/R1/ui";
 import type { PromptIntent } from "@/modules/U2/contract";
@@ -67,19 +66,16 @@ export function useSlashCommands({
   const getAppCommands = useLatest(appCommands);
   const [provider, setProvider] = useState<SlashCommandProvider | null>(null);
   useEffect(() => {
-    const catalogs = createMcpProtocolCatalogs({ client, threadId });
     const next = createSlashCommandProvider({
       client,
       threadId,
       capabilities: getCapabilities,
       appCommands: getAppCommands,
-      promptCatalog: catalogs.prompts,
     });
     setProvider(next);
     return () => {
       setProvider(null);
       next.dispose();
-      catalogs.dispose();
     };
   }, [client, threadId, getCapabilities, getAppCommands]);
   return provider;

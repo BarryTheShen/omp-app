@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ComposerSurface } from "../../U2/composer/composer";
+import type { TriggerSearchResult } from "../contract";
 import { LocalComposerSlot } from "../local/trigger-slot";
 import { MentionComposerSlot } from "../mentions/trigger-slot";
 import { createSlashCommandProvider, type SlashCommandProvider } from "./provider";
@@ -338,6 +339,93 @@ describe("D2.3 SlashTriggerSlot", () => {
     // The typed text searches again, and the list comes back with the row that the search answers with.
     await waitFor(() => expect(searched.length).toBeGreaterThan(searchesBeforeTyping));
     await screen.findByRole("option", { name: /^\/login/ });
+    provider.dispose();
+  });
+
+  test("Tab completes a typed prefix to a command with no arguments, and the list stays closed for it", async () => {
+    // With the real command list, `/cont` completes to `/context`. The text `/context ` (with the space) would list the
+    // subcommands of `/extended-context`, which fuzzy-match the name: the completed command must not reopen the list with them.
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+    });
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/cont" } });
+    input.setSelectionRange(5, 5);
+    await screen.findByRole("option", { name: /^\/context/ });
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => expect(input.value).toBe("/context "));
+    // A search for the completed text starts after the adapter's debounce: give it time to answer.
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 300);
+    await promise;
+    expect(screen.queryAllByRole("option")).toEqual([]);
+    expect(submitPrompt).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  test("a search answer that arrives after Tab completed a command does not show rows at the next key", async () => {
+    const base = createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+    });
+    // The search for `/co` is held until after the Tab (superseded by `/cont`, so the list never shows its answer). The
+    // search for `/context x` is held too, so the list is seen before any answer to the next key.
+    const heldOld = Promise.withResolvers<TriggerSearchResult>();
+    const heldNext = Promise.withResolvers<TriggerSearchResult>();
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: (query, position) => {
+        if (query === "/co") return heldOld.promise;
+        if (query === "/context x") return heldNext.promise;
+        return base.searchTyped(query, position);
+      },
+    };
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    const input = composerInput();
+    fireEvent.change(input, { target: { value: "/co" } });
+    input.setSelectionRange(3, 3);
+    // Let the debounce start the `/co` search, which stays held.
+    const { promise: debounced, resolve: debouncedDone } = Promise.withResolvers<void>();
+    setTimeout(debouncedDone, 120);
+    await debounced;
+    fireEvent.change(input, { target: { value: "/cont" } });
+    input.setSelectionRange(5, 5);
+    await screen.findByRole("option", { name: /^\/context/ });
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => expect(input.value).toBe("/context "));
+    // The superseded `/co` answer arrives after the completion.
+    heldOld.resolve(await base.searchTyped("/co"));
+    const { promise: later, resolve: laterDone } = Promise.withResolvers<void>();
+    setTimeout(laterDone, 120);
+    await later;
+    // The next key searches again, and its answer is held: until it comes, the list shows nothing rather than old rows.
+    fireEvent.change(input, { target: { value: "/context x" } });
+    input.setSelectionRange(9, 9);
+    const { promise: nextKey, resolve: nextKeyDone } = Promise.withResolvers<void>();
+    setTimeout(nextKeyDone, 120);
+    await nextKey;
+    expect(screen.queryAllByRole("option")).toEqual([]);
+    expect(submitPrompt).not.toHaveBeenCalled();
     provider.dispose();
   });
 

@@ -4,7 +4,7 @@ import {
   type Unstable_TriggerItem,
   unstable_useLiveCompletionAdapter,
 } from "@assistant-ui/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type {
   ComposerTriggerCandidate,
   ComposerTriggerProvider,
@@ -62,23 +62,26 @@ function statusLine(result: TriggerSearchResult): string | null {
   return result.error ? result.error.error.message : null;
 }
 
-/**
- * The directive text of a chosen command. A command with no arguments records its completed name here, before the text
- * reaches the matcher, so a Tab that completes it leaves the list closed (see the matcher in SlashPopover).
- */
-function directiveFormatter(completed: { current: string | null }): Unstable_DirectiveFormatter {
-  return {
-    serialize(item) {
-      const insertion = item.metadata?.insertText;
-      const text = typeof insertion === "string" ? insertion.trimEnd() : item.label;
-      if (typeof item.metadata?.argumentHint !== "string") completed.current = text;
-      return text;
-    },
-    parse(text) {
-      return [{ kind: "text", text }];
-    },
-  };
+/** A command with no arguments that a choose inserted: the list stays closed while the composer shows its text. */
+interface CompletedCommand {
+  readonly text: string;
+  /** False until the composer shows `text`: the text from before the choose can still reach the matcher until then. */
+  shown: boolean;
 }
+
+/**
+ * The directive text of a chosen command: the text the composer inserts. Its completion is recorded by the insertion
+ * callback (SlashPopover's handleInserted), which runs right after this serialize.
+ */
+const slashDirective: Unstable_DirectiveFormatter = {
+  serialize(item) {
+    const insertion = item.metadata?.insertText;
+    return typeof insertion === "string" ? insertion.trimEnd() : item.label;
+  },
+  parse(text) {
+    return [{ kind: "text", text }];
+  },
+};
 
 /** An empty list that no search has answered is still loading, and the popover says so. "No matching commands." is said only after a search has answered with none. */
 function awaitsAnswer(items: readonly Unstable_TriggerItem[], answers: AnswerQueries): boolean {
@@ -248,17 +251,17 @@ function SlashPopover({
   const quiet = useRef(false);
   // Whether the list's first command is exactly the text typed: only then does an Enter kept while it loaded choose it.
   const typedIsFirst = useRef(false);
-  // The composer's text when Tab last completed a command with no arguments: the list stays closed while it is unchanged.
-  const completedText = useRef<string | null>(null);
+  // The command a choose completed without arguments, while the composer shows it: the list stays closed for it.
+  const completed = useRef<CompletedCommand | null>(null);
   const [, redraw] = useState(0);
   const fetcher = useCallback(
     async (query: string): Promise<readonly Unstable_TriggerItem[]> => {
       if (!provider) return [];
+      const none: readonly Unstable_TriggerItem[] = [];
       const note = await provider.terminalOnlyNote(query);
       terminalNote.current = note;
       if (note !== null) {
         // A name only omp's terminal runs is answered by its note alone: no row is offered, so Enter can only refuse.
-        const none: readonly Unstable_TriggerItem[] = [];
         answers.set(none, query);
         candidateMap.current = new Map();
         status.current = null;
@@ -267,6 +270,15 @@ function SlashPopover({
         return none;
       }
       const result = await provider.searchTyped(query);
+      // A command that a choose completed keeps the list closed. A search that began before the completion answers nothing:
+      // its rows are for text the composer no longer shows.
+      if (completed.current !== null) {
+        candidateMap.current = new Map();
+        status.current = null;
+        quiet.current = true;
+        typedIsFirst.current = false;
+        return none;
+      }
       const next = resultItems(result);
       answers.set(next.items, query);
       candidateMap.current = next.candidates;
@@ -290,7 +302,6 @@ function SlashPopover({
   );
   useTriggerListLoading(completion.isLoading, answerKeptEnter);
   const sendAfterChoose = useSendAfterChoose();
-  const formatter = useMemo(() => directiveFormatter(completedText), []);
   const handleInserted = useCallback(
     (item: Unstable_TriggerItem) => {
       const candidate = candidateMap.current.get(item.id);
@@ -304,9 +315,9 @@ function SlashPopover({
         quiet.current = true;
         redraw((count) => count + 1);
         // A Tab keeps the completed name in the composer, so the list stays closed for it (see the matcher); a send clears it.
-        if (sendAfterChoose())
-          completedText.current = (candidate.insertText ?? `${candidate.label} `).trimEnd();
-        else completedText.current = null;
+        completed.current = sendAfterChoose()
+          ? { text: (candidate.insertText ?? `${candidate.label} `).trimEnd(), shown: false }
+          : null;
       }
     },
     [onSelect, sendAfterChoose],
@@ -316,10 +327,20 @@ function SlashPopover({
     <ComposerPrimitive.Unstable_TriggerPopover
       char="/"
       matcher={(text, _char, cursorPosition) => {
-        // A command with no arguments that was completed (see directiveFormatter) keeps the list closed until the text changes.
-        if (completedText.current !== null && text.trimEnd() !== completedText.current)
-          completedText.current = null;
-        return completedText.current === null ? slashMatcher(text, cursorPosition) : null;
+        // A command with no arguments that a choose completed keeps the list closed while the composer shows its text. The
+        // matcher can run before the composer applies the choose, with the text before it (`/cont` before `/context `): that
+        // is a prefix of the completed name, so it keeps the list closed. Any other text ends the completion.
+        const done = completed.current;
+        if (done !== null) {
+          const typed = text.trimEnd();
+          if (typed === done.text) {
+            done.shown = true;
+            return null;
+          }
+          if (!done.shown && done.text.startsWith(typed)) return null;
+          completed.current = null;
+        }
+        return slashMatcher(text, cursorPosition);
       }}
       adapter={completion.adapter}
       isLoading={completion.isLoading}
@@ -327,7 +348,7 @@ function SlashPopover({
       className="absolute bottom-full left-0 z-30 mb-2"
     >
       <ComposerPrimitive.Unstable_TriggerPopover.Directive
-        formatter={formatter}
+        formatter={slashDirective}
         onInserted={handleInserted}
       />
       <ComposerPrimitive.Unstable_TriggerPopoverItems>

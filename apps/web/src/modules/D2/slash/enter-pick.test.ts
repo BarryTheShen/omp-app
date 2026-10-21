@@ -1,0 +1,147 @@
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { type CapabilityMap, ThreadId } from "@omp-app/contracts";
+import { describe, expect, test } from "vitest";
+import { DESTRUCTIVE_FORMS } from "./destructive";
+import golden from "./enter-pick.golden.json";
+import realCatalog from "./fixtures/real-get-available-commands-18.12.2.json";
+import { createSlashCommandProvider } from "./provider";
+import type { SlashAppCommand } from "./routing";
+import { fakeSlashClient } from "./test-support";
+
+// Enter runs the first row of the `/` list. This pins that row for every prefix of every single-word name omp lists
+// (names and aliases) and of every app command name, with omp's real 18.12.2 list and main's real provider. A change
+// that moves a pick fails here; `ENTER_PICK_UPDATE=1` (run from apps/web) rewrites the golden file, and the diff goes in the PR body.
+
+const threadId = ThreadId.parse("thread-enter-pick");
+const available: CapabilityMap = {
+  "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
+};
+const GOLDEN_PATH = resolve(process.cwd(), "src/modules/D2/slash/enter-pick.golden.json");
+
+function appCommand(
+  name: string,
+  description: string,
+  flags: { readonly unlisted?: true; readonly takesArguments?: true } = {},
+): SlashAppCommand {
+  return { name, description, ...flags, run: async () => ({}) };
+}
+
+/**
+ * The app's own commands as the composition hands them to the composer (app/root.tsx `appSlashCommands`, main 1ffa8d473).
+ * The first 13 are listed rows; the rest are unlisted, guarded forms that still route when typed. `wt` and `worktree`
+ * are unlisted, and they still remove omp's `wt` row today (provider.ts `listEntries`): S8 changes that on purpose.
+ */
+const APP_COMMANDS: readonly SlashAppCommand[] = [
+  appCommand("new", "Start a new chat"),
+  appCommand("fresh", "Start a fresh connection to the model"),
+  appCommand("share", "Share this chat as a link"),
+  appCommand("copy", "Copy from this chat"),
+  appCommand("export", "Export this chat"),
+  appCommand("dump", "Save omp's dump of this chat.", { takesArguments: true }),
+  appCommand("open", "Open the last link from the conversation in your browser."),
+  appCommand("record", "Start or stop recording this screen to a replayable file."),
+  appCommand("login", "Log in to a model provider"),
+  appCommand("settings", "Open settings"),
+  appCommand("hotkeys", "Show all keyboard shortcuts"),
+  appCommand("goal", "Show, set, pause, resume or drop the goal", { takesArguments: true }),
+  appCommand("hub", "Open the Agent Hub"),
+  appCommand("wt", "Move this chat into a worktree, after you confirm", {
+    unlisted: true,
+    takesArguments: true,
+  }),
+  appCommand("worktree", "Move this chat into a worktree, after you confirm", {
+    unlisted: true,
+    takesArguments: true,
+  }),
+  appCommand("mcp reload", "Refresh the command list omp offers", { unlisted: true }),
+  appCommand("session delete", "Delete this chat, after you confirm", { unlisted: true }),
+  appCommand("usage reset", "Spend a saved rate-limit reset, after you confirm", {
+    unlisted: true,
+    takesArguments: true,
+  }),
+  ...DESTRUCTIVE_FORMS.map((form) =>
+    appCommand(form, "Asks first, then runs it in omp", { unlisted: true, takesArguments: true }),
+  ),
+];
+
+/** Every prefix of every single-word name omp lists (names and aliases) or the app names, plus `a` to `z`. */
+function typedPrefixes(): readonly string[] {
+  const words = new Set<string>();
+  for (const command of realCatalog.commands) {
+    words.add(command.name);
+    for (const alias of command.aliases ?? []) words.add(alias);
+  }
+  for (const app of APP_COMMANDS) words.add(app.name);
+  const prefixes = new Set<string>("abcdefghijklmnopqrstuvwxyz");
+  for (const word of words) {
+    if (/\s/u.test(word)) continue;
+    for (let length = 1; length <= word.length; length += 1) prefixes.add(word.slice(0, length));
+  }
+  return [...prefixes].sort();
+}
+
+async function picksForEveryPrefix(): Promise<Record<string, string>> {
+  const fake = fakeSlashClient({ commands: async () => ({ commands: realCatalog.commands }) });
+  const provider = createSlashCommandProvider({
+    client: fake.client,
+    threadId,
+    capabilities: () => available,
+    appCommands: () => APP_COMMANDS,
+  });
+  const picks: Record<string, string> = {};
+  try {
+    for (const prefix of typedPrefixes()) {
+      const { candidates } = await provider.searchTyped(prefix);
+      picks[prefix] = candidates[0]?.label ?? "(none)";
+    }
+  } finally {
+    provider.dispose();
+  }
+  return picks;
+}
+
+describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.2 list", () => {
+  test("the app's commands are the 13 listed rows and the unlisted guarded forms", () => {
+    const listed = APP_COMMANDS.filter((app) => app.unlisted !== true).map((app) => app.name);
+    expect(listed).toEqual([
+      "new",
+      "fresh",
+      "share",
+      "copy",
+      "export",
+      "dump",
+      "open",
+      "record",
+      "login",
+      "settings",
+      "hotkeys",
+      "goal",
+      "hub",
+    ]);
+  });
+
+  test("every prefix of every name and alias picks the row the golden file records", async () => {
+    const picks = await picksForEveryPrefix();
+    if (process.env.ENTER_PICK_UPDATE === "1") {
+      writeFileSync(GOLDEN_PATH, `${JSON.stringify(picks, null, 2)}\n`);
+      return;
+    }
+    expect(Object.keys(picks).length).toBeGreaterThan(300);
+    expect(picks).toEqual(golden);
+  });
+
+  test("the picks a person sees today for the examples the plan names", async () => {
+    const picks = await picksForEveryPrefix();
+    expect(picks).toMatchObject({
+      s: "/ssh",
+      set: "/settings",
+      lo: "/login",
+      ex: "/export",
+      m: "/mcp",
+      // S8 changes these two on purpose (omp's `wt` row is listed again): until then the pick is `/switch`.
+      w: "/switch",
+      wt: "/switch",
+    });
+  });
+});

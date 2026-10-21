@@ -3,14 +3,21 @@ import {
   type ThreadMessage,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
+import type { AppClient } from "@omp-app/client";
 import {
   AppFailure,
   type CapabilityMap,
+  McpCommandPromptListResult,
+  McpCommandResourceListResult,
+  McpCommandServerListResult,
+  McpCommandServerSummary,
+  McpCommandsPort,
+  type PortClient,
   type RpcSessionSend,
   type SessionDeleteCommandResult,
   ThreadId,
 } from "@omp-app/contracts";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
@@ -46,6 +53,7 @@ import {
   sessionDeleteSlashCommand,
   settingsSlashCommand,
   shareSlashCommand,
+  useSlashCommands,
 } from "./slash-commands";
 
 function RuntimeHarness({ children }: { readonly children: ReactNode }) {
@@ -1081,5 +1089,78 @@ describe("#1348 the typed forms that delete data each ask first, with their own 
       { threadId, command: "/marketplace uninstall --scope user" },
       {},
     );
+  });
+});
+
+describe("#2263 the chat's `/` list and routing read only omp's command list", () => {
+  test("the provider a chat builds never asks omp's MCP commands, so an MCP server's prompts are not offered", async () => {
+    const fake = fakeSlashClient();
+    const mcpCalls: string[] = [];
+    const docs = McpCommandServerSummary.parse({
+      name: "docs",
+      scope: "user",
+      transport: "stdio",
+      enabled: true,
+      status: "configured",
+      command: "docs-server",
+      auth: "unknown",
+      source: { origin: "user", reloadRequired: true },
+    });
+    const mcp: PortClient<typeof McpCommandsPort> = {
+      async servers() {
+        mcpCalls.push("servers");
+        return McpCommandServerListResult.parse({
+          servers: [docs],
+          revision: "mcp-servers-r1",
+          truncated: false,
+          skippedCount: 0,
+        });
+      },
+      async prompts() {
+        mcpCalls.push("prompts");
+        return McpCommandPromptListResult.parse({
+          prompts: [
+            {
+              id: "mcp-prompt-0000000000000001",
+              server: "docs",
+              name: "summarize",
+              description: "Summarize a page",
+            },
+          ],
+          revision: "mcp-prompts-r1",
+        });
+      },
+      async resources() {
+        mcpCalls.push("resources");
+        return McpCommandResourceListResult.parse({ resources: [], revision: "mcp-resources-r1" });
+      },
+      async action() {
+        mcpCalls.push("action");
+        throw new Error("the slash list never runs an MCP action");
+      },
+      async help() {
+        mcpCalls.push("help");
+        throw new Error("the slash list never asks for MCP help");
+      },
+    };
+    const client = {
+      ...fake.client,
+      port: (port: unknown) => (port === McpCommandsPort ? mcp : fake.client.port(port as never)),
+    } as unknown as AppClient;
+
+    const { result } = renderHook(() =>
+      useSlashCommands({ client, threadId, capabilities: available, appCommands: [] }),
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+    const provider = result.current as SlashCommandProvider;
+    const rows = (await provider.searchTyped("")).candidates.map((candidate) => candidate.label);
+    expect(rows).toContain("/context");
+    expect(rows).not.toContain("/docs:summarize");
+    const typed = (await provider.searchTyped("docs:s")).candidates.map(
+      (candidate) => candidate.label,
+    );
+    expect(typed).not.toContain("/docs:summarize");
+    await expect(provider.route("/docs:summarize")).resolves.toBeNull();
+    expect(mcpCalls).toEqual([]);
   });
 });

@@ -8,7 +8,6 @@ import {
   SlashCommand as SlashCommandText,
   type ThreadId,
 } from "@omp-app/contracts";
-import type { McpPromptCatalog, McpPromptSummary } from "../../I1/contract";
 import type {
   SlashCommand,
   TriggerPosition,
@@ -33,8 +32,6 @@ export interface SlashCommandProviderOptions {
   readonly capabilities?: () => CapabilityMap;
   /** Injected for tests; when absent the provider owns and disposes its own catalog. */
   readonly catalog?: SlashCommandCatalogController;
-  /** I1's MCP prompt catalog. omp already lists these as `mcp_prompt`; a prompt listed twice shows once. */
-  readonly promptCatalog?: McpPromptCatalog;
   /** The commands the app runs itself, read at each use so a new handler never rebuilds the provider. */
   readonly appCommands?: () => readonly SlashAppCommand[];
 }
@@ -64,8 +61,6 @@ export function createSlashCommandProvider(
     });
   const gateway = options.client.port(OmpCommandGateway);
   let loading: Promise<void> | undefined;
-  let promptEntries: readonly SlashListEntry[] | undefined;
-  let promptLoad: Promise<readonly SlashListEntry[]> | undefined;
 
   // Waits for the first read, or for a read already in flight, so a submit never routes on an empty list.
   // A ready list is kept current by omp's live frames. Any other state is read again here, so a failed
@@ -85,40 +80,13 @@ export function createSlashCommandProvider(
     return loading;
   };
 
-  const loadPromptEntries = (): Promise<readonly SlashListEntry[]> => {
-    if (promptEntries !== undefined || options.promptCatalog === undefined) {
-      return Promise.resolve(promptEntries ?? []);
-    }
-    const promptCatalog = options.promptCatalog;
-    promptLoad ??= promptCatalog
-      .list()
-      .then((prompts) => {
-        promptEntries = prompts.map(promptToEntry);
-        return promptEntries;
-      })
-      .catch(() => {
-        // Cached as empty: a failing MCP read is not retried on every keystroke. omp's own list still has these prompts.
-        promptEntries = [];
-        return promptEntries;
-      })
-      .finally(() => {
-        promptLoad = undefined;
-      });
-    return promptLoad;
-  };
-
-  /** omp's commands first, then MCP prompts that omp did not already list. An app command replaces omp's command of the same name. */
-  const listEntries = async (): Promise<readonly SlashListEntry[]> => {
+  /** omp's commands, minus each one that an app command of the same name replaces. */
+  const listEntries = (): readonly SlashListEntry[] => {
     const appNames = new Set((options.appCommands?.() ?? []).map((app) => app.name));
-    const fromOmp = catalog
+    return catalog
       .getSnapshot()
       .commands.filter((command) => !appNames.has(command.name))
       .map(commandToEntry);
-    const seen = new Set(fromOmp.map((entry) => `${entry.source}:${entry.name}`));
-    const extra = (await loadPromptEntries()).filter(
-      (entry) => !seen.has(`${entry.source}:${entry.name}`),
-    );
-    return [...fromOmp, ...extra];
   };
 
   const appEntries = (): readonly SlashListEntry[] =>
@@ -136,7 +104,7 @@ export function createSlashCommandProvider(
   ): Promise<TriggerSearchResult> => {
     await ensureCatalog();
     const snapshot = catalog.getSnapshot();
-    const entries = [...(await listEntries()), ...appEntries()];
+    const entries = [...listEntries(), ...appEntries()];
     const candidates = rankSlashEntries(entries, query).map((candidate) =>
       position === undefined ? candidate : { ...candidate, position },
     );
@@ -159,7 +127,7 @@ export function createSlashCommandProvider(
     if (snapshot.state !== "ready" && snapshot.commands.length === 0) {
       return routeWithoutList(text, appCommands, snapshot.error?.error.message);
     }
-    return routeSlashText(text, await listEntries(), appCommands);
+    return routeSlashText(text, listEntries(), appCommands);
   };
 
   const execute = (command: string, callOptions?: PortCallOptions): Promise<CommandRunResult> => {
@@ -185,7 +153,7 @@ export function createSlashCommandProvider(
     const note = terminalOnlyNote(typed);
     if (note === null) return null;
     await ensureCatalog();
-    const listed = [...(await listEntries()), ...appEntries()];
+    const listed = [...listEntries(), ...appEntries()];
     const taken = listed.some(
       (entry) => entry.name === typed || (entry.aliases ?? []).includes(typed),
     );
@@ -210,14 +178,6 @@ export function createSlashCommandProvider(
 
 function commandToEntry(command: SlashCommand): SlashListEntry {
   return command;
-}
-
-function promptToEntry(prompt: McpPromptSummary): SlashListEntry {
-  return {
-    name: `${prompt.server}:${prompt.name}`,
-    source: "mcp_prompt",
-    ...(prompt.description === undefined ? {} : { description: prompt.description }),
-  };
 }
 
 /**

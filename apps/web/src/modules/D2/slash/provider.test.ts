@@ -1,6 +1,5 @@
 import { AppFailure, type CapabilityMap, ThreadId } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
-import type { McpPromptCatalog, McpPromptSummary } from "../../I1/contract";
 import { createSlashCommandCatalog } from "./catalog";
 import { createSlashCommandProvider } from "./provider";
 import type { SlashAppCommand } from "./routing";
@@ -15,18 +14,6 @@ const newChat: SlashAppCommand = {
   description: "Start a new chat",
   run: async () => ({ message: "Started a new chat." }),
 };
-
-function promptList(
-  prompts: readonly McpPromptSummary[],
-  list: () => Promise<readonly McpPromptSummary[]> = async () => prompts,
-): McpPromptCatalog {
-  return {
-    list,
-    invoke: async () => {
-      throw new Error("the slash provider never invokes MCP prompts");
-    },
-  };
-}
 
 describe("D2.3 slash provider", () => {
   test("a submit waits for the first read, so a known command routes before the list has loaded", async () => {
@@ -106,7 +93,7 @@ describe("D2.3 slash provider", () => {
     provider.dispose();
   });
 
-  test("an MCP prompt omp already lists shows once, and a new one is added", async () => {
+  test("an MCP prompt omp lists is shown once, and one omp does not list is neither offered nor run", async () => {
     const fake = fakeSlashClient({
       commands: async () => ({
         commands: [...REAL_COMMAND_LIST, { name: "github:review", source: "mcp_prompt" }],
@@ -116,36 +103,20 @@ describe("D2.3 slash provider", () => {
       client: fake.client,
       threadId,
       capabilities: () => available,
-      promptCatalog: promptList([
-        { id: "p1", server: "github", name: "review" },
-        { id: "p2", server: "docs", name: "summarize" },
-      ]),
     });
 
     const review = (await provider.searchTyped("github:review")).candidates.filter(
       (candidate) => candidate.id === "slash:mcp_prompt:github:review",
     );
-    const summarize = (await provider.searchTyped("docs:summ")).candidates;
     expect(review).toHaveLength(1);
-    expect(summarize.map((candidate) => candidate.id)).toEqual(["slash:mcp_prompt:docs:summarize"]);
-    provider.dispose();
-  });
-
-  test("a failed MCP prompt read counts as no prompts, and is not retried on every search", async () => {
-    const list = vi.fn(async () => {
-      throw new AppFailure({ code: "unavailable", message: "MCP is off.", retryable: false });
+    expect(review[0]?.metadata).toMatchObject({ sourceLabel: "MCP prompt" });
+    expect((await provider.searchTyped("docs:summ")).candidates).toEqual([]);
+    await expect(provider.route("/github:review")).resolves.toEqual({
+      kind: "omp",
+      command: "/github:review",
     });
-    const fake = fakeSlashClient();
-    const provider = createSlashCommandProvider({
-      client: fake.client,
-      threadId,
-      capabilities: () => available,
-      promptCatalog: promptList([], list),
-    });
-
-    await provider.searchTyped("a");
-    await provider.searchTyped("ab");
-    expect(list).toHaveBeenCalledTimes(1);
+    // Not in omp's list: the app does not read MCP prompts itself, so this is a normal prompt.
+    await expect(provider.route("/docs:summarize")).resolves.toBeNull();
     provider.dispose();
   });
 
