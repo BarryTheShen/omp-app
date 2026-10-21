@@ -3,8 +3,9 @@ import { join } from "node:path";
 import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } from "./real-omp";
 
 realTest.setTimeout(300_000);
-// omp-app comes back on the same port, so the old tab reaches the new server with its old token and shows the expired page.
-realTest.use({ serverPort: Number(process.env.E2E_PORT ?? 4173) + 10 });
+// omp-app comes back at the same address: a port of 0 is picked at the first start and kept across the restart, so the old tab
+// reaches the new server with its old token and shows the expired page. A fixed port collided between parallel workers.
+realTest.use({ serverPort: 0 });
 
 const DRAFT = "draft in an unsent chat";
 

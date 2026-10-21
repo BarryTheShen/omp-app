@@ -23,4 +23,19 @@ describe("releaseThread", () => {
 
     expect(logged).toHaveBeenCalledTimes(1);
   });
+
+  test("a launch the server refused, because it restarted, holds nothing here and is not logged", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const close = async (): Promise<never> => {
+      throw new AppFailure({
+        code: "permission",
+        message: "Launch token is not valid",
+        retryable: false,
+      });
+    };
+
+    await releaseThread(close, threadId);
+
+    expect(logged).not.toHaveBeenCalled();
+  });
 });

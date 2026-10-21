@@ -2513,6 +2513,12 @@ function ConnectedApp({
     (threadId: ThreadId): Promise<void> => openHistoryChat(threadId),
     [openHistoryChat],
   );
+  // The chat a New chat opened: the server started it, so it has no messages yet (see `openStarted`).
+  const openStartedChat = useCallback(
+    (threadId: ThreadId): Promise<void> =>
+      openHistoryChatThrough(threadId, (history) => history.openStarted(threadId)),
+    [openHistoryChatThrough],
+  );
   // A pick from the sidebar: a chat that did not open is shown where it would open (the history's error, on the empty
   // screen), so that failure is not raised again here. Any other refusal, such as no folder being selected, still is.
   const openSidebarChat = useCallback(
@@ -2575,9 +2581,9 @@ function ConnectedApp({
       newChatHolds.current.at(-1)?.();
       newChatTicketRef.current?.settle("opened");
       newChatTicketRef.current = null;
-      return openThread(threadId);
+      return openStartedChat(threadId);
     },
-    [openThread],
+    [openStartedChat],
   );
   // The chat on screen registers how a send reaches it: the view that shows the open chat (see `deliverToOpenChat`).
   const liveChat = useRef<{
@@ -2669,9 +2675,9 @@ function ConnectedApp({
     const initialized = await remote.initialize("new");
     const started = initialized.remoteId as ThreadId;
     setNewChatThreadId(started);
-    await openThread(started);
+    await openStartedChat(started);
     return started;
-  }, [openThread, remote]);
+  }, [openStartedChat, remote]);
   // Settings saves through its own runtime; the external signal refreshes only the paste reader after the exit.
   const settingsClosed = useMemo(() => createSettingsClosedSignal(), []);
   const openSettings = useCallback(

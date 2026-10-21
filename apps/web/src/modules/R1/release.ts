@@ -12,6 +12,12 @@ export type CloseThread = (args: { readonly threadId: ThreadId }) => Promise<unk
 const NOTHING_HELD = ["not_found", "unavailable", "cancelled", "omp_exited", "timeout"];
 
 /**
+ * The server refused this page's launch link or token. A refused socket never gets a server session, so it holds no chat
+ * there; the client reports the refusal with these messages (packages/client/src/client.ts).
+ */
+const LAUNCH_REFUSED = ["Launch link has expired", "Launch token is not valid"];
+
+/**
  * Tells the server this view of a chat is gone, so an omp nobody watches can be stopped (each holds
  * about 380 MB while idle). Best effort: it never throws, and only a failure that points at a bug is
  * reported.
@@ -20,8 +26,10 @@ export async function releaseThread(close: CloseThread, threadId: ThreadId): Pro
   try {
     await close({ threadId });
   } catch (error) {
-    const code = error instanceof AppFailure ? error.appError.code : "internal";
+    const appError = error instanceof AppFailure ? error.appError : undefined;
+    const code = appError?.code ?? "internal";
     if (NOTHING_HELD.includes(code)) return;
+    if (code === "permission" && LAUNCH_REFUSED.includes(appError?.message ?? "")) return;
     console.error("[omp-app] could not let go of a chat on the server", error);
   }
 }

@@ -146,4 +146,50 @@ describe("useChatDraft", () => {
       }),
     );
   });
+
+  test("a chat that starts unsent but already has messages keeps its own draft", () => {
+    const store = new ScopedDraftStore();
+    const messages = messageList(["first message"]);
+    const { result } = renderHook(() =>
+      useChatDraft({
+        draftStore: store,
+        folder,
+        threadId: ThreadId.parse("chat-v"),
+        startsUnsent: true,
+        messages,
+        loaded: true,
+      }),
+    );
+    expect(result.current.controller.getSnapshot().scope).toEqual({
+      kind: "thread",
+      threadId: ThreadId.parse("chat-v"),
+    });
+  });
+
+  test("a New chat starting over a chat with messages shows the folder's new-chat draft, and the chat's own draft returns when the New chat settles", () => {
+    const store = new ScopedDraftStore();
+    const chat = messageList(["first message"]);
+    // While a New chat opens, the composer shows no messages of the chat on screen, so that chat's text is the folder's draft.
+    const opening = messageList([]);
+    const chatScope = { kind: "thread", threadId: ThreadId.parse("chat-w") } as const;
+    const { result, rerender } = renderHook(
+      ({ messages }: { readonly messages: ChatMessagesSource }) =>
+        useChatDraft({
+          draftStore: store,
+          folder,
+          threadId: ThreadId.parse("chat-w"),
+          startsUnsent: true,
+          messages,
+          loaded: true,
+        }),
+      { initialProps: { messages: chat } },
+    );
+    expect(result.current.controller.getSnapshot().scope).toEqual(chatScope);
+
+    rerender({ messages: opening });
+    expect(result.current.controller.getSnapshot().scope).toEqual({ kind: "folder", folder });
+
+    rerender({ messages: chat });
+    expect(result.current.controller.getSnapshot().scope).toEqual(chatScope);
+  });
 });

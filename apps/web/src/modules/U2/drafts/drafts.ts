@@ -23,17 +23,23 @@ const MOVE_CONFLICT = "The draft changed in another tab before it could move";
 type FailedStep = "load" | "save" | "clear";
 
 /**
- * Writes this app is still making, by scope. A controller that loads a scope waits for them first, so a
- * draft flushed as the person leaves a chat is the one the next chat that opens the same scope reads.
+ * Writes and sends this app is still making, by scope. A controller that loads a scope waits for them first, so a
+ * draft flushed as the person leaves a chat, or a send still being admitted, is the one the next chat that opens the
+ * same scope reads.
  */
 const pendingWrites = new Map<string, Promise<void>>();
 
 function trackWrite<T>(scope: DraftScope, write: Promise<T>): Promise<T> {
   const key = draftScopeStream(scope);
-  const settled = write.then(
-    () => undefined,
-    () => undefined,
-  );
+  // A write waits for the ones before it, so a later write does not hide an earlier one still in flight.
+  const earlier = pendingWrites.get(key);
+  const settled = Promise.all([
+    earlier,
+    write.then(
+      () => undefined,
+      () => undefined,
+    ),
+  ]).then(() => undefined);
   pendingWrites.set(key, settled);
   void settled.then(() => {
     if (pendingWrites.get(key) === settled) pendingWrites.delete(key);
@@ -516,7 +522,11 @@ export class DraftController {
     await this.saveCurrent();
   }
 
-  /** Submit clears the draft only after the injected R0.3 callback resolves at admission. */
+  /**
+   * Submit clears the draft only after the injected R0.3 callback resolves at admission. Admission and the clear are a
+   * write of this scope, so a controller that loads the scope meanwhile reads the draft after it is cleared. A send that
+   * fails is recorded after that write, so the recording does not wait for the send it belongs to.
+   */
   public async submit(
     intent: PromptIntent,
     submitPrompt: (intent: PromptIntent) => Promise<void>,
@@ -527,13 +537,21 @@ export class DraftController {
     const attachments = [...this.snapshot.attachments];
     this.setDraft(text, attachments);
     try {
-      await submitPrompt(intent);
-      // The draft holds the line with its mode prefix (`!pwd`): compare against that, not the bare command.
-      await this.clearAfterAdmission(text);
+      await trackWrite(this.scope, this.admitAndClear(intent, submitPrompt, text));
     } catch (error) {
       await this.recordFailedSend(text, attachments, error);
       throw error;
     }
+  }
+
+  private async admitAndClear(
+    intent: PromptIntent,
+    submitPrompt: (intent: PromptIntent) => Promise<void>,
+    text: string,
+  ): Promise<void> {
+    await submitPrompt(intent);
+    // The draft holds the line with its mode prefix (`!pwd`): compare against that, not the bare command.
+    await this.clearAfterAdmission(text);
   }
 
   public async clearAfterAdmission(sentText?: string): Promise<void> {

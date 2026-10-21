@@ -16,7 +16,7 @@ export interface UseChatDraftOptions {
   readonly draftStore: DraftStoreAdapter;
   readonly folder: FolderPath | null;
   readonly threadId: ThreadId;
-  /** True for a chat opened as new: its text is the folder's new-chat draft from the first keystroke. */
+  /** True for a chat opened as new: while it has no messages, its text is the folder's new-chat draft from the first keystroke. */
   readonly startsUnsent?: boolean;
   readonly messages: ChatMessagesSource;
   /** False while the chat's history is still loading. */
@@ -58,17 +58,20 @@ export function useChatDraft({
   buffer,
 }: UseChatDraftOptions): UseChatDraftResult {
   const lifecycle = typeof window === "undefined" ? undefined : window;
+  // A chat that starts unsent is new only while it has no messages; a chat that already has some keeps its own draft.
+  // While a New chat opens over this chat, the caller passes no messages for it, so the messages source changes and the
+  // draft is built again.
   const chat = useMemo(
     () =>
       new ChatDraft({
         store: draftStore,
         folder,
         threadId,
-        startsUnsent,
+        startsUnsent: startsUnsent && messages.getSnapshot().messageOrder.length === 0,
         lifecycle,
         buffer,
       }),
-    [draftStore, folder, threadId, startsUnsent, lifecycle, buffer],
+    [draftStore, folder, threadId, startsUnsent, messages, lifecycle, buffer],
   );
   // The chat is disposed once it is replaced or unmounted; StrictMode's simulated remount keeps it.
   useDisposeWhenReplaced(chat);

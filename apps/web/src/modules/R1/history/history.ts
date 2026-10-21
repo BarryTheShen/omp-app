@@ -38,7 +38,7 @@ export interface SelectedThreadHistoryState {
   readonly isLoading: boolean;
   readonly isSwitching: boolean;
   readonly error: AppError | null;
-  /** The open chat was started as new (`openNew`): it has no messages yet, so its text is the folder's new-chat draft. */
+  /** The open chat was started as new (`openNew`, or `openStarted` for the sidebar's New chat): no messages yet, so its text is the folder's draft. */
   readonly openedNew: boolean;
 }
 
@@ -258,6 +258,16 @@ export class SelectedThreadHistoryController {
   }
 
   /**
+   * Opens a chat the server has just started for a New chat (the sidebar's New chat). It has no messages yet, so it is
+   * marked `openedNew` from the moment it is on screen, as `openNew` marks its chat: its text is the folder's new-chat
+   * draft from the first keystroke. Any other open or close clears the mark.
+   */
+  public openStarted(threadId: ThreadId): Promise<OmpRuntimeStore> {
+    const keepShown = this.state.store !== undefined && this.state.threadId !== undefined;
+    return this.open({ threadId }, keepShown, true);
+  }
+
+  /**
    * Holds a chat switch the page started before its chat is open (the sidebar's New chat, from its click until the chat
    * opens or fails). The hold ends only when its release is called, so another chat's open in between does not drop it.
    * Returns the release.
@@ -469,14 +479,20 @@ export class SelectedThreadHistoryController {
     return releaseThread(this.rpc.close, threadId);
   }
 
-  private open(args: OpenThreadArgs, keepShown = false): Promise<OmpRuntimeStore> {
+  private open(
+    args: OpenThreadArgs,
+    keepShown = false,
+    startedNew = false,
+  ): Promise<OmpRuntimeStore> {
     // Asking for a chat gives up the chat a dropped connection left. Every request takes a ticket, and an open that
     // fails is recorded for a reopen only while its ticket is the latest: a later pick or close came after it.
     this.requests += 1;
     const ticket = this.requests;
     this.pendingOpens += 1;
     const settle = this.openSettler();
-    return this.serialize(() => this.openNow(args, settle, ticket, keepShown)).finally(settle);
+    return this.serialize(() => this.openNow(args, settle, ticket, keepShown, startedNew)).finally(
+      settle,
+    );
   }
 
   /** Ends one open's pending state, once: at its commit, or when it fails. A later call does nothing. */
@@ -495,8 +511,9 @@ export class SelectedThreadHistoryController {
     settle: () => void,
     ticket: number,
     keepShown = false,
+    startedNew = false,
   ): Promise<OmpRuntimeStore> {
-    const openedNew = "start" in args && args.start === "new";
+    const openedNew = startedNew || ("start" in args && args.start === "new");
     const closesAtStart = this.closes;
     const requested = "threadId" in args ? args.threadId : undefined;
     if (!keepShown) {

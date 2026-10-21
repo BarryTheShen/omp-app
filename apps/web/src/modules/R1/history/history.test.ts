@@ -286,6 +286,40 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(controller.getSnapshot().openedNew).toBe(false);
   });
 
+  test("a chat started as new is marked openedNew while its history still loads, and opening another chat clears the mark", async () => {
+    const { promise: historyLoad, resolve: finishLoad } = Promise.withResolvers<void>();
+    const rpc = createRpc(
+      (args) => ({
+        threadId: "threadId" in args ? args.threadId : threadOne,
+        sessionFile: null,
+        capabilities: {},
+      }),
+      [],
+      [],
+      undefined,
+      undefined,
+      historyLoad,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+    const opening = controller.openStarted(threadOne);
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot()).toMatchObject({
+        threadId: threadOne,
+        isLoading: true,
+        openedNew: true,
+      }),
+    );
+    finishLoad();
+    await opening;
+    expect(controller.getSnapshot()).toMatchObject({ isLoading: false, openedNew: true });
+
+    await controller.openExisting(threadTwo);
+    expect(controller.getSnapshot()).toMatchObject({ threadId: threadTwo, openedNew: false });
+  });
+
   test("switching threads unsubscribes the old event stream before opening the new one", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc((args) => ({
