@@ -25,7 +25,7 @@ const SLASH_TYPING = /^\/\S*(?:[ \t][^\n]*)?$/u;
 
 /** The popover's box: the rows, the no-match line and the loading line share it, so its look is set in one place. */
 const POPOVER_BOX =
-  "bg-popover text-popover-foreground border-foreground/10 max-h-72 min-w-64 max-w-[min(28rem,90vw)] overflow-y-auto rounded-surface border p-1";
+  "bg-popover text-popover-foreground border-foreground/10 max-h-[min(28rem,45dvh)] min-w-64 max-w-[min(28rem,90vw)] overflow-y-auto rounded-surface border p-1";
 
 interface TriggerItemsResult {
   readonly items: readonly Unstable_TriggerItem[];
