@@ -34,8 +34,9 @@ function payloadOf(frame: Record<string, unknown>): Record<string, unknown> | un
 }
 
 /**
- * Drops the start of the run's assistant message, then holds the answer to the get_state the gap starts (the
- * refetch's first read) for REFETCH_MS. `answered` runs once that held answer has been delivered to the page.
+ * Drops the start of the run's assistant message, then holds the answer to the first call the page makes after it, whatever
+ * that call is: the gap's refetch reads, a session read or a state read differ from run to run. The answer is held for
+ * REFETCH_MS. `answered` runs once that held answer has been delivered to the page.
  */
 async function missedStartThenSlowRefetch(page: Page, answered: () => void): Promise<void> {
   await page.routeWebSocket(/\/ws/, (ws) => {
@@ -49,9 +50,9 @@ async function missedStartThenSlowRefetch(page: Page, answered: () => void): Pro
       if (frame.type === "call" && frame.method === "send") {
         const args = (frame.args ?? {}) as { command?: { type?: string } };
         if (args.command?.type === "prompt") promptSent = true;
-        if (dropped && !held && refetchCall === undefined && args.command?.type === "get_state") {
-          refetchCall = String(frame.id);
-        }
+      }
+      if (frame.type === "call" && dropped && !held && refetchCall === undefined) {
+        refetchCall = String(frame.id);
       }
       server.send(message);
     });
