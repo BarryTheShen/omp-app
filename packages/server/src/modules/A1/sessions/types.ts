@@ -1,5 +1,7 @@
 /** Read-only metadata exposed by the omp session-file adapter. */
 
+import type { SessionSummary } from "./summary";
+
 export type SessionTitleSource = "auto" | "user";
 
 export interface SessionTitleSlot {
@@ -212,6 +214,16 @@ export interface SessionFileStoreOptions {
   readonly views?: SessionViews;
   /** The chats this server runs a turn for in a folder. A chat with no session file yet is listed from these. */
   readonly runningIn?: (folder: string) => readonly string[];
+  /**
+   * The app data folder. The listing keeps its summary cache in it (`session-summaries.json`, mode 0600), so a restart
+   * reads a chat again only when the chat changed. Without it the cache lives in memory and a restart reads every chat.
+   */
+  readonly appDataDir?: string;
+  /**
+   * Reads a chat's summary for a listing and for a background refresh. The store's streaming reader unless a test replaces it,
+   * to hold or fail a read at a known point.
+   */
+  readonly summarizeFile?: (sessionFile: string) => Promise<SessionSummary>;
 }
 
 /** The views on the server's chats, as the app port counts them. */

@@ -41,6 +41,7 @@ export interface ServerViews {
 export function createServerSessionFileStore(options: {
   readonly sessionsRoot: string;
   readonly home: string;
+  readonly appDataDir?: string;
   readonly chats: ServerChats;
   readonly views: ServerViews;
   readonly leaseProbe: SessionLeaseProbe;
@@ -48,6 +49,7 @@ export function createServerSessionFileStore(options: {
   return new SessionFileStore({
     sessionsRoot: options.sessionsRoot,
     home: options.home,
+    ...(options.appDataDir === undefined ? {} : { appDataDir: options.appDataDir }),
     serverOwnsSession: (sessionId) => options.chats.has(ThreadId.parse(sessionId)),
     leaseProbe: options.leaseProbe,
     serverStopping: (sessionId) => options.chats.isStopping(ThreadId.parse(sessionId)),

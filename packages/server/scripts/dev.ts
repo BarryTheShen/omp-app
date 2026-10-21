@@ -390,6 +390,7 @@ export async function createCompositionServer(
   const sessionFileStore = createServerSessionFileStore({
     sessionsRoot: join(agentDir, "sessions"),
     home: homeDir,
+    appDataDir,
     chats: processRegistry,
     // Another omp holds a chat by its lease: the store refuses to delete such a chat, and lists it as held.
     leaseProbe: sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
@@ -582,6 +583,7 @@ export async function createCompositionServer(
         try {
           await processRegistry.closeAll();
         } finally {
+          await sessionFileStore.close();
           urlCatalog.dispose();
           extensionCatalog.dispose();
           ruleStore.dispose();

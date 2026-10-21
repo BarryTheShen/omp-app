@@ -129,6 +129,33 @@ function removalBinding(listeners: Set<(payload: unknown) => void>): A1EventBind
   };
 }
 
+/**
+ * A chat whose cached listing facts were stale is read again in the background, and then published as updated, so clients
+ * read it again. A background read or write that failed is logged; the listing carries on without it.
+ */
+function refreshBinding(context: A1PortContext): A1EventBinding {
+  return {
+    event: "changed",
+    subscribe: (listener) =>
+      context.sessionFileStore.onBackground((event) => {
+        if (event.kind === "failed") {
+          context.logger?.warn("sessions.refresh_failed", {
+            message: event.message,
+            ...(event.sessionFile === undefined ? {} : { session_file: event.sessionFile }),
+          });
+          return;
+        }
+        const change = SessionFileChanged.safeParse({
+          folder: event.cwd,
+          sessionFile: event.sessionFile,
+          id: event.id,
+          kind: "updated",
+        });
+        if (change.success) listener(change.data);
+      }),
+  };
+}
+
 export function createSessionFileStoreRegistration(context: A1PortContext): PortRegistration {
   const removals = new Set<(payload: unknown) => void>();
   return createA1PortRegistration(
@@ -217,7 +244,7 @@ export function createSessionFileStoreRegistration(context: A1PortContext): Port
       },
     },
     context.publish,
-    [...sessionTurnBindings(context), removalBinding(removals)],
+    [...sessionTurnBindings(context), removalBinding(removals), refreshBinding(context)],
     context.watchStreamActivity,
   );
 }

@@ -19,7 +19,8 @@ export interface SessionSummary {
   readonly parseWarnings: readonly ParseWarning[];
 }
 
-const CHUNK_BYTES = 1 << 20;
+/** Bytes per read of a session file: the scanner reads a file in pieces of this size. */
+export const CHUNK_BYTES = 256 * 1024;
 const FIRST_PROMPT_MAX = 120;
 /** The header sits in the first lines; this is far more than they need (the title slot is 256 bytes). */
 const HEADER_SCAN_BYTES = 256 * 1024;
@@ -196,25 +197,37 @@ class SessionScanner {
 }
 
 /**
- * Reads a session file in 1 MiB pieces and returns its summary. Memory stays near the size of the
- * longest single line; the file is never held whole. Throws the file system's error if it can't be
- * opened or read.
+ * Reads a session file in CHUNK_BYTES pieces and returns its summary. Memory stays near the size of the longest single
+ * line; the file is never held whole. Throws the file system's error if it can't be opened or read.
+ *
+ * A long line's pieces are joined once, when its newline arrives: the carried text was re-split on every read, which
+ * copied a long line once per read. Each read gets a buffer of its own: on a 30-chat first page, one reused buffer let
+ * the decoded text of long lines wait for the collector, and the peak resident size was about a third higher (measured
+ * with `summary-cache-memory.test.ts`).
  */
 export async function summarizeSessionFile(sessionFile: string): Promise<SessionSummary> {
   const handle = await fs.open(sessionFile, "r");
   try {
     const scanner = new SessionScanner(sessionFile);
-    const buffer = Buffer.allocUnsafe(CHUNK_BYTES);
     const decoder = new StringDecoder("utf8");
-    let carry = "";
+    let pieces: string[] = [];
     for (;;) {
+      const buffer = Buffer.allocUnsafe(CHUNK_BYTES);
       const { bytesRead } = await handle.read(buffer, 0, CHUNK_BYTES, null);
       if (bytesRead === 0) break;
-      const lines = (carry + decoder.write(buffer.subarray(0, bytesRead))).split("\n");
-      carry = lines.pop() ?? "";
-      for (const line of lines) scanner.line(line);
+      const text = decoder.write(buffer.subarray(0, bytesRead));
+      let from = 0;
+      let newline = text.indexOf("\n");
+      while (newline !== -1) {
+        pieces.push(text.slice(from, newline));
+        scanner.line(pieces.length === 1 ? (pieces[0] ?? "") : pieces.join(""));
+        pieces = [];
+        from = newline + 1;
+        newline = text.indexOf("\n", from);
+      }
+      if (from < text.length) pieces.push(text.slice(from));
     }
-    scanner.finish(carry + decoder.end());
+    scanner.finish(pieces.join("") + decoder.end());
     return scanner.summary();
   } finally {
     await handle.close();

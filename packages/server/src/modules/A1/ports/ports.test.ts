@@ -171,6 +171,7 @@ function createContext(
       listFolders: async () => ({ folders: ["/workspace"], nextCursor: null }),
       readSession: async () => session,
       listSubagents: async () => ({ sessionFile: session.sessionFile, transcripts: [] }),
+      onBackground: () => () => undefined,
     },
     configStore: {
       read: async () => ({

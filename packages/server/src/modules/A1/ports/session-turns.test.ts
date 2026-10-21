@@ -21,6 +21,7 @@ describe("the session file port publishes turn and running-list changes", () => 
           sessionId === threadId
             ? { cwd: "/workspace/app", sessionFile: "/workspace/app/.omp/chat-turn.jsonl" }
             : undefined,
+        onBackground: () => () => undefined,
       },
       processBusy: {
         onBusyChange: (listener: BusyListener) => {
@@ -69,6 +70,7 @@ describe("the session file port publishes turn and running-list changes", () => 
         findSession: async (): Promise<undefined> => {
           throw new Error("the file is gone");
         },
+        onBackground: () => () => undefined,
       },
       processBusy: {
         onBusyChange: (listener: BusyListener) => {
@@ -95,7 +97,10 @@ describe("the session file port publishes turn and running-list changes", () => 
     const hooks: BusyListener[] = [];
     const published: unknown[] = [];
     const context = {
-      sessionFileStore: { findSession: async (): Promise<undefined> => undefined },
+      sessionFileStore: {
+        findSession: async (): Promise<undefined> => undefined,
+        onBackground: () => () => undefined,
+      },
       processBusy: {
         onBusyChange: (listener: BusyListener) => {
           hooks.push(listener);

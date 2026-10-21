@@ -10,7 +10,7 @@ import {
   type SessionEntryWindow,
   type SessionEntryWindowArgs,
 } from "@omp-app/contracts";
-import { headerTimestamp, lastMessageTimestamp } from "./activity";
+import { headerTimestamp, lastMessageTimestamp, TAIL_CAP_BYTES } from "./activity";
 import { detectSessionLiveness } from "./liveness";
 import {
   defaultSessionOwnersRoot,
@@ -18,9 +18,20 @@ import {
   sessionBucketName,
   sessionBucketPath,
 } from "./paths";
+import { REFRESH_READ_LIMITS, ReadBudget } from "./read-budget";
 import { readSubagentPage, type SubagentPage, subagentTranscriptPath } from "./subagent-read";
 import { collectSubagentTranscripts, type WorkerLeaseProbe } from "./subagents";
 import { readSessionHeader, type SessionSummary, summarizeSessionFile } from "./summary";
+import {
+  type FileIdentity,
+  identityOf,
+  type StoredSummary,
+  SUMMARY_CACHE_FILE,
+  SummaryCache,
+  sameIdentity,
+  storedSummaryOf,
+  summaryOf,
+} from "./summary-cache";
 import type {
   ListFoldersArgs,
   ListSessionsArgs,
@@ -53,6 +64,20 @@ export interface SessionDeletion {
   /** The artifacts directory that could not be removed: it stays, and the delete still succeeded. */
   readonly artifactsKept?: string;
 }
+
+/**
+ * What the store reports from its background work. `refreshed`: a chat whose cached facts were stale has been read again, so
+ * its listing entry is current. `failed`: a background read or write did not succeed; the cache then drops the facts it could
+ * not check, or is rewritten.
+ */
+export type SessionBackgroundEvent =
+  | {
+      readonly kind: "refreshed";
+      readonly sessionFile: string;
+      readonly id: string;
+      readonly cwd: string;
+    }
+  | { readonly kind: "failed"; readonly sessionFile?: string; readonly message: string };
 
 function appFailure(
   code: "invalid_args" | "not_found" | "permission" | "internal" | "conflict",
@@ -180,20 +205,6 @@ function turnFields(
   return turn === undefined ? {} : { turn };
 }
 
-/** What the list cache remembers about a file: valid while the file's size and time are unchanged. */
-interface CachedSummary {
-  readonly size: number;
-  readonly mtimeMs: number;
-  readonly summary: SessionSummary;
-}
-
-/** A file's update time, valid while its size and modified time are unchanged. */
-interface CachedActivity {
-  readonly size: number;
-  readonly mtimeMs: number;
-  readonly updatedAt: string;
-}
-
 /**
  * A place in a listing's order: the time the chat last had a message (in whole milliseconds), the base name and a tag
  * (a short hash of the full path). The base name orders chats with the same time, and the tag orders files that also
@@ -205,12 +216,16 @@ interface ListingPlace {
   readonly tag: string;
 }
 
-/** A file a listing may show: found by its name, size and times; its update time is read by `#activityIso`. */
+/** A file a listing may show: found by its name, size and times; its update time is read by `#updatedAt`. */
 interface SessionCandidate extends ListingPlace {
   readonly file: string;
+  /** The file's real path: the key of its cached facts. */
+  readonly real: string;
   readonly size: number;
-  /** The file's modified time: the summary cache is valid while it is unchanged. */
+  /** The file's modified time and identity: the cached facts are valid while these are unchanged. */
   readonly mtimeMs: number;
+  readonly dev: number;
+  readonly ino: number;
   /** When the chat last had a message, as an ISO time: the time a listing shows. */
   readonly updatedAt: string;
 }
@@ -265,10 +280,8 @@ function decodeListingCursor(cursor: string): ListingPlace | undefined {
   return { activityMs, name, tag };
 }
 
-/** Files whose summaries are remembered; the oldest are forgotten first. */
-const SUMMARY_CACHE_LIMIT = 2_000;
-/** Files whose update times are remembered; the oldest are forgotten first. */
-const ACTIVITY_CACHE_LIMIT = 20_000;
+/** Working folders remembered per file; the oldest are forgotten first. */
+const CWD_CACHE_LIMIT = 2_000;
 /** Files stat-ed or read at the same moment, so a folder with many sessions can't exhaust file handles. */
 const FILE_BATCH = 24;
 
@@ -291,35 +304,22 @@ export class SessionFileStore {
   readonly blobsDir: string;
   readonly ownersRoot: string;
   readonly #options: SessionFileStoreOptions;
-  readonly #summaries = new Map<string, CachedSummary>();
   readonly #cwds = new Map<string, { size: number; mtimeMs: number; cwd: string | undefined }>();
-  readonly #activity = new Map<string, CachedActivity>();
-  /**
-   * When the chat last had a conversation message, as an ISO time: the newest message's time, else the header's, else
-   * the file's modified time. Read from the file's end and remembered while the file's size and time are unchanged, so
-   * a listing reads each file once. A file that cannot be read is listed at its modified time; the listing reports the
-   * read failure itself.
-   */
-  async #activityIso(file: string, size: number, mtimeMs: number): Promise<string> {
-    const cached = this.#activity.get(file);
-    if (cached && cached.size === size && cached.mtimeMs === mtimeMs) return cached.updatedAt;
-    let updatedAt: string;
-    try {
-      updatedAt =
-        (await lastMessageTimestamp(file)) ??
-        (await headerTimestamp(file)) ??
-        new Date(mtimeMs).toISOString();
-    } catch {
-      return new Date(mtimeMs).toISOString();
-    }
-    this.#activity.delete(file);
-    this.#activity.set(file, { size, mtimeMs, updatedAt });
-    for (const oldest of this.#activity.keys()) {
-      if (this.#activity.size <= ACTIVITY_CACHE_LIMIT) break;
-      this.#activity.delete(oldest);
-    }
-    return updatedAt;
-  }
+  /** The facts each chat file's listing read. They are kept in the app data folder between starts when it is set. */
+  readonly #cache: SummaryCache;
+  /** The bytes a listing has in flight, and how many files: see `read-budget.ts`. */
+  readonly #budget = new ReadBudget();
+  /** The bytes the background refreshes have in flight: their own budget, so that a refresh never holds up a listing. */
+  readonly #refreshBudget = new ReadBudget(REFRESH_READ_LIMITS);
+  /** The refreshes under way, by real path; `cancelled` is set when the chat is deleted or the store closes. */
+  readonly #refreshes = new Map<string, { cancelled: boolean }>();
+  /** The refreshes under way until each settles: `close` waits for them. */
+  readonly #refreshing = new Set<Promise<void>>();
+  /** Set by `close`: no refresh starts, and nothing is cached, after it. */
+  #closed = false;
+  /** Reads a chat's summary for a listing and a background refresh: the store's own reader unless one is given. */
+  readonly #summarize: (sessionFile: string) => Promise<SessionSummary>;
+  readonly #backgroundListeners = new Set<(event: SessionBackgroundEvent) => void>();
 
   /** A worker's own session lease, read by `collectSubagentTranscripts`: `free` once no live omp holds that session. */
   readonly #workerLease: WorkerLeaseProbe = async (sessionId, sessionFile) =>
@@ -327,12 +327,25 @@ export class SessionFileStore {
 
   constructor(options: SessionFileStoreOptions = {}) {
     this.#options = options;
+    this.#summarize = options.summarizeFile ?? summarizeSessionFile;
     this.sessionsRoot = path.resolve(
       options.sessionsRoot ?? defaultSessionsRoot({ home: options.home }),
     );
     // omp keeps its blob store beside its sessions folder: `<agent>/blobs` next to `<agent>/sessions`.
     this.blobsDir = path.join(path.dirname(this.sessionsRoot), "blobs");
     this.ownersRoot = path.resolve(options.ownersRoot ?? defaultSessionOwnersRoot(options.home));
+    this.#cache = new SummaryCache({
+      ...(options.appDataDir === undefined
+        ? {}
+        : { file: path.join(path.resolve(options.appDataDir), SUMMARY_CACHE_FILE) }),
+      onError: (error) => {
+        this.#emit({
+          kind: "failed",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
+    void this.#cache.ready();
   }
 
   /** Apply omp's exact cwd-to-bucket rule without touching the filesystem. */
@@ -396,13 +409,13 @@ export class SessionFileStore {
 
   /**
    * Port-friendly listing. The order is each chat's update time, the time of its newest conversation message, then its
-   * base name (see `activity.ts`): each file's end is read for that time, remembered while the file's size and time are
-   * unchanged. Only the files of the requested page are summarized (in one streaming pass, remembered until the file
-   * changes). A page is the files after the cursor's place in that order, so a file deleted
-   * or added before the place does not move the rest of the list; a rename does not move a chat, since it is not a
-   * message. A page counts files without a valid header too,
-   * and silently skips them. A file modified after its page was read is listed where its new time puts it. A listing
-   * doesn't walk nested subagent transcripts (`readSession` and `listSubagents` do) and carries no entries.
+   * base name (see `activity.ts`). Each file's update time and summary are cached (see `summary-cache.ts`): a file is read
+   * only when its cached facts are missing, or it changed since they were read. Only the files of the requested page are
+   * summarized. A page is the files after the cursor's place in that order, so a file deleted or added before the place
+   * does not move the rest of the list; a rename does not move a chat, since it is not a message. A page counts files
+   * without a valid header too, and silently skips them. A file modified after its page was read is listed where its new
+   * time puts it. A listing doesn't walk nested subagent transcripts (`readSession` and `listSubagents` do) and carries no
+   * entries.
    */
   async listSessions(args: ListSessionsArgs = {}): Promise<SessionListResult> {
     const limit = parseLimit(args.limit);
@@ -435,6 +448,34 @@ export class SessionFileStore {
           ? this.#runningWithoutFile(args.folder, candidates)
           : [],
     };
+  }
+
+  /**
+   * Hears what the background work reports: a chat read again after its cached facts were stale, or a read or write that
+   * failed. Returns the function that stops the listening.
+   */
+  onBackground(listener: (event: SessionBackgroundEvent) => void): () => void {
+    this.#backgroundListeners.add(listener);
+    return () => {
+      this.#backgroundListeners.delete(listener);
+    };
+  }
+
+  /** Writes the summary cache now. It writes itself as it changes, at most once per five seconds. */
+  flushSummaries(): Promise<void> {
+    return this.#cache.flush();
+  }
+
+  /**
+   * Ends the store for shutdown. A refresh under way is cancelled: `close` waits for its read to finish, and the refresh then
+   * changes nothing and reports nothing. The summary cache is written once and refuses every later change, so nothing is
+   * written to the app data folder after this resolves. A listing after this still reads the chats and caches nothing.
+   */
+  async close(): Promise<void> {
+    this.#closed = true;
+    for (const job of this.#refreshes.values()) job.cancelled = true;
+    await Promise.allSettled([...this.#refreshing]);
+    await this.#cache.close();
   }
 
   /**
@@ -543,7 +584,7 @@ export class SessionFileStore {
     args: { readonly folder: string; readonly sessionFile: string },
     caller?: { readonly connectionId: string },
   ): Promise<SessionDeletion> {
-    const sessionFile = await this.#deletableSessionFile(args.folder, args.sessionFile);
+    const { sessionFile, real } = await this.#deletableSessionFile(args.folder, args.sessionFile);
     const artifacts = await this.#artifactsDirectory(sessionFile);
     const first = await this.#readSessionFile(sessionFile);
     if (!first.file) throw notListed();
@@ -567,6 +608,7 @@ export class SessionFileStore {
       if (isMissing(error)) throw notListed();
       throw appFailure("permission", "Unable to delete the omp session file", true, error);
     }
+    this.#forget(real);
     let artifactsKept: string | undefined;
     if (artifacts !== undefined) {
       try {
@@ -647,11 +689,13 @@ export class SessionFileStore {
         reason: serverProcess && !others ? "finishing" : "open-elsewhere",
       };
     }
+    const real = await this.#realPathOf(file.sessionFile);
     try {
       await fs.rm(file.sessionFile, { force: true });
     } catch (error) {
       throw appFailure("permission", "Unable to delete the omp session file", true, error);
     }
+    if (real !== undefined) this.#forget(real);
     return { outcome: "removed" };
   }
 
@@ -729,7 +773,10 @@ export class SessionFileStore {
    * The file to delete: resolved, inside the sessions root, a regular file (not a symlink), and listed for `folder`.
    * Its real path must stay inside the real sessions root, so a symlinked folder cannot lead out of it.
    */
-  async #deletableSessionFile(folder: string, value: string): Promise<string> {
+  async #deletableSessionFile(
+    folder: string,
+    value: string,
+  ): Promise<{ readonly sessionFile: string; readonly real: string }> {
     const sessionFile = normalizeSessionFile(value);
     if (!isInside(this.sessionsRoot, sessionFile)) throw notListed();
     const listed = await this.#candidates(folder, []);
@@ -746,7 +793,7 @@ export class SessionFileStore {
       throw appFailure("permission", "Unable to read omp session file", true, error);
     }
     if (!stat.isFile() || !isInside(realRoot, real)) throw notListed();
-    return sessionFile;
+    return { sessionFile, real };
   }
 
   /**
@@ -840,19 +887,22 @@ export class SessionFileStore {
   }
 
   /**
-   * Every session file a listing may show: found by its name and size, and ordered by its update time (see
-   * `#activityIso`), then by base name and tag.
+   * Every session file a listing may show: found by its name and size, and ordered by its update time (see `#updatedAt`),
+   * then by base name and tag.
    */
   async #candidates(
     folder: string | undefined,
     warnings: ParseWarning[],
     withActivity = true,
   ): Promise<SessionCandidate[]> {
-    const names: string[] = [];
+    await this.#cache.ready();
+    const names: { readonly file: string; readonly real: string }[] = [];
     for (const sessionDir of await this.#sessionDirectories(folder, warnings)) {
       let entries: Dirent[];
+      let realDir: string;
       try {
         entries = await fs.readdir(sessionDir, { withFileTypes: true });
+        realDir = await fs.realpath(sessionDir);
       } catch (error) {
         if (isMissing(error)) continue;
         warnings.push(warningForReadFailure(sessionDir, error));
@@ -860,32 +910,41 @@ export class SessionFileStore {
       }
       for (const entry of entries) {
         if (entry.isFile() && entry.name.endsWith(".jsonl") && !entry.name.includes(".bak")) {
-          names.push(path.join(sessionDir, entry.name));
+          names.push({
+            file: path.join(sessionDir, entry.name),
+            real: path.join(realDir, entry.name),
+          });
         }
       }
     }
-    const found = await inBatches(names, async (file): Promise<SessionCandidate | undefined> => {
-      try {
-        const stat = await fs.stat(file);
-        const updatedAt = withActivity
-          ? await this.#activityIso(file, stat.size, stat.mtimeMs)
-          : new Date(stat.mtimeMs).toISOString();
-        const activityMs = Date.parse(updatedAt);
-        return {
-          file,
-          size: stat.size,
-          mtimeMs: stat.mtimeMs,
-          updatedAt,
-          activityMs: Number.isNaN(activityMs) ? stat.mtimeMs : activityMs,
-          name: path.basename(file),
-          tag: placeTag(file),
-        };
-      } catch (error) {
-        // A file that vanished between listing and stat is simply not listed.
-        if (!isMissing(error)) warnings.push(warningForReadFailure(file, error));
-        return undefined;
-      }
-    });
+    const found = await inBatches(
+      names,
+      async ({ file, real }): Promise<SessionCandidate | undefined> => {
+        try {
+          const stat = await fs.stat(file);
+          const updatedAt = withActivity
+            ? await this.#updatedAt(file, real, stat)
+            : new Date(stat.mtimeMs).toISOString();
+          const activityMs = Date.parse(updatedAt);
+          return {
+            file,
+            real,
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            dev: stat.dev,
+            ino: stat.ino,
+            updatedAt,
+            activityMs: Number.isNaN(activityMs) ? stat.mtimeMs : activityMs,
+            name: path.basename(file),
+            tag: placeTag(file),
+          };
+        } catch (error) {
+          // A file that vanished between listing and stat is simply not listed.
+          if (!isMissing(error)) warnings.push(warningForReadFailure(file, error));
+          return undefined;
+        }
+      },
+    );
     const candidates = found.filter(
       (candidate): candidate is SessionCandidate => candidate !== undefined,
     );
@@ -894,27 +953,178 @@ export class SessionFileStore {
     return candidates;
   }
 
-  /** One streaming pass over a file, remembered until its size or modified time changes. */
-  async #summary(candidate: SessionCandidate): Promise<SessionSummary> {
-    const cached = this.#summaries.get(candidate.file);
-    if (cached && cached.size === candidate.size && cached.mtimeMs === candidate.mtimeMs) {
-      // Most recently used goes last, so the oldest entry is the one forgotten.
-      this.#summaries.delete(candidate.file);
-      this.#summaries.set(candidate.file, cached);
-      return cached.summary;
+  /**
+   * When the chat last had a conversation message (`activity.ts`). The cached time serves while the file is as it was when
+   * the time was read. A file changed since a time loaded from the cache file is listed at that time and refreshed in the
+   * background (`#refresh`); any other change is read now.
+   */
+  async #updatedAt(file: string, real: string, stat: Stats): Promise<string> {
+    const identity = identityOf(stat);
+    const cached = this.#cache.get(real);
+    if (cached?.updatedAt !== undefined) {
+      if (sameIdentity(cached.identity, identity)) {
+        this.#cache.verify(real);
+        return cached.updatedAt;
+      }
+      if (this.#cache.isUnverified(real)) {
+        this.#refresh(file, real);
+        return cached.updatedAt;
+      }
     }
-    const summary = await summarizeSessionFile(candidate.file);
-    this.#summaries.delete(candidate.file);
-    this.#summaries.set(candidate.file, {
-      size: candidate.size,
-      mtimeMs: candidate.mtimeMs,
-      summary,
+    const updatedAt = await this.#readUpdatedAt(file, stat, this.#budget);
+    if (updatedAt === undefined) return new Date(stat.mtimeMs).toISOString();
+    this.#remember(real, identity, { updatedAt });
+    return updatedAt;
+  }
+
+  /**
+   * The time read from the file's end and head, or undefined when the file cannot be read. The listing's own read of the file
+   * reports that failure, so it is not reported here.
+   */
+  async #readUpdatedAt(file: string, stat: Stats, budget: ReadBudget): Promise<string | undefined> {
+    try {
+      return await budget.run(
+        Math.min(stat.size, TAIL_CAP_BYTES),
+        async () =>
+          (await lastMessageTimestamp(file)) ??
+          (await headerTimestamp(file)) ??
+          new Date(stat.mtimeMs).toISOString(),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Stores what was read from a file in `identity`. Facts read from the same state of the file are kept with them; facts that
+   * were read from another state describe a file that has since changed, so they are dropped.
+   */
+  #remember(
+    real: string,
+    identity: FileIdentity,
+    read: { readonly updatedAt?: string; readonly summary?: StoredSummary },
+  ): void {
+    const cached = this.#cache.get(real);
+    const kept = sameIdentity(cached?.identity, identity) ? cached : undefined;
+    const updatedAt = read.updatedAt ?? kept?.updatedAt;
+    const summary = read.summary ?? kept?.summary;
+    this.#cache.put({
+      realpath: real,
+      identity,
+      ...(updatedAt === undefined ? {} : { updatedAt }),
+      ...(summary === undefined ? {} : { summary }),
     });
-    for (const oldest of this.#summaries.keys()) {
-      if (this.#summaries.size <= SUMMARY_CACHE_LIMIT) break;
-      this.#summaries.delete(oldest);
+  }
+
+  /**
+   * A listed file's summary: its cached one while the file is as it was when the summary was read. A file changed since a
+   * summary loaded from the cache file is served as cached and refreshed in the background; any other change is read now.
+   */
+  async #summary(candidate: SessionCandidate): Promise<SessionSummary> {
+    const identity = identityOf(candidate);
+    const cached = this.#cache.get(candidate.real);
+    if (cached?.summary !== undefined) {
+      if (sameIdentity(cached.identity, identity)) {
+        this.#cache.verify(candidate.real);
+        return summaryOf(cached.summary, candidate.file);
+      }
+      if (this.#cache.isUnverified(candidate.real)) {
+        this.#refresh(candidate.file, candidate.real);
+        return summaryOf(cached.summary, candidate.file);
+      }
     }
-    return summary;
+    let summary: SessionSummary;
+    try {
+      summary = await this.#budget.run(candidate.size, () => this.#summarize(candidate.file));
+    } catch (error) {
+      if (isMissing(error)) this.#cache.delete(candidate.real);
+      throw error;
+    }
+    const stored = storedSummaryOf(summary);
+    this.#remember(candidate.real, identity, { summary: stored });
+    return summaryOf(stored, candidate.file);
+  }
+
+  /**
+   * Reads a changed chat again in the background, after a listing served its cached facts. The new facts replace the cached
+   * ones, and the chat is reported as refreshed so that clients read it again. A read that fails drops the cached facts, so
+   * the next listing reads the file itself and reports the failure. Each file has one refresh at a time.
+   */
+  #refresh(file: string, real: string): void {
+    if (this.#closed || this.#refreshes.has(real)) return;
+    const job = { cancelled: false };
+    this.#refreshes.set(real, job);
+    const running = this.#runRefresh(file, real, job);
+    this.#refreshing.add(running);
+    void running.finally(() => {
+      this.#refreshing.delete(running);
+    });
+  }
+
+  async #runRefresh(file: string, real: string, job: { cancelled: boolean }): Promise<void> {
+    let report: SessionBackgroundEvent | undefined;
+    try {
+      const stat = await fs.stat(file);
+      const updatedAt = await this.#readUpdatedAt(file, stat, this.#refreshBudget);
+      const summary = storedSummaryOf(
+        await this.#refreshBudget.run(stat.size, () => this.#summarize(file)),
+      );
+      if (!job.cancelled) {
+        this.#cache.put({
+          realpath: real,
+          identity: identityOf(stat),
+          ...(updatedAt === undefined ? {} : { updatedAt }),
+          summary,
+        });
+        if (summary.header !== null) {
+          report = {
+            kind: "refreshed",
+            sessionFile: file,
+            id: summary.header.id,
+            cwd: summary.header.cwd,
+          };
+        }
+      }
+    } catch (error) {
+      if (!job.cancelled) {
+        this.#cache.delete(real);
+        // A chat that is gone was deleted meanwhile: there is nothing to report.
+        if (!isMissing(error)) {
+          report = {
+            kind: "failed",
+            sessionFile: file,
+            message: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+    } finally {
+      if (this.#refreshes.get(real) === job) this.#refreshes.delete(real);
+    }
+    if (report !== undefined) this.#emit(report);
+  }
+
+  #emit(event: SessionBackgroundEvent): void {
+    for (const listener of this.#backgroundListeners) listener(event);
+  }
+
+  /** Forgets a removed chat's cached facts, and stops a refresh of it that is under way. */
+  #forget(real: string): void {
+    this.#cache.delete(real);
+    const job = this.#refreshes.get(real);
+    if (job !== undefined) job.cancelled = true;
+  }
+
+  /**
+   * The real path a listing keys a file by: its folder's real path and its name (a listed file is never a symlink). Undefined
+   * when the folder is gone.
+   */
+  async #realPathOf(sessionFile: string): Promise<string | undefined> {
+    try {
+      return path.join(await fs.realpath(path.dirname(sessionFile)), path.basename(sessionFile));
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      throw error;
+    }
   }
 
   /** The working folder a session was started in, from the start of its file. */
@@ -934,7 +1144,7 @@ export class SessionFileStore {
     this.#cwds.delete(candidate.file);
     this.#cwds.set(candidate.file, { size: candidate.size, mtimeMs: candidate.mtimeMs, cwd });
     for (const oldest of this.#cwds.keys()) {
-      if (this.#cwds.size <= SUMMARY_CACHE_LIMIT) break;
+      if (this.#cwds.size <= CWD_CACHE_LIMIT) break;
       this.#cwds.delete(oldest);
     }
     return cwd;
@@ -1001,7 +1211,9 @@ export class SessionFileStore {
     const lease = serverProcess
       ? ({ lease: "held" } satisfies { lease: SessionLeaseState })
       : await detectSessionLiveness(header.id, sessionFile, this.#options.leaseProbe);
-    const updatedAt = await this.#activityIso(sessionFile, fileStat.size, fileStat.mtimeMs);
+    const updatedAt =
+      (await this.#readUpdatedAt(sessionFile, fileStat, this.#budget)) ??
+      new Date(fileStat.mtimeMs).toISOString();
     const file: SessionFile = {
       id: header.id,
       sessionFile,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { appendFile, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { SessionFileStore } from "./index";
-import { readSessionHeader, summarizeSessionFile } from "./summary";
+import { CHUNK_BYTES, readSessionHeader, summarizeSessionFile } from "./summary";
 
 const DATA = path.resolve(import.meta.dir, "../../../../../../.data");
 const roots: string[] = [];
@@ -137,12 +137,12 @@ describe("streaming session summary", () => {
     }
   });
 
-  test("handles a multi-byte character that straddles the 1 MiB read boundary", async () => {
+  test("handles a multi-byte character that straddles a read boundary", async () => {
     const root = await tempRoot();
     const file = path.join(root, "big.jsonl");
     // Pad so that a 3-byte character starts one byte before the first chunk ends.
     const filler = "x".repeat(
-      (1 << 20) -
+      CHUNK_BYTES -
         Buffer.byteLength(`${header("big", "/w")}\n`) -
         Buffer.byteLength('{"type":"message","message":{"role":"user","content":"') -
         1,
@@ -158,6 +158,25 @@ describe("streaming session summary", () => {
     expect(summary.parseWarnings).toEqual([]);
     expect(summary.firstPrompt?.endsWith("…")).toBe(true);
     expect(summary.status).toBe("complete");
+  });
+
+  test("joins a line that spans several reads, and reads the lines after it as they are", async () => {
+    const root = await tempRoot();
+    const file = path.join(root, "long-line.jsonl");
+    // A prompt of about 3.4 MiB: its line spans many reads, and the lines after it are read after the join.
+    const prompt = `${"プロンプト".repeat(240_000)} end`;
+    await writeFile(
+      file,
+      `${[header("long", "/w"), message("user", prompt), message("assistant", "done")].join("\n")}\n`,
+    );
+    const summary = await summarizeSessionFile(file);
+    expect(summary.header?.id).toBe("long");
+    expect(summary.messageCount).toBe(2);
+    expect(summary.assistantTurns).toBe(1);
+    expect(summary.status).toBe("complete");
+    expect(summary.firstPrompt?.startsWith("プロンプト")).toBe(true);
+    expect(summary.firstPrompt?.endsWith("…")).toBe(true);
+    expect(summary.parseWarnings).toEqual([]);
   });
 
   test("lists by update time and summarizes only its page, then remembers what it read", async () => {
