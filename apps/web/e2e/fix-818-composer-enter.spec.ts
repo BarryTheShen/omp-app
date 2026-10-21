@@ -34,6 +34,38 @@ function transcript(page: Page): Locator {
   return page.getByRole("region", { name: "Conversation transcript" });
 }
 
+/** The frames of a message that is a JSON object, with no type checks: a message that is not one has no fields. */
+function frameOf(message: string | Buffer): Record<string, unknown> {
+  const value: unknown = JSON.parse(String(message));
+  return typeof value === "object" && value !== null
+    ? Object.fromEntries(Object.entries(value))
+    : {};
+}
+
+/** Delays the answer to each file search by `ms`, so the file list is still loading for that long. */
+async function delayFileSearchAnswer(page: Page, ms: number): Promise<void> {
+  await page.routeWebSocket(/\/ws/, (socket) => {
+    const server = socket.connectToServer();
+    const searches = new Set<unknown>();
+    socket.onMessage((message) => {
+      const frame = frameOf(message);
+      if (frame.type === "call" && frame.port === "A1.fileSearch") searches.add(frame.id);
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      const frame = frameOf(message);
+      if (frame.type === "result" && searches.has(frame.id)) {
+        searches.delete(frame.id);
+        setTimeout(() => {
+          socket.send(message);
+        }, ms);
+        return;
+      }
+      socket.send(message);
+    });
+  });
+}
+
 /** The shell draws with the app's own background, not the browser's default: a transparent one means no styles loaded. */
 async function expectStylesLoaded(page: Page): Promise<void> {
   const background = await page
@@ -95,10 +127,14 @@ realTest(
   "#818: keys pressed while the file list is still loading do not send the text",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
-    const page = await realApp.open();
+    // The list's answer comes 2 s late, so the list is still loading when ArrowDown and Enter arrive.
+    const page = await realApp.open({
+      beforeLoad: (target) => delayFileSearchAnswer(target, 2_000),
+    });
     const composer = await startChat(page);
     await composer.fill("@RE");
-    // No wait: ArrowDown and Enter arrive while the list is still loading its results.
+    // A key that arrives before the list has opened goes to the composer, so the keys wait for the list to open.
+    await expect(page.getByRole("listbox", { name: "File suggestions" })).toBeVisible();
     await composer.press("ArrowDown");
     await composer.press("Enter");
     // Once the list has loaded, the text is still in the composer: nothing was sent.
