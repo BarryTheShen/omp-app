@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { type RefObject, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ToolCardState } from "../U3/tool-card/contract";
+import { useStopPress } from "../U3/tool-card/stop-press";
 import type { JobStops } from "./job-stops";
 import {
   type AgentActivity,
@@ -203,10 +204,12 @@ export function RecipientRows({ receipts }: { readonly receipts: readonly IrcRec
 
 /** The Stop control of one job row, and omp's answer to the stop asked for it. */
 function JobStopLine({
+  control,
   job,
   position,
   stops,
 }: {
+  readonly control: RefObject<HTMLButtonElement | null>;
   readonly job: JobSnapshot;
   readonly position: number;
   readonly stops: JobStops;
@@ -220,7 +223,7 @@ function JobStopLine({
         <Button
           aria-label={`Stop background job ${position}`}
           disabled={stops.pending}
-          onClick={() => void stops.stop(job.id)}
+          ref={control}
           size="sm"
           type="button"
           variant="outline"
@@ -248,15 +251,16 @@ export function JobRows({
   const stoppable = jobs.some((job) => stops.canStop(job));
   // Every job omp still runs, as the card lists them: omp's count for Stop all is checked against these.
   const running = jobs.filter((job) => stops.statusOf(job) === "running").map((job) => job.id);
+  const stopAll = useStopPress(() => void stops.stopAll(running), stops.pending);
   return (
     <section className="flex min-w-0 flex-col gap-1" data-slot="t5-jobs">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2" {...stopAll.container}>
         <h3 className="text-xs font-medium text-muted-foreground">Jobs</h3>
         {stoppable && (
           <Button
             aria-label="Stop all background jobs"
             disabled={stops.pending}
-            onClick={() => void stops.stopAll(running)}
+            ref={stopAll.control}
             size="sm"
             type="button"
             variant="outline"
@@ -278,31 +282,45 @@ export function JobRows({
       {note !== undefined && <p className="text-xs text-muted-foreground">{note}</p>}
       <ul className="grid gap-2 text-xs">
         {jobs.slice(0, MAX_ITEMS).map((job, index) => (
-          <li className="bg-muted/30 flex min-w-0 flex-col gap-1 rounded p-2" key={job.id}>
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="min-w-0 break-all font-medium text-foreground">
-                {job.label.length > 0 ? job.label : `Background job ${index + 1}`}
-              </span>
-              <span className="text-muted-foreground" title={job.type}>
-                {TYPE_LABELS[job.type] ?? job.type}
-              </span>
-              <StatusChip value={stops.statusOf(job)} />
-              <span className="text-muted-foreground">{formatDuration(job.durationMs)}</span>
-              {job.exitCode !== undefined && (
-                <span className="text-muted-foreground">Exit code {job.exitCode}</span>
-              )}
-              {stops.statusOf(job) === "running" && job.completionPercent !== undefined && (
-                <span className="text-muted-foreground">
-                  {Math.round(job.completionPercent)}% done
-                </span>
-              )}
-            </div>
-            <JobStopLine job={job} position={index + 1} stops={stops} />
-            <JobTexts job={job} />
-          </li>
+          <JobRow index={index} job={job} key={job.id} stops={stops} />
         ))}
       </ul>
     </section>
+  );
+}
+
+/** One job in the Tasks list. Its Stop control acts on a press that began on it (see useStopPress). */
+function JobRow({
+  index,
+  job,
+  stops,
+}: {
+  readonly index: number;
+  readonly job: JobSnapshot;
+  readonly stops: JobStops;
+}) {
+  const press = useStopPress(() => void stops.stop(job.id), stops.pending);
+  return (
+    <li className="bg-muted/30 flex min-w-0 flex-col gap-1 rounded p-2" {...press.container}>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="min-w-0 break-all font-medium text-foreground">
+          {job.label.length > 0 ? job.label : `Background job ${index + 1}`}
+        </span>
+        <span className="text-muted-foreground" title={job.type}>
+          {TYPE_LABELS[job.type] ?? job.type}
+        </span>
+        <StatusChip value={stops.statusOf(job)} />
+        <span className="text-muted-foreground">{formatDuration(job.durationMs)}</span>
+        {job.exitCode !== undefined && (
+          <span className="text-muted-foreground">Exit code {job.exitCode}</span>
+        )}
+        {stops.statusOf(job) === "running" && job.completionPercent !== undefined && (
+          <span className="text-muted-foreground">{Math.round(job.completionPercent)}% done</span>
+        )}
+      </div>
+      <JobStopLine control={press.control} job={job} position={index + 1} stops={stops} />
+      <JobTexts job={job} />
+    </li>
   );
 }
 

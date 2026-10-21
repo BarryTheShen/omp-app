@@ -5,6 +5,7 @@ import {
   type BackgroundJobCommand,
   BackgroundJobCommandContext,
 } from "@/modules/U3/tool-card/background-job";
+import { boxAt } from "@/modules/U3/tool-card/test-support";
 import { keptStopOutcome, resolveStopOutcome } from "../U3/tool-card/stopped-jobs";
 import { formatDuration, JobRows } from "./coordination";
 import {
@@ -26,18 +27,26 @@ function JobsWithStops({ jobs }: { readonly jobs: readonly JobSnapshot[] }) {
   return <JobRows jobs={jobs} stops={stops} />;
 }
 
+function jobsTree(
+  jobs: readonly JobSnapshot[],
+  gateway: BackgroundJobCommand | undefined,
+  keptStops?: BackgroundJobKeptStops,
+) {
+  return (
+    <BackgroundJobCommandContext.Provider value={gateway}>
+      <BackgroundJobKeptStopsContext.Provider value={keptStops}>
+        <JobsWithStops jobs={jobs} />
+      </BackgroundJobKeptStopsContext.Provider>
+    </BackgroundJobCommandContext.Provider>
+  );
+}
+
 function renderJobs(
   jobs: readonly JobSnapshot[],
   gateway: BackgroundJobCommand | undefined,
   keptStops?: BackgroundJobKeptStops,
 ) {
-  return render(
-    <BackgroundJobCommandContext.Provider value={gateway}>
-      <BackgroundJobKeptStopsContext.Provider value={keptStops}>
-        <JobsWithStops jobs={jobs} />
-      </BackgroundJobKeptStopsContext.Provider>
-    </BackgroundJobCommandContext.Provider>,
-  );
+  return render(jobsTree(jobs, gateway, keptStops));
 }
 
 describe("T5 duration labels", () => {
@@ -158,6 +167,89 @@ describe("T5 Tasks view: stopping background jobs", () => {
     expect(gateway).toHaveBeenCalledWith("/jobs kill bg_1");
     expect(screen.queryByRole("button", { name: "Stop background job 1" })).toBeNull();
     expect(screen.getByRole("button", { name: "Stop background job 2" })).toBeTruthy();
+  });
+
+  test("a Stop press still stops its job when the row moves under a still pointer", () => {
+    const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled background job bg_1."]);
+    const first = job("bg_1", "running");
+    const second = job("bg_2", "running");
+    const view = renderJobs([first, second], gateway);
+    const stop = screen.getByRole("button", { name: "Stop background job 1" });
+    const box = vi.spyOn(stop, "getBoundingClientRect").mockReturnValue(boxAt(314, 502));
+    fireEvent.pointerDown(stop);
+    // The card updates between the press and the release: the row moves down 28 px, and the pointer stays where it was.
+    box.mockReturnValue(boxAt(314, 530));
+    view.rerender(jobsTree([{ ...first, durationMs: 4000 }, second], gateway));
+    // The release is at the press point, which is still inside the box the control had when the press began.
+    const row = stop.closest("li");
+    if (row === null) throw new Error("no job row");
+    fireEvent.click(row, { clientX: 339, clientY: 517, detail: 1 });
+    expect(gateway).toHaveBeenCalledWith("/jobs kill bg_1");
+  });
+
+  test("a Stop press the pointer slides off before releasing, within the row, stops nothing", () => {
+    const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled background job bg_1."]);
+    renderJobs([job("bg_1", "running")], gateway);
+    const stop = screen.getByRole("button", { name: "Stop background job 1" });
+    vi.spyOn(stop, "getBoundingClientRect").mockReturnValue(boxAt(314, 502));
+    fireEvent.pointerDown(stop);
+    const row = stop.closest("li");
+    if (row === null) throw new Error("no job row");
+    // The pointer slid up onto the job's label, well outside the box the press began on, so the click goes to the row.
+    fireEvent.click(row, { clientX: 339, clientY: 470, detail: 1 });
+    expect(gateway).not.toHaveBeenCalled();
+  });
+
+  test("a mouse press and release on Stop stops its job once", () => {
+    const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled background job bg_1."]);
+    renderJobs([job("bg_1", "running")], gateway);
+    const stop = screen.getByRole("button", { name: "Stop background job 1" });
+    vi.spyOn(stop, "getBoundingClientRect").mockReturnValue(boxAt(314, 502));
+    fireEvent.pointerDown(stop);
+    fireEvent.click(stop, { clientX: 339, clientY: 517, detail: 1 });
+    expect(gateway).toHaveBeenCalledTimes(1);
+  });
+
+  test("a Stop press released on another job's row stops nothing", () => {
+    const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled background job bg_1."]);
+    renderJobs([job("bg_1", "running"), job("bg_2", "running")], gateway);
+    const stop = screen.getByRole("button", { name: "Stop background job 1" });
+    vi.spyOn(stop, "getBoundingClientRect").mockReturnValue(boxAt(314, 502));
+    fireEvent.pointerDown(stop);
+    // The release lands on the other row, so the browser sends the click to the list that holds both rows.
+    const list = stop.closest("ul");
+    if (list === null) throw new Error("no job list");
+    fireEvent.click(list, { clientX: 339, clientY: 600, detail: 1 });
+    expect(gateway).not.toHaveBeenCalled();
+  });
+
+  test("a press that starts on a job's label and ends on its Stop control stops nothing", () => {
+    const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled background job bg_1."]);
+    renderJobs([job("bg_1", "running")], gateway);
+    const stop = screen.getByRole("button", { name: "Stop background job 1" });
+    const row = stop.closest("li");
+    if (row === null) throw new Error("no job row");
+    fireEvent.pointerDown(screen.getByText("sleep 120; echo bg_1"));
+    // The release lands on the Stop control inside the row, so the browser sends the click to the row.
+    fireEvent.click(row, { clientX: 339, clientY: 517, detail: 1 });
+    expect(gateway).not.toHaveBeenCalled();
+  });
+
+  test("a Stop all press still stops every running job when the header moves under a still pointer", () => {
+    const gateway = vi.fn<BackgroundJobCommand>(async () => ["Cancelled 2 background jobs."]);
+    const first = job("bg_1", "running");
+    const second = job("bg_2", "running");
+    const view = renderJobs([first, second], gateway);
+    const stopAll = screen.getByRole("button", { name: "Stop all background jobs" });
+    const box = vi.spyOn(stopAll, "getBoundingClientRect").mockReturnValue(boxAt(600, 300));
+    fireEvent.pointerDown(stopAll);
+    box.mockReturnValue(boxAt(600, 330));
+    view.rerender(jobsTree([first, second], gateway));
+    // The release is at the press point, inside the box Stop all had when the press began; the click goes to the header.
+    const header = stopAll.parentElement;
+    if (header === null) throw new Error("no job header");
+    fireEvent.click(header, { clientX: 625, clientY: 314, detail: 1 });
+    expect(gateway).toHaveBeenCalledWith("/jobs kill all");
   });
 
   test("Stop all sends /jobs kill all and says how many omp stopped", async () => {

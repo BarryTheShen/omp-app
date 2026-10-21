@@ -8,7 +8,7 @@ import {
   useTranscriptDisplayPolicy,
 } from "@/modules/U1/policy/policy";
 import { ReadOnlyNestedTranscript, TurnCancelContext } from "@/modules/U1/thread";
-import { expandToolCards } from "@/modules/U3/tool-card/test-support";
+import { boxAt, expandToolCards } from "@/modules/U3/tool-card/test-support";
 import {
   BackgroundJobCommandContext,
   BackgroundJobsContext,
@@ -756,6 +756,54 @@ describe("a command omp moved to the background", () => {
     expect(screen.queryByRole("button", { name: "Stop background job bg_1" })).toBeNull();
     expect(screen.getByText("Background job bg_1.", { exact: true })).toBeTruthy();
     expect(screen.getByText("Stopped", { exact: true })).toBeTruthy();
+  });
+
+  test("a Stop press still stops the job when the card moves under a still pointer", () => {
+    const run = vi.fn(async (_command: string) => ["Cancelled background job bg_1."]);
+    const page = () => (
+      <BackgroundJobCommandContext.Provider value={run}>
+        <ChatJobs view={running}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
+      </BackgroundJobCommandContext.Provider>
+    );
+    const { rerender } = render(page());
+    expandToolCards();
+    const stop = screen.getByRole("button", { name: "Stop background job bg_1" });
+    const box = vi.spyOn(stop, "getBoundingClientRect").mockReturnValue(boxAt(320, 400));
+    fireEvent.pointerDown(stop);
+    // The card updates between the press and the release: the note moves down, and the pointer stays where it was.
+    box.mockReturnValue(boxAt(320, 428));
+    rerender(page());
+    // The release is at the press point, inside the box the control had when the press began; the click goes to the note row.
+    const note = screen
+      .getByText("Running in the background.", { exact: true })
+      .closest("[data-slot='u3-bash-background']");
+    if (note === null) throw new Error("no background note");
+    fireEvent.click(note, { clientX: 345, clientY: 414, detail: 1 });
+    expect(run).toHaveBeenCalledWith("/jobs kill bg_1");
+  });
+
+  test("a background Stop press the pointer slides off before releasing stops nothing", () => {
+    const run = vi.fn(async (_command: string) => ["Cancelled background job bg_1."]);
+    render(
+      <BackgroundJobCommandContext.Provider value={run}>
+        <ChatJobs view={running}>
+          <BashCard rendererProps={props(backgrounded)} />
+        </ChatJobs>
+      </BackgroundJobCommandContext.Provider>,
+    );
+    expandToolCards();
+    const stop = screen.getByRole("button", { name: "Stop background job bg_1" });
+    vi.spyOn(stop, "getBoundingClientRect").mockReturnValue(boxAt(320, 400));
+    fireEvent.pointerDown(stop);
+    const note = screen
+      .getByText("Running in the background.", { exact: true })
+      .closest("[data-slot='u3-bash-background']");
+    if (note === null) throw new Error("no background note");
+    // The pointer slid up above the control before the release, outside the box the press began on.
+    fireEvent.click(note, { clientX: 345, clientY: 380, detail: 1 });
+    expect(run).not.toHaveBeenCalled();
   });
 
   test("offers no Stop without the chat's command gateway", () => {

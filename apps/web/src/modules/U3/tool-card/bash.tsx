@@ -31,6 +31,7 @@ import {
 import { normalizeToolRendererProps } from "./normalize";
 import { OutputMetaSchema } from "./output-meta";
 import type { CopyKind } from "./slots";
+import { useStopPress } from "./stop-press";
 
 const MAX_OUTPUT_LINES = 12;
 const MAX_OUTPUT_CHARS = 8_000;
@@ -631,17 +632,19 @@ function BackgroundNote({
       setPending(false);
     }
   }
+  const press = useStopPress(() => void stop(), pending);
   return (
     <div
       className="text-muted-foreground flex flex-wrap items-center gap-2 px-3 py-2 text-xs"
       data-slot="u3-bash-background"
+      {...press.container}
     >
       <p>{backgroundNoteOf(job.jobId, view, running)}</p>
       {running && command !== undefined && (
         <Button
           aria-label={`Stop background job ${job.jobId}`}
           disabled={pending}
-          onClick={() => void stop()}
+          ref={press.control}
           size="sm"
           type="button"
           variant="outline"

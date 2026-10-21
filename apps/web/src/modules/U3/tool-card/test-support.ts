@@ -17,3 +17,18 @@ export function expandToolCards(): void {
     for (const trigger of collapsed) fireEvent.click(trigger);
   }
 }
+
+/** A box as the browser reports one for a Stop control drawn 50 by 28 px at (left, top). */
+export function boxAt(left: number, top: number): DOMRect {
+  return {
+    bottom: top + 28,
+    height: 28,
+    left,
+    right: left + 50,
+    toJSON: () => ({}),
+    top,
+    width: 50,
+    x: left,
+    y: top,
+  } satisfies DOMRect;
+}
