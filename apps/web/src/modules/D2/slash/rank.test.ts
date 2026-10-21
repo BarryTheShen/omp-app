@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { SlashCommand } from "../contract";
-import { rankSlashEntries, sourceLabel } from "./rank";
+import { rankSlashEntries, type SlashListEntry, sourceLabel } from "./rank";
 import { REAL_COMMAND_LIST } from "./test-support";
 
 const realEntries = REAL_COMMAND_LIST.map((raw) => SlashCommand.parse(raw));
@@ -30,6 +30,31 @@ describe("D2.3 slash ranking on omp's real list", () => {
   test("a space with nothing after it lists every subcommand of that command, and no other command", () => {
     const labels = rankSlashEntries(realEntries, "/usage ").map((candidate) => candidate.label);
     expect(labels).toEqual(["/usage reset", "/usage show"]);
+  });
+
+  test("a space after a command with no subcommands lists nothing, though another command's name contains the word", () => {
+    expect(rankSlashEntries(realEntries, "/context ")).toEqual([]);
+  });
+
+  test("only the command named exactly before the space lists its subcommands: a part of its name lists none", () => {
+    expect(rankSlashEntries(realEntries, "/extended ")).toEqual([]);
+    expect(rankSlashEntries(realEntries, "/usa re")).toEqual([]);
+  });
+
+  test("an alias names the command exactly, as omp matches it, and its subcommands keep the command's own label", () => {
+    const entries: SlashListEntry[] = [
+      {
+        name: "extensions",
+        source: "builtin",
+        aliases: ["status"],
+        subcommands: [{ name: "list" }, { name: "reload" }],
+      },
+    ];
+    expect(rankSlashEntries(entries, "/status ").map((candidate) => candidate.label)).toEqual([
+      "/extensions list",
+      "/extensions reload",
+    ]);
+    expect(rankSlashEntries(entries, "/stat ")).toEqual([]);
   });
 
   test("arguments typed after a command that has no subcommands list nothing", () => {

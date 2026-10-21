@@ -37,8 +37,9 @@ export function sourceLabel(source: TriggerSource): string {
 
 /**
  * Ranks entries for what was typed after the slash. Without a space the first word matches a name or an
- * alias, and the commands are listed. Once a space follows, only the matching command's subcommands are
- * listed, filtered by whatever comes after the space; a command with none lists nothing.
+ * alias, and the commands are listed. Once a space follows, only the command whose name or alias is exactly
+ * that word lists its subcommands, filtered by whatever comes after the space; a command with none, or a word
+ * that names no command exactly, lists nothing.
  */
 export function rankSlashEntries(
   entries: readonly SlashListEntry[],
@@ -54,17 +55,20 @@ export function rankSlashEntries(
   const seen = new Set<string>();
 
   for (const entry of entries) {
-    const commandScore = bestScore([entry.name, ...(entry.aliases ?? [])], commandQuery);
-    if (commandScore === null) continue;
+    const names = [entry.name, ...(entry.aliases ?? [])];
     if (spaced) {
+      // As in omp, only the command whose name or alias is exactly the word before the space lists its subcommands.
+      if (!names.some((name) => name.toLocaleLowerCase() === commandQuery)) continue;
       for (const subcommand of entry.subcommands ?? []) {
         const subScore = fuzzyScore(subcommand.name, subquery);
         if (subScore === null) continue;
         const candidate = subcommandCandidate(entry, subcommand, seen);
-        if (candidate) ranked.push({ score: subScore + commandScore, candidate });
+        if (candidate) ranked.push({ score: subScore, candidate });
       }
       continue;
     }
+    const commandScore = bestScore(names, commandQuery);
+    if (commandScore === null) continue;
     const candidate = commandCandidate(entry, seen);
     if (candidate) ranked.push({ score: commandScore, candidate });
   }
