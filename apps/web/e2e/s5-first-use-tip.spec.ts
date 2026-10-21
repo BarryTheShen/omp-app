@@ -77,18 +77,18 @@ realTest(
     });
     await page.setViewportSize({ width: 1280, height: 900 });
 
-    await input.fill("/clear");
+    await input.fill("/logout");
     await input.press("Enter");
     await expect(page.getByRole("listbox")).toContainText("Only runs in omp's terminal", {
       timeout: 30_000,
     });
-    await expect(input).toHaveValue("/clear");
+    await expect(input).toHaveValue("/logout");
     expect(await page.evaluate((key) => localStorage.getItem(key), SENDS_KEY)).toBeNull();
     await page.getByRole("button", { name: "Send message" }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: "only runs in omp's terminal" }).first(),
     ).toBeVisible({ timeout: 30_000 });
-    await expect(input).toHaveValue("/clear");
+    await expect(input).toHaveValue("/logout");
     expect(await page.evaluate((key) => localStorage.getItem(key), SENDS_KEY)).toBeNull();
 
     for (const count of [1, 2, 3]) {

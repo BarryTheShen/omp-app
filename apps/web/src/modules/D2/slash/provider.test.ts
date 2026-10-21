@@ -333,9 +333,9 @@ describe("#2199 the note for a typed terminal-only name", () => {
       threadId,
       capabilities: () => available,
     });
-    expect(await provider.terminalOnlyNote("/clear")).toMatchObject({
-      name: "clear",
-      instead: "Use New chat instead.",
+    expect(await provider.terminalOnlyNote("/logout")).toMatchObject({
+      name: "logout",
+      instead: "Provider sign-in is in Settings.",
     });
     expect(await provider.terminalOnlyNote("/usage")).toBeNull();
     provider.dispose();
@@ -349,7 +349,54 @@ describe("#2199 the note for a typed terminal-only name", () => {
       capabilities: () => available,
     });
     expect(await withOwnPlan.terminalOnlyNote("/plan")).toBeNull();
-    expect(await withOwnPlan.terminalOnlyNote("/tree")).toMatchObject({ name: "tree" });
+    expect(await withOwnPlan.terminalOnlyNote("/pause")).toMatchObject({ name: "pause" });
     withOwnPlan.dispose();
+  });
+});
+
+describe("S9a /delete is the app's own row, and its name has no terminal-only note", () => {
+  const deleteCommand: SlashAppCommand = {
+    name: "delete",
+    description: "Delete this chat, after you confirm",
+    takesArguments: true,
+    run: async () => ({}),
+  };
+
+  test("a provider with the delete command lists one /delete row, badged App, and no note for the name", async () => {
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [deleteCommand],
+    });
+    const deletes = (await provider.searchTyped("delete")).candidates.filter(
+      (candidate) => candidate.label === "/delete",
+    );
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]?.metadata).toMatchObject({ sourceLabel: "App" });
+    expect(await provider.terminalOnlyNote("/delete")).toBeNull();
+    provider.dispose();
+  });
+
+  test("a typed /del picks the /delete row first", async () => {
+    const provider = createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [deleteCommand],
+    });
+    const { candidates } = await provider.searchTyped("del");
+    expect(candidates[0]?.label).toBe("/delete");
+    provider.dispose();
+  });
+
+  test("a typed /delete has no terminal-only note, with or without the app's command", async () => {
+    const bare = createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+    });
+    expect(await bare.terminalOnlyNote("/delete")).toBeNull();
+    bare.dispose();
   });
 });

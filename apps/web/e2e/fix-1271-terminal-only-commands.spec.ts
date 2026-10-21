@@ -11,9 +11,6 @@ import {
   waitForFiniteAnimations,
 } from "./real-omp";
 
-/** The sentence the composer shows for `/clear`, which omp runs only in its terminal. */
-const CLEAR_REFUSAL =
-  "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.";
 /** The sentence for `/loop`, which has no app equivalent. */
 const LOOP_REFUSAL = "/loop only runs in omp's terminal, so nothing was sent.";
 /** `/annotate` needs omp's terminal annotation editor, which the browser cannot open. */
@@ -66,27 +63,11 @@ async function runAnnotate(_page: Page, composer: Locator): Promise<void> {
 }
 
 realTest(
-  "typing /clear is refused in the composer, and neither omp nor the model receives it",
+  "typing /loop is refused in the composer, and neither omp nor the model receives it",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
     const page = await realApp.open();
     const composer = await startChat(page);
-
-    await typeCommand(
-      page,
-      composer,
-      "/clear",
-      composerError(page).filter({ hasText: CLEAR_REFUSAL }),
-      page.locator('[data-terminal-only-note="clear"]'),
-    );
-    await expect(composerError(page)).toHaveText(CLEAR_REFUSAL, { timeout: 60_000 });
-    // The text stays in the composer; the fake model never answered it and no session file holds it.
-    await expect(composer).toHaveValue("/clear");
-    await expect(page.getByText("pong")).toHaveCount(0);
-    expect(await sessionFilesText(realApp)).not.toContain("/clear");
-    await waitForFiniteAnimations(page);
-    await mkdir(screenshots, { recursive: true });
-    await page.screenshot({ path: join(screenshots, "fix-1271-clear-light.png"), fullPage: true });
 
     // A command with no app equivalent says so in the same plain way.
     await typeCommand(
@@ -99,6 +80,9 @@ realTest(
     await expect(composerError(page)).toHaveText(LOOP_REFUSAL);
     await expect(page.getByText("pong")).toHaveCount(0);
     expect(await sessionFilesText(realApp)).not.toContain("/loop");
+    await waitForFiniteAnimations(page);
+    await mkdir(screenshots, { recursive: true });
+    await page.screenshot({ path: join(screenshots, "fix-1271-loop-light.png"), fullPage: true });
 
     // A path is not a command, so it still reaches the model: the fake model answers "pong".
     await typeCommand(page, composer, "/etc/hosts", page.getByText("pong").first());
@@ -107,7 +91,7 @@ realTest(
 );
 
 realTest(
-  "the /clear refusal reads in dark mode and stays inside a 390 px screen",
+  "the /loop refusal reads in dark mode and stays inside a 390 px screen",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(180_000);
     const page = await realApp.open();
@@ -118,11 +102,11 @@ realTest(
     await typeCommand(
       page,
       composer,
-      "/clear",
-      composerError(page).filter({ hasText: CLEAR_REFUSAL }),
-      page.locator('[data-terminal-only-note="clear"]'),
+      "/loop",
+      composerError(page).filter({ hasText: LOOP_REFUSAL }),
+      page.locator('[data-terminal-only-note="loop"]'),
     );
-    await expect(composerError(page)).toHaveText(CLEAR_REFUSAL, { timeout: 60_000 });
+    await expect(composerError(page)).toHaveText(LOOP_REFUSAL, { timeout: 60_000 });
     await expect(page.locator("html")).toHaveClass(/dark/);
     // The sentence is painted with the app's own colour, not the browser's default text colour.
     expect(
@@ -135,7 +119,7 @@ realTest(
     expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
     expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);
     await page.screenshot({
-      path: join(screenshots, "fix-1271-clear-dark-narrow.png"),
+      path: join(screenshots, "fix-1271-loop-dark-narrow.png"),
       fullPage: true,
     });
   },

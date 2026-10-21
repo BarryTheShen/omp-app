@@ -884,7 +884,7 @@ describe("D2.3 SlashTriggerSlot", () => {
 });
 
 describe("#2199 a typed terminal-only name shows its note in the list", () => {
-  test("typed /clear shows its note, with no row and no 'No matching commands.'", async () => {
+  test("typed /logout shows its note, with no row and no 'No matching commands.'", async () => {
     const provider = providerWith(available);
     render(
       <RuntimeHarness>
@@ -894,10 +894,10 @@ describe("#2199 a typed terminal-only name shows its note in the list", () => {
       </RuntimeHarness>,
     );
     const input = screen.getByRole("textbox", { name: "Message input" });
-    fireEvent.change(input, { target: { value: "/clear" } });
-    (input as HTMLTextAreaElement).setSelectionRange(6, 6);
+    fireEvent.change(input, { target: { value: "/logout" } });
+    (input as HTMLTextAreaElement).setSelectionRange(7, 7);
     await waitFor(() => expect(screen.getByText("Terminal only")).toBeTruthy());
-    expect(screen.getByText(/Use New chat instead\./)).toBeTruthy();
+    expect(screen.getByText(/Provider sign-in is in Settings\./)).toBeTruthy();
     expect(screen.queryByRole("option")).toBeNull();
     expect(screen.queryByText("No matching commands.")).toBeNull();
     provider.dispose();
@@ -914,23 +914,23 @@ describe("#2199 a typed terminal-only name shows its note in the list", () => {
       </RuntimeHarness>,
     );
     const input = screen.getByRole("textbox", { name: "Message input" });
-    fireEvent.change(input, { target: { value: "/clear" } });
-    (input as HTMLTextAreaElement).setSelectionRange(6, 6);
+    fireEvent.change(input, { target: { value: "/logout" } });
+    (input as HTMLTextAreaElement).setSelectionRange(7, 7);
     await waitFor(() => expect(screen.getByText("Terminal only")).toBeTruthy());
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
     provider.dispose();
   });
 
-  test("/tree shows its note alone: a command its letters match is not offered, so Enter cannot pick it", async () => {
-    const autoresearch = {
-      name: "autoresearch",
-      description: "Run an autoresearch loop",
+  test("/pause shows its note alone: a command its letters match is not offered, so Enter cannot pick it", async () => {
+    const pauseAll = {
+      name: "pause-all",
+      description: "Pause every agent until resumed",
       source: "builtin",
     };
     const provider = createSlashCommandProvider({
       client: fakeSlashClient({
-        commands: async () => ({ commands: [...REAL_COMMAND_LIST, autoresearch] }),
+        commands: async () => ({ commands: [...REAL_COMMAND_LIST, pauseAll] }),
       }).client,
       threadId,
       capabilities: () => available,
@@ -944,11 +944,11 @@ describe("#2199 a typed terminal-only name shows its note in the list", () => {
       </RuntimeHarness>,
     );
     const input = screen.getByRole("textbox", { name: "Message input" });
-    fireEvent.change(input, { target: { value: "/tree" } });
-    (input as HTMLTextAreaElement).setSelectionRange(5, 5);
+    fireEvent.change(input, { target: { value: "/pause" } });
+    (input as HTMLTextAreaElement).setSelectionRange(6, 6);
     await waitFor(() => expect(screen.getByText("Terminal only")).toBeTruthy());
     expect(screen.queryByRole("option")).toBeNull();
-    expect(screen.queryByText("/autoresearch")).toBeNull();
+    expect(screen.queryByText("/pause-all")).toBeNull();
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
     provider.dispose();

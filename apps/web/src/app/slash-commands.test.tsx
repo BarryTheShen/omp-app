@@ -41,6 +41,7 @@ import {
   askFirstSlashCommand,
   askFirstSlashCommands,
   copySlashCommand,
+  deleteSlashCommand,
   describeResetTarget,
   freshSlashCommand,
   guardOmpSend,
@@ -645,6 +646,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     reply: SessionDeleteCommandResult,
     sessions: readonly SessionMetadata[],
     newSession: unknown,
+    build: typeof sessionDeleteSlashCommand = sessionDeleteSlashCommand,
   ) {
     const order: string[] = [];
     const gateway = { run: vi.fn(), sessionDelete: vi.fn(async () => reply) };
@@ -664,7 +666,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       getSnapshot: () => ({ sessions }),
       reconcile,
     } as unknown as SessionCatalogModel;
-    const command = sessionDeleteSlashCommand({
+    const command = build({
       confirm: async () => true,
       gateway,
       threadId,
@@ -715,7 +717,8 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     expect(run.reconcile).not.toHaveBeenCalled();
   });
 
-  test.each([
+  /** Each reply that deletes nothing, and the sentence the header shows for it (SESSION_DELETE_NOTE). */
+  const DELETE_NOTHING_CASES = [
     [
       { outcome: "refused", reason: "running" },
       "Wait for this chat's turn to finish, then delete it.",
@@ -734,7 +737,9 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     ],
     [{ outcome: "failed" }, "The chat was not deleted. Try again."],
     [{ outcome: "unknown" }, "omp did not delete the chat."],
-  ] as const)(
+  ] as const;
+
+  test.each(DELETE_NOTHING_CASES)(
     "a delete that deletes nothing (%j) says why in the header",
     async (reply, message) => {
       const run = runDelete(reply, [listedChat], { status: "completed", value: newThread });
@@ -743,6 +748,124 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       expect(run.reconcile).not.toHaveBeenCalled();
     },
   );
+
+  describe("S9a `/delete` runs the same flow under omp's own name, and takes no words", () => {
+    test("the command is listed under its name, takes arguments only to refuse them, and its row says what it does", () => {
+      const command = deleteSlashCommand({
+        confirm: async () => true,
+        gateway: gatewayAnswering("unused"),
+        threadId,
+        catalog: null,
+        lifecycle: null,
+        openThread: async () => undefined,
+      });
+      expect(command.name).toBe("delete");
+      expect(command.unlisted).toBeUndefined();
+      expect(command.takesArguments).toBe(true);
+      expect(command.description).toBe("Delete this chat, after you confirm");
+    });
+
+    test("a typed /delete is routed to the app's command, and that command is the one that runs", async () => {
+      const command = deleteSlashCommand({
+        confirm: async () => true,
+        gateway: gatewayAnswering("unused"),
+        threadId,
+        catalog: null,
+        lifecycle: null,
+        openThread: async () => undefined,
+      });
+      const provider = {
+        route: async (text: string) => routeSlashText(text, [], [command]),
+      } as unknown as SlashCommandProvider;
+      const intent: PromptIntent = { mode: "prompt", text: "/delete", delivery: "new" };
+      await expect(
+        routeSubmit({ intent, hasAttachments: false, provider, appCommands: [command] }),
+      ).resolves.toEqual({ kind: "app", command });
+    });
+
+    test("Cancel sends nothing to omp, and the command shows nothing", async () => {
+      const gateway = gatewayAnswering("unused");
+      const command = deleteSlashCommand({
+        confirm: async () => false,
+        gateway,
+        threadId,
+        catalog: null,
+        lifecycle: null,
+        openThread: async () => undefined,
+      });
+      await expect(command.run({})).resolves.toEqual({});
+      expect(gateway.sessionDelete).not.toHaveBeenCalled();
+    });
+
+    test("Confirm sends the chat's delete to omp once, with no signal, and a refusal says why in the header", async () => {
+      const confirm = vi.fn(async () => true);
+      const gateway = gatewayAnswering("unused", { outcome: "refused", reason: "running" });
+      const command = deleteSlashCommand({
+        confirm,
+        gateway,
+        threadId,
+        catalog: null,
+        lifecycle: null,
+        openThread: async () => undefined,
+      });
+      await expect(command.run({})).resolves.toEqual({
+        message: "Wait for this chat's turn to finish, then delete it.",
+      });
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(gateway.sessionDelete).toHaveBeenCalledTimes(1);
+      expect(gateway.sessionDelete).toHaveBeenCalledWith({ threadId }, {});
+    });
+
+    test("a deleted reply opens a new chat in place of the chat, then drops the chat's row, as /session delete does", async () => {
+      const run = runDelete(
+        { outcome: "deleted" },
+        [listedChat],
+        { status: "completed", value: newThread },
+        deleteSlashCommand,
+      );
+      await expect(run.command.run({})).resolves.toEqual({});
+      expect(run.order).toEqual(["new chat", `open ${newThread}`, "drop row"]);
+    });
+
+    test.each(DELETE_NOTHING_CASES)(
+      "a delete that deletes nothing (%j) says why in the header, as /session delete does",
+      async (reply, message) => {
+        const run = runDelete(
+          reply,
+          [listedChat],
+          { status: "completed", value: newThread },
+          deleteSlashCommand,
+        );
+        await expect(run.command.run({})).resolves.toEqual({ message });
+        expect(run.openThread).not.toHaveBeenCalled();
+        expect(run.reconcile).not.toHaveBeenCalled();
+      },
+    );
+
+    test("words after /delete are refused as invalid args: no question opens, and nothing is sent to omp or the model", async () => {
+      const confirm = vi.fn(async () => true);
+      const gateway = gatewayAnswering("unused");
+      const command = deleteSlashCommand({
+        confirm,
+        gateway,
+        threadId,
+        catalog: null,
+        lifecycle: null,
+        openThread: async () => undefined,
+      });
+      await expect(command.run({ args: "now" })).rejects.toMatchObject({
+        appError: {
+          code: "invalid_args",
+          message:
+            "/delete doesn't take anything after it, so nothing was sent. Type /delete on its own.",
+          retryable: false,
+        },
+      });
+      expect(confirm).not.toHaveBeenCalled();
+      expect(gateway.sessionDelete).not.toHaveBeenCalled();
+      expect(gateway.run).not.toHaveBeenCalled();
+    });
+  });
 
   test("a deleted chat the list does not hold has no row to drop, and the view still leaves it", async () => {
     const run = runDelete({ outcome: "deleted" }, [], {
@@ -895,6 +1018,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     });
     expect(commands.map((command) => [command.name, command.takesArguments])).toEqual([
       ["session delete", undefined],
+      ["delete", true],
       ["usage reset", true],
       ["wt", true],
       ["worktree", true],
@@ -988,23 +1112,23 @@ describe("#1272 the account a reset names, in plain words", () => {
 });
 
 describe("#1271 a typed terminal-only command is refused in the composer, and omp runs nothing", () => {
-  test("/clear is not a plain prompt: the send is answered by the app, refused, and no omp command runs", async () => {
+  test("/pause is not a plain prompt: the send is answered by the app, refused, and no omp command runs", async () => {
     const fake = fakeSlashClient();
     const provider = createSlashCommandProvider({
       client: fake.client,
       threadId,
       capabilities: () => available,
     });
-    const intent: PromptIntent = { mode: "prompt", text: "/clear", delivery: "new" };
+    const intent: PromptIntent = { mode: "prompt", text: "/pause", delivery: "new" };
     const route = await routeSubmit({ intent, hasAttachments: false, provider });
     // A null route is a plain prompt, which the composer sends to the model. This one must not reach that path.
-    if (route === null) throw new Error("/clear would be sent to the model");
+    if (route === null) throw new Error("/pause would be sent to the model");
     await expect(
       runSlashRoute({ route, intent, provider, showStatus: vi.fn(), showReport: vi.fn() }),
     ).rejects.toMatchObject({
       appError: {
         code: "unavailable",
-        message: "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
+        message: "/pause only runs in omp's terminal, so nothing was sent.",
       },
     });
     expect(fake.runs).toEqual([]);

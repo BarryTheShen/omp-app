@@ -128,13 +128,14 @@ realTest(
     const page = await realApp.open();
     const composer = await startChat(page);
 
-    // omp reads `/clear:now` as `/clear now`, and `clear` only runs in omp's terminal, so the composer refuses it like `/clear`.
+    // omp reads `/logout:now` as `/logout now`, and `logout` only runs in omp's terminal, so the composer refuses it like `/logout`.
     const refusal = page.locator('[data-composer-error="true"]').filter({
-      hasText: "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
+      hasText:
+        "/logout only runs in omp's terminal, so nothing was sent. Provider sign-in is in Settings.",
     });
-    await typeCommand(page, composer, "/clear:now", refusal);
-    await expect(composer).toHaveValue("/clear:now");
+    await typeCommand(page, composer, "/logout:now", refusal);
+    await expect(composer).toHaveValue("/logout:now");
     await expect(page.getByText("pong")).toHaveCount(0);
-    expect(await sessionFilesText(realApp)).not.toContain("/clear:now");
+    expect(await sessionFilesText(realApp)).not.toContain("/logout:now");
   },
 );

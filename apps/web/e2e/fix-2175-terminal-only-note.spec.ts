@@ -10,7 +10,7 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
 // omp 18.12.2 is at this path in every the test machine job.
 realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 
-/** The 34 typed names that get a note: 30 terminal-only commands with no app row, and their 4 aliases. `queue` has none: the app answers `/queue` itself. */
+/** The 33 typed names that get a note: 29 terminal-only commands with no app row, and their 4 aliases. `queue` has none: the app answers `/queue` itself. */
 const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = [
   { name: "agents", does: "Open the agents hub (per-agent model, prewalk, and advisor)" },
   { name: "branch", does: "Rewind to a previous message, keeping the old path as a branch" },
@@ -20,7 +20,6 @@ const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = 
   { name: "clear", does: "Clear the conversation context in place, keeping the session" },
   { name: "collab", does: "Share this session live via a relay" },
   { name: "debug", does: "Open debug tools selector" },
-  { name: "delete", does: "Delete the current session and start a new one" },
   { name: "exit", does: "Exit the application" },
   { name: "extensions", does: "Open Extension Control Center dashboard" },
   { name: "status", does: "Open Extension Control Center dashboard" },
@@ -132,7 +131,7 @@ realTest(
 );
 
 realTest(
-  "the note for /btw and /rewind reads in light and dark, at 1280 and 390 px, inside the screen",
+  "the note for /btw and /status reads in light and dark, at 1280 and 390 px, inside the screen",
   async ({ realApp }, testInfo) => {
     testInfo.setTimeout(480_000);
     await mkdir(screenshots, { recursive: true });
@@ -154,7 +153,7 @@ realTest(
       else await expect(page.locator("html")).not.toHaveClass(/dark/);
       for (const width of [1280, 390] as const) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-        for (const name of ["btw", "rewind"] as const) {
+        for (const name of ["btw", "status"] as const) {
           await composer.fill(`/${name}`);
           const note = page.locator(`[data-terminal-only-note="${name}"]`);
           await expect(note).toBeVisible({ timeout: 60_000 });

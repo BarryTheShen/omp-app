@@ -253,7 +253,6 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
   test("every name that only omp's terminal runs is refused by the app, and nothing runs", async () => {
     const names = [
       "btw",
-      "delete",
       "resume",
       "tan",
       "omfg",
@@ -304,9 +303,6 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
     );
   });
   test("the refusal names the app's own control where one exists", async () => {
-    expect(await refusalOf("/clear")).toBe(
-      "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
-    );
     expect(await refusalOf("/copy the README")).toBe(
       "/copy only runs in omp's terminal, so nothing was sent. Use Copy from this chat instead.",
     );
@@ -315,9 +311,6 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
     );
     expect(await refusalOf("/logout")).toBe(
       "/logout only runs in omp's terminal, so nothing was sent. Provider sign-in is in Settings.",
-    );
-    expect(await refusalOf("/delete")).toBe(
-      "/delete only runs in omp's terminal, so nothing was sent. Delete a chat from the session list instead.",
     );
     expect(await refusalOf("/pause")).toBe(
       "/pause only runs in omp's terminal, so nothing was sent.",
@@ -382,30 +375,24 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
   });
 
   test("a name omp's list advertises keeps its omp route, even where omp's terminal has a builtin of that name", () => {
-    const fileClear = SlashCommand.parse({ name: "clear", source: "file" });
-    expect(routeSlashText("/clear", [...entries, fileClear], [])).toEqual({
+    const filePlan = SlashCommand.parse({ name: "plan", source: "file" });
+    expect(routeSlashText("/plan", [...entries, filePlan], [])).toEqual({
       kind: "omp",
-      command: "/clear",
+      command: "/plan",
     });
   });
 
   test("a colon form of a terminal-only name is refused like the bare name, since omp reads it as that name and its words", async () => {
-    expect(await refusalOf("/clear:now")).toBe(
-      "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
-    );
-    expect(await refusalOf("/clear:")).toBe(
-      "/clear only runs in omp's terminal, so nothing was sent. Use New chat instead.",
-    );
     expect(await refusalOf("/loop:5")).toBe(
       "/loop only runs in omp's terminal, so nothing was sent.",
     );
   });
 
   test("a colon form of a name omp's list advertises keeps its omp route", () => {
-    const fileClear = SlashCommand.parse({ name: "clear", source: "file" });
-    expect(routeSlashText("/clear:now", [...entries, fileClear], [])).toEqual({
+    const filePlan = SlashCommand.parse({ name: "plan", source: "file" });
+    expect(routeSlashText("/plan:now", [...entries, filePlan], [])).toEqual({
       kind: "omp",
-      command: "/clear:now",
+      command: "/plan:now",
     });
   });
 });
@@ -441,7 +428,7 @@ describe("#1273 a command typed with a colon is read the way omp reads it, up to
 });
 
 describe("#2199 a typed terminal-only name has a note; the refusal keeps its text", () => {
-  /** The 34 terminal-only commands and their 4 aliases: the names the table answers. */
+  /** The 33 terminal-only commands and their 4 aliases: the names the table answers. */
   const terminalOnlyNames = [
     "agents",
     "branch",
@@ -452,7 +439,6 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     "collab",
     "copy",
     "debug",
-    "delete",
     "exit",
     "extensions",
     "status",
@@ -486,7 +472,6 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
   const alternatives: Readonly<Record<string, string>> = {
     clear: "Use New chat instead.",
     copy: "Use Copy from this chat instead.",
-    delete: "Delete a chat from the session list instead.",
     logout: "Provider sign-in is in Settings.",
     resume: "Use the session list instead.",
   };
@@ -502,8 +487,8 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   }
 
-  test("each of the 38 names has omp's description in its note, except queue, which the app answers itself", () => {
-    expect(terminalOnlyNames).toHaveLength(38);
+  test("each of the 37 names has omp's description in its note, except queue, which the app answers itself", () => {
+    expect(terminalOnlyNames).toHaveLength(37);
     for (const name of terminalOnlyNames) {
       if (name === "queue") {
         expect(terminalOnlyNote(name)).toBeNull();
@@ -522,18 +507,18 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
   });
 
   test("only an exact name or alias, with no space, has a note", () => {
-    expect(terminalOnlyNote("clear")).toEqual({
-      name: "clear",
+    expect(terminalOnlyNote("logout")).toEqual({
+      name: "logout",
       aliasOf: null,
-      does: "Clear the conversation context in place, keeping the session",
-      instead: "Use New chat instead.",
+      does: "Logout from OAuth provider",
+      instead: "Provider sign-in is in Settings.",
     });
-    for (const typed of ["clea", "cl", "clear now", "clear:now", "Clear", ""]) {
+    for (const typed of ["logou", "lo", "logout now", "logout:now", "Logout", ""]) {
       expect(terminalOnlyNote(typed), JSON.stringify(typed)).toBeNull();
     }
   });
 
-  test("the refusal keeps today's text for each of the 38 names", async () => {
+  test("the refusal keeps today's text for each of the 37 names", async () => {
     for (const name of terminalOnlyNames) {
       const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
       const alternative = alternatives[name];
@@ -553,5 +538,37 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     for (const names of listed) {
       for (const name of terminalOnlyNames) expect(names, name).not.toContain(name);
     }
+  });
+});
+
+describe("S9a /delete is the app's command when the app lists it", () => {
+  const deleteCommand: SlashAppCommand = {
+    name: "delete",
+    description: "Delete this chat, after you confirm",
+    takesArguments: true,
+    run: async () => ({}),
+  };
+
+  test("the bare name is the app's command, words after it are its args, and /deleted and /delete-all stay prompts", () => {
+    expect(routeSlashText("/delete", [], [deleteCommand])).toEqual({
+      kind: "app",
+      command: deleteCommand,
+    });
+    expect(routeSlashText("/delete now", [], [deleteCommand])).toEqual({
+      kind: "app",
+      command: deleteCommand,
+      args: "now",
+    });
+    expect(routeSlashText("/delete:now", [], [deleteCommand])).toEqual({
+      kind: "app",
+      command: deleteCommand,
+      args: "now",
+    });
+    expect(routeSlashText("/deleted", [], [deleteCommand])).toBeNull();
+    expect(routeSlashText("/delete-all", [], [deleteCommand])).toBeNull();
+  });
+
+  test("a typed /delete has no terminal-only note of its own: the app's row answers it", () => {
+    expect(terminalOnlyNote("delete")).toBeNull();
   });
 });

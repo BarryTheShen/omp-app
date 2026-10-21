@@ -405,6 +405,16 @@ const SESSION_DELETE_NOTE: Record<SessionDeleteRefusal | "failed" | "unknown", s
   unknown: "omp did not delete the chat.",
 };
 
+/** What `/session delete` and `/delete` need: the question, the gateway, the chat, and what follows a delete. */
+interface SessionDeleteDeps {
+  readonly confirm: () => Promise<boolean>;
+  readonly gateway: CommandRunGateway;
+  readonly threadId: ThreadId;
+  readonly catalog: SessionCatalogModel | null;
+  readonly lifecycle: SessionLifecycleController | null;
+  readonly openThread: (threadId: ThreadId) => Promise<void>;
+}
+
 /**
  * `/session delete`: asks with the chat's own delete question, naming the chat the way the sidebar does. Confirm sends the
  * command to omp once, through the typed gateway; Cancel sends nothing. Only a `deleted` outcome changes the view: the open
@@ -419,14 +429,7 @@ export function sessionDeleteSlashCommand({
   catalog,
   lifecycle,
   openThread,
-}: {
-  readonly confirm: () => Promise<boolean>;
-  readonly gateway: CommandRunGateway;
-  readonly threadId: ThreadId;
-  readonly catalog: SessionCatalogModel | null;
-  readonly lifecycle: SessionLifecycleController | null;
-  readonly openThread: (threadId: ThreadId) => Promise<void>;
-}): SlashAppCommand {
+}: SessionDeleteDeps): SlashAppCommand {
   return {
     name: "session delete",
     description: "Delete this chat, after you confirm",
@@ -451,6 +454,34 @@ export function sessionDeleteSlashCommand({
       return { message: SESSION_DELETE_NOTE[reason] };
     },
   };
+}
+
+/**
+ * `/delete`: the same question and the same flow as `/session delete`, under omp's own name for the action. omp's
+ * terminal deletes the current session and starts a new one (builtin-lifecycle.ts:204) and takes no words, so words after
+ * the name are refused here, and nothing is sent to omp or the model.
+ */
+export function deleteSlashCommand(deps: SessionDeleteDeps): SlashAppCommand {
+  const session = sessionDeleteSlashCommand(deps);
+  return {
+    name: "delete",
+    description: "Delete this chat, after you confirm",
+    takesArguments: true,
+    run: ({ signal, args }) => {
+      if (args !== undefined) return Promise.reject(wordsRefusal(takesNothing("delete")));
+      return session.run(signal === undefined ? {} : { signal });
+    },
+  };
+}
+
+/** The refusal a command that takes nothing gives when words follow its name: the text stays, and nothing is sent. */
+function takesNothing(name: string): string {
+  return `/${name} doesn't take anything after it, so nothing was sent. Type /${name} on its own.`;
+}
+
+/** The refusal as an app failure, so the composer keeps the typed text and shows the sentence. */
+function wordsRefusal(message: string): AppFailure {
+  return new AppFailure({ code: "invalid_args", message, retryable: false });
 }
 
 /**
@@ -494,9 +525,9 @@ function removeListedChat(catalog: SessionCatalogModel | null, threadId: ThreadI
 }
 
 /**
- * The guarded forms that run at once, each after its own question. `/session delete` asks with the chat's own delete
- * question, naming the chat the way the sidebar does, and changes the view only once omp says it deleted the chat's file;
- * `/usage reset <target>` names the account and says that one reset is spent. Each form that deletes data
+ * The guarded forms that run at once, each after its own question. `/session delete` and `/delete` ask with the chat's own
+ * delete question, naming the chat the way the sidebar does, and change the view only once omp says it deleted the chat's
+ * file; `/usage reset <target>` names the account and says that one reset is spent. Each form that deletes data
  * (`DESTRUCTIVE_FORMS`) names its target and says what omp deletes; Cancel sends nothing, and Confirm sends the command once.
  */
 export function askFirstSlashCommands({
@@ -521,16 +552,18 @@ export function askFirstSlashCommands({
   /** Shows omp's words for a reply with several lines, in the command output panel. */
   readonly showReport: (report: CommandReport) => void;
 }): readonly SlashAppCommand[] {
+  const sessionDelete: SessionDeleteDeps = {
+    confirm: () =>
+      openChatDeleteConfirm(overlay, sidebarChatName(catalog, threadId, fallbackTitle)),
+    gateway,
+    threadId,
+    catalog,
+    lifecycle,
+    openThread,
+  };
   return [
-    sessionDeleteSlashCommand({
-      confirm: () =>
-        openChatDeleteConfirm(overlay, sidebarChatName(catalog, threadId, fallbackTitle)),
-      gateway,
-      threadId,
-      catalog,
-      lifecycle,
-      openThread,
-    }),
+    sessionDeleteSlashCommand(sessionDelete),
+    deleteSlashCommand(sessionDelete),
     askFirstSlashCommand({
       name: "usage reset",
       description: "Spend a saved rate-limit reset, after you confirm",

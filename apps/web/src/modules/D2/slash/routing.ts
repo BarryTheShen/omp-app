@@ -214,10 +214,6 @@ const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, TerminalOnlyEntry>> = 
     instead: "Use Copy from this chat instead.",
   },
   debug: { does: "Open debug tools selector" },
-  delete: {
-    does: "Delete the current session and start a new one",
-    instead: "Delete a chat from the session list instead.",
-  },
   exit: { does: "Exit the application" },
   extensions: { does: "Open Extension Control Center dashboard" },
   status: { aliasOf: "extensions", does: "Open Extension Control Center dashboard" },
