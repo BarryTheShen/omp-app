@@ -73,6 +73,32 @@ describe("D2.3 slash provider", () => {
     provider.dispose();
   });
 
+  test("an unlisted guarded form keeps omp's row of its name: /wt is listed, and /wt feature still routes to the app", async () => {
+    const fake = fakeSlashClient();
+    const wt: SlashAppCommand = {
+      name: "wt",
+      description: "Move this chat into a worktree, after you confirm",
+      takesArguments: true,
+      unlisted: true,
+      run: async () => ({}),
+    };
+    const provider = createSlashCommandProvider({
+      client: fake.client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () => [wt],
+    });
+
+    const listed = (await provider.search("w")).map((entry) => entry.label);
+    expect(listed[0]).toBe("/wt");
+    await expect(provider.route("/wt feature")).resolves.toEqual({
+      kind: "app",
+      command: wt,
+      args: "feature",
+    });
+    provider.dispose();
+  });
+
   test("execute runs a slash command through the gateway, and refuses text that is not one before any run", async () => {
     const fake = fakeSlashClient({
       run: async (command) => completedRun(command, "Usage: 0 tokens"),

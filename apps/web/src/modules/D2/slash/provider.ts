@@ -80,12 +80,17 @@ export function createSlashCommandProvider(
     return loading;
   };
 
-  /** omp's commands, minus each one that an app command of the same name replaces. */
+  /**
+   * omp's commands, minus each one that a listed app command of the same name replaces. An unlisted app command (a
+   * guarded form such as `wt`) keeps omp's row: typing the form still runs the app's, because `guardedRoute` runs first.
+   */
   const listEntries = (): readonly SlashListEntry[] => {
-    const appNames = new Set((options.appCommands?.() ?? []).map((app) => app.name));
+    const listedNames = new Set(
+      (options.appCommands?.() ?? []).filter((app) => app.unlisted !== true).map((app) => app.name),
+    );
     return catalog
       .getSnapshot()
-      .commands.filter((command) => !appNames.has(command.name))
+      .commands.filter((command) => !listedNames.has(command.name))
       .map(commandToEntry);
   };
 

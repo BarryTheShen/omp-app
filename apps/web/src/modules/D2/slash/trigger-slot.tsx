@@ -14,6 +14,7 @@ import type { TriggerCandidate, TriggerSearchResult } from "../contract";
 import {
   type KeptEnterAnswer,
   TriggerKeyScope,
+  useEnterChoice,
   useSendAfterChoose,
   useTriggerListLoading,
 } from "../shared/trigger-keys";
@@ -82,6 +83,9 @@ const slashDirective: Unstable_DirectiveFormatter = {
     return [{ kind: "text", text }];
   },
 };
+
+/** The names that an Enter sends the `wt` row for: the row's name and its alias. A click or Tab only inserts the row. */
+const WT_TYPED: ReadonlySet<string> = new Set(["/wt", "/worktree"]);
 
 /** An empty list that no search has answered is still loading, and the popover says so. "No matching commands." is said only after a search has answered with none. */
 function awaitsAnswer(items: readonly Unstable_TriggerItem[], answers: AnswerQueries): boolean {
@@ -249,7 +253,8 @@ function SlashPopover({
   const terminalNote = useRef<TerminalOnlyNote | null>(null);
   // True while arguments follow a command and nothing matches them: no list, so Enter sends the message.
   const quiet = useRef(false);
-  // Whether the list's first command is exactly the text typed: only then does an Enter kept while it loaded choose it.
+  // Whether the list's first command is exactly the text typed (or the `wt` row for `/worktree`): only then does an
+  // Enter kept while it loaded choose it.
   const typedIsFirst = useRef(false);
   // The command a choose completed without arguments, while the composer shows it: the list stays closed for it.
   const completed = useRef<CompletedCommand | null>(null);
@@ -284,7 +289,8 @@ function SlashPopover({
       candidateMap.current = next.candidates;
       status.current = statusLine(result);
       quiet.current = /\s/u.test(query) && next.items.length === 0 && status.current === null;
-      typedIsFirst.current = next.items[0]?.label === query;
+      const first = next.items[0]?.label;
+      typedIsFirst.current = first === query || (first === "/wt" && WT_TYPED.has(query.trim()));
       return next.items;
     },
     [provider, answers],
@@ -302,6 +308,7 @@ function SlashPopover({
   );
   useTriggerListLoading(completion.isLoading, answerKeptEnter);
   const sendAfterChoose = useSendAfterChoose();
+  const enterChoice = useEnterChoice();
   const handleInserted = useCallback(
     (item: Unstable_TriggerItem) => {
       const candidate = candidateMap.current.get(item.id);
@@ -311,7 +318,12 @@ function SlashPopover({
       // submits the highlighted slash command (packages/tui/src/components/editor.ts:1932-1966). Its old option stays
       // highlighted until the next search answers, so the list goes quiet first and the send follows after that.
       // A command with arguments keeps its name in the composer, so the arguments can be typed.
-      if (typeof candidate.metadata?.argumentHint !== "string") {
+      // The `wt` row takes this path too when an Enter chose it with the text `/wt` or `/worktree`: that sends `/wt`. A
+      // click or Tab on it only inserts it.
+      const typedOnEnter = enterChoice();
+      const sendsWt =
+        candidate.label === "/wt" && typedOnEnter !== null && WT_TYPED.has(typedOnEnter.trim());
+      if (typeof candidate.metadata?.argumentHint !== "string" || sendsWt) {
         quiet.current = true;
         redraw((count) => count + 1);
         // A Tab keeps the completed name in the composer, so the list stays closed for it (see the matcher); a send clears it.
@@ -320,7 +332,7 @@ function SlashPopover({
           : null;
       }
     },
-    [onSelect, sendAfterChoose],
+    [onSelect, sendAfterChoose, enterChoice],
   );
   if (!provider) return null;
   return (

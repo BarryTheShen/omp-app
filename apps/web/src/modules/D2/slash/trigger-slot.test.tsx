@@ -14,6 +14,7 @@ import type { TriggerSearchResult } from "../contract";
 import { LocalComposerSlot } from "../local/trigger-slot";
 import { MentionComposerSlot } from "../mentions/trigger-slot";
 import { createSlashCommandProvider, type SlashCommandProvider } from "./provider";
+import type { SlashAppCommand } from "./routing";
 import { fakeSlashClient, REAL_COMMAND_LIST } from "./test-support";
 import { SlashComposerSlot, SlashTriggerSlot } from "./trigger-slot";
 
@@ -196,6 +197,38 @@ describe("D2.3 SlashTriggerSlot", () => {
     return promise;
   }
 
+  /** omp's list, with the app's guarded `wt` and `worktree` registered unlisted, as the composition registers them. */
+  function worktreeProvider(): SlashCommandProvider {
+    return createSlashCommandProvider({
+      client: fakeSlashClient().client,
+      threadId,
+      capabilities: () => available,
+      appCommands: () =>
+        ["wt", "worktree"].map(
+          (name): SlashAppCommand => ({
+            name,
+            description: "Move this chat into a worktree, after you confirm",
+            takesArguments: true,
+            unlisted: true,
+            run: async () => ({}),
+          }),
+        ),
+    });
+  }
+
+  /** Mounts the slot over the message box, with a submit that records what is sent. */
+  function mountWtSlot(provider: SlashCommandProvider) {
+    const submitPrompt = vi.fn(async () => undefined);
+    render(
+      <RuntimeHarness>
+        <SlashTriggerSlot providers={[provider]} onSelect={() => undefined}>
+          <ComposerSurface submitPrompt={submitPrompt} cancel={() => undefined} />
+        </SlashTriggerSlot>
+      </RuntimeHarness>,
+    );
+    return { input: composerInput(), submitPrompt };
+  }
+
   test("a command with no arguments runs when it is chosen by Enter, and the list goes quiet", async () => {
     const provider = loginProvider();
     const submitPrompt = vi.fn(async () => undefined);
@@ -372,6 +405,123 @@ describe("D2.3 SlashTriggerSlot", () => {
     expect(screen.queryAllByRole("option")).toEqual([]);
     expect(submitPrompt).not.toHaveBeenCalled();
     provider.dispose();
+  });
+
+  test("Enter on exactly /wt chooses the wt row and sends it", async () => {
+    const provider = worktreeProvider();
+    const { input, submitPrompt } = mountWtSlot(provider);
+    fireEvent.change(input, { target: { value: "/wt" } });
+    input.setSelectionRange(3, 3);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringMatching(/^\/wt\s*$/u) }),
+    );
+    provider.dispose();
+  });
+
+  test("Enter on exactly /worktree, the alias, chooses the same row and sends /wt", async () => {
+    const provider = worktreeProvider();
+    const { input, submitPrompt } = mountWtSlot(provider);
+    fireEvent.change(input, { target: { value: "/worktree" } });
+    input.setSelectionRange(9, 9);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringMatching(/^\/wt\s*$/u) }),
+    );
+    provider.dispose();
+  });
+
+  test("Enter on /w inserts /wt and sends nothing", async () => {
+    const provider = worktreeProvider();
+    const { input, submitPrompt } = mountWtSlot(provider);
+    fireEvent.change(input, { target: { value: "/w" } });
+    input.setSelectionRange(2, 2);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("/wt "));
+    await settle();
+    expect(submitPrompt).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  test("Enter on /wort inserts /wt and sends nothing", async () => {
+    const provider = worktreeProvider();
+    const { input, submitPrompt } = mountWtSlot(provider);
+    fireEvent.change(input, { target: { value: "/wort" } });
+    input.setSelectionRange(5, 5);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("/wt "));
+    await settle();
+    expect(submitPrompt).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  test("Tab on exactly /wt inserts /wt and sends nothing", async () => {
+    const provider = worktreeProvider();
+    const { input, submitPrompt } = mountWtSlot(provider);
+    fireEvent.change(input, { target: { value: "/wt" } });
+    input.setSelectionRange(3, 3);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Tab" });
+    await waitFor(() => expect(input.value).toBe("/wt "));
+    await settle();
+    expect(submitPrompt).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  test("a click on the wt row inserts /wt and sends nothing", async () => {
+    const provider = worktreeProvider();
+    const { input, submitPrompt } = mountWtSlot(provider);
+    fireEvent.change(input, { target: { value: "/wt" } });
+    input.setSelectionRange(3, 3);
+    fireEvent.click(await screen.findByRole("option", { name: /^\/wt/u }));
+    await waitFor(() => expect(input.value).toBe("/wt "));
+    await settle();
+    expect(submitPrompt).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  test("Enter on exactly /usage still inserts /usage and sends nothing", async () => {
+    const provider = worktreeProvider();
+    const { input, submitPrompt } = mountWtSlot(provider);
+    fireEvent.change(input, { target: { value: "/usage" } });
+    input.setSelectionRange(6, 6);
+    await waitFor(() => expect(input.getAttribute("aria-activedescendant")).not.toBeNull());
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(input.value).toBe("/usage "));
+    await settle();
+    expect(submitPrompt).not.toHaveBeenCalled();
+    provider.dispose();
+  });
+
+  test("an Enter kept while the list loads, typed as the alias /worktree, sends /wt", async () => {
+    const release = Promise.withResolvers<void>();
+    let searching = false;
+    const base = worktreeProvider();
+    const provider: SlashCommandProvider = {
+      ...base,
+      searchTyped: (query) => {
+        searching = true;
+        return release.promise.then(() => base.searchTyped(query));
+      },
+    };
+    const { input, submitPrompt } = mountWtSlot(provider);
+    fireEvent.change(input, { target: { value: "/worktree" } });
+    input.setSelectionRange(9, 9);
+    await waitFor(() => expect(searching).toBe(true));
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(submitPrompt).not.toHaveBeenCalled();
+    release.resolve();
+    await waitFor(() => expect(submitPrompt).toHaveBeenCalledTimes(1));
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringMatching(/^\/wt\s*$/u) }),
+    );
+    base.dispose();
   });
 
   test("a search answer that arrives after Tab completed a command does not show rows at the next key", async () => {

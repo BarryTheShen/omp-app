@@ -29,8 +29,8 @@ function appCommand(
 
 /**
  * The app's own commands as the composition hands them to the composer (app/root.tsx `appSlashCommands`, main 1ffa8d473).
- * The first 13 are listed rows; the rest are unlisted, guarded forms that still route when typed. `wt` and `worktree`
- * are unlisted, and they still remove omp's `wt` row today (provider.ts `listEntries`): S8 changes that on purpose.
+ * The first 13 are listed rows; the rest are unlisted, guarded forms that still route when typed. An unlisted form does not
+ * replace omp's row of its name (provider.ts `listEntries`), so `wt` and `worktree` leave omp's `wt` row listed.
  */
 const APP_COMMANDS: readonly SlashAppCommand[] = [
   appCommand("new", "Start a new chat"),
@@ -131,7 +131,7 @@ describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.2 lis
     expect(picks).toEqual(golden);
   });
 
-  test("the picks a person sees today for the examples the plan names", async () => {
+  test("the picks for the examples the plan names", async () => {
     const picks = await picksForEveryPrefix();
     expect(picks).toMatchObject({
       s: "/ssh",
@@ -139,9 +139,23 @@ describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.2 lis
       lo: "/login",
       ex: "/export",
       m: "/mcp",
-      // S8 changes these two on purpose (omp's `wt` row is listed again): until then the pick is `/switch`.
-      w: "/switch",
-      wt: "/switch",
     });
+  });
+
+  test("S8: the nine prefixes that reach omp's wt row by its name or its alias worktree pick /wt", async () => {
+    const picks = await picksForEveryPrefix();
+    for (const prefix of [
+      "w",
+      "wt",
+      "wo",
+      "wor",
+      "work",
+      "workt",
+      "worktr",
+      "worktre",
+      "worktree",
+    ]) {
+      expect(picks[prefix], prefix).toBe("/wt");
+    }
   });
 });

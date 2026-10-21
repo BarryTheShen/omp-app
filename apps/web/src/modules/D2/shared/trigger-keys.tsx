@@ -29,6 +29,11 @@ interface TriggerKeyScopeValue {
   readonly sendAfterChoose: () => boolean;
   /** The composer's textarea, read when it is needed: the caret and the text are current only there. */
   readonly composerTextarea: () => HTMLTextAreaElement | null;
+  /**
+   * The text before the caret when the choose in progress is one an Enter made (a held Enter's too), else null. It is
+   * set only while the scope clicks the option that Enter chose, so a pointer choose and a Tab never read it.
+   */
+  readonly enterChoice: () => string | null;
 }
 
 /** An Enter kept while a list loads: the scope it was pressed in, and the composer's textarea. */
@@ -97,6 +102,23 @@ function pressEnterAgain(textarea: HTMLTextAreaElement): void {
 }
 
 /**
+ * Clicks an option a key chose. An Enter's choose holds the text before the caret in `mark` while the click runs: the
+ * click inserts synchronously (assistant-ui's item click selects the item at once), and the mark is cleared after it.
+ */
+function clickChosen(
+  mark: { current: string | null },
+  option: HTMLElement,
+  typedOnEnter: string | null,
+): void {
+  mark.current = typedOnEnter;
+  try {
+    option.click();
+  } finally {
+    mark.current = null;
+  }
+}
+
+/**
  * A list has answered. An Enter kept while it loaded is dropped when the list has options, unless the list
  * chooses for it: then the option it highlights (its first) is chosen (issue 1006). It is pressed again when the list
  * has none, so the text is sent. A list that closed meanwhile (the person kept typing or moved away) drops it.
@@ -105,6 +127,7 @@ function pressEnterAgain(textarea: HTMLTextAreaElement): void {
 function settleKeptEnter(
   { scope, textarea }: KeptEnter,
   answer: (() => KeptEnterAnswer) | undefined,
+  choose: (option: HTMLElement) => void,
 ): boolean {
   const listbox = scope.querySelector('[role="listbox"]');
   if (listbox === null) return false;
@@ -113,7 +136,7 @@ function settleKeptEnter(
     pressEnterAgain(textarea);
     return true;
   }
-  if (answer?.() === "choose") first.click();
+  if (answer?.() === "choose") choose(first);
   return true;
 }
 
@@ -181,6 +204,8 @@ export function TriggerKeyScope({
   );
   // Set by a Tab choose until sendAfterChoose consumes it, or until the next key or pointer press in the scope.
   const tabChose = useRef(false);
+  // The text an Enter chose a row with, while that choose runs (see clickChosen). Clicks and Tab never set it.
+  const enterChoice = useRef<string | null>(null);
   // The newest row check, read by the key handler, which is created once for the scope.
   const rowIsCurrent = useRef(isCurrentRow);
   useLayoutEffect(() => {
@@ -196,7 +221,15 @@ export function TriggerKeyScope({
     // 2245). An empty list that shows meanwhile is not an answer, so it does not settle the Enter.
     const settleHeld = (enter: KeptEnter, answer: (() => KeptEnterAnswer) | undefined): void => {
       if (pending.current > 0 || kept.current !== enter) return;
-      if (settleKeptEnter(enter, answer)) {
+      if (
+        settleKeptEnter(enter, answer, (option) =>
+          clickChosen(
+            enterChoice,
+            option,
+            enter.textarea.value.slice(0, enter.textarea.selectionEnd),
+          ),
+        )
+      ) {
         kept.current = null;
         return;
       }
@@ -235,6 +268,7 @@ export function TriggerKeyScope({
         return false;
       },
       composerTextarea: () => element.current?.querySelector("textarea") ?? null,
+      enterChoice: () => enterChoice.current,
     };
   }, []);
   const onKeyDownCapture = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
@@ -286,7 +320,11 @@ export function TriggerKeyScope({
       event.stopPropagation();
       // Tab only completes: the choose it makes is marked, so sendAfterChoose does not send the command.
       if (event.key === "Tab") tabChose.current = true;
-      option.click();
+      clickChosen(
+        enterChoice,
+        option,
+        event.key === "Enter" ? event.target.value.slice(0, event.target.selectionEnd) : null,
+      );
       return;
     }
     if (event.key === "Enter" && pending.current > 0 && listOpen) {
@@ -333,6 +371,15 @@ export function useTriggerListLoading(loading: boolean, answer?: () => KeptEnter
 export function useSendAfterChoose(): () => boolean {
   const scope = useContext(TriggerKeyScopeContext);
   return useCallback(() => scope?.sendAfterChoose() ?? false, [scope]);
+}
+
+/**
+ * The text an Enter chose a row with, while that choose runs; null for any other choose (a click, or Tab). A row that
+ * sends on Enter reads it, so the key the person pressed decides whether the command is sent.
+ */
+export function useEnterChoice(): () => string | null {
+  const scope = useContext(TriggerKeyScopeContext);
+  return useCallback(() => scope?.enterChoice() ?? null, [scope]);
 }
 
 /** The composer's textarea inside this scope, for a list action that reads or moves the caret. */
