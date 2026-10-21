@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
   expect,
+  type RealApp,
   realTest,
   screenshots,
   sendPrompt,
@@ -27,6 +28,9 @@ const LONG_RUN = "stream_steady please";
 const PHONE = { width: 390, height: 844 } as const;
 const PHONE_AT_200_PERCENT = { width: 195, height: 844 } as const;
 const DESKTOP = { width: 1280, height: 800 } as const;
+const MODES = "Execution modes";
+/** Thirty characters: a long model name in the composer's model pill. */
+const LONG_MODEL = "Claude Haiku 5.5 Extended Mode";
 
 realTest.setTimeout(420_000);
 
@@ -233,6 +237,234 @@ realTest(
     const measured = await measure(page);
     expect(measured.hintShown, "the steer hint is hidden in a narrow composer").toBe(false);
     expectNothingCovered(measured);
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+/** The Execution modes button's label and icon. The button's name stays "Execution modes" in every state. */
+function executionModes(page: Page): { readonly label: Locator; readonly icon: Locator } {
+  const button = page.getByRole("button", { name: MODES, exact: true });
+  return { label: button.getByText(MODES, { exact: true }), icon: button.locator("svg") };
+}
+
+/** Puts `label` in the model pill: its first text node takes it and the others are emptied, so React keeps its nodes. */
+async function setModelPillText(page: Page, label: string): Promise<void> {
+  await page.evaluate((text) => {
+    const pill = document.querySelector<HTMLElement>(
+      '[data-composer-toolbar="true"] button[aria-label^="Model:"]',
+    );
+    if (pill === null) throw new Error("The model pill is missing");
+    const walker = document.createTreeWalker(pill, NodeFilter.SHOW_TEXT);
+    let placed = false;
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      if ((node.nodeValue ?? "").trim() === "") continue;
+      node.nodeValue = placed ? "" : text;
+      placed = true;
+    }
+    if (!placed) throw new Error("The model pill has no text to replace");
+  }, label);
+}
+
+interface ToolbarFit {
+  readonly pillText: string;
+  readonly pillFits: boolean;
+  readonly rowOverflows: boolean;
+  /** The card's width, and the toolbar's content width: its box less the row's 8 px padding on each side. */
+  readonly cardWidth: number;
+  readonly contentWidth: number;
+  readonly threadWidth: string;
+  /** The text of each visible text element in the toolbar that hides its overflow and overflows it. */
+  readonly clipped: readonly string[];
+}
+
+/** Whether the composer toolbar overflows or clips visible text, and the widths it is laid out in. */
+async function toolbarFit(page: Page): Promise<ToolbarFit> {
+  return page.evaluate(() => {
+    const row = document.querySelector<HTMLElement>('[data-composer-toolbar="true"]');
+    const pill = row?.querySelector<HTMLElement>('button[aria-label^="Model:"]') ?? null;
+    if (row === null || pill === null)
+      throw new Error("The composer toolbar or its model pill is missing");
+    const clipped = Array.from(row.querySelectorAll<HTMLElement>("*"))
+      .filter((element) => {
+        // Icons are SVG, and the screen-reader-only texts are 1 px wide on purpose: neither is visible text.
+        if (element instanceof SVGElement || element.clientWidth <= 1) return false;
+        const { overflowX } = getComputedStyle(element);
+        const hasText = Array.from(element.childNodes).some(
+          (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim() !== "",
+        );
+        const overflowHidden = overflowX === "hidden" || overflowX === "clip";
+        return hasText && overflowHidden && element.scrollWidth > element.clientWidth + 0.5;
+      })
+      .map((element) => (element.textContent ?? "").trim().slice(0, 40));
+    return {
+      pillText: (pill.textContent ?? "").replace(/\s+/g, " ").trim(),
+      pillFits: pill.scrollWidth <= pill.clientWidth + 0.5,
+      rowOverflows: row.scrollWidth > row.clientWidth + 0.5,
+      cardWidth: row.parentElement?.clientWidth ?? 0,
+      contentWidth: row.clientWidth - 16,
+      threadWidth: getComputedStyle(document.documentElement)
+        .getPropertyValue("--layout-thread-width")
+        .trim(),
+      clipped,
+    };
+  });
+}
+
+interface ModesShot {
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+  readonly dark: boolean;
+}
+
+/**
+ * The Execution modes button around a reply. Before the reply the label shows from 768 px and the icon below. While the
+ * steer hint shows (streaming, from a 38 rem toolbar) the button is its icon at every width; below 38 rem the hint is not
+ * drawn, so nothing changes. After the reply the button is as it was before.
+ */
+async function modesAroundReply(realApp: RealApp, shot: ModesShot): Promise<void> {
+  const page = shot.dark
+    ? await realApp.open({
+        beforeLoad: (openedPage) =>
+          openedPage.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
+      })
+    : await realApp.open();
+  await page.setViewportSize(DESKTOP);
+  const composer = await startChat(page);
+  await page.setViewportSize({ width: shot.width, height: shot.height });
+  const wide = shot.width >= 768;
+  const modes = executionModes(page);
+  const hint = page.getByText(HINT, { exact: true });
+  const stop = page.getByRole("button", { name: "Stop generating" });
+  await mkdir(screenshots, { recursive: true });
+  await waitForFiniteAnimations(page);
+  if (wide) {
+    await expect(modes.label, "the label shows before a reply").toBeVisible();
+    await expect(modes.icon).toBeHidden();
+  } else {
+    await expect(modes.label).toBeHidden();
+    await expect(modes.icon).toBeVisible();
+  }
+  await page.screenshot({ path: join(screenshots, `fix-1303-modes-${shot.name}-idle.png`) });
+
+  await sendPrompt(composer, LONG_RUN);
+  await expect(stop).toBeVisible({ timeout: 120_000 });
+  if (wide) {
+    await expect(hint, "the steer hint shows at this width").toBeVisible();
+  } else {
+    await expect(hint, "the steer hint is not drawn at this width").toBeHidden();
+  }
+  await expect(modes.label, "the label is an icon while the hint shows").toBeHidden();
+  await expect(modes.icon).toBeVisible();
+  await expect(page.getByRole("button", { name: MODES, exact: true })).toBeVisible();
+  await waitForFiniteAnimations(page);
+  await page.screenshot({ path: join(screenshots, `fix-1303-modes-${shot.name}-streaming.png`) });
+
+  await stop.click();
+  await expect(stop).toBeHidden({ timeout: 30_000 });
+  if (wide) {
+    await expect(modes.label, "the label is back after the reply").toBeVisible();
+    await expect(modes.icon).toBeHidden();
+  } else {
+    await expect(modes.label).toBeHidden();
+    await expect(modes.icon).toBeVisible();
+  }
+  expect(realApp.problems).toEqual([]);
+}
+
+realTest(
+  "at 1280 px in light, the Execution modes label shows before a reply, is an icon while the steer hint shows, and comes back after",
+  async ({ realApp }) => {
+    await modesAroundReply(realApp, { name: "1280-light", width: 1280, height: 800, dark: false });
+  },
+);
+
+realTest(
+  "at 1280 px in dark, the Execution modes label shows before a reply, is an icon while the steer hint shows, and comes back after",
+  async ({ realApp }) => {
+    await modesAroundReply(realApp, { name: "1280-dark", width: 1280, height: 800, dark: true });
+  },
+);
+
+realTest(
+  "at 390 px in light, the Execution modes button is an icon before, during and after a reply",
+  async ({ realApp }) => {
+    await modesAroundReply(realApp, { name: "390-light", width: 390, height: 844, dark: false });
+  },
+);
+
+realTest(
+  "at 390 px in dark, the Execution modes button is an icon before, during and after a reply",
+  async ({ realApp }) => {
+    await modesAroundReply(realApp, { name: "390-dark", width: 390, height: 844, dark: true });
+  },
+);
+
+realTest(
+  "with a 30-character model label at 1280 px, the steer hint stays whole and the toolbar wraps without clipping",
+  async ({ realApp }) => {
+    expect(LONG_MODEL).toHaveLength(30);
+    const page = await realApp.open();
+    await page.setViewportSize(DESKTOP);
+    const composer = await startChat(page);
+    await queueSteerAndFollowUp(page, composer);
+    await setModelPillText(page, LONG_MODEL);
+    await waitForFiniteAnimations(page);
+    await mkdir(screenshots, { recursive: true });
+    await page.screenshot({ path: join(screenshots, "fix-1303-wrap-1280-light-streaming.png") });
+    const fit = await toolbarFit(page);
+    const measured = await measure(page);
+    expect(
+      measured.hintShown,
+      `the steer hint is shown at 1280 px (toolbar content ${fit.contentWidth} px)`,
+    ).toBe(true);
+    expectNothingCovered(measured);
+    await expect(executionModes(page).label).toBeHidden();
+    await expect(executionModes(page).icon).toBeVisible();
+    expect(fit.pillText, "the model label is whole").toBe(LONG_MODEL);
+    expect(fit.pillFits, "the model pill does not clip its label").toBe(true);
+    expect(fit.rowOverflows, "the toolbar row does not overflow").toBe(false);
+    expect(
+      fit.clipped,
+      `visible text in the toolbar is clipped: ${fit.clipped.join(" | ")}`,
+    ).toEqual([]);
+    expect(realApp.problems).toEqual([]);
+  },
+);
+
+realTest(
+  "with a 30-character model label at the 38 rem toolbar width, the steer hint shows whole and nothing overflows or clips",
+  async ({ realApp }) => {
+    expect(LONG_MODEL).toHaveLength(30);
+    const page = await realApp.open();
+    await page.setViewportSize(DESKTOP);
+    const composer = await startChat(page);
+    // The column is 42 rem plus 2 px: the card's 1 px borders leave its toolbar's content exactly 38 rem (608 px) wide.
+    await page.evaluate(() =>
+      document.documentElement.style.setProperty("--layout-thread-width", "calc(42rem + 2px)"),
+    );
+    await queueSteerAndFollowUp(page, composer);
+    await setModelPillText(page, LONG_MODEL);
+    await waitForFiniteAnimations(page);
+    await mkdir(screenshots, { recursive: true });
+    await page.screenshot({ path: join(screenshots, "fix-1303-wrap-608-light-streaming.png") });
+    const fit = await toolbarFit(page);
+    const measured = await measure(page);
+    expect(
+      measured.hintShown,
+      `the steer hint shows at the 38 rem toolbar width (toolbar content ${fit.contentWidth} px, card ${fit.cardWidth} px, thread ${fit.threadWidth})`,
+    ).toBe(true);
+    expectNothingCovered(measured);
+    await expect(executionModes(page).label).toBeHidden();
+    await expect(executionModes(page).icon).toBeVisible();
+    expect(fit.contentWidth, "the toolbar's content is 38 rem wide").toBe(608);
+    expect(fit.pillText, "the model label is whole").toBe(LONG_MODEL);
+    expect(fit.pillFits, "the model pill does not clip its label").toBe(true);
+    expect(fit.rowOverflows, "the toolbar row does not overflow").toBe(false);
+    expect(
+      fit.clipped,
+      `visible text in the toolbar is clipped: ${fit.clipped.join(" | ")}`,
+    ).toEqual([]);
     expect(realApp.problems).toEqual([]);
   },
 );

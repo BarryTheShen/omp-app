@@ -520,6 +520,8 @@ export function ComposerSurface({
   const chord = chordLabel("Mod+Enter", { mac: isApplePlatform() });
   const steerHint = `Enter steers · ${chord} queues`;
   const steerHintTitle = `Enter steers this turn. ${chord} queues a message for after it.`;
+  const steerHintRendered =
+    isStreaming && notSentReason === undefined && modeForText(text) === "prompt";
 
   return (
     <ComposerPrimitive.Root
@@ -631,8 +633,9 @@ export function ComposerSurface({
           </p>
         )}
         <div
-          className="@container flex min-w-0 items-center justify-between gap-2 px-2 pb-2"
+          className="@container group/composer-toolbar flex min-w-0 items-center justify-between gap-2 px-2 pb-2"
           data-composer-toolbar="true"
+          data-steer-hint={steerHintRendered ? "true" : undefined}
           style={replaced ? { display: "none" } : undefined}
         >
           <ComposerPrimitive.AddAttachment
@@ -649,9 +652,10 @@ export function ComposerSurface({
             }
           />
           {toolbar}
-          {isStreaming && notSentReason === undefined && modeForText(text) === "prompt" && (
+          {/* The steer hint keeps its width: the controls beside it wrap onto a new row rather than squeeze it. */}
+          {steerHintRendered && (
             <p
-              className="text-muted-foreground hidden min-w-0 flex-1 whitespace-nowrap text-xs @[38rem]:block truncate"
+              className="text-muted-foreground hidden shrink-0 whitespace-nowrap text-xs @[38rem]:block truncate"
               data-composer-steer-hint="true"
               title={steerHintTitle}
             >

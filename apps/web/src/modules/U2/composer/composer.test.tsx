@@ -103,6 +103,24 @@ describe("U2.2 ComposerSurface", () => {
     });
   });
 
+  test("marks the toolbar row only while the steer hint is rendered", () => {
+    const idle = renderComposer(
+      false,
+      vi.fn(async () => undefined),
+    );
+    expect(
+      idle.container.querySelector("[data-composer-toolbar]")?.hasAttribute("data-steer-hint"),
+    ).toBe(false);
+    cleanup();
+    const running = renderComposer(
+      true,
+      vi.fn(async () => undefined),
+    );
+    expect(
+      running.container.querySelector("[data-composer-toolbar]")?.getAttribute("data-steer-hint"),
+    ).toBe("true");
+  });
+
   test("the steer hint sits in the toolbar row with the stop control, so it adds no line above the editor", () => {
     renderComposer(
       true,
