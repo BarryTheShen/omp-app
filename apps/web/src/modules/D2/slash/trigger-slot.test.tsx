@@ -49,6 +49,12 @@ const available: CapabilityMap = {
   "omp.cmd.get_available_commands": { state: "available", via: "rpc" },
 };
 
+/**
+ * The list's first answer follows a 60 ms debounce and a render. A loaded worker can take longer than RTL's 1 s default
+ * (issue 2271), so these waits allow 5 s. They still end on that event, never on a timer.
+ */
+const LIST_ANSWER_WAIT = { timeout: 5000 } as const;
+
 describe("D2.3 SlashTriggerSlot", () => {
   test("opens omp's commands with their source, description and argument hint, and inserts one", async () => {
     const provider = providerWith(available);
@@ -521,8 +527,11 @@ describe("D2.3 SlashTriggerSlot", () => {
       const input = composerInput();
       fireEvent.change(input, { target: { value: "/" } });
       input.setSelectionRange(1, 1);
-      const listbox = await screen.findByRole("listbox");
-      await waitFor(() => expect(listbox.getAttribute("aria-activedescendant")).not.toBeNull());
+      const listbox = await screen.findByRole("listbox", {}, LIST_ANSWER_WAIT);
+      await waitFor(
+        () => expect(listbox.getAttribute("aria-activedescendant")).not.toBeNull(),
+        LIST_ANSWER_WAIT,
+      );
       const first = listbox.getAttribute("aria-activedescendant");
       fireEvent.keyDown(input, { key: "ArrowDown" });
       await waitFor(() => expect(scrolled).toHaveLength(1));
@@ -556,8 +565,11 @@ describe("D2.3 SlashTriggerSlot", () => {
       const input = composerInput();
       fireEvent.change(input, { target: { value: "/" } });
       input.setSelectionRange(1, 1);
-      const listbox = await screen.findByRole("listbox");
-      await waitFor(() => expect(listbox.getAttribute("aria-activedescendant")).not.toBeNull());
+      const listbox = await screen.findByRole("listbox", {}, LIST_ANSWER_WAIT);
+      await waitFor(
+        () => expect(listbox.getAttribute("aria-activedescendant")).not.toBeNull(),
+        LIST_ANSWER_WAIT,
+      );
       const third = screen.getAllByRole("option")[2];
       if (third === undefined) throw new Error("the list has fewer than three commands");
       fireEvent.mouseMove(third);

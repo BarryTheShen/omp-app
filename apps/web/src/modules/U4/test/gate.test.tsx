@@ -28,6 +28,12 @@ const capabilities: CapabilityMap = {
   "omp.cmd.set_ask_dialog": { state: "available", via: "rpc" },
 };
 
+/**
+ * The replay test waits on events that the fixture and the dialog produce. RTL's 1 s default is shorter than a stall of a
+ * loaded worker (issue 2271), so each of its waits allows 5 s. Every wait still ends on its event; nothing is slept.
+ */
+const EVENT_WAIT = { timeout: 5000 } as const;
+
 afterEach(cleanup);
 
 function fixture(): Fixture {
@@ -95,12 +101,13 @@ async function openFixtureHarness(): Promise<FixtureHarness> {
 function waitForSnapshot(
   store: OmpRuntimeStore,
   predicate: (snapshot: RuntimeSnapshot) => boolean,
+  options: { readonly timeout: number },
 ) {
   return waitFor(() => {
     const snapshot = store.getSnapshot();
     expect(predicate(snapshot)).toBe(true);
     return snapshot;
-  });
+  }, options);
 }
 
 interface U4HarnessState {
@@ -149,20 +156,21 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
       await waitForSnapshot(
         harness.store,
         (snapshot) => Object.keys(snapshot.pending.extensionUi).length > 0,
+        EVENT_WAIT,
       );
       const pending = Object.values(harness.store.getSnapshot().pending.extensionUi)[0];
       if (pending?.request.method !== "ask") throw new Error("fixture did not produce ask request");
       await waitFor(() => {
         expect(state.router).toBeDefined();
         expect(state.host).toBeDefined();
-      });
+      }, EVENT_WAIT);
       const router = state.router;
       if (!router) throw new Error("U4 router did not initialize");
       const routing = router.routeExtensionUi(
         { request: pending.request, receivedSeq: pending.receivedSeq },
         { threadId: harness.threadId },
       );
-      await screen.findByTestId("ask-question-db");
+      await screen.findByTestId("ask-question-db", {}, EVENT_WAIT);
       fireEvent.click(screen.getByRole("radio", { name: "SQLite" }));
       fireEvent.click(screen.getByRole("button", { name: "Review" }));
       fireEvent.click(screen.getByRole("button", { name: "Submit" }));
@@ -170,6 +178,7 @@ describe("U4.7 W3/CC7 fixture-backed gate", () => {
       await waitForSnapshot(
         harness.store,
         (snapshot) => Object.keys(snapshot.pending.extensionUi).length === 0,
+        EVENT_WAIT,
       );
       expect(harness.store.getSnapshot().pending.extensionUi).toEqual({});
     } finally {
