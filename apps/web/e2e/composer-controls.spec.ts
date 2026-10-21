@@ -87,11 +87,13 @@ async function addFileByPaste(page: Page): Promise<void> {
 
 async function runComposerControls({ realApp }: { readonly realApp: RealApp }): Promise<void> {
   await mkdir(screenshots, { recursive: true });
+  let lightPage: Page | undefined;
 
   for (const theme of ["light", "dark"] as const) {
     const page = await realApp.open({
       beforeLoad: (openedPage) => openedPage.emulateMedia({ colorScheme: theme }),
     });
+    if (theme === "light") lightPage = page;
     const composer = await startChat(page);
 
     for (const viewport of viewports) {
@@ -254,21 +256,22 @@ async function runComposerControls({ realApp }: { readonly realApp: RealApp }): 
         fullPage: true,
       });
     }
-
-    if (theme === "light") {
-      const fileChooserPromise = page.waitForEvent("filechooser");
-      await page.getByRole("button", { name: /Add attachment/i }).click();
-      const fileChooser = await fileChooserPromise;
-      await fileChooser.setFiles({
-        name: "picked.txt",
-        mimeType: "text/plain",
-        buffer: Buffer.from("picked through the composer"),
-      });
-      await expectFilePreview(page, "picked.txt");
-      await addFileByDrop(page);
-      await addFileByPaste(page);
-    }
   }
+  // The attachments come last, on the light page. A new chat in this folder opens with the folder's new-chat draft, which
+  // keeps attachments: the app saves that draft ten seconds after its last edit. Attachments added before the dark pass
+  // could reach its measurements, depending on whether that save landed before the dark page loaded.
+  if (lightPage === undefined) throw new Error("The light pass did not open its page");
+  const fileChooserPromise = lightPage.waitForEvent("filechooser");
+  await lightPage.getByRole("button", { name: /Add attachment/i }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "picked.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("picked through the composer"),
+  });
+  await expectFilePreview(lightPage, "picked.txt");
+  await addFileByDrop(lightPage);
+  await addFileByPaste(lightPage);
 }
 
 realTest(

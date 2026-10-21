@@ -8,7 +8,7 @@ import type { SessionTranscriptFiles } from "@/modules/P1/roster";
 import { OmpRuntimeStore } from "@/modules/R0/store";
 import { TaskSubagentsContext } from "@/modules/T5/task";
 import { AGENT_CAPABILITIES } from "./agents-tab";
-import { createThreadAgents } from "./thread-agents";
+import { createThreadAgents, startWorkerStream } from "./thread-agents";
 import { TaskSubagentsScope, useThreadAgents } from "./thread-agents-scope";
 
 afterEach(() => {
@@ -359,5 +359,22 @@ describe("the chat's subagents in the transcript", () => {
     } finally {
       process.off("unhandledRejection", record);
     }
+  });
+});
+
+describe("the chat's worker stream", () => {
+  test("is requested once for the chat, and asks omp for progress before any card asks", async () => {
+    const omp = fakeOmp();
+    const agents = createThreadAgents({
+      threadId: threadA,
+      store: new OmpRuntimeStore({ threadId: threadA }),
+      session: omp.session,
+      files: unreadFiles,
+      capabilities: CAPABILITIES,
+    });
+    startWorkerStream(agents);
+    startWorkerStream(agents);
+    await waitFor(() => expect(omp.levels).toEqual([{ threadId: threadA, level: "progress" }]));
+    await agents.dispose();
   });
 });

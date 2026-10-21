@@ -38,6 +38,7 @@ import {
 } from "react";
 import { AccessibilityProvider } from "@/a11y";
 import { agentsSurface, RevealAgentHub } from "@/app/agents/agents-tab";
+import { startWorkerStream } from "@/app/agents/thread-agents";
 import { TaskSubagentsScope, useThreadAgents } from "@/app/agents/thread-agents-scope";
 import { RevealCommandOutput, useCommandReport } from "@/app/command-report/command-report";
 import { type OpenFailure, openFailureIn } from "@/app/open-failure";
@@ -1722,6 +1723,10 @@ function ActiveThreadReady({
         appCommands: appSlashCommands,
       });
       if (route === null) {
+        // A worker's end reaches the chat only through a worker stream that is on when the worker ends. The stream is requested
+        // here, just before the prompt goes out, and nothing waits for it: a worker can start only after the prompt has been
+        // sent and the model has answered.
+        if (agents !== null) startWorkerStream(agents);
         await runtimeController.submitPrompt({
           ...intent,
           // A pasted-text chip sends its full text, from the file the composer held when Enter was pressed.
@@ -1742,6 +1747,7 @@ function ActiveThreadReady({
       perfMark("send_delivered");
     },
     [
+      agents,
       appSlashCommands,
       commandGateway,
       runtimeController,

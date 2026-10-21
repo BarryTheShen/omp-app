@@ -1,4 +1,5 @@
-import type { CapabilityMap, ThreadId, ToolCallId } from "@omp-app/contracts";
+import { AppFailure, type CapabilityMap, type ThreadId, type ToolCallId } from "@omp-app/contracts";
+import { reportClientError } from "@/app/client-errors";
 import {
   createSubagentClient,
   type SubagentClient,
@@ -120,4 +121,36 @@ export function createThreadAgents({
       await client.dispose();
     },
   };
+}
+
+/** The chats whose worker stream is already on: the stream is requested once per chat, whatever number of prompts it sends. */
+const streamsOn = new WeakSet<ThreadAgents>();
+
+/**
+ * Starts the chat's worker stream, sent with the chat's first prompt. omp reports a worker's end only to a stream that is
+ * on when the end happens. A worker starts only after the prompt has gone out and the model has answered, so a stream
+ * requested with the prompt has that time to take effect. A stream requested when the worker's card appeared did not
+ * always take effect before the worker ended. The roster's own start (its list of running workers and its scan of finished
+ * ones) still waits for the first card or hub that asks, and no prompt waits for the stream.
+ */
+export function startWorkerStream(agents: ThreadAgents): void {
+  if (streamsOn.has(agents)) return;
+  streamsOn.add(agents);
+  try {
+    agents.client.subscribeNotifications((notification) => {
+      agents.roster.ingestNotification(notification.event, notification.seq);
+    });
+    void agents.client.acquireSubscription("progress").catch(reportStreamFailure);
+  } catch (error) {
+    reportStreamFailure(error);
+  }
+}
+
+/** A stream that fails to start is reported. A chat closed while its stream was starting needs no stream, so that is no failure. */
+function reportStreamFailure(error: unknown): void {
+  if (error instanceof AppFailure && error.appError.code === "cancelled") return;
+  reportClientError({
+    kind: "error",
+    message: `The chat's workers could not be followed: ${error instanceof Error ? error.message : "unknown error"}`,
+  });
 }
