@@ -11,7 +11,7 @@ import { ComposerSurface } from "@/modules/U2/composer";
 import type { MentionProvider, TriggerCandidate, TriggerSearchResult } from "../contract";
 import { type LocalProvider, LocalTriggerSlot } from "../local";
 import { MentionComposerSlot } from "../mentions";
-import { TriggerKeyScope, useSendAfterChoose } from "./trigger-keys";
+import { TriggerKeyScope, useSendAfterChoose, useTriggerListLoading } from "./trigger-keys";
 
 /** The mention lists under a trigger root of their own, as a test mounts them on their own. */
 function MentionTriggerSlot(props: ComponentProps<typeof MentionComposerSlot>) {
@@ -565,5 +565,158 @@ describe("#1566: an Enter with an open, answered list chooses a row and never se
     fireEvent.click(screen.getByRole("option", { name: "/send" }));
     await settle();
     expect(sent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#2245: a held Enter waits for its list when the list is between renders", () => {
+  function choose(): "choose" {
+    return "choose";
+  }
+
+  function Scoped({
+    loading,
+    rows,
+    chosen,
+  }: {
+    readonly loading: boolean;
+    readonly rows: boolean;
+    readonly chosen: () => void;
+  }) {
+    useTriggerListLoading(loading, choose);
+    return (
+      <>
+        <textarea aria-label="Message input" />
+        {rows ? (
+          <div role="listbox">
+            <button type="button" role="option" aria-selected="true" onClick={chosen}>
+              /usage
+            </button>
+          </div>
+        ) : loading ? (
+          <div role="listbox" />
+        ) : null}
+      </>
+    );
+  }
+
+  test("the list hides in the commit its loading ends and shows its row in the next: the held Enter chooses that row", async () => {
+    const chosen = vi.fn();
+    const { rerender } = render(
+      <TriggerKeyScope>
+        <Scoped loading rows={false} chosen={chosen} />
+      </TriggerKeyScope>,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Enter" });
+    // The answer: the loading ends and the list is hidden in that commit. Its microtask runs before the next commit.
+    rerender(
+      <TriggerKeyScope>
+        <Scoped loading={false} rows={false} chosen={chosen} />
+      </TriggerKeyScope>,
+    );
+    await Promise.resolve();
+    rerender(
+      <TriggerKeyScope>
+        <Scoped loading={false} rows chosen={chosen} />
+      </TriggerKeyScope>,
+    );
+    await waitFor(() => expect(chosen).toHaveBeenCalledTimes(1));
+  });
+
+  test("a text key typed while the list is hidden drops the held Enter, so the row that shows later is not chosen", async () => {
+    const chosen = vi.fn();
+    const { rerender } = render(
+      <TriggerKeyScope>
+        <Scoped loading rows={false} chosen={chosen} />
+      </TriggerKeyScope>,
+    );
+    const input = screen.getByRole("textbox", { name: "Message input" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    rerender(
+      <TriggerKeyScope>
+        <Scoped loading={false} rows={false} chosen={chosen} />
+      </TriggerKeyScope>,
+    );
+    await Promise.resolve();
+    fireEvent.keyDown(input, { key: "x" });
+    rerender(
+      <TriggerKeyScope>
+        <Scoped loading={false} rows chosen={chosen} />
+      </TriggerKeyScope>,
+    );
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 50);
+    await promise;
+    expect(chosen).not.toHaveBeenCalled();
+  });
+});
+
+describe("#2245: an empty list is not an answer while a held Enter waits for its list", () => {
+  /** Lets the scope's queued settles and the list observers run. */
+  function settled(): Promise<void> {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 20);
+    return promise;
+  }
+
+  /** The @ file list: it passes its loading state and no answer, so a held Enter is dropped once it has options. */
+  function FileList({
+    loading,
+    shown,
+    submitted,
+    chosen,
+  }: {
+    readonly loading: boolean;
+    readonly shown: "none" | "empty" | "rows";
+    readonly submitted: () => void;
+    readonly chosen: () => void;
+  }) {
+    useTriggerListLoading(loading);
+    return (
+      <>
+        <textarea
+          aria-label="Message input"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submitted();
+          }}
+        />
+        {shown === "rows" && (
+          <div role="listbox" aria-label="File suggestions">
+            <button type="button" role="option" aria-selected="true" onClick={chosen}>
+              README.md
+            </button>
+          </div>
+        )}
+        {shown === "empty" && (
+          <div role="listbox" aria-label="File suggestions">
+            <p>No matches</p>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  test("the list shows an empty shell before its rows once the loading ends: the held Enter is not pressed again, and the @ rule drops it", async () => {
+    const submitted = vi.fn();
+    const chosen = vi.fn();
+    const list = (loading: boolean, shown: "none" | "empty" | "rows") => (
+      <TriggerKeyScope>
+        <FileList loading={loading} shown={shown} submitted={submitted} chosen={chosen} />
+      </TriggerKeyScope>
+    );
+    const { rerender } = render(list(true, "empty"));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message input" }), { key: "Enter" });
+    expect(submitted).not.toHaveBeenCalled();
+    // The loading ends in a commit where the list is not in the page: the held Enter waits for the list.
+    rerender(list(false, "none"));
+    await settled();
+    // The first list to show is an empty shell: that is not an answer, so the Enter is not pressed again.
+    rerender(list(false, "empty"));
+    await settled();
+    expect(submitted).not.toHaveBeenCalled();
+    // The rows arrive: the @ rule drops the held Enter, so nothing is chosen and nothing is sent.
+    rerender(list(false, "rows"));
+    await settled();
+    expect(submitted).not.toHaveBeenCalled();
+    expect(chosen).not.toHaveBeenCalled();
   });
 });

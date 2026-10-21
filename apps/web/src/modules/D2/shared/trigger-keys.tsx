@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -99,19 +100,46 @@ function pressEnterAgain(textarea: HTMLTextAreaElement): void {
  * A list has answered. An Enter kept while it loaded is dropped when the list has options, unless the list
  * chooses for it: then the option it highlights (its first) is chosen (issue 1006). It is pressed again when the list
  * has none, so the text is sent. A list that closed meanwhile (the person kept typing or moved away) drops it.
+ * Returns false, and changes nothing, when no list is in the page: the answer's list renders in a later commit.
  */
 function settleKeptEnter(
   { scope, textarea }: KeptEnter,
   answer: (() => KeptEnterAnswer) | undefined,
-): void {
+): boolean {
   const listbox = scope.querySelector('[role="listbox"]');
-  if (listbox === null) return;
+  if (listbox === null) return false;
   const first = listbox.querySelector<HTMLElement>('[role="option"]');
   if (first === null) {
     pressEnterAgain(textarea);
-    return;
+    return true;
   }
   if (answer?.() === "choose") first.click();
+  return true;
+}
+
+/** How long a held Enter waits for its list to answer with options. A list that never does has closed: the Enter drops. */
+const LIST_SHOW_MS = 1000;
+
+/**
+ * Calls `onShown` once `scope` holds a list with options, or `onGaveUp` when none has after LIST_SHOW_MS. An empty list
+ * does not count: a search that has not answered yet draws an empty list first. Returns how to stop waiting early.
+ */
+function waitForOptions(scope: HTMLElement, onShown: () => void, onGaveUp: () => void): () => void {
+  const observer = new MutationObserver(() => {
+    if (scope.querySelector('[role="option"]') === null) return;
+    stop();
+    onShown();
+  });
+  const timer = window.setTimeout(() => {
+    stop();
+    onGaveUp();
+  }, LIST_SHOW_MS);
+  function stop(): void {
+    observer.disconnect();
+    window.clearTimeout(timer);
+  }
+  observer.observe(scope, { childList: true, subtree: true });
+  return stop;
 }
 
 /**
@@ -141,6 +169,16 @@ export function TriggerKeyScope({
   const element = useRef<HTMLDivElement>(null);
   const pending = useRef(0);
   const kept = useRef<KeptEnter | null>(null);
+  // Stops the wait of a held Enter whose list is not in the page yet (see settleHeld).
+  const stopWaiting = useRef<(() => void) | null>(null);
+  // A held Enter's wait ends with the scope: no observer or timer outlives it.
+  useEffect(
+    () => () => {
+      stopWaiting.current?.();
+      stopWaiting.current = null;
+    },
+    [],
+  );
   // Set by a Tab choose until sendAfterChoose consumes it, or until the next key or pointer press in the scope.
   const tabChose = useRef(false);
   // The newest row check, read by the key handler, which is created once for the scope.
@@ -152,15 +190,36 @@ export function TriggerKeyScope({
   useLayoutEffect(() => {
     submitWhenLoadingRef.current = submitWhenLoading;
   });
-  const value = useMemo<TriggerKeyScopeValue>(
-    () => ({
+  const value = useMemo<TriggerKeyScopeValue>(() => {
+    // Settles a held Enter once its list has answered. The list hides in the commit where its loading ends and renders
+    // the answer in the next one, so a list that is not in the page yet makes the Enter wait for its options (issue
+    // 2245). An empty list that shows meanwhile is not an answer, so it does not settle the Enter.
+    const settleHeld = (enter: KeptEnter, answer: (() => KeptEnterAnswer) | undefined): void => {
+      if (pending.current > 0 || kept.current !== enter) return;
+      if (settleKeptEnter(enter, answer)) {
+        kept.current = null;
+        return;
+      }
+      stopWaiting.current?.();
+      stopWaiting.current = waitForOptions(
+        enter.scope,
+        () => {
+          stopWaiting.current = null;
+          settleHeld(enter, answer);
+        },
+        () => {
+          stopWaiting.current = null;
+          if (kept.current === enter) kept.current = null;
+        },
+      );
+    };
+    return {
       loading: (delta, answer) => {
         pending.current += delta;
         const enter = kept.current;
         if (pending.current > 0 || enter === null) return;
-        kept.current = null;
         // After the commit that renders the answer, so the list's options are in the page when they are read.
-        queueMicrotask(() => settleKeptEnter(enter, answer));
+        queueMicrotask(() => settleHeld(enter, answer));
       },
       sendAfterChoose: () => {
         // A choose that Tab made stops at the completed name: nothing is sent here, and Enter sends it later.
@@ -176,15 +235,21 @@ export function TriggerKeyScope({
         return false;
       },
       composerTextarea: () => element.current?.querySelector("textarea") ?? null,
-    }),
-    [],
-  );
+    };
+  }, []);
   const onKeyDownCapture = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (replayed.has(event.nativeEvent)) return;
     // Any key ends a Tab choose's mark: the mark covers that one choose, not later keys or presses.
     tabChose.current = false;
     // Any key that can change the text drops a held Enter, so only the text the person confirmed with Enter is ever sent (issue 866).
     if (!Object.hasOwn(TEXT_UNCHANGING_KEYS, event.key)) kept.current = null;
+    // A key that ends a held Enter's wait ends it: a text key or Escape has already dropped the Enter, and an Enter is a
+    // new Enter (the composer sends the text, as it does when no list is open).
+    if (stopWaiting.current !== null && (kept.current === null || event.key === "Enter")) {
+      stopWaiting.current();
+      stopWaiting.current = null;
+      kept.current = null;
+    }
     // While an input method composes a word, its keys belong to the IME (issue 1334): no list moves or chooses for one,
     // and the composer does not send one. Safari sends the Enter that commits a word after compositionend, with keyCode 229.
     if (event.nativeEvent.isComposing || event.keyCode === 229) {
