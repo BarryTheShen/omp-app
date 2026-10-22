@@ -239,7 +239,6 @@ const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, TerminalOnlyEntry>> = 
   queue: { does: "Queue a message for after the agent yields", answeredByApp: true },
   quit: { does: "Quit the application" },
   record: { does: "Start or stop recording this screen to a replayable file (omp play)" },
-  restart: { does: "Restart omp with the same launch flags, resuming this session" },
   resume: {
     does: "Resume a different session",
     instead: "Use the session list instead.",

@@ -182,6 +182,7 @@ import {
 } from "@/modules/U4/contract/host-answers";
 import { renderDialogRequest } from "@/modules/U4/dialogs";
 import { openChatDeleteConfirm } from "@/modules/U4/dialogs/confirm-chat-delete";
+import { openDestructiveCommandConfirm } from "@/modules/U4/dialogs/confirm-destructive-command";
 import { DialogHostController, useDisposeWhenReplaced } from "@/modules/U4/host";
 import {
   ExtensionUiRequestRouterController,
@@ -271,6 +272,8 @@ import {
   loginSlashCommand,
   mcpReloadSlashCommand,
   newChatSlashCommand,
+  restartQuestion,
+  restartSlashCommand,
   routeSubmit,
   runSlashRoute,
   settingsSlashCommand,
@@ -1683,6 +1686,11 @@ function ActiveThreadReady({
       mcpReloadSlashCommand({ commands: client.port(McpCommandsPort), threadId }),
       agentHubSlashCommand({ openAgentHub }),
       goalCommand,
+      restartSlashCommand({
+        confirm: (running) => openDestructiveCommandConfirm(overlay, restartQuestion(running)),
+        restart: restartOmp,
+        isBusy: () => conversationBusy(store),
+      }),
     ],
     [
       catalog,
@@ -1697,6 +1705,7 @@ function ActiveThreadReady({
       openLogin,
       openThread,
       overlay,
+      restartOmp,
       shareController,
       shortcutRegistry,
       showCommandOutput,

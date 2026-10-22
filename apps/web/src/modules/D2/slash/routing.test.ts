@@ -258,7 +258,6 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
       "omfg",
       "cleanse",
       "debug",
-      "restart",
       "setup",
       "plan",
       "vibe",
@@ -425,7 +424,7 @@ describe("#1273 a command typed with a colon is read the way omp reads it, up to
 });
 
 describe("#2199 a typed terminal-only name has a note; the refusal keeps its text", () => {
-  /** The 31 terminal-only commands and their 3 aliases: the names the table answers. */
+  /** The 30 terminal-only commands and their 3 aliases: the names the table answers. */
   const terminalOnlyNames = [
     "agents",
     "btw",
@@ -455,7 +454,6 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     "queue",
     "quit",
     "record",
-    "restart",
     "resume",
     "setup",
     "skills",
@@ -481,8 +479,8 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   }
 
-  test("each of the 34 names has omp's description in its note, except queue, which the app answers itself", () => {
-    expect(terminalOnlyNames).toHaveLength(34);
+  test("each of the 33 names has omp's description in its note, except queue, which the app answers itself", () => {
+    expect(terminalOnlyNames).toHaveLength(33);
     for (const name of terminalOnlyNames) {
       if (name === "queue") {
         expect(terminalOnlyNote(name)).toBeNull();
@@ -510,7 +508,7 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   });
 
-  test("the refusal keeps today's text for each of the 34 names", async () => {
+  test("the refusal keeps today's text for each of the 33 names", async () => {
     for (const name of terminalOnlyNames) {
       const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
       const alternative = alternatives[name];

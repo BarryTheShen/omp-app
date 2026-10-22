@@ -51,6 +51,8 @@ import {
   loginSlashCommand,
   mcpReloadSlashCommand,
   newChatSlashCommand,
+  restartQuestion,
+  restartSlashCommand,
   routeSubmit,
   runSlashRoute,
   sessionDeleteSlashCommand,
@@ -1379,5 +1381,118 @@ describe("S9b `/tree` and `/branch` open the history panel, or say why they cann
       },
     });
     expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe("S9e `/restart` asks first, then restarts omp on this chat", () => {
+  /** The command with its three dependencies: a question that answers `confirmed`, a restart, and whether a reply runs. */
+  function restartCommand({
+    confirmed = true,
+    restart = vi.fn(async () => undefined),
+    busy = false,
+  }: {
+    readonly confirmed?: boolean;
+    readonly restart?: () => Promise<void>;
+    readonly busy?: boolean;
+  } = {}) {
+    const confirm = vi.fn(async (_turnRunning: boolean) => confirmed);
+    const command = restartSlashCommand({ confirm, restart, isBusy: () => busy });
+    return { command, confirm, restart };
+  }
+
+  test("the question's words are the table's, byte for byte, with and without a reply running", () => {
+    expect(restartQuestion(false)).toEqual({
+      label: "Restart omp",
+      title: "Restart omp for this chat?",
+      description:
+        "omp stops and starts again on this chat's saved messages. Background work omp started for this chat may stop too.",
+      confirmLabel: "Restart omp",
+    });
+    expect(restartQuestion(true)).toEqual({
+      label: "Restart omp",
+      title: "Restart omp for this chat?",
+      description:
+        "A reply is still being written, and it will stop. omp then starts again on this chat's saved messages. Background work omp started for this chat may stop too.",
+      confirmLabel: "Restart omp",
+    });
+  });
+
+  test("the command is listed under its name, takes arguments only to refuse them, and its row says what it does", () => {
+    const { command } = restartCommand();
+    expect(command.name).toBe("restart");
+    expect(command.unlisted).toBeUndefined();
+    expect(command.takesArguments).toBe(true);
+    expect(command.description).toBe("Restart omp on this chat, after you confirm");
+  });
+
+  test("Cancel sends nothing: the question's answer is no, and restart is never called", async () => {
+    const { command, restart } = restartCommand({ confirmed: false });
+    await expect(command.run({})).resolves.toEqual({});
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  test("Confirm restarts omp once, and says the chat is where the person left it", async () => {
+    const { command, restart } = restartCommand();
+    await expect(command.run({})).resolves.toEqual({
+      message: "omp restarted. This chat is where you left it.",
+    });
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  test("the question says whether a reply is running when the command runs", async () => {
+    const idle = restartCommand({ busy: false });
+    await idle.command.run({});
+    expect(idle.confirm).toHaveBeenCalledWith(false);
+    const running = restartCommand({ busy: true });
+    await running.command.run({});
+    expect(running.confirm).toHaveBeenCalledWith(true);
+  });
+
+  test("omp's own refusal, such as a chat that is not saved yet, is thrown unchanged", async () => {
+    const refusal = new AppFailure({
+      code: "omp_exited",
+      message:
+        "omp stopped before this chat was saved, so it can't be continued. Start a new chat.",
+      retryable: false,
+    });
+    const { command } = restartCommand({
+      restart: async () => {
+        throw refusal;
+      },
+    });
+    await expect(command.run({})).rejects.toBe(refusal);
+  });
+
+  test("any other failure becomes the fallback sentence, which can be tried again", async () => {
+    const { command } = restartCommand({
+      restart: async () => {
+        throw new Error("the socket closed");
+      },
+    });
+    const failure = await command.run({}).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(AppFailure);
+    expect(failure).toMatchObject({
+      appError: {
+        code: "internal",
+        message: "omp could not be restarted. Try again.",
+        retryable: true,
+      },
+    });
+  });
+
+  test("words after the name are refused with the sentence, and no question opens", async () => {
+    const { command, confirm, restart } = restartCommand();
+    const failure = await command.run({ args: "now" }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(AppFailure);
+    expect(failure).toMatchObject({
+      appError: {
+        code: "invalid_args",
+        message:
+          "/restart doesn't take anything after it, so nothing was sent. Type /restart on its own.",
+        retryable: false,
+      },
+    });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(restart).not.toHaveBeenCalled();
   });
 });

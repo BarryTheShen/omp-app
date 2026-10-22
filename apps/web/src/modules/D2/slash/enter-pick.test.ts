@@ -33,8 +33,9 @@ function appCommand(
 
 /**
  * The app's own commands as the composition hands them to the composer (app/root.tsx `appSlashCommands`, main 1ffa8d473,
- * with S9a's `delete` and S9b's `tree` and `branch`). The first 16 are listed rows; the rest are unlisted, guarded forms that still
- * route when typed. An unlisted form does not replace omp's row of its name (provider.ts `listEntries`), so `wt` and `worktree` leave omp's `wt` row listed.
+ * with S9a's `delete`, S9b's `tree` and `branch`, and S9e's `restart`). The first 17 are listed rows; the rest are unlisted,
+ * guarded forms that still route when typed. An unlisted form does not replace omp's row of its name (provider.ts `listEntries`),
+ * so `wt` and `worktree` leave omp's `wt` row listed.
  */
 const APP_COMMANDS: readonly SlashAppCommand[] = [
   appCommand("new", "Start a new chat"),
@@ -72,6 +73,7 @@ const APP_COMMANDS: readonly SlashAppCommand[] = [
   ...DESTRUCTIVE_FORMS.map((form) =>
     appCommand(form, "Asks first, then runs it in omp", { unlisted: true, takesArguments: true }),
   ),
+  appCommand("restart", "Restart omp on this chat, after you confirm"),
 ];
 
 /** Every prefix of every single-word name omp lists (names and aliases) or the app names, plus `a` to `z`. */
@@ -114,7 +116,7 @@ async function picksForEveryPrefix(): Promise<Record<string, string>> {
 }
 
 describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.2 list", () => {
-  test("the app's commands are the 16 listed rows and the unlisted guarded forms", () => {
+  test("the app's commands are the 17 listed rows and the unlisted guarded forms", () => {
     const listed = APP_COMMANDS.filter((app) => app.unlisted !== true).map((app) => app.name);
     expect(listed).toEqual([
       "new",
@@ -133,6 +135,7 @@ describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.2 lis
       "goal",
       "hub",
       "delete",
+      "restart",
     ]);
   });
 

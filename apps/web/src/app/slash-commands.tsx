@@ -39,7 +39,10 @@ import {
   type OverlayOpener,
   openChatDeleteConfirm,
 } from "@/modules/U4/dialogs/confirm-chat-delete";
-import { openDestructiveCommandConfirm } from "@/modules/U4/dialogs/confirm-destructive-command";
+import {
+  type DestructiveConfirmText,
+  openDestructiveCommandConfirm,
+} from "@/modules/U4/dialogs/confirm-destructive-command";
 import { openSpendResetConfirm } from "@/modules/U4/dialogs/confirm-spend-reset";
 import { openWorktreeConfirm } from "@/modules/U4/dialogs/confirm-worktree";
 import type { AgentHubOpenResult } from "./agents/agent-hub-shortcut";
@@ -552,6 +555,54 @@ export function branchSlashCommand({
         message:
           "Choose one of your messages to rewind to. Your files are not changed, and this chat is kept.",
       };
+    },
+  };
+}
+
+/** The question before `/restart` runs: the destructive frame, with omp's restart in its words. */
+export function restartQuestion(turnRunning: boolean): DestructiveConfirmText {
+  return {
+    label: "Restart omp",
+    title: "Restart omp for this chat?",
+    description: turnRunning
+      ? "A reply is still being written, and it will stop. omp then starts again on this chat's saved messages. Background work omp started for this chat may stop too."
+      : "omp stops and starts again on this chat's saved messages. Background work omp started for this chat may stop too.",
+    confirmLabel: "Restart omp",
+  };
+}
+
+export interface RestartDeps {
+  /** Asks the question; resolves true only when the person chooses Restart omp. */
+  readonly confirm: (turnRunning: boolean) => Promise<boolean>;
+  /** Restarts this chat's omp on its saved messages, as the banner's Restart omp button does. */
+  readonly restart: () => Promise<void>;
+  /** Whether a reply is still being written in this chat. */
+  readonly isBusy: () => boolean;
+}
+
+/**
+ * `/restart`: omp's own name for restarting omp on this chat (omp's builtin-lifecycle `restart`). It stops a reply that is
+ * running, so it asks first, and Cancel sends nothing. Words after the name are refused, and nothing is sent to omp or the model.
+ */
+export function restartSlashCommand({ confirm, restart, isBusy }: RestartDeps): SlashAppCommand {
+  return {
+    name: "restart",
+    description: "Restart omp on this chat, after you confirm",
+    takesArguments: true,
+    run: async ({ args }) => {
+      if (args !== undefined) throw wordsRefusal(takesNothing("restart"));
+      if (!(await confirm(isBusy()))) return {};
+      try {
+        await restart();
+      } catch (error) {
+        if (error instanceof AppFailure) throw error;
+        throw new AppFailure({
+          code: "internal",
+          message: "omp could not be restarted. Try again.",
+          retryable: true,
+        });
+      }
+      return { message: "omp restarted. This chat is where you left it." };
     },
   };
 }

@@ -10,7 +10,7 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
 // omp 18.12.2 is at this path in every the test machine job.
 realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 
-/** The 30 typed names that get a note: 27 terminal-only commands with no app row, and their 3 aliases. `queue` has none: the app answers `/queue` itself. */
+/** The 27 typed names that get a note: 24 terminal-only commands with no app row, and their 3 aliases. `queue` has none: the app answers `/queue` itself. */
 const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = [
   { name: "agents", does: "Open the agents hub (per-agent model, prewalk, and advisor)" },
   { name: "btw", does: "Ask a side question, or browse this session's BTW history" },
@@ -39,7 +39,6 @@ const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = 
   { name: "providers", does: "Open provider setup" },
   { name: "q", does: "Quit the application" },
   { name: "quit", does: "Quit the application" },
-  { name: "restart", does: "Restart omp with the same launch flags, resuming this session" },
   { name: "resume", does: "Resume a different session" },
   { name: "setup", does: "Open provider setup" },
   { name: "skills", does: "Search, install, and update skills from the skills.omp.sh registry" },
