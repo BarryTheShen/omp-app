@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { expandToolCards } from "@/modules/U3/tool-card/test-support";
 import type { ToolRendererProps } from "../U3/tool-card/contract";
 import { EvalCard } from "./eval";
+import { T3_REAL_RESULTS } from "./fixtures/real-results";
 import { T3_SCRIPTED_EVAL_IMAGE_RESULT } from "./fixtures/scripted";
 
 afterEach(() => cleanup());
@@ -322,5 +323,87 @@ describe("EvalCard", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Tool was not executed because the run was aborted: Request was aborted.",
     );
+  });
+  test("replaces recorded eval output with its table and JSON views", () => {
+    const sample = T3_REAL_RESULTS.find(
+      (entry) => entry.name === "eval: js, table and JSON views of two records",
+    );
+    if (sample === undefined) throw new Error("Missing recorded table and JSON eval view result");
+    render(
+      <EvalCard
+        rendererProps={props({
+          args: sample.args as unknown as ToolRendererProps["args"],
+          result: sample.result,
+        })}
+      />,
+    );
+    expandToolCards();
+
+    const table = screen.getByRole("table", { name: "Evaluation result table" });
+    expect(table.textContent).toContain("Ada");
+    expect(table.textContent).toContain("Lin");
+    expect(screen.getByTestId("t3-eval-json-view").textContent).toContain("Two records");
+    const cellOutput = screen.getByTestId("t3-eval-cell-0").querySelector("[data-cell-output]");
+    expect(cellOutput).toBeTruthy();
+    expect(cellOutput?.textContent).not.toContain("┌─────────");
+  });
+
+  test("renders Markdown views as formatted content", () => {
+    const markdown = "# Eval notes\n\nThe result is **ready**.";
+    render(
+      <EvalCard
+        rendererProps={props({
+          result: {
+            details: {
+              language: "js",
+              cells: [
+                {
+                  index: 0,
+                  code: 'console.log("# Eval notes")',
+                  output: markdown,
+                  status: "complete",
+                  views: [{ text: markdown, view: { kind: "markdown", text: markdown } }],
+                },
+              ],
+            },
+          },
+        })}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.getByRole("heading", { name: "Eval notes" })).toBeTruthy();
+    expect(screen.getByText("ready", { selector: "strong" })).toBeTruthy();
+    expect(screen.queryByText(markdown)).toBeNull();
+  });
+  test("keeps original output when a view's source text is no longer present", () => {
+    const output = "The tail of a truncated cell output.";
+    render(
+      <EvalCard
+        rendererProps={props({
+          result: {
+            details: {
+              cells: [
+                {
+                  index: 0,
+                  output,
+                  status: "complete",
+                  views: [
+                    {
+                      text: "A printed span omitted from the output",
+                      view: { kind: "markdown", text: "Do not replace the remaining output." },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        })}
+      />,
+    );
+    expandToolCards();
+
+    expect(screen.getByText(output)).toBeTruthy();
+    expect(screen.queryByText("Do not replace the remaining output.")).toBeNull();
   });
 });

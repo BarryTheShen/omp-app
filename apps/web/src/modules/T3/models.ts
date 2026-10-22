@@ -47,12 +47,39 @@ export type EvalArgs = z.infer<typeof EvalArgsSchema>;
 export type DebugArgs = z.infer<typeof DebugArgsSchema>;
 export type ComputerArgs = z.infer<typeof ComputerArgsSchema>;
 
+/** omp v18.12.5 EvalView and EvalViewEntry (packages/tui/src/tools/eval.ts:89-102). */
+const EvalViewSchema = z.discriminatedUnion("kind", [
+  z.looseObject({
+    kind: z.literal("table"),
+    columns: z.array(
+      z.looseObject({
+        head: z.string(),
+        numeric: z.boolean().optional(),
+      }),
+    ),
+    rows: z.array(z.array(z.string())),
+  }),
+  z.looseObject({
+    kind: z.literal("json"),
+    value: z.unknown(),
+  }),
+  z.looseObject({
+    kind: z.literal("markdown"),
+    text: z.string(),
+  }),
+]);
+const EvalViewEntrySchema = z.looseObject({
+  text: z.string(),
+  view: EvalViewSchema,
+});
+
 export const EvalCellSchema = z.looseObject({
   index: z.int().nonnegative().optional(),
   title: z.string().optional(),
   code: z.string().optional(),
   language: z.string().optional(),
   output: z.unknown().optional(),
+  views: z.array(EvalViewEntrySchema).optional().catch([]),
   status: z.enum(["pending", "running", "complete", "error"]).optional(),
   durationMs: z.number().nonnegative().optional(),
   exitCode: z.number().int().optional(),

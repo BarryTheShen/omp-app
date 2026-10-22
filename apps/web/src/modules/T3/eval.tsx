@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { MarkdownContent } from "../U1/markdown";
 import { ToolCard } from "../U3/tool-card/card";
 import type {
   OutputMeta,
@@ -20,6 +21,12 @@ const MAX_CELLS = 128;
 const MAX_OUTPUT_ITEMS = 128;
 const MAX_STATUS_EVENTS = 64;
 const MAX_TEXT = 8_000;
+const MAX_EVAL_VIEWS = 16;
+const MAX_JSON_VIEW_DEPTH = 6;
+const MAX_JSON_VIEW_ENTRIES = 32;
+
+type EvalViewEntry = NonNullable<EvalCell["views"]>[number];
+type EvalView = EvalViewEntry["view"];
 
 type EvalModel = ReturnType<typeof normalizeEval>;
 
@@ -284,7 +291,9 @@ function EvalCellView({ cell, language }: { readonly cell: EvalCell; readonly la
           <code className={`language-${safeLanguage(cellLanguage)}`}>{boundedText(cell.code)}</code>
         </pre>
       )}
-      {output !== undefined && <CellOutput output={output} />}
+      {output !== undefined && (
+        <CellOutput output={output} views={typeof output === "string" ? cell.views : undefined} />
+      )}
       {(cell.durationMs !== undefined || cell.exitCode !== undefined) && (
         <div className="text-muted-foreground px-2 py-1 text-xs">
           {cell.durationMs !== undefined && `${cell.durationMs} ms`}
@@ -296,33 +305,252 @@ function EvalCellView({ cell, language }: { readonly cell: EvalCell; readonly la
   );
 }
 
-function CellOutput({ output }: { readonly output: unknown }) {
+type EvalOutputSegment =
+  | { readonly type: "text"; readonly text: string; readonly key: string }
+  | { readonly type: "view"; readonly view: EvalView; readonly key: string };
+
+function uniqueKey(counts: Map<string, number>, identity: string): string {
+  const occurrence = counts.get(identity) ?? 0;
+  counts.set(identity, occurrence + 1);
+  return `${identity}:${occurrence}`;
+}
+
+function CellOutput({
+  output,
+  views,
+}: {
+  readonly output: unknown;
+  readonly views: readonly EvalViewEntry[] | undefined;
+}) {
   const items = Array.isArray(output) ? output.slice(0, MAX_OUTPUT_ITEMS) : [output];
+  const itemCounts = items.length > 1 ? new Map<string, number>() : undefined;
   return (
     <div className="px-2 py-2" data-cell-output>
       {items.map((item) => {
         const image = imageSource(item);
-        const outputKey = outputText(item).slice(0, 96);
+        const identity =
+          image === undefined
+            ? `output:${outputText(item).slice(0, 96)}`
+            : `image:${image.slice(0, 96)}`;
+        const key = itemCounts === undefined ? identity : uniqueKey(itemCounts, identity);
         if (image !== undefined) {
           return (
             <img
               alt="Evaluation result"
               className="border-border/70 h-auto max-h-72 w-72 max-w-full rounded border bg-muted p-1 object-contain"
-              key={`image-${image}`}
+              key={key}
               src={image}
             />
           );
         }
         return (
-          <pre
-            className="text-muted-foreground max-h-72 overflow-auto whitespace-pre-wrap text-xs"
-            key={`output-${outputKey}`}
-          >
-            {boundedText(outputText(item))}
-          </pre>
+          <OutputText
+            key={key}
+            text={boundedText(outputText(item))}
+            views={typeof output === "string" ? views : undefined}
+          />
         );
       })}
     </div>
+  );
+}
+
+function OutputText({
+  text,
+  views,
+}: {
+  readonly text: string;
+  readonly views: readonly EvalViewEntry[] | undefined;
+}) {
+  return (
+    <>
+      {splitOutputViews(text, views).map((segment) =>
+        segment.type === "view" ? (
+          <EvalViewContent key={segment.key} view={segment.view} />
+        ) : (
+          <pre
+            className="text-muted-foreground max-h-72 overflow-auto whitespace-pre-wrap text-xs"
+            key={segment.key}
+          >
+            {segment.text}
+          </pre>
+        ),
+      )}
+    </>
+  );
+}
+
+/** OMP views replace exact printed spans; if truncation removed a span, the remaining text stays visible. */
+function splitOutputViews(
+  output: string,
+  views: readonly EvalViewEntry[] | undefined,
+): EvalOutputSegment[] {
+  if (views === undefined || views.length === 0) {
+    return [{ type: "text", text: output, key: "text:0" }];
+  }
+  const segments: EvalOutputSegment[] = [];
+  let cursor = 0;
+  const viewCount = Math.min(views.length, MAX_EVAL_VIEWS);
+  for (let viewIndex = 0; viewIndex < viewCount; viewIndex += 1) {
+    const entry = views[viewIndex];
+    if (entry === undefined) continue;
+    const viewText = safeText(entry.text);
+    if (viewText.length === 0) continue;
+    const start = output.indexOf(viewText, cursor);
+    if (start < 0) continue;
+    if (start > cursor) {
+      segments.push({ type: "text", text: output.slice(cursor, start), key: `text:${cursor}` });
+    }
+    segments.push({
+      type: "view",
+      view: entry.view,
+      key: `view:${start}:${entry.view.kind}`,
+    });
+    cursor = start + viewText.length;
+  }
+  if (cursor < output.length || segments.length === 0) {
+    segments.push({ type: "text", text: output.slice(cursor), key: `text:${cursor}` });
+  }
+  return segments;
+}
+
+function EvalViewContent({ view }: { readonly view: EvalView }) {
+  switch (view.kind) {
+    case "table":
+      return <EvalTableView view={view} />;
+    case "json":
+      return <EvalJsonView value={view.value} />;
+    case "markdown":
+      return (
+        <div data-testid="t3-eval-markdown-view">
+          <MarkdownContent text={boundedText(view.text)} variant="compact" />
+        </div>
+      );
+  }
+  return null;
+}
+
+function EvalTableView({ view }: { readonly view: Extract<EvalView, { readonly kind: "table" }> }) {
+  const columnCounts = new Map<string, number>();
+  const columns = view.columns.map((column) => ({
+    column,
+    key: uniqueKey(
+      columnCounts,
+      `${column.numeric === true ? "number" : "text"}:${column.head.slice(0, 64)}`,
+    ),
+  }));
+  const rowCounts = new Map<string, number>();
+  const rows = view.rows.map((row) => ({
+    row,
+    key: uniqueKey(
+      rowCounts,
+      row
+        .slice(0, 4)
+        .map((cell) => cell.slice(0, 32))
+        .join("|"),
+    ),
+  }));
+  return (
+    <div className="max-w-full overflow-x-auto" data-testid="t3-eval-table-view">
+      <table
+        aria-label="Evaluation result table"
+        className="w-full min-w-max border-collapse text-foreground text-xs"
+      >
+        <thead>
+          <tr>
+            {columns.map(({ column, key }) => (
+              <th
+                className={`border-border/60 border-b px-2 py-1 font-medium ${column.numeric ? "text-right tabular-nums" : "text-left"}`}
+                key={key}
+                scope="col"
+              >
+                {boundedText(column.head)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ row, key: rowKey }) => (
+            <tr className="border-border/50 border-b last:border-b-0" key={rowKey}>
+              {columns.map(({ column, key }, columnIndex) => (
+                <td
+                  className={`px-2 py-1 align-top ${column.numeric ? "text-right tabular-nums" : "text-left"}`}
+                  key={`${rowKey}:${key}`}
+                >
+                  {boundedText(row[columnIndex] ?? "")}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function EvalJsonView({ value }: { readonly value: unknown }) {
+  return (
+    <div className="min-w-0 text-xs" data-testid="t3-eval-json-view">
+      <EvalJsonNode depth={0} value={value} />
+    </div>
+  );
+}
+
+function EvalJsonNode({
+  depth,
+  label,
+  value,
+}: {
+  readonly depth: number;
+  readonly label?: string;
+  readonly value: unknown;
+}) {
+  const array = Array.isArray(value);
+  const object = asRecord(value);
+  if (!array && object === undefined) {
+    return (
+      <div className="grid min-w-0 grid-cols-[minmax(4rem,auto)_minmax(0,1fr)] gap-x-2 py-0.5">
+        {label !== undefined && <span className="text-muted-foreground">{safeText(label)}</span>}
+        <span className="break-words font-mono">{structuredText(value)}</span>
+      </div>
+    );
+  }
+  if (depth >= MAX_JSON_VIEW_DEPTH) {
+    return (
+      <pre className="max-w-full overflow-auto whitespace-pre-wrap text-muted-foreground">
+        {label === undefined ? "" : `${safeText(label)}: `}
+        {boundedText(value)}
+      </pre>
+    );
+  }
+
+  const entries: readonly (readonly [string, unknown])[] = array
+    ? value.slice(0, MAX_JSON_VIEW_ENTRIES).map((entry, index) => [String(index), entry] as const)
+    : Object.entries(object ?? {}).slice(0, MAX_JSON_VIEW_ENTRIES);
+  const totalEntries = array ? value.length : Object.keys(object ?? {}).length;
+  const kind = array ? `Array (${totalEntries})` : `Object (${totalEntries})`;
+  return (
+    <details className="min-w-0" open={depth < 3}>
+      <summary className="cursor-pointer select-none py-0.5 text-muted-foreground">
+        {label === undefined ? "" : `${safeText(label)}: `}
+        <span className="text-foreground font-mono">{kind}</span>
+      </summary>
+      <div className="ml-3 min-w-0 pl-3">
+        {entries.map(([key, entry]) => (
+          <EvalJsonNode
+            depth={depth + 1}
+            key={`${depth}:${key}`}
+            label={array ? `[${key}]` : key}
+            value={entry}
+          />
+        ))}
+        {totalEntries > entries.length && (
+          <span className="text-muted-foreground">
+            Showing {entries.length} of {totalEntries} entries.
+          </span>
+        )}
+      </div>
+    </details>
   );
 }
 
