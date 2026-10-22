@@ -31,7 +31,9 @@ function mapSubagent(transcript: InternalSubagentTranscript): ContractSubagentTr
     endedAt: transcript.endedAt,
     agent: transcript.agent,
     ...(transcript.reason === undefined ? {} : { reason: transcript.reason }),
-    ...(transcript.recordedStatus === undefined ? {} : { recordedStatus: transcript.recordedStatus }),
+    ...(transcript.recordedStatus === undefined
+      ? {}
+      : { recordedStatus: transcript.recordedStatus }),
   };
 }
 

@@ -123,7 +123,9 @@ realTest(
       .click();
     await page.getByRole("tab", { name: "Agents" }).click();
     await expect(
-      page.getByRole("region", { name: "Agent Hub" }).getByRole("option", { name: /Running.*LongProbe/ }),
+      page
+        .getByRole("region", { name: "Agent Hub" })
+        .getByRole("option", { name: /Running.*LongProbe/ }),
     ).toHaveCount(1, { timeout: 120_000 });
     await openToolCard(page.getByTestId("t5-task-card").first());
     await expect(page.locator('[data-slot="t5-task-job"]').first()).toContainText("Running");

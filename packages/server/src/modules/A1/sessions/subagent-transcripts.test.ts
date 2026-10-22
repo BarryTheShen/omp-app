@@ -543,7 +543,10 @@ describe("a worker's recorded outcome comes from the task result its parent reco
     };
   }
 
-  async function writeChat(fixture: Fixture, records: readonly Record<string, unknown>[]): Promise<void> {
+  async function writeChat(
+    fixture: Fixture,
+    records: readonly Record<string, unknown>[],
+  ): Promise<void> {
     await writeFile(fixture.chat, `${[header("main"), ...records].map(line).join("\n")}\n`, "utf8");
   }
 
@@ -580,7 +583,9 @@ describe("a worker's recorded outcome comes from the task result its parent reco
 
   test("a nested worker's outcome is recorded by its parent worker's own file", () =>
     withFixture(async (fixture) => {
-      await writeWorker(path.join(workerDir(fixture), "Outer.jsonl"), [asyncResult("Inner", "completed")]);
+      await writeWorker(path.join(workerDir(fixture), "Outer.jsonl"), [
+        asyncResult("Inner", "completed"),
+      ]);
       await writeWorker(path.join(workerDir(fixture), "Outer", "Inner.jsonl"), [assistant("stop")]);
       const inner = await workerNamed(fixture, "Inner");
       expect(inner).toMatchObject({ status: "stopped", recordedStatus: "completed" });
