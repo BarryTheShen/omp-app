@@ -13,6 +13,9 @@ const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
 const servers: CompositionServer[] = [];
 
+// A server start runs real omp probes: about 4.5 s on an idle machine (the partial-timeout case waits 1.5 s on purpose),
+// and longer under load, so bun's 5 s default failed these tests (#2217). Each one allows 30 s.
+
 const FAKE_OMP = `#!/usr/bin/env bun
 require("node:fs").appendFileSync(import.meta.path + ".spawnlog", Bun.argv.slice(2).join(" ") + "\\n");
 if (Bun.argv.includes("--version")) {
@@ -180,7 +183,7 @@ describe("composition capability wiring", () => {
     expect(opened.capabilities).toEqual(welcome.capabilities);
     await rpc.close({ threadId: opened.threadId });
     client.dispose();
-  });
+  }, 30_000);
 
   test("reuses omp probe output on an unchanged second server start and keeps no-default registry keys", async () => {
     const root = await temporaryRoot("capabilities-cache-");
@@ -203,7 +206,7 @@ describe("composition capability wiring", () => {
     expect(invocations.filter((args) => args === "config list --json")).toHaveLength(1);
     expect(invocations.filter((args) => args.startsWith("--mode rpc-ui"))).toHaveLength(1);
     expect(invocations).toHaveLength(4);
-  });
+  }, 30_000);
   test("entire capability timeouts make server health unhealthy and are not cached", async () => {
     const root = await temporaryRoot("capabilities-entire-timeout-");
     const binary = await fakeOmp(root);
@@ -221,7 +224,7 @@ describe("composition capability wiring", () => {
     expect(
       await readFile(join(root, "app-data", "omp-probe-cache.json"), "utf8").catch(() => undefined),
     ).toBeUndefined();
-  });
+  }, 30_000);
 
   test("partial capability timeouts keep health ok and are not cached", async () => {
     const root = await temporaryRoot("capabilities-partial-timeout-");
@@ -246,7 +249,7 @@ describe("composition capability wiring", () => {
     expect(
       await readFile(join(root, "app-data", "omp-probe-cache.json"), "utf8").catch(() => undefined),
     ).toBeUndefined();
-  });
+  }, 30_000);
   test("reports unhealthy and rejects open when omp is missing", async () => {
     const root = await temporaryRoot("capabilities-missing-");
     const server = await startServer(join(root, "missing-omp"));
@@ -258,7 +261,7 @@ describe("composition capability wiring", () => {
       client.port(RpcSessionPort).open({ folderPath: FolderPath.parse(folder), start: "new" }),
     ).rejects.toMatchObject({ appError: { code: "unavailable" } });
     client.dispose();
-  });
+  }, 30_000);
 });
 
 describe("composition environment wiring", () => {
@@ -277,5 +280,5 @@ describe("composition environment wiring", () => {
       source: "env",
     });
     client.dispose();
-  });
+  }, 30_000);
 });
