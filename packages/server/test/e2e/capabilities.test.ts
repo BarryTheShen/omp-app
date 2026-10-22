@@ -13,8 +13,8 @@ const dataRoot = resolve(import.meta.dir, "../../../../../.data");
 const roots: string[] = [];
 const servers: CompositionServer[] = [];
 
-// A server start runs real omp probes: about 4.5 s on an idle machine (the partial-timeout case waits 1.5 s on purpose),
-// and longer under load, so bun's 5 s default failed these tests (#2217). Each one allows 30 s.
+// A server start runs real omp probes, and the partial-timeout case waits out its 4 s probe limit twice (#2217).
+// bun's 5 s default failed these tests under load, so each one allows 30 s.
 
 const FAKE_OMP = `#!/usr/bin/env bun
 require("node:fs").appendFileSync(import.meta.path + ".spawnlog", Bun.argv.slice(2).join(" ") + "\\n");
@@ -231,12 +231,12 @@ describe("composition capability wiring", () => {
     const binary = await fakeOmp(root);
     const server = await startServer(
       binary,
-      { FAKE_SLOW_COMMAND: "get_state", FAKE_SLOW_MS: "1800" },
+      { FAKE_SLOW_COMMAND: "get_state", FAKE_SLOW_MS: "8000" },
       root,
       {
-        timeoutMs: 1_500,
+        timeoutMs: 4_000,
         deadlineMs: 30_000,
-        patient: { timeoutMs: 1_500, deadlineMs: 30_000 },
+        patient: { timeoutMs: 4_000, deadlineMs: 30_000 },
       },
     );
     const client = clientFor(server);
