@@ -33,6 +33,8 @@ export interface P3PreviousMessageSelectorActions {
 export interface P3PreviousMessageSelectorControllerModel {
   readonly viewModel: P3PreviousMessageSelectorViewModel;
   readonly actions: P3PreviousMessageSelectorActions;
+  /** Clears stale selector state and aborts a request when a turn starts. */
+  readonly onRunningChange: (running: boolean) => void;
 }
 
 export interface P3PreviousMessageSelectorOptions {
@@ -135,6 +137,7 @@ export function useP3PreviousMessageSelectorController(
   const threadIdRef = useRef(options.threadId);
   const activeRequest = useRef<AbortController | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const runningRef = useRef(false);
   optionsRef.current = options;
 
   useLayoutEffect(() => {
@@ -154,13 +157,25 @@ export function useP3PreviousMessageSelectorController(
     [],
   );
 
+  const onRunningChange = useCallback((running: boolean) => {
+    const wasRunning = runningRef.current;
+    runningRef.current = running;
+    if (!running || wasRunning) return;
+
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    triggerRef.current = null;
+    setViewModel({ state: "idle" });
+  }, []);
+
   const restoreFocus = useCallback(() => {
     const trigger = triggerRef.current;
     if (trigger?.isConnected) trigger.focus();
   }, []);
 
   const onOpen = useCallback(async (trigger: HTMLButtonElement): Promise<void> => {
-    if (activeRequest.current !== null || !optionsRef.current.available) return;
+    if (runningRef.current || activeRequest.current !== null || !optionsRef.current.available)
+      return;
     triggerRef.current = trigger;
     const requestController = new AbortController();
     activeRequest.current = requestController;
@@ -253,6 +268,7 @@ export function useP3PreviousMessageSelectorController(
   }, []);
 
   const onRetry = useCallback(() => {
+    if (runningRef.current) return;
     const trigger = triggerRef.current;
     if (!trigger?.isConnected) return;
     // "Try again" leaves the page while the list loads, so focus moves to the trigger first.
@@ -265,5 +281,5 @@ export function useP3PreviousMessageSelectorController(
   const visible: P3PreviousMessageSelectorViewModel = options.available
     ? viewModel
     : { state: "unavailable" };
-  return { viewModel: visible, actions: { onOpen, onRetry, restoreFocus } };
+  return { viewModel: visible, actions: { onOpen, onRetry, restoreFocus }, onRunningChange };
 }

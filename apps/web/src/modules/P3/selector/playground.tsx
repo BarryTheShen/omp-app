@@ -86,7 +86,11 @@ function SelectorPlayground() {
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <Section heading="Earlier messages" description="Pick a message to edit it.">
-          <PreviousMessageSelectorView {...controller} />
+          <PreviousMessageSelectorView
+            actions={controller.actions}
+            viewModel={controller.viewModel}
+            running={false}
+          />
         </Section>
         {selected ? (
           <Section

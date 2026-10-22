@@ -523,6 +523,7 @@ describe("failure matrix: the message the person sees, and what the run keeps", 
           restoreFocus: () => undefined,
         }}
         viewModel={{ state: "unavailable" }}
+        running={false}
       />,
     );
 

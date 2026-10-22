@@ -105,6 +105,7 @@ import {
 } from "@/modules/P3/runs";
 import { captureP3EditSource } from "@/modules/P3/runs/source";
 import {
+  type P3PreviousMessageSelectorControllerModel,
   PreviousMessageSelectorView,
   useP3PreviousMessageSelectorController,
 } from "@/modules/P3/selector";
@@ -820,6 +821,25 @@ function RowActions({
       onEdit={role === "user" ? (trigger) => onEdit(entryId, trigger) : undefined}
       onOpenOtherVersion={onOpenOtherVersion}
       otherVersions={otherVersions}
+    />
+  );
+}
+
+function RuntimeAwarePreviousMessageSelector({
+  controller,
+}: {
+  readonly controller: P3PreviousMessageSelectorControllerModel;
+}) {
+  const running = useAuiState((state) => state.thread.isRunning);
+  const onRunningChange = controller.onRunningChange;
+  useLayoutEffect(() => {
+    onRunningChange(running);
+  }, [onRunningChange, running]);
+  return (
+    <PreviousMessageSelectorView
+      actions={controller.actions}
+      running={running}
+      viewModel={controller.viewModel}
     />
   );
 }
@@ -2088,10 +2108,7 @@ function ActiveThreadReady({
       notify={setCommandStatus}
       fail={setCommandError}
     >
-      <PreviousMessageSelectorView
-        actions={selectorController.actions}
-        viewModel={selectorController.viewModel}
-      />
+      <RuntimeAwarePreviousMessageSelector controller={selectorController} />
       <ComposerHistory store={store}>
         <DraftComposer
           capabilities={capabilities}

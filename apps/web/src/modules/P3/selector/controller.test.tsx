@@ -4,14 +4,17 @@ import {
   ThreadId as ThreadIdSchema,
 } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { renderDialogRequest } from "@/modules/U4/dialogs/renderer";
 import { DialogHostController } from "@/modules/U4/host";
 import { OverlayHost, useStableOverlayHost } from "@/overlay";
 import type { BranchMessage, BranchMessageSelectorPort } from "../contract";
 import type { P3EditSelection, P3EditSource } from "../edit";
-import type { P3PreviousMessageSelectorOptions } from "./controller";
+import type {
+  P3PreviousMessageSelectorActions,
+  P3PreviousMessageSelectorOptions,
+} from "./controller";
 import { useP3PreviousMessageSelectorController } from "./controller";
 import { PreviousMessageSelectorView } from "./view";
 
@@ -23,11 +26,16 @@ type SelectorHarnessProps = Omit<
   P3PreviousMessageSelectorOptions,
   "dialogs" | "available" | "onCurrentBranch"
 > &
-  Partial<Pick<P3PreviousMessageSelectorOptions, "available" | "onCurrentBranch">>;
+  Partial<Pick<P3PreviousMessageSelectorOptions, "available" | "onCurrentBranch">> & {
+    readonly running?: boolean;
+    readonly onActions?: (actions: P3PreviousMessageSelectorActions) => void;
+  };
 
 function SelectorHarness({
   available = true,
   onCurrentBranch = () => true,
+  running = false,
+  onActions,
   ...options
 }: SelectorHarnessProps) {
   const overlay = useStableOverlayHost();
@@ -48,7 +56,17 @@ function SelectorHarness({
     onCurrentBranch,
     dialogs,
   });
-  return <PreviousMessageSelectorView {...controller} />;
+  useLayoutEffect(() => {
+    controller.onRunningChange?.(running);
+    onActions?.(controller.actions);
+  }, [controller.actions, controller.onRunningChange, onActions, running]);
+  return (
+    <PreviousMessageSelectorView
+      actions={controller.actions}
+      running={running}
+      viewModel={controller.viewModel}
+    />
+  );
 }
 
 function renderSelector(options: SelectorHarnessProps) {
@@ -89,6 +107,37 @@ function selectionFor(threadId: string, entryId: string, text: string): P3EditSe
 }
 
 describe("previous-message selector", () => {
+  test("keeps a running selector focusable, described and inert", () => {
+    const onOpen = vi.fn();
+    const reasonText = "Wait for this chat's turn to finish, then edit an earlier message.";
+    render(
+      <PreviousMessageSelectorView
+        actions={{
+          onOpen,
+          onRetry: () => undefined,
+          restoreFocus: () => undefined,
+        }}
+        viewModel={{ state: "idle" }}
+        running
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: TRIGGER });
+    expect(trigger.getAttribute("aria-disabled")).toBe("true");
+    expect(trigger.hasAttribute("disabled")).toBe(false);
+    expect(trigger.tabIndex).toBe(0);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.getAttribute("title")).toBe(reasonText);
+    const descriptionId = trigger.getAttribute("aria-describedby");
+    expect(descriptionId).not.toBeNull();
+    const description = document.getElementById(descriptionId ?? "");
+    expect(description?.textContent).toBe(reasonText);
+    expect(description?.classList.contains("sr-only")).toBe(true);
+    fireEvent.click(trigger);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   test("selects the chosen message through U4 and restores focus to its trigger", async () => {
     const threadId = ThreadIdSchema.parse("thread-a");
     const first = selectionFor(String(threadId), "entry-a", "First question");
@@ -272,6 +321,99 @@ describe("previous-message selector", () => {
       "No earlier messages to edit.",
     );
     expect(branchMessages.list).toHaveBeenCalledTimes(2);
+  });
+
+  test("clears an empty result when a turn starts and does not restore it afterward", async () => {
+    const list = vi.fn<BranchMessageSelectorPort["list"]>().mockResolvedValue([]);
+    const options: SelectorHarnessProps = {
+      branchMessages: { list },
+      threadId: ThreadIdSchema.parse("thread-turn-empty"),
+      resolveSource: async () => null,
+      onSelect: () => undefined,
+    };
+    const view = renderSelector(options);
+
+    fireEvent.click(screen.getByRole("button", { name: TRIGGER }));
+    await screen.findByText("No earlier messages to edit.");
+
+    view.rerender(
+      <OverlayHost>
+        <SelectorHarness {...options} running />
+      </OverlayHost>,
+    );
+    expect(screen.queryByText("No earlier messages to edit.", { exact: true })).toBeNull();
+
+    view.rerender(
+      <OverlayHost>
+        <SelectorHarness {...options} running={false} />
+      </OverlayHost>,
+    );
+    expect(screen.queryByText("No earlier messages to edit.", { exact: true })).toBeNull();
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  test("aborts and drops a list request still in flight when a turn starts", async () => {
+    const pendingList = Promise.withResolvers<readonly BranchMessage[]>();
+    let requestSignal: AbortSignal | undefined;
+    const options: SelectorHarnessProps = {
+      branchMessages: {
+        list: (_threadId, signal) => {
+          requestSignal = signal;
+          return pendingList.promise;
+        },
+      },
+      threadId: ThreadIdSchema.parse("thread-turn-abort"),
+      resolveSource: async () => null,
+      onSelect: () => undefined,
+    };
+    const view = renderSelector(options);
+
+    fireEvent.click(screen.getByRole("button", { name: TRIGGER }));
+    await screen.findByText("Loading earlier messages…");
+    expect(requestSignal?.aborted).toBe(false);
+
+    view.rerender(
+      <OverlayHost>
+        <SelectorHarness {...options} running />
+      </OverlayHost>,
+    );
+    expect(requestSignal?.aborted).toBe(true);
+    expect(screen.queryByText("Loading earlier messages…", { exact: true })).toBeNull();
+
+    pendingList.resolve([]);
+    await waitFor(() =>
+      expect(screen.queryByText("No earlier messages to edit.", { exact: true })).toBeNull(),
+    );
+  });
+
+  test("does not retry the list through a stale action while a turn runs", async () => {
+    const branchMessages: BranchMessageSelectorPort = {
+      list: vi.fn<BranchMessageSelectorPort["list"]>().mockRejectedValue(new Error("Offline")),
+    };
+    let actions: P3PreviousMessageSelectorActions | undefined;
+    const options: SelectorHarnessProps = {
+      branchMessages,
+      threadId: ThreadIdSchema.parse("thread-turn-retry"),
+      resolveSource: async () => null,
+      onSelect: () => undefined,
+      onActions: (next) => {
+        actions = next;
+      },
+    };
+    const view = renderSelector(options);
+
+    fireEvent.click(screen.getByRole("button", { name: TRIGGER }));
+    await screen.findByRole("alert");
+    expect(branchMessages.list).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <OverlayHost>
+        <SelectorHarness {...options} running />
+      </OverlayHost>,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    act(() => actions?.onRetry());
+    expect(branchMessages.list).toHaveBeenCalledTimes(1);
   });
 
   test("keeps focus on the trigger when Try again fails again", async () => {
