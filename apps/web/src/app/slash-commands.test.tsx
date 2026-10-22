@@ -41,6 +41,8 @@ import {
   askFirstSlashCommand,
   askFirstSlashCommands,
   branchSlashCommand,
+  CLEAR_STARTED_NOTE,
+  clearSlashCommand,
   copySlashCommand,
   deleteSlashCommand,
   describeResetTarget,
@@ -1494,5 +1496,128 @@ describe("S9e `/restart` asks first, then restarts omp on this chat", () => {
     });
     expect(confirm).not.toHaveBeenCalled();
     expect(restart).not.toHaveBeenCalled();
+  });
+});
+
+describe("S9d `/clear` starts a new chat and says so, or says to wait", () => {
+  /** A harness: the lifecycle answers `result` to the new chat, and the chat is busy when `busy` is set. */
+  function clearHarness({
+    result = { status: "completed" as const, value: ThreadId.parse("thread-clear") },
+    busy = false,
+  }: {
+    readonly result?: unknown;
+    readonly busy?: boolean;
+  } = {}) {
+    const newSession = vi.fn(async () => result);
+    const lifecycle = { newSession } as unknown as SessionLifecycleController;
+    const openThread = vi.fn(async (_threadId: ThreadId) => undefined);
+    const deliverNote = vi.fn();
+    const focusComposer = vi.fn();
+    const command = clearSlashCommand({
+      lifecycle,
+      openThread,
+      isBusy: () => busy,
+      deliverNote,
+      focusComposer,
+    });
+    return { command, newSession, openThread, deliverNote, focusComposer };
+  }
+
+  test("starts a new chat, opens it, writes the note into it, and puts the focus in its message box", async () => {
+    const { command, newSession, openThread, deliverNote, focusComposer } = clearHarness();
+    await expect(command.run({})).resolves.toEqual({});
+    expect(newSession).toHaveBeenCalledTimes(1);
+    expect(openThread).toHaveBeenCalledWith(ThreadId.parse("thread-clear"));
+    expect(deliverNote).toHaveBeenCalledTimes(1);
+    expect(deliverNote).toHaveBeenCalledWith(CLEAR_STARTED_NOTE);
+    expect(focusComposer).toHaveBeenCalledTimes(1);
+  });
+
+  test("the note says what the app did in the plan's words, and the row says what the command does", () => {
+    const { command } = clearHarness();
+    expect(CLEAR_STARTED_NOTE).toEqual({
+      source: "clear",
+      dedupeKey: "clear:started",
+      message:
+        "This is a new chat. omp can only clear a chat in place in its terminal, so /clear started a new one here. Your previous chat is still in your list.",
+    });
+    expect(command.name).toBe("clear");
+    expect(command.description).toBe(
+      "Start a new chat with an empty context. This chat stays in your list.",
+    );
+    expect(command.takesArguments).toBe(true);
+    expect(command.unlisted).toBeUndefined();
+  });
+
+  test("while a turn runs it says to wait for the turn, and starts nothing", async () => {
+    const harness = clearHarness({ busy: true });
+    await expect(harness.command.run({})).resolves.toEqual({
+      message: "Wait for this chat's turn to finish, then clear it.",
+    });
+    expect(harness.newSession).not.toHaveBeenCalled();
+    expect(harness.openThread).not.toHaveBeenCalled();
+    expect(harness.deliverNote).not.toHaveBeenCalled();
+    expect(harness.focusComposer).not.toHaveBeenCalled();
+  });
+
+  test("without a folder it says why it cannot start, and writes nothing", async () => {
+    const deliverNote = vi.fn();
+    const command = clearSlashCommand({
+      lifecycle: null,
+      openThread: async () => undefined,
+      isBusy: () => false,
+      deliverNote,
+      focusComposer: () => undefined,
+    });
+    await expect(command.run({})).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message: "Starting a new chat requires a selected workspace folder.",
+      },
+    });
+    expect(deliverNote).not.toHaveBeenCalled();
+  });
+
+  test("a refused new chat carries omp's reason, and a cancelled one changes nothing", async () => {
+    const refused = clearHarness({
+      result: {
+        status: "error",
+        error: {
+          code: "unavailable",
+          message: "Starting a new session is unavailable for this connection.",
+          retryable: false,
+        },
+      },
+    });
+    await expect(refused.command.run({})).rejects.toMatchObject({
+      appError: { message: "Starting a new session is unavailable for this connection." },
+    });
+    expect(refused.deliverNote).not.toHaveBeenCalled();
+
+    const cancelled = clearHarness({ result: { status: "cancelled" } });
+    await expect(cancelled.command.run({})).resolves.toEqual({});
+    expect(cancelled.openThread).not.toHaveBeenCalled();
+    expect(cancelled.deliverNote).not.toHaveBeenCalled();
+    expect(cancelled.focusComposer).not.toHaveBeenCalled();
+  });
+
+  test("words after the name are refused with the sentence, nothing is sent, and no chat opens", async () => {
+    const harness = clearHarness();
+    await expect(harness.command.run({ args: "now" })).rejects.toMatchObject({
+      appError: {
+        code: "invalid_args",
+        message:
+          "/clear doesn't take anything after it, so nothing was sent. Type /clear on its own.",
+        retryable: false,
+      },
+    });
+    expect(harness.newSession).not.toHaveBeenCalled();
+    expect(harness.deliverNote).not.toHaveBeenCalled();
+  });
+
+  test("typed alone it is the app's command, and words after it reach the command to refuse them", () => {
+    const { command } = clearHarness();
+    expect(routeSlashText("/clear", [], [command])).toMatchObject({ kind: "app", command });
+    expect(routeSlashText("/clear now", [], [command])).toMatchObject({ kind: "app", args: "now" });
   });
 });

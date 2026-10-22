@@ -6,11 +6,12 @@ import type { ConversationTransitionPort } from "@/modules/P4/transitions";
 export type NoticeChannel = Pick<NotificationProjector, "getBus" | "getTranscript">;
 
 /**
- * What a rewind or fork says in the chat the person picked, when it finished and the view did not switch to its new
- * chat. It says only what the app can see: the transition finished, and the chat the person picked stays open.
+ * What a rewind, a fork or a clear says in the chat on screen when it finished. For a rewind or fork the view did not
+ * switch to its new chat, so the note says the chat the person picked stays open. A clear opens its new chat, and the
+ * note goes into that chat. It says only what the app can see.
  */
 export interface NoSwitchNote {
-  readonly source: "rewind" | "fork";
+  readonly source: "rewind" | "fork" | "clear";
   readonly dedupeKey: string;
   readonly message: string;
 }

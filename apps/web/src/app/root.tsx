@@ -264,6 +264,7 @@ import {
   agentHubSlashCommand,
   askFirstSlashCommands,
   branchSlashCommand,
+  clearSlashCommand,
   copySlashCommand,
   freshSlashCommand,
   guardOmpSend,
@@ -1658,6 +1659,13 @@ function ActiveThreadReady({
   const appSlashCommands = useMemo(
     () => [
       newChatSlashCommand({ lifecycle, openThread }),
+      clearSlashCommand({
+        lifecycle,
+        openThread,
+        isBusy: () => conversationBusy(store),
+        deliverNote,
+        focusComposer: () => composerInput()?.focus({ preventScroll: true }),
+      }),
       freshSlashCommand({ lifecycle }),
       shareSlashCommand({ run: () => runShareCommand(shareController) }),
       copySlashCommand({ copy: () => runCopyFromChat(shortcutRegistry) }),
@@ -1696,6 +1704,7 @@ function ActiveThreadReady({
       catalog,
       client,
       commandGateway,
+      deliverNote,
       exportCommands,
       goalCommand,
       historyPanel,

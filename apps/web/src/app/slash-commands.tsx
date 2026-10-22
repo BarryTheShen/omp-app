@@ -48,6 +48,7 @@ import { openWorktreeConfirm } from "@/modules/U4/dialogs/confirm-worktree";
 import type { AgentHubOpenResult } from "./agents/agent-hub-shortcut";
 import type { CommandReport } from "./command-report/command-report";
 import { describeGoalResult, parseGoalCommand } from "./goal-command";
+import type { NoSwitchNote } from "./rewind/no-switch-notice";
 
 /**
  * The slash provider for the open chat. It is built once per chat and disposed when the chat changes.
@@ -94,6 +95,33 @@ function useLatest<T>(value: T): () => T {
 }
 
 /**
+ * Starts a new chat the way the command palette's New chat does, and opens it: "opened" once the new chat is open, or
+ * "cancelled" when the person or the lifecycle stopped it. A chat that cannot start throws the sentence the person sees.
+ */
+async function openNewChat({
+  lifecycle,
+  openThread,
+}: {
+  readonly lifecycle: SessionLifecycleController | null;
+  readonly openThread: (threadId: ThreadId) => Promise<void>;
+}): Promise<"opened" | "cancelled"> {
+  if (lifecycle === null) {
+    throw new AppFailure({
+      code: "unavailable",
+      message: "Starting a new chat requires a selected workspace folder.",
+      retryable: false,
+    });
+  }
+  const outcome = await lifecycle.newSession();
+  if (outcome.status === "cancelled") return "cancelled";
+  if (outcome.status === "completed") {
+    await openThread(outcome.value);
+    return "opened";
+  }
+  throw new AppFailure(outcome.error);
+}
+
+/**
  * `/new`: starts a new chat the way the command palette's New chat does, and opens it. The lifecycle
  * controller and the open-thread action come from the chat that is open.
  */
@@ -108,20 +136,50 @@ export function newChatSlashCommand({
     name: "new",
     description: "Start a new chat",
     run: async () => {
-      if (lifecycle === null) {
-        throw new AppFailure({
-          code: "unavailable",
-          message: "Starting a new chat requires a selected workspace folder.",
-          retryable: false,
-        });
-      }
-      const outcome = await lifecycle.newSession();
-      if (outcome.status === "cancelled") return {};
-      if (outcome.status === "completed") {
-        await openThread(outcome.value);
-        return { message: "Started a new chat." };
-      }
-      throw new AppFailure(outcome.error);
+      if ((await openNewChat({ lifecycle, openThread })) === "cancelled") return {};
+      return { message: "Started a new chat." };
+    },
+  };
+}
+
+/** What `/clear` writes into the new chat: omp's terminal clears in place, so the app says what it did instead. */
+export const CLEAR_STARTED_NOTE: NoSwitchNote = {
+  source: "clear",
+  dedupeKey: "clear:started",
+  message:
+    "This is a new chat. omp can only clear a chat in place in its terminal, so /clear started a new one here. Your previous chat is still in your list.",
+};
+
+/**
+ * `/clear`: omp clears a chat's context in place in its terminal, and omp's RPC has no way to, so the app starts a new
+ * chat in the same folder and says so in it. The old chat stays in the list. A turn that is still running is waited for, as
+ * `/branch` and `/fork` wait: the old chat would keep running unseen.
+ */
+export function clearSlashCommand({
+  lifecycle,
+  openThread,
+  isBusy,
+  deliverNote,
+  focusComposer,
+}: {
+  readonly lifecycle: SessionLifecycleController | null;
+  readonly openThread: (threadId: ThreadId) => Promise<void>;
+  readonly isBusy: () => boolean;
+  /** Writes a note into the chat on screen, once that chat has opened. */
+  readonly deliverNote: (note: NoSwitchNote) => void;
+  readonly focusComposer: () => void;
+}): SlashAppCommand {
+  return {
+    name: "clear",
+    description: "Start a new chat with an empty context. This chat stays in your list.",
+    takesArguments: true,
+    run: async ({ args }) => {
+      if (args !== undefined) throw wordsRefusal(takesNothing("clear"));
+      if (isBusy()) return { message: "Wait for this chat's turn to finish, then clear it." };
+      if ((await openNewChat({ lifecycle, openThread })) === "cancelled") return {};
+      deliverNote(CLEAR_STARTED_NOTE);
+      focusComposer();
+      return {};
     },
   };
 }

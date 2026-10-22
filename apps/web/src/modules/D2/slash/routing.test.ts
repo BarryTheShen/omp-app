@@ -424,12 +424,11 @@ describe("#1273 a command typed with a colon is read the way omp reads it, up to
 });
 
 describe("#2199 a typed terminal-only name has a note; the refusal keeps its text", () => {
-  /** The 30 terminal-only commands and their 3 aliases: the names the table answers. */
+  /** The 29 terminal-only commands and their 3 aliases: the names the table answers. */
   const terminalOnlyNames = [
     "agents",
     "btw",
     "cleanse",
-    "clear",
     "collab",
     "copy",
     "debug",
@@ -462,7 +461,6 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
   ];
   /** The app's own alternative that the refusal names, where there is one. */
   const alternatives: Readonly<Record<string, string>> = {
-    clear: "Use New chat instead.",
     copy: "Use Copy from this chat instead.",
     logout: "Provider sign-in is in Settings.",
     resume: "Use the session list instead.",
@@ -479,8 +477,8 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   }
 
-  test("each of the 33 names has omp's description in its note, except queue, which the app answers itself", () => {
-    expect(terminalOnlyNames).toHaveLength(33);
+  test("each of the 32 names has omp's description in its note, except queue, which the app answers itself", () => {
+    expect(terminalOnlyNames).toHaveLength(32);
     for (const name of terminalOnlyNames) {
       if (name === "queue") {
         expect(terminalOnlyNote(name)).toBeNull();
@@ -508,7 +506,7 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   });
 
-  test("the refusal keeps today's text for each of the 33 names", async () => {
+  test("the refusal keeps today's text for each of the 32 names", async () => {
     for (const name of terminalOnlyNames) {
       const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
       const alternative = alternatives[name];

@@ -201,10 +201,6 @@ const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, TerminalOnlyEntry>> = 
   agents: { does: "Open the agents hub (per-agent model, prewalk, and advisor)" },
   btw: { does: "Ask a side question, or browse this session's BTW history" },
   cleanse: { does: "Detect and fix project diagnostics with weighted parallel subagents" },
-  clear: {
-    does: "Clear the conversation context in place, keeping the session",
-    instead: "Use New chat instead.",
-  },
   collab: { does: "Share this session live via a relay" },
   copy: {
     does: "Pick text or code from the conversation to copy",

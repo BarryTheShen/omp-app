@@ -40,7 +40,7 @@ export interface SlashCommandProvider extends TriggerProvider {
   readonly catalog: SlashCommandCatalogController;
   /** Decides where a submitted message goes: a known command, or null for a normal prompt. */
   readonly route: (text: string) => Promise<SlashRoute | null>;
-  /** The note for a typed name that only omp's terminal runs (`/clear`), or null: a listed row with that name hides it. */
+  /** The note for a typed name that only omp's terminal runs (`/plan`), or null: a listed row with that name hides it. */
   readonly terminalOnlyNote: (query: string) => Promise<TerminalOnlyNote | null>;
   /** Runs an omp command through A1's gateway. The result carries omp's output and whether the model ran. */
   readonly execute: (command: string, options?: PortCallOptions) => Promise<CommandRunResult>;
