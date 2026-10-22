@@ -162,13 +162,13 @@ realTest(
     const rowsBefore = await rows();
     expect(rowsBefore).toBeGreaterThan(10);
 
-    // A new chat's turn refreshes the list in the background when it starts and ends. The first result is held for 3 s;
-    // meanwhile the rows stay and no placeholder appears. A running-change refresh can add requests beyond those two.
+    // A turn refreshes the list in the background; running-change and settled-turn signals may coalesce into one request.
+    // Hold the next result for 3 s to check that the old rows stay visible without a placeholder.
     let calls = wire.calls();
     wire.delayNext();
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
-    await expect.poll(() => wire?.calls()).toBeGreaterThanOrEqual(calls + 2);
+    await expect.poll(() => wire?.calls()).toBeGreaterThanOrEqual(calls + 1);
     expect(await rows()).toBeGreaterThanOrEqual(rowsBefore);
     await expect(page.getByRole("status", { name: "Loading sessions" })).toHaveCount(0);
     // The held result arrives; the list is still there.
@@ -178,12 +178,12 @@ realTest(
       0,
     );
 
-    // The next turn's refreshes fail: the old list stays, with one line saying so.
+    // The next turn's refresh fails: the old list stays, with one line saying so.
     calls = wire.calls();
     wire.failRefreshes();
     await sendPrompt(composer, "ping");
     await expect(page.getByText("pong", { exact: true })).toHaveCount(2, { timeout: 60_000 });
-    await expect.poll(() => wire?.calls()).toBeGreaterThanOrEqual(calls + 2);
+    await expect.poll(() => wire?.calls()).toBeGreaterThanOrEqual(calls + 1);
     const notice = page.getByText("Couldn't refresh sessions. Showing the last list.");
     await expect(notice).toBeVisible();
     // The whole sentence can be read: in the narrow sidebar it wraps onto a second line. It must
