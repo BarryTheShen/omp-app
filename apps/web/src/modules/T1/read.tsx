@@ -247,7 +247,12 @@ function ReadBody({
           {diagnostics}
         </p>
       )}
-      {details.truncation && <TruncationNotice meta={details.truncation} />}
+      {details.truncation && (
+        <TruncationNotice
+          continueAt={details.meta?.truncation?.nextOffset ?? details.truncation.nextOffset}
+          meta={details.truncation}
+        />
+      )}
     </section>
   );
 }
@@ -273,7 +278,14 @@ function CodePreview({
   return <CodeView code={content} language={fileLanguageLabel(target)} lineNumbers={numbers} />;
 }
 
-function TruncationNotice({ meta }: { readonly meta: TruncationMeta }) {
+function TruncationNotice({
+  continueAt,
+  meta,
+}: {
+  /** The line the read continues from: omp's record names it as the next line (`meta.truncation.nextOffset`). */
+  readonly continueAt: number | undefined;
+  readonly meta: TruncationMeta;
+}) {
   const left = omittedOf(meta);
   const omitted = [
     left.lines === undefined || left.lines === 0 ? "" : `${left.lines} lines`,
@@ -290,6 +302,9 @@ function TruncationNotice({ meta }: { readonly meta: TruncationMeta }) {
           ? `Output shortened; omitted ${omitted.join(" and ")}`
           : "Output shortened"}
       </span>
+      {continueAt !== undefined && (
+        <span data-slot="t1-read-continue">Continue at line {continueAt}</span>
+      )}
       {meta.artifactId && (
         <Button
           disabled

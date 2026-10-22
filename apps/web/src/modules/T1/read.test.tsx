@@ -75,6 +75,34 @@ describe("ReadCard", () => {
     expect(screen.queryByText("No displayable content")).toBeNull();
   });
 
+  test("a cut read says where it continues, from the record's next line", () => {
+    // The shape of a real head cut: 24 of 30 lines shown, and omp's record names line 25 as the next to read.
+    render(
+      <ReadCard
+        rendererProps={props({
+          displayTarget: "notes.md",
+          displayContent: {
+            text: Array.from({ length: 24 }, (_, index) => `note ${index + 1}`).join("\n"),
+            startLine: 1,
+          },
+          truncation: {
+            truncated: true,
+            direction: "head",
+            truncatedBy: "lines",
+            totalLines: 30,
+            outputLines: 24,
+          },
+          meta: {
+            truncation: { direction: "head", totalLines: 30, outputLines: 24, nextOffset: 25 },
+          },
+        })}
+      />,
+    );
+    expandToolCards();
+    expect(screen.getByText("Output shortened; omitted 6 lines")).toBeTruthy();
+    expect(screen.getByText("Continue at line 25")).toBeTruthy();
+  });
+
   test("a real result with only text (a database summary) shows that text", () => {
     render(
       <ReadCard

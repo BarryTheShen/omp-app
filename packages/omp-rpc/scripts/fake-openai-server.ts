@@ -691,6 +691,8 @@ function reply(request: Request): Reply {
   }
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
+  if (prompt.includes("read_long_probe"))
+    return { tool: "read", args: { path: "long.txt" }, thinking: "I should read the long file." };
   if (prompt.includes("read_image"))
     return { tool: "read", args: { path: "pixel.png" }, thinking: "I should read the image." };
   if (prompt.includes("slow_tool")) {
