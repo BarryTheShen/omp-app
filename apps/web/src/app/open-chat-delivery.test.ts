@@ -28,6 +28,7 @@ describe("a send held while a New chat opens (#1652)", () => {
         liveChat: () => live,
         nextChange: () => new Promise<void>(() => undefined),
         newChatEnd: newChat.promise,
+        keptInNewChat: false,
       },
       ["held message"],
     );
@@ -52,6 +53,7 @@ describe("a send held while a New chat opens (#1652)", () => {
         liveChat: () => (open === NEW ? live : null),
         nextChange: () => new Promise<void>(() => undefined),
         newChatEnd: newChat.promise,
+        keptInNewChat: false,
       },
       ["held message"],
     );
@@ -60,5 +62,65 @@ describe("a send held while a New chat opens (#1652)", () => {
     releaseNewChatHold();
     await sent;
     expect(deliver).toHaveBeenCalledWith("held message");
+  });
+
+  test("a refused send typed in a new chat says it is in the message box of a new chat", async () => {
+    const chats = history();
+    const deliver = vi.fn(async (_text: string) => undefined);
+    const live: LiveChat<[string]> = { threadId: BEFORE, deliver };
+    const newChat = Promise.withResolvers<"opened" | "not-opened">();
+    const releaseNewChatHold = chats.holdSwitch();
+    const sent = deliverWhenChatOpen(
+      {
+        whenSettled: () => chats.whenSettled(),
+        openThreadId: () => BEFORE,
+        liveChat: () => live,
+        nextChange: () => new Promise<void>(() => undefined),
+        newChatEnd: newChat.promise,
+        keptInNewChat: true,
+      },
+      ["held message"],
+    );
+    newChat.resolve("not-opened");
+    releaseNewChatHold();
+    await expect(sent).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message:
+          "This chat did not open, so your message was not sent. It's in the message box of a new chat: press Enter there to send it.",
+        retryable: true,
+      },
+    });
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  test("a refused send typed in a chat says it is still in that chat's message box", async () => {
+    const chats = history();
+    const deliver = vi.fn(async (_text: string) => undefined);
+    const live: LiveChat<[string]> = { threadId: BEFORE, deliver };
+    const newChat = Promise.withResolvers<"opened" | "not-opened">();
+    const releaseNewChatHold = chats.holdSwitch();
+    const sent = deliverWhenChatOpen(
+      {
+        whenSettled: () => chats.whenSettled(),
+        openThreadId: () => BEFORE,
+        liveChat: () => live,
+        nextChange: () => new Promise<void>(() => undefined),
+        newChatEnd: newChat.promise,
+        keptInNewChat: false,
+      },
+      ["held message"],
+    );
+    newChat.resolve("not-opened");
+    releaseNewChatHold();
+    await expect(sent).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message:
+          "This chat did not open, so your message was not sent. It's still in the message box.",
+        retryable: true,
+      },
+    });
+    expect(deliver).not.toHaveBeenCalled();
   });
 });

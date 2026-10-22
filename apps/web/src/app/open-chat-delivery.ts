@@ -18,9 +18,18 @@ export interface OpenChatDeliveryOptions<Args extends readonly unknown[]> {
   readonly nextChange: () => Promise<void>;
   /** How the New chat that was opening when the send was made ends: a send is not sent when it does not open. */
   readonly newChatEnd?: Promise<NewChatOutcome> | null;
+  /**
+   * Whether the send's text is kept in the message box of a new chat (the folder's new-chat box, which every New chat in the
+   * folder shows) when the send is not sent, rather than in the box of the chat it was typed in.
+   */
+  readonly keptInNewChat: boolean;
 }
 
-const DID_NOT_OPEN = "The chat did not open, so the message was not sent. Try again.";
+/** The notice when a send is not sent. It says where the text is: a New chat's text is kept in the new-chat box. */
+const NOT_SENT_IN_NEW_CHAT =
+  "This chat did not open, so your message was not sent. It's in the message box of a new chat: press Enter there to send it.";
+const NOT_SENT_IN_CHAT =
+  "This chat did not open, so your message was not sent. It's still in the message box.";
 
 /**
  * Delivers a send to the chat that is open when it is delivered, through the view that shows it. While a chat is still
@@ -31,14 +40,15 @@ export async function deliverWhenChatOpen<Args extends readonly unknown[]>(
   options: OpenChatDeliveryOptions<Args>,
   args: Args,
 ): Promise<void> {
+  const message = options.keptInNewChat ? NOT_SENT_IN_NEW_CHAT : NOT_SENT_IN_CHAT;
   if (options.newChatEnd && (await options.newChatEnd) === "not-opened") {
-    throw new AppFailure({ code: "unavailable", message: DID_NOT_OPEN, retryable: true });
+    throw new AppFailure({ code: "unavailable", message, retryable: true });
   }
   for (;;) {
     await options.whenSettled();
     const open = options.openThreadId();
     if (open === undefined) {
-      throw new AppFailure({ code: "unavailable", message: DID_NOT_OPEN, retryable: true });
+      throw new AppFailure({ code: "unavailable", message, retryable: true });
     }
     const live = options.liveChat();
     if (live !== null && live.threadId === open) return live.deliver(...args);

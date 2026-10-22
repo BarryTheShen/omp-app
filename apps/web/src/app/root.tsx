@@ -662,6 +662,7 @@ interface ActiveThreadProps {
     intent: PromptIntent,
     attachments: SendAttachments,
     newChatEnd: Promise<NewChatOutcome> | null,
+    keptInNewChat: boolean,
   ) => Promise<void>;
   readonly newChatOutcomeNow: () => Promise<NewChatOutcome> | null;
   readonly registerLiveChat: (
@@ -1851,7 +1852,15 @@ function ActiveThreadReady({
     };
     // A send made while a New chat opens takes that New chat's outcome now, not when it is delivered.
     const newChatEnd = newChatOutcomeNow();
-    await chatDraft.submit(intent, (sent) => deliverToOpenChat(sent, attachments, newChatEnd));
+    // Where a send that is not sent keeps its text: a New chat's text stays in the folder's new-chat box (chat-draft.ts).
+    await chatDraft.submit(intent, (sent) =>
+      deliverToOpenChat(
+        sent,
+        attachments,
+        newChatEnd,
+        chatDraft.controller.getSnapshot().scope.kind === "folder",
+      ),
+    );
     if (intent.mode === "bash") void onRefreshAfterCommand?.();
     attachmentManager.clearAfterSend();
     scrollController.jumpToLatest();
@@ -2707,6 +2716,7 @@ function ConnectedApp({
       intent: PromptIntent,
       attachments: SendAttachments,
       newChatEnd: Promise<NewChatOutcome> | null,
+      keptInNewChat: boolean,
     ): Promise<void> => {
       if (controller === null) {
         throw new AppFailure({
@@ -2725,6 +2735,7 @@ function ConnectedApp({
               liveChatChanged.current.push(wake);
             }),
           newChatEnd,
+          keptInNewChat,
         },
         [intent, attachments],
       );
