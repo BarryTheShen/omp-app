@@ -15,9 +15,9 @@ import {
  * Issue #1303 on real omp. While a message is queued during a streaming reply (a steer with Enter, a follow-up with
  * Ctrl+Enter), the queue lane sat in the composer's toolbar row beside the round Stop button. The lane took the row's
  * width, so the steer hint was squeezed to 0 px: its text ran under Stop and past the composer's edge. The lane now sits
- * on a row of its own under the controls, and the hint is shown whole or not at all. Checked at 1280 px (light and
+ * on a row of its own above the composer (#2316), and the hint is shown whole or not at all. Checked at 1280 px (light and
  * dark), at 390 px and at 195 px (a 390 px phone at 200% zoom): no text under Stop, no text past the composer's border,
- * no sideways scroll, and the lane below the controls.
+ * no sideways scroll, and the lane above the composer.
  */
 
 const STEER = "steer one";
@@ -144,7 +144,7 @@ function overlaps(a: Box, b: Box): boolean {
   );
 }
 
-/** Nothing the composer draws is under Stop or past its border; the hint is whole; the lane sits under the controls. */
+/** Nothing the composer draws is under Stop or past its border; the hint is whole; the lane sits above the composer. */
 function expectNothingCovered(composer: Composer): void {
   const under = composer.texts
     .filter((text) => overlaps(text.box, composer.stop))
@@ -162,8 +162,8 @@ function expectNothingCovered(composer: Composer): void {
     composer.page.clientWidth,
   );
   expect(composer.queue, "the queue lane is drawn").not.toBeNull();
-  expect(composer.queue?.top ?? 0, "the queue lane sits under the controls").toBeGreaterThanOrEqual(
-    composer.toolbar.bottom - 0.5,
+  expect(composer.queue?.bottom ?? 0, "the queue lane sits above the composer").toBeLessThanOrEqual(
+    composer.card.top + 0.5,
   );
 }
 

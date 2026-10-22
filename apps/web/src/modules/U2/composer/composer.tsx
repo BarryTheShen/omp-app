@@ -73,11 +73,6 @@ export interface ComposerSurfaceProps {
   readonly voice?: ReactNode;
   readonly showAttachmentNames?: boolean;
   readonly toolbar?: ReactNode;
-  /**
-   * The queued messages, drawn on a row of their own under the controls, so the steer hint and Stop keep their room.
-   * Hidden while an edit box takes this composer's place, like the controls.
-   */
-  readonly queue?: ReactNode;
   /** The app's capabilities: `submitModeInput` reads Python availability from them. Empty means none. */
   readonly capabilities?: CapabilityMap;
   readonly children?: ReactNode;
@@ -211,7 +206,6 @@ export function ComposerSurface({
   voice,
   showAttachmentNames = true,
   toolbar,
-  queue,
   savePasteFile,
   onDoubleLeftArrow,
   children,
@@ -697,7 +691,6 @@ export function ComposerSurface({
             )}
           </div>
         </div>
-        {replaced ? null : queue}
         {children}
       </ComposerPrimitive.AttachmentDropzone>
     </ComposerPrimitive.Root>

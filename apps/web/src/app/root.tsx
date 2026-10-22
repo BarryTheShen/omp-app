@@ -554,7 +554,6 @@ function DraftComposer({
   policy,
   toolbar,
   voice,
-  queue,
   footer,
   footerOpen,
   editing,
@@ -575,7 +574,6 @@ function DraftComposer({
   readonly policy: SubmitPolicy;
   readonly toolbar: ReactNode;
   readonly voice: ReactNode;
-  readonly queue: ReactNode;
   readonly footer: ReactNode;
   readonly footerOpen: boolean;
   readonly editing: boolean;
@@ -636,7 +634,6 @@ function DraftComposer({
       savePasteFile={savePasteFile}
       toolbar={toolbar}
       voice={voice}
-      queue={queue}
       onDoubleLeftArrow={onDoubleLeftArrow}
       placeholder={placeholder}
     >
@@ -1986,7 +1983,7 @@ function ActiveThreadReady({
     },
     queue: {
       title: "Queued messages",
-      open: queueOpen,
+      open: queueOpen && editing === null,
       render: () => <QueueLaneBar connection={queueConnection} controller={queueAdapter} />,
     },
     attachments: {
@@ -2097,7 +2094,6 @@ function ActiveThreadReady({
           submit={submit}
           toolbar={area("composerToolbar")}
           voice={threadSurfaces.liveVoice?.render() ?? null}
-          queue={area("composerQueue")}
           placeholder={slashTip.placeholder}
         />
       </ComposerHistory>

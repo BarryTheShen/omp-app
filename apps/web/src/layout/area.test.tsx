@@ -43,6 +43,12 @@ describe("LayoutArea", () => {
   test("places transcript controls in the transcript footer", () => {
     expect(areaSurfaces("threadFooter", surfaces).map(([id]) => id)).toEqual(["scrollFollow"]);
   });
+  test("queued messages sit above the composer or over an empty chat's transcript, never in the composer", () => {
+    expect(areaSurfaces("threadNotices", surfaces).map(([id]) => id)).toContain("queue");
+    expect(areaSurfaces("threadOverlay", surfaces).map(([id]) => id)).toContain("queue");
+    expect(areaSurfaces("composerToolbar", surfaces).map(([id]) => id)).not.toContain("queue");
+    expect(areaSurfaces("composerFooter", surfaces).map(([id]) => id)).not.toContain("queue");
+  });
   test("renders an area's surfaces in layout order; moving an id moves the control", () => {
     const { container, rerender } = render(
       <LayoutArea

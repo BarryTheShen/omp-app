@@ -40,7 +40,6 @@ const AREA_CLASSES: Readonly<Record<LayoutAreaName, string>> = {
   header: "flex min-w-0 flex-1 flex-nowrap items-center gap-x-3",
   panels: "flex min-h-0 flex-1 flex-col",
   composerToolbar: "flex min-w-0 flex-wrap items-center gap-(--space-xs)",
-  composerQueue: "flex min-w-0 flex-col",
   composerFooter: "flex min-w-0 flex-col",
   threadFooter: "flex min-w-0 flex-1 flex-wrap items-center justify-end gap-(--space-sm)",
   // Above the transcript's sticky footer, so it follows that footer. It takes no pointer events itself:

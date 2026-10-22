@@ -11,7 +11,6 @@ export type LayoutAreaName =
   | "header"
   | "panels"
   | "composerToolbar"
-  | "composerQueue"
   | "composerFooter"
   | "threadFooter"
   | "threadOverlay"
@@ -62,8 +61,7 @@ export const LAYOUT: AppLayout = {
    */
   panels: ["todo", "contextCard", "agents", "rules", "rewind", "commandOutput"],
   composerToolbar: ["model", "mode", "executionModes"],
-  composerQueue: ["queue"],
-  /** Under the controls and the queue, at the foot of the composer. */
+  /** Under the controls, at the foot of the composer. */
   composerFooter: ["editHandoff", "attachments"],
   /**
    * At the bottom of the transcript. The hidden-tools line comes first: while tool activity is shown it is empty, so
@@ -71,17 +69,17 @@ export const LAYOUT: AppLayout = {
    */
   threadFooter: ["toolsHidden", "connection", "watchNotice", "editRun", "scrollFollow"],
   /**
-   * Over the end of the transcript, just above its footer: the notices float here and never cover the
-   * footer's controls (Jump to latest), and the composer and the status bar do not move for them. Used by an empty
-   * chat only; a chat with messages draws its notices in `threadNotices`.
+   * Over the end of the transcript, just above its footer: the notices and the queued messages float here. Each surface
+   * catches its own pointer events, so the footer's controls (Jump to latest) stay usable; the composer and the status bar
+   * do not move for them. Used by an empty chat only; a chat with messages draws them in `threadNotices`.
    */
-  threadOverlay: ["notices"],
+  threadOverlay: ["notices", "queue"],
   /**
-   * Between the transcript and the composer, in a row of its own outside the transcript's scroll: the notices take their
-   * own space, so nothing is drawn over a message and the composer does not move. A chat with messages draws them here;
-   * an empty chat draws them in `threadOverlay`.
+   * Between the transcript and the composer, in a row of its own outside the transcript's scroll: the notices and the
+   * queued messages take their own space, so nothing is drawn over a message and the composer does not move. A chat
+   * with messages draws them here; an empty chat draws the notices in `threadOverlay`.
    */
-  threadNotices: ["notices"],
+  threadNotices: ["notices", "queue"],
   /** The bottom bar, left to right. */
   statusBar: ["notifications", "statusSegments", "context"],
 };

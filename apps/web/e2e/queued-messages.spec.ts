@@ -47,12 +47,15 @@ async function settle(page: Page): Promise<void> {
   clearTimeout(timer);
 }
 
-/** The bar starts a line of its own: its top edge is at or below the bottom of the input mode row, never beside it. */
+/**
+ * The bar has a line of its own above the composer, in the notices row (#2316): its bottom edge is at or above the top of
+ * the composer card, never beside it. Above the composer, the composer does not move while a message waits.
+ */
 async function expectOwnLine(page: Page): Promise<void> {
-  const mode = await page.getByRole("group", { name: "Input mode" }).boundingBox();
+  const card = await page.locator('[data-composer-card="true"]').boundingBox();
   const bar = await queueBar(page).boundingBox();
-  if (!mode || !bar) throw new Error("The input mode row or the queue bar has no box on the page");
-  expect(bar.y).toBeGreaterThanOrEqual(mode.y + mode.height);
+  if (!card || !bar) throw new Error("The composer card or the queue bar has no box on the page");
+  expect(bar.y + bar.height).toBeLessThanOrEqual(card.y + 0.5);
 }
 
 /** The queue bar's background is the muted surface of the current theme (`bg-muted/30`), so a screenshot shows our styles, not browser defaults. */

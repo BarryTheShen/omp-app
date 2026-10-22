@@ -220,42 +220,6 @@ describe("U2.2 ComposerSurface", () => {
     expect(row?.contains(footer)).toBe(false);
   });
 
-  test("queued messages draw on a row of their own under the controls, never in the toolbar row", () => {
-    render(
-      <RuntimeProvider running={true}>
-        <ComposerSurface
-          cancel={() => undefined}
-          queue={<p>Queued lane</p>}
-          submitPrompt={async () => undefined}
-          toolbar={<button type="button">Prompt</button>}
-        />
-      </RuntimeProvider>,
-    );
-
-    const row = screen.getByRole("button", { name: "Prompt" }).closest("[data-composer-toolbar]");
-    const lane = screen.getByText("Queued lane");
-    expect(row).not.toBeNull();
-    expect(row?.contains(lane)).toBe(false);
-    expect((row?.compareDocumentPosition(lane) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
-      0,
-    );
-  });
-
-  test("while an edit box takes its place, the queued messages are hidden with the controls", () => {
-    render(
-      <RuntimeProvider running={false}>
-        <ComposerSurface
-          cancel={() => undefined}
-          queue={<p>Queued lane</p>}
-          replaced
-          submitPrompt={async () => undefined}
-        />
-      </RuntimeProvider>,
-    );
-
-    expect(screen.queryByText("Queued lane")).toBeNull();
-  });
-
   test("while an edit box takes its place, the composer's own input and send are hidden and the footer stays", () => {
     render(
       <RuntimeProvider running={false}>
