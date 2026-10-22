@@ -1,6 +1,14 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, openToolCard, realTest, screenshots, sendPrompt, startChat } from "./real-omp";
+import {
+  expect,
+  openAllToolCards,
+  openToolCard,
+  realTest,
+  screenshots,
+  sendPrompt,
+  startChat,
+} from "./real-omp";
 
 /**
  * Issue #840. The Agent Hub listed a finished worker until the page reloaded, then showed "Nothing here yet":
@@ -18,14 +26,18 @@ realTest(
     // The task card starts as one line (#1162), and its body holds the worker's result: open it before reading that.
     await expect(page.getByTestId("t5-task-card").first()).toBeVisible({ timeout: 120_000 });
     await openToolCard(page.getByTestId("t5-task-card").first());
-    // The worker's submission is one more collapsed card inside the task card: open it to read the worker's result.
-    await expect(page.locator('[data-testid^="tool-card-call_yield"]').first()).toBeVisible({
-      timeout: 120_000,
-    });
-    await openToolCard(page.locator('[data-testid^="tool-card-call_yield"]').first());
-    await expect(page.getByText("Nested probe completed.").first()).toBeVisible({
-      timeout: 120_000,
-    });
+    // omp 18.12 gives the task subagent no yield tool, so its final message is the result, shown in the task card. An
+    // omp that still has the yield tool shows it in a yield card inside the task card, so each card is opened as it
+    // appears until the result shows.
+    await expect
+      .poll(
+        async () => {
+          await openAllToolCards(page);
+          return page.getByText("Nested probe completed.").first().isVisible();
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
 
     await page.getByRole("tab", { name: "Agents" }).click();
     const hub = page.getByRole("region", { name: "Agent Hub" });
@@ -37,14 +49,18 @@ realTest(
     // The chat reopens by itself. The card starts as one line again, so it is opened before the hub is read.
     await expect(page.getByTestId("t5-task-card").first()).toBeVisible({ timeout: 120_000 });
     await openToolCard(page.getByTestId("t5-task-card").first());
-    // The worker's submission is one more collapsed card inside the task card: open it to read the worker's result.
-    await expect(page.locator('[data-testid^="tool-card-call_yield"]').first()).toBeVisible({
-      timeout: 120_000,
-    });
-    await openToolCard(page.locator('[data-testid^="tool-card-call_yield"]').first());
-    await expect(page.getByText("Nested probe completed.").first()).toBeVisible({
-      timeout: 120_000,
-    });
+    // omp 18.12 gives the task subagent no yield tool, so its final message is the result, shown in the task card. An
+    // omp that still has the yield tool shows it in a yield card inside the task card, so each card is opened as it
+    // appears until the result shows.
+    await expect
+      .poll(
+        async () => {
+          await openAllToolCards(page);
+          return page.getByText("Nested probe completed.").first().isVisible();
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
     await page.getByRole("tab", { name: "Agents" }).click();
     await expect(hub.getByRole("option", { name: /Finished.*NestedProbe/ })).toHaveCount(1, {
       timeout: 120_000,

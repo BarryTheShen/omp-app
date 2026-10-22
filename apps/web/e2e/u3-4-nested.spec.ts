@@ -174,8 +174,18 @@ realTest("real omp renders the task card and its result", async ({ realApp }, te
   await expect(page.getByText(/Spawned agent.*NestedProbe/).first()).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByText(/subagent yielded successfully/).first()).toBeVisible({
-    timeout: 60_000,
-  });
+  // omp 18.12 gives a task subagent no yield tool (task.structured off: task/settings.ts:255-258), so its final
+  // message is its result, shown in the card (executor.ts:2763 takes the last report turn text). An omp that still has
+  // the yield tool (18.8.9) shows the same text in a yield card that appears after the task card, so each card is
+  // opened as it appears until the result shows.
+  await expect
+    .poll(
+      async () => {
+        await openAllToolCards(page);
+        return page.getByText("Nested probe completed.").first().isVisible();
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
   expect(realApp.problems).toEqual([]);
 });

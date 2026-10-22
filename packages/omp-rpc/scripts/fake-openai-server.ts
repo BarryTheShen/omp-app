@@ -1,7 +1,12 @@
 import * as path from "node:path";
 
 type Message = { role: string; content?: unknown };
-type Request = { messages?: Message[]; stream?: boolean };
+type Request = {
+  messages?: Message[];
+  stream?: boolean;
+  /** The tools the request offers (chat completions: `{ type, function: { name } }`). */
+  tools?: readonly { function?: { name?: string }; name?: string }[];
+};
 /** One tool call an assistant message makes. */
 type ToolCall = { tool: string; args: Record<string, unknown>; id?: string };
 type Reply =
@@ -46,7 +51,26 @@ function text(content: unknown): string {
  * STEER_WAIT_STEPS steps on its own, so a run that never steers cannot hang the server. */
 const STEER_WAIT_STEPS = 90;
 
-function steerChildReply(messages: readonly Message[]): Reply | undefined {
+/** Whether omp offered this request its `yield` tool. A task subagent has none by default: `task.structured` is off
+ * from omp 18.10.2 on (task/settings.ts:255-258, task/index.ts:781-782), so its final message is its result. */
+function offersYield(request: Request): boolean {
+  return (request.tools ?? []).some((tool) => (tool.function?.name ?? tool.name) === "yield");
+}
+
+/** A subagent's result: a `yield` call when the request offers the tool, else the final message as plain text. */
+function finishSubagent(
+  offers: boolean,
+  summary: string,
+  id: string | undefined,
+  thinking: string,
+): Reply {
+  if (!offers) return { text: summary, thinking };
+  return id === undefined
+    ? { tool: "yield", args: { data: { summary } }, thinking }
+    : { tool: "yield", args: { data: { summary } }, id, thinking };
+}
+
+function steerChildReply(messages: readonly Message[], offers: boolean): Reply | undefined {
   const start = messages.findIndex(
     (message) => message.role === "user" && text(message.content).includes("nested_steer_child"),
   );
@@ -58,20 +82,20 @@ function steerChildReply(messages: readonly Message[]): Reply | undefined {
   // Every yield gets an id of its own, as omp gives each call one. The default (`call_yield`) repeats, and a
   // transcript pairs a result with its call by id, so the later yields would read as unrecorded.
   if (steered)
-    return {
-      tool: "yield",
-      args: { data: { summary: "Steer received." } },
-      id: `call_yield_${messages.length}`,
-      thinking: "The steer arrived, so I will submit.",
-    };
+    return finishSubagent(
+      offers,
+      "Steer received.",
+      `call_yield_${messages.length}`,
+      "The steer arrived, so I will submit.",
+    );
   const steps = after.filter((message) => message.role === "tool").length;
   if (steps >= STEER_WAIT_STEPS)
-    return {
-      tool: "yield",
-      args: { data: { summary: "No steer arrived." } },
-      id: `call_yield_${messages.length}`,
-      thinking: "No steer came in time.",
-    };
+    return finishSubagent(
+      offers,
+      "No steer arrived.",
+      `call_yield_${messages.length}`,
+      "No steer came in time.",
+    );
   return {
     tool: "bash",
     args: { command: `sleep 1; echo steer-wait-${steps}` },
@@ -295,7 +319,7 @@ function readPastedReferenceStart(prompt: string): Reply | undefined {
 
 function reply(request: Request): Reply {
   const messages = request.messages ?? [];
-  const steerChild = steerChildReply(messages);
+  const steerChild = steerChildReply(messages, offersYield(request));
   if (steerChild !== undefined) return steerChild;
   const streamChild = streamProbeReply(messages);
   if (streamChild !== undefined) return streamChild;
@@ -381,11 +405,12 @@ function reply(request: Request): Reply {
       thinking: "I should start one child task.",
     };
   if (prompt.includes("nested_probe_child"))
-    return {
-      tool: "yield",
-      args: { data: { summary: "Nested probe completed." } },
-      thinking: "I should submit the result.",
-    };
+    return finishSubagent(
+      offersYield(request),
+      "Nested probe completed.",
+      undefined,
+      "I should submit the result.",
+    );
   if (prompt.includes("spawn_failing_subagent"))
     return {
       tool: "task",
