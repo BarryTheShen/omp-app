@@ -174,6 +174,7 @@ function snapshotProjection(input: {
     prompt: {
       admitted: input.streaming,
       streaming: input.streaming,
+      sent: false,
       promptResult: null,
       sessionSettled: input.settled,
       promptResults: [],

@@ -120,6 +120,25 @@ describe("ThreadShell states", () => {
     expect(list?.querySelector('[data-slot="u1-thread-empty"]')).not.toBeNull();
   });
 
+  test("a sent prompt takes the greeting away before its echo reaches the transcript", () => {
+    const store = readyStore();
+    store.markPromptSent();
+    const { container } = renderThread(store);
+    expect(screen.queryByText("No messages yet.")).toBeNull();
+    expect(container.querySelector('[data-slot="u1-thread-empty"]')).toBeNull();
+    // The marker that keeps the "Edit an earlier message" label hidden: the transcript still has no message.
+    expect(container.querySelector('[data-no-messages="true"]')).not.toBeNull();
+    expect(container.querySelector('[data-empty-chat="true"]')).toBeNull();
+  });
+
+  test("a refused send brings the greeting back", () => {
+    const store = readyStore();
+    store.markPromptSent();
+    store.unmarkPromptSent();
+    renderThread(store);
+    expect(screen.getByText("No messages yet.")).toBeTruthy();
+  });
+
   test("names an extension's error under its own heading, not as a conversation that stopped", () => {
     const store = readyStore();
     store.ingest(

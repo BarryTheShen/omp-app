@@ -40,6 +40,7 @@ function runtimeState(
     prompt: {
       admitted: true,
       streaming: false,
+      sent: false,
       promptResult: null,
       sessionSettled: true,
       promptResults: [],

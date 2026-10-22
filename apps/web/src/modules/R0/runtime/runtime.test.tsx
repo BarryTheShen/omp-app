@@ -424,6 +424,33 @@ describe("R0.3 assistant-ui runtime", () => {
     ).rejects.toBe(failure);
   });
 
+  test("a prompt marks its chat sent while it is sent, and a refused prompt unmarks it", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const seen: boolean[] = [];
+    const send: RpcSessionSend = async () => {
+      seen.push(store.getSnapshot().prompt.sent);
+      throw new AppFailure({
+        code: "permission",
+        message: "Prompt was refused",
+        retryable: false,
+      } satisfies AppError);
+    };
+    const controller = createOmpRuntime({ store, send, capabilities });
+    await expect(
+      controller.submitPrompt({ mode: "prompt", text: "hello", delivery: "new" }),
+    ).rejects.toBeInstanceOf(AppFailure);
+    expect(seen).toEqual([true]);
+    expect(store.getSnapshot().prompt.sent).toBe(false);
+  });
+
+  test("a slash command does not mark its chat sent, since omp answers it without a message", async () => {
+    const store = new OmpRuntimeStore({ threadId });
+    const send: RpcSessionSend = (async () => ({ agentInvoked: false })) as never;
+    const controller = createOmpRuntime({ store, send, capabilities });
+    await controller.submitPrompt({ mode: "prompt", text: "/usage", delivery: "new" });
+    expect(store.getSnapshot().prompt.sent).toBe(false);
+  });
+
   test("gates Python without sending a replacement prompt", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const commands: unknown[] = [];

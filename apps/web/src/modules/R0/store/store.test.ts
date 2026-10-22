@@ -2048,4 +2048,14 @@ describe("OmpRuntimeStore", () => {
       source: "Context",
     });
   });
+
+  test("a prompt marked sent stays sent through omp's events, until a refused send unmarks it", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    expect(store.getSnapshot().prompt.sent).toBe(false);
+    store.markPromptSent();
+    omp(store, { type: "agent_start" }, 2);
+    expect(store.getSnapshot().prompt.sent).toBe(true);
+    store.unmarkPromptSent();
+    expect(store.getSnapshot().prompt.sent).toBe(false);
+  });
 });

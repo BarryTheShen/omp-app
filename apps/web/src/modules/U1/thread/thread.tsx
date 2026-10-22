@@ -361,7 +361,8 @@ function RuntimeStateSurface({
     );
   }
 
-  if (snapshot.messageOrder.length === 0) {
+  // A sent prompt ends the empty chat: the greeting and the centred composer go when it is sent, not when its echo arrives.
+  if (snapshot.messageOrder.length === 0 && !snapshot.prompt.sent) {
     return (
       <div
         className="animate-in fade-in slide-in-from-bottom-1 mx-auto flex w-full max-w-(--layout-thread-width) flex-1 flex-col items-center justify-end px-6 pb-8 text-center duration-200"
@@ -376,6 +377,12 @@ function RuntimeStateSurface({
         <span className="sr-only">No messages yet.</span>
       </div>
     );
+  }
+
+  // Sent, with no message in the transcript yet: the greeting has gone, and the composer moved down with it (app-shell.tsx).
+  // This marker keeps the "Edit an earlier message" label hidden until the echo arrives, as it is while the greeting shows.
+  if (snapshot.messageOrder.length === 0) {
+    return <div data-no-messages="true" hidden />;
   }
 
   return null;

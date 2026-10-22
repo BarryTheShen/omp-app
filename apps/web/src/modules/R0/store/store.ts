@@ -117,6 +117,8 @@ export interface PromptResultState {
 export interface PromptLifecycleState {
   readonly admitted: boolean;
   readonly streaming: boolean;
+  /** The person sent a prompt from this chat, from the moment the send starts: before omp's echo reaches the transcript. */
+  readonly sent: boolean;
   readonly promptResult: PromptResultState | null;
   readonly sessionSettled: boolean;
   readonly promptResults: readonly PromptResultState[];
@@ -306,6 +308,7 @@ const EMPTY_REMINDERS: readonly TodoReminderState[] = Object.freeze([]);
 const EMPTY_PROMPT: PromptLifecycleState = Object.freeze({
   admitted: false,
   streaming: false,
+  sent: false,
   promptResult: null,
   sessionSettled: false,
   promptResults: Object.freeze([]),
@@ -618,6 +621,7 @@ function updatePrompt(
   const prompt: PromptLifecycleState = {
     admitted: update.admitted ?? previous.admitted,
     streaming: update.streaming ?? previous.streaming,
+    sent: update.sent ?? previous.sent,
     promptResult: update.promptResult === undefined ? previous.promptResult : update.promptResult,
     sessionSettled: update.sessionSettled ?? previous.sessionSettled,
     promptResults,
@@ -1526,6 +1530,23 @@ export class OmpRuntimeStore {
     addOrReplaceMessage(next, key, { key, message, status: "ended", streamMessageId: id });
     const order = next.messageOrder as MessageKey[];
     if (!order.includes(key)) order.push(key);
+    this.commit(next);
+  }
+
+  /**
+   * Records that the person sent a prompt from this chat, from the moment the send starts. The chat is no longer empty then,
+   * not when omp's echo of the prompt reaches the transcript, so the composer moves to the bottom at Enter.
+   */
+  public markPromptSent(): void {
+    const next = mutableSnapshot(this.snapshot);
+    updatePrompt(next, { sent: true });
+    this.commit(next);
+  }
+
+  /** Undoes `markPromptSent` for a send that omp refused before admitting it: the chat is empty again. */
+  public unmarkPromptSent(): void {
+    const next = mutableSnapshot(this.snapshot);
+    updatePrompt(next, { sent: false });
     this.commit(next);
   }
 

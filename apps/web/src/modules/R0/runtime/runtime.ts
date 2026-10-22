@@ -1187,12 +1187,22 @@ export class OmpRuntimeController {
     if (!capabilityAvailable(this.capabilities, capability)) {
       throw unavailable(capability, "Prompt submission is unavailable for this runtime");
     }
+    // A message makes the chat no longer empty when it is sent, not when omp's echo of it reaches the transcript: the
+    // composer's position follows the chat's emptiness, so it moves at Enter. Text that starts with "/" may run a command
+    // that writes no user message (omp's `prompt()` runs extension and custom commands without one), so it does not mark
+    // the chat sent: a command that does write one ends the empty chat when its echo arrives. A refused send leaves the
+    // chat empty again.
+    const sendsMessage = !intent.text.trimStart().startsWith("/");
+    if (sendsMessage) this.store.markPromptSent();
     try {
       await this.send(
         { threadId: snapshot.threadId, command: promptCommand(intent) },
         { signal: intent.signal },
       );
     } catch (error) {
+      if (sendsMessage && this.store.getSnapshot().messageOrder.length === 0) {
+        this.store.unmarkPromptSent();
+      }
       throw asFailure(error, "Prompt submission failed before admission");
     }
   }
