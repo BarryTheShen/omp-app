@@ -150,9 +150,22 @@ realTest(
     await composer.focus();
     await composer.press("ArrowUp");
     await expect(composer).toHaveValue("pick :sm");
+    // History restores its caret on the next animation frame; wait before End or Down can be delivered
+    // against the composer state from before the recalled prompt was applied.
+    await expect
+      .poll(() => composer.evaluate((input: HTMLTextAreaElement) => input.selectionStart))
+      .toBe(0);
     await composer.press("End");
+    await expect
+      .poll(() => composer.evaluate((input: HTMLTextAreaElement) => input.selectionStart))
+      .toBe("pick :sm".length);
     await expect(page.getByRole("listbox", { name: "Emoji suggestions" })).toBeVisible();
+    const activeOptionBefore = await composer.getAttribute("aria-activedescendant");
+    expect(activeOptionBefore).not.toBeNull();
     await composer.press("ArrowDown");
+    await expect
+      .poll(() => composer.getAttribute("aria-activedescendant"))
+      .not.toBe(activeOptionBefore);
     await expect(composer).toHaveValue("pick :sm");
     await expect(page.getByRole("listbox", { name: "Emoji suggestions" })).toBeVisible();
   },
