@@ -150,14 +150,19 @@ realTest(
     const page = await realApp.open();
     for (let index = 0; index < CHAT_COUNT; index += 1) {
       const composer = await startChat(page);
+      await expect(page.locator('[data-empty-chat="true"]')).toBeVisible({
+        timeout: 30_000,
+      });
       const prompt = `${CHAT_PROMPT} ${index}`;
       await sendPrompt(composer, prompt);
       await expect(page.getByRole("option", { name: new RegExp(`^${prompt}`) })).toBeVisible({
         timeout: 60_000,
       });
-      await expect(page.getByText("pong").first()).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByText("pong", { exact: true })).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByRole("button", { name: "Stop generating" })).toHaveCount(0, {
+        timeout: 60_000,
+      });
     }
-
     await waitForFiniteAnimations(page);
     await inspectRows(page, "fix-2164-row-menu-light.png");
 
