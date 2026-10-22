@@ -73,6 +73,11 @@ export interface ToolCardState {
   readonly toolCallId: ToolCallId;
   readonly toolName: string;
   readonly label: string;
+  /**
+   * omp's intent for the call (the model's `i` argument): trimmed and without trailing periods, as omp's working line
+   * shows it. Set only while the call is in flight (streaming or running); a finished call has none.
+   */
+  readonly intent?: string;
   readonly phase: ToolCardPhase;
   readonly args?: unknown;
   /** Original assistant-ui args text, retained for lossless copy. */

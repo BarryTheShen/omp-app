@@ -62,6 +62,9 @@ export function normalizeToolCall(input: NormalizeToolCallInput): ToolCardState 
   const isError = input.toolState?.isError === true || phase === "error";
   const argsComplete = resolveArgsComplete(input);
   const executionStarted = input.toolState !== undefined || (phase !== "running" && !queued);
+  // omp's intent shows while the call is streaming or running, and not once it is queued or ended.
+  const intent =
+    (phase === "running" || phase === "partial") && !queued ? intentOf(input) : undefined;
 
   return {
     toolCallId,
@@ -73,6 +76,7 @@ export function normalizeToolCall(input: NormalizeToolCallInput): ToolCardState 
     argsComplete,
     executionStarted,
     ...(queued ? { queued: true } : {}),
+    ...(intent === undefined ? {} : { intent }),
     ...(partialResult === undefined ? {} : { partialResult }),
     ...(input.toolState?.streamProjection === undefined
       ? {}
@@ -268,4 +272,22 @@ function asToolCallId(value: string): ToolCallId | undefined {
 
 function nonEmpty(value: string | undefined): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * The intent omp's working line shows for a call (`packages/coding-agent/src/modes/controllers/event-controller.ts:167-173`):
+ * the start event's intent, or before omp starts the call, the streamed `i` argument. Trimmed, without trailing periods.
+ */
+function intentOf(input: NormalizeToolCallInput): string | undefined {
+  const streamed =
+    typeof input.args === "object" && input.args !== null && "i" in input.args
+      ? input.args.i
+      : undefined;
+  const raw = input.toolState?.intent ?? streamed;
+  if (typeof raw !== "string") return undefined;
+  const cleaned = raw
+    .trim()
+    .replace(/\s*\.+$/, "")
+    .trim();
+  return cleaned.length > 0 ? cleaned : undefined;
 }

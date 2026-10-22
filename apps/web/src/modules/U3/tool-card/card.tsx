@@ -148,7 +148,12 @@ export function ToolCard({
   // A call with no result says so in the card's own words, whatever summary its family gave: that summary describes a
   // result there is none of, and it must not keep a success look.
   const isUnrecorded = state.phase === "unrecorded";
-  const summary = isUnrecorded ? summarize(state) : (suppliedSummary ?? summarize(state));
+  // While omp streams or runs the call, its intent takes the summary line ahead of the family's summary. The family's
+  // summary comes back when the call ends. The line stays one line, so the card's height does not change.
+  const isInFlight = state.phase === "running" || state.phase === "partial";
+  const summary =
+    (isInFlight ? state.intent : undefined) ??
+    (isUnrecorded ? summarize(state) : (suppliedSummary ?? summarize(state)));
   const summaryTone = isUnrecorded ? undefined : summaryClassName;
   const visibleSummary = summary === label ? "" : summary;
 

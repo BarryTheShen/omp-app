@@ -676,6 +676,19 @@ function reply(request: Request): Reply {
       args: { command: "git stash" },
       thinking: "I should try the requested Git stash command.",
     };
+  // A bash call the model gives an intent (the `i` argument, omp's INTENT_FIELD), for the tool card's intent line (#2332).
+  // It sleeps for the seconds after the keyword (six by default): long enough for a spec to look at the running card.
+  if (prompt.includes("intent_probe")) {
+    const seconds = /\bintent_probe\s+(\d+)\b/.exec(prompt)?.[1] ?? "6";
+    return {
+      tool: "bash",
+      args: {
+        command: `sleep ${seconds}; echo intent-probe-done`,
+        i: "Waiting for the fixture command to finish",
+      },
+      thinking: "I should run a command and say what it is for.",
+    };
+  }
   if (prompt.includes("run_bash"))
     return { tool: "bash", args: { command: "echo fixture-tool" }, thinking: "I should run bash." };
   if (prompt.includes("read_image"))
