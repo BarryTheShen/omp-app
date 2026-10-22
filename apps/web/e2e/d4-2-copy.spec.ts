@@ -155,13 +155,11 @@ realTest(
     await expect(outcome).toHaveText('Copied "Output 1 in message 6" (7 characters).');
     expect(await check.evaluate(() => navigator.clipboard.readText())).toBe("copy-me");
 
-    // Keyboard: search the list, press Enter on the match, then Enter on Choose.
+    // Keyboard: search the list and press Enter on the match, which copies it at once (there is no Choose step).
     await check.getByTestId("d4-2-open-picker").click();
     const filter = check.getByRole("textbox", { name: "Filter options" });
     await filter.fill("latest command");
     await filter.press("Enter");
-    await check.getByRole("button", { name: "Choose", exact: true }).focus();
-    await check.keyboard.press("Enter");
     await expect(outcome).toHaveText('Copied "Latest command" (12 characters).');
     expect(await check.evaluate(() => navigator.clipboard.readText())).toBe("echo copy-me");
     await expect(check.getByTestId("d4-2-open-picker")).toBeFocused();

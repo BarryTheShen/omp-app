@@ -11,7 +11,11 @@ afterEach(cleanup);
 
 const threadId = "dialog-test-thread" as ThreadId;
 
-function renderRequest(request: DialogRequest, deadlineAt?: number) {
+function renderRequest(
+  request: DialogRequest,
+  deadlineAt?: number,
+  send?: (response: DialogResponse) => Promise<void>,
+) {
   const answers: DialogResponse[] = [];
   let cancellations = 0;
   const drafts: string[] = [];
@@ -22,6 +26,7 @@ function renderRequest(request: DialogRequest, deadlineAt?: number) {
     signal: new AbortController().signal,
     answer: async (response) => {
       answers.push(response);
+      await send?.(response);
     },
     cancel: async () => {
       cancellations += 1;
@@ -71,8 +76,7 @@ describe("select dialog", () => {
     const beryl = screen.getByRole("option", { name: /Beryl/ });
     fireEvent.keyDown(filter, { key: "ArrowDown" });
     fireEvent.keyDown(filter, { key: "Enter" });
-    await waitFor(() => expect(beryl.getAttribute("aria-selected")).toBe("true"));
-    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(beryl.getAttribute("aria-selected")).toBe("true");
     expect(result.answers).toEqual([{ kind: "select", value: "Beryl" }]);
     const selectedResponse = result.answers[0];
     if (!selectedResponse) throw new Error("The selected response was not recorded.");
@@ -156,7 +160,7 @@ describe("select dialog", () => {
     );
   });
 
-  test("after a filter hides the chosen option, Enter picks the option it leaves, and Choose sends that one", () => {
+  test("after a filter hides the chosen option, Enter chooses the option it leaves at once", () => {
     const result = renderRequest({
       kind: "select",
       id: "select-enter" as UiRequestId,
@@ -167,8 +171,131 @@ describe("select dialog", () => {
     fireEvent.click(screen.getByRole("option", { name: "Delete all" }));
     fireEvent.change(filter, { target: { value: "can" } });
     fireEvent.keyDown(filter, { key: "Enter" });
-    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
     expect(result.answers).toEqual([{ kind: "select", value: "Cancel" }]);
+  });
+
+  test("Enter on the list chooses the highlighted option at once, so an approval takes one step", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-list-enter" as UiRequestId,
+      title: "Allow tool?",
+      options: ["Approve", "Deny"],
+    });
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Allow tool?" }), { key: "Enter" });
+    expect(result.answers).toEqual([{ kind: "select", value: "Approve" }]);
+  });
+
+  test("arrows move the highlight, and Enter on the option it reaches chooses that option", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-arrow-enter" as UiRequestId,
+      title: "Allow tool?",
+      options: ["Approve", "Deny"],
+    });
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Allow tool?" }), { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("option", { name: "Deny" }), { key: "Enter" });
+    expect(result.answers).toEqual([{ kind: "select", value: "Deny" }]);
+  });
+
+  test("a click still only marks an option: nothing is sent until Choose", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-click-mark" as UiRequestId,
+      title: "Allow tool?",
+      options: ["Approve", "Deny"],
+    });
+    fireEvent.click(screen.getByRole("option", { name: "Approve" }));
+    expect(result.answers).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(result.answers).toEqual([{ kind: "select", value: "Approve" }]);
+  });
+
+  test("a held Enter answers once", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-held-enter" as UiRequestId,
+      title: "Allow tool?",
+      options: ["Approve", "Deny"],
+    });
+    const listbox = screen.getByRole("listbox", { name: "Allow tool?" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    fireEvent.keyDown(listbox, { key: "Enter", repeat: true });
+    expect(result.answers).toEqual([{ kind: "select", value: "Approve" }]);
+  });
+
+  test("arrow keys move focus with the highlight, so Enter chooses the option that has focus", () => {
+    renderRequest({
+      kind: "select",
+      id: "select-focus" as UiRequestId,
+      title: "Allow tool?",
+      options: ["Approve", "Deny"],
+    });
+    fireEvent.keyDown(screen.getByRole("listbox", { name: "Allow tool?" }), { key: "ArrowDown" });
+    const deny = screen.getByRole("option", { name: "Deny" });
+    expect(document.activeElement).toBe(deny);
+    expect(deny.hasAttribute("data-highlighted")).toBe(true);
+    expect(screen.getByRole("option", { name: "Approve" }).hasAttribute("data-highlighted")).toBe(
+      false,
+    );
+  });
+
+  test("a letter moves the highlight to its option, and Enter chooses that option", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-letter-enter" as UiRequestId,
+      title: "Choose",
+      options: ["Alpha", "Beta", "Gamma"],
+    });
+    const listbox = screen.getByRole("listbox", { name: "Choose" });
+    fireEvent.keyDown(listbox, { key: "g" });
+    expect(screen.getByRole("option", { name: "Gamma" }).hasAttribute("data-highlighted")).toBe(
+      true,
+    );
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    expect(result.answers).toEqual([{ kind: "select", value: "Gamma" }]);
+  });
+
+  test("a second Enter after an answer was accepted does not answer again", () => {
+    const result = renderRequest({
+      kind: "select",
+      id: "select-twice" as UiRequestId,
+      title: "Allow tool?",
+      options: ["Approve", "Deny"],
+    });
+    const listbox = screen.getByRole("listbox", { name: "Allow tool?" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Choose" }));
+    expect(result.answers).toEqual([{ kind: "select", value: "Approve" }]);
+  });
+
+  test("when the answer does not reach omp, the dialog says so, and Enter sends the same answer again", async () => {
+    let failures = 1;
+    const result = renderRequest(
+      {
+        kind: "select",
+        id: "select-retry" as UiRequestId,
+        title: "Allow tool?",
+        options: ["Approve", "Deny"],
+      },
+      undefined,
+      async () => {
+        if (failures === 0) return;
+        failures -= 1;
+        throw new Error("The answer did not reach omp.");
+      },
+    );
+    const listbox = screen.getByRole("listbox", { name: "Allow tool?" });
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe("Sending your answer failed. Try again."),
+    );
+    fireEvent.keyDown(listbox, { key: "Enter" });
+    expect(result.answers).toEqual([
+      { kind: "select", value: "Approve" },
+      { kind: "select", value: "Approve" },
+    ]);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 });
 

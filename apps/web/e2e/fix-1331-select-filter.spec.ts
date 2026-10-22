@@ -152,10 +152,8 @@ realTest(
     await page.screenshot({ path: join(screenshots, "fix-1331-select-390.png") });
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // Enter on the listed option chooses it, and Choose sends that option.
+    // Enter on the listed option chooses it at once: the answer goes out and the dialog closes, with no Choose.
     await filter.press("Enter");
-    await expect(choose).toBeEnabled();
-    await choose.click();
     await expect(dialog).toBeHidden({ timeout: 30_000 });
     expect(question.answers).toEqual([
       expect.objectContaining({

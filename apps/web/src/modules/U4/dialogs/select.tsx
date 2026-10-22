@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SelectDialogRequest } from "../contract";
@@ -29,10 +29,14 @@ export function SelectDialog({
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  // The highlighted option is the one Enter chooses. Focus moves with it when the focus is on the list.
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<string | null>(
     context.answerNotSent === true ? ANSWER_NOT_SENT : null,
   );
+  // Set while an answer is being sent and once one is accepted, so a second Enter or Choose never answers twice.
+  const answeredRef = useRef(false);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const showFilter = request.options.length > 7;
   const filteredOptions = useMemo(
     () => listedOptions(request, showFilter ? query : ""),
@@ -44,24 +48,34 @@ export function SelectDialog({
       setActiveIndex(Math.max(0, filteredOptions.length - 1));
   }, [activeIndex, filteredOptions.length]);
 
-  const submit = async () => {
-    if (selected === null) {
-      setError("Choose an option before continuing.");
-      return;
-    }
+  /** Sends the answer now, as omp's select does on Enter. A send that fails re-arms the answer, so the same one can go again. */
+  const choose = async (value: string) => {
+    if (answeredRef.current) return;
+    answeredRef.current = true;
+    setSelected(value);
     setError(null);
     try {
-      await context.answer({ kind: "select", value: selected });
+      await context.answer({ kind: "select", value });
     } catch {
+      answeredRef.current = false;
       setError(ANSWER_NOT_SENT);
     }
   };
 
-  const move = (direction: 1 | -1) => {
+  const submit = () => {
+    if (selected === null) {
+      setError("Choose an option before continuing.");
+      return;
+    }
+    void choose(selected);
+  };
+
+  /** Moves the highlight one listed option, wrapping at both ends. Focus moves with it when it is on the list. */
+  const moveHighlight = (direction: 1 | -1, focusOption: boolean) => {
     if (filteredOptions.length === 0) return;
-    setActiveIndex(
-      (current) => (current + direction + filteredOptions.length) % filteredOptions.length,
-    );
+    const next = (activeIndex + direction + filteredOptions.length) % filteredOptions.length;
+    setActiveIndex(next);
+    if (focusOption) optionRefs.current[next]?.focus();
   };
 
   return (
@@ -103,14 +117,15 @@ export function SelectDialog({
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
-                move(1);
+                moveHighlight(1, false);
               } else if (event.key === "ArrowUp") {
                 event.preventDefault();
-                move(-1);
-              } else if (event.key === "Enter") {
+                moveHighlight(-1, false);
+              } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                // Enter chooses the highlighted option and never submits the form. A held Enter is ignored.
                 event.preventDefault();
                 const option = filteredOptions[activeIndex];
-                if (option) setSelected(option.label);
+                if (option && !event.repeat) void choose(option.label);
               }
             }}
           />
@@ -118,17 +133,26 @@ export function SelectDialog({
         <div
           role="listbox"
           aria-label={request.title}
-          tabIndex={showFilter ? undefined : 0}
           onKeyDown={(event) => {
-            if (showFilter || event.key.length !== 1) return;
-            const index = filteredOptions.findIndex((option) =>
-              option.label.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase()),
-            );
-            if (index < 0) return;
-            event.preventDefault();
-            setActiveIndex(index);
-            setSelected(filteredOptions[index]?.label ?? null);
-            setError(null);
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              moveHighlight(event.key === "ArrowDown" ? 1 : -1, true);
+            } else if (event.key === "Enter") {
+              event.preventDefault();
+              const option = filteredOptions[activeIndex];
+              if (option && !event.repeat) void choose(option.label);
+            } else if (!showFilter && event.key.length === 1) {
+              const index = filteredOptions.findIndex((option) =>
+                option.label.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase()),
+              );
+              if (index < 0) return;
+              event.preventDefault();
+              setActiveIndex(index);
+              optionRefs.current[index]?.focus();
+              setSelected(filteredOptions[index]?.label ?? null);
+              setError(null);
+            }
           }}
           className="flex max-h-64 flex-col gap-1 overflow-y-auto"
         >
@@ -140,26 +164,19 @@ export function SelectDialog({
             filteredOptions.map((option, index) => (
               <Button
                 key={`${option.label}-${option.index}`}
+                ref={(element) => {
+                  optionRefs.current[index] = element;
+                }}
                 type="button"
                 role="option"
                 aria-selected={selected === option.label}
+                data-highlighted={index === activeIndex ? "" : undefined}
                 variant={selected === option.label ? "secondary" : "ghost"}
-                className="h-auto justify-start whitespace-normal px-3 py-2 text-start"
+                className="h-auto justify-start whitespace-normal px-3 py-2 text-start data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
                 onClick={() => {
+                  setActiveIndex(index);
                   setSelected(option.label);
                   setError(null);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    move(1);
-                  } else if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    move(-1);
-                  } else if (event.key === "Enter") {
-                    event.preventDefault();
-                    setSelected(option.label);
-                  }
                 }}
                 onFocus={() => setActiveIndex(index)}
               >
