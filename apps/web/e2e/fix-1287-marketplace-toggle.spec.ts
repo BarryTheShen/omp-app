@@ -179,8 +179,8 @@ async function captureState(page: Page, state: string): Promise<void> {
       }
       await page.setViewportSize({ width: layout.width, height: 900 });
       await page.emulateMedia({ colorScheme: layout.scheme });
-      await assertSubjectInsideDialog(dialog, subject, state);
       await waitForFiniteAnimations(page);
+      await assertSubjectInsideDialog(dialog, subject, state);
       await page.screenshot({
         path: join(screenshots, `fix-1287-${state}-${layout.width}-${layout.scheme}.png`),
         fullPage: true,
@@ -200,8 +200,8 @@ async function captureState(page: Page, state: string): Promise<void> {
   for (const layout of layouts) {
     await page.setViewportSize({ width: layout.width, height: 900 });
     await page.emulateMedia({ colorScheme: layout.scheme });
-    await assertSubjectInsideDialog(dialog, subject, state);
     await waitForFiniteAnimations(page);
+    await assertSubjectInsideDialog(dialog, subject, state);
     await page.screenshot({
       path: join(screenshots, `fix-1287-${state}-${layout.width}-${layout.scheme}.png`),
       fullPage: true,
@@ -239,6 +239,59 @@ async function removeMarketplaceInstall(agentDir: string): Promise<void> {
   await writeFile(path, `${JSON.stringify(registry, null, 2)}\n`);
 }
 
+/** The server's notice that the extension list changed: the stream the app's list subscribes to. */
+const CATALOG_CHANGED = "A1.extensionCatalog/changed";
+
+/** The list's change notice, held from the registry write until the Disable call has gone out. */
+interface HeldCatalogChange {
+  /** Set just before the registry write: the notices before it pass through. */
+  armed: boolean;
+  /** Set once the Disable call has gone out: the held notices are delivered, and later ones pass through. */
+  released: boolean;
+  readonly held: Array<string | Buffer>;
+}
+
+function isCatalogChanged(text: string): boolean {
+  try {
+    const frame: unknown = JSON.parse(text);
+    return (
+      frame !== null &&
+      typeof frame === "object" &&
+      "stream" in frame &&
+      frame.stream === CATALOG_CHANGED
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Routes the page's WebSocket before the app connects. While the hold is armed, the list's change notice is kept back, so
+ * the list keeps the marketplace link, and the confirmation, until the Disable call has gone out. Every other frame passes
+ * through in order.
+ */
+async function holdCatalogChange(page: Page, hold: HeldCatalogChange): Promise<void> {
+  await page.routeWebSocket(/\/ws/, (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      server.send(message);
+      const sent = typeof message === "string" ? message : message.toString("utf8");
+      if (hold.armed && !hold.released && sent.includes("/plugins disable")) {
+        hold.released = true;
+        for (const held of hold.held.splice(0)) socket.send(held);
+      }
+    });
+    server.onMessage((message) => {
+      const received = typeof message === "string" ? message : message.toString("utf8");
+      if (hold.armed && !hold.released && isCatalogChanged(received)) {
+        hold.held.push(message);
+        return;
+      }
+      socket.send(message);
+    });
+  });
+}
+
 realTest(
   "marketplace plugin controls use the installed registry and confirm changes through omp",
   async ({ realApp }, testInfo) => {
@@ -264,7 +317,8 @@ realTest(
     const after = await promptClient.run("/marketplace installed", PLUGIN_ID);
     expect(after).toContain(`${PLUGIN_ID} [user]`);
 
-    const page = await realApp.open();
+    const hold: HeldCatalogChange = { armed: false, released: false, held: [] };
+    const page = await realApp.open({ beforeLoad: (target) => holdCatalogChange(target, hold) });
     await openToolsTab(page);
     await page.getByTestId("extension-tab-plugins").click();
     await expect(page.getByTestId("extension-item-hello-plugin")).toBeVisible({ timeout: 60_000 });
@@ -309,26 +363,34 @@ realTest(
     await expectPluginEnabled(page, true);
 
     await page.getByRole("button", { name: "Disable plugin" }).click();
-    const failedButton = page
-      .getByRole("group", { name: "Disable plugin" })
-      .getByRole("button", { name: "Disable plugin" });
-    const failedClick = failedButton.evaluate((button) => (button as HTMLButtonElement).click());
+    // The write changes the registry, and the list hears about it from the change notice. The hold keeps that notice back
+    // until the Disable call has gone out, so the list keeps the confirmation. The 500 ms pause is longer than the app's
+    // refresh: without the hold the list would have dropped the confirmation before the click.
+    hold.armed = true;
     await removeMarketplaceInstall(realApp.agentDir);
-    await failedClick;
+    await expect.poll(() => hold.held.length, { timeout: 30_000 }).toBeGreaterThan(0);
+    await page.waitForTimeout(500);
+    await page
+      .getByRole("group", { name: "Disable plugin" })
+      .getByRole("button", { name: "Disable plugin" })
+      .click();
+    await expect.poll(() => hold.released, { timeout: 30_000 }).toBe(true);
     const failure = page.getByRole("alert").filter({ hasText: "Plugin error:" });
-    await expect(failure).toContainText(
-      'Plugin "hello-plugin@local-toggle-market" is not installed',
-      {
-        timeout: 30_000,
-      },
-    );
-    const inspector = page.getByTestId("extension-inspector");
-    await expect(inspector.getByText("Enabled", { exact: true })).toBeVisible();
+    // omp 18.12 refuses a plugin that its runtime config no longer has (18.8.9 said "is not installed"). The app shows
+    // omp's text as it is.
+    await expect(failure).toContainText(`Plugin ${PLUGIN_ID} not found in runtime config`, {
+      timeout: 30_000,
+    });
+    // The list then reloads without the marketplace link: the Disable button and the confirmation go, and the refusal
+    // stays on the inspector through that reload.
     await expect(
       page.getByText(
         "This plugin was not installed from a marketplace, so omp cannot turn it on or off from here.",
       ),
     ).toBeVisible();
+    await expect(failure).toContainText(`Plugin ${PLUGIN_ID} not found in runtime config`);
+    const inspector = page.getByTestId("extension-inspector");
+    await expect(inspector.getByText("Enabled", { exact: true })).toBeVisible();
     await captureState(page, "failed");
     expect(realApp.problems).toEqual([]);
   },
