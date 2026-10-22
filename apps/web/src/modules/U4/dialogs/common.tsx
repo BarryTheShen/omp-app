@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import type { ConfirmDialogRequest, InputDialogRequest } from "../contract";
 export function DialogFrame({
   title,
@@ -24,7 +25,10 @@ export function DialogFrame({
       <header className="flex flex-col gap-1">
         <h2
           id={labelledBy}
-          className="text-base font-medium text-popover-foreground [overflow-wrap:anywhere]"
+          className={cn(
+            "text-base font-medium text-popover-foreground [overflow-wrap:anywhere]",
+            title.includes("\n") && "whitespace-pre-wrap",
+          )}
         >
           {title}
         </h2>

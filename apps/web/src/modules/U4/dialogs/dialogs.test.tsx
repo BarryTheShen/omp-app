@@ -101,6 +101,18 @@ describe("select dialog", () => {
     expect(result.answers).toEqual([{ kind: "select", value: "Beta" }]);
   });
 
+  test("a select title with line breaks keeps them on screen, so an approval's arguments stay readable", () => {
+    renderRequest({
+      kind: "select",
+      id: "select-lines" as UiRequestId,
+      title: 'Allow tool: write\nArguments:\n{\n  "path": "notes.txt"\n}',
+      options: ["Approve", "Deny"],
+    });
+    const heading = screen.getByRole("heading", { level: 2 });
+    expect(heading.textContent).toContain('\n  "path": "notes.txt"');
+    expect(heading.className).toContain("whitespace-pre-wrap");
+  });
+
   test("cancel has no value and does not answer", () => {
     const result = renderRequest({
       kind: "select",
