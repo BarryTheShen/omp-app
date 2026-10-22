@@ -12,6 +12,13 @@ import { numberRangeWords, settingOptions, terminalOnlyDescription } from "../se
 
 const HOST_CONFIG = ["host.config"] as const satisfies readonly CapabilityKey[];
 export const TOOL_APPROVAL_POLICY_VALUES = ["allow", "prompt", "deny"] as const;
+/** omp's `tools.approvalMode` values in omp's order (`packages/coding-agent/src/tools/settings.ts:316` at v18.12.5). */
+export const TOOL_APPROVAL_MODE_VALUES = [
+  "always-ask",
+  "always-ask-cached",
+  "write",
+  "yolo",
+] as const;
 
 const TOOL_APPROVAL_POLICY_LABELS = {
   allow: "Allow",
@@ -413,14 +420,15 @@ export const APPROVALS_SECTION = section(
     enumControl(
       "tools.approvalMode",
       "Approval Mode",
-      ["always-ask", "write", "yolo"],
+      TOOL_APPROVAL_MODE_VALUES,
       "live",
       {
         "always-ask": "Always ask",
+        "always-ask-cached": "Ask and remember",
         write: "Write",
         yolo: "Yolo",
       },
-      "Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.",
+      "Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Ask and remember' also asks before file reads, and can remember a file or folder. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.",
     ),
   ],
 );

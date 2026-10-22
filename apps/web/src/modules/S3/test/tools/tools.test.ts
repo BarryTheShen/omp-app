@@ -319,6 +319,17 @@ describe("S3 Tools ConfigStore policy", () => {
     );
   });
 
+  test.each(["always-ask", "always-ask-cached", "write", "yolo"] as const)(
+    "projects the saved approval mode %s as omp saves it",
+    async (mode) => {
+      const { client } = fakeConfigStore([configValue("tools.approvalMode", mode)]);
+      const policy = projectToolsPolicy(await readToolsSettings(client, null));
+
+      expect(policy.approval.mode).toBe(mode);
+      expect(policy.invalid).not.toContain("tools.approvalMode");
+    },
+  );
+
   test("falls back on invalid bounds, URLs, and record policy values", async () => {
     const { client } = fakeConfigStore([
       configValue("async.maxJobs", -1),

@@ -188,7 +188,9 @@ export const TOOLS_SETTING_DEFAULTS = {
 export type ToolsSettingKey = keyof typeof TOOLS_SETTING_DEFAULTS;
 
 export type ToolApprovalDecision = "allow" | "deny" | "prompt";
-export type ToolApprovalMode = "always-ask" | "write" | "yolo";
+/** omp's `tools.approvalMode` values in omp's order (`packages/coding-agent/src/tools/settings.ts:316` at v18.12.5). */
+const TOOL_APPROVAL_MODE_VALUES = ["always-ask", "always-ask-cached", "write", "yolo"] as const;
+export type ToolApprovalMode = (typeof TOOL_APPROVAL_MODE_VALUES)[number];
 export type DeveloperAutoqaConsent = "unset" | "granted" | "denied";
 
 const DEFAULT_APPROVAL_OVERRIDES: Readonly<Record<string, ToolApprovalDecision>> = Object.freeze(
@@ -522,7 +524,7 @@ function projectValues(snapshot: ToolsConfigSnapshot): {
 }
 
 function isToolApprovalMode(value: JsonValue): value is ToolApprovalMode {
-  return value === "always-ask" || value === "write" || value === "yolo";
+  return TOOL_APPROVAL_MODE_VALUES.some((mode) => mode === value);
 }
 
 function isToolApprovalDecision(value: JsonValue): value is ToolApprovalDecision {

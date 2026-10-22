@@ -10,6 +10,7 @@ import {
   NOTIFICATIONS_SETTINGS_SECTION,
   POWER_SETTINGS_SECTION,
   STARTUP_UPDATES_SETTINGS_SECTION,
+  TOOL_APPROVAL_MODE_VALUES,
   TOOL_APPROVAL_POLICY_VALUES,
 } from "./descriptors";
 
@@ -44,7 +45,7 @@ export type InputSettings = {
   readonly largePasteMenuThreshold: number;
 };
 
-export type ToolApprovalMode = "always-ask" | "write" | "yolo";
+export type ToolApprovalMode = (typeof TOOL_APPROVAL_MODE_VALUES)[number];
 export type ToolApprovalPolicy = (typeof TOOL_APPROVAL_POLICY_VALUES)[number] | "unknown";
 export type ToolApprovalPolicies = Readonly<Record<string, ToolApprovalPolicy>>;
 export type ApprovalSettingsSnapshot = {
@@ -321,7 +322,7 @@ export function projectApprovalMode(
         snapshot,
         APPROVALS_SECTION,
         "tools.approvalMode",
-        enumValue(["always-ask", "write", "yolo"]),
+        enumValue(TOOL_APPROVAL_MODE_VALUES),
       ),
     },
   };

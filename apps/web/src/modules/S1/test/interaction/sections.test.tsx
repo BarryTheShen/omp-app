@@ -23,8 +23,9 @@ import {
   TOOL_APPROVAL_POLICY_VALUES,
 } from "../../interaction";
 
-// Each row is the exact ui.description at its source line in omp v18.9.1. Witness commands:
-// `git -C /home/user/workspace/projects/omp-app/.data/scratch/omp-src.git show v18.9.1:<source>`.
+// Each row is the exact ui.description at its source line in omp v18.9.1, except tools.approvalMode:
+// v18.9.1 has no "Ask and remember" mode, so that row is the text at its line in omp v18.12.5. Witness
+// commands: `git -C /home/user/workspace/projects/omp-app/.data/scratch/omp-src.git show <tag>:<source>`.
 // The D1 settings-registry fixture has no ui.description field, so these upstream source literals
 // pin each key. Terminal-only descriptions keep their source text here and the shared prefix in UI.
 const OMP_DESCRIPTION_ROWS: readonly {
@@ -146,8 +147,8 @@ const OMP_DESCRIPTION_ROWS: readonly {
   {
     key: "tools.approvalMode",
     description:
-      "Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.",
-    source: "tools/settings.ts:321",
+      "Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Ask and remember' also asks before file reads, and can remember a file or folder. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.",
+    source: "tools/settings.ts:323",
   },
   {
     key: "completion.notify",
@@ -647,6 +648,13 @@ describe("S1.4 interaction settings sections", () => {
     expect(mode.description).toBe(
       OMP_DESCRIPTION_ROWS.find((row) => row.key === "tools.approvalMode")?.description,
     );
+    if (mode.kind !== "enum") throw new Error("Expected the approval mode dropdown.");
+    expect(mode.options).toEqual([
+      { value: "always-ask", label: "Always ask" },
+      { value: "always-ask-cached", label: "Ask and remember" },
+      { value: "write", label: "Write" },
+      { value: "yolo", label: "Yolo" },
+    ]);
     const policies = control("tools.approval");
     if (policies.kind !== "map") throw new Error("Expected the approval policy map.");
     expect(policies.value.options).toContainEqual({ value: "prompt", label: "Ask first" });
@@ -889,6 +897,28 @@ describe("S1.4 interaction settings sections", () => {
     expect(screen.getByRole("button", { name: "Add tool policy" }).hasAttribute("disabled")).toBe(
       false,
     );
+  });
+
+  test("projects and validates Ask and remember, the mode omp saves as always-ask-cached", () => {
+    const approvals = defaultSnapshot(APPROVALS_SECTION);
+    const saved = {
+      ...approvals,
+      entries: approvals.entries.map((entry) =>
+        entry.key === "tools.approvalMode" ? { ...entry, value: "always-ask-cached" } : entry,
+      ),
+    };
+    const snapshot = projectInteractionSettingsSnapshot({
+      ...interactionConfigDefaults(),
+      approvals: saved,
+    });
+
+    expect(sectionValues(snapshot.approvals.mode.settings)).toEqual({ mode: "always-ask-cached" });
+    expect(
+      control("tools.approvalMode").validate(
+        { secret: false, value: "always-ask-cached" },
+        approvals,
+      ),
+    ).toEqual({ valid: true });
   });
 
   test("keeps redacted approval records value-free in consumer snapshots", () => {

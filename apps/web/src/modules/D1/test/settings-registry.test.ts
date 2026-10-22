@@ -58,6 +58,15 @@ const IDENTIFIER_ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
   ],
 };
 
+/**
+ * Enum values omp added after the v18.9.1 registry fixture was recorded, in omp's order. `always-ask-cached`
+ * came in omp v18.12.3 (`packages/coding-agent/CHANGELOG.md` line 93 at v18.12.5); its list is
+ * `packages/coding-agent/src/tools/settings.ts:316` at v18.12.5.
+ */
+const VALUES_ADDED_AFTER_V18_9_1: Readonly<Record<string, readonly string[]>> = {
+  "tools.approvalMode": ["always-ask", "always-ask-cached", "write", "yolo"],
+};
+
 /** These controls intentionally use a different shape than omp's persisted setting registration. */
 const DESIGN_DIFFERENCES: Readonly<Record<string, string>> = {
   "compaction.thresholdPercent":
@@ -145,7 +154,10 @@ describe("settings descriptors match omp's v18.9.1 registration", () => {
         continue;
       }
       const actual = optionValues(control);
-      const expected = IDENTIFIER_ENUM_VALUES[control.key] ?? source.values;
+      const expected =
+        IDENTIFIER_ENUM_VALUES[control.key] ??
+        VALUES_ADDED_AFTER_V18_9_1[control.key] ??
+        source.values;
       if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         mismatches.push(
           `${control.key}: options ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`,
