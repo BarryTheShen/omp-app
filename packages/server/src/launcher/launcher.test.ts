@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { type AddressInfo, connect, createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +8,7 @@ import {
   instanceFile,
   ompSearchPath,
   parseLauncherArgs,
+  portIsFree,
   readRunningInstance,
   recordInstance,
 } from "./launcher";
@@ -185,3 +187,58 @@ describe("installUnhandledRejectionLogger", () => {
     expect(out).not.toContain("STILL RUNNING");
   });
 });
+
+describe("portIsFree", () => {
+  const probes: Server[] = [];
+  const clients: Socket[] = [];
+  afterEach(() => {
+    for (const client of clients.splice(0)) client.destroy();
+    for (const probe of probes.splice(0)) probe.close();
+  });
+
+  // The test's own timeout (one second) is the bound: the check must resolve within a second.
+  test("a client that holds its socket during the check does not hold the check", async () => {
+    const port = await freePort();
+    const probe = holdListeningUntilAccepted(createServer());
+    probes.push(probe);
+    probe.once("listening", () => {
+      const client = connect(port, "127.0.0.1");
+      client.on("error", () => undefined);
+      clients.push(client);
+    });
+    expect(await portIsFree(port, probe)).toBe(true);
+  }, 1000);
+
+  test("reads a free port as free", async () => {
+    expect(await portIsFree(await freePort())).toBe(true);
+  });
+
+  test("reads a port that something listens on as busy", async () => {
+    const busy = createServer();
+    probes.push(busy);
+    await new Promise<void>((resolve) => busy.listen(0, "127.0.0.1", () => resolve()));
+    expect(await portIsFree((busy.address() as AddressInfo).port)).toBe(false);
+  });
+});
+
+/** A port nothing listens on: bind port 0, read the port the system chose, and let it go. */
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+/**
+ * The probe with its listening step held back until a client has been accepted, so that a client
+ * is inside the check when the check closes the probe.
+ */
+function holdListeningUntilAccepted(probe: Server): Server {
+  const listen = probe.listen.bind(probe);
+  probe.listen = ((port: number, host: string, listening: () => void) => {
+    probe.once("connection", () => listening());
+    return listen(port, host);
+  }) as unknown as Server["listen"];
+  return probe;
+}

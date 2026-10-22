@@ -1,9 +1,10 @@
 /**
  * The pieces of the installed app's command (`omp-app`) that are worth testing on their own: the
- * command line, the one-instance-per-user record, and the search path that lets a desktop launch
- * find omp. `scripts/omp-app.ts` wires them to the server.
+ * command line, the one-instance-per-user record, the search path that lets a desktop launch find
+ * omp, and the check that the port is free. `scripts/omp-app.ts` wires them to the server.
  */
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:net";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { stateDirectory } from "../logging";
@@ -173,6 +174,20 @@ export function ompSearchPath(
     (dir) => exists(dir) && !parts.includes(dir),
   );
   return [...parts, ...extra].join(":");
+}
+
+/**
+ * Whether nothing is listening on the port now. The check binds `probe` to the loopback address and
+ * closes it again at once. A connection that arrives while it listens is dropped, never waited for.
+ */
+export function portIsFree(port: number, probe: Server = createServer()): Promise<boolean> {
+  const { promise, resolve: done } = Promise.withResolvers<boolean>();
+  // close() calls back only when every accepted socket has ended, so each one is dropped at once:
+  // the check never waits on a client that holds its socket open.
+  probe.on("connection", (socket) => socket.destroy());
+  probe.once("error", () => done(false));
+  probe.listen(port, "127.0.0.1", () => probe.close(() => done(true)));
+  return promise;
 }
 
 /**

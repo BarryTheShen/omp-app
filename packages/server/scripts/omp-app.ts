@@ -5,7 +5,6 @@
  * the .deb; from a source checkout, run `bun run build && bun packages/server/scripts/omp-app.ts`.
  */
 import { existsSync, statSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { probeOmp } from "../src/capabilities/omp-version";
@@ -16,6 +15,7 @@ import {
   instanceFile,
   ompSearchPath,
   parseLauncherArgs,
+  portIsFree,
   readRunningInstance,
   recordInstance,
   USAGE,
@@ -73,14 +73,6 @@ async function responds(url: string): Promise<boolean> {
     // No answer is the point of this check: nothing is listening there.
     return false;
   }
-}
-
-function portIsFree(port: number): Promise<boolean> {
-  const { promise, resolve: done } = Promise.withResolvers<boolean>();
-  const probe = createServer();
-  probe.once("error", () => done(false));
-  probe.listen(port, "127.0.0.1", () => probe.close(() => done(true)));
-  return promise;
 }
 
 function openBrowser(address: string): void {
