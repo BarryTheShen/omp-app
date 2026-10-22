@@ -385,3 +385,88 @@ describe("T5.2 task card worker transcripts", () => {
     );
   });
 });
+
+/** The recorded task with its one agent, as omp's progress reports it while the agent runs, with the fields given for its call. */
+function runningAgent(call: Record<string, unknown>) {
+  const props = recorded("task: one agent started in the background");
+  const details = (props.result as { details: { progress: Record<string, unknown>[] } }).details;
+  details.progress = details.progress.map((agent) => ({
+    ...agent,
+    id: "LiveWorker",
+    status: "running",
+    ...call,
+  }));
+  return props;
+}
+
+/** A roster lookup that knows the worker of the task call, with the live progress P1 keeps for it. */
+function liveWorkerLookup(progress: Record<string, unknown>): TaskSubagentLookup {
+  const agent = agentRef({
+    id: "LiveWorker",
+    parentToolCallId: "task-call",
+    status: "running",
+    progress,
+  });
+  return (parentToolCallId) =>
+    parentToolCallId === "task-call"
+      ? [{ agent, source: workerSource(agent, "live worker text") }]
+      : [];
+}
+
+describe("T5 task card on a running agent's call", () => {
+  beforeEach(() => {
+    // The thread viewport observes its size, which jsdom does not provide: the same no-op observer the worker tests use.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  test("the running row names the intent of the call the agent is in", () => {
+    const { container } = render(
+      <TaskCard
+        rendererProps={runningAgent({
+          currentTool: "bash",
+          currentToolIntent: "Reading the config for the port",
+        })}
+      />,
+    );
+    expandToolCards();
+    const row = container.querySelector("[data-slot='t5-task-progress'] li");
+    expect(row?.textContent).toContain("Running bash: Reading the config for the port");
+  });
+
+  test("a running call without an intent reads as before, with no colon", () => {
+    const { container } = render(
+      <TaskCard rendererProps={runningAgent({ currentTool: "bash" })} />,
+    );
+    expandToolCards();
+    const row = container.querySelector("[data-slot='t5-task-progress'] li");
+    expect(row?.textContent).toContain("Running bash");
+    expect(row?.textContent).not.toContain("Running bash:");
+  });
+
+  test("the row reads the roster's live call over the result's snapshot, which is from when the call returned", () => {
+    const lookup = liveWorkerLookup({
+      currentTool: "bash",
+      currentToolIntent: "Reading the config for the port",
+    });
+    const { container } = render(
+      <TaskSubagentsContext.Provider value={lookup}>
+        <InThread>
+          <TaskCard rendererProps={runningAgent({ toolCount: 0 })} />
+        </InThread>
+      </TaskSubagentsContext.Provider>,
+    );
+    expandToolCards();
+    const row = container.querySelector("[data-slot='t5-task-progress'] li");
+    expect(row?.textContent).toContain("Running bash: Reading the config for the port");
+  });
+});

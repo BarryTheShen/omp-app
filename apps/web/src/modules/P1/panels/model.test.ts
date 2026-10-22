@@ -107,6 +107,19 @@ describe("readWorkerMetrics", () => {
     });
   });
 
+  test("the step names the intent of the call a running agent is in", () => {
+    expect(
+      readWorkerMetrics({
+        currentTool: "bash",
+        currentToolIntent: "Reading the config for the port",
+      }).step,
+    ).toBe("Using bash: Reading the config for the port");
+    expect(readWorkerMetrics({ currentTool: "bash", currentToolIntent: "   " }).step).toBe(
+      "Using bash",
+    );
+    expect(readWorkerMetrics({ currentTool: "bash" }).step).toBe("Using bash");
+  });
+
   test("cuts long text with an ellipsis and treats blank text as absent", () => {
     const long = readWorkerMetrics({ lastIntent: "x".repeat(400) });
     expect(long.step).toHaveLength(160);

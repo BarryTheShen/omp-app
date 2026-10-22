@@ -18,7 +18,13 @@ import {
   showingNote,
   statusLabel,
 } from "./coordination";
-import { type AgentProgress, decodeTaskDetails, type TaskDetails, type TaskResult } from "./models";
+import {
+  type AgentProgress,
+  decodeTaskDetails,
+  LiveCallSchema,
+  type TaskDetails,
+  type TaskResult,
+} from "./models";
 
 /**
  * One worker a task call started: its roster reference and P1's runtime for it. The runtime reads the worker's
@@ -186,6 +192,9 @@ function AgentProgressRows({
       <ul className="grid gap-2 text-xs">
         {progress.slice(0, MAX_ITEMS).map((agent) => {
           const work = agent.assignment ?? agent.task ?? agent.description ?? "";
+          const worker = subagents.find((item) => item.agent.id === agent.id)?.agent;
+          const status = worker?.status ?? agent.status;
+          const call = status === "running" ? runningCall(agent, worker?.progress) : undefined;
           return (
             <li className="bg-muted/30 flex min-w-0 flex-col gap-1 rounded p-2" key={agent.id}>
               <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -194,12 +203,7 @@ function AgentProgressRows({
                   {agent.agent}
                 </span>
                 {/* The task result is a snapshot from when the call returned; the roster knows the live status. */}
-                <StatusChip
-                  value={
-                    subagents.find((item) => item.agent.id === agent.id)?.agent.status ??
-                    agent.status
-                  }
-                />
+                <StatusChip value={status} />
                 {agent.completionPercent !== undefined && (
                   <span className="text-muted-foreground">
                     {Math.round(agent.completionPercent)}% done
@@ -207,7 +211,7 @@ function AgentProgressRows({
                 )}
               </div>
               {work.length > 0 && <Preview text={work} />}
-              <AgentCounts agent={agent} />
+              <AgentCounts agent={agent} call={call} />
             </li>
           );
         })}
@@ -216,10 +220,31 @@ function AgentProgressRows({
   );
 }
 
+/**
+ * The tool a running agent is in, with the intent omp sent with that call when there is one. The roster's live progress
+ * is read when P1 has the worker: a task result's progress is the snapshot from when the call returned.
+ */
+function runningCall(
+  agent: AgentProgress,
+  live: Readonly<Record<string, unknown>> | undefined,
+): string | undefined {
+  const call = live === undefined ? agent : LiveCallSchema.safeParse(live).data;
+  const tool = call?.currentTool;
+  if (tool === undefined) return undefined;
+  const intent = call?.currentToolIntent?.trim();
+  return intent ? `Running ${tool}: ${intent}` : `Running ${tool}`;
+}
+
 /** What the agent has done so far: the counts omp reports above zero, and the tool it is running now. */
-function AgentCounts({ agent }: { readonly agent: AgentProgress }) {
+function AgentCounts({
+  agent,
+  call,
+}: {
+  readonly agent: AgentProgress;
+  readonly call: string | undefined;
+}) {
   const parts = [
-    agent.currentTool === undefined ? undefined : `Running ${agent.currentTool}`,
+    call,
     agent.toolCount !== undefined && agent.toolCount > 0
       ? countOf(agent.toolCount, "tool call")
       : undefined,

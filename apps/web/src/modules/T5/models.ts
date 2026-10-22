@@ -182,6 +182,7 @@ export const AgentProgressSchema = z.looseObject({
   lastIntent: z.string().optional(),
   currentTool: OptionalText,
   currentToolArgs: z.string().optional(),
+  currentToolIntent: z.string().optional(),
   recentOutput: z.array(z.string()).optional(),
   toolCount: z.number().int().nonnegative().optional(),
   requests: z.number().int().nonnegative().optional(),
@@ -196,6 +197,12 @@ export const AgentProgressSchema = z.looseObject({
   completionPercent: z.number().min(0).max(100).optional(),
 });
 export type AgentProgress = z.infer<typeof AgentProgressSchema>;
+
+/** A worker's live progress, as P1's roster keeps it while the worker runs: the tool it is in and the intent omp sent. */
+export const LiveCallSchema = z.object({
+  currentTool: OptionalText,
+  currentToolIntent: z.string().optional(),
+});
 
 /** One finished subagent, `SingleResult`, as a task call that ran in the foreground returns it. */
 export const TaskResultSchema = z.looseObject({

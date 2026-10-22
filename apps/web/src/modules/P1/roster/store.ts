@@ -395,6 +395,7 @@ export class AgentRosterStore {
       {
         ...current,
         task: payload.task,
+        progress: payload.progress,
         assignment: payload.assignment ?? current.assignment,
         sessionFile: payload.sessionFile ?? current.sessionFile,
         parentToolCallId: payload.parentToolCallId ?? current.parentToolCallId,

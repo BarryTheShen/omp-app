@@ -93,8 +93,9 @@ export interface WorkerMetrics {
  */
 export function readWorkerMetrics(raw: Readonly<Record<string, unknown>>): WorkerMetrics {
   const tool = readText(raw.currentTool);
+  const intent = readText(raw.currentToolIntent);
   return {
-    step: tool ? `Using ${tool}` : readText(raw.lastIntent),
+    step: tool ? (intent ? `Using ${tool}: ${intent}` : `Using ${tool}`) : readText(raw.lastIntent),
     model: readText(raw.resolvedModel) ?? readText(raw.modelOverride) ?? readText(raw.modelRole),
     toolCalls: readCount(raw.toolCount),
     requests: readCount(raw.requests),

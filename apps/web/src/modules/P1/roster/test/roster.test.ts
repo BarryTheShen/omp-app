@@ -230,6 +230,30 @@ describe("P1 AgentRosterStore", () => {
     expect(after.agents[bKey]?.task).toBe("new task");
   });
 
+  test("a progress frame keeps the worker's progress record current, the one a task card reads", () => {
+    let now = 1_000;
+    const store = new AgentRosterStore({
+      threadId,
+      client: fakeClient(),
+      clock: { now: () => now },
+    });
+    store.mergeSnapshot([agent("a", 0)]);
+    const key = requireValue(store.getSnapshot().active[0]);
+    now += 1;
+    const progress: P1SubagentEvent = {
+      type: "subagent_progress",
+      payload: {
+        index: 0,
+        agent: "worker-a",
+        agentSource: "project",
+        task: "task-a",
+        progress: REAL_PROGRESS,
+      },
+    };
+    store.ingestNotification(progress, 1);
+    expect(store.getSnapshot().agents[key]?.progress).toEqual(REAL_PROGRESS);
+  });
+
   test("a progress record's time is omp's durationMs: a field named duration is not read as one", () => {
     let now = 1_000;
     const store = new AgentRosterStore({

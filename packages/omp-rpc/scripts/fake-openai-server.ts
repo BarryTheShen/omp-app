@@ -476,6 +476,46 @@ function reply(request: Request): Reply {
       args: { command: "sleep 60; echo long-probe-done" },
       thinking: "I should run the slow step.",
     };
+  // A subagent whose one bash call has an intent, for the task card's row (#2341). The seconds after each keyword say how
+  // long the call sleeps (six by default): long enough for a spec to look at the running row, and no longer.
+  if (prompt.includes("spawn_intent_subagent")) {
+    const seconds = /\bspawn_intent_subagent\s+(\d+)\b/.exec(prompt)?.[1] ?? "6";
+    return {
+      tool: "task",
+      args: {
+        name: "IntentProbe",
+        agent: "task",
+        task: `intent_child ${seconds}: run one step with an intent.`,
+        solutionSpace: "one step with an intent",
+      },
+      thinking: "I should start one child task that runs a command with an intent.",
+    };
+  }
+  // The same child as `spawn_intent_subagent`, run inline: `fgprobe` declares `blocking: true`, so the parent waits (#2341).
+  if (prompt.includes("spawn_foreground_intent")) {
+    const seconds = /\bspawn_foreground_intent\s+(\d+)\b/.exec(prompt)?.[1] ?? "6";
+    return {
+      tool: "task",
+      args: {
+        name: "IntentProbe",
+        agent: "fgprobe",
+        task: `intent_child ${seconds}: run one step with an intent.`,
+        solutionSpace: "one step with an intent",
+      },
+      thinking: "I should start one blocking child task that runs a command with an intent.",
+    };
+  }
+  if (prompt.includes("intent_child")) {
+    const seconds = /\bintent_child\s+(\d+)\b/.exec(prompt)?.[1] ?? "6";
+    return {
+      tool: "bash",
+      args: {
+        command: `sleep ${seconds}; echo intent-child-done`,
+        i: "Waiting for the subagent's fixture command",
+      },
+      thinking: "I should run the step with an intent.",
+    };
+  }
   // The held version of the slow worker, for the specs that steer it: its command runs until the spec writes
   // release-long-probe into the agent folder (at most four minutes), so the spec's steps, not a clock, end it.
   if (prompt.includes("spawn_held_subagent"))
