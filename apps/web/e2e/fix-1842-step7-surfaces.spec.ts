@@ -222,9 +222,11 @@ async function expectTriggerMenus(
     await composer.fill(trigger.text, ACTION_OPTIONS);
     const popup = page.getByRole("listbox", { name: trigger.role });
     await expect(popup).toBeVisible();
-    await expectPopoverSurface(page, popup.locator("div.bg-popover").first());
+    // The list answers after it opens, and its box is a new element when it does: wait for the answered list's option
+    // before reading the box, so the read is never of the loading box that the answer replaces.
     const item = popup.getByRole("option").filter({ hasText: trigger.name }).first();
     await expect(item).toBeVisible();
+    await expectPopoverSurface(page, popup.locator("div.bg-popover").first());
     await item.hover(ACTION_OPTIONS);
     const muted = (await tokenValues(page)).muted;
     await expect
