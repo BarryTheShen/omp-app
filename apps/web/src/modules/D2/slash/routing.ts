@@ -238,6 +238,7 @@ const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, TerminalOnlyEntry>> = 
     does: "Resume a different session",
     instead: "Use the session list instead.",
   },
+  seance: { does: "Consult a saved session without resuming it" },
   setup: { does: "Open provider setup" },
   skills: { does: "Search, install, and update skills from the skills.omp.sh registry" },
   tan: { does: "Run a full background agent on tangential work" },

@@ -283,6 +283,7 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
       "join",
       "leave",
       "plan-review",
+      "seance",
     ];
     for (const name of names) {
       const message = await refusalOf(`/${name}`);
@@ -295,6 +296,11 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
   test("refuses btw when no app command is registered", async () => {
     expect(await refusalOf("/btw what changed?")).toBe(
       "/btw only runs in omp's terminal, so nothing was sent.",
+    );
+  });
+  test("refuses /seance with text after it, the same as the bare name", async () => {
+    expect(await refusalOf("/seance x")).toBe(
+      "/seance only runs in omp's terminal, so nothing was sent.",
     );
   });
   test("the refusal names the app's own control where one exists", async () => {
@@ -452,6 +458,7 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     "quit",
     "record",
     "resume",
+    "seance",
     "setup",
     "skills",
     "tan",
@@ -475,8 +482,8 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   }
 
-  test("each of the 31 names has omp's description in its note, except queue, which the app answers itself", () => {
-    expect(terminalOnlyNames).toHaveLength(31);
+  test("each of the 32 names has omp's description in its note, except queue, which the app answers itself", () => {
+    expect(terminalOnlyNames).toHaveLength(32);
     for (const name of terminalOnlyNames) {
       if (name === "queue") {
         expect(terminalOnlyNote(name)).toBeNull();
@@ -484,6 +491,15 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
         expect(terminalOnlyNote(name)?.does, name).toMatch(/\S/u);
       }
     }
+  });
+
+  test("/seance has omp's own description in its note, and no app alternative", () => {
+    expect(terminalOnlyNote("seance")).toEqual({
+      name: "seance",
+      aliasOf: null,
+      does: "Consult a saved session without resuming it",
+      instead: null,
+    });
   });
 
   test("an alias's note names the omp command it stands for", () => {
@@ -504,7 +520,7 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   });
 
-  test("the refusal keeps today's text for each of the 31 names", async () => {
+  test("the refusal keeps today's text for each of the 32 names", async () => {
     for (const name of terminalOnlyNames) {
       const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
       const alternative = alternatives[name];
