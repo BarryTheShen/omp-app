@@ -6,6 +6,7 @@ import {
   type AnswerHostUriArgs,
   AppFailure,
   type AppHealth,
+  type BashCommandResult,
   type CapabilityMap,
   clearsStateFrame,
   type FolderPath,
@@ -451,6 +452,40 @@ export class RpcSessionPortRuntime {
     }
   }
 
+  /**
+   * Runs a `!` command in the chat's omp. omp sends nothing while the command runs, and its answer comes back only to the
+   * call that asked. So the chat's viewers are told when it starts, and when it ends with omp's answer (absent when the
+   * call failed). The process stays up until it ends (`holdCommand`). The viewer's signal is not passed on: a viewer that
+   * closes its tab does not end the command.
+   */
+  async #bash(entry: ThreadEntry, command: string): Promise<unknown> {
+    const release = this.#context.processRegistry.holdCommand(entry.bootstrap.threadId);
+    const startedAt = Date.now();
+    this.#publishEvent(entry, { kind: "bash", status: "running", command, startedAt });
+    let result: BashCommandResult | undefined;
+    try {
+      const future = entry.session.send({ type: "bash", command });
+      void future.catch(() => undefined);
+      const answer = await future.admitted;
+      result = {
+        output: answer.output,
+        cancelled: answer.cancelled,
+        truncated: answer.truncated,
+        ...(answer.exitCode === undefined ? {} : { exitCode: answer.exitCode }),
+      };
+      return answer;
+    } finally {
+      this.#publishEvent(entry, {
+        kind: "bash",
+        status: "ended",
+        command,
+        startedAt,
+        ...(result === undefined ? {} : { result }),
+      });
+      release();
+    }
+  }
+
   async send<K extends SendCommandArgs["command"]["type"]>(
     args: SendCommandArgs<K>,
     call: PortHandlerContext,
@@ -491,6 +526,7 @@ export class RpcSessionPortRuntime {
         call.signal,
       );
     }
+    if (args.command.type === "bash") return this.#bash(entry, args.command.command);
     const future = entry.session.send(args.command, { signal: call.signal }) as CommandFuture<
       unknown,
       unknown

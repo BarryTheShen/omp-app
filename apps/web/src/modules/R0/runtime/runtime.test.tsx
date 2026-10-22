@@ -380,6 +380,41 @@ describe("R0.3 assistant-ui runtime", () => {
     expect(secondAdapter.convertMessage(secondView, 0)).toBe(firstConverted);
   });
 
+  test("a `!` command is a row while it runs, and stays a row with omp's answer once it ends", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.ingest(
+      { kind: "bash", status: "running", command: "echo hi", startedAt: 1 } as RpcSessionEvent,
+      1,
+    );
+    const send: RpcSessionSend = async () => undefined as never;
+    const controller = createOmpRuntime({ store, send, capabilities });
+    const runningView = (controller.createAdapter().messages ?? [])[0];
+    if (!runningView) throw new Error("expected the command's row");
+    expect(runningView.commandState).toBe("running");
+    expect(runningView.record.status).toBe("streaming");
+    expect(
+      controller.createAdapter().convertMessage(runningView, 0).metadata?.custom,
+    ).toMatchObject({ ompCommandState: "running" });
+
+    store.ingest(
+      {
+        kind: "bash",
+        status: "ended",
+        command: "echo hi",
+        startedAt: 1,
+        result: { output: "hi\n", exitCode: 0, cancelled: false, truncated: false },
+      } as RpcSessionEvent,
+      2,
+    );
+    const endedView = (controller.createAdapter().messages ?? [])[0];
+    if (!endedView) throw new Error("expected the command's row");
+    expect(endedView.commandState).toBeUndefined();
+    expect(endedView.record.status).toBe("ended");
+    const endedCustom = controller.createAdapter().convertMessage(endedView, 0).metadata?.custom;
+    expect(endedCustom).toMatchObject({ ompExecution: { output: "hi\n", exitCode: 0 } });
+    expect(endedCustom).not.toHaveProperty("ompCommandState");
+  });
+
   test("submits through the typed prompt port and resolves at admission", async () => {
     const store = new OmpRuntimeStore({ threadId });
     const calls: Array<{ readonly command: unknown }> = [];

@@ -68,6 +68,8 @@ interface Entry {
   unsubscribe: () => void;
   watchers: number;
   busy: boolean;
+  /** `!` commands running in this thread's omp, each holding it up (see `holdCommand`). */
+  commands: number;
   idleTimer: unknown;
 }
 
@@ -143,6 +145,7 @@ export class OmpProcessRegistry {
       folder: options.folder,
       watchers: 1,
       busy: false,
+      commands: 0,
       idleTimer: undefined,
       unsubscribe: () => undefined,
     };
@@ -258,6 +261,25 @@ export class OmpProcessRegistry {
     if (busy) this.#cancelIdle(entry);
     else this.#scheduleIdleIfNeeded(entry);
     if (changed) this.#notifyBusy(threadId, busy);
+  }
+
+  /**
+   * Keeps the thread's omp up while a `!` command runs in it, watched or not. The returned release lets an idle close wait
+   * again. It is a hold of its own, not the busy mark: the busy mark is a turn's, and it drives the sidebar's running state
+   * and the composer's choices, which a command does not share. A thread with no process has nothing to keep up.
+   */
+  holdCommand(threadId: ThreadId): () => void {
+    const entry = this.#entries.get(threadId);
+    if (entry === undefined) return () => undefined;
+    entry.commands += 1;
+    this.#cancelIdle(entry);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      entry.commands -= 1;
+      if (this.#entries.get(entry.key) === entry) this.#scheduleIdleIfNeeded(entry);
+    };
   }
 
   /** Whether the thread is busy; `undefined` when the registry holds no process for it. */
@@ -385,7 +407,7 @@ export class OmpProcessRegistry {
 
   #scheduleIdleIfNeeded(entry: Entry): void {
     this.#cancelIdle(entry);
-    if (entry.watchers > 0 || entry.busy) return;
+    if (entry.watchers > 0 || entry.busy || entry.commands > 0) return;
     entry.idleTimer = this.#timer.setTimeout(() => {
       entry.idleTimer = undefined;
       void this.#closeIfIdle(entry);
@@ -393,7 +415,12 @@ export class OmpProcessRegistry {
   }
 
   #stillUnwatched(entry: Entry, ownWatchers = 0): boolean {
-    return this.#entries.get(entry.key) === entry && entry.watchers <= ownWatchers && !entry.busy;
+    return (
+      this.#entries.get(entry.key) === entry &&
+      entry.watchers <= ownWatchers &&
+      !entry.busy &&
+      entry.commands === 0
+    );
   }
 
   async #closeIfIdle(

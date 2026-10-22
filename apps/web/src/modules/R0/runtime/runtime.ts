@@ -23,6 +23,8 @@ import { AppFailure } from "@omp-app/contracts";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { credentialFailureFromMessage, credentialStatusError } from "@/modules/D3/auth/credential";
 import {
+  type BashCommandState,
+  commandRowKey,
   type OmpRuntimeStore,
   type RuntimeMessage,
   type RuntimeSnapshot,
@@ -83,6 +85,8 @@ export interface OmpTurnUsage {
 export interface RuntimeMessageView {
   readonly record: RuntimeMessage;
   readonly toolStates: readonly RuntimeToolStateReference[];
+  /** A `!` command's row before omp's entry takes it: running (Stop command), or ended with no answer from omp. */
+  readonly commandState?: "running" | "ended";
   /** Assistant entry keys in this contiguous assistant/tool turn, for reload/edit mapping. */
   readonly joinedAssistantEntryIds?: readonly string[];
   /** Whether a tool result has a matching assistant tool call in this turn. */
@@ -593,7 +597,13 @@ function convertRecord(
         id,
         ...(createdAt ? { createdAt } : {}),
         content: [textPart("")],
-        metadata: { custom: { ...metadata.custom, ompExecution: message } },
+        metadata: {
+          custom: {
+            ...metadata.custom,
+            ompExecution: message,
+            ...(view?.commandState === undefined ? {} : { ompCommandState: view.commandState }),
+          },
+        },
       } as unknown as ThreadMessageLike;
     case "fileMention":
       // omp's file mentions: one row per file (its path, and its line count, image marker or skip reason). U1 draws them.
@@ -615,6 +625,43 @@ function isRuntimeMessage(value: unknown): value is RuntimeMessage {
 
 function isRuntimeMessageView(value: unknown): value is RuntimeMessageView {
   return isRecord(value) && isRuntimeMessage(value.record) && Array.isArray(value.toolStates);
+}
+
+/** A command's row, by its state: the same state gives the same view, so its converted message is reused as well. */
+const commandViewCache = new WeakMap<BashCommandState, RuntimeMessageView>();
+
+/**
+ * One row per `!` command in the store: running (with no output yet, and Stop command), or ended with omp's answer. A row
+ * keeps its key from running to ended, and goes once omp's entry for the command takes its place in the transcript.
+ */
+function commandViews(commands: readonly BashCommandState[]): readonly RuntimeMessageView[] {
+  return commands.map((command) => {
+    const cached = commandViewCache.get(command);
+    if (cached !== undefined) return cached;
+    const view: RuntimeMessageView = {
+      record: {
+        key: commandRowKey(command.seq),
+        message: {
+          role: "bashExecution",
+          command: command.command,
+          output: command.result?.output ?? "",
+          cancelled: command.result?.cancelled ?? false,
+          truncated: command.result?.truncated ?? false,
+          ...(command.result?.exitCode === undefined ? {} : { exitCode: command.result.exitCode }),
+          timestamp: command.startedAt,
+          excludeFromContext: false,
+        },
+        status: command.phase === "running" ? "streaming" : "ended",
+      },
+      toolStates: [],
+      ...(command.phase === "running" ? { commandState: "running" as const } : {}),
+      ...(command.phase === "ended" && command.result === undefined
+        ? { commandState: "ended" as const }
+        : {}),
+    };
+    commandViewCache.set(command, view);
+    return view;
+  });
 }
 
 /**
@@ -1124,7 +1171,7 @@ export class OmpRuntimeController {
   }
 
   public messages(snapshot = this.store.getSnapshot()): readonly RuntimeMessageView[] {
-    return this.projector.project(snapshot);
+    return [...this.projector.project(snapshot), ...commandViews(snapshot.commands)];
   }
 
   public async submitPrompt(intent: PromptIntent): Promise<void> {
@@ -1212,7 +1259,10 @@ export class OmpRuntimeController {
       await this.cancelAndRestoreQueue(options);
       return;
     }
-    const command = this.bashRunning ? "abort_bash" : "abort";
+    const bashRunning =
+      this.bashRunning ||
+      this.store.getSnapshot().commands.some((command) => command.phase === "running");
+    const command = bashRunning ? "abort_bash" : "abort";
     const capability = `omp.cmd.${command}` as CapabilityKey;
     if (!capabilityAvailable(this.capabilities, capability)) {
       throw unavailable(capability, "Cancelling this runtime is unavailable");
@@ -1247,11 +1297,12 @@ export class OmpRuntimeController {
 
   /** A queue exists, no bash command runs, and omp can restore it: only then Stop withdraws the queue. */
   private shouldRestoreQueueOnCancel(): boolean {
-    const { queue } = this.store.getSnapshot();
+    const { queue, commands } = this.store.getSnapshot();
     const hasQueued = queue.steering.length > 0 || queue.followUp.length > 0;
     return (
       hasQueued &&
       !this.bashRunning &&
+      !commands.some((command) => command.phase === "running") &&
       capabilityAvailable(this.capabilities, "omp.cmd.abort_and_restore_queue")
     );
   }
@@ -1273,7 +1324,9 @@ export class OmpRuntimeController {
       onNew: this.onNew,
       unstable_enableToolInvocations: false,
     };
-    const cancelCapability = this.bashRunning ? "omp.cmd.abort_bash" : "omp.cmd.abort";
+    const bashRunning =
+      this.bashRunning || snapshot.commands.some((command) => command.phase === "running");
+    const cancelCapability = bashRunning ? "omp.cmd.abort_bash" : "omp.cmd.abort";
     if (capabilityAvailable(this.capabilities, cancelCapability)) {
       adapter.onCancel = this.onCancel;
     }

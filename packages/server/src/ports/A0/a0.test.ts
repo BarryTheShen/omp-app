@@ -70,6 +70,10 @@ class FakeProcess implements OmpProcess {
   stopGate: Promise<void> | undefined;
   /** When set, omp's answer to `set_host_tools` waits for this, like an omp that answers late. */
   holdHostTools: Promise<void> | undefined = undefined;
+  /** When set, omp's answer to a `bash` command waits for this, like an omp whose command runs for a while. */
+  holdBash: Promise<void> | undefined = undefined;
+  /** When set, omp's answer to a `bash` command is a failed call, like an omp that stopped while the command ran. */
+  failBash = false;
   /** When set, `stop()` leaves the session open: a write omp has not answered is still pending after the stop. */
   keepPendingOnStop = false;
   /** When set, `start()` fails with it, like an omp that cannot be spawned. */
@@ -167,10 +171,32 @@ class FakeProcess implements OmpProcess {
                             sessionFile: this.identity.sessionFile,
                             ...this.extraState,
                           }
-                        : {};
-    const response = { type: "response", id: frame.id, command, success: true, data };
+                        : command === "bash"
+                          ? {
+                              output: "hi\n",
+                              exitCode: 0,
+                              cancelled: false,
+                              truncated: false,
+                              totalLines: 1,
+                              totalBytes: 3,
+                              outputLines: 1,
+                              outputBytes: 3,
+                            }
+                          : {};
+    const response =
+      command === "bash" && this.failBash
+        ? {
+            type: "response",
+            id: frame.id,
+            command,
+            success: false,
+            error: "omp stopped the command",
+          }
+        : { type: "response", id: frame.id, command, success: true, data };
     if (command === "set_host_tools" && this.holdHostTools !== undefined) {
       void this.holdHostTools.then(() => this.emit(response));
+    } else if (command === "bash" && this.holdBash !== undefined) {
+      void this.holdBash.then(() => this.emit(response));
     } else {
       this.emit(response);
     }
@@ -514,6 +540,80 @@ describe("A0.7 RpcSessionPort handlers", () => {
     });
     expect(busy()).toBe(false);
     await runtimeContext.processRegistry.closeAll();
+  });
+
+  describe("a `!` command in the chat's omp", () => {
+    /** Opens a chat and subscribes to it, so the bash events it publishes can be read from its replay. */
+    async function openChat() {
+      const created: FakeProcess[] = [];
+      const runtimeContext = context(created);
+      const handlers = handlersFor(runtimeContext, 0);
+      const opened = (await getHandler(handlers, "open")(
+        { folderPath: folder, start: "new" },
+        call("one"),
+      )) as { threadId: ThreadId };
+      const process = created[0];
+      if (process === undefined) throw new Error("missing fake process");
+      const stream = (await getHandler(handlers, "subscribe")(
+        { threadId: opened.threadId },
+        call("one"),
+      )) as { stream: StreamKey };
+      const bashEvents = (): unknown[] => {
+        const replayed = runtimeContext.replay.replay(stream.stream, 0);
+        if ("error" in replayed) throw new Error("unexpected replay conflict");
+        return replayed.frames
+          .map((frame) => frame.payload)
+          .filter((payload) => payloadKind(payload) === "bash");
+      };
+      const send = (command: string) =>
+        getHandler(handlers, "send")(
+          { threadId: opened.threadId, command: { type: "bash", command } },
+          call("one"),
+        );
+      return { runtimeContext, threadId: opened.threadId, process, bashEvents, send };
+    }
+
+    test("is announced as running, then ended with omp's answer, to the chat's viewers, and the chat is not busy", async () => {
+      const { runtimeContext, threadId, process, bashEvents, send } = await openChat();
+      let finishCommand: () => void = () => undefined;
+      process.holdBash = new Promise<void>((resolve) => {
+        finishCommand = resolve;
+      });
+      const command = "sleep 12; echo b1-late";
+      const sending = send(command);
+      for (let tick = 0; tick < 10; tick += 1)
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(bashEvents()).toEqual([
+        { kind: "bash", status: "running", command, startedAt: expect.any(Number) },
+      ]);
+      // A `!` command is not a turn: the chat stays not busy, so the turn's stop and queue choices do not change.
+      expect(runtimeContext.processRegistry.busyOf(threadId)).toBe(false);
+
+      finishCommand();
+      await expect(sending).resolves.toMatchObject({ output: "hi\n", exitCode: 0 });
+      expect(bashEvents()).toEqual([
+        { kind: "bash", status: "running", command, startedAt: expect.any(Number) },
+        {
+          kind: "bash",
+          status: "ended",
+          command,
+          startedAt: expect.any(Number),
+          result: { output: "hi\n", exitCode: 0, cancelled: false, truncated: false },
+        },
+      ]);
+      await runtimeContext.processRegistry.closeAll();
+    });
+
+    test("a call that fails ends without a result, so no viewer shows output omp never gave", async () => {
+      const { runtimeContext, process, bashEvents, send } = await openChat();
+      process.failBash = true;
+      await expect(send("sleep 1")).rejects.toMatchObject({ appError: { code: "omp_error" } });
+      expect(bashEvents()).toEqual([
+        { kind: "bash", status: "running", command: "sleep 1", startedAt: expect.any(Number) },
+        { kind: "bash", status: "ended", command: "sleep 1", startedAt: expect.any(Number) },
+      ]);
+      await runtimeContext.processRegistry.closeAll();
+    });
   });
 
   describe("New chat when omp restored the last conversation (autoResume)", () => {

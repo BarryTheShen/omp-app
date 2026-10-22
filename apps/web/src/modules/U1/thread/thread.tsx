@@ -73,7 +73,7 @@ import {
   START_CHUNK,
   scheduleSlice,
 } from "./row-slices";
-import { TurnCancelContext } from "./turn-cancel";
+import { CommandCancelContext, TurnCancelContext } from "./turn-cancel";
 
 const MESSAGE_DESCRIPTOR_BY_ROLE = {
   user: "U1.userMessage",
@@ -956,7 +956,9 @@ export function ReadOnlyNestedTranscript({
       data-slot="u1-nested-transcript"
     >
       <legend className="text-muted-foreground px-1 text-xs">{legend}</legend>
-      <TurnCancelContext.Provider value={undefined}>{children}</TurnCancelContext.Provider>
+      <TurnCancelContext.Provider value={undefined}>
+        <CommandCancelContext.Provider value={undefined}>{children}</CommandCancelContext.Provider>
+      </TurnCancelContext.Provider>
     </fieldset>
   );
 }

@@ -399,6 +399,61 @@ describe("OmpProcessRegistry", () => {
     expect(registry.has(ThreadId.parse("thread-5"))).toBe(false);
   });
 
+  test("a running `!` command keeps its process up with no viewer, and the idle close waits for the command to end", async () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 10,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    const thread = ThreadId.parse("thread-5");
+    registry.acquire(options("thread-5", "/workspace/five"));
+    const process = createdAt(created, 0);
+    registry.release(thread);
+    const endCommand = registry.holdCommand(thread);
+    timer.fireAll();
+    await Promise.resolve();
+    expect(process.stopCalls).toBe(0);
+    expect(registry.has(thread)).toBe(true);
+
+    endCommand();
+    timer.fireAll();
+    await Promise.resolve();
+    expect(process.stopCalls).toBe(1);
+    expect(registry.has(thread)).toBe(false);
+  });
+
+  test("a command's hold still ends its process after a rekey to omp's session id, and a second release changes nothing", async () => {
+    const timer = new ManualTimer();
+    const created: StubProcess[] = [];
+    const registry = new OmpProcessRegistry({
+      timer,
+      idleCloseMs: 10,
+      createProcess: (processOptions) => {
+        const process = new StubProcess(processOptions);
+        created.push(process);
+        return process;
+      },
+    });
+    registry.acquire(options("thread-6", "/workspace/six"));
+    const process = createdAt(created, 0);
+    const provisional = ThreadId.parse("thread-6");
+    registry.release(provisional);
+    const endCommand = registry.holdCommand(provisional);
+    registry.rekey(provisional, ThreadId.parse("thread-7"));
+    endCommand();
+    endCommand();
+    timer.fireAll();
+    await Promise.resolve();
+    expect(process.stopCalls).toBe(1);
+    expect(registry.has(ThreadId.parse("thread-7"))).toBe(false);
+  });
+
   describe("idle hooks", () => {
     function registryWith(timer: ManualTimer, created: StubProcess[]): OmpProcessRegistry {
       return new OmpProcessRegistry({

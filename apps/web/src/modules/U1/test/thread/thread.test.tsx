@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createRegistry, RegistryProvider, registerRenderers } from "@/registry-core";
 import { useOmpRuntime } from "../../../R0/runtime";
 import { OmpRuntimeStore } from "../../../R0/store";
+import { MessageParts } from "../../parts";
 import { U1MessageDescriptors } from "../../registry/messages";
 import type { ThreadShellProps } from "../../thread";
 import { ReadOnlyNestedTranscript, ThreadShell } from "../../thread";
@@ -630,5 +631,64 @@ describe("ThreadShell earlier messages", () => {
     );
 
     expect(document.activeElement).toBe(screen.getByRole("region", { name: "Messages" }));
+  });
+});
+
+describe("a `!` command's row once its entry takes its place", () => {
+  test("the row stays the same element, and a collapse the user made survives the swap", async () => {
+    const store = readyStore();
+    store.ingest(
+      {
+        kind: "bash",
+        status: "running",
+        command: "echo hi",
+        startedAt: 1_759_600_000_000,
+      } as unknown as RpcSessionEvent,
+      2,
+    );
+    store.ingest(
+      {
+        kind: "bash",
+        status: "ended",
+        command: "echo hi",
+        startedAt: 1_759_600_000_000,
+        result: { output: "hi\n", exitCode: 0, cancelled: false, truncated: false },
+      } as unknown as RpcSessionEvent,
+      3,
+    );
+    const { container } = renderThread(store, {
+      slots: { renderMessage: (message) => <MessageParts message={message} /> },
+    });
+    await waitFor(() =>
+      expect(container.querySelector('[data-slot="u1-execution-row"]')).not.toBeNull(),
+    );
+    const row = container.querySelector<HTMLDetailsElement>('[data-slot="u1-execution-row"]');
+    if (row === null) throw new Error("the finished row is missing");
+    row.open = false;
+    store.pairEndedMessages(
+      [
+        {
+          type: "message",
+          id: "e1",
+          parentId: null,
+          timestamp: new Date(1_759_600_000_005).toISOString(),
+          message: {
+            role: "bashExecution",
+            command: "echo hi",
+            output: "hi\n",
+            exitCode: 0,
+            cancelled: false,
+            truncated: false,
+            timestamp: 1_759_600_000_005,
+          },
+        },
+      ],
+      "e1" as EntryId,
+    );
+    await waitFor(() =>
+      expect(container.querySelector('[data-store-key^="entry:"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-slot="u1-execution-row"]')).toBe(row);
+    expect(row.open).toBe(false);
   });
 });

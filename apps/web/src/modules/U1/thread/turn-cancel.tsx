@@ -12,6 +12,13 @@ export type TurnCancel = () => Promise<void>;
 export const TurnCancelContext = createContext<TurnCancel | undefined>(undefined);
 
 /**
+ * The stop of a `!` command the chat is running, for the Stop command button of its row. A command runs with no turn, so
+ * the turn's stop does not reach it; this one is offered whenever the chat can cancel. A read-only transcript reads
+ * undefined and offers no Stop command.
+ */
+export const CommandCancelContext = createContext<TurnCancel | undefined>(undefined);
+
+/**
  * Gives the chat's turn stop only while the turn runs, on the same condition the composer's Stop generating uses. A
  * worker's card is not the chat's turn: once the turn has settled, the stop has nothing of this turn to stop, so it
  * is withheld. Renders inside the chat's assistant-ui runtime.
@@ -26,9 +33,12 @@ export function TurnCancelScope({
   const canCancel = useAuiState(
     (state) => state.thread.isRunning && state.thread.capabilities.cancel,
   );
+  const canCancelCommand = useAuiState((state) => state.thread.capabilities.cancel);
   return (
     <TurnCancelContext.Provider value={canCancel ? cancel : undefined}>
-      {children}
+      <CommandCancelContext.Provider value={canCancelCommand ? cancel : undefined}>
+        {children}
+      </CommandCancelContext.Provider>
     </TurnCancelContext.Provider>
   );
 }

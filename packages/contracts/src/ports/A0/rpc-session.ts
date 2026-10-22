@@ -467,12 +467,50 @@ const SessionSettledPayload = z
   })
   .strict();
 
+/**
+ * omp's answer to a `!` command, on its `ended` event: the output it printed, how it ended, and whether omp cut it short.
+ * The fields are those omp writes to the session's `bashExecution` entry, so a viewer shows the finished command from this
+ * event, and the transcript's entry for it takes the row's place.
+ */
+const BashCommandResultPayload = z
+  .object({
+    output: z.string(),
+    exitCode: z.number().int().optional(),
+    cancelled: z.boolean(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+/** omp's answer to a `!` command, as the `ended` event carries it. */
+export type BashCommandResult = z.infer<typeof BashCommandResultPayload>;
+
+/**
+ * A `!` command that runs in the chat's omp, sent to every viewer of the chat. `running` comes once when the command
+ * starts; `ended` comes once when omp has answered (or the call failed, for example when omp stopped), and carries omp's
+ * result when it answered. Both carry the command's text, so a viewer can pair them. omp sends nothing while the command
+ * runs, so the server says both moments. A viewer shows the command as running between the two, and as finished from
+ * `ended` on. Its transcript entry comes later and takes the row's place; while a turn streams omp holds the entry until
+ * the turn ends, so it can come after `ended` by the length of that turn. Stop sends omp's `abort_bash`: the command then
+ * ends and `ended` follows.
+ */
+const BashCommandPayload = z
+  .object({
+    kind: z.literal("bash"),
+    status: z.enum(["running", "ended"]),
+    command: z.string(),
+    /** When omp's bash started, on the server's clock (the clock omp writes its entry's time with, on the same host). */
+    startedAt: z.number().nonnegative(),
+    result: BashCommandResultPayload.optional(),
+  })
+  .strict();
+
 export const RpcSessionEvent = z.discriminatedUnion("kind", [
   OmpEventPayload,
   PromptResultPayload,
   SessionSettledPayload,
   NotificationPayload,
   ProcessStatusPayload,
+  BashCommandPayload,
 ]);
 export type RpcSessionEvent = z.infer<typeof RpcSessionEvent>;
 

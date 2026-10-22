@@ -21,6 +21,7 @@ import type {
 } from "@omp-app/contracts";
 import {
   AppFailure,
+  type BashCommandResult,
   pairEndedMessages as pairEndedOmpMessages,
   persistedMessageKey,
   provisionalMessageKey,
@@ -39,6 +40,21 @@ type MutableSnapshot = {
 
 /** The lifecycle of a message received from omp's event stream. */
 export type RuntimeMessageStatus = "streaming" | "ended" | "persisted";
+
+/**
+ * A `!` command in this chat's omp, from its `running` event. An ended command keeps its row, with omp's answer, until the
+ * transcript entry omp writes for it takes the row's place (`settleEndedCommands`).
+ */
+export interface BashCommandState {
+  /** The sequence number of the command's first event: its row keeps this key from running to ended. */
+  readonly seq: number;
+  /** When omp's bash started, on the server's clock: the command's own entry is written after it. */
+  readonly startedAt: number;
+  readonly command: string;
+  readonly phase: "running" | "ended";
+  /** omp's answer, when the call gave one; absent when the call failed. */
+  readonly result?: BashCommandResult;
+}
 
 /** A finished live-voice turn: its session, speaker and turn number, and the final text. */
 export interface VoiceTurn {
@@ -218,6 +234,8 @@ export interface RuntimeSnapshot {
   readonly tools: Readonly<Record<ToolCallId, ToolCallState>>;
   readonly prompt: PromptLifecycleState;
   readonly queue: QueueState;
+  /** The `!` commands in this chat's omp, oldest first: running until they end, then ended until their entries are read. */
+  readonly commands: readonly BashCommandState[];
   readonly todoPhases: readonly TodoPhase[];
   /** `todo_reminder` panels in arrival order, newest last, at most 20. */
   readonly todoReminders: readonly TodoReminderState[];
@@ -525,6 +543,7 @@ function makeInitialSnapshot(threadId: ThreadId): RuntimeSnapshot {
     tools: {},
     prompt: EMPTY_PROMPT,
     queue: EMPTY_QUEUE,
+    commands: [],
     todoPhases: EMPTY_TODOS,
     todoReminders: EMPTY_REMINDERS,
     pending: EMPTY_PENDING,
@@ -539,6 +558,92 @@ function pendingMessageForKey(
   key: ProvisionalMessageKey,
 ): RuntimeMessage | undefined {
   return snapshot.messages[key];
+}
+
+/** What a `!` command's own transcript entry says: its command, its output, and when omp wrote it. */
+interface BashMessageFacts {
+  readonly command: string;
+  readonly output: string;
+  readonly timestamp: number | undefined;
+}
+
+function bashMessageOf(raw: unknown): BashMessageFacts | undefined {
+  if (!isRecord(raw) || raw.type !== "message") return undefined;
+  const message = isRecord(raw.message) ? raw.message : undefined;
+  if (message === undefined || message.role !== "bashExecution") return undefined;
+  if (typeof message.command !== "string" || typeof message.output !== "string") return undefined;
+  const timestamp = typeof message.timestamp === "number" ? message.timestamp : undefined;
+  return { command: message.command, output: message.output, timestamp };
+}
+
+/** omp's answer as a `bash` event carries it; undefined when the event has none or it is malformed. */
+function bashResultOf(value: unknown): BashCommandResult | undefined {
+  if (!isRecord(value) || typeof value.output !== "string") return undefined;
+  if (typeof value.cancelled !== "boolean" || typeof value.truncated !== "boolean")
+    return undefined;
+  const exitCode = typeof value.exitCode === "number" ? value.exitCode : undefined;
+  return {
+    output: value.output,
+    cancelled: value.cancelled,
+    truncated: value.truncated,
+    ...(exitCode === undefined ? {} : { exitCode }),
+  };
+}
+
+/**
+ * Whether the transcript's newest entry is the entry of a command that has just ended: the same command and output, written
+ * after the command started. An older entry of an identical command was written before it, so it does not match.
+ */
+function isPersistedCommand(
+  next: MutableSnapshot,
+  command: string,
+  result: BashCommandResult | undefined,
+  startedAt: number,
+): boolean {
+  if (result === undefined || next.transcript.head === null) return false;
+  const head = next.transcript.entries[next.transcript.head];
+  const message = head === undefined ? undefined : bashMessageOf(head.raw);
+  return (
+    message !== undefined &&
+    message.command === command &&
+    message.output === result.output &&
+    message.timestamp !== undefined &&
+    message.timestamp >= startedAt
+  );
+}
+
+/**
+ * The key of a `!` command's row: the same from its running event to its ended event, and on to its entry, which takes it
+ * when the transcript read settles the command (`settleEndedCommands`).
+ */
+export function commandRowKey(seq: number): MessageKey {
+  return `stream:bash:${seq}`;
+}
+
+/**
+ * Removes the finished row of each `!` command whose entry was just read: the first ended command with that text and, when
+ * omp answered, that output. A command whose call failed has no output to match, so its text alone decides. Returns the row
+ * key of each settled command by its entry's id, so that entry takes the row's key (`hydratePersistedMessages`).
+ */
+function settleEndedCommands(
+  next: MutableSnapshot,
+  entries: readonly TranscriptEntry[],
+): Map<EntryId, MessageKey> {
+  const rowKeys = new Map<EntryId, MessageKey>();
+  for (const entry of entries) {
+    const message = bashMessageOf(entry.raw);
+    if (message === undefined) continue;
+    const settled = next.commands.find(
+      (command) =>
+        command.phase === "ended" &&
+        command.command === message.command &&
+        (command.result === undefined || command.result.output === message.output),
+    );
+    if (settled === undefined) continue;
+    rowKeys.set(entry.id, commandRowKey(settled.seq));
+    next.commands = next.commands.filter((command) => command !== settled);
+  }
+  return rowKeys;
 }
 
 function entryFromUnknown(value: unknown): TranscriptEntry | undefined {
@@ -895,7 +1000,10 @@ function isVoiceLine(record: RuntimeMessage | undefined): boolean {
  * message never shows twice while its `message_end` and the history race). Persisted messages of
  * other branches leave the view.
  */
-function hydratePersistedMessages(next: MutableSnapshot): void {
+function hydratePersistedMessages(
+  next: MutableSnapshot,
+  rowKeys: ReadonlyMap<EntryId, MessageKey> = new Map(),
+): void {
   const unpairedLive = new Map<string, MessageKey>();
   for (const key of next.messageOrder) {
     const record = next.messages[key];
@@ -933,12 +1041,14 @@ function hydratePersistedMessages(next: MutableSnapshot): void {
     }
     if (!message) continue;
     const key = persistedMessageKey(next.threadId, entryId);
+    const rowKey = rowKeys.get(entryId);
     addOrReplaceMessage(next, key, {
       key,
       message,
       status: "persisted",
       entryId,
       parentId: entry.parentId,
+      ...(rowKey === undefined ? {} : { rowKey }),
     });
     mergeEntryMessageKey(next, entryId, key);
     viewOrder.push(key);
@@ -1192,6 +1302,9 @@ export class OmpRuntimeStore {
       case "prompt_result":
         this.reducePromptResult(next, eventValue.event);
         break;
+      case "bash":
+        this.reduceBashCommand(next, eventValue, seq, fromHistory);
+        break;
       case "session_settled":
         updatePrompt(next, { sessionSettled: true, streaming: false });
         cancelActiveTools(next);
@@ -1256,8 +1369,13 @@ export class OmpRuntimeStore {
     if (isNotification) this.reduceNotification(next, rawFrame, seq);
     const toolEvent = eventValue.kind === "omp" && isToolLifecycleEvent(eventValue.event);
     if (toolEvent) this.reduceOmp(next, eventValue.event, seq);
+    const bashEvent = eventValue.kind === "bash";
+    if (bashEvent) this.reduceBashCommand(next, eventValue, seq, fromHistory);
     const recorded =
-      toolEvent || next.pending !== this.snapshot.pending || next.error !== this.snapshot.error;
+      toolEvent ||
+      bashEvent ||
+      next.pending !== this.snapshot.pending ||
+      next.error !== this.snapshot.error;
     if (!this.snapshot.needsRefetch || recorded) {
       next.needsRefetch = true;
       this.commit(next);
@@ -1307,10 +1425,12 @@ export class OmpRuntimeStore {
   public pairEndedMessages(entries: readonly unknown[], leafId?: EntryId | null): void {
     const next = mutableSnapshot(this.snapshot);
     const parsed = entriesFromUnknown(entries);
+    const fresh = parsed.filter((entry) => next.transcript.entries[entry.id] === undefined);
     for (const entry of parsed) recordTranscriptEntry(next, entry);
+    const rowKeys = settleEndedCommands(next, fresh);
     if (leafId !== undefined) next.transcript = { ...next.transcript, head: leafId };
     this.pairEndedInDraft(next, entries);
-    hydratePersistedMessages(next);
+    hydratePersistedMessages(next, rowKeys);
     this.commit(next);
   }
 
@@ -1652,6 +1772,46 @@ export class OmpRuntimeStore {
       }
     }
     if (!heard) keepUndelivered(this.undeliveredEvents, { event, seq, replayed });
+  }
+
+  /**
+   * A `!` command's `running` and `ended` events (`BashCommandPayload`). A command is a row from its `running` event; its
+   * `ended` event keeps that row with omp's answer, until the transcript entry omp writes for the command takes its place
+   * (`settleEndedCommands`). An `ended` a viewer replays from before it subscribed only drops its running row: the history
+   * holds the entry by then. An `ended` whose entry the transcript already holds adds no row of its own.
+   */
+  private reduceBashCommand(
+    next: MutableSnapshot,
+    rawEvent: Record<string, unknown>,
+    seq: number,
+    replayed: boolean,
+  ): void {
+    const { command, status, startedAt } = rawEvent;
+    if (typeof command !== "string" || typeof startedAt !== "number") return;
+    if (status === "running") {
+      next.commands = [...next.commands, { seq, startedAt, command, phase: "running" }];
+      return;
+    }
+    const result = bashResultOf(rawEvent.result);
+    const index = next.commands.findIndex(
+      (entry) => entry.phase === "running" && entry.command === command,
+    );
+    const current = index === -1 ? undefined : next.commands[index];
+    if (replayed || isPersistedCommand(next, command, result, startedAt)) {
+      if (index !== -1) next.commands = next.commands.filter((_, at) => at !== index);
+      return;
+    }
+    const ended: BashCommandState = {
+      seq: current?.seq ?? seq,
+      startedAt,
+      command,
+      phase: "ended",
+      ...(result === undefined ? {} : { result }),
+    };
+    next.commands =
+      current === undefined
+        ? [...next.commands, ended]
+        : next.commands.map((entry, at) => (at === index ? ended : entry));
   }
 
   private reducePromptResult(next: MutableSnapshot, rawEvent: unknown): void {

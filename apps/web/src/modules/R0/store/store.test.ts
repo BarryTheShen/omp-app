@@ -2059,3 +2059,117 @@ describe("OmpRuntimeStore", () => {
     expect(store.getSnapshot().prompt.sent).toBe(false);
   });
 });
+
+describe("a `!` command's row in the store", () => {
+  const result = { output: "hi\n", exitCode: 0, cancelled: false, truncated: false };
+
+  function bashEntry(id: string, command: string, output: string, timestamp: number) {
+    return {
+      type: "message",
+      id,
+      parentId: null,
+      timestamp: new Date(timestamp).toISOString(),
+      message: {
+        role: "bashExecution",
+        command,
+        output,
+        exitCode: 0,
+        cancelled: false,
+        truncated: false,
+        timestamp,
+      },
+    };
+  }
+
+  test("a command is one row from its running event to its ended event, which keeps omp's answer on it", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
+    expect(store.getSnapshot().commands).toEqual([
+      { seq: 1, startedAt: at, command: "echo hi", phase: "running" },
+    ]);
+    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    expect(store.getSnapshot().commands).toEqual([
+      { seq: 1, startedAt: at, command: "echo hi", phase: "ended", result },
+    ]);
+  });
+
+  test("the entry omp writes for the command takes the row's place, so the row goes and the message shows", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
+    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    store.pairEndedMessages([bashEntry("e1", "echo hi", "hi\n", at + 5)], "e1" as EntryId);
+    expect(store.getSnapshot().commands).toEqual([]);
+    expect(Object.keys(store.getSnapshot().messages).some((key) => key.endsWith(":e1"))).toBe(true);
+  });
+
+  test("the entry takes the row's key too, so the row keeps its element when the entry replaces it", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
+    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    store.pairEndedMessages([bashEntry("e1", "echo hi", "hi\n", at + 5)], "e1" as EntryId);
+    const entry = Object.values(store.getSnapshot().messages).find(
+      (message) => message.entryId === "e1",
+    );
+    if (entry === undefined) throw new Error("the entry's message is missing");
+    expect(rowIdOf(entry)).toBe("stream:bash:1");
+  });
+
+  test("an ended event that a viewer replays from before it subscribed only drops its running row", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1, true);
+    ingest(
+      store,
+      { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result },
+      2,
+      true,
+    );
+    expect(store.getSnapshot().commands).toEqual([]);
+  });
+
+  test("an ended command whose entry the transcript already holds adds no row of its own", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages([bashEntry("e1", "echo hi", "hi\n", at + 5)], "e1" as EntryId);
+    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
+    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    expect(store.getSnapshot().commands).toEqual([]);
+  });
+
+  test("an older entry of an identical command does not take a new command's row; its own entry does", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    store.pairEndedMessages([bashEntry("e0", "echo hi", "hi\n", at - 1_000)], "e0" as EntryId);
+    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at }, 1);
+    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 2);
+    expect(store.getSnapshot().commands).toHaveLength(1);
+    store.pairEndedMessages([bashEntry("e1", "echo hi", "hi\n", at + 5)], "e1" as EntryId);
+    expect(store.getSnapshot().commands).toEqual([]);
+  });
+
+  test("a command whose call failed ends as an ended row with no answer, which its entry replaces by its text", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "bash", status: "running", command: "sleep 1", startedAt: at }, 1);
+    ingest(store, { kind: "bash", status: "ended", command: "sleep 1", startedAt: at }, 2);
+    expect(store.getSnapshot().commands).toEqual([
+      { seq: 1, startedAt: at, command: "sleep 1", phase: "ended" },
+    ]);
+    store.pairEndedMessages([bashEntry("e1", "sleep 1", "", at + 5)], "e1" as EntryId);
+    expect(store.getSnapshot().commands).toEqual([]);
+  });
+
+  test("an ended command whose running event this viewer never saw still shows its answer", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "bash", status: "ended", command: "echo hi", startedAt: at, result }, 5);
+    expect(store.getSnapshot().commands).toEqual([
+      { seq: 5, startedAt: at, command: "echo hi", phase: "ended", result },
+    ]);
+  });
+
+  test("a bash event across a sequence gap is still recorded, so no running row is lost in the gap", () => {
+    const store = new OmpRuntimeStore({ threadId });
+    ingest(store, { kind: "bash", status: "running", command: "sleep 1", startedAt: at }, 1);
+    ingest(store, { kind: "bash", status: "running", command: "echo hi", startedAt: at + 1 }, 3);
+    expect(store.getSnapshot().commands.map((command) => command.command)).toEqual([
+      "sleep 1",
+      "echo hi",
+    ]);
+  });
+});

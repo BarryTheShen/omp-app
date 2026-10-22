@@ -1294,6 +1294,56 @@ describe("SelectedThreadHistoryController open and paging", () => {
     ]);
   });
 
+  test("a `!` command that ends, its event delivered while a new chat loads, is read again once the load ends", async () => {
+    const calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [];
+    const subscriptions: SubscriptionRecord[] = [];
+    let releaseFirstRead: () => void = () => undefined;
+    const firstRead = new Promise<void>((resolve) => {
+      releaseFirstRead = () => resolve();
+    });
+    const rpc = createRpc(
+      () => ({ threadId: threadOne, sessionFile: null, capabilities: {} }),
+      calls,
+      [],
+      firstRead,
+    );
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, subscriptions),
+      folder,
+    });
+    const opening = controller.openNew();
+    await vi.waitFor(() => expect(calls.map((call) => call.type)).toEqual(["get_state"]));
+    const listener = subscriptions[0]?.listeners[0];
+    if (!listener) throw new Error("subscription did not attach");
+    // The command ran and ended while the load's first read is still in flight. The ended event must not be skipped:
+    // the load's read may have come before omp wrote the command's entry, and nothing else would read it again.
+    listener(
+      { kind: "bash", status: "running", command: "echo hi", startedAt: 1 } as RpcSessionEvent,
+      1,
+    );
+    listener(
+      {
+        kind: "bash",
+        status: "ended",
+        command: "echo hi",
+        startedAt: 1,
+        result: { output: "hi\n", exitCode: 0, cancelled: false, truncated: false },
+      } as RpcSessionEvent,
+      2,
+    );
+    releaseFirstRead();
+    await opening;
+    await vi.waitFor(() =>
+      expect(calls.map((call) => call.type)).toEqual([
+        "get_state",
+        "get_entries",
+        "get_state",
+        "get_entries",
+      ]),
+    );
+    expect(controller.getSnapshot().error).toBeNull();
+  });
+
   test("lets go of the chat on the server when it closes or switches away, and a failed release never blocks the next chat", async () => {
     const subscriptions: SubscriptionRecord[] = [];
     const rpc = createRpc((args) => ({

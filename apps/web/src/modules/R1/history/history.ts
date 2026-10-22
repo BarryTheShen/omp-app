@@ -383,7 +383,14 @@ export class SelectedThreadHistoryController {
         await loader.refreshAfterTurn();
       } catch (error) {
         const failure = asFailure(error, "Refreshing the session after the command failed");
-        if (failure.appError.code !== "cancelled") this.commit({ error: failure.appError });
+        if (failure.appError.code === "cancelled") return;
+        // omp's exit is the chat's banner (see the settled-turn refresh): the rows stay, and the read is redone on omp's ready
+        // event, as after a failed first load.
+        if (failure.appError.code === "omp_exited") {
+          this.historyRetryThread = this.state.threadId;
+          return;
+        }
+        this.commit({ error: failure.appError });
       }
     });
   }
@@ -770,9 +777,9 @@ export class SelectedThreadHistoryController {
         this.reopenedWhileRunning = undefined;
         this.options.onTurnSettled?.(threadId);
       }
-      // After each settled turn, omp has persisted the turn: refetch so its messages pair with their
-      // entries (edit and branch need entry ids) and get_state brings the model, context and usage.
-      // While the thread is still loading (replayed settles), the initial load covers it.
+      // After each settled turn, omp has persisted the turn: refetch so its messages pair with their entries (edit and
+      // branch need entry ids) and get_state brings the model, context and usage. While the thread is still loading
+      // (replayed settles), the initial load covers it.
       if (payload.kind === "session_settled" && this.loader && !this.state.isLoading) {
         void this.loader.refreshAfterTurn().catch((error: unknown) => {
           const failure = asFailure(error, "Refreshing the session after the turn failed");
@@ -786,6 +793,12 @@ export class SelectedThreadHistoryController {
           }
           this.commit({ error: failure.appError });
         });
+      }
+      // A `!` command that ended has no turn to settle, so its entry is read again. The read is queued behind the chat's load
+      // when one is running: a settled turn's read is skipped during a load, and a `!` command's must not be, since nothing
+      // else reads the entry. A replayed `!` command needs no read: the history the chat loads holds its entry.
+      if (payload.kind === "bash" && payload.status === "ended" && !replayed) {
+        void this.refreshAfterCommand();
       }
       const nextThreadId = this.sessionIdFromEvent(payload);
       if (nextThreadId && nextThreadId !== this.state.threadId) {

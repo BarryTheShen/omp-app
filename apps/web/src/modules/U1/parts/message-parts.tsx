@@ -292,6 +292,11 @@ export function MessageParts({
   const [fresh] = useState(() => isRecent(message.createdAt?.getTime()) && hasContent(message));
   const note = isSystem ? customNoteOf(message) : undefined;
   const execution = isSystem ? executionOf(message) : undefined;
+  const rawCommandState: unknown = message.metadata.custom.ompCommandState;
+  const commandState =
+    isSystem && (rawCommandState === "running" || rawCommandState === "ended")
+      ? rawCommandState
+      : undefined;
   const files = isSystem ? fileMentionOf(message) : undefined;
   const errorText =
     message.status?.type === "incomplete" &&
@@ -337,7 +342,7 @@ export function MessageParts({
         {note !== undefined ? (
           <CustomNote source={note} />
         ) : execution !== undefined ? (
-          <ExecutionRow record={execution} />
+          <ExecutionRow record={execution} state={commandState} />
         ) : files !== undefined ? (
           <FileMentionRow files={files} />
         ) : (
