@@ -210,7 +210,6 @@ const TERMINAL_ONLY_OMP_COMMANDS: Readonly<Record<string, TerminalOnlyEntry>> = 
   exit: { does: "Exit the application" },
   extensions: { does: "Open Extension Control Center dashboard" },
   status: { aliasOf: "extensions", does: "Open Extension Control Center dashboard" },
-  fork: { does: "Fork this session, or open it in a multiplexer pane or window" },
   git: { does: "Open the git UI (split diff viewer, staging, commit composer)" },
   "guided-goal": { does: "Have the agent interview you in chat, then set up goal mode" },
   join: { does: "Join a shared collab session" },

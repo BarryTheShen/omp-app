@@ -32,6 +32,7 @@ import {
 import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
 import { modeOutcomeText } from "@/modules/D7/modes";
 import type { GoalRpcArgs, GoalRpcResult } from "@/modules/D8/contract";
+import type { ConversationTransitionPort } from "@/modules/P4/transitions";
 import type { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
 import { sessionTitle } from "@/modules/R1/ui";
 import type { PromptIntent } from "@/modules/U2/contract";
@@ -661,6 +662,80 @@ export function restartSlashCommand({ confirm, restart, isBusy }: RestartDeps): 
         });
       }
       return { message: "omp restarted. This chat is where you left it." };
+    },
+  };
+}
+
+/** The note `/fork` writes into the copy it opens: the copy is open, and the original is still in the list. */
+export const FORK_DONE_NOTE: NoSwitchNote = {
+  source: "fork",
+  dedupeKey: "fork:forked",
+  message: "Forked. You are now in the copy of your chat. The original is still in your list.",
+};
+
+/**
+ * `/fork`: forks the whole chat into a copy through the conversation transition port, then moves the view to the copy and
+ * writes a note there. omp's terminal forks the session and moves onto the copy (command-controller.ts:1388-1432). With words
+ * after it, the terminal opens a multiplexer pane or window (builtin-session.ts:618-647), which the app cannot do, so the words
+ * are refused. A busy chat is refused with a header note that says to wait.
+ */
+export function forkSlashCommand({
+  transitions,
+  threadId,
+  isBusy,
+  deliverNote,
+  focusComposer,
+}: {
+  readonly transitions: ConversationTransitionPort;
+  readonly threadId: ThreadId;
+  readonly isBusy: () => boolean;
+  readonly deliverNote: (note: NoSwitchNote) => void;
+  readonly focusComposer: () => void;
+}): SlashAppCommand {
+  return {
+    name: "fork",
+    description: "Fork this chat into a copy and open it. The original is kept.",
+    takesArguments: true,
+    run: async ({ args, signal }) => {
+      if (args !== undefined) {
+        throw wordsRefusal(
+          "/fork on its own forks this chat here. Anything after it, such as pane or window, only works in omp's terminal, so nothing was sent.",
+        );
+      }
+      if (isBusy()) return { message: "Wait for this chat's turn to finish, then fork it." };
+      try {
+        const result = await transitions.fork(
+          signal instanceof AbortSignal ? { threadId, signal } : { threadId },
+        );
+        if (result.cancelled) {
+          return {
+            message:
+              "omp did not fork this chat. If the chat is new, send a message first, then try again.",
+          };
+        }
+        if (result.reloaded) {
+          void deliverNote(FORK_DONE_NOTE);
+          focusComposer();
+        }
+        return {};
+      } catch (error) {
+        if (error instanceof AppFailure && error.appError.code === "conflict") {
+          return { message: "Wait for this chat's turn to finish, then fork it." };
+        }
+        if (error instanceof AppFailure && error.appError.code === "cancelled") return {};
+        if (error instanceof AppFailure && error.appError.code === "unavailable") {
+          throw new AppFailure({
+            code: "unavailable",
+            message: "Forking isn't available with this version of omp.",
+            retryable: false,
+          });
+        }
+        throw new AppFailure({
+          code: "internal",
+          message: "This chat could not be forked. Try again.",
+          retryable: true,
+        });
+      }
     },
   };
 }

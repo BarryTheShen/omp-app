@@ -1,17 +1,11 @@
 import type { CapabilityMap, DescriptorId, RpcSessionSend, ThreadId } from "@omp-app/contracts";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Surface } from "@/layout";
-import {
-  type ConversationTransitionPort,
-  createOmpConversationTransitionPort,
-} from "@/modules/P4/transitions";
-import { createOmpBranchingController } from "@/modules/R0/branching";
-import type { PromptIntent } from "@/modules/R0/runtime/runtime";
+import type { ConversationTransitionPort } from "@/modules/P4/transitions";
 import type { OmpRuntimeStore } from "@/modules/R0/store";
 import { useShortcutRegistry } from "@/shortcuts";
-import { type NoSwitchNote, withNoSwitchNote } from "./no-switch-notice";
 import { RewindPanel } from "./rewind-panel";
-import { isStreaming, REWIND_CAPABILITIES, rewindAvailable } from "./rewind-tree";
+import { REWIND_CAPABILITIES, rewindAvailable } from "./rewind-tree";
 
 /** P4's palette command and shortcut that open the rewind tree (`modules/P4/contract/descriptors.ts`). */
 const REWIND_COMMAND: DescriptorId = "P4.treeCommand";
@@ -23,13 +17,7 @@ export interface RewindPanelOptions {
   readonly store: OmpRuntimeStore;
   readonly send: RpcSessionSend;
   readonly capabilities: CapabilityMap;
-  readonly submitPrompt: (intent: PromptIntent) => Promise<void>;
-  /** R1's thread switch: it loads the chosen session's history before it resolves. */
-  readonly switchThread: (threadId: ThreadId) => Promise<void>;
-  /** The chat picks made so far; a rewind that finishes after a pick does not switch the view. */
-  readonly pickCount: () => number;
-  /** Writes a rewind's or fork's note into the chat on screen, when it finished without switching the view. */
-  readonly deliverNote: (note: NoSwitchNote) => void;
+  readonly transitions: ConversationTransitionPort;
 }
 
 /**
@@ -43,10 +31,7 @@ export function useRewindPanel({
   store,
   send,
   capabilities,
-  submitPrompt,
-  switchThread,
-  pickCount,
-  deliverNote,
+  transitions,
 }: RewindPanelOptions): Surface {
   const shortcuts = useShortcutRegistry();
   const available = rewindAvailable(capabilities);
@@ -103,27 +88,6 @@ export function useRewindPanel({
       unregisterShortcut();
     };
   }, [available, open, shortcuts]);
-
-  const transitions = useMemo<ConversationTransitionPort>(() => {
-    const branchingController = createOmpBranchingController({
-      store,
-      send,
-      submitPrompt,
-      // `switchThread` already reloads the chosen session's history, so there is nothing to reload.
-      reloadHistory: async () => undefined,
-      switchThread,
-    });
-    const port = createOmpConversationTransitionPort({
-      store,
-      send,
-      branchingController,
-      capabilities,
-      pickCount,
-      isBusy: () => isStreaming(store),
-    });
-    // The chat on screen is the one the person picked last, so the note is written through its view.
-    return withNoSwitchNote(port, deliverNote);
-  }, [capabilities, deliverNote, pickCount, send, store, submitPrompt, switchThread]);
 
   return {
     title: "Conversation history",

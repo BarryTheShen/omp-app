@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import {
@@ -535,4 +535,213 @@ realTest.describe("S9b: /tree, /branch and /rewind open the Conversation history
       expect(realApp.problems).toEqual([]);
     },
   );
+});
+
+/*
+ * Issue 2175, S9c: a typed `/fork` runs the app's own fork. It forks the open chat into a copy through the conversation
+ * transition port, moves the view to the copy and writes a note there; the original stays in the list. Words after the
+ * name are refused and nothing is sent. A chat whose turn is running is refused with a header note that says to wait.
+ * Real omp 18.12.2 on the test machine, in the harness's throwaway home: no test touches a real session.
+ */
+
+const FORK_DONE =
+  "Forked. You are now in the copy of your chat. The original is still in your list.";
+const FORK_RUNNING = "Wait for this chat's turn to finish, then fork it.";
+const FORK_WORDS =
+  "/fork on its own forks this chat here. Anything after it, such as pane or window, only works in omp's terminal, so nothing was sent.";
+
+/** The note `/fork` writes into the copy it opens: the transcript's notices list draws it. */
+function forkNote(page: Page): Locator {
+  return page.getByRole("region", { name: "Notices in this conversation" }).getByText(FORK_DONE);
+}
+
+/** The chat's one session file on disk before any fork: the seeded chat. */
+async function seededFile(realApp: RealApp): Promise<string> {
+  const files = await sessionFiles(realApp);
+  expect(files).toHaveLength(1);
+  const [file] = files;
+  if (file === undefined) throw new Error("the seeded chat has no session file");
+  return file;
+}
+
+/** The lines of one session file as omp wrote them, without the empty text after the last one. */
+async function sessionLines(realApp: RealApp, file: string): Promise<string[]> {
+  const text = await readFile(join(realApp.agentDir, "sessions", file), "utf8");
+  return text.split("\n").filter((line) => line !== "");
+}
+
+/** Types `/fo`, then shoots the /fork row of the slash list in the page's theme. */
+async function shootForkRow(page: Page, composer: Locator, file: string): Promise<void> {
+  await composer.fill("/fo");
+  const row = listRow(page, /^\/fork/);
+  await expect(row).toBeVisible({ timeout: 60_000 });
+  await expect(row).toContainText("Fork this chat into a copy and open it. The original is kept.");
+  // The row is painted with the app's own colour, not the browser's default black.
+  expect(await colourOf(row)).not.toBe("rgb(0, 0, 0)");
+  await waitForFiniteAnimations(page);
+  await page.screenshot({ path: join(screenshots, file), fullPage: true });
+}
+
+realTest.describe("S9c: /fork forks the open chat into a copy and opens it", () => {
+  realTest.use({ seedEntries: { entries } });
+
+  realTest(
+    "S9c: a typed /fo picks the /fork row, which opens a copy of the chat with its note; the list has two rows and the original keeps its lines",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(300_000);
+      const page = await realApp.open();
+      const composer = await openSeededChat(page);
+      const original = await seededFile(realApp);
+      const originalLines = await sessionLines(realApp, original);
+
+      // `/fo` lists the app's own /fork row first, so Enter on it forks the chat.
+      await chooseRow(page, composer, "/fo", /^\/fork/);
+
+      await expect(forkNote(page)).toBeVisible({ timeout: 60_000 });
+      await expect.poll(() => sessionFiles(realApp), { timeout: 60_000 }).toHaveLength(2);
+      // The copy is open: its transcript shows the three messages the chat had.
+      const transcript = page.getByRole("region", { name: "Conversation transcript" });
+      for (const message of ["first S9b message", "second S9b message", "third S9b message"]) {
+        await expect(transcript.getByText(message, { exact: true })).toBeVisible({
+          timeout: 60_000,
+        });
+      }
+      const rows = page.getByRole("listbox", { name: "Session list" }).getByRole("option");
+      await expect(rows).toHaveCount(2, { timeout: 60_000 });
+      await expect(composer).toBeFocused({ timeout: 30_000 });
+      // The original keeps every line it had: the copy is a new file.
+      expect(await sessionLines(realApp, original)).toEqual(expect.arrayContaining(originalLines));
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "S9c: words after /fork are refused under the message box, no copy is made, and the text stays",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(300_000);
+      const page = await realApp.open();
+      const composer = await openSeededChat(page);
+
+      await composer.fill("/fork pane");
+      await composer.press("Enter");
+      await expect(
+        page.locator('[data-composer-error="true"]').filter({ hasText: FORK_WORDS }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(composer).toHaveValue("/fork pane");
+      expect(await sessionFiles(realApp)).toHaveLength(1);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "S9c: while a reply runs, /fork says to wait and makes no copy, and the reply still finishes",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(300_000);
+      const page = await realApp.open();
+      const composer = await openSeededChat(page);
+      const stop = page.getByRole("button", { name: "Stop generating" });
+
+      // `stream_held` keeps the reply open until the spec writes release-held-reply (see
+      // fake-openai-server.ts and fix-1302-running-chat.spec.ts): the chat is busy from here.
+      await sendPrompt(composer, "stream_held S9c");
+      await expect(stop).toBeVisible({ timeout: 120_000 });
+
+      await chooseRow(page, composer, "/fork", /^\/fork/);
+      await expect(headerNote(page, FORK_RUNNING)).toBeVisible({ timeout: 30_000 });
+      expect(await sessionFiles(realApp)).toHaveLength(1);
+
+      await writeFile(join(realApp.agentDir, "release-held-reply"), "");
+      await expect(stop).toHaveCount(0, { timeout: 120_000 });
+      expect(await sessionFiles(realApp)).toHaveLength(1);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "S9c: a typed /for picks the /fork row too, and forks the chat the same way",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(300_000);
+      const page = await realApp.open();
+      const composer = await openSeededChat(page);
+      const original = await seededFile(realApp);
+
+      // `/for` picks the same /fork row as `/fo`, and Enter forks the chat the same way.
+      await chooseRow(page, composer, "/for", /^\/fork/);
+      await expect(forkNote(page)).toBeVisible({ timeout: 60_000 });
+      await expect.poll(() => sessionFiles(realApp), { timeout: 60_000 }).toHaveLength(2);
+      expect(await sessionFiles(realApp)).toContain(original);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "S9c: the /fork row and the copy's note read in light mode at 1280 px",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(300_000);
+      await mkdir(screenshots, { recursive: true });
+      const page = await realApp.open();
+      const composer = await openSeededChat(page);
+      await shootForkRow(page, composer, "fix-2175-s9c-list-light-1280.png");
+
+      await chooseRow(page, composer, "/fo", /^\/fork/);
+      const note = forkNote(page);
+      await expect(note).toBeVisible({ timeout: 60_000 });
+      // The note is painted with the app's own colour, not the browser's default black.
+      expect(await colourOf(note)).not.toBe("rgb(0, 0, 0)");
+      await waitForFiniteAnimations(page);
+      await page.screenshot({
+        path: join(screenshots, "fix-2175-s9c-note-light-1280.png"),
+        fullPage: true,
+      });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest("S9c: the /fork row reads in dark mode at 1280 px", async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    await mkdir(screenshots, { recursive: true });
+    const page = await realApp.open({
+      beforeLoad: (target) =>
+        target.addInitScript(() => window.localStorage.setItem("omp-app.theme", "dark")),
+    });
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    const composer = await openSeededChat(page);
+    await shootForkRow(page, composer, "fix-2175-s9c-list-dark-1280.png");
+    // The copy's note in dark mode: picking the row forks the chat and writes the note into the copy.
+    await chooseRow(page, composer, "/fo", /^\/fork/);
+    const note = page
+      .getByRole("region", { name: "Notices in this conversation" })
+      .getByText(FORK_DONE);
+    await expect(note).toBeVisible({ timeout: 60_000 });
+    await waitForFiniteAnimations(page);
+    await page.screenshot({
+      path: join(screenshots, "fix-2175-s9c-note-dark-1280.png"),
+      fullPage: true,
+    });
+    expect(realApp.problems).toEqual([]);
+  });
+
+  realTest("S9c: the copy's fork note fits a 390 px screen", async ({ realApp }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    await mkdir(screenshots, { recursive: true });
+    const page = await realApp.open();
+    const composer = await openSeededChat(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    // The /fo list at 390 px: the /fork row fits the screen and keeps its description, then Enter picks it below.
+    await shootForkRow(page, composer, "fix-2175-s9c-list-light-390.png");
+    await expectInsideWidth(listRow(page, /^\/fork/), 390);
+
+    await chooseRow(page, composer, "/fo", /^\/fork/);
+    const note = forkNote(page);
+    await expect(note).toBeVisible({ timeout: 60_000 });
+    await waitForFiniteAnimations(page);
+    await expectInsideWidth(note, 390);
+    // The note is painted with the app's own colour, not the browser's default black.
+    expect(await colourOf(note)).not.toBe("rgb(0, 0, 0)");
+    await page.screenshot({
+      path: join(screenshots, "fix-2175-s9c-note-light-390.png"),
+      fullPage: true,
+    });
+    expect(realApp.problems).toEqual([]);
+  });
 });

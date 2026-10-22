@@ -30,6 +30,7 @@ import {
 } from "@/modules/D2/slash";
 import { completedRun, fakeSlashClient } from "@/modules/D2/slash/test-support";
 import type { SessionLifecycleController } from "@/modules/D5/lifecycle";
+import type { ConversationTransitionPort } from "@/modules/P4/transitions";
 import type { SessionCatalogModel } from "@/modules/R1/catalog/catalog";
 import type { SessionMetadata } from "@/modules/R1/contract";
 import { ComposerSurface } from "@/modules/U2/composer/composer";
@@ -46,6 +47,8 @@ import {
   copySlashCommand,
   deleteSlashCommand,
   describeResetTarget,
+  FORK_DONE_NOTE,
+  forkSlashCommand,
   freshSlashCommand,
   guardOmpSend,
   type HistoryPanel,
@@ -1619,5 +1622,139 @@ describe("S9d `/clear` starts a new chat and says so, or says to wait", () => {
     const { command } = clearHarness();
     expect(routeSlashText("/clear", [], [command])).toMatchObject({ kind: "app", command });
     expect(routeSlashText("/clear now", [], [command])).toMatchObject({ kind: "app", args: "now" });
+  });
+});
+
+describe("S9c `/fork` forks the chat through the port, or says why it cannot", () => {
+  /** The `/fork` command over a port whose fork runs `runFork`, and the two callbacks it writes through. */
+  function forkCommand(runFork: () => Promise<unknown>, { busy = false } = {}) {
+    const fork = vi.fn(runFork);
+    const transitions = { fork } as unknown as ConversationTransitionPort;
+    const deliverNote = vi.fn();
+    const focusComposer = vi.fn();
+    const command = forkSlashCommand({
+      transitions,
+      threadId,
+      isBusy: () => busy,
+      deliverNote,
+      focusComposer,
+    });
+    return { command, fork, deliverNote, focusComposer };
+  }
+
+  test("an idle `/fork` forks this chat once, writes the fork note, and focuses the composer", async () => {
+    const { command, fork, deliverNote, focusComposer } = forkCommand(async () => ({
+      cancelled: false,
+      reloaded: true,
+    }));
+    await expect(command.run({})).resolves.toEqual({});
+    expect(fork).toHaveBeenCalledTimes(1);
+    expect(fork).toHaveBeenCalledWith({ threadId });
+    expect(deliverNote).toHaveBeenCalledTimes(1);
+    expect(deliverNote).toHaveBeenCalledWith(FORK_DONE_NOTE);
+    expect(focusComposer).toHaveBeenCalledTimes(1);
+  });
+
+  test("a fork that does not move the view writes no note and moves no focus", async () => {
+    const { command, deliverNote, focusComposer } = forkCommand(async () => ({
+      cancelled: false,
+      reloaded: false,
+    }));
+    await expect(command.run({})).resolves.toEqual({});
+    expect(deliverNote).not.toHaveBeenCalled();
+    expect(focusComposer).not.toHaveBeenCalled();
+  });
+
+  test("a `/fork` while a turn runs says to wait, and forks nothing", async () => {
+    const { command, fork } = forkCommand(async () => ({ cancelled: false, reloaded: true }), {
+      busy: true,
+    });
+    await expect(command.run({})).resolves.toEqual({
+      message: "Wait for this chat's turn to finish, then fork it.",
+    });
+    expect(fork).not.toHaveBeenCalled();
+  });
+
+  test("a fork omp did not make says to send a message first, and writes no note", async () => {
+    const { command, deliverNote } = forkCommand(async () => ({
+      cancelled: true,
+      reloaded: false,
+    }));
+    await expect(command.run({})).resolves.toEqual({
+      message:
+        "omp did not fork this chat. If the chat is new, send a message first, then try again.",
+    });
+    expect(deliverNote).not.toHaveBeenCalled();
+  });
+
+  test("a fork omp cannot run rejects with the version sentence", async () => {
+    const { command } = forkCommand(async () => {
+      throw new AppFailure({
+        code: "unavailable",
+        message: "This omp has no fork command.",
+        retryable: false,
+      });
+    });
+    await expect(command.run({})).rejects.toMatchObject({
+      appError: {
+        code: "unavailable",
+        message: "Forking isn't available with this version of omp.",
+      },
+    });
+  });
+
+  test("a conflict while forking says to wait for the turn, and does not reject", async () => {
+    const { command } = forkCommand(async () => {
+      throw new AppFailure({ code: "conflict", message: "A turn is running.", retryable: true });
+    });
+    await expect(command.run({})).resolves.toEqual({
+      message: "Wait for this chat's turn to finish, then fork it.",
+    });
+  });
+
+  test("a fork the person cancels resolves quietly and writes no note", async () => {
+    const { command, deliverNote } = forkCommand(async () => {
+      throw new AppFailure({
+        code: "cancelled",
+        message: "The fork was cancelled.",
+        retryable: false,
+      });
+    });
+    await expect(command.run({})).resolves.toEqual({});
+    expect(deliverNote).not.toHaveBeenCalled();
+  });
+
+  test("any other failure rejects as an internal error that says the chat could not be forked", async () => {
+    for (const failure of [
+      new AppFailure({ code: "internal", message: "The app broke.", retryable: true }),
+      new AppFailure({ code: "omp_error", message: "omp refused the fork.", retryable: false }),
+      new Error("The connection closed."),
+    ]) {
+      const { command } = forkCommand(async () => {
+        throw failure;
+      });
+      await expect(command.run({})).rejects.toMatchObject({
+        appError: { code: "internal", message: "This chat could not be forked. Try again." },
+      });
+    }
+  });
+
+  test.each(["pane", "window", "x"])(
+    "typing `/fork %s` is refused as invalid args, and nothing is forked",
+    async (args) => {
+      const { command, fork } = forkCommand(async () => ({ cancelled: false, reloaded: true }));
+      await expect(command.run({ args })).rejects.toMatchObject({
+        appError: {
+          code: "invalid_args",
+          message:
+            "/fork on its own forks this chat here. Anything after it, such as pane or window, only works in omp's terminal, so nothing was sent.",
+        },
+      });
+      expect(fork).not.toHaveBeenCalled();
+    },
+  );
+
+  test("the note `/fork` writes has source fork and the fork:forked dedupe key", () => {
+    expect(FORK_DONE_NOTE).toMatchObject({ source: "fork", dedupeKey: "fork:forked" });
   });
 });

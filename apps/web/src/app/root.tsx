@@ -48,6 +48,7 @@ import {
   showNoSwitchNote,
 } from "@/app/rewind/no-switch-notice";
 import { conversationBusy } from "@/app/rewind/rewind-tree";
+import { useConversationTransitions } from "@/app/rewind/use-conversation-transitions";
 import { useRewindPanel } from "@/app/rewind/use-rewind-panel";
 import { ToolRunScope } from "@/app/tool-run-scope";
 import { Notice } from "@/components/blocks";
@@ -266,6 +267,7 @@ import {
   branchSlashCommand,
   clearSlashCommand,
   copySlashCommand,
+  forkSlashCommand,
   freshSlashCommand,
   guardOmpSend,
   type HistoryPanel,
@@ -1644,6 +1646,16 @@ function ActiveThreadReady({
     previousCommandOutputReveal.current = commandOutputReveal;
     if (diagnosticPanel !== null) closeDiagnosticPanel();
   }, [closeDiagnosticPanel, commandOutputReveal, diagnosticPanel]);
+  // The transition port the rewind panel and `/fork` share: it rewinds, forks and branches the chat on screen.
+  const transitions = useConversationTransitions({
+    store,
+    send: guardedSend,
+    capabilities,
+    submitPrompt: runtimeController.submitPrompt,
+    switchThread: switchChat,
+    pickCount,
+    deliverNote,
+  });
   // The conversation-history panel `/tree` and `/branch` open: the registry's own command, offered while omp has it.
   const historyPanel = useMemo<HistoryPanel>(
     () => ({
@@ -1668,6 +1680,13 @@ function ActiveThreadReady({
       copySlashCommand({ copy: () => runCopyFromChat(shortcutRegistry) }),
       treeSlashCommand({ panel: historyPanel }),
       branchSlashCommand({ panel: historyPanel, isBusy: () => conversationBusy(store) }),
+      forkSlashCommand({
+        transitions,
+        threadId,
+        isBusy: () => conversationBusy(store),
+        deliverNote,
+        focusComposer: () => composerInput()?.focus({ preventScroll: true }),
+      }),
       ...exportCommands,
       loginSlashCommand({ openLogin }),
       settingsSlashCommand({
@@ -1718,6 +1737,7 @@ function ActiveThreadReady({
       store,
       threadId,
       title,
+      transitions,
     ],
   );
   const slashProvider = useSlashCommands({
@@ -1928,10 +1948,7 @@ function ActiveThreadReady({
       store,
       send: guardedSend,
       capabilities,
-      submitPrompt: runtimeController.submitPrompt,
-      switchThread: switchChat,
-      pickCount,
-      deliverNote,
+      transitions,
     }),
     commandOutput:
       diagnosticPanel === null

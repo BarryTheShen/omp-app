@@ -10,7 +10,7 @@ import { expect, realTest, screenshots, startChat, waitForFiniteAnimations } fro
 // omp 18.12.2 is at this path in every the test machine job.
 realTest.use({ ompBinary: "/cache/bun/omp-18.12.2" });
 
-/** The 26 typed names that get a note: 23 terminal-only commands with no app row, and their 3 aliases. `queue` has none: the app answers `/queue` itself. */
+/** The 27 typed names that get a note: 24 terminal-only commands with no app row, and their 3 aliases. `queue` has none: the app answers `/queue` itself. */
 const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = [
   { name: "agents", does: "Open the agents hub (per-agent model, prewalk, and advisor)" },
   { name: "btw", does: "Ask a side question, or browse this session's BTW history" },
@@ -20,7 +20,6 @@ const NOTE_NAMES: readonly { readonly name: string; readonly does: string }[] = 
   { name: "exit", does: "Exit the application" },
   { name: "extensions", does: "Open Extension Control Center dashboard" },
   { name: "status", does: "Open Extension Control Center dashboard" },
-  { name: "fork", does: "Fork this session, or open it in a multiplexer pane or window" },
   { name: "git", does: "Open the git UI (split diff viewer, staging, commit composer)" },
   { name: "guided-goal", does: "Have the agent interview you in chat, then set up goal mode" },
   { name: "join", does: "Join a shared collab session" },

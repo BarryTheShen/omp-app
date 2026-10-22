@@ -268,7 +268,6 @@ describe("#1271 omp's terminal-only commands are answered by the app in plain wo
       "record",
       "live",
       "logout",
-      "fork",
       "copy",
       "open",
       "exit",
@@ -424,7 +423,7 @@ describe("#1273 a command typed with a colon is read the way omp reads it, up to
 });
 
 describe("#2199 a typed terminal-only name has a note; the refusal keeps its text", () => {
-  /** The 29 terminal-only commands and their 3 aliases: the names the table answers. */
+  /** The 28 terminal-only commands and their 3 aliases: the names the table answers. */
   const terminalOnlyNames = [
     "agents",
     "btw",
@@ -435,7 +434,6 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     "exit",
     "extensions",
     "status",
-    "fork",
     "git",
     "guided-goal",
     "join",
@@ -477,8 +475,8 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   }
 
-  test("each of the 32 names has omp's description in its note, except queue, which the app answers itself", () => {
-    expect(terminalOnlyNames).toHaveLength(32);
+  test("each of the 31 names has omp's description in its note, except queue, which the app answers itself", () => {
+    expect(terminalOnlyNames).toHaveLength(31);
     for (const name of terminalOnlyNames) {
       if (name === "queue") {
         expect(terminalOnlyNote(name)).toBeNull();
@@ -506,7 +504,7 @@ describe("#2199 a typed terminal-only name has a note; the refusal keeps its tex
     }
   });
 
-  test("the refusal keeps today's text for each of the 32 names", async () => {
+  test("the refusal keeps today's text for each of the 31 names", async () => {
     for (const name of terminalOnlyNames) {
       const sentence = `/${name} only runs in omp's terminal, so nothing was sent.`;
       const alternative = alternatives[name];
@@ -592,5 +590,29 @@ describe("S9a /delete is the app's command when the app lists it", () => {
 
   test("a typed /delete has no terminal-only note of its own: the app's row answers it", () => {
     expect(terminalOnlyNote("delete")).toBeNull();
+  });
+});
+
+describe("S9c /fork is the app's command when the app lists it", () => {
+  const fork: SlashAppCommand = {
+    name: "fork",
+    description: "Fork this chat into a copy and open it. The original is kept.",
+    takesArguments: true,
+    run: async () => ({}),
+  };
+
+  test("the bare name is the app's command, words or a colon after it are its args, and /forks stays a prompt", () => {
+    expect(routeSlashText("/fork", [], [fork])).toEqual({ kind: "app", command: fork });
+    expect(routeSlashText("/fork pane", [], [fork])).toEqual({
+      kind: "app",
+      command: fork,
+      args: "pane",
+    });
+    expect(routeSlashText("/fork:window", [], [fork])).toEqual({
+      kind: "app",
+      command: fork,
+      args: "window",
+    });
+    expect(routeSlashText("/forks", [], [fork])).toBeNull();
   });
 });

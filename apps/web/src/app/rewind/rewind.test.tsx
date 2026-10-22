@@ -22,7 +22,11 @@ import {
   useShortcutRegistry,
 } from "@/shortcuts";
 import { isUserMessage, REWIND_CAPABILITIES, rewindAvailable, treeEntry } from "./rewind-tree";
-import { type RewindPanelOptions, useRewindPanel } from "./use-rewind-panel";
+import {
+  type ConversationTransitionOptions,
+  useConversationTransitions,
+} from "./use-conversation-transitions";
+import { useRewindPanel } from "./use-rewind-panel";
 
 afterEach(cleanup);
 
@@ -114,7 +118,7 @@ function heldOmp(gate: Promise<void>): RpcSessionSend {
 interface HarnessProps {
   readonly currentThread: ThreadId;
   readonly send: RpcSessionSend;
-  readonly switchThread: RewindPanelOptions["switchThread"];
+  readonly switchThread: ConversationTransitionOptions["switchThread"];
   readonly capabilities: CapabilityMap;
   readonly holder: { registry?: ShortcutRegistry };
 }
@@ -127,8 +131,7 @@ function RegistryProbe({ holder }: { readonly holder: { registry?: ShortcutRegis
 /** The app's panels area with the todo panel and the rewind panel, as the thread view mounts them. */
 function Harness({ currentThread, send, switchThread, capabilities, holder }: HarnessProps) {
   const store = new OmpRuntimeStore({ threadId: currentThread });
-  const rewind = useRewindPanel({
-    threadId: currentThread,
+  const transitions = useConversationTransitions({
     store,
     send,
     capabilities,
@@ -136,6 +139,13 @@ function Harness({ currentThread, send, switchThread, capabilities, holder }: Ha
     switchThread,
     pickCount: () => 0,
     deliverNote: () => undefined,
+  });
+  const rewind = useRewindPanel({
+    threadId: currentThread,
+    store,
+    send,
+    capabilities,
+    transitions,
   });
   const surfaces: SurfaceMap = {
     todo: { title: "Todo checklist", render: () => <p>Todo body</p> },
