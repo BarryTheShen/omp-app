@@ -1,12 +1,14 @@
 //! The bundled server: starts it, waits until it answers, opens the app in the window, and stops it,
 //! with everything it started, when the app quits or the server ends on its own.
 //!
-//! The window opens at once on a starting page. The omp lookup runs on a helper thread; the server is
-//! started on the main thread, because the kernel's death signal is tied to the thread that starts a
-//! process (see `spawn`). So if this window process dies, even from SIGKILL, the kernel sends the
-//! server SIGTERM, and the server ends the omp processes it started before it exits. `procs.rs` ends
-//! whatever is left after a quit. The server's address is fixed (see `DESKTOP_PORT`), so the web app
-//! keeps its stored settings from one launch to the next.
+//! The server is started on the main thread, because the kernel's death signal is tied to the thread
+//! that starts a process (see `spawn`). When the quick lookup finds omp, the server starts before the
+//! window is built, so the two starts overlap, and the window then opens on a starting page. Otherwise
+//! the window opens first, and the login shell is asked on a helper thread (see `launch`). So if this
+//! window process dies, even from SIGKILL, the kernel sends the server SIGTERM, and the server ends the
+//! omp processes it started before it exits. `procs.rs` ends whatever is left after a quit. The server's
+//! address is fixed (see `DESKTOP_PORT`), so the web app keeps its stored settings from one launch to
+//! the next.
 //!
 //! Each start has a few threads: one reads the server's output for its address and for "already
 //! running", one drains its error output (never shown or logged: it can hold the launch token), one
@@ -96,68 +98,164 @@ fn with_state<T>(app: &AppHandle, change: impl FnOnce(&mut State) -> T) -> T {
     change(&mut state)
 }
 
-/// Opens the window at once on the starting page, then finds omp and starts the server. Called once,
-/// from the app's setup, which runs on the main thread.
+/// Opens the app: the window, and the server (see `launch`). Called once, from the app's setup, which runs on the main
+/// thread.
 pub fn start(app: AppHandle) {
-    if let Err(error) = new_window(&app, WebviewUrl::App(STARTING_PAGE.into())).build() {
-        eprintln!("omp app: the window did not open: {error}");
-        app.exit(1);
-        return;
-    }
-    let helper_app = app.clone();
-    thread::spawn(move || {
-        // The window finds omp itself (see omp.rs), because a window started from the applications
-        // menu does not have the user's PATH. An OMP_BIN the user set is used as it is.
-        let user_set = std::env::var_os("OMP_BIN").is_some_and(|value| !value.is_empty());
-        let omp = if user_set {
-            None
-        } else {
-            match omp::from_environment() {
-                Some(path) => Some(path),
-                None => {
-                    // A quit cancels the lookup, which then finds nothing: there is no page to show then.
-                    if with_state(&helper_app, |state| state.quitting) {
-                        return;
-                    }
-                    eprintln!("omp app: omp was not found on this computer");
-                    show_page(&helper_app, NO_OMP_PAGE);
-                    return;
-                }
-            }
-        };
-        let start_app = helper_app.clone();
-        let _ = helper_app.run_on_main_thread(move || start_server(&start_app, omp));
-    });
+    // An OMP_BIN the user set is used as it is: the server inherits it, and no lookup runs.
+    let user_set = std::env::var_os("OMP_BIN").is_some_and(|value| !value.is_empty());
+    launch(&mut AppSteps { app }, user_set);
 }
 
-/// Starts the server, on the main thread (see `spawn`), and the threads that watch it.
-fn start_server(app: &AppHandle, omp: Option<PathBuf>) {
-    if with_state(app, |state| state.quitting) {
+/// The steps a launch runs, in order. `AppSteps` runs them on the app; the tests run the same order on recording steps.
+trait LaunchSteps {
+    /// A server that has started, until it is adopted or discarded.
+    type Started;
+    /// The omp the quick lookup finds (see `omp::quick_from_environment`). Starts no process.
+    fn quick_omp(&mut self) -> Option<PathBuf>;
+    /// Whether the app is quitting.
+    fn quitting(&self) -> bool;
+    /// Starts the server with the omp given, or with the server's own search when there is none (see `spawn`).
+    fn spawn_server(&mut self, omp: Option<&Path>) -> Result<Self::Started, String>;
+    /// Builds the window on `page`. False when the window cannot open; the app is then asked to exit.
+    fn open_window(&mut self, page: &'static str) -> bool;
+    /// Keeps a started server, and watches it until it ends.
+    fn adopt(&mut self, started: Self::Started);
+    /// Stops a started server that the app does not keep.
+    fn discard(&mut self, started: Self::Started);
+    /// Shows one of the bundled pages in the window.
+    fn show(&mut self, page: &'static str);
+    /// Asks the login shell for omp on a helper thread. The answer comes back to `on_lookup` on the main thread.
+    fn look_up_in_background(&mut self);
+}
+
+/// Opens the window and starts the server. When the quick lookup finds omp, the server starts on this thread before the
+/// window is built, so the two starts overlap (plan S2): the window then opens on the starting page, or on the error page
+/// when the server did not start. Otherwise the window opens at once on the starting page, and the login shell is asked in
+/// the background (see `on_lookup`).
+fn launch<S: LaunchSteps>(steps: &mut S, user_set: bool) {
+    let early = if user_set {
+        Some(None)
+    } else {
+        steps.quick_omp().map(Some)
+    };
+    let Some(omp) = early else {
+        if steps.open_window(STARTING_PAGE) {
+            steps.look_up_in_background();
+        }
         return;
-    }
-    let (child, leader) = match spawn(app, omp.as_deref()) {
-        Ok(started) => started,
+    };
+    match steps.spawn_server(omp.as_deref()) {
+        Ok(started) => {
+            // The window opens before the server is watched: a page shown by the watch would find no window yet.
+            if steps.open_window(STARTING_PAGE) {
+                steps.adopt(started);
+            } else {
+                steps.discard(started);
+            }
+        }
         Err(problem) => {
             eprintln!("omp app: the server did not start: {problem}");
-            show_error(app);
-            return;
+            steps.open_window(ERROR_PAGE);
         }
+    }
+}
+
+/// The login shell's answer, on the main thread: the server starts with the omp it found, or the no-omp page shows.
+fn on_lookup<S: LaunchSteps>(steps: &mut S, omp: Option<PathBuf>) {
+    let Some(omp) = omp else {
+        // A quit cancels the lookup, which then finds nothing: there is no page to show then.
+        if !steps.quitting() {
+            eprintln!("omp app: omp was not found on this computer");
+            steps.show(NO_OMP_PAGE);
+        }
+        return;
     };
-    // A quit may have come while the server was being spawned: it must not outlive the app.
-    let rejected = with_state(app, |state| {
-        let server = Server { leader };
-        if state.quitting {
-            Some(server)
-        } else {
-            state.server = Some(server);
-            None
-        }
-    });
-    if let Some(server) = rejected {
-        server.stop();
+    start_server(steps, &omp);
+}
+
+/// Starts the server once the window is open, for the omp the login shell found. A quit that came first starts nothing.
+fn start_server<S: LaunchSteps>(steps: &mut S, omp: &Path) {
+    if steps.quitting() {
         return;
     }
-    watch(app.clone(), child);
+    match steps.spawn_server(Some(omp)) {
+        Ok(started) => steps.adopt(started),
+        Err(problem) => {
+            eprintln!("omp app: the server did not start: {problem}");
+            steps.show(ERROR_PAGE);
+        }
+    }
+}
+
+/// The app's own steps: the window and the server, on the app's handle.
+struct AppSteps {
+    app: AppHandle,
+}
+
+impl LaunchSteps for AppSteps {
+    type Started = (Child, Option<Proc>);
+
+    fn quick_omp(&mut self) -> Option<PathBuf> {
+        // The window finds omp itself (see omp.rs), because a window started from the applications menu does not have
+        // the user's PATH.
+        omp::quick_from_environment()
+    }
+
+    fn quitting(&self) -> bool {
+        with_state(&self.app, |state| state.quitting)
+    }
+
+    fn spawn_server(&mut self, omp: Option<&Path>) -> Result<Self::Started, String> {
+        spawn(&self.app, omp)
+    }
+
+    fn open_window(&mut self, page: &'static str) -> bool {
+        match new_window(&self.app, WebviewUrl::App(page.into())).build() {
+            Ok(_) => true,
+            Err(error) => {
+                eprintln!("omp app: the window did not open: {error}");
+                self.app.exit(1);
+                false
+            }
+        }
+    }
+
+    fn adopt(&mut self, (child, leader): Self::Started) {
+        // A quit may have come while the server was being spawned: it must not outlive the app.
+        let rejected = with_state(&self.app, |state| {
+            let server = Server { leader };
+            if state.quitting {
+                Some(server)
+            } else {
+                state.server = Some(server);
+                None
+            }
+        });
+        match rejected {
+            Some(server) => server.stop(),
+            None => watch(self.app.clone(), child),
+        }
+    }
+
+    fn discard(&mut self, (_child, leader): Self::Started) {
+        Server { leader }.stop();
+    }
+
+    fn show(&mut self, page: &'static str) {
+        show_page(&self.app, page);
+    }
+
+    fn look_up_in_background(&mut self) {
+        let helper_app = self.app.clone();
+        thread::spawn(move || {
+            // The whole search: the quick folders again (omp may have appeared since), then the login shell.
+            let omp = omp::from_environment();
+            let start_app = helper_app.clone();
+            let _ = helper_app.run_on_main_thread(move || {
+                on_lookup(&mut AppSteps { app: start_app }, omp);
+            });
+        });
+    }
 }
 
 /// Starts the server on the desktop port (or a free one, when it is busy), with the browser opening
@@ -481,5 +579,205 @@ mod tests {
         assert!(is_app("blob:http://127.0.0.1:27183/x"));
         assert!(!is_app("blob:https://example.com/x"));
         assert!(!is_app("http://example.com"));
+    }
+
+    /// What a launch's steps did, in order. The fields are the answers the steps give: the quick lookup's omp, whether the app
+    /// is quitting, and whether the server or the window fails.
+    #[derive(Default)]
+    struct Recorder {
+        steps: Vec<String>,
+        quick: Option<PathBuf>,
+        quitting: bool,
+        spawn_fails: bool,
+        window_fails: bool,
+    }
+
+    impl Recorder {
+        fn finding(omp: &str) -> Self {
+            Recorder {
+                quick: Some(PathBuf::from(omp)),
+                ..Recorder::default()
+            }
+        }
+    }
+
+    impl LaunchSteps for Recorder {
+        type Started = String;
+
+        fn quick_omp(&mut self) -> Option<PathBuf> {
+            self.steps.push("quick".to_owned());
+            self.quick.clone()
+        }
+
+        fn quitting(&self) -> bool {
+            self.quitting
+        }
+
+        fn spawn_server(&mut self, omp: Option<&Path>) -> Result<String, String> {
+            let omp = omp.map_or_else(
+                || "the server's own".to_owned(),
+                |path| path.display().to_string(),
+            );
+            self.steps.push(format!("spawn {omp}"));
+            if self.spawn_fails {
+                Err("the server is missing".to_owned())
+            } else {
+                Ok(omp)
+            }
+        }
+
+        fn open_window(&mut self, page: &'static str) -> bool {
+            self.steps.push(format!("window {page}"));
+            !self.window_fails
+        }
+
+        fn adopt(&mut self, started: String) {
+            self.steps.push(format!("adopt {started}"));
+        }
+
+        fn discard(&mut self, started: String) {
+            self.steps.push(format!("discard {started}"));
+        }
+
+        fn show(&mut self, page: &'static str) {
+            self.steps.push(format!("show {page}"));
+        }
+
+        fn look_up_in_background(&mut self) {
+            self.steps.push("look up".to_owned());
+        }
+    }
+
+    fn lines(expected: &[&str]) -> Vec<String> {
+        expected.iter().map(|line| (*line).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_quick_find_starts_the_server_before_the_window_opens() {
+        let mut recorder = Recorder::finding("/home/me/.bun/bin/omp");
+        launch(&mut recorder, false);
+        assert_eq!(
+            recorder.steps,
+            lines(&[
+                "quick",
+                "spawn /home/me/.bun/bin/omp",
+                "window starting.html",
+                "adopt /home/me/.bun/bin/omp",
+            ])
+        );
+    }
+
+    #[test]
+    fn without_a_quick_find_the_window_opens_first_and_asks_the_login_shell_later() {
+        let mut recorder = Recorder::default();
+        launch(&mut recorder, false);
+        assert_eq!(
+            recorder.steps,
+            lines(&["quick", "window starting.html", "look up"])
+        );
+    }
+
+    #[test]
+    fn an_omp_bin_the_user_set_starts_the_server_before_the_window_and_looks_for_nothing() {
+        let mut recorder = Recorder::finding("/home/me/.bun/bin/omp");
+        launch(&mut recorder, true);
+        assert_eq!(
+            recorder.steps,
+            lines(&[
+                "spawn the server's own",
+                "window starting.html",
+                "adopt the server's own",
+            ])
+        );
+    }
+
+    #[test]
+    fn a_login_shell_answer_starts_the_server_on_the_main_thread_and_watches_it() {
+        let mut recorder = Recorder::default();
+        launch(&mut recorder, false);
+        recorder.steps.clear();
+        on_lookup(
+            &mut recorder,
+            Some(PathBuf::from("/home/me/.local/bin/omp")),
+        );
+        assert_eq!(
+            recorder.steps,
+            lines(&[
+                "spawn /home/me/.local/bin/omp",
+                "adopt /home/me/.local/bin/omp"
+            ])
+        );
+    }
+
+    #[test]
+    fn no_omp_anywhere_shows_the_no_omp_page_in_the_window() {
+        let mut recorder = Recorder::default();
+        launch(&mut recorder, false);
+        recorder.steps.clear();
+        on_lookup(&mut recorder, None);
+        assert_eq!(recorder.steps, lines(&["show no-omp.html"]));
+    }
+
+    #[test]
+    fn a_quit_before_the_login_shell_answers_starts_nothing_and_shows_nothing() {
+        let mut recorder = Recorder {
+            quitting: true,
+            ..Recorder::default()
+        };
+        on_lookup(
+            &mut recorder,
+            Some(PathBuf::from("/home/me/.local/bin/omp")),
+        );
+        on_lookup(&mut recorder, None);
+        assert_eq!(recorder.steps, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_server_that_does_not_start_before_the_window_shows_the_error_page_in_it() {
+        let mut recorder = Recorder {
+            spawn_fails: true,
+            ..Recorder::finding("/home/me/.bun/bin/omp")
+        };
+        launch(&mut recorder, false);
+        assert_eq!(
+            recorder.steps,
+            lines(&["quick", "spawn /home/me/.bun/bin/omp", "window error.html"])
+        );
+    }
+
+    #[test]
+    fn a_login_shell_omp_whose_server_does_not_start_shows_the_error_page() {
+        let mut recorder = Recorder {
+            spawn_fails: true,
+            ..Recorder::default()
+        };
+        launch(&mut recorder, false);
+        recorder.steps.clear();
+        on_lookup(
+            &mut recorder,
+            Some(PathBuf::from("/home/me/.local/bin/omp")),
+        );
+        assert_eq!(
+            recorder.steps,
+            lines(&["spawn /home/me/.local/bin/omp", "show error.html"])
+        );
+    }
+
+    #[test]
+    fn a_window_that_does_not_open_discards_the_server_it_started() {
+        let mut recorder = Recorder {
+            window_fails: true,
+            ..Recorder::finding("/home/me/.bun/bin/omp")
+        };
+        launch(&mut recorder, false);
+        assert_eq!(
+            recorder.steps,
+            lines(&[
+                "quick",
+                "spawn /home/me/.bun/bin/omp",
+                "window starting.html",
+                "discard /home/me/.bun/bin/omp",
+            ])
+        );
     }
 }

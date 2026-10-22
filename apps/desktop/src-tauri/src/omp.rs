@@ -37,24 +37,46 @@ pub struct Search<'a> {
     pub lookup: &'a Lookup,
 }
 
-/// The search as the app runs it.
+/// The search as the app runs it: the steps that need no shell, then the login shell.
 pub fn from_environment() -> Option<PathBuf> {
+    environment_search(true)
+}
+
+/// The steps that need no shell: the window's PATH, the home folders and the system folders. No process starts, so the
+/// window can ask this before it is built (see `server.rs`).
+pub fn quick_from_environment() -> Option<PathBuf> {
+    environment_search(false)
+}
+
+/// The search as the app runs it. `login` adds the login shell as the last step.
+fn environment_search(login: bool) -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let shell = std::env::var_os("SHELL").map(PathBuf::from);
     let path = std::env::var_os("PATH");
     let system_dirs = SYSTEM_DIRS.map(Path::new);
-    find(&Search {
+    let search = Search {
         path: path.as_deref(),
         home: home.as_deref(),
         shell: shell.as_deref(),
         system_dirs: &system_dirs,
         shell_timeout: LOGIN_SHELL_TIMEOUT,
         lookup: &LOOKUP,
-    })
+    };
+    if login {
+        find(&search)
+    } else {
+        quick(&search)
+    }
 }
 
 /// The first executable file named omp in the steps above, or None if no step finds one.
 pub fn find(search: &Search) -> Option<PathBuf> {
+    quick(search).or_else(|| login_shell(search))
+}
+
+/// The first executable file named omp in the folders of the search: the window's PATH, `~/.bun/bin`, `~/.local/bin` and
+/// the system folders, in that order. Starts no process.
+pub fn quick(search: &Search) -> Option<PathBuf> {
     let mut folders: Vec<PathBuf> = search
         .path
         .map(|path| std::env::split_paths(path).collect())
@@ -70,11 +92,13 @@ pub fn find(search: &Search) -> Option<PathBuf> {
         .filter(|dir| dir.is_absolute())
         .map(|dir| dir.join("omp"))
         .find(|candidate| is_executable(candidate))
-        .or_else(|| {
-            search
-                .shell
-                .and_then(|shell| ask_login_shell(shell, search.shell_timeout, search.lookup))
-        })
+}
+
+/// Asks the search's login shell for omp, if it has one. The shell starts only when `quick` found nothing.
+fn login_shell(search: &Search) -> Option<PathBuf> {
+    search
+        .shell
+        .and_then(|shell| ask_login_shell(shell, search.shell_timeout, search.lookup))
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -641,5 +665,24 @@ mod tests {
             None
         );
         assert!(!marker.exists(), "the shell did not start");
+    }
+
+    #[test]
+    fn the_quick_lookup_starts_no_process_so_the_login_shell_is_not_asked_first() {
+        let folder = Folder::new("quick-no-shell");
+        let marker = folder.path().join("ran");
+        let shell = folder.shell("shell", &format!("touch '{}'", marker.display()));
+        let home = folder.path().join("home");
+        let sys = folder.path().join("sys");
+        fs::create_dir_all(&sys).expect("the system folder is created");
+        let system_dirs = [sys.as_path()];
+        let search_of = search(None, Some(&home), &system_dirs, Some(&shell));
+        assert_eq!(quick(&search_of), None);
+        assert!(!marker.exists(), "the quick lookup started the login shell");
+        assert_eq!(find(&search_of), None);
+        assert!(
+            marker.exists(),
+            "the full lookup did not ask the login shell"
+        );
     }
 }
