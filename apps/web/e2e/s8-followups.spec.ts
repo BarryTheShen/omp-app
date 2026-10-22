@@ -106,13 +106,34 @@ realTest("S8-10 clicking a blank row area opens that chat", async ({ realApp }) 
     await openSessions(page);
     const row = page.locator('[data-slot="r1-session-row"]:visible').nth(1);
     await expect(row).toHaveAttribute("data-selected", "false");
-    const titleBox = await row.locator('[role="option"] > div').first().boundingBox();
-    const moreBox = await row.getByRole("button", { name: /More actions for/ }).boundingBox();
-    if (!titleBox || !moreBox) throw new Error("session row controls are not drawn");
-    await page.mouse.click(
-      (titleBox.x + titleBox.width + moreBox.x) / 2,
-      titleBox.y + titleBox.height / 2,
-    );
+    const moreAction = row.getByRole("button", { name: /More actions for/ });
+    const rowBox = await row.boundingBox();
+    const moreBox = await moreAction.boundingBox();
+    const title = row.locator('[role="option"] > div').first();
+    const titleRight = await title.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rects = Array.from(range.getClientRects());
+      return Math.max(...rects.map((rect) => rect.right));
+    });
+    if (!rowBox || !moreBox || !Number.isFinite(titleRight)) {
+      throw new Error("session row title or action bounds are not drawn");
+    }
+    const left = titleRight + 2;
+    const right = moreBox.x - 2;
+    if (right <= left) throw new Error("session row has no blank area before its actions");
+    const point = { x: (left + right) / 2, y: rowBox.y + rowBox.height / 2 };
+    const hit = await row.evaluate((element, position) => {
+      const target = document.elementFromPoint(position.x, position.y);
+      return {
+        inRow: target?.closest('[data-slot="r1-session-row"]') === element,
+        interactive: Boolean(target?.closest("button, input, [role='menu']")),
+      };
+    }, point);
+    expect(hit.inRow).toBe(true);
+    expect(hit.interactive).toBe(false);
+    await page.mouse.click(point.x, point.y);
+    await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(row).toHaveAttribute("data-selected", "true");
   } finally {
     await page.close();
