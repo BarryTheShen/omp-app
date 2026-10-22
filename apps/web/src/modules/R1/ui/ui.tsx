@@ -1,5 +1,11 @@
 import type { RemoteThreadListAdapter } from "@assistant-ui/react";
-import { type AppError, AppFailure, type RunningSession, type ThreadId } from "@omp-app/contracts";
+import {
+  type AppError,
+  AppFailure,
+  type RunningSession,
+  SESSION_DELETE_RUNNING_TURN,
+  type ThreadId,
+} from "@omp-app/contracts";
 import { Loader2Icon, PinIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
@@ -51,9 +57,6 @@ export interface SessionCatalogSidebarProps {
   readonly currentTurnRunning?: () => boolean;
   readonly stopRunning?: (threadId: ThreadId) => Promise<void>;
 }
-
-/** The refusal of a delete while the chat's turn runs: the same sentence the server gives for such a delete. */
-const TURN_RUNNING_REFUSAL = "Wait for this chat's turn to finish, then delete it.";
 
 function highlight(text: string, query: string): React.ReactNode {
   const needle = query.trim();
@@ -655,7 +658,7 @@ export function SessionCatalogSidebar({
       // A chat whose turn streams in this view is refused here, with no round trip: the live store
       // knows it, and a turn that was just sent may not be busy on the server yet.
       if (session.id === currentThreadId && currentTurnRunning?.() === true) {
-        catalog.setActionError(TURN_RUNNING_REFUSAL, session.id);
+        catalog.setActionError(SESSION_DELETE_RUNNING_TURN, session.id);
         catalog.requestFocus({ kind: "row", id: session.id });
         return;
       }
@@ -674,9 +677,11 @@ export function SessionCatalogSidebar({
       }
       catalog.requestFocus(neighbour ? { kind: "row", id: neighbour } : { kind: "newChat" });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "The chat could not be deleted.";
+      // The server's running-turn sentence is the local refusal's sentence, so the line ends with this chat's turn.
       catalog.setActionError(
-        error instanceof Error ? error.message : "The chat could not be deleted.",
-        undefined,
+        message,
+        message === SESSION_DELETE_RUNNING_TURN ? session.id : undefined,
       );
       // The chat stays, so focus stays on its row rather than falling to the page body.
       catalog.requestFocus({ kind: "row", id: session.id });

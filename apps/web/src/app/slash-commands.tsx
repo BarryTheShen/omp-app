@@ -10,6 +10,8 @@ import {
   modeChangeFromCommand,
   type PortCallOptions,
   type RpcSessionSend,
+  SESSION_DELETE_OTHER_VIEW,
+  SESSION_DELETE_RUNNING_TURN,
   type SessionDeleteCommandArgs,
   type SessionDeleteCommandResult,
   type SessionDeleteRefusal,
@@ -458,9 +460,8 @@ function sidebarChatName(
  * the browser never reads omp's words.
  */
 const SESSION_DELETE_NOTE: Record<SessionDeleteRefusal | "failed" | "unknown", string> = {
-  running: "Wait for this chat's turn to finish, then delete it.",
-  "open-elsewhere":
-    "Another tab or window has this chat open. Close it there, then delete it again.",
+  running: SESSION_DELETE_RUNNING_TURN,
+  "open-elsewhere": SESSION_DELETE_OTHER_VIEW,
   finishing: "omp is still finishing this chat. Try again in a moment.",
   "not-saved": "This chat is not saved yet, so there is nothing to delete.",
   failed: "The chat was not deleted. Try again.",

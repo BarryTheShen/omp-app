@@ -4,6 +4,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   AppFailure,
+  SESSION_DELETE_OTHER_VIEW,
+  SESSION_DELETE_RUNNING_TURN,
   type SessionDeleteRefusal,
   type SessionEntryOutputArgs,
   type SessionEntryOutputResult,
@@ -157,13 +159,6 @@ function serverOwnsSession(
   return ids?.has(sessionId) ?? false;
 }
 
-/** The sentence a delete gives while the chat's turn runs: omp would write the chat back once its file is gone. */
-const RUNNING_TURN_SENTENCE = "Wait for this chat's turn to finish, then delete it.";
-
-/** The sentence for a chat another tab or window has open: the person closes it there, then deletes it again. */
-const OTHER_VIEW_SENTENCE =
-  "Another tab or window has this chat open. Close it there, then delete it again.";
-
 /**
  * The refusal of a delete for a chat omp still holds. A chat the server keeps only for omp's idle time, which no other view
  * holds, has an omp still on its way out: the person is asked to try again. A chat another view holds open is refused in
@@ -181,7 +176,9 @@ function heldFailure(
   }
   return appFailure(
     "conflict",
-    serverProcess ? OTHER_VIEW_SENTENCE : "Close this chat before deleting it: omp has it open.",
+    serverProcess
+      ? SESSION_DELETE_OTHER_VIEW
+      : "Close this chat before deleting it: omp has it open.",
     true,
   );
 }
@@ -709,7 +706,7 @@ export class SessionFileStore {
     if (views === undefined) return 0;
     const own = caller === undefined ? 0 : views.viewsOf(file.id, caller.connectionId);
     if (own > 0 && file.turn === "running")
-      throw appFailure("conflict", RUNNING_TURN_SENTENCE, true);
+      throw appFailure("conflict", SESSION_DELETE_RUNNING_TURN, true);
     // Another view is checked even when the caller holds none: a second tab's delete must not remove a chat that another
     // tab still shows, including while that tab's omp is stopping.
     if (views.watcherCount(file.id) > own) throw heldFailure(this.#options, file.id, true, own);
@@ -733,7 +730,7 @@ export class SessionFileStore {
     sessionFile: string,
     caller: { readonly connectionId: string } | undefined,
   ): void {
-    if (file.turn === "running") throw appFailure("conflict", RUNNING_TURN_SENTENCE, true);
+    if (file.turn === "running") throw appFailure("conflict", SESSION_DELETE_RUNNING_TURN, true);
     const held = this.#heldViewsOf(file.id, caller);
     if (file.liveness.serverProcess || file.liveness.lease === "held") {
       throw heldFailure(this.#options, file.id, file.liveness.serverProcess, held);

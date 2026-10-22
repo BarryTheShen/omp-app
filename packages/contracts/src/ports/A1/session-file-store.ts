@@ -265,3 +265,10 @@ export const SessionFileStore = definePort({
     },
   },
 });
+
+/** The sentence a delete gives while the chat's turn runs: omp would write the chat back once its file is gone. */
+export const SESSION_DELETE_RUNNING_TURN = "Wait for this chat's turn to finish, then delete it.";
+
+/** The sentence a delete gives for a chat another tab or window has open: the person closes it there, then deletes it again. */
+export const SESSION_DELETE_OTHER_VIEW =
+  "Another tab or window has this chat open. Close it there, then delete it again.";

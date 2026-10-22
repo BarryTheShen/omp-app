@@ -864,6 +864,62 @@ describe("SessionCatalogSidebar", () => {
     expect(alert.textContent).toBe("Close this chat before deleting it: omp has it open.");
   });
 
+  test("a delete the server refuses for a running turn clears its line when that turn ends", async () => {
+    const running = {
+      ...session("new", "2026-10-03T00:00:00.000Z", "Newest chat"),
+      turn: "running" as const,
+    };
+    const files: SessionFile[] = [session("old", "2026-10-01T00:00:00.000Z", "Old chat"), running];
+    const catalog = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: files, nextCursor: null }),
+        readSession: async ({ sessionFile }) =>
+          files.find((file) => file.sessionFile === sessionFile) as SessionFile,
+      },
+    });
+    const remote = {
+      ...fakeRemote([]),
+      delete: async () => {
+        throw new AppFailure({
+          code: "conflict",
+          message: "Wait for this chat's turn to finish, then delete it.",
+          retryable: true,
+        });
+      },
+    };
+    render(
+      withRegistry(
+        createRegistry([]),
+        { "host.session-files": { state: "available", via: "rpc" } },
+        <SessionCatalogSidebar
+          catalog={catalog}
+          confirmDelete={() => true}
+          currentThreadId={ThreadIdSchema.parse("other")}
+          remote={remote}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Newest chat" }));
+    const menu = screen.getByRole("menu", { name: "Actions for Newest chat" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Newest chat" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Wait for this chat's turn to finish, then delete it.");
+
+    // The turn ends: omp writes the chat's file idle, and the catalog reads that change.
+    files[1] = { ...running, turn: "idle" as const };
+    await act(async () => {
+      await catalog.reconcile({
+        folder,
+        sessionFile: running.sessionFile,
+        id: running.id,
+        kind: "updated",
+      });
+    });
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
   /** Renders a sidebar whose Delete the server refuses, and waits until the refusal shows. */
   async function showRefusedDelete(): Promise<void> {
     const calls: string[] = [];
