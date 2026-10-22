@@ -274,6 +274,39 @@ describe("narrow layout", () => {
     );
   });
 
+  test("focus that moves to a control behind an open drawer comes back into the drawer", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: query === "(max-width: 48rem)",
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    render(
+      <AppShell
+        leftSidebar={
+          <>
+            <button type="button">First drawer control</button>
+            <button type="button">Last drawer control</button>
+          </>
+        }
+        threadHeader={<button type="button">Page behind</button>}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show sessions sidebar" }));
+    const close = screen.getByRole("button", { name: "Hide sessions sidebar" });
+    expect(document.activeElement).toBe(close);
+
+    screen.getByRole("button", { name: "Page behind" }).focus();
+    expect(document.activeElement).toBe(close);
+  });
+
   test("right-sidebar show does not steal focus into the drawer", () => {
     vi.stubGlobal(
       "matchMedia",

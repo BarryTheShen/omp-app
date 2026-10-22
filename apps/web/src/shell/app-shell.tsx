@@ -11,11 +11,11 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { FocusScope } from "@/overlay/focus-scope";
 import { Icons, spacingTokens, zIndexTokens } from "@/tokens";
 import { useShellPreferences } from "./preferences";
 import { ResizeHandle } from "./resize-handle";
@@ -223,15 +223,14 @@ export function AppShell({
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [drawer, setDrawer] = useState<Drawer>(null);
-  const focusDrawerOnOpen = useRef(false);
-  const sessionsSidebarRef = useRef<HTMLElement | null>(null);
-  const panelsSidebarRef = useRef<HTMLElement | null>(null);
-  const returnFocusSide = useRef<Drawer>(null);
+  const [focusDrawerOnOpen, setFocusDrawerOnOpen] = useState(false);
   const leftShown = isNarrow ? drawer === "left" : leftOpen;
   const rightShown = isNarrow ? drawer === "right" : rightOpen;
   const showRightSidebar = useCallback(() => {
-    if (isNarrow) setDrawer("right");
-    else setRightOpen(true);
+    if (isNarrow) {
+      setFocusDrawerOnOpen(false);
+      setDrawer("right");
+    } else setRightOpen(true);
   }, [isNarrow]);
   const rightSidebarControl = useMemo<RightSidebar>(
     () => ({ open: rightShown, show: showRightSidebar }),
@@ -241,77 +240,8 @@ export function AppShell({
   useEffect(() => {
     if (!isNarrow) {
       setDrawer(null);
-      returnFocusSide.current = null;
     }
   }, [isNarrow]);
-
-  useEffect(() => {
-    if (!drawer) {
-      const side = returnFocusSide.current;
-      returnFocusSide.current = null;
-      if (isNarrow && side) {
-        document.querySelector<HTMLButtonElement>(`[data-shell-sidebar-toggle="${side}"]`)?.focus();
-      }
-      return;
-    }
-
-    const shouldFocus = focusDrawerOnOpen.current;
-    focusDrawerOnOpen.current = false;
-    const sidebar = drawer === "left" ? sessionsSidebarRef.current : panelsSidebarRef.current;
-    if (!sidebar) return;
-    let focusFrame = 0;
-    const focusCollapse = (attempt: number) => {
-      if (!shouldFocus) return;
-      const collapse = sidebar.querySelector<HTMLButtonElement>("[data-shell-sidebar-collapse]");
-      if (collapse && !collapse.closest("[inert]")) {
-        collapse.focus();
-        if (document.activeElement === collapse || attempt >= 4) return;
-      }
-      if (attempt < 4) focusFrame = requestAnimationFrame(() => focusCollapse(attempt + 1));
-    };
-    if (shouldFocus) {
-      focusCollapse(0);
-      if (document.activeElement !== sidebar.querySelector("[data-shell-sidebar-collapse]"))
-        focusFrame = requestAnimationFrame(() => focusCollapse(1));
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const focusable = Array.from(
-        sidebar.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter(
-        (element) =>
-          element.tabIndex >= 0 &&
-          element.getAttribute("aria-hidden") !== "true" &&
-          !element.closest("[inert]") &&
-          (element.checkVisibility?.() ?? true),
-      );
-      if (focusable.length === 0) {
-        event.preventDefault();
-        sidebar.focus();
-        return;
-      }
-      const first =
-        sidebar.querySelector<HTMLElement>("[data-shell-sidebar-collapse]") ?? focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !sidebar.contains(active))) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && (active === last || !sidebar.contains(active))) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-
-    sidebar.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      sidebar.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [drawer, isNarrow]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -319,7 +249,6 @@ export function AppShell({
 
       if (isEditableTarget(event.target)) return;
       if (event.key === "Escape" && isNarrow && drawer) {
-        returnFocusSide.current = drawer;
         setDrawer(null);
         return;
       }
@@ -329,21 +258,15 @@ export function AppShell({
 
       event.preventDefault();
       if (event.shiftKey) {
-        if (isNarrow)
-          setDrawer((current) => {
-            focusDrawerOnOpen.current = true;
-            if (current === "right") returnFocusSide.current = "right";
-            return current === "right" ? null : "right";
-          });
-        else setRightOpen((open) => !open);
+        if (isNarrow) {
+          setFocusDrawerOnOpen(true);
+          setDrawer((current) => (current === "right" ? null : "right"));
+        } else setRightOpen((open) => !open);
       } else {
-        if (isNarrow)
-          setDrawer((current) => {
-            focusDrawerOnOpen.current = true;
-            if (current === "left") returnFocusSide.current = "left";
-            return current === "left" ? null : "left";
-          });
-        else setLeftOpen((open) => !open);
+        if (isNarrow) {
+          setFocusDrawerOnOpen(true);
+          setDrawer((current) => (current === "left" ? null : "left"));
+        } else setLeftOpen((open) => !open);
       }
     };
 
@@ -353,26 +276,24 @@ export function AppShell({
 
   const toggleLeft = () => {
     if (isNarrow) {
-      focusDrawerOnOpen.current = true;
+      setFocusDrawerOnOpen(true);
       setDrawer("left");
     } else setLeftOpen((open) => !open);
   };
   const toggleRight = () => {
     if (isNarrow) {
-      focusDrawerOnOpen.current = true;
+      setFocusDrawerOnOpen(true);
       setDrawer("right");
     } else setRightOpen((open) => !open);
   };
   // A side's own arrow closes it. In the narrow layout a drawer closes by leaving no drawer open.
   const closeLeft = () => {
     if (isNarrow) {
-      returnFocusSide.current = "left";
       setDrawer(null);
     } else setLeftOpen(false);
   };
   const closeRight = () => {
     if (isNarrow) {
-      returnFocusSide.current = "right";
       setDrawer(null);
     } else setRightOpen(false);
   };
@@ -403,15 +324,11 @@ export function AppShell({
           style={{ zIndex: zIndexTokens.overlay - 1 }}
           tabIndex={-1}
           type="button"
-          onClick={() => {
-            returnFocusSide.current = drawer;
-            setDrawer(null);
-          }}
+          onClick={() => setDrawer(null)}
         />
       )}
 
       <nav
-        ref={sessionsSidebarRef}
         aria-hidden={!leftShown}
         aria-label="Sessions"
         className={cn(
@@ -449,8 +366,20 @@ export function AppShell({
           }
         }}
       >
-        <SidebarHeader side="left" open={leftShown} onToggle={closeLeft} />
-        <div className="flex min-h-0 flex-1 flex-col">{leftSidebar}</div>
+        <FocusScope
+          className="flex min-h-0 flex-1 flex-col"
+          initialFocus={focusDrawerOnOpen ? undefined : false}
+          reopenable
+          restoreFocus={() =>
+            isNarrow
+              ? document.querySelector<HTMLElement>('[data-shell-sidebar-toggle="left"]')
+              : undefined
+          }
+          trapped={isNarrow && leftShown}
+        >
+          <SidebarHeader side="left" open={leftShown} onToggle={closeLeft} />
+          <div className="flex min-h-0 flex-1 flex-col">{leftSidebar}</div>
+        </FocusScope>
         {!isNarrow && leftOpen && (
           <ResizeHandle
             maximum={MAX_SIDEBAR_WIDTH}
@@ -517,7 +446,6 @@ export function AppShell({
 
       {/* Its own column: a hidden sessions sidebar must not pull this one into the first column. */}
       <aside
-        ref={panelsSidebarRef}
         aria-hidden={!rightShown}
         aria-label="Panels"
         className={cn(
@@ -535,10 +463,22 @@ export function AppShell({
           zIndex: isNarrow ? zIndexTokens.overlay : undefined,
         }}
       >
-        <SidebarHeader side="right" open={rightShown} onToggle={closeRight} />
-        <RightSidebarContext.Provider value={rightSidebarControl}>
-          <div className="flex min-h-0 flex-1 flex-col">{rightSidebar}</div>
-        </RightSidebarContext.Provider>
+        <FocusScope
+          className="flex min-h-0 flex-1 flex-col"
+          initialFocus={focusDrawerOnOpen ? undefined : false}
+          reopenable
+          restoreFocus={() =>
+            isNarrow
+              ? document.querySelector<HTMLElement>('[data-shell-sidebar-toggle="right"]')
+              : undefined
+          }
+          trapped={isNarrow && rightShown}
+        >
+          <SidebarHeader side="right" open={rightShown} onToggle={closeRight} />
+          <RightSidebarContext.Provider value={rightSidebarControl}>
+            <div className="flex min-h-0 flex-1 flex-col">{rightSidebar}</div>
+          </RightSidebarContext.Provider>
+        </FocusScope>
         {!isNarrow && rightOpen && (
           <ResizeHandle
             maximum={MAX_SIDEBAR_WIDTH}

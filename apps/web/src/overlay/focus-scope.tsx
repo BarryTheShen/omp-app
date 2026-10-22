@@ -50,6 +50,12 @@ export interface FocusScopeProps extends Omit<ComponentPropsWithoutRef<"div">, "
   restoreFocus?: FocusTarget | false;
   /** The scope is leaving: focus goes back to the opener at once, not when the scope unmounts (issue 1231). */
   leaving?: boolean;
+  /**
+   * The scope stays mounted while it opens and closes, as an in-place drawer does. Each time it becomes trapped it takes
+   * focus (`initialFocus`) and records the element that had focus; when it stops being trapped, focus goes to
+   * `restoreFocus`. A reopenable scope that starts untrapped takes no focus until it is first trapped.
+   */
+  reopenable?: boolean;
 }
 
 /**
@@ -64,6 +70,7 @@ export function FocusScope({
   initialFocus,
   restoreFocus,
   leaving,
+  reopenable = false,
   className,
   ...props
 }: FocusScopeProps) {
@@ -76,6 +83,8 @@ export function FocusScope({
   const initialFocusRef = useRef(initialFocus);
   const restoreFocusRef = useRef(restoreFocus);
   const restoredRef = useRef(false);
+  const reopenableRef = useRef(reopenable);
+  const trappedRef = useRef(trapped);
   useLayoutEffect(() => {
     initialFocusRef.current = initialFocus;
     restoreFocusRef.current = restoreFocus;
@@ -110,20 +119,25 @@ export function FocusScope({
 
     if (initialFocusPendingRef.current) {
       initialFocusPendingRef.current = false;
-      queueMicrotask(() => {
-        if (!mountedRef.current) return;
-        const initial = initialFocusRef.current;
-        if (initial === false) return;
-        const root = rootRef.current;
-        if (!root) return;
-        const explicitTarget = resolveFocusTarget(initial) ?? null;
-        focusElement(explicitTarget);
-        if (explicitTarget === null) focusFirst();
-      });
+      // A reopenable scope that starts untrapped takes focus only when it is first trapped (the effect below).
+      if (!reopenableRef.current || trappedRef.current) {
+        queueMicrotask(() => {
+          if (!mountedRef.current) return;
+          const initial = initialFocusRef.current;
+          if (initial === false) return;
+          const root = rootRef.current;
+          if (!root) return;
+          const explicitTarget = resolveFocusTarget(initial) ?? null;
+          focusElement(explicitTarget);
+          if (explicitTarget === null) focusFirst();
+        });
+      }
     }
 
     return () => {
       mountedRef.current = false;
+      // A reopenable scope stays mounted through its close; the arming effect below gives focus back instead.
+      if (reopenableRef.current) return;
       // React's development double-invocation (StrictMode) unmounts and remounts this effect
       // synchronously, and OverlayHost clears the background's inert state in the same commit as
       // the real unmount. Deciding after the commit settles means only a scope that is still
@@ -184,6 +198,49 @@ export function FocusScope({
       document.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [focusFirst, trapped]);
+
+  // A reopenable scope takes focus each time it becomes trapped, and gives it back to its restore target when it stops
+  // being trapped. Overlays never change `trapped` while mounted, so this effect leaves them alone.
+  useLayoutEffect(() => {
+    const wasTrapped = trappedRef.current;
+    trappedRef.current = trapped;
+    if (!reopenable || wasTrapped === trapped) return;
+    if (!trapped) {
+      const restore = restoreFocusRef.current;
+      if (restore === false) return;
+      const target = resolveFocusTarget(restore);
+      // A lookup that returns undefined has moved focus itself; the scope leaves focus where it is.
+      if (target === undefined) return;
+      focusElement(target ?? openerRef.current);
+      return;
+    }
+
+    const active = document.activeElement;
+    openerRef.current = active instanceof HTMLElement ? active : null;
+    // A scope that opens without an initial focus leaves focus where it is (a panel's own show does not move it).
+    if (initialFocusRef.current === false) return;
+    const takeInitialFocus = () => {
+      const initial = initialFocusRef.current;
+      if (initial === false) return;
+      const explicitTarget = resolveFocusTarget(initial) ?? null;
+      focusElement(explicitTarget);
+      if (explicitTarget === null) focusFirst();
+    };
+    const hasFocus = () => rootRef.current?.contains(document.activeElement) === true;
+    // A drawer slides in, and an element that is still hidden cannot take focus. While the scope is trapped, focus is
+    // brought in on each frame until it lands, for up to half a second, even if something outside took it meanwhile: a
+    // Tab that leaves the drawer during its slide must not leave focus on the page behind it.
+    let frame = 0;
+    const giveUpAt = performance.now() + 500;
+    const retry = () => {
+      if (hasFocus() || performance.now() > giveUpAt) return;
+      takeInitialFocus();
+      frame = requestAnimationFrame(retry);
+    };
+    takeInitialFocus();
+    if (!hasFocus()) frame = requestAnimationFrame(retry);
+    return () => cancelAnimationFrame(frame);
+  }, [focusFirst, reopenable, trapped]);
 
   return (
     <div

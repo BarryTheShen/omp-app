@@ -23,7 +23,12 @@ async function focusRunningRowWhenDrawn(page: Page): Promise<void> {
       option.focus();
       if (document.activeElement === option) window.__focusedRow2218 = option;
     };
-    new MutationObserver(focusOnce).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(focusOnce).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-open"],
+    });
     focusOnce();
   });
 }
@@ -43,9 +48,15 @@ async function focusIsOnOpenChatRow(page: Page): Promise<boolean> {
  * A new chat's first turn. The fake model streams its reasoning for about 14 s before the answer, so the turn lasts long
  * enough to focus the running row and to let the turn end while the focus is on it.
  */
-async function focusThroughFirstTurn(page: Page, composer: Locator): Promise<void> {
+async function focusThroughFirstTurn(
+  page: Page,
+  composer: Locator,
+  openDrawer?: () => Promise<void>,
+): Promise<void> {
   await focusRunningRowWhenDrawn(page);
   await sendPrompt(composer, "stream_reasoning keep the focus");
+  // At 390 px a drawer covers the composer, so a drawer this check needs opens only after the prompt is sent.
+  await openDrawer?.();
   await expect
     .poll(() => page.evaluate(() => window.__focusedRow2218 !== undefined), { timeout: 30_000 })
     .toBe(true);
@@ -79,9 +90,13 @@ realTest(
     try {
       const composer = await startChat(page);
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole("button", { name: "Show sessions sidebar" }).click();
-      await expect(page.locator('nav[aria-label="Sessions"]')).toHaveAttribute("data-open", "true");
-      await focusThroughFirstTurn(page, composer);
+      await focusThroughFirstTurn(page, composer, async () => {
+        await page.getByRole("button", { name: "Show sessions sidebar" }).click();
+        await expect(page.locator('nav[aria-label="Sessions"]')).toHaveAttribute(
+          "data-open",
+          "true",
+        );
+      });
     } finally {
       await page.close();
     }

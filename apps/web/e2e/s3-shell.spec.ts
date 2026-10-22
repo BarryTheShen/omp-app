@@ -34,7 +34,10 @@ async function shellMeasurements(page: Page) {
   return page.evaluate(() => {
     const rail = document.querySelector<HTMLElement>('[data-shell-sidebar="left"]');
     const header = document.querySelector<HTMLElement>('[data-shell-region="header"]');
-    const railHeader = rail?.firstElementChild;
+    // The header is the parent of the rail's collapse control: the drawer's focus scope now wraps the header and body.
+    const railHeader = rail?.querySelector<HTMLElement>(
+      '[data-shell-sidebar-collapse="left"]',
+    )?.parentElement;
     if (!rail || !header || !(railHeader instanceof HTMLElement)) {
       throw new Error("shell measurements found no shell");
     }
