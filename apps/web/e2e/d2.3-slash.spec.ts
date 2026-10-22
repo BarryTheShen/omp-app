@@ -50,7 +50,9 @@ realTest(
     await composer.fill("/us");
     await expect(commandList(page)).toBeVisible({ timeout: 30_000 });
     const usage = commandList(page).getByRole("option", { name: /^\/usage/ });
-    await expect(usage).toContainText("Built-in");
+    // The list shows "Loading commands" until omp answers. A real omp's first answer can take longer than the default
+    // 5 s under load, so this row waits with the same bound as the list above (issue 2245, item d2.3:43).
+    await expect(usage).toContainText("Built-in", { timeout: 30_000 });
     await expect(usage).toContainText("Show token usage");
     await expect(usage).toContainText("Arguments: [show|reset");
 
@@ -58,7 +60,9 @@ realTest(
     await composer.press("Enter");
     await expect(composer).toHaveValue("/usage ");
     // Its subcommands are offered next; Escape closes them and the message is unchanged.
-    await expect(commandList(page).getByRole("option", { name: /^\/usage show/ })).toBeVisible();
+    await expect(commandList(page).getByRole("option", { name: /^\/usage show/ })).toBeVisible({
+      timeout: 30_000,
+    });
     await composer.press("Escape");
     await expect(commandList(page)).toBeHidden();
     await expect(composer).toHaveValue("/usage ");
