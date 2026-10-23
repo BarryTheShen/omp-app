@@ -16,7 +16,8 @@ export interface ScrollFollowControlsProps {
  * The "Jump to latest" button, shown while the reader is away from the newest message. The controller decides that from
  * the viewport (`isAtBottom`), not from assistant-ui's own state, which can miss a step up while a reply grows (issue
  * 1183). The scroll itself is ours, because the library's animation aims at the bottom as it was when it started and lands
- * short of rows drawn lazily on the way. The layout supplies this view to the thread footer.
+ * short of rows drawn lazily on the way. The layout supplies this view to the thread footer. The button sits in the footer's
+ * own row, under the transcript's text, never over it (issue 2536).
  */
 export function ScrollFollowControls({ isAtBottom, onFollowLatest }: ScrollFollowControlsProps) {
   const hasMessages = useAuiState((state) => state.thread.messages.length > 0);
@@ -28,7 +29,7 @@ export function ScrollFollowControls({ isAtBottom, onFollowLatest }: ScrollFollo
         {showButton ? (
           <Button
             aria-label="Jump to latest message"
-            className="border-foreground/10 bg-background hover:border-foreground/25 rounded-control absolute -top-11 start-1/2 z-10 grid size-8 -translate-x-1/2 place-items-center border transition-colors"
+            className="border-foreground/10 bg-background hover:border-foreground/25 rounded-control grid size-8 place-items-center border transition-colors"
             data-slot="u1-scroll-to-bottom"
             onClick={() => onFollowLatest()}
             type="button"
