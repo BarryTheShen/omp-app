@@ -6,19 +6,19 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { realTest, screenshots, sendPrompt, waitForFiniteAnimations } from "./real-omp";
 
 /**
- * Issue 1733 on the real app (real server, real omp, the fake model). A tab's delete of a chat that another omp holds is
- * refused, and the refusal leaves the tab with no omp for that chat. Its next message is refused in plain words, and no
- * omp starts on the chat's file. Once that omp has exited, a reload of the page brings the chat back on its own, and the
- * next message reaches omp. The sentence's advice, "Close that omp, then reload this page.", is what this spec follows.
+ * Issue 1733 on the real app (real server, real omp, the fake model), as issue 2515 now answers it. Another omp holds a
+ * chat. A tab's click on that chat's row is refused at once: the line shows on the row and no omp starts for the chat.
+ * The tab's delete of the same row is refused too, and the row stays. Once that omp has exited, the same click opens the
+ * chat, and its next message reaches omp.
  */
 realTest.use({ seedSessions: 6 });
 
-/** The seeded chat "Seeded chat 5" (its id is the seeded index, 4, padded), and the chat opened before it. */
+/** The seeded chat "Seeded chat 5" (its id is the seeded index, 4, padded). */
 const HELD = "Seeded chat 5";
 const SEEDED_FIVE = "01a00000-0000-7000-8000-000000000004";
 const DELETE_SENTENCE = "Close this chat before deleting it: omp has it open.";
 const REFUSED =
-  "Another omp has this chat open, so nothing was sent. Close that omp, then reload this page.";
+  "This chat is open in another omp, for example in a terminal. Close it there, then open it here.";
 
 /** The sidebar row whose title starts with `title` (a title here never is a prefix of another). */
 function rowFor(page: Page, title: string): Locator {
@@ -70,7 +70,7 @@ function sendCommand(child: ChildProcess, command: Record<string, unknown>): Pro
 }
 
 realTest(
-  "a tab whose delete was refused because another omp holds the chat says so when it sends, and the chat answers after its page is reloaded once that omp has gone",
+  "a tab's click on a chat another omp holds is refused on its row, its delete is refused too, and once that omp has gone the chat opens and answers",
   async ({ realApp }) => {
     await mkdir(screenshots, { recursive: true });
     // Another omp takes the chat's lease by writing to it, as an interactive omp does, before the tab opens the chat.
@@ -83,32 +83,21 @@ realTest(
     await page.setViewportSize({ width: 1280, height: 900 });
     const composer = page.getByRole("textbox", { name: "Message input" });
 
-    // The tab opens the chat, so its omp serves it while the other omp holds the chat's lease.
+    // The tab's click is refused at once: the line is on the row, and no omp starts for the chat.
+    const running = realApp.ompProcesses();
     await rowFor(page, HELD).click();
-    await expect(rowFor(page, HELD)).toHaveAttribute("aria-selected", "true");
-    await expect.poll(() => realApp.ompProcesses().length, { timeout: 30_000 }).toBe(1);
-    // The chat has settled, so omp is idle and its stop is not held back by a turn still starting.
-    await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("alert").filter({ hasText: REFUSED })).toBeVisible({
+      timeout: 2_000,
+    });
+    expect(realApp.ompProcesses()).toEqual(running);
 
-    // The tab's own delete: its omp stops, and the refusal leaves the tab with no omp for this chat.
+    // The tab's delete of that row is refused too, and the row stays listed.
     await deleteFromRow(page, HELD);
     await expect(page.getByRole("alert").filter({ hasText: DELETE_SENTENCE })).toBeVisible({
       timeout: 60_000,
     });
     await expect(rowFor(page, HELD)).toBeVisible();
-
-    // The next message is refused in plain words, nothing is sent, and no omp starts for the chat.
-    const running = realApp.ompProcesses();
-    await sendPrompt(composer, "hello");
-    await expect(page.getByRole("alert").filter({ hasText: REFUSED })).toBeVisible({
-      timeout: 60_000,
-    });
     expect(realApp.ompProcesses()).toEqual(running);
-    await expect(
-      page
-        .getByRole("region", { name: "Conversation transcript" })
-        .getByText("hello", { exact: true }),
-    ).toHaveCount(0);
 
     await waitForFiniteAnimations(page);
     await page.screenshot({
@@ -121,21 +110,19 @@ realTest(
     await page.screenshot({ path: join(screenshots, "fix-1733-refused-dark.png"), fullPage: true });
     await page.evaluate(() => document.documentElement.classList.remove("dark"));
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByRole("alert").filter({ hasText: REFUSED })).toBeVisible();
+    await page.getByRole("button", { name: "Show sessions sidebar" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: DELETE_SENTENCE })).toBeVisible();
     await waitForFiniteAnimations(page);
     await page.screenshot({ path: join(screenshots, "fix-1733-refused-390.png"), fullPage: true });
     await page.setViewportSize({ width: 1280, height: 900 });
 
-    // The other omp exits. Then the page is reloaded, as the sentence says, and the chat answers once it has settled.
-    const exited = new Promise<void>((resolve) => holder.once("exit", () => resolve()));
+    // The other omp exits. The same click opens the chat, and the next message reaches omp: the fake model answers "pong".
+    const exited = Promise.withResolvers<void>();
+    holder.once("exit", () => exited.resolve());
     holder.kill("SIGTERM");
-    await exited;
-    await page.reload();
-    await expect(page.locator("[data-app-root='true']")).toBeVisible();
-    await expect(rowFor(page, HELD)).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText("Conversation settled")).toBeVisible({ timeout: 60_000 });
-
-    // The next message reaches omp: the fake model answers "pong".
+    await exited.promise;
+    await rowFor(page, HELD).click();
+    await expect(composer).toBeVisible({ timeout: 60_000 });
     await sendPrompt(composer, "again");
     await expect(page.getByText("pong", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
     expect(realApp.problems).toEqual([]);

@@ -81,6 +81,7 @@ async function startServer(
   environment: Readonly<Record<string, string>> = {},
   sharedRoot?: string,
   capabilityProbeSettings?: CompositionServerOptions["capabilityProbeSettings"],
+  leaseProbe?: CompositionServerOptions["leaseProbe"],
 ): Promise<CompositionServer> {
   const root = sharedRoot ?? (await temporaryRoot("capabilities-server-"));
   const home = join(root, "home");
@@ -105,6 +106,7 @@ async function startServer(
     ompBin,
     staticRoot: resolve(import.meta.dir, "../../../../apps/web/dist"),
     ...(capabilityProbeSettings === undefined ? {} : { capabilityProbeSettings }),
+    ...(leaseProbe === undefined ? {} : { leaseProbe }),
   });
   servers.push(server);
   return server;
@@ -279,6 +281,37 @@ describe("composition environment wiring", () => {
       value: false,
       source: "env",
     });
+    client.dispose();
+  }, 30_000);
+});
+
+describe("composition open of a chat another omp holds", () => {
+  test("an open whose chat another omp holds fails at once with the terminal sentence, and starts no omp", async () => {
+    const root = await temporaryRoot("capabilities-held-");
+    const binary = await fakeOmp(root);
+    const server = await startServer(binary, {}, root, undefined, async () => "active");
+    const client = clientFor(server);
+    // The first call connects the client, so the bound below measures the refusal, not the connection.
+    await client.port(AppPort).serverInfo({});
+    const folder = await temporaryRoot("capabilities-held-folder-");
+    const omp = async () =>
+      (await readFile(`${binary}.spawnlog`, "utf8"))
+        .split("\n")
+        .filter((line) => line.startsWith("--mode rpc-ui"));
+    const before = await omp();
+    const started = performance.now();
+    await expect(
+      client.port(RpcSessionPort).open({ folderPath: FolderPath.parse(folder), start: "new" }),
+    ).rejects.toMatchObject({
+      appError: {
+        code: "conflict",
+        conflictReason: "held_elsewhere",
+        message:
+          "This chat is open in another omp, for example in a terminal. Close it there, then open it here.",
+      },
+    });
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(await omp()).toEqual(before);
     client.dispose();
   }, 30_000);
 });

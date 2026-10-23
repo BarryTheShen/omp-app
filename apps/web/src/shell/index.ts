@@ -1,5 +1,5 @@
-export type { AppShellProps, RightSidebar } from "./app-shell";
-export { AppShell, ComposerNote, useRightSidebar } from "./app-shell";
+export type { AppShellProps, LeftSidebar, RightSidebar } from "./app-shell";
+export { AppShell, ComposerNote, useLeftSidebar, useRightSidebar } from "./app-shell";
 export type {
   ShellPersistenceStatus,
   ShellPreferences,

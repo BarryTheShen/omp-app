@@ -513,6 +513,38 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(payloadKind(all.frames[0]?.payload)).toBe("process");
   });
 
+  test("an open of a chat the app already runs under another key is not refused, though its lease reads held", async () => {
+    const created: FakeProcess[] = [];
+    const probed: string[] = [];
+    let ownOmpRunning = false;
+    const handlers = handlersFor(
+      {
+        ...context(created),
+        leaseProbe: async (sessionId) => {
+          probed.push(sessionId);
+          return ownOmpRunning ? "active" : "inactive";
+        },
+      },
+      0,
+    );
+    const open = getHandler(handlers, "open");
+    await open({ threadId: authorityThread }, call("first"));
+    // The app's own omp runs this chat now, so its lease reads held. A second key for the same file is not another omp.
+    ownOmpRunning = true;
+    const otherThread = ThreadId.parse("omp-session-other");
+    const outcome = await Promise.resolve(open({ threadId: otherThread }, call("second"))).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    const message = outcome instanceof AppFailure ? outcome.appError.message : undefined;
+    // The second open started its own omp: the refusal did not stop it, and the lease was never asked about it.
+    expect(created).toHaveLength(2);
+    expect(message).not.toBe(
+      "This chat is open in another omp, for example in a terminal. Close it there, then open it here.",
+    );
+    expect(probed).toEqual([authorityThread]);
+  });
+
   test("a chat is busy from agent_start until omp reports it settled, and a yielded run does not end it", async () => {
     const created: FakeProcess[] = [];
     const runtimeContext = context(created);

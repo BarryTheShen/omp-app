@@ -72,11 +72,24 @@ export interface RightSidebar {
   readonly show: () => void;
 }
 
+/** The left sidebar (the sessions list) as the panel inside it sees it: whether it is open, and how to open it. */
+export interface LeftSidebar {
+  readonly open: boolean;
+  readonly show: () => void;
+}
+
 const RightSidebarContext = createContext<RightSidebar | null>(null);
 
 /** The right sidebar of the shell that renders the caller; null when rendered outside a shell. */
 export function useRightSidebar(): RightSidebar | null {
   return useContext(RightSidebarContext);
+}
+
+const LeftSidebarContext = createContext<LeftSidebar | null>(null);
+
+/** The left sidebar of the shell that renders the caller; null when rendered outside a shell. */
+export function useLeftSidebar(): LeftSidebar | null {
+  return useContext(LeftSidebarContext);
 }
 
 function DefaultLeftSidebar() {
@@ -260,6 +273,18 @@ export function AppShell({
     () => ({ open: rightShown, show: showRightSidebar }),
     [rightShown, showRightSidebar],
   );
+  // The narrow drawer opens the way the sessions toggle does, without moving focus into it: a caller that needs a row
+  // focused asks for it through the list (see the catalog's requestFocus).
+  const showLeftSidebar = useCallback(() => {
+    if (isNarrow) {
+      setFocusDrawerOnOpen(false);
+      setDrawer("left");
+    } else setLeftOpen(true);
+  }, [isNarrow]);
+  const leftSidebarControl = useMemo<LeftSidebar>(
+    () => ({ open: leftShown, show: showLeftSidebar }),
+    [leftShown, showLeftSidebar],
+  );
 
   useEffect(() => {
     if (!isNarrow) {
@@ -399,7 +424,9 @@ export function AppShell({
           trapped={isNarrow && leftShown}
         >
           <SidebarHeader side="left" open={leftShown} onToggle={closeLeft} />
-          <div className="flex min-h-0 flex-1 flex-col">{leftSidebar}</div>
+          <LeftSidebarContext.Provider value={leftSidebarControl}>
+            <div className="flex min-h-0 flex-1 flex-col">{leftSidebar}</div>
+          </LeftSidebarContext.Provider>
         </FocusScope>
         {!isNarrow && leftOpen && (
           <ResizeHandle

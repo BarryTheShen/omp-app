@@ -653,7 +653,10 @@ export class SelectedThreadHistoryController {
       // cleanup reads the chat it lets go from the state, so the state names the new chat first.
       if (oldReleased) this.commit({ threadId: openedId, store: undefined });
       await this.closeNow();
-      this.commit({ isLoading: false, isSwitching: false, error: failure.appError });
+      // A refusal because another omp holds the chat is the chat's row line in the sidebar (see `openSession`), so the
+      // empty screen does not repeat it.
+      const shown = failure.appError.conflictReason === "held_elsewhere" ? null : failure.appError;
+      this.commit({ isLoading: false, isSwitching: false, error: shown });
       throw failure;
     } finally {
       // The watch's hold goes once the open holds the chat, so the stream never drops in between.

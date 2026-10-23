@@ -63,6 +63,8 @@ export interface ThreadBootstrap {
 
 export interface A0PortContext {
   readonly processRegistry: OmpProcessRegistry;
+  /** Whether another omp holds a chat's lease (`active`), asked before an open starts omp for it. Absent: no check. */
+  readonly leaseProbe?: (sessionId: string) => Promise<"active" | "inactive" | "unknown">;
   readonly replay: EventReplayHub;
   readonly capabilities: CapabilityMap;
   readonly serverInfo: {
@@ -360,6 +362,7 @@ export class RpcSessionPortRuntime {
       return this.#openResult(existing);
     }
 
+    await this.#refuseChatHeldElsewhere(bootstrap);
     const process = this.#context.processRegistry.acquire(this.#processOptions(bootstrap));
     const session = this.#context.createSession?.(process) ?? new RpcSession(process);
     const entry: ThreadEntry = {
@@ -1217,6 +1220,31 @@ export class RpcSessionPortRuntime {
       folder: bootstrap.folderPath,
       args: bootstrap.args,
     };
+  }
+
+  /**
+   * Refuses a chat another omp holds, before this open starts one. A held lease that no process of this app backs is a
+   * terminal's: omp would load the file, then move the chat to a new id. The app's own holder is never named that way.
+   */
+  async #refuseChatHeldElsewhere(bootstrap: ThreadBootstrap): Promise<void> {
+    if (this.#appRunsSession(bootstrap.sessionFile)) return;
+    if ((await this.#context.leaseProbe?.(bootstrap.threadId)) !== "active") return;
+    throw new AppFailure({
+      code: "conflict",
+      message:
+        "This chat is open in another omp, for example in a terminal. Close it there, then open it here.",
+      retryable: true,
+      conflictReason: "held_elsewhere",
+    });
+  }
+
+  /** Whether an open chat of this app runs the session file under any key, with its process still in the registry. */
+  #appRunsSession(sessionFile: SessionFilePath): boolean {
+    for (const entry of this.#entries.values()) {
+      if (entry.bootstrap.sessionFile !== sessionFile) continue;
+      if (this.#context.processRegistry.has(entry.bootstrap.threadId)) return true;
+    }
+    return false;
   }
 
   #openResult(entry: ThreadEntry) {

@@ -8,12 +8,14 @@ import {
 } from "@omp-app/contracts";
 import { Loader2Icon, PinIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { EmptyState, InlineError, ListRow, Section, Toolbar } from "@/components/blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ENTER_FADE, LEAVE_FADE, LEAVE_MS } from "@/lib/motion";
 import { type Presence, useEnteringItems, usePresentItems } from "@/lib/presence";
 import { useCapabilityStatus } from "@/registry-core";
+import { useLeftSidebar } from "@/shell";
 import { Icons } from "@/tokens";
 import type { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
@@ -264,6 +266,8 @@ export function SessionCatalogSidebar({
   const newChatRef = useRef<HTMLButtonElement | null>(null);
   // The New chat that is starting, if any: a pick ends it (see `openSession`).
   const pendingNewChat = pendingNewChatOf(catalog);
+  // The shell's left sidebar, when this list is in one: a refused pick reopens its narrow drawer (see `openSession`).
+  const leftSidebar = useLeftSidebar();
   const attachList = useCallback(
     (element: HTMLDivElement | null) => {
       listRef.current = element;
@@ -487,6 +491,16 @@ export function SessionCatalogSidebar({
         openId = threadId;
       }
       await openThreadReported(openId);
+    } catch (error) {
+      // The open was refused because another omp holds the chat: the refusal shows on the chat's row. On a narrow layout the
+      // sessions drawer closed when the row was picked, so it opens again first (committed, so the row can take focus).
+      if (error instanceof AppFailure && error.appError.conflictReason === "held_elsewhere") {
+        flushSync(() => leftSidebar?.show());
+        catalog.setHeldError(error.appError.message, threadId);
+        catalog.requestFocus({ kind: "row", id: threadId });
+        return;
+      }
+      throw error;
     } finally {
       // A later pick has the selection now, or this pick is over: the open chat's row shows again.
       if (catalog.getSnapshot().selectionRevision === pick) catalog.select(null);

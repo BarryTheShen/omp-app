@@ -110,6 +110,8 @@ export interface CompositionServerOptions {
   >;
   /** Test and embedding override for how watched files are opened and recorded; the default watches the real files. */
   readonly fileWatch?: FileWatchRegistry;
+  /** Test seam for the lease probe `rpc.open` asks before it starts omp for a chat; the default reads omp's lease sockets. */
+  readonly leaseProbe?: (sessionId: string) => Promise<"active" | "inactive" | "unknown">;
 }
 
 export interface CompositionServer extends AppServer {
@@ -345,6 +347,9 @@ export async function createCompositionServer(
   const fileWatch = options.fileWatch ?? new FileWatchRegistry();
   const a0Context: A0PortContext = {
     processRegistry,
+    leaseProbe:
+      options.leaseProbe ??
+      sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
     replay,
     resolveThread,
     latestThread,

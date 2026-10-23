@@ -48,6 +48,9 @@ export type OmpErrorDetail = z.infer<typeof OmpErrorDetail>;
 export const StartupReason = z.enum(["no_model", "no_credentials", "other"]);
 export type StartupReason = z.infer<typeof StartupReason>;
 
+/** Why a `conflict` has a reason of its own: `held_elsewhere` is another omp (a terminal's) holding the chat's lease. */
+const ConflictReason = z.enum(["held_elsewhere"]);
+
 export const AppError = z.object({
   code: AppErrorCode,
   /** Human-readable; never contains secrets or unscrubbed home paths. */
@@ -59,6 +62,8 @@ export const AppError = z.object({
   omp: OmpErrorDetail.optional(),
   /** Set when omp stopped before a New chat was ready: the typed reason (see `StartupReason`). */
   startup: StartupReason.optional(),
+  /** Set on a `conflict` with its reason (see `ConflictReason`): another omp holds the chat, so the open was refused. */
+  conflictReason: ConflictReason.optional(),
 });
 export type AppError = z.infer<typeof AppError>;
 

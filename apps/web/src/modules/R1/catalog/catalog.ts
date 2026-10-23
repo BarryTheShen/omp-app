@@ -56,6 +56,8 @@ export interface CatalogSnapshot extends SessionCatalogState {
   readonly actionError?: string;
   /** The chat whose running turn refused the action in `actionError`, if one did (see `setActionError`). */
   readonly actionTurnOf?: ThreadId;
+  /** The chat another omp holds, whose refused open is `actionError`: the line goes once that chat's lease is free. */
+  readonly actionHeldBy?: ThreadId;
   /** Where keyboard focus should go in the list once it can: a chat's row, or New chat (see requestFocus). */
   readonly focus?: FocusRequest;
 }
@@ -246,8 +248,25 @@ export class SessionCatalogModel {
    * `endTurnRefusal`).
    */
   public setActionError(message: string | undefined, turnOf?: ThreadId): void {
-    if (this.snapshot.actionError === message && this.snapshot.actionTurnOf === turnOf) return;
-    this.commit({ actionError: message, actionTurnOf: message === undefined ? undefined : turnOf });
+    if (
+      this.snapshot.actionError === message &&
+      this.snapshot.actionTurnOf === turnOf &&
+      this.snapshot.actionHeldBy === undefined
+    )
+      return;
+    this.commit({
+      actionError: message,
+      actionTurnOf: message === undefined ? undefined : turnOf,
+      actionHeldBy: undefined,
+    });
+  }
+
+  /**
+   * Holds the refusal of an open that another omp's lease refused, on the row of the chat it names. It ends once the
+   * list shows that chat's lease free (see `commit`), or at the next action.
+   */
+  public setHeldError(message: string, heldBy: ThreadId): void {
+    this.commit({ actionError: message, actionTurnOf: undefined, actionHeldBy: heldBy });
   }
 
   /**
@@ -615,7 +634,15 @@ export class SessionCatalogModel {
 
   private commit(patch: Partial<CatalogSnapshot>): void {
     const next = { ...this.snapshot, ...patch };
-    if (next.sessions !== this.snapshot.sessions) next.sessions = Object.freeze([...next.sessions]);
+    if (next.sessions !== this.snapshot.sessions) {
+      next.sessions = Object.freeze([...next.sessions]);
+      // The list shows the held chat's lease free: the other omp is gone, so its refusal no longer applies.
+      const held = next.sessions.find((session) => session.id === next.actionHeldBy);
+      if (next.actionHeldBy !== undefined && held?.liveness.lease === "free") {
+        next.actionError = undefined;
+        next.actionHeldBy = undefined;
+      }
+    }
     this.snapshot = Object.freeze(next);
     for (const listener of this.listeners) listener(this.snapshot);
   }

@@ -572,6 +572,99 @@ describe("SessionCatalogModel reconciliation", () => {
     );
   });
 
+  const HELD_REFUSAL =
+    "This chat is open in another omp, for example in a terminal. Close it there, then open it here.";
+
+  test("a refusal of an open another omp's lease refused stays while that lease is held", async () => {
+    const held = {
+      ...session("one", "2026-10-03T00:00:00.000Z"),
+      liveness: { lease: "held" as const, serverProcess: false },
+    };
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [held], nextCursor: null }),
+        readSessionRow: async () => ({ ...held, title: "Renamed while held" }),
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    model.setHeldError(HELD_REFUSAL, held.id);
+
+    await model.reconcile({ folder, sessionFile: held.sessionFile, id: held.id, kind: "updated" });
+
+    expect(model.getSnapshot().actionError).toBe(HELD_REFUSAL);
+    expect(model.getSnapshot().actionHeldBy).toBe(held.id);
+  });
+
+  test("a refusal of an open another omp's lease refused ends once the list shows that lease free", async () => {
+    const held = {
+      ...session("one", "2026-10-03T00:00:00.000Z"),
+      liveness: { lease: "held" as const, serverProcess: false },
+    };
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [held], nextCursor: null }),
+        readSessionRow: async () => ({
+          ...held,
+          liveness: { lease: "free" as const, serverProcess: false },
+        }),
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    model.setHeldError(HELD_REFUSAL, held.id);
+
+    await model.reconcile({ folder, sessionFile: held.sessionFile, id: held.id, kind: "updated" });
+
+    expect(model.getSnapshot().actionError).toBeUndefined();
+    expect(model.getSnapshot().actionHeldBy).toBeUndefined();
+  });
+
+  test("a lease the list cannot tell is free does not end a refusal of an open", async () => {
+    const held = {
+      ...session("one", "2026-10-03T00:00:00.000Z"),
+      liveness: { lease: "held" as const, serverProcess: false },
+    };
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [held], nextCursor: null }),
+        readSessionRow: async () => ({
+          ...held,
+          title: "Renamed while unknown",
+          liveness: { lease: "unknown" as const, serverProcess: false },
+        }),
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    model.setHeldError(HELD_REFUSAL, held.id);
+
+    await model.reconcile({ folder, sessionFile: held.sessionFile, id: held.id, kind: "updated" });
+
+    expect(model.getSnapshot().actionError).toBe(HELD_REFUSAL);
+  });
+
+  test("the next action ends a refusal of an open another omp's lease refused", async () => {
+    const held = {
+      ...session("one", "2026-10-03T00:00:00.000Z"),
+      liveness: { lease: "held" as const, serverProcess: false },
+    };
+    const model = new SessionCatalogModel({
+      scope,
+      sessionFiles: {
+        listSessions: async () => ({ sessions: [held], nextCursor: null }),
+        readSessionRow: async () => held,
+      },
+    });
+    await model.list({ filter: { scope, query: "" }, limit: 20 });
+    model.setHeldError(HELD_REFUSAL, held.id);
+
+    model.setActionError(undefined);
+
+    expect(model.getSnapshot().actionError).toBeUndefined();
+    expect(model.getSnapshot().actionHeldBy).toBeUndefined();
+  });
+
   test("a changed chat that does not match the search is not added to the results", async () => {
     const match = session("alpha", "2026-10-03T00:00:00.000Z");
     const other = session("beta", "2026-10-04T00:00:00.000Z");
