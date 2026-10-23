@@ -321,6 +321,12 @@ export class SessionFileStore {
   readonly #cwds = new Map<string, { size: number; mtimeMs: number; cwd: string | undefined }>();
   /** The facts each chat file's listing read. They are kept in the app data folder between starts when it is set. */
   readonly #cache: SummaryCache;
+  /**
+   * The file each chat a folder listing has shown was found at, by id. omp reads a folder's own bucket by its path, which
+   * follows a symlinked bucket; only its all-folders scans skip one. Opening a chat that only its folder shows uses the
+   * file that listing found, and an entry is checked against that file before it is used (see `#candidatesFor`).
+   */
+  readonly #listedFiles = new Map<string, string>();
   /** The bytes a listing has in flight, and how many files: see `read-budget.ts`. */
   readonly #budget = new ReadBudget();
   /** The bytes the background refreshes have in flight: their own budget, so that a refresh never holds up a listing. */
@@ -456,6 +462,11 @@ export class SessionFileStore {
       parseWarnings.push(...outcome.parseWarnings);
       if (outcome.file) sessions.push(outcome.file);
     }
+    // A folder's listing keeps the file each chat was found at, so opening the chat does not depend on its bucket being a
+    // real directory (see `#listedFiles`).
+    if (args.folder !== undefined) {
+      for (const session of sessions) this.#listedFiles.set(session.id, session.sessionFile);
+    }
     const last = page.at(-1);
     return {
       sessions,
@@ -513,7 +524,7 @@ export class SessionFileStore {
    * every session on the machine).
    */
   async findSession(sessionId: string): Promise<SessionFile | undefined> {
-    const candidates = await this.#candidates(undefined, []);
+    const candidates = await this.#candidatesFor(sessionId, true);
     const named = candidates.filter((candidate) =>
       path.basename(candidate.file).includes(sessionId),
     );
@@ -537,7 +548,7 @@ export class SessionFileStore {
   async resolveThread(
     sessionId: string,
   ): Promise<{ readonly cwd: string; readonly sessionFile: string } | undefined> {
-    const candidates = await this.#candidates(undefined, [], false);
+    const candidates = await this.#candidatesFor(sessionId, false);
     const named = candidates.filter((candidate) =>
       path.basename(candidate.file).includes(sessionId),
     );
@@ -781,7 +792,8 @@ export class SessionFileStore {
   async #listedSessionFile(value: string): Promise<string> {
     const sessionFile = normalizeSessionFile(value);
     const candidates = await this.#candidates(undefined, []);
-    if (!candidates.some((candidate) => candidate.file === sessionFile)) {
+    const listed = [...this.#listedFiles.values()].includes(sessionFile);
+    if (!listed && !candidates.some((candidate) => candidate.file === sessionFile)) {
       throw appFailure("not_found", "Session file is not listed", false);
     }
     return sessionFile;
@@ -977,6 +989,29 @@ export class SessionFileStore {
     // Newest first, then by base name and tag: the order every listing cursor is a place in.
     candidates.sort(newestFirst);
     return candidates;
+  }
+
+  /**
+   * The global candidates, with the file a folder listing found for this id put first when the global scan does not list
+   * it. The global scan skips a bucket that is a symlink, as omp's all-folders scans do, so a chat that only its folder
+   * shows is opened from the file that listing found. The entry is dropped when that file is gone.
+   */
+  async #candidatesFor(sessionId: string, withActivity: boolean): Promise<SessionCandidate[]> {
+    const candidates = await this.#candidates(undefined, [], withActivity);
+    const listed = this.#listedFiles.get(sessionId);
+    if (listed === undefined || candidates.some((candidate) => candidate.file === listed)) {
+      return candidates;
+    }
+    let candidate: SessionCandidate;
+    try {
+      const real = await fs.realpath(listed);
+      candidate = await this.#candidateOf(listed, real, await fs.stat(listed), withActivity);
+    } catch {
+      // A file that is gone, or cannot be read, is not offered, and its record goes with it.
+      this.#listedFiles.delete(sessionId);
+      return candidates;
+    }
+    return [candidate, ...candidates];
   }
 
   /** A listing's view of a stat-ed file. Its update time is read unless the caller does not need it. */
