@@ -9,7 +9,7 @@ import { ShortcutRegistryProvider } from "@/shortcuts";
 import { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
 import { R1_DESCRIPTORS } from "../descriptors";
-import { createNativeRemoteThreadListAdapter } from "../remote";
+import { createNativeRemoteThreadListAdapter, type RemoteInitializeOptions } from "../remote";
 import { SessionCatalogSidebar as Sidebar } from ".";
 
 afterEach(cleanup);
@@ -114,6 +114,25 @@ function fakeRemote(calls: string[]): ComponentProps<typeof SessionCatalogSideba
   };
 }
 
+/** The runtime's initialize as the adapter runs it: its open reaches omp only once the page's pick has answered yes. */
+function gatedRemote(calls: string[]): ComponentProps<typeof SessionCatalogSidebar>["remote"] {
+  return {
+    ...fakeRemote(calls),
+    initialize: async (id: string, options?: RemoteInitializeOptions) => {
+      calls.push(`initialize:${id}`);
+      if (options?.after !== undefined && !(await options.after)) {
+        throw new AppFailure({
+          code: "cancelled",
+          message: "Not opened by the page",
+          retryable: false,
+        });
+      }
+      calls.push(`runtime-open:${id}`);
+      return { remoteId: id };
+    },
+  };
+}
+
 function renderSidebar(
   overrides: Partial<ComponentProps<typeof SessionCatalogSidebar>> & {
     readonly renameAvailable?: boolean;
@@ -185,6 +204,110 @@ describe("SessionCatalogSidebar", () => {
       finishOpen();
     });
     await waitFor(() => expect(opened).toEqual(["new"]));
+  });
+  test("the page opens a picked chat first; the runtime's open waits for the page's answer", async () => {
+    const calls: string[] = [];
+    const pageOpen = Promise.withResolvers<boolean>();
+    renderSidebar({
+      remote: gatedRemote(calls),
+      onOpenThread: async (threadId) => {
+        calls.push(`open:${threadId}`);
+        return pageOpen.promise;
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Old chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    // The runtime numbers its pick at the click; its open waits for the page's answer.
+    await waitFor(() => expect(calls).toEqual(["open:old", "initialize:old"]));
+    pageOpen.resolve(true);
+    await waitFor(() => expect(calls).toEqual(["open:old", "initialize:old", "runtime-open:old"]));
+  });
+  test("a chat the page did not open is not opened by the runtime, and the pick is over", async () => {
+    const calls: string[] = [];
+    const pageOpen = Promise.withResolvers<boolean>();
+    renderSidebar({
+      remote: gatedRemote(calls),
+      onOpenThread: async (threadId) => {
+        calls.push(`open:${threadId}`);
+        return pageOpen.promise;
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Old chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    await waitFor(() => expect(calls).toEqual(["open:old", "initialize:old"]));
+    pageOpen.resolve(false);
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: /Old chat/ }).getAttribute("aria-selected")).toBe(
+        "false",
+      ),
+    );
+    expect(calls).toEqual(["open:old", "initialize:old"]);
+  });
+  test("a pick made while another pick's chat opens leaves the earlier pick's runtime open unsent", async () => {
+    const calls: string[] = [];
+    const earlierOpen = Promise.withResolvers<boolean>();
+    renderSidebar({
+      remote: gatedRemote(calls),
+      onOpenThread: async (threadId) => {
+        calls.push(`open:${threadId}`);
+        return threadId === "old" ? earlierOpen.promise : true;
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    await waitFor(() => expect(calls).toEqual(["open:old", "initialize:old"]));
+    fireEvent.click(screen.getByRole("option", { name: /Newest chat/ }));
+    const expected = [
+      "open:old",
+      "initialize:old",
+      "open:new",
+      "initialize:new",
+      "runtime-open:new",
+    ];
+    await waitFor(() => expect(calls).toEqual(expected));
+    await act(async () => {
+      earlierOpen.resolve(true);
+    });
+    expect(calls).toEqual(expected);
+  });
+  test("a New chat clicked during a picked chat's page open becomes the chat on screen", async () => {
+    const catalog = modelWithSessions([
+      session("thread-old", "2026-10-01T00:00:00.000Z", "Old chat"),
+      session("thread-newest", "2026-10-03T00:00:00.000Z", "Newest chat"),
+    ]);
+    const pageOpen = Promise.withResolvers<boolean>();
+    const selected: string[] = [];
+    const newChatOpened: string[] = [];
+    const remote = createNativeRemoteThreadListAdapter({
+      catalog,
+      open: async (args) => {
+        const threadId = "threadId" in args ? args.threadId : ThreadIdSchema.parse("thread-new");
+        return {
+          threadId,
+          sessionFile:
+            `/workspace/project/.omp/${threadId}.jsonl` as SessionMetadata["sessionFile"],
+          capabilities: {},
+        };
+      },
+      onThreadIdChange: (threadId) => {
+        if (threadId) selected.push(threadId);
+      },
+    });
+    renderSidebar({
+      catalog,
+      remote,
+      onOpenThread: async (threadId) => (threadId === "thread-old" ? pageOpen.promise : true),
+      onNewChat: async (threadId) => {
+        newChatOpened.push(threadId);
+      },
+    });
+    await waitFor(() => expect(screen.getByText("Old chat")).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Old chat/ }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await waitFor(() => expect(newChatOpened).toEqual(["thread-new"]));
+    pageOpen.resolve(true);
+    await waitFor(() => expect(remote.getCurrentThreadId()).toBe("thread-new"));
+    expect(selected).toEqual(["thread-new"]);
   });
   test("reloads the catalog when a branch becomes the active chat before its row is listed", async () => {
     const source = session("source", "2026-10-05T00:00:00.000Z", "Source session");
@@ -2140,8 +2263,11 @@ describe("SessionCatalogSidebar focus across a refresh", () => {
     const catalog = modelFrom(state);
     renderSidebar({ catalog });
     await waitFor(() => expect(screen.getByRole("option", { name: /New chat/ })).toBeTruthy());
-    screen.getByRole("option", { name: /New chat/ }).focus();
+    const row = screen.getByRole("option", { name: /New chat/ });
+    row.focus();
     fireEvent.pointerDown(document.body);
+    // A press outside moves focus out of the row, as a browser does; jsdom dispatches the event but does not move focus.
+    row.blur();
     state.files = [session("first-reply", "2026-10-05T00:00:00.000Z", "First reply")];
     state.running = [];
     await refresh(catalog);

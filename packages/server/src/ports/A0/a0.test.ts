@@ -273,6 +273,8 @@ interface FakeStartup {
   readonly extraState?: Record<string, unknown>;
   readonly startupFrames?: readonly Record<string, unknown>[];
   readonly cancelNewSession?: boolean;
+  readonly holdReady?: boolean;
+  readonly onCreate?: (process: FakeProcess) => void;
 }
 
 function context(
@@ -287,7 +289,9 @@ function context(
         process.extraState = { ...startup.extraState };
         process.startupFrames = [...(startup.startupFrames ?? [])];
         process.cancelNewSession = startup.cancelNewSession ?? false;
+        process.holdReady = startup.holdReady ?? false;
         created.push(process);
+        startup.onCreate?.(process);
         return process;
       },
     }),
@@ -1010,6 +1014,53 @@ describe("A0.7 RpcSessionPort handlers", () => {
     expect(slowContext.processRegistry.has(authorityThread)).toBe(false);
   });
 
+  test("an open cancelled after omp started stops the omp it started, when no other view watches it", async () => {
+    const created: FakeProcess[] = [];
+    const spawned = Promise.withResolvers<FakeProcess>();
+    const runtimeContext = context(created, undefined, {
+      holdReady: true,
+      onCreate: (process) => spawned.resolve(process),
+    });
+    const handlers = handlersFor(runtimeContext, 0);
+    const controller = new AbortController();
+    const opened = getHandler(handlers, "open")(
+      { threadId: authorityThread },
+      { ...call("tab"), signal: controller.signal },
+    );
+    // omp is spawned and waits for its ready frame: a pick supersedes this open while it starts.
+    const omp = await spawned.promise;
+    controller.abort("superseded");
+    omp.sendReady();
+
+    await expect(opened).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    expect(omp.status).toBe("stopped");
+    expect(runtimeContext.processRegistry.has(authorityThread)).toBe(false);
+  });
+
+  test("an open cancelled after omp started leaves omp running for another view that opened the chat meanwhile", async () => {
+    const created: FakeProcess[] = [];
+    const spawned = Promise.withResolvers<FakeProcess>();
+    const runtimeContext = context(created, undefined, {
+      holdReady: true,
+      onCreate: (process) => spawned.resolve(process),
+    });
+    const handlers = handlersFor(runtimeContext, 0);
+    const controller = new AbortController();
+    const opened = getHandler(handlers, "open")(
+      { threadId: authorityThread },
+      { ...call("tab"), signal: controller.signal },
+    );
+    const omp = await spawned.promise;
+    // Another tab opens the same chat while omp starts: it is a second view of that omp.
+    await getHandler(handlers, "open")({ threadId: authorityThread }, call("other"));
+    controller.abort("superseded");
+    omp.sendReady();
+
+    await expect(opened).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    expect(omp.status).not.toBe("stopped");
+    expect(runtimeContext.processRegistry.has(authorityThread)).toBe(true);
+  });
+
   test("rekeys after branch: the new id opens the same process", async () => {
     const created: FakeProcess[] = [];
     const runtimeContext = context(created);
@@ -1524,6 +1575,80 @@ describe("A0.7 RpcSessionPort handlers", () => {
     await reopened;
     expect(created).toHaveLength(2);
     expect(first.status).toBe("stopped");
+  });
+
+  test("opening a chat whose omp is still stopping resumes the chat's file, not its first start (issue 2212)", async () => {
+    const created: FakeProcess[] = [];
+    const { registration, open } = withIdleClose(created, 20);
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    const first = created[0];
+    if (first === undefined) throw new Error("no process was started");
+    const exit = Promise.withResolvers<void>();
+    const stopCalled = Promise.withResolvers<void>();
+    first.stopGate = exit.promise;
+    const stopOmp = first.stop.bind(first);
+    first.stop = () => {
+      stopCalled.resolve();
+      return stopOmp();
+    };
+
+    await registration.onConnectionClosed?.("one");
+    await stopCalled.promise;
+    const picked = open({ threadId: authorityThread }, call("two"));
+    expect(created).toHaveLength(1);
+
+    exit.resolve();
+    await picked;
+    expect(created).toHaveLength(2);
+    expect(created[1]?.args).toEqual(["--resume", authorityFile]);
+  });
+
+  test("release, then reopen at once: the reopen waits for the old omp to exit, is not refused, and one omp runs at a time (issue 2212)", async () => {
+    const created: FakeProcess[] = [];
+    let oldOmpRunning = false;
+    const processRegistry = new OmpProcessRegistry({
+      idleCloseMs: 20,
+      createProcess: (options: OmpProcessOptions) => {
+        const process = new FakeProcess(options, {
+          threadId: authorityThread,
+          sessionFile: authorityFile,
+        });
+        created.push(process);
+        return process;
+      },
+    });
+    const registration = createA0PortRegistrations({
+      ...context(created),
+      processRegistry,
+      // The chat's lease reads held while its omp runs, and an omp that is stopping still runs.
+      leaseProbe: async () => (oldOmpRunning ? "active" : "inactive"),
+    })[0];
+    if (registration === undefined) throw new Error("missing registration");
+    const open = getHandler(registration.handlers as HandlerSet, "open");
+    await open({ folderPath: folder, start: "new" }, call("one"));
+    const first = created[0];
+    if (first === undefined) throw new Error("no process was started");
+    oldOmpRunning = true;
+    const exit = Promise.withResolvers<void>();
+    const stopCalled = Promise.withResolvers<void>();
+    first.stopGate = exit.promise;
+    const stopOmp = first.stop.bind(first);
+    first.stop = async () => {
+      stopCalled.resolve();
+      await stopOmp();
+      oldOmpRunning = false;
+    };
+
+    await registration.onConnectionClosed?.("one");
+    await stopCalled.promise;
+    // The reopen comes at once, while the old omp is still stopping: it waits for that omp to exit, then starts one omp.
+    const reopened = open({ threadId: authorityThread }, call("two"));
+    expect(created).toHaveLength(1);
+
+    exit.resolve();
+    await reopened;
+    expect(created).toHaveLength(2);
+    expect(created[1]?.args).toEqual(["--resume", authorityFile]);
   });
 
   test("opening a chat whose old omp does not stop in time is refused, and the open does not wait for ever", async () => {

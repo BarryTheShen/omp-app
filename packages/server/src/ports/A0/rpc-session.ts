@@ -335,6 +335,9 @@ export class RpcSessionPortRuntime {
     if (this.#context.health.status !== "ok") {
       throw unavailable(this.#context.health.detail ?? "omp is unavailable");
     }
+    // A chat whose omp is stopping keeps its entry, and that entry's bootstrap is from when the chat was first started (no
+    // --resume). The stop is waited for before the bootstrap is read, so the open resumes the chat's file (issue 2212).
+    if ("threadId" in args) await this.#context.processRegistry.whenGone(args.threadId, "opened");
     const bootstrap = await this.#resolveBootstrap(args, call);
     // A process the registry is stopping for this thread holds the session's lease until it exits.
     await this.#context.processRegistry.whenGone(bootstrap.threadId, "opened");
@@ -399,6 +402,14 @@ export class RpcSessionPortRuntime {
     try {
       await process.start();
       await session.start();
+      // A newer pick superseded this open while omp started: the open ends here, and the catch below lets its view go.
+      if (call.signal.aborted) {
+        throw new AppFailure({
+          code: "cancelled",
+          message: "Opening the chat was cancelled.",
+          retryable: false,
+        });
+      }
       let state = await session.send({ type: "get_state" });
       if ("start" in args && args.start === "new" && hasMessages(state)) {
         // `start: "new"` launches without --continue, but omp's autoResume setting can still restore the
@@ -417,6 +428,15 @@ export class RpcSessionPortRuntime {
       }
       await this.#rekeyEntry(entry, "threadId" in args ? args.threadId : undefined, state);
     } catch (error) {
+      // A cancelled open leaves a chat another view still watches running: only this open's view goes.
+      const otherViews = [...entry.viewers].reduce(
+        (sum, [id, count]) => sum + (id === call.connectionId ? count - 1 : count),
+        0,
+      );
+      if (call.signal.aborted && otherViews > 0) {
+        this.#releaseView(entry, call.connectionId);
+        throw error;
+      }
       await session.close();
       this.#dropEntry(entry);
       // The process that failed is stopped and forgotten now: the next open starts omp again, and does not reuse it.
@@ -1260,6 +1280,16 @@ export class RpcSessionPortRuntime {
 
   #addViewer(entry: ThreadEntry, connectionId: string): void {
     entry.viewers.set(connectionId, (entry.viewers.get(connectionId) ?? 0) + 1);
+  }
+
+  /** Lets go of one open's view of a chat, as `close` does: the chat's omp stays for any other view. */
+  #releaseView(entry: ThreadEntry, connectionId: string): void {
+    const count = entry.viewers.get(connectionId) ?? 0;
+    if (count === 0) return;
+    if (count === 1) entry.viewers.delete(connectionId);
+    else entry.viewers.set(connectionId, count - 1);
+    entry.preferences.delete(connectionId);
+    this.#context.processRegistry.release(entry.bootstrap.threadId);
   }
 
   /** Forgets an entry whose open failed, and lets go of the process it acquired. */

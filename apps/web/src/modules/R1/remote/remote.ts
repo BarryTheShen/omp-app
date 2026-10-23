@@ -85,11 +85,25 @@ function isNewThreadId(threadId: string): boolean {
   return threadId === "new" || threadId.startsWith("new:") || threadId.startsWith("local:");
 }
 
-function initialized(result: OpenThreadResult): RemoteThreadInitializeResponse {
+function initialized(result: OpenThreadResult | LoadedThread): RemoteThreadInitializeResponse {
   return {
     remoteId: result.threadId,
-    ...(result.sessionFile ? { externalId: result.sessionFile } : {}),
+    ...("sessionFile" in result && result.sessionFile ? { externalId: result.sessionFile } : {}),
   };
+}
+
+/** The chat the page already holds: a pick for it opens nothing on omp (issue 1359). */
+interface LoadedThread {
+  readonly threadId: ThreadId;
+}
+
+/** How a pick's open waits for the page that holds the chat (see `initialize`). */
+export interface RemoteInitializeOptions {
+  /**
+   * Settles once the page has answered the pick: `true` when the page opened the chat and it is still the one picked;
+   * `false` when the page refused it or the person has moved on. The open reaches omp only on `true`.
+   */
+  readonly after?: Promise<boolean>;
 }
 
 /**
@@ -146,17 +160,27 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
    * in flight shares that open, but not once a later open has started: the newest pick is the one to open.
    * The chat already loaded returns with no request while the newest open has finished: picking it sends nothing to
    * omp (issue 1359).
+   * `options.after` takes this pick's number now, so the picks keep the order of the clicks; the open waits for it.
    */
-  public initialize(threadId: string): Promise<RemoteThreadInitializeResponse> {
+  public initialize(
+    threadId: string,
+    options: RemoteInitializeOptions = {},
+  ): Promise<RemoteThreadInitializeResponse> {
     const loaded = this.options.loadedThreadId?.();
     // The loaded chat's session file is not read again, so no externalId comes back. Nothing in the app reads one here.
-    if (loaded !== undefined && loaded === threadId && this.requests === this.finishedRequest) {
+    // A gated pick decides this once the page has answered (see `open`).
+    if (
+      options.after === undefined &&
+      loaded !== undefined &&
+      loaded === threadId &&
+      this.requests === this.finishedRequest
+    ) {
       this.currentThreadId = loaded;
       return Promise.resolve({ remoteId: loaded });
     }
     const existing = this.initializations.get(threadId);
     if (existing && existing.request === this.requests) return existing.task;
-    const task = this.open(threadId).then(initialized);
+    const task = this.open(threadId, options.after).then(initialized);
     // `open` takes its number as its first step, so the counter holds the number of this open now.
     const entry = { task, request: this.requests };
     this.initializations.set(threadId, entry);
@@ -232,7 +256,7 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
    * once and opens it no more. A New chat no caller adopts is let go when the next open finishes.
    */
   public startNew(): Promise<OpenThreadResult> {
-    return this.open("new", true);
+    return this.open("new", undefined, true);
   }
 
   /**
@@ -256,10 +280,21 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
   /**
    * Opens one pick. Picks can finish out of order: a new chat waits for omp to start, while a chat that is
    * already running opens at once. A pick that finishes after a later pick has already finished is let go and
-   * never selected, because the person made the later pick last. A pick that fails counts as a later pick too. A New chat
+   * never selected, because the person made the later pick last. A pick that fails counts as a later pick too.
+   * A pick whose `after` settles false opens nothing on omp: it ends cancelled, and counts as a later pick too. A New chat
    * opened for its caller (`forAdoption`, see `startNew`) keeps its hold until `adopt` takes it.
    */
-  private async open(threadId: string, forAdoption = false): Promise<OpenThreadResult> {
+  private open(threadId: string, after: undefined, forAdoption: true): Promise<OpenThreadResult>;
+  private open(
+    threadId: string,
+    after?: Promise<boolean>,
+    forAdoption?: boolean,
+  ): Promise<OpenThreadResult | LoadedThread>;
+  private async open(
+    threadId: string,
+    after?: Promise<boolean>,
+    forAdoption = false,
+  ): Promise<OpenThreadResult | LoadedThread> {
     const request = ++this.requests;
     try {
       let args: OpenThreadArgs;
@@ -275,6 +310,30 @@ export class NativeRemoteThreadListAdapter implements RemoteThreadListAdapter {
         args = { folderPath: filter.scope.folder, start: "new" };
       } else {
         args = { threadId: this.parseThreadId(threadId) };
+      }
+      // omp is asked to open the chat only once the page has answered yes: the page's view registers first, so
+      // letting the runtime's own view go cannot drop the chat.
+      if (after !== undefined && !(await after)) {
+        throw new AppFailure({
+          code: "cancelled",
+          message: "The page did not open this chat, so omp was not asked to open it.",
+          retryable: false,
+        });
+      }
+      // The page has answered, and the chat it holds is the loaded one with no other open in flight: nothing is sent to
+      // omp (issue 1359), as when the pick found the newest open finished.
+      const loaded = this.options.loadedThreadId?.();
+      if (
+        after !== undefined &&
+        loaded !== undefined &&
+        loaded === threadId &&
+        this.requests === request &&
+        this.finishedRequest === request - 1
+      ) {
+        this.finishedRequest = request;
+        this.currentThreadId = loaded;
+        this.letGoAdoptable();
+        return { threadId: loaded };
       }
       const result = await this.options.open(args);
       const nextThreadId = ThreadIdSchema.parse(result.threadId);

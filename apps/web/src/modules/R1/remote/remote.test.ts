@@ -310,6 +310,92 @@ describe("NativeRemoteThreadListAdapter", () => {
     expect(released).toContain(threadTwo);
   });
 
+  test("a pick's open waits for the page: nothing reaches omp until the page has opened the chat", async () => {
+    const opened: OpenThreadArgs[] = [];
+    const page = Promise.withResolvers<boolean>();
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args: OpenThreadArgs) => {
+        opened.push(args);
+        return openResult(threadOne);
+      },
+    });
+    const picked = adapter.initialize(threadOne, { after: page.promise });
+    expect(opened).toEqual([]);
+    page.resolve(true);
+    await expect(picked).resolves.toMatchObject({ remoteId: threadOne });
+    expect(opened).toEqual([{ threadId: threadOne }]);
+  });
+
+  test("a pick the page did not open opens nothing on omp; the chat picked next is selected", async () => {
+    const opened: OpenThreadArgs[] = [];
+    const selected: ThreadId[] = [];
+    const page = Promise.withResolvers<boolean>();
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args: OpenThreadArgs) => {
+        opened.push(args);
+        return openResult("threadId" in args ? args.threadId : threadTwo);
+      },
+      onThreadIdChange: (threadId) => {
+        if (threadId) selected.push(threadId);
+      },
+    });
+    const refused = adapter.initialize(threadOne, { after: page.promise });
+    const next = await adapter.initialize(threadTwo);
+    page.resolve(false);
+    await expect(refused).rejects.toMatchObject({ appError: { code: "cancelled" } });
+    expect(next.remoteId).toBe(threadTwo);
+    expect(opened).toEqual([{ threadId: threadTwo }]);
+    expect(selected).toEqual([threadTwo]);
+  });
+
+  test("a New chat clicked during a pick's page open keeps its place, even if the pick finishes first", async () => {
+    const newChatOpen = Promise.withResolvers<OpenThreadResult>();
+    const page = Promise.withResolvers<boolean>();
+    const selected: ThreadId[] = [];
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      open: async (args: OpenThreadArgs) =>
+        "threadId" in args ? openResult(args.threadId) : newChatOpen.promise,
+      onThreadIdChange: (threadId) => {
+        if (threadId) selected.push(threadId);
+      },
+    });
+    // The pick takes its number at the click, before the New chat does; its open waits for the page's answer.
+    const picked = adapter.initialize(threadOne, { after: page.promise });
+    const newChat = adapter.initialize("new");
+    page.resolve(true);
+    await expect(picked).resolves.toMatchObject({ remoteId: threadOne });
+    newChatOpen.resolve(openResult(threadTwo));
+    await expect(newChat).resolves.toMatchObject({ remoteId: threadTwo });
+    expect(selected).toEqual([threadOne, threadTwo]);
+    expect(adapter.getCurrentThreadId()).toBe(threadTwo);
+  });
+
+  test("a pick of the chat already loaded sends nothing once the page answers, though an open was in flight", async () => {
+    const opened: OpenThreadArgs[] = [];
+    const earlierOpen = Promise.withResolvers<OpenThreadResult>();
+    const page = Promise.withResolvers<boolean>();
+    const adapter = createNativeRemoteThreadListAdapter({
+      catalog: catalogSource([]),
+      loadedThreadId: () => threadOne,
+      open: async (args: OpenThreadArgs) => {
+        opened.push(args);
+        return "threadId" in args && args.threadId === threadTwo
+          ? earlierOpen.promise
+          : openResult(threadOne);
+      },
+    });
+    const earlier = adapter.initialize(threadTwo);
+    const picked = adapter.initialize(threadOne, { after: page.promise });
+    earlierOpen.resolve(openResult(threadTwo));
+    await expect(earlier).resolves.toMatchObject({ remoteId: threadTwo });
+    page.resolve(true);
+    await expect(picked).resolves.toMatchObject({ remoteId: threadOne });
+    expect(opened).toEqual([{ threadId: threadTwo }]);
+  });
+
   test("a chat picked after one that already finished is selected, and both are applied in order", async () => {
     const selected: ThreadId[] = [];
     const adapter = createNativeRemoteThreadListAdapter({

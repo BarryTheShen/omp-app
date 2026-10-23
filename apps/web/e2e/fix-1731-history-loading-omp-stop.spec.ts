@@ -154,7 +154,10 @@ realTest(
     ).toContainText(firstChatTitle);
     await expect.poll(() => releaseHeldEntries !== undefined, { timeout: 60_000 }).toBe(true);
     expect(realApp.ompProcesses()).toContain(firstProcess);
-    await expect(transcript.getByText("ping second", { exact: true })).toHaveCount(1);
+    // Kind: waits for the picked chat's history read, which this test holds, and then kills its omp. Since issue 2212 the
+    // picked chat shows at the click, so while the read is held its opening state shows and the chat left is not on screen.
+    await expect(page.getByText("Opening session…").first()).toBeVisible();
+    await expect(transcript.getByText("ping second", { exact: true })).toHaveCount(0);
 
     process.kill(firstProcess, "SIGSTOP");
     releaseHeldEntries?.();

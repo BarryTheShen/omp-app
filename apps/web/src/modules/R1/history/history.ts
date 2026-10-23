@@ -82,6 +82,24 @@ function asFailure(error: unknown, fallback: string): AppFailure {
   );
 }
 
+/** The opens a newer pick superseded: their failures say so, so the chat the person picked last is the one shown. */
+const supersededOpens = new WeakSet<AppFailure>();
+
+function supersededOpen(): AppFailure {
+  const failure = new AppFailure({
+    code: "cancelled",
+    message: "Opening the chat was superseded by a newer pick.",
+    retryable: false,
+  });
+  supersededOpens.add(failure);
+  return failure;
+}
+
+/** Whether an open failed because a newer pick superseded it (see `openExisting`). */
+export function isSupersededOpen(error: unknown): boolean {
+  return error instanceof AppFailure && supersededOpens.has(error);
+}
+
 function unavailable(message: string): AppFailure {
   return new AppFailure({
     code: "unavailable",
@@ -170,6 +188,10 @@ export class SelectedThreadHistoryController {
   private pendingOpen:
     | { readonly threadId: ThreadId; readonly open: Promise<OmpRuntimeStore> }
     | undefined;
+  /** The pick most recently asked for, and its controller: a pick for another chat that is still pending is cancelled (see `openExisting`). */
+  private pickAbort:
+    | { readonly threadId: ThreadId; readonly controller: AbortController }
+    | undefined;
   /** Closes asked for so far. An open that began before a close must not save its chat as the open one (see `openNow`). */
   private closes = 0;
 
@@ -191,30 +213,40 @@ export class SelectedThreadHistoryController {
 
   /**
    * Opens an existing chat. Several requests for the chat while its open is pending share that open: a button clicked
-   * ten times used to close and reopen the chat ten times (issue 922). A request for another chat in between starts its own
-   * open, so the last pick is the one shown. A model picked for a chat omp could not restore opens it as a fresh open, and is
-   * remembered: when omp refuses the chat's saved model again, the chat opens with the model remembered for it.
+   * ten times used to close and reopen the chat ten times (issue 922). A request for another chat in between cancels the
+   * open before it, so the last pick is the one shown: a chat omp was not yet asked for is never asked (issue 2212). A
+   * model picked for a chat omp could not restore opens it as a fresh open, and is remembered: when omp refuses the
+   * chat's saved model again, the chat opens with the model remembered for it.
    */
   public openExisting(threadId: ThreadId, model?: ModelChoice): Promise<OmpRuntimeStore> {
     if (model !== undefined) return this.openWithModel(threadId, model);
     const pending = this.pendingOpen;
     if (pending !== undefined && pending.threadId === threadId) return pending.open;
+    // A pick supersedes the pick before it for another chat: that pick is cancelled, and if omp was not yet asked for it,
+    // it never reaches omp. A pick for the same chat is not cancelled (issue 2212).
+    const superseded = this.pickAbort;
+    if (superseded !== undefined && superseded.threadId !== threadId) superseded.controller.abort();
+    const pickAbort = { threadId, controller: new AbortController() };
+    this.pickAbort = pickAbort;
     // Keep the current transcript mounted while a sidebar selection opens another chat: the sessions list lives in the
     // same shell and must not remount its rows for the duration of the switch.
     const keepShown = this.state.store !== undefined && this.state.threadId !== undefined;
-    const open = this.open({ threadId }, keepShown).catch((error: unknown) => {
-      // omp refuses a chat whose saved model is gone. The model remembered for the chat, if any, opens it.
-      const picked =
-        asFailure(error, "").appError.code === "model_unavailable"
-          ? pickedModelFor(threadId)
-          : undefined;
-      if (picked === undefined) throw error;
-      return this.openWithModel(threadId, picked);
-    });
+    const open = this.open({ threadId }, keepShown, false, pickAbort.controller.signal).catch(
+      (error: unknown) => {
+        // omp refuses a chat whose saved model is gone. The model remembered for the chat, if any, opens it.
+        const picked =
+          asFailure(error, "").appError.code === "model_unavailable"
+            ? pickedModelFor(threadId)
+            : undefined;
+        if (picked === undefined) throw error;
+        return this.openWithModel(threadId, picked);
+      },
+    );
     const entry = { threadId, open };
     this.pendingOpen = entry;
     const settle = (): void => {
       if (this.pendingOpen === entry) this.pendingOpen = undefined;
+      if (this.pickAbort === pickAbort) this.pickAbort = undefined;
     };
     void open.then(settle, settle);
     return open;
@@ -403,11 +435,14 @@ export class SelectedThreadHistoryController {
     return this.serialize(() => this.closeNow());
   }
 
-  private async closeNow(keepShown = false): Promise<void> {
+  private async closeNow(
+    keepShown = false,
+    shown: Pick<SelectedThreadHistoryState, "threadId" | "store"> = this.state,
+  ): Promise<void> {
     this.historyRetryThread = undefined;
     // A chat whose turn is still running is kept and watched until the turn ends (issue 935): the list must learn of the
     // row it writes even though the chat is no longer open.
-    const running = this.state.store?.getSnapshot().prompt.streaming === true;
+    const running = shown.store?.getSnapshot().prompt.streaming === true;
     this.loader?.dispose();
     this.stopRefetchWatch?.();
     this.loader = undefined;
@@ -419,15 +454,19 @@ export class SelectedThreadHistoryController {
     this.watchRefused = false;
     const subscription = this.subscription;
     this.subscription = undefined;
-    const releasedThreadId = this.state.threadId;
+    const releasedThreadId = shown.threadId;
     this.reopenedWhileRunning = undefined;
     const watched =
       running && subscription !== undefined && releasedThreadId !== undefined
         ? { threadId: releasedThreadId, subscription }
         : undefined;
     if (watched) this.watchTurnEnd(watched.threadId, watched.subscription);
+    else if (subscription && keepShown)
+      subscription.unsubscribe().catch((error: unknown) => {
+        console.error("[omp-app] could not stop watching a chat", error);
+      });
     else if (subscription) await subscription.unsubscribe();
-    // A chat reopened in place keeps the transcript on screen until its new open commits (see `openNow`).
+    // A pick that opens another chat in place commits that chat next (see `openNow`), so the chat on screen is not cleared here.
     if (!keepShown)
       this.commit({
         threadId: undefined,
@@ -490,6 +529,7 @@ export class SelectedThreadHistoryController {
     args: OpenThreadArgs,
     keepShown = false,
     startedNew = false,
+    signal?: AbortSignal,
   ): Promise<OmpRuntimeStore> {
     // Asking for a chat gives up the chat a dropped connection left. Every request takes a ticket, and an open that
     // fails is recorded for a reopen only while its ticket is the latest: a later pick or close came after it.
@@ -497,9 +537,9 @@ export class SelectedThreadHistoryController {
     const ticket = this.requests;
     this.pendingOpens += 1;
     const settle = this.openSettler();
-    return this.serialize(() => this.openNow(args, settle, ticket, keepShown, startedNew)).finally(
-      settle,
-    );
+    return this.serialize(() =>
+      this.openNow(args, settle, ticket, keepShown, startedNew, signal),
+    ).finally(settle);
   }
 
   /** Ends one open's pending state, once: at its commit, or when it fails. A later call does nothing. */
@@ -519,13 +559,39 @@ export class SelectedThreadHistoryController {
     ticket: number,
     keepShown = false,
     startedNew = false,
+    signal?: AbortSignal,
   ): Promise<OmpRuntimeStore> {
+    // A pick a newer pick superseded before its turn came never reaches omp, and nothing of it is shown (issue 2212).
+    if (signal?.aborted) throw supersededOpen();
     const openedNew = startedNew || ("start" in args && args.start === "new");
     const closesAtStart = this.closes;
     const requested = "threadId" in args ? args.threadId : undefined;
+    // The chat on screen when this open begins. It stays subscribed until omp opens the chat asked for, and it is shown
+    // again if the open fails or a newer pick supersedes this one (issue 2212).
+    const previous = this.state;
+    // A chat picked from a list is shown at the click, before omp answers: its header and its opening state appear at
+    // once, and its store replaces the old one in place, so the rows stay mounted. A chat reopened in place keeps its
+    // transcript until the reopen loads.
+    let clickStore: OmpRuntimeStore | undefined;
+    // The chat last announced to the app (`onThreadIdChange`): one open never announces the same chat twice.
+    let announced: ThreadId | undefined;
     if (!keepShown) {
       await this.closeNow();
       this.commit({ isLoading: true, isSwitching: false, error: null });
+    } else if (requested !== undefined && requested !== previous.threadId) {
+      clickStore = this.options.createStore?.(requested, this.rpc) ?? this.defaultStore(requested);
+      this.commit({
+        threadId: requested,
+        store: clickStore,
+        capabilities: undefined,
+        isLoading: true,
+        isSwitching: true,
+        error: null,
+        openedNew,
+      });
+      if (this.closes === closesAtStart) this.options.onThreadIdChange?.(requested);
+      announced = requested;
+      this.options.onPerfMark?.("first_feedback");
     } else {
       this.commit({ isLoading: true, isSwitching: true, error: null });
     }
@@ -534,30 +600,39 @@ export class SelectedThreadHistoryController {
     let shownStore: OmpRuntimeStore | undefined;
     let openedCapabilities: CapabilityMap | undefined;
     let openedStore: OmpRuntimeStore | undefined;
-    // Set once the new chat is open on omp and the chat on screen has been let go: from then on a failure ends both views.
-    let openedId: ThreadId | undefined;
+    // Set once the chat on screen has been let go: from then on a failure ends both views, as before.
     let oldReleased = false;
+    // Set once omp answered: an abort after that leaves the open to finish, and a newer pick waits behind it.
+    let answered = false;
+    // Set once omp opened the chat: from then on a failure ends both views.
+    let openedId: ThreadId | undefined;
     try {
-      const result = await this.rpc.open(args);
+      const result = await this.rpc.open(args, signal === undefined ? undefined : { signal });
+      answered = true;
       openedCapabilities = result.capabilities;
       this.options.onPerfMark?.("rpc_open_returned");
-      openedId = result.threadId;
       if (keepShown) {
-        await this.closeNow(true);
+        await this.closeNow(true, previous);
         oldReleased = true;
       }
       const threadId = result.threadId;
+      openedId = threadId;
       // A chat left while its turn ran, and opened again now: this open takes over that chat's watch.
       watchHold = this.takeOverTurnWatch(threadId);
       if (watchHold) this.reopenedWhileRunning = threadId;
-      const store = this.options.createStore?.(threadId, this.rpc) ?? this.defaultStore(threadId);
+      // The store shown at the click serves the chat asked for; another chat omp opened gets its own store.
+      const store =
+        clickStore !== undefined && threadId === requested
+          ? clickStore
+          : (this.options.createStore?.(threadId, this.rpc) ?? this.defaultStore(threadId));
+      const shownNow = store === clickStore;
       const loader =
         this.options.createLoader?.(threadId, this.rpc, store) ??
         this.defaultLoader(threadId, store);
       this.loader = loader;
       openedStore = store;
-      // A chat reopened in place keeps its transcript on screen until the new open has its history (no flash).
-      if (!keepShown) {
+      // Shown now unless it was shown at the click, or it reopens in place (its transcript stays until it loads).
+      if (!shownNow && (clickStore !== undefined || !keepShown)) {
         this.commit({
           threadId,
           store,
@@ -575,9 +650,10 @@ export class SelectedThreadHistoryController {
             this.options.onPerfMark?.("composer_typable");
         });
         // The chat is on screen: a send that waited for it may go now, though its history still loads below.
-        settle();
+        if (!keepShown) settle();
+        if (this.closes === closesAtStart) this.options.onThreadIdChange?.(threadId);
+        announced = threadId;
       }
-      if (!keepShown && this.closes === closesAtStart) this.options.onThreadIdChange?.(threadId);
       // The chat's stream starts at its first event the server still holds (afterSeq 0): the events omp sent before this
       // browser subscribed, such as a startup notice or the process becoming ready, reach the store in order. The history
       // load below reads what omp wrote to the session file.
@@ -598,20 +674,28 @@ export class SelectedThreadHistoryController {
         error: null,
         openedNew,
       });
-      if (keepShown && this.closes === closesAtStart) this.options.onThreadIdChange?.(threadId);
+      if (keepShown && clickStore === undefined && this.closes === closesAtStart)
+        this.options.onThreadIdChange?.(threadId);
       this.failedOpen = undefined;
       return store;
     } catch (error) {
+      // A newer pick superseded this open before omp answered: the chat on screen is shown again, and nothing is
+      // announced, since the newer pick owns the state (issue 2212).
+      if (!answered && signal?.aborted) {
+        if (clickStore !== undefined) this.restoreShown(previous, false);
+        throw supersededOpen();
+      }
       const failure = asFailure(error, "Opening the selected thread failed");
+      // A failed switch: the chat on screen is shown again, subscribed and usable, and the failure goes to the caller.
       if (
         keepShown &&
         !oldReleased &&
-        this.state.store !== undefined &&
-        this.state.threadId !== undefined
+        previous.store !== undefined &&
+        previous.threadId !== undefined
       ) {
         if (failure.appError.code === "unavailable" && ticket === this.requests)
           this.failedOpen = requested;
-        this.commit({ isLoading: false, isSwitching: false, error: null });
+        this.restoreShown(previous, this.closes === closesAtStart);
         throw failure;
       }
       // omp stopped while the chat was on screen, its history still loading: the chat stays, and its subscription carries
@@ -643,7 +727,8 @@ export class SelectedThreadHistoryController {
           error: failure.appError,
           openedNew,
         });
-        if (this.closes === closesAtStart) this.options.onThreadIdChange?.(openedId);
+        if (this.closes === closesAtStart && announced !== openedId)
+          this.options.onThreadIdChange?.(openedId);
         return openedStore;
       }
       // A dropped connection leaves the chat closed: the chat is opened again once the connection is back (issue 1617).
@@ -666,6 +751,20 @@ export class SelectedThreadHistoryController {
         });
       }
     }
+  }
+
+  /** Shows the chat that was on screen before an open, as it was, subscribed (see `openNow`). */
+  private restoreShown(previous: SelectedThreadHistoryState, announce: boolean): void {
+    this.commit({
+      threadId: previous.threadId,
+      store: previous.store,
+      capabilities: previous.capabilities,
+      openedNew: previous.openedNew,
+      isLoading: false,
+      isSwitching: false,
+      error: null,
+    });
+    if (announce) this.options.onThreadIdChange?.(previous.threadId);
   }
 
   private defaultStore(threadId: ThreadId): OmpRuntimeStore {

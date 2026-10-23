@@ -21,6 +21,7 @@ import type { SessionCatalogModel } from "../catalog";
 import type { SessionMetadata } from "../contract";
 import { R1_SESSION_LIST_SCOPE } from "../descriptors/descriptors";
 import { pickedModelFor } from "../history/picked-model";
+import type { RemoteInitializeOptions } from "../remote";
 import { useSessionListShortcuts } from "./session-list-shortcuts";
 
 /** Where a New chat click stands: opening (omp is starting the chat), idle (nothing to say), or failed, with the reason. */
@@ -31,12 +32,16 @@ export type NewChatStatus =
 
 export interface SessionCatalogSidebarProps {
   readonly catalog: SessionCatalogModel;
-  readonly remote: Pick<
-    RemoteThreadListAdapter,
-    "initialize" | "rename" | "archive" | "unarchive" | "delete"
-  >;
+  readonly remote: Pick<RemoteThreadListAdapter, "rename" | "archive" | "unarchive" | "delete"> & {
+    /** The pick's open waits for the page (see `RemoteInitializeOptions`). */
+    readonly initialize: (
+      threadId: string,
+      options?: RemoteInitializeOptions,
+    ) => Promise<{ readonly remoteId: string; readonly externalId?: string }>;
+  };
   readonly currentThreadId?: ThreadId;
-  readonly onOpenThread?: (threadId: ThreadId) => Promise<void> | void;
+  /** Opens a picked chat through the page. It resolves false when the chat did not open, and the page has shown why. */
+  readonly onOpenThread?: (threadId: ThreadId) => unknown;
   readonly onNewChatStatus?: (status: NewChatStatus) => void;
   readonly onNewChat?: (threadId: ThreadId) => Promise<void> | void;
   /** Shows why a picked chat did not open, when the chat's saved model cannot be restored (the picker offers another). */
@@ -189,6 +194,10 @@ function pendingNewChatOf(catalog: SessionCatalogModel): { current: object | nul
   return created;
 }
 
+/** The keys the presence hooks read chats by. Module-level, so the lists they return keep their identity between draws. */
+const sessionKey = (session: SessionMetadata): string => session.id;
+const runningKey = (chat: RunningSession): string => chat.id;
+
 export function SessionCatalogSidebar({
   catalog,
   remote,
@@ -331,24 +340,21 @@ export function SessionCatalogSidebar({
   // the session timestamp on every catalog update.
   const presentSessions = usePresentItems(
     snapshot.sessions,
-    (session: SessionMetadata) => session.id,
+    sessionKey,
     LEAVE_MS,
     snapshot.isLoaded && !snapshot.isLoading,
   );
-  // A chat whose turn runs with no session file yet has a row in its folder until the list holds its file.
+  // A chat whose turn runs with no session file yet has a row in its folder until the list holds its file. A session that
+  // is leaving still holds its row, so the chat's running row is not drawn beside it (the two would share a key).
   const runningChats = useMemo(
     () =>
       snapshot.running.filter(
-        (chat) => !snapshot.sessions.some((session) => session.id === chat.id),
+        (chat) => !presentSessions.some((entry) => entry.item.id === chat.id),
       ),
-    [snapshot.running, snapshot.sessions],
+    [snapshot.running, presentSessions],
   );
   // A running chat has no creation time to judge by: it fades in once, when it appears after the list has loaded.
-  const enteringRunning = useEnteringItems(
-    runningChats,
-    (chat: RunningSession) => chat.id,
-    snapshot.isLoaded,
-  );
+  const enteringRunning = useEnteringItems(runningChats, runningKey, snapshot.isLoaded);
   const grouped = useMemo(() => {
     const groups = new Map<
       string,
@@ -450,14 +456,15 @@ export function SessionCatalogSidebar({
   }, [catalog, focusRequest, rowIds]);
 
   /**
-   * Opens a chat through the page. The page reports a refusal of the chat's model where the chat opens (the picker over
-   * the open chat, or the empty screen), so that refusal is not raised again here.
+   * Opens a chat through the page, which reports whether the chat opened. The page reports a refusal of the chat's model
+   * where the chat opens (the picker over the open chat, or the empty screen), so that refusal is not raised again here:
+   * the chat did not open, and the result is false.
    */
-  const openThreadReported = async (threadId: ThreadId): Promise<void> => {
+  const openThreadReported = async (threadId: ThreadId): Promise<boolean> => {
     try {
-      await onOpenThread?.(threadId);
+      return (await onOpenThread?.(threadId)) !== false;
     } catch (error) {
-      if (error instanceof AppFailure && error.appError.code === "model_unavailable") return;
+      if (error instanceof AppFailure && error.appError.code === "model_unavailable") return false;
       throw error;
     }
   };
@@ -474,23 +481,26 @@ export function SessionCatalogSidebar({
     catalog.select(threadId);
     const pick = catalog.getSnapshot().selectionRevision;
     try {
-      let openId: ThreadId;
+      // The page opens the chat first, so it shows at the click (issue 2212). The runtime numbers this pick now, at the
+      // click, so the picks keep the order of the clicks: a New chat clicked meanwhile keeps its place. The runtime's
+      // own open waits for the page's answer, so the view the page holds registers before the runtime lets its own go
+      // (issue 1353). A page refusal, or a later pick, opens nothing.
+      const pageOpened = openThreadReported(threadId).then(
+        (opened) => opened && catalog.getSnapshot().selectedThreadId === threadId,
+      );
+      const initializing = remote.initialize(session.id, { after: pageOpened });
+      // A refused or superseded pick's rejection is not raised here: its result is not shown.
+      void initializing.catch(() => undefined);
+      if (!(await pageOpened)) return;
       try {
-        const initialized = await unlessSuperseded(remote.initialize(session.id));
-        if (!initialized) return;
-        openId = initialized.remoteId as ThreadId;
+        await unlessSuperseded(initializing);
       } catch (error) {
         if (!(error instanceof AppFailure) || error.appError.code !== "model_unavailable")
           throw error;
-        // A model remembered for this chat opens it again: the history retries the open with that model.
-        if (pickedModelFor(threadId) === undefined) {
-          // omp refused the chat before it opened: the picker, over the open chat or on the empty screen, says so once.
-          onOpenFailed?.(threadId, error.appError);
-          return;
-        }
-        openId = threadId;
+        // The page's open already retried a remembered model. Otherwise omp refused the chat before it opened: the picker,
+        // over the open chat or on the empty screen, says so once.
+        if (pickedModelFor(threadId) === undefined) onOpenFailed?.(threadId, error.appError);
       }
-      await openThreadReported(openId);
     } catch (error) {
       // The open was refused because another omp holds the chat: the refusal shows on the chat's row. On a narrow layout the
       // sessions drawer closed when the row was picked, so it opens again first (committed, so the row can take focus).
@@ -870,402 +880,406 @@ export function SessionCatalogSidebar({
               variant="plain"
             >
               <div className="flex flex-col gap-0.5">
-                {group.running.map((presence) => {
-                  const chat = presence.item;
-                  const title = "New chat";
-                  const menuOpen = menuSessionId === chat.id;
-                  return (
-                    // biome-ignore lint/a11y/noStaticElementInteractions: the title button inside is the keyboard and screen reader control; this click only widens the pointer target to the row body, as the saved row does.
-                    // biome-ignore lint/a11y/useKeyWithClickEvents: the same reason; Enter and Space on the title button open the chat.
-                    <div
-                      className={
-                        presence.entering
-                          ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${ENTER_FADE}`
-                          : "group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors"
-                      }
-                      data-selected={shownThreadId === chat.id ? "true" : "false"}
-                      data-slot="r1-running-row"
-                      key={`running-${chat.id}`}
-                      onClick={(event) => openRowUnlessControl(event.target, { id: chat.id })}
-                      ref={(element) => rememberRow(chat.id, element)}
-                    >
-                      <ListRow
-                        title="New chat"
-                        detail={
-                          <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground group-hover:text-foreground flex w-full min-w-0 items-center gap-1">
-                            <Loader2Icon
-                              aria-hidden="true"
-                              className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
-                              data-slot="r1-session-running"
-                            />
-                            Running
-                          </span>
+                {[
+                  // A chat that stops running moves from its running row to its listed row. Both come from this one array,
+                  // keyed by chat id, so React keeps the row's element and the chat's row is not re-created (issue 2212).
+                  ...group.running.map((presence) => {
+                    const chat = presence.item;
+                    const title = "New chat";
+                    const menuOpen = menuSessionId === chat.id;
+                    return (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: the title button inside is the keyboard and screen reader control; this click only widens the pointer target to the row body, as the saved row does.
+                      // biome-ignore lint/a11y/useKeyWithClickEvents: the same reason; Enter and Space on the title button open the chat.
+                      <div
+                        className={
+                          presence.entering
+                            ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${ENTER_FADE}`
+                            : "group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors"
                         }
-                        selected={shownThreadId === chat.id}
-                        tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
-                        trailing={
-                          <Toolbar ariaLabel={`Actions for ${title}`}>
-                            <Button
-                              ref={(element) => {
-                                if (element) moreButtons.current.set(chat.id, element);
-                                else moreButtons.current.delete(chat.id);
-                              }}
-                              aria-expanded={menuOpen}
-                              aria-haspopup="menu"
-                              aria-label={`More actions for ${title}`}
-                              className="text-muted-foreground hover:text-foreground absolute end-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm opacity-0 transition-colors group-hover:opacity-100 group-focus-within:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-                              size="icon-xs"
-                              tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
-                              title="More actions"
-                              type="button"
-                              variant="ghost"
-                              onMouseDown={(event) => event.stopPropagation()}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                if (menuOpen) setMenuSessionId(undefined);
-                                else openMenu(chat.id, event.currentTarget);
-                              }}
-                              onKeyDown={(event) => {
-                                // Escape closes the menu this button opened; the focus stays on the button (issue 973).
-                                if (event.key === "Escape" && menuOpen) {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  setMenuSessionId(undefined);
-                                }
-                              }}
-                            >
-                              <Icons.more aria-hidden="true" className="size-3.5" />
-                            </Button>
-                          </Toolbar>
-                        }
-                        onSelect={() => void openSession({ id: chat.id })}
-                        onFocus={() => setFocusedId(chat.id)}
-                      />
-                      {menuOpen && (
-                        <div
-                          aria-label={`Actions for ${title}`}
-                          className="bg-popover text-popover-foreground rounded-surface z-50 min-w-28 overflow-hidden border p-1 fixed flex flex-col gap-0.5"
-                          ref={menuRef}
-                          role="menu"
-                          style={
-                            menuPosition === null
-                              ? undefined
-                              : { left: menuPosition.left, top: menuPosition.top }
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              setMenuSessionId(undefined);
-                              moreButtons.current.get(chat.id)?.focus();
-                            }
-                          }}
-                        >
-                          <Button
-                            aria-label={`Delete and stop ${title}`}
-                            disabled={
-                              !canDelete ||
-                              stopRunning === undefined ||
-                              confirmDeleteRunning === undefined
-                            }
-                            role="menuitem"
-                            size="xs"
-                            type="button"
-                            variant="ghost"
-                            onClick={() => {
-                              setMenuSessionId(undefined);
-                              void deleteRunningSession(chat.id, title);
-                            }}
-                          >
-                            Delete and stop
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {group.sessions.map((presence) => {
-                  const session = presence.item;
-                  const leaving = presence.leaving;
-                  const index = rowIds.indexOf(session.id);
-                  const selected = shownThreadId === session.id;
-                  const isEditing = editingId === session.id;
-                  const title = sessionTitle(session);
-                  const activity = activityPreview(session.updatedAt);
-                  const running = session.turn === "running";
-                  const source =
-                    session.parentSession === null
-                      ? undefined
-                      : snapshot.sessions.find(
-                          (item) => item.sessionFile === session.parentSession,
-                        );
-                  const marker = branchMarker(session, source);
-                  const menuOpen = menuSessionId === session.id;
-                  const pinReason = canPin
-                    ? onPinChange
-                      ? session.pinned
-                        ? "Unpin"
-                        : "Pin"
-                      : "Pinning is unavailable"
-                    : capabilityReason(pinStatus, "Pinning is unavailable");
-                  return (
-                    <div
-                      aria-hidden={leaving || undefined}
-                      className={
-                        leaving
-                          ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${LEAVE_FADE}`
-                          : presence.entering
-                            ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${ENTER_FADE}`
-                            : "group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors"
-                      }
-                      data-selected={selected ? "true" : "false"}
-                      data-slot="r1-session-row"
-                      inert={leaving || undefined}
-                      key={session.id}
-                      onClick={(event) => openRowUnlessControl(event.target, { id: session.id })}
-                      ref={(element) => rememberRow(session.id, element)}
-                    >
-                      <ListRow
-                        title={
-                          isEditing ? (
-                            <Input
-                              className="w-full focus-visible:ring-inset"
-                              aria-busy={isEditing && renaming ? true : undefined}
-                              aria-label={`Rename ${title}`}
-                              autoFocus
-                              readOnly={renaming}
-                              value={editingTitle}
-                              onChange={(event) => setEditingTitle(event.target.value)}
-                              onClick={(event) => event.stopPropagation()}
-                              onFocus={(event) => event.currentTarget.select()}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  void finishRename(session);
-                                }
-                                if (event.key === "Escape") endRename(session);
-                              }}
-                            />
-                          ) : (
-                            highlight(title, query)
-                          )
-                        }
-                        titleTooltip={isEditing ? undefined : title}
-                        leading={
-                          session.pinned ? (
-                            <PinIcon
-                              aria-label="Pinned"
-                              className="text-primary size-3 shrink-0"
-                              role="img"
-                            />
-                          ) : undefined
-                        }
-                        detail={
-                          isEditing && renaming ? (
-                            <span className="text-meta text-muted-foreground" role="status">
-                              Saving…
+                        data-selected={shownThreadId === chat.id ? "true" : "false"}
+                        data-slot="r1-running-row"
+                        key={chat.id}
+                        onClick={(event) => openRowUnlessControl(event.target, { id: chat.id })}
+                        ref={(element) => rememberRow(chat.id, element)}
+                      >
+                        <ListRow
+                          title="New chat"
+                          detail={
+                            <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground group-hover:text-foreground flex w-full min-w-0 items-center gap-1">
+                              <Loader2Icon
+                                aria-hidden="true"
+                                className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
+                                data-slot="r1-session-running"
+                              />
+                              Running
                             </span>
-                          ) : (
-                            <>
-                              {marker && (
-                                <span
-                                  className="text-meta text-muted-foreground block truncate"
-                                  title={marker.tooltip}
-                                >
-                                  {marker.text}
-                                </span>
-                              )}
-                              <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground group-hover:text-foreground flex w-full min-w-0 items-center gap-1 truncate">
-                                {running && (
-                                  <span className="flex shrink-0 items-center" title="Running">
-                                    <Loader2Icon
-                                      aria-hidden="true"
-                                      className="size-3 animate-spin motion-reduce:animate-none"
-                                      data-slot="r1-session-running"
-                                    />
-                                    <span className="sr-only">Running</span>
-                                  </span>
-                                )}
-                                {/* A branch's line above gives the time it was made, so its update time is left out (issue 1314). */}
-                                {marker === undefined && (
-                                  <time dateTime={session.updatedAt} title={activity.title}>
-                                    {activity.label}
-                                  </time>
-                                )}
-                                {snapshot.git?.branch && (
-                                  <>
-                                    <span aria-hidden="true">·</span>
-                                    <span
-                                      className="truncate"
-                                      title={`Branch: ${snapshot.git.branch}`}
-                                    >
-                                      {snapshot.git.branch}
-                                    </span>
-                                  </>
-                                )}
-                              </span>
-                            </>
-                          )
-                        }
-                        selected={selected}
-                        tabIndex={index === activeIndex ? 0 : -1}
-                        onSelect={!isEditing ? () => void openSession(session) : undefined}
-                        onFocus={!isEditing ? () => setFocusedId(session.id) : undefined}
-                        trailing={
-                          <Toolbar ariaLabel={`Actions for ${title}`}>
-                            <Button
-                              ref={(element) => {
-                                if (element) moreButtons.current.set(session.id, element);
-                                else moreButtons.current.delete(session.id);
-                              }}
-                              aria-expanded={menuOpen}
-                              aria-haspopup="menu"
-                              aria-label={`More actions for ${title}`}
-                              className="text-muted-foreground hover:text-foreground absolute end-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm opacity-0 transition-colors group-hover:opacity-100 group-focus-within:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-                              size="icon-xs"
-                              tabIndex={index === activeIndex ? 0 : -1}
-                              title="More actions"
-                              type="button"
-                              variant="ghost"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                catalog.setActionError(undefined);
-                                if (menuOpen) setMenuSessionId(undefined);
-                                else openMenu(session.id, event.currentTarget);
-                              }}
-                              onKeyDown={(event) => {
-                                // Escape closes the menu this button opened; the focus stays on the button (issue 973).
-                                if (event.key === "Escape" && menuOpen) {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  setMenuSessionId(undefined);
-                                }
-                              }}
-                            >
-                              <Icons.more aria-hidden="true" className="size-3.5" />
-                            </Button>
-                          </Toolbar>
-                        }
-                      />
-                      {menuOpen && (
-                        <div
-                          aria-label={`Actions for ${title}`}
-                          className="bg-popover text-popover-foreground border-foreground/10 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out rounded-surface z-50 min-w-28 overflow-hidden border p-1 fixed flex flex-col gap-0.5"
-                          ref={menuRef}
-                          role="menu"
-                          style={
-                            menuPosition === null
-                              ? undefined
-                              : { left: menuPosition.left, top: menuPosition.top }
                           }
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              setMenuSessionId(undefined);
-                              // The item that had focus leaves with the menu, so the chat's More actions button takes it back (issue 1059).
-                              moreButtons.current.get(session.id)?.focus();
+                          selected={shownThreadId === chat.id}
+                          tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
+                          trailing={
+                            <Toolbar ariaLabel={`Actions for ${title}`}>
+                              <Button
+                                ref={(element) => {
+                                  if (element) moreButtons.current.set(chat.id, element);
+                                  else moreButtons.current.delete(chat.id);
+                                }}
+                                aria-expanded={menuOpen}
+                                aria-haspopup="menu"
+                                aria-label={`More actions for ${title}`}
+                                className="text-muted-foreground hover:text-foreground absolute end-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm opacity-0 transition-colors group-hover:opacity-100 group-focus-within:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                                size="icon-xs"
+                                tabIndex={rowIds.indexOf(chat.id) === activeIndex ? 0 : -1}
+                                title="More actions"
+                                type="button"
+                                variant="ghost"
+                                onMouseDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (menuOpen) setMenuSessionId(undefined);
+                                  else openMenu(chat.id, event.currentTarget);
+                                }}
+                                onKeyDown={(event) => {
+                                  // Escape closes the menu this button opened; the focus stays on the button (issue 973).
+                                  if (event.key === "Escape" && menuOpen) {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setMenuSessionId(undefined);
+                                  }
+                                }}
+                              >
+                                <Icons.more aria-hidden="true" className="size-3.5" />
+                              </Button>
+                            </Toolbar>
+                          }
+                          onSelect={() => void openSession({ id: chat.id })}
+                          onFocus={() => setFocusedId(chat.id)}
+                        />
+                        {menuOpen && (
+                          <div
+                            aria-label={`Actions for ${title}`}
+                            className="bg-popover text-popover-foreground rounded-surface z-50 min-w-28 overflow-hidden border p-1 fixed flex flex-col gap-0.5"
+                            ref={menuRef}
+                            role="menu"
+                            style={
+                              menuPosition === null
+                                ? undefined
+                                : { left: menuPosition.left, top: menuPosition.top }
                             }
-                          }}
-                        >
-                          <Button
-                            aria-label={`Rename ${title}`}
-                            disabled={!canRename}
-                            role="menuitem"
-                            className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
-                            size="xs"
-                            title={
-                              canRename
-                                ? "Rename"
-                                : capabilityReason(renameStatus, "Rename is unavailable")
-                            }
-                            type="button"
-                            variant="ghost"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setMenuSessionId(undefined);
-                              beginRename(session);
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                setMenuSessionId(undefined);
+                                moreButtons.current.get(chat.id)?.focus();
+                              }
                             }}
                           >
-                            Rename
-                          </Button>
-                          <Button
-                            aria-label={`${session.pinned ? "Unpin" : "Pin"} ${title}`}
-                            disabled={!canPin || !onPinChange}
-                            role="menuitem"
-                            className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
-                            size="xs"
-                            title={pinReason}
-                            type="button"
-                            variant="ghost"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void togglePin(session);
-                            }}
-                          >
-                            {session.pinned ? "Unpin" : "Pin"}
-                          </Button>
-                          {running && stopRunning && confirmDeleteRunning ? (
                             <Button
                               aria-label={`Delete and stop ${title}`}
-                              disabled={!canDelete}
+                              disabled={
+                                !canDelete ||
+                                stopRunning === undefined ||
+                                confirmDeleteRunning === undefined
+                              }
+                              role="menuitem"
+                              size="xs"
+                              type="button"
+                              variant="ghost"
+                              onClick={() => {
+                                setMenuSessionId(undefined);
+                                void deleteRunningSession(chat.id, title);
+                              }}
+                            >
+                              Delete and stop
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }),
+                  ...group.sessions.map((presence) => {
+                    const session = presence.item;
+                    const leaving = presence.leaving;
+                    const index = rowIds.indexOf(session.id);
+                    const selected = shownThreadId === session.id;
+                    const isEditing = editingId === session.id;
+                    const title = sessionTitle(session);
+                    const activity = activityPreview(session.updatedAt);
+                    const running = session.turn === "running";
+                    const source =
+                      session.parentSession === null
+                        ? undefined
+                        : snapshot.sessions.find(
+                            (item) => item.sessionFile === session.parentSession,
+                          );
+                    const marker = branchMarker(session, source);
+                    const menuOpen = menuSessionId === session.id;
+                    const pinReason = canPin
+                      ? onPinChange
+                        ? session.pinned
+                          ? "Unpin"
+                          : "Pin"
+                        : "Pinning is unavailable"
+                      : capabilityReason(pinStatus, "Pinning is unavailable");
+                    return (
+                      <div
+                        aria-hidden={leaving || undefined}
+                        className={
+                          leaving
+                            ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${LEAVE_FADE}`
+                            : presence.entering
+                              ? `group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors ${ENTER_FADE}`
+                              : "group data-[selected=true]:bg-foreground/[0.06] data-[selected=true]:text-foreground hover:bg-foreground/[0.04] has-data-[state=open]:bg-foreground/[0.04] [&>div]:!bg-transparent [&>div:hover]:!bg-transparent [&>div[data-selected=true]]:!bg-transparent rounded-control relative flex min-h-8 shrink-0 items-center text-muted-foreground transition-colors"
+                        }
+                        data-selected={selected ? "true" : "false"}
+                        data-slot="r1-session-row"
+                        inert={leaving || undefined}
+                        key={session.id}
+                        onClick={(event) => openRowUnlessControl(event.target, { id: session.id })}
+                        ref={(element) => rememberRow(session.id, element)}
+                      >
+                        <ListRow
+                          title={
+                            isEditing ? (
+                              <Input
+                                className="w-full focus-visible:ring-inset"
+                                aria-busy={isEditing && renaming ? true : undefined}
+                                aria-label={`Rename ${title}`}
+                                autoFocus
+                                readOnly={renaming}
+                                value={editingTitle}
+                                onChange={(event) => setEditingTitle(event.target.value)}
+                                onClick={(event) => event.stopPropagation()}
+                                onFocus={(event) => event.currentTarget.select()}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    void finishRename(session);
+                                  }
+                                  if (event.key === "Escape") endRename(session);
+                                }}
+                              />
+                            ) : (
+                              highlight(title, query)
+                            )
+                          }
+                          titleTooltip={isEditing ? undefined : title}
+                          leading={
+                            session.pinned ? (
+                              <PinIcon
+                                aria-label="Pinned"
+                                className="text-primary size-3 shrink-0"
+                                role="img"
+                              />
+                            ) : undefined
+                          }
+                          detail={
+                            isEditing && renaming ? (
+                              <span className="text-meta text-muted-foreground" role="status">
+                                Saving…
+                              </span>
+                            ) : (
+                              <>
+                                {marker && (
+                                  <span
+                                    className="text-meta text-muted-foreground block truncate"
+                                    title={marker.tooltip}
+                                  >
+                                    {marker.text}
+                                  </span>
+                                )}
+                                <span className="text-meta text-muted-foreground group-data-[selected=true]:text-foreground group-hover:text-foreground flex w-full min-w-0 items-center gap-1 truncate">
+                                  {running && (
+                                    <span className="flex shrink-0 items-center" title="Running">
+                                      <Loader2Icon
+                                        aria-hidden="true"
+                                        className="size-3 animate-spin motion-reduce:animate-none"
+                                        data-slot="r1-session-running"
+                                      />
+                                      <span className="sr-only">Running</span>
+                                    </span>
+                                  )}
+                                  {/* A branch's line above gives the time it was made, so its update time is left out (issue 1314). */}
+                                  {marker === undefined && (
+                                    <time dateTime={session.updatedAt} title={activity.title}>
+                                      {activity.label}
+                                    </time>
+                                  )}
+                                  {snapshot.git?.branch && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <span
+                                        className="truncate"
+                                        title={`Branch: ${snapshot.git.branch}`}
+                                      >
+                                        {snapshot.git.branch}
+                                      </span>
+                                    </>
+                                  )}
+                                </span>
+                              </>
+                            )
+                          }
+                          selected={selected}
+                          tabIndex={index === activeIndex ? 0 : -1}
+                          onSelect={!isEditing ? () => void openSession(session) : undefined}
+                          onFocus={!isEditing ? () => setFocusedId(session.id) : undefined}
+                          trailing={
+                            <Toolbar ariaLabel={`Actions for ${title}`}>
+                              <Button
+                                ref={(element) => {
+                                  if (element) moreButtons.current.set(session.id, element);
+                                  else moreButtons.current.delete(session.id);
+                                }}
+                                aria-expanded={menuOpen}
+                                aria-haspopup="menu"
+                                aria-label={`More actions for ${title}`}
+                                className="text-muted-foreground hover:text-foreground absolute end-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-sm opacity-0 transition-colors group-hover:opacity-100 group-focus-within:opacity-100 group-data-[selected=true]:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                                size="icon-xs"
+                                tabIndex={index === activeIndex ? 0 : -1}
+                                title="More actions"
+                                type="button"
+                                variant="ghost"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  catalog.setActionError(undefined);
+                                  if (menuOpen) setMenuSessionId(undefined);
+                                  else openMenu(session.id, event.currentTarget);
+                                }}
+                                onKeyDown={(event) => {
+                                  // Escape closes the menu this button opened; the focus stays on the button (issue 973).
+                                  if (event.key === "Escape" && menuOpen) {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setMenuSessionId(undefined);
+                                  }
+                                }}
+                              >
+                                <Icons.more aria-hidden="true" className="size-3.5" />
+                              </Button>
+                            </Toolbar>
+                          }
+                        />
+                        {menuOpen && (
+                          <div
+                            aria-label={`Actions for ${title}`}
+                            className="bg-popover text-popover-foreground border-foreground/10 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out rounded-surface z-50 min-w-28 overflow-hidden border p-1 fixed flex flex-col gap-0.5"
+                            ref={menuRef}
+                            role="menu"
+                            style={
+                              menuPosition === null
+                                ? undefined
+                                : { left: menuPosition.left, top: menuPosition.top }
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                setMenuSessionId(undefined);
+                                // The item that had focus leaves with the menu, so the chat's More actions button takes it back (issue 1059).
+                                moreButtons.current.get(session.id)?.focus();
+                              }
+                            }}
+                          >
+                            <Button
+                              aria-label={`Rename ${title}`}
+                              disabled={!canRename}
                               role="menuitem"
                               className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
                               size="xs"
-                              title="Stop this chat, then delete it"
+                              title={
+                                canRename
+                                  ? "Rename"
+                                  : capabilityReason(renameStatus, "Rename is unavailable")
+                              }
                               type="button"
                               variant="ghost"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setMenuSessionId(undefined);
-                                void deleteRunningSession(session.id, title);
+                                beginRename(session);
                               }}
                             >
-                              Delete and stop
+                              Rename
                             </Button>
-                          ) : null}
-                          <Button
-                            aria-label={`Delete ${title}`}
-                            disabled={!canDelete}
-                            role="menuitem"
-                            className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
-                            size="xs"
-                            title={
-                              canDelete
-                                ? "Delete"
-                                : capabilityReason(
-                                    deleteStatus,
-                                    "Deleting a chat isn't available in the app yet.",
-                                  )
-                            }
-                            type="button"
-                            variant="ghost"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setMenuSessionId(undefined);
-                              void deleteSession(session, true);
-                            }}
-                          >
-                            Delete
-                          </Button>
-                          <Button
-                            aria-label={`Archive ${title}`}
-                            disabled
-                            role="menuitem"
-                            className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
-                            size="xs"
-                            title={capabilityReason(
-                              archiveStatus,
-                              "Archive is unavailable at the omp release floor",
-                            )}
-                            type="button"
-                            variant="ghost"
-                          >
-                            Archive
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                            <Button
+                              aria-label={`${session.pinned ? "Unpin" : "Pin"} ${title}`}
+                              disabled={!canPin || !onPinChange}
+                              role="menuitem"
+                              className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                              size="xs"
+                              title={pinReason}
+                              type="button"
+                              variant="ghost"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void togglePin(session);
+                              }}
+                            >
+                              {session.pinned ? "Unpin" : "Pin"}
+                            </Button>
+                            {running && stopRunning && confirmDeleteRunning ? (
+                              <Button
+                                aria-label={`Delete and stop ${title}`}
+                                disabled={!canDelete}
+                                role="menuitem"
+                                className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                                size="xs"
+                                title="Stop this chat, then delete it"
+                                type="button"
+                                variant="ghost"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setMenuSessionId(undefined);
+                                  void deleteRunningSession(session.id, title);
+                                }}
+                              >
+                                Delete and stop
+                              </Button>
+                            ) : null}
+                            <Button
+                              aria-label={`Delete ${title}`}
+                              disabled={!canDelete}
+                              role="menuitem"
+                              className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                              size="xs"
+                              title={
+                                canDelete
+                                  ? "Delete"
+                                  : capabilityReason(
+                                      deleteStatus,
+                                      "Deleting a chat isn't available in the app yet.",
+                                    )
+                              }
+                              type="button"
+                              variant="ghost"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMenuSessionId(undefined);
+                                void deleteSession(session, true);
+                              }}
+                            >
+                              Delete
+                            </Button>
+                            <Button
+                              aria-label={`Archive ${title}`}
+                              disabled
+                              role="menuitem"
+                              className="hover:bg-muted focus:bg-muted flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none"
+                              size="xs"
+                              title={capabilityReason(
+                                archiveStatus,
+                                "Archive is unavailable at the omp release floor",
+                              )}
+                              type="button"
+                              variant="ghost"
+                            >
+                              Archive
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }),
+                ]}
               </div>
             </Section>
           ))}

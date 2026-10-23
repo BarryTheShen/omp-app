@@ -130,6 +130,7 @@ import {
 import {
   createSelectedThreadHistoryController,
   HistoryLoadFailureNotice,
+  isSupersededOpen,
   type SelectedThreadHistoryController,
   type SelectedThreadHistoryState,
 } from "@/modules/R1/history";
@@ -483,6 +484,7 @@ function RouterBridge({
   dialogHost,
   notificationProjector,
   askDialogOffered,
+  switching,
   send,
 }: {
   readonly store: OmpRuntimeStore;
@@ -491,6 +493,7 @@ function RouterBridge({
   readonly dialogHost: DialogHostController;
   readonly notificationProjector: NotificationProjector;
   readonly askDialogOffered: boolean;
+  readonly switching: boolean;
   readonly send: RpcSessionSend;
 }) {
   // Stable: the router must not be rebuilt every time some overlay opens or closes.
@@ -574,17 +577,18 @@ function RouterBridge({
   );
 
   // omp asks each question as a select list until this session opts in to rich `ask` requests. A page sends the opt-in
-  // each time it shows the chat, which covers a restarted server; the server keeps it for the chat and re-sends it to
-  // every new omp (rpc-session.ts, #respawn).
+  // each time it shows the chat, once no switch to it is pending: the server keeps it for the chat and re-sends it to every
+  // new omp (rpc-session.ts, #respawn). A chat picked from a list is shown at the click, before omp opens it (issue 2212),
+  // so the opt-in waits for that switch to end. It ends too when the chat's load fails, and the opt-in restarts omp then.
   useEffect(() => {
-    if (!askDialogOffered) return;
+    if (!askDialogOffered || switching) return;
     void optIntoRichAsk(send, threadId).catch((error: unknown) =>
       reportClientError({
         kind: "error",
         message: `Rich ask questions could not be turned on: ${error instanceof Error ? error.message : "unknown error"}`,
       }),
     );
-  }, [askDialogOffered, send, threadId]);
+  }, [askDialogOffered, send, switching, threadId]);
   return null;
 }
 
@@ -2300,6 +2304,7 @@ function ActiveThreadReady({
           store={store}
           threadId={threadId}
           askDialogOffered={richAskOffered(capabilities)}
+          switching={history.isSwitching}
           send={guardedSend}
         />
         <ToolRunScope
@@ -2765,6 +2770,8 @@ function ConnectedApp({
       try {
         await open(controller);
       } catch (error) {
+        // A pick a newer pick superseded never shows: the newer pick is the one on screen (issue 2212).
+        if (isSupersededOpen(error)) return;
         // A selected chat whose model is unavailable reports the picker at the open surface, not as a duplicate error.
         if (error instanceof AppFailure && error.appError.code === "model_unavailable") {
           reportOpenFailure(threadId, error.appError);
@@ -2804,15 +2811,16 @@ function ConnectedApp({
   // A pick from the sidebar: a chat that did not open is shown where it would open (the history's error, on the empty
   // screen), so that failure is not raised again here. Any other refusal, such as no folder being selected, still is.
   const openSidebarChat = useCallback(
-    async (threadId: ThreadId): Promise<void> => {
+    async (threadId: ThreadId): Promise<boolean> => {
       perfTraceStart();
       setNewChatThreadId(null);
       try {
         await openThread(threadId);
       } catch (error) {
-        if (controller !== null && controller.getSnapshot().error !== null) return;
+        if (controller !== null && controller.getSnapshot().error !== null) return false;
         throw error;
       }
+      return true;
     },
     [controller, openThread],
   );

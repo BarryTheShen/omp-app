@@ -13,7 +13,7 @@ import { describe, expect, test, vi } from "vitest";
 import { SessionHistoryLoader } from "@/modules/R0/history/history";
 import { OmpRuntimeStore } from "@/modules/R0/store/store";
 import type { SelectedThreadHistoryController } from ".";
-import { createSelectedThreadHistoryController } from ".";
+import { createSelectedThreadHistoryController, isSupersededOpen } from ".";
 import { pickedModelFor, rememberPickedModel } from "./picked-model";
 
 const folder = "/workspace/project" as FolderPath;
@@ -33,7 +33,7 @@ function untilAborted(gate: Promise<void>, signal: AbortSignal | undefined): Pro
 }
 
 function createRpc(
-  open: (args: OpenThreadArgs) => unknown,
+  open: (args: OpenThreadArgs, options?: { readonly signal?: AbortSignal }) => unknown,
   calls: Array<{ readonly type: string; readonly threadId: ThreadId }> = [],
   questions: readonly OpenQuestionRecord[] = [],
   holdFirstStateRead?: Promise<void>,
@@ -73,7 +73,8 @@ function createRpc(
     }
   };
   return {
-    open: async (args: OpenThreadArgs) => open(args),
+    open: async (args: OpenThreadArgs, options?: { readonly signal?: AbortSignal }) =>
+      open(args, options),
     send: send as RpcSessionClient["send"],
     subscribe: async () => ({ stream: "A0.rpcSession/event/thread" as never }),
     answerExtensionUi: async () => null,
@@ -503,7 +504,7 @@ describe("SelectedThreadHistoryController open and paging", () => {
     expect(emptied).toEqual([]);
   });
 
-  test("switching from one chat to another keeps the current store mounted until the new chat loads", async () => {
+  test("switching from one chat to another shows the new chat at once, and keeps the old chat subscribed until it loads", async () => {
     const opened: OpenThreadArgs[] = [];
     const next = Promise.withResolvers<unknown>();
     const subscriptions: SubscriptionRecord[] = [];
@@ -528,7 +529,8 @@ describe("SelectedThreadHistoryController open and paging", () => {
     switching = true;
     const picked = controller.pickExisting(threadTwo);
     await vi.waitFor(() => expect(opened).toHaveLength(2));
-    expect(controller.getSnapshot().store).toBe(first);
+    // The picked chat is on screen at once, in place of the old store; the old chat stays subscribed until the new one loads.
+    expect(controller.getSnapshot().store).not.toBe(first);
     expect(controller.getSnapshot().isLoading).toBe(true);
     expect(subscriptions).toHaveLength(1);
     expect(emptyStates).toEqual([]);
@@ -2335,7 +2337,7 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
     expect(controller.getSnapshot().threadId).toBe(threadOne);
   });
 
-  test("a request for another chat in between starts its own open, so the last pick is the one shown", async () => {
+  test("a request for another chat in between cancels the open before it, so the last pick is the one shown", async () => {
     const opens: OpenThreadArgs[] = [];
     const rpc = createRpc((args) => {
       opens.push(args);
@@ -2350,17 +2352,18 @@ describe("SelectedThreadHistoryController sharing a pending open", () => {
       folder,
     });
 
-    await Promise.all([
+    const outcomes = await Promise.allSettled([
       controller.openExisting(threadOne),
       controller.openExisting(threadTwo),
       controller.openExisting(threadOne),
     ]);
+    const reasons = outcomes.map((outcome) =>
+      outcome.status === "rejected" ? isSupersededOpen(outcome.reason) : "opened",
+    );
 
-    expect(opens).toEqual([
-      { threadId: threadOne },
-      { threadId: threadTwo },
-      { threadId: threadOne },
-    ]);
+    // Each pick cancels the one before it for another chat, before omp is asked for it: only the last one is asked.
+    expect(reasons).toEqual([true, true, "opened"]);
+    expect(opens).toEqual([{ threadId: threadOne }]);
     expect(controller.getSnapshot().threadId).toBe(threadOne);
   });
 
@@ -2691,5 +2694,97 @@ describe("SelectedThreadHistoryController after the connection drops while a cha
     await controller.reopenFailedOpen();
 
     expect(controller.getSnapshot().threadId).toBe(threadTwo);
+  });
+});
+
+describe("SelectedThreadHistoryController when a chat is picked while another opens (issue 2212)", () => {
+  const threadThree = ThreadIdSchema.parse("thread-three");
+
+  test("a chat picked from the list is shown at the click, before omp answers", async () => {
+    const answer = Promise.withResolvers<unknown>();
+    const rpc = createRpc((args) => {
+      if ("threadId" in args && args.threadId === threadTwo) return answer.promise;
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const shown: Array<ThreadId | undefined> = [];
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+      onThreadIdChange: (threadId) => shown.push(threadId),
+    });
+    await controller.openExisting(threadOne);
+    const onScreen = controller.getSnapshot().store;
+
+    const picked = controller.openExisting(threadTwo);
+
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot()).toMatchObject({ threadId: threadTwo, isSwitching: true }),
+    );
+    expect(controller.getSnapshot().store).not.toBe(onScreen);
+    expect(shown).toEqual([threadOne, threadTwo]);
+    answer.resolve({ threadId: threadTwo, sessionFile: null, capabilities: {} });
+    await picked;
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadTwo,
+      isLoading: false,
+      isSwitching: false,
+    });
+  });
+
+  test("a newer pick cancels the open before it, and the chat picked last is the one shown", async () => {
+    const signals: AbortSignal[] = [];
+    const rpc = createRpc((args, options) => {
+      const threadId = "threadId" in args ? args.threadId : threadOne;
+      if (threadId !== threadTwo) return { threadId, sessionFile: null, capabilities: {} };
+      if (options?.signal) signals.push(options.signal);
+      return untilAborted(new Promise<void>(() => undefined), options?.signal);
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+    await controller.openExisting(threadOne);
+    const superseded = controller.openExisting(threadTwo).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+
+    await controller.openExisting(threadThree);
+
+    expect(isSupersededOpen(await superseded)).toBe(true);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadThree,
+      isLoading: false,
+      isSwitching: false,
+      error: null,
+    });
+  });
+
+  test("a picked chat that fails to open leaves the chat on screen as it was, and the failure is thrown", async () => {
+    const rpc = createRpc((args) => {
+      if ("threadId" in args && args.threadId === threadTwo) {
+        throw new AppFailure({ code: "permission", message: "denied", retryable: false });
+      }
+      return { threadId: threadOne, sessionFile: null, capabilities: {} };
+    });
+    const controller = createSelectedThreadHistoryController({
+      client: fakeClient(rpc, []),
+      folder,
+    });
+    const onScreen = await controller.openExisting(threadOne);
+
+    await expect(controller.openExisting(threadTwo)).rejects.toMatchObject({
+      appError: { code: "permission" },
+    });
+    // The chat on screen stays as it was, subscribed and usable; the failure goes to the caller.
+    expect(controller.getSnapshot()).toMatchObject({
+      threadId: threadOne,
+      store: onScreen,
+      isLoading: false,
+      isSwitching: false,
+      error: null,
+    });
   });
 });

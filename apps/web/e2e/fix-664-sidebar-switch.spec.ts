@@ -310,43 +310,19 @@ realTest(
 
       for (const [position, index] of ROW_INDEXES.entries()) {
         const title = (await list.getByRole("option").nth(index).innerText()).split("\n")[0] ?? "";
-        // The first switch is captured in light and in dark in two states. First the sidebar's own open of the chat is held:
-        // the row is selected and the chat on screen is still live, so a message sent now goes to it. Then that open is
-        // answered and the chat's own open is held: the switch from the chat on screen is pending, the composer holds a
-        // send back with its text and says why.
+        // Kind: acts on the running turn (its chat is left while it runs, and the rows are read). Since issue 2212 the page
+        // opens the picked chat first: the first open is held here, while the picked chat is on screen with its composer
+        // blocked and a send held back with its text. The sidebar's own open of the chat follows once this step returns.
         const whileOpening =
           position === 0
             ? async () => {
-                await expect(page.getByRole("button", { name: "Stop generating" })).toBeVisible();
-                await composer.fill("sent while switch");
-                await composer.press("Enter");
-                await expectSelectedRowStyled(page, title);
-                await page.emulateMedia({ colorScheme: "light" });
-                await waitForFiniteAnimations(page);
-                await page.screenshot({
-                  path: join(screenshots, "fix-664-opening-light.png"),
-                  fullPage: true,
-                });
-                await page.emulateMedia({ colorScheme: "dark" });
-                await expect(page.locator("html")).toHaveClass(/dark/);
-                await expectSelectedRowStyled(page, title);
-                await waitForFiniteAnimations(page);
-                await page.screenshot({
-                  path: join(screenshots, "fix-664-opening-dark.png"),
-                  fullPage: true,
-                });
-                await page.emulateMedia({ colorScheme: "light" });
-                await expect(page.locator("html")).not.toHaveClass(/dark/);
-                // Omp may take seconds to answer the sidebar's open; it is released once it has been answered and is held.
-                await expect.poll(() => wire.heldCount(), { timeout: 60_000 }).toBeGreaterThan(0);
-                wire.release();
-                wire.hold();
                 const blocked = page.locator('[data-composer-blocked="true"]');
                 await expect(blocked).toContainText("Opening session");
                 await composer.fill("typed while switching");
                 await composer.press("Enter");
                 await expect(composer).toHaveValue("typed while switching");
-                await expect(blocked).toContainText("Opening session");
+                await expectSelectedRowStyled(page, title);
+                await page.emulateMedia({ colorScheme: "light" });
                 await waitForFiniteAnimations(page);
                 await page.screenshot({
                   path: join(screenshots, "fix-664-switching-light.png"),
@@ -354,6 +330,7 @@ realTest(
                 });
                 await page.emulateMedia({ colorScheme: "dark" });
                 await expect(page.locator("html")).toHaveClass(/dark/);
+                await expectSelectedRowStyled(page, title);
                 await waitForFiniteAnimations(page);
                 await page.screenshot({
                   path: join(screenshots, "fix-664-switching-dark.png"),
@@ -361,6 +338,7 @@ realTest(
                 });
                 await page.emulateMedia({ colorScheme: "light" });
                 await expect(page.locator("html")).not.toHaveClass(/dark/);
+                await expect.poll(() => wire.heldCount(), { timeout: 60_000 }).toBeGreaterThan(0);
               }
             : undefined;
         perClick.push(await switchTo(page, wire, list, index, title, whileOpening));
