@@ -1,7 +1,6 @@
 import {
   type CapabilityMap,
   type CommandRunResult,
-  type OpenThreadResult,
   SlashCommand,
   ThreadId,
 } from "@omp-app/contracts";
@@ -25,12 +24,6 @@ const gatewayAnswer: CommandRunResult = {
   configUpdates: [],
 };
 
-const startedResult: OpenThreadResult = {
-  threadId,
-  sessionFile: "/workspace/project/.omp/d5-gate-current.jsonl" as OpenThreadResult["sessionFile"],
-  capabilities: {},
-};
-
 function harness(
   confirmed: boolean,
   capability: CapabilityMap = {
@@ -42,21 +35,22 @@ function harness(
   const confirm = vi.fn<SessionLifecycleOptions["dialogs"]["confirm"]>(
     confirmImplementation ?? (async () => confirmed),
   );
-  const startNew = vi.fn<SessionLifecycleOptions["remote"]["startNew"]>(async () => startedResult);
-  const adopt = vi.fn<SessionLifecycleOptions["remote"]["adopt"]>(() => true);
+  const initialize = vi.fn<SessionLifecycleOptions["remote"]["initialize"]>(async () => ({
+    remoteId: threadId,
+  }));
   const options: SessionLifecycleOptions = {
-    remote: { startNew, adopt },
+    remote: { initialize },
     gateway: { run },
     dialogs: { confirm },
     capabilities: { getSnapshot: () => capability } satisfies SessionCapabilitiesSource,
     session: { getSnapshot: () => ({ id: threadId }) } as SessionInfoSource,
   };
-  return { controller: new SessionLifecycleController(options), run, confirm, startNew };
+  return { controller: new SessionLifecycleController(options), run, confirm, initialize };
 }
 
 describe("D5 lifecycle action and typed gateway boundary", () => {
   test("confirms fresh, sends the typed gateway command once, and returns its result without parsing output", async () => {
-    const { controller, run, confirm, startNew } = harness(true);
+    const { controller, run, confirm, initialize } = harness(true);
 
     const outcome = await controller.fresh();
 
@@ -75,7 +69,7 @@ describe("D5 lifecycle action and typed gateway boundary", () => {
       },
       undefined,
     );
-    expect(startNew).not.toHaveBeenCalled();
+    expect(initialize).not.toHaveBeenCalled();
   });
 
   test("keeps the cancellation boundary ahead of the gateway call", async () => {

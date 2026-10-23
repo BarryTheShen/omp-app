@@ -2,7 +2,6 @@ import type { RemoteThreadListAdapter } from "@assistant-ui/react";
 import type {
   CapabilityMap,
   GitState,
-  OpenThreadResult,
   SessionFile,
   SessionFilePath,
   SessionListResult,
@@ -20,7 +19,6 @@ import { AppShell } from "@/shell";
 import { ShortcutRegistryProvider } from "@/shortcuts";
 import { SessionCatalogModel } from "../catalog";
 import { R1_DESCRIPTORS } from "../descriptors";
-import type { NativeRemoteThreadListAdapter } from "../remote";
 import { SessionCatalogSidebar } from "./ui";
 
 const ROOT = "/workspace/project" as SessionFile["cwd"];
@@ -174,8 +172,7 @@ function SessionSidebarPlayground() {
   const catalog = useMemo(createCatalog, []);
   const [lastAction, setLastAction] = useState("Ready");
   const remote = useMemo<
-    Pick<RemoteThreadListAdapter, "initialize" | "rename" | "archive" | "unarchive" | "delete"> &
-      Pick<NativeRemoteThreadListAdapter, "startNew" | "adopt">
+    Pick<RemoteThreadListAdapter, "initialize" | "rename" | "archive" | "unarchive" | "delete">
   >(
     () => ({
       initialize: async (threadId: string) => {
@@ -183,15 +180,6 @@ function SessionSidebarPlayground() {
         setLastAction(`Opened ${remoteId}`);
         return { remoteId };
       },
-      startNew: async () => {
-        setLastAction("Started a new chat");
-        return {
-          threadId: "session-new" as ThreadId,
-          sessionFile: "" as OpenThreadResult["sessionFile"],
-          capabilities: {},
-        };
-      },
-      adopt: () => true,
       rename: async (remoteId: string, newTitle: string) => {
         setLastAction(`Renamed ${remoteId} to ${newTitle}`);
       },
@@ -214,7 +202,7 @@ function SessionSidebarPlayground() {
         catalog={catalog}
         currentThreadId={PINNED_ID}
         remote={remote}
-        onNewChat={(started) => setLastAction(`Started ${started.threadId}`)}
+        onNewChat={(threadId) => setLastAction(`Started ${threadId}`)}
         onOpenThread={(threadId) => setLastAction(`Selected ${threadId}`)}
       />
     </div>

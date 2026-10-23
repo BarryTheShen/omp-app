@@ -12,7 +12,6 @@ import {
   McpCommandServerListResult,
   McpCommandServerSummary,
   McpCommandsPort,
-  type OpenThreadResult,
   type PortClient,
   type RpcSessionSend,
   type SessionDeleteCommandResult,
@@ -67,15 +66,6 @@ import {
   treeSlashCommand,
   useSlashCommands,
 } from "./slash-commands";
-
-/** The open result a New chat gives the page: the chat omp started, with no messages yet. */
-function startedChat(threadId: ThreadId): OpenThreadResult {
-  return {
-    threadId,
-    sessionFile: `/workspace/project/.omp/${threadId}.jsonl` as OpenThreadResult["sessionFile"],
-    capabilities: {},
-  };
-}
 
 function RuntimeHarness({ children }: { readonly children: ReactNode }) {
   const runtime = useExternalStoreRuntime({
@@ -168,13 +158,13 @@ describe("D2.3 /new", () => {
     const lifecycle = {
       newSession: vi.fn(async () => ({
         status: "completed" as const,
-        value: startedChat(ThreadId.parse("thread-next")),
+        value: ThreadId.parse("thread-next"),
       })),
     } as unknown as SessionLifecycleController;
     const command = newChatSlashCommand({
       lifecycle,
-      openStarted: async (started) => {
-        opened.push(started.threadId);
+      openThread: async (threadId) => {
+        opened.push(threadId);
       },
     });
 
@@ -183,7 +173,7 @@ describe("D2.3 /new", () => {
   });
 
   test("without a folder it says why it cannot start, and opens nothing", async () => {
-    const command = newChatSlashCommand({ lifecycle: null, openStarted: async () => undefined });
+    const command = newChatSlashCommand({ lifecycle: null, openThread: async () => undefined });
     await expect(command.run({})).rejects.toMatchObject({
       appError: {
         code: "unavailable",
@@ -205,7 +195,7 @@ describe("D2.3 /new", () => {
     } as unknown as SessionLifecycleController;
     const refusedCommand = newChatSlashCommand({
       lifecycle: refused,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
     });
     await expect(refusedCommand.run({})).rejects.toBeInstanceOf(AppFailure);
     await expect(refusedCommand.run({})).rejects.toMatchObject({
@@ -217,7 +207,7 @@ describe("D2.3 /new", () => {
     } as unknown as SessionLifecycleController;
     const cancelledCommand = newChatSlashCommand({
       lifecycle: cancelled,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
     });
     await expect(cancelledCommand.run({})).resolves.toEqual({});
   });
@@ -629,7 +619,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       threadId,
       catalog: null,
       lifecycle: null,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
     });
     await expect(command.run({})).resolves.toEqual({});
     expect(gateway.sessionDelete).not.toHaveBeenCalled();
@@ -644,7 +634,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       threadId,
       catalog: null,
       lifecycle: null,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
     });
     await expect(command.run({})).resolves.toEqual({
       message: "Wait for this chat's turn to finish, then delete it.",
@@ -661,7 +651,6 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     sessionFile: "/sessions/one.jsonl",
   } as unknown as SessionMetadata;
   const newThread = ThreadId.parse("thread-new-1351");
-  const newStarted = startedChat(newThread);
 
   function runDelete(
     reply: SessionDeleteCommandResult,
@@ -677,8 +666,8 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
         return newSession;
       }),
     };
-    const openStarted = vi.fn(async (started: OpenThreadResult) => {
-      order.push(`open ${started.threadId}`);
+    const openThread = vi.fn(async (opened: ThreadId) => {
+      order.push(`open ${opened}`);
     });
     const reconcile = vi.fn(async () => {
       order.push("drop row");
@@ -693,15 +682,15 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       threadId,
       catalog,
       lifecycle: lifecycle as unknown as SessionLifecycleController,
-      openStarted,
+      openThread,
     });
-    return { command, order, reconcile, openStarted, lifecycle };
+    return { command, order, reconcile, openThread, lifecycle };
   }
 
   test("a deleted reply opens a new chat in place of the chat, then drops the chat's row, and shows no header note", async () => {
     const run = runDelete({ outcome: "deleted" }, [listedChat], {
       status: "completed",
-      value: newStarted,
+      value: newThread,
     });
     await expect(run.command.run({})).resolves.toEqual({});
     expect(run.order).toEqual(["new chat", `open ${newThread}`, "drop row"]);
@@ -721,20 +710,20 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
     await expect(run.command.run({})).rejects.toMatchObject({
       appError: { message: "Starting a new session failed." },
     });
-    expect(run.openStarted).not.toHaveBeenCalled();
+    expect(run.openThread).not.toHaveBeenCalled();
     expect(run.reconcile).toHaveBeenCalledTimes(1);
   });
 
   test("a refused delete leaves the chat and its row as they are, and the header says why", async () => {
     const run = runDelete({ outcome: "refused", reason: "open-elsewhere" }, [listedChat], {
       status: "completed",
-      value: newStarted,
+      value: newThread,
     });
     await expect(run.command.run({})).resolves.toEqual({
       message: "Another tab or window has this chat open. Close it there, then delete it again.",
     });
     expect(run.lifecycle.newSession).not.toHaveBeenCalled();
-    expect(run.openStarted).not.toHaveBeenCalled();
+    expect(run.openThread).not.toHaveBeenCalled();
     expect(run.reconcile).not.toHaveBeenCalled();
   });
 
@@ -763,9 +752,9 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
   test.each(DELETE_NOTHING_CASES)(
     "a delete that deletes nothing (%j) says why in the header",
     async (reply, message) => {
-      const run = runDelete(reply, [listedChat], { status: "completed", value: newStarted });
+      const run = runDelete(reply, [listedChat], { status: "completed", value: newThread });
       await expect(run.command.run({})).resolves.toEqual({ message });
-      expect(run.openStarted).not.toHaveBeenCalled();
+      expect(run.openThread).not.toHaveBeenCalled();
       expect(run.reconcile).not.toHaveBeenCalled();
     },
   );
@@ -778,7 +767,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
         threadId,
         catalog: null,
         lifecycle: null,
-        openStarted: async () => undefined,
+        openThread: async () => undefined,
       });
       expect(command.name).toBe("delete");
       expect(command.unlisted).toBeUndefined();
@@ -793,7 +782,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
         threadId,
         catalog: null,
         lifecycle: null,
-        openStarted: async () => undefined,
+        openThread: async () => undefined,
       });
       const provider = {
         route: async (text: string) => routeSlashText(text, [], [command]),
@@ -812,7 +801,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
         threadId,
         catalog: null,
         lifecycle: null,
-        openStarted: async () => undefined,
+        openThread: async () => undefined,
       });
       await expect(command.run({})).resolves.toEqual({});
       expect(gateway.sessionDelete).not.toHaveBeenCalled();
@@ -827,7 +816,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
         threadId,
         catalog: null,
         lifecycle: null,
-        openStarted: async () => undefined,
+        openThread: async () => undefined,
       });
       await expect(command.run({})).resolves.toEqual({
         message: "Wait for this chat's turn to finish, then delete it.",
@@ -841,7 +830,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       const run = runDelete(
         { outcome: "deleted" },
         [listedChat],
-        { status: "completed", value: newStarted },
+        { status: "completed", value: newThread },
         deleteSlashCommand,
       );
       await expect(run.command.run({})).resolves.toEqual({});
@@ -854,11 +843,11 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
         const run = runDelete(
           reply,
           [listedChat],
-          { status: "completed", value: newStarted },
+          { status: "completed", value: newThread },
           deleteSlashCommand,
         );
         await expect(run.command.run({})).resolves.toEqual({ message });
-        expect(run.openStarted).not.toHaveBeenCalled();
+        expect(run.openThread).not.toHaveBeenCalled();
         expect(run.reconcile).not.toHaveBeenCalled();
       },
     );
@@ -872,7 +861,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
         threadId,
         catalog: null,
         lifecycle: null,
-        openStarted: async () => undefined,
+        openThread: async () => undefined,
       });
       await expect(command.run({ args: "now" })).rejects.toMatchObject({
         appError: {
@@ -891,10 +880,10 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
   test("a deleted chat the list does not hold has no row to drop, and the view still leaves it", async () => {
     const run = runDelete({ outcome: "deleted" }, [], {
       status: "completed",
-      value: newStarted,
+      value: newThread,
     });
     await run.command.run({});
-    expect(run.openStarted).toHaveBeenCalledWith(newStarted);
+    expect(run.openThread).toHaveBeenCalledWith(newThread);
     expect(run.reconcile).not.toHaveBeenCalled();
   });
 
@@ -968,7 +957,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       gateway,
       threadId,
       lifecycle: null,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
       showReport: () => undefined,
     });
     const move = commands.find((command) => command.name === "wt");
@@ -1021,7 +1010,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       threadId,
       catalog: null,
       lifecycle: null,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
     });
     await expect(command.run({})).rejects.toBe(failure);
   });
@@ -1034,7 +1023,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       gateway: gatewayAnswering("unused"),
       threadId,
       lifecycle: null,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
       showReport: () => undefined,
     });
     expect(commands.map((command) => [command.name, command.takesArguments])).toEqual([
@@ -1063,7 +1052,7 @@ describe("#1272 /session delete and /usage reset ask first, and only Confirm sen
       gateway,
       threadId,
       lifecycle: null,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
       showReport: () => undefined,
     });
     void sessionDelete?.run({});
@@ -1199,7 +1188,7 @@ describe("#1348 the typed forms that delete data each ask first, with their own 
       gateway,
       threadId,
       lifecycle: null,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
       showReport: () => undefined,
     });
     return { commands, opened, gateway };
@@ -1516,7 +1505,7 @@ describe("S9e `/restart` asks first, then restarts omp on this chat", () => {
 describe("S9d `/clear` starts a new chat and says so, or says to wait", () => {
   /** A harness: the lifecycle answers `result` to the new chat, and the chat is busy when `busy` is set. */
   function clearHarness({
-    result = { status: "completed" as const, value: startedChat(ThreadId.parse("thread-clear")) },
+    result = { status: "completed" as const, value: ThreadId.parse("thread-clear") },
     busy = false,
   }: {
     readonly result?: unknown;
@@ -1524,24 +1513,24 @@ describe("S9d `/clear` starts a new chat and says so, or says to wait", () => {
   } = {}) {
     const newSession = vi.fn(async () => result);
     const lifecycle = { newSession } as unknown as SessionLifecycleController;
-    const openStarted = vi.fn(async (_started: OpenThreadResult) => undefined);
+    const openThread = vi.fn(async (_threadId: ThreadId) => undefined);
     const deliverNote = vi.fn();
     const focusComposer = vi.fn();
     const command = clearSlashCommand({
       lifecycle,
-      openStarted,
+      openThread,
       isBusy: () => busy,
       deliverNote,
       focusComposer,
     });
-    return { command, newSession, openStarted, deliverNote, focusComposer };
+    return { command, newSession, openThread, deliverNote, focusComposer };
   }
 
   test("starts a new chat, opens it, writes the note into it, and puts the focus in its message box", async () => {
-    const { command, newSession, openStarted, deliverNote, focusComposer } = clearHarness();
+    const { command, newSession, openThread, deliverNote, focusComposer } = clearHarness();
     await expect(command.run({})).resolves.toEqual({});
     expect(newSession).toHaveBeenCalledTimes(1);
-    expect(openStarted).toHaveBeenCalledWith(startedChat(ThreadId.parse("thread-clear")));
+    expect(openThread).toHaveBeenCalledWith(ThreadId.parse("thread-clear"));
     expect(deliverNote).toHaveBeenCalledTimes(1);
     expect(deliverNote).toHaveBeenCalledWith(CLEAR_STARTED_NOTE);
     expect(focusComposer).toHaveBeenCalledTimes(1);
@@ -1569,7 +1558,7 @@ describe("S9d `/clear` starts a new chat and says so, or says to wait", () => {
       message: "Wait for this chat's turn to finish, then clear it.",
     });
     expect(harness.newSession).not.toHaveBeenCalled();
-    expect(harness.openStarted).not.toHaveBeenCalled();
+    expect(harness.openThread).not.toHaveBeenCalled();
     expect(harness.deliverNote).not.toHaveBeenCalled();
     expect(harness.focusComposer).not.toHaveBeenCalled();
   });
@@ -1578,7 +1567,7 @@ describe("S9d `/clear` starts a new chat and says so, or says to wait", () => {
     const deliverNote = vi.fn();
     const command = clearSlashCommand({
       lifecycle: null,
-      openStarted: async () => undefined,
+      openThread: async () => undefined,
       isBusy: () => false,
       deliverNote,
       focusComposer: () => undefined,
@@ -1610,7 +1599,7 @@ describe("S9d `/clear` starts a new chat and says so, or says to wait", () => {
 
     const cancelled = clearHarness({ result: { status: "cancelled" } });
     await expect(cancelled.command.run({})).resolves.toEqual({});
-    expect(cancelled.openStarted).not.toHaveBeenCalled();
+    expect(cancelled.openThread).not.toHaveBeenCalled();
     expect(cancelled.deliverNote).not.toHaveBeenCalled();
     expect(cancelled.focusComposer).not.toHaveBeenCalled();
   });

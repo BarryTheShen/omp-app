@@ -33,11 +33,11 @@ const BUSY_STATES: [string, () => () => boolean][] = [
 
 describe.each(BUSY_STATES)("#2520 while %s", (_state, busyState) => {
   test("/clear says to wait and starts no chat", async () => {
-    const openStarted = vi.fn(async () => undefined);
+    const openThread = vi.fn(async () => undefined);
     const deliverNote = vi.fn();
     const command = clearSlashCommand({
       lifecycle: null,
-      openStarted,
+      openThread,
       isBusy: busyState(),
       deliverNote,
       focusComposer: vi.fn(),
@@ -45,7 +45,7 @@ describe.each(BUSY_STATES)("#2520 while %s", (_state, busyState) => {
     await expect(command.run({})).resolves.toEqual({
       message: "Wait for this chat's turn to finish, then clear it.",
     });
-    expect(openStarted).not.toHaveBeenCalled();
+    expect(openThread).not.toHaveBeenCalled();
     expect(deliverNote).not.toHaveBeenCalled();
   });
 

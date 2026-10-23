@@ -1,4 +1,4 @@
-import type { CapabilityMap, OpenThreadResult, SessionFile } from "@omp-app/contracts";
+import type { CapabilityMap, SessionFile } from "@omp-app/contracts";
 import { AppFailure, SessionFilePath, ThreadId as ThreadIdSchema } from "@omp-app/contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
@@ -103,15 +103,6 @@ function fakeRemote(calls: string[]): ComponentProps<typeof SessionCatalogSideba
       calls.push(`initialize:${id}`);
       return { remoteId: id };
     },
-    startNew: async () => {
-      calls.push("startNew");
-      return {
-        threadId: ThreadIdSchema.parse("new"),
-        sessionFile: SessionFilePath.parse("/workspace/project/.omp/new.jsonl"),
-        capabilities: {},
-      } as OpenThreadResult;
-    },
-    adopt: () => true,
     rename: async (id: string, title: string) => {
       calls.push(`rename:${id}:${title}`);
     },
@@ -306,8 +297,8 @@ describe("SessionCatalogSidebar", () => {
       catalog,
       remote,
       onOpenThread: async (threadId) => (threadId === "thread-old" ? pageOpen.promise : true),
-      onNewChat: async (started) => {
-        newChatOpened.push(started.threadId);
+      onNewChat: async (threadId) => {
+        newChatOpened.push(threadId);
       },
     });
     await waitFor(() => expect(screen.getByText("Old chat")).toBeTruthy());
@@ -789,8 +780,8 @@ describe("SessionCatalogSidebar", () => {
           catalog={modelWithSessions()}
           confirmDelete={() => true}
           currentThreadId={ThreadIdSchema.parse("new")}
-          onNewChat={async (started) => {
-            opened.push(started.threadId);
+          onNewChat={async (threadId) => {
+            opened.push(threadId);
           }}
           remote={remote}
         />,
@@ -1270,8 +1261,8 @@ describe("SessionCatalogSidebar", () => {
     const calls: string[] = [];
     renderSidebar({
       catalog: model,
-      onNewChat: async (started) => {
-        calls.push(started.threadId);
+      onNewChat: async (threadId) => {
+        calls.push(threadId);
       },
     });
     await waitFor(() => expect(screen.getByText("No sessions in this folder")).toBeTruthy());
@@ -1737,101 +1728,57 @@ describe("SessionCatalogSidebar", () => {
 });
 
 describe("SessionCatalogSidebar New chat status", () => {
-  /** The open result of a New chat the server started, as the adapter hands it to the sidebar. */
-  const startedResult = (threadId: string): OpenThreadResult => ({
-    threadId: ThreadIdSchema.parse(threadId),
-    sessionFile: SessionFilePath.parse(`/workspace/project/.omp/${threadId}.jsonl`),
-    capabilities: {},
-  });
-
   test("reports opening while the new chat starts, and idle once it is open", async () => {
-    const statuses: string[] = [];
-    const newChatStarted = Promise.withResolvers<OpenThreadResult>();
+    const statuses: unknown[] = [];
+    const newChatStarted = Promise.withResolvers<{ remoteId: string }>();
     renderSidebar({
-      remote: { ...fakeRemote([]), startNew: () => newChatStarted.promise },
+      remote: {
+        ...fakeRemote([]),
+        initialize: async (id: string) =>
+          id === "new" ? newChatStarted.promise : { remoteId: id },
+      },
       onNewChat: async () => {},
-      onNewChatStatus: (status) => statuses.push(status.state),
+      onNewChatStatus: (status) => statuses.push(status),
     });
     await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    await waitFor(() => expect(statuses).toEqual(["opening"]));
-    newChatStarted.resolve(startedResult("thread-new"));
-    await waitFor(() => expect(statuses).toEqual(["opening", "idle"]));
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }]));
+    newChatStarted.resolve({ remoteId: "thread-new" });
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]));
   });
 
   test("a chat picked while a New chat starts ends the New chat's opening, and the New chat does not open over the pick", async () => {
-    const statuses: string[] = [];
+    const statuses: unknown[] = [];
     const opened: string[] = [];
     const newChatOpened: string[] = [];
-    const newChatStarted = Promise.withResolvers<OpenThreadResult>();
+    const newChatStarted = Promise.withResolvers<{ remoteId: string }>();
     renderSidebar({
-      remote: { ...fakeRemote([]), startNew: () => newChatStarted.promise },
+      remote: {
+        ...fakeRemote([]),
+        initialize: async (id: string) =>
+          id === "new" ? newChatStarted.promise : { remoteId: id },
+      },
       onNewChat: async () => {
         newChatOpened.push("new");
       },
       onOpenThread: async (threadId) => {
         opened.push(threadId);
       },
-      onNewChatStatus: (status) => statuses.push(status.state),
+      onNewChatStatus: (status) => statuses.push(status),
     });
     await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    await waitFor(() => expect(statuses).toEqual(["opening"]));
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }]));
     // The person picks a chat while the New chat is still starting: the chat picked is the one on screen now.
     fireEvent.click(screen.getByRole("option", { name: /Newest chat/ }));
-    await waitFor(() => expect(statuses).toEqual(["opening", "idle"]));
+    await waitFor(() => expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]));
     // The New chat's answer comes after the pick: the New chat does not open over the chat picked.
-    newChatStarted.resolve(startedResult("thread-new"));
+    newChatStarted.resolve({ remoteId: "thread-new" });
+    // The answer is read within a few turns of the event loop; the New chat then ends without a second report.
     for (let index = 0; index < 20; index += 1) await Promise.resolve();
     expect(newChatOpened).toEqual([]);
-    expect(statuses).toEqual(["opening", "idle"]);
+    expect(statuses).toEqual([{ state: "opening" }, { state: "idle" }]);
     expect(opened).toHaveLength(1);
-  });
-
-  test("a New chat click the page reports as reusing the opening New chat starts nothing new and changes no status", async () => {
-    const statuses: string[] = [];
-    let starts = 0;
-    const newChatStarted = Promise.withResolvers<OpenThreadResult>();
-    renderSidebar({
-      remote: {
-        ...fakeRemote([]),
-        startNew: () => {
-          starts += 1;
-          return newChatStarted.promise;
-        },
-      },
-      onNewChat: async () => {},
-      onNewChatStatus: (status) => statuses.push(status.state),
-      canReuseNewChat: () => starts > 0,
-    });
-    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    await waitFor(() => expect(statuses).toEqual(["opening"]));
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    expect(starts).toBe(1);
-    expect(statuses).toEqual(["opening"]);
-    newChatStarted.resolve(startedResult("thread-new"));
-    await waitFor(() => expect(statuses).toEqual(["opening", "idle"]));
-  });
-
-  test("a New chat click the page does not report as reusing the opening New chat starts another New chat", async () => {
-    let starts = 0;
-    renderSidebar({
-      remote: {
-        ...fakeRemote([]),
-        startNew: () => {
-          starts += 1;
-          return new Promise<OpenThreadResult>(() => undefined);
-        },
-      },
-      onNewChat: async () => {},
-      canReuseNewChat: () => false,
-    });
-    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    await waitFor(() => expect(starts).toBe(2));
   });
 
   test("reports a New chat that fails with its reason, instead of leaving the page unchanged", async () => {
@@ -1844,8 +1791,9 @@ describe("SessionCatalogSidebar New chat status", () => {
     renderSidebar({
       remote: {
         ...fakeRemote([]),
-        startNew: async () => {
-          throw failure;
+        initialize: async (id: string) => {
+          if (id === "new") throw failure;
+          return { remoteId: id };
         },
       },
       onNewChatStatus: (status) => statuses.push(status),
@@ -1853,72 +1801,8 @@ describe("SessionCatalogSidebar New chat status", () => {
     await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     await waitFor(() =>
-      expect(statuses.at(-1)).toMatchObject({ state: "failed", error: failure.appError }),
+      expect(statuses.at(-1)).toEqual({ state: "failed", error: failure.appError }),
     );
-  });
-
-  // Two New chats started one after the other: the newer click is the one on screen. Which omp answers first decides
-  // what the sidebar does with the older one (the adapter lets an older New chat go when a later open finished first).
-  function startTwoNewChats(
-    older: { readonly promise: Promise<OpenThreadResult> },
-    newer: { readonly promise: Promise<OpenThreadResult> },
-  ) {
-    const starts = [older, newer];
-    const states: string[] = [];
-    const failures: unknown[] = [];
-    const shown: string[] = [];
-    const superseded: string[] = [];
-    renderSidebar({
-      remote: { ...fakeRemote([]), startNew: () => (starts.shift() ?? newer).promise },
-      onNewChat: async (started) => {
-        shown.push(started.threadId);
-      },
-      onNewChatSuperseded: (started) => {
-        superseded.push(started.threadId);
-      },
-      onNewChatStatus: (status) => {
-        states.push(status.state);
-        if (status.state === "failed") failures.push(status);
-      },
-    });
-    return { states, failures, shown, superseded };
-  }
-
-  test("when the older New chat opens first, it is kept for the sends made to it and the newer one is shown", async () => {
-    const older = Promise.withResolvers<OpenThreadResult>();
-    const newer = Promise.withResolvers<OpenThreadResult>();
-    const seen = startTwoNewChats(older, newer);
-    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    await waitFor(() => expect(seen.states).toEqual(["opening", "opening"]));
-    older.resolve(startedResult("thread-older"));
-    await waitFor(() => expect(seen.superseded).toEqual(["thread-older"]));
-    newer.resolve(startedResult("thread-newer"));
-    await waitFor(() => expect(seen.shown).toEqual(["thread-newer"]));
-    expect(seen.failures).toEqual([]);
-  });
-
-  test("when the newer New chat opens first, the older one is let go with its reason and the newer one is shown", async () => {
-    const older = Promise.withResolvers<OpenThreadResult>();
-    const newer = Promise.withResolvers<OpenThreadResult>();
-    const seen = startTwoNewChats(older, newer);
-    await waitFor(() => expect(screen.getByText("Newest chat")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    await waitFor(() => expect(seen.states).toEqual(["opening", "opening"]));
-    newer.resolve(startedResult("thread-newer"));
-    await waitFor(() => expect(seen.shown).toEqual(["thread-newer"]));
-    older.reject(
-      new AppFailure({
-        code: "cancelled",
-        message: "A chat picked after this one opened first, so this one was not opened.",
-        retryable: false,
-      }),
-    );
-    await waitFor(() => expect(seen.failures).toHaveLength(1));
-    expect(seen.failures[0]).toMatchObject({ state: "failed", error: { code: "cancelled" } });
-    expect(seen.superseded).toEqual([]);
   });
 });
 
