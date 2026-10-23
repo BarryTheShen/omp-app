@@ -274,6 +274,62 @@ describe("narrow layout", () => {
     );
   });
 
+  test("a narrow drawer opened from the composer returns focus to the composer when it closes", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: query === "(max-width: 48rem)",
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    render(
+      <AppShell
+        composer={<textarea aria-label="Message box" />}
+        rightSidebar={<button type="button">Panel control</button>}
+      />,
+    );
+    const composer = screen.getByRole("textbox", { name: "Message box" });
+    composer.focus();
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Hide panels sidebar" }),
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.activeElement).toBe(composer);
+  });
+
+  test("a focus hand-back to the message box stays there while the narrow drawer is open", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: query === "(max-width: 48rem)",
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    render(
+      <AppShell
+        composer={<textarea aria-label="Message box" data-focus-scope="composer-input" />}
+        rightSidebar={<button type="button">Panel control</button>}
+      />,
+    );
+    const composer = screen.getByRole("textbox", { name: "Message box" });
+    fireEvent.keyDown(window, { key: "b", ctrlKey: true, shiftKey: true });
+    composer.focus();
+    expect(document.activeElement).toBe(composer);
+  });
+
   test("focus that moves to a control behind an open drawer comes back into the drawer", () => {
     vi.stubGlobal(
       "matchMedia",

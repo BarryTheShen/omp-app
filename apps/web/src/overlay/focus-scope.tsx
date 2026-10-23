@@ -30,8 +30,11 @@ function isConnectedElement(value: HTMLElement | null): value is HTMLElement {
 }
 
 /** `undefined` means a lookup has already moved focus itself, so the scope leaves focus where it is. */
-function resolveFocusTarget(target: FocusTarget | undefined): HTMLElement | null | undefined {
-  if (typeof target === "function") return target();
+function resolveFocusTarget(
+  target: FocusTarget | undefined,
+  opener: HTMLElement | null,
+): HTMLElement | null | undefined {
+  if (typeof target === "function") return target(opener);
   return target ?? null;
 }
 
@@ -56,6 +59,11 @@ export interface FocusScopeProps extends Omit<ComponentPropsWithoutRef<"div">, "
    * `restoreFocus`. A reopenable scope that starts untrapped takes no focus until it is first trapped.
    */
   reopenable?: boolean;
+  /**
+   * A focus move onto an element that matches this selector stays where it went, rather than coming back into the scope.
+   * A drawer uses it for the message box: a panel hands focus there when it closes, and the drawer must not take it back.
+   */
+  keepFocusOn?: string;
 }
 
 /**
@@ -71,6 +79,7 @@ export function FocusScope({
   restoreFocus,
   leaving,
   reopenable = false,
+  keepFocusOn,
   className,
   ...props
 }: FocusScopeProps) {
@@ -97,7 +106,7 @@ export function FocusScope({
       restoredRef.current = true;
       const restore = restoreFocusRef.current;
       if (restore === false) return;
-      const target = resolveFocusTarget(restore);
+      const target = resolveFocusTarget(restore, openerRef.current);
       if (target === undefined) return;
       focusElement(target ?? openerRef.current);
     });
@@ -127,7 +136,7 @@ export function FocusScope({
           if (initial === false) return;
           const root = rootRef.current;
           if (!root) return;
-          const explicitTarget = resolveFocusTarget(initial) ?? null;
+          const explicitTarget = resolveFocusTarget(initial, openerRef.current) ?? null;
           focusElement(explicitTarget);
           if (explicitTarget === null) focusFirst();
         });
@@ -147,7 +156,7 @@ export function FocusScope({
         if (restoredRef.current) return;
         const restore = restoreFocusRef.current;
         if (restore === false) return;
-        const target = resolveFocusTarget(restore);
+        const target = resolveFocusTarget(restore, openerRef.current);
         // A lookup that returns undefined has moved focus itself; the scope leaves focus where it is.
         if (target === undefined) return;
         focusElement(target ?? openerRef.current);
@@ -168,6 +177,8 @@ export function FocusScope({
       // close the popup the moment it opens. The page behind a modal is inert, so no other
       // portal can take focus.
       if (target instanceof Element && target.closest("[data-base-ui-portal]") !== null) return;
+      if (target instanceof Element && keepFocusOn !== undefined && target.matches(keepFocusOn))
+        return;
       focusFirst();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -197,7 +208,7 @@ export function FocusScope({
       document.removeEventListener("focusin", handleFocusIn);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [focusFirst, trapped]);
+  }, [focusFirst, keepFocusOn, trapped]);
 
   // A reopenable scope takes focus each time it becomes trapped, and gives it back to its restore target when it stops
   // being trapped. Overlays never change `trapped` while mounted, so this effect leaves them alone.
@@ -206,9 +217,18 @@ export function FocusScope({
     trappedRef.current = trapped;
     if (!reopenable || wasTrapped === trapped) return;
     if (!trapped) {
+      // Focus that moved outside the drawer on purpose (a command that put it in the composer) stays there: only focus
+      // still inside the drawer, or on the page, goes back.
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active !== document.body &&
+        !rootRef.current?.contains(active)
+      )
+        return;
       const restore = restoreFocusRef.current;
       if (restore === false) return;
-      const target = resolveFocusTarget(restore);
+      const target = resolveFocusTarget(restore, openerRef.current);
       // A lookup that returns undefined has moved focus itself; the scope leaves focus where it is.
       if (target === undefined) return;
       focusElement(target ?? openerRef.current);
@@ -222,7 +242,7 @@ export function FocusScope({
     const takeInitialFocus = () => {
       const initial = initialFocusRef.current;
       if (initial === false) return;
-      const explicitTarget = resolveFocusTarget(initial) ?? null;
+      const explicitTarget = resolveFocusTarget(initial, openerRef.current) ?? null;
       focusElement(explicitTarget);
       if (explicitTarget === null) focusFirst();
     };

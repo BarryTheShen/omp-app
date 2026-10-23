@@ -29,6 +29,30 @@ const MAX_SIDEBAR_VIEWPORT = "24vw";
 /** The drawer open in the narrow layout: one at a time, and none in the wide layout. */
 type Drawer = "left" | "right" | null;
 
+/**
+ * A narrow drawer keeps focus inside, except that the message box may take it: a panel hands focus there when it
+ * closes.
+ */
+const MESSAGE_BOX = '[data-focus-scope="composer-input"]';
+
+/**
+ * Where a narrow drawer sends focus when it closes: the element that had focus when it opened, else its toggle. The
+ * opener does not count when it is gone or was the page itself (a click on the toggle unmounts the toggle as the drawer
+ * opens, so the page is then the opener).
+ */
+function drawerReturnTarget(
+  opener: HTMLElement | null,
+  side: "left" | "right",
+): HTMLElement | null {
+  const usable =
+    opener?.isConnected === true &&
+    opener !== document.body &&
+    opener !== document.documentElement &&
+    opener.closest("[inert]") === null;
+  if (usable) return opener;
+  return document.querySelector<HTMLElement>(`[data-shell-sidebar-toggle="${side}"]`);
+}
+
 export interface AppShellProps {
   readonly leftSidebar?: ReactNode;
   readonly threadHeader?: ReactNode;
@@ -370,11 +394,8 @@ export function AppShell({
           className="flex min-h-0 flex-1 flex-col"
           initialFocus={focusDrawerOnOpen ? undefined : false}
           reopenable
-          restoreFocus={() =>
-            isNarrow
-              ? document.querySelector<HTMLElement>('[data-shell-sidebar-toggle="left"]')
-              : undefined
-          }
+          keepFocusOn={MESSAGE_BOX}
+          restoreFocus={(opener) => (isNarrow ? drawerReturnTarget(opener, "left") : undefined)}
           trapped={isNarrow && leftShown}
         >
           <SidebarHeader side="left" open={leftShown} onToggle={closeLeft} />
@@ -467,11 +488,8 @@ export function AppShell({
           className="flex min-h-0 flex-1 flex-col"
           initialFocus={focusDrawerOnOpen ? undefined : false}
           reopenable
-          restoreFocus={() =>
-            isNarrow
-              ? document.querySelector<HTMLElement>('[data-shell-sidebar-toggle="right"]')
-              : undefined
-          }
+          keepFocusOn={MESSAGE_BOX}
+          restoreFocus={(opener) => (isNarrow ? drawerReturnTarget(opener, "right") : undefined)}
           trapped={isNarrow && rightShown}
         >
           <SidebarHeader side="right" open={rightShown} onToggle={closeRight} />

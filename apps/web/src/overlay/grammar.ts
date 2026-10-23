@@ -88,9 +88,13 @@ export const OVERLAY_Z_INDEX = {
 } as const satisfies Record<OverlayKind, number>;
 
 /**
- * A DOM element or lazy lookup supplied by a feature when it knows where focus should return. A lookup that returns
- * `undefined` has moved focus itself, so the overlay leaves focus where that move put it.
+ * A DOM element or lazy lookup supplied by a feature when it knows where focus should return. A lookup is given the
+ * opener the scope captured (null when there was none). A lookup that returns `undefined` has moved focus itself, so
+ * the overlay leaves focus where that move put it.
  */
-export type FocusTarget = HTMLElement | null | (() => HTMLElement | null | undefined);
+export type FocusTarget =
+  | HTMLElement
+  | null
+  | ((opener: HTMLElement | null) => HTMLElement | null | undefined);
 
 export type OverlayCloseReason = "escape" | "outside-press" | "programmatic" | "unmount";
