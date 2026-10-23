@@ -171,9 +171,13 @@ import {
   createDraftStoreAdapter,
   type DraftController,
   DraftNotice,
+  deletedChatIds,
   hasLocalDraft,
   isCurrentUnsentChat,
   localDraftBuffer,
+  localDraftStorage,
+  recordDeletedChat,
+  removeDeletedChatCopies,
   unsentChatReloadMarker,
   unsentChatReloadTarget,
   useChatDraft,
@@ -1626,6 +1630,14 @@ function ActiveThreadReady({
     () => localDraftBuffer(reportDraftFailure("Keeping unsent draft text in this tab failed")),
     [],
   );
+  // A chat this browser deleted leaves no unsent copy behind: on load, the copies of the chats it recorded are removed.
+  useEffect(() => {
+    const storage = localDraftStorage();
+    if (storage === undefined) return;
+    const onError = reportDraftFailure("Removing a deleted chat's local copy failed");
+    const deleted = deletedChatIds(storage, onError);
+    void removeDeletedChatCopies(storage, async (threadId) => !deleted.has(threadId), onError);
+  }, []);
   const chatMessages = useMemo(
     () =>
       newChatStarting
@@ -2514,7 +2526,17 @@ function ConnectedApp({
             open: rpc.open,
             close: rpc.close,
             rename: rpc.rename,
-            deleteThread: (threadId) => deleteChatFile({ threadId, catalog, sessionFiles }),
+            deleteThread: async (threadId) => {
+              await deleteChatFile({ threadId, catalog, sessionFiles });
+              const storage = localDraftStorage();
+              if (storage !== undefined) {
+                recordDeletedChat(
+                  storage,
+                  threadId,
+                  reportDraftFailure("Removing a deleted chat's local copy failed"),
+                );
+              }
+            },
             loadedThreadId: () => controller?.getSnapshot().threadId,
           })
         : null,

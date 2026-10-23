@@ -9,7 +9,14 @@ export {
   unsentChatReloadMarker,
   unsentChatReloadTarget,
 } from "./chat-draft";
-export { hasLocalDraft, localDraftBuffer } from "./draft-buffer";
+export {
+  deletedChatIds,
+  hasLocalDraft,
+  localDraftBuffer,
+  localDraftStorage,
+  recordDeletedChat,
+  removeDeletedChatCopies,
+} from "./draft-buffer";
 export type { DraftNoticeProps } from "./draft-notice";
 export { DraftNotice } from "./draft-notice";
 export type {

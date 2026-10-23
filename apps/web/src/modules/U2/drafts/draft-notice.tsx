@@ -94,6 +94,16 @@ export function DraftNotice({
       </div>
     );
   }
+  if (snapshot.localCopyRefused) {
+    return (
+      <div
+        role="status"
+        className="flex flex-col gap-2 rounded-lg border border-border bg-muted px-(--space-md) py-(--space-2xs) text-sm text-foreground"
+      >
+        <p>This browser could not keep a copy of your draft. It is still saved to the app.</p>
+      </div>
+    );
+  }
   if (snapshot.replaced !== null) {
     const earlier = snapshot.replaced;
     const summary = summaryOf(earlier);

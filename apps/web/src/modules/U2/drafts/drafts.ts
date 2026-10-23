@@ -198,6 +198,8 @@ export interface DraftSnapshot {
   readonly replaced: DraftInput | null;
   readonly conflict: DraftConflict | null;
   readonly error: AppFailure | null;
+  /** The browser refused the copy of this draft it was asked to keep: the text is still saved to the app. */
+  readonly localCopyRefused: boolean;
 }
 
 export type DraftListener = (snapshot: DraftSnapshot) => void;
@@ -352,6 +354,7 @@ export class DraftController {
       revision: null,
       dirty: false,
       replaced: null,
+      localCopyRefused: false,
       conflict: null,
       error: null,
     };
@@ -751,7 +754,7 @@ export class DraftController {
     // The prompt is delivered, so the box is empty from now on, and this tab's copy says so. That copy is newer than the
     // server's (which still holds the sent text) until the server clear lands: its `saving` copy marks the server copy as
     // this tab's own, so a reload before the clear lands keeps the box empty, while a server copy another tab changed shows.
-    this.buffer?.write(this.scope, {
+    this.writeLocal({
       input: draftInput("", [], []),
       baseRevision: this.snapshot.revision,
       saving: sent,
@@ -779,7 +782,7 @@ export class DraftController {
     }
     // The save above has landed, so the server copy is at `expectedRevision`: the sent text's marker is no longer needed, and
     // the local copy holds the box's text as it is now, based on that revision (a reload before the clear lands shows the box).
-    this.buffer?.write(this.scope, {
+    this.writeLocal({
       input: draftInput(this.snapshot.text, this.snapshot.attachments, this.snapshot.failedSends),
       baseRevision: expectedRevision,
       saving: null,
@@ -1248,7 +1251,19 @@ export class DraftController {
       baseRevision: held.baseRevision,
       saving: held.saving,
     };
-    this.buffer?.write(this.scope, entry);
+    this.writeLocal(entry);
+  }
+
+  /**
+   * Keeps a copy of the text in this browser. The browser can refuse the copy (its storage is full); the snapshot says so
+   * until a copy is kept again. The text is saved to the app either way.
+   */
+  private writeLocal(held: BufferedDraft): void {
+    if (this.buffer === undefined) return;
+    const refused = !this.buffer.write(this.scope, held);
+    if (refused !== this.snapshot.localCopyRefused) {
+      this.setState({ localCopyRefused: refused }, false);
+    }
   }
 
   /**
@@ -1264,8 +1279,7 @@ export class DraftController {
         this.snapshot.failedSends,
       );
       const kept = this.loaded ? null : this.loadingKept;
-      this.buffer.write(
-        this.scope,
+      this.writeLocal(
         kept === null
           ? { input: typed, baseRevision: this.snapshot.revision, saving: this.saving }
           : {

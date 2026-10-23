@@ -20,6 +20,7 @@ function snapshotOf(text: string): DraftSnapshot {
     revision: null,
     dirty: false,
     replaced: null,
+    localCopyRefused: false,
     conflict: null,
     error: null,
   };

@@ -18,7 +18,8 @@ export interface BufferedDraft {
 export interface DraftBuffer {
   /** The scope's unsaved text, or null. A value that cannot be read is dropped and reported. */
   read(scope: DraftScope): BufferedDraft | null;
-  write(scope: DraftScope, held: BufferedDraft): void;
+  /** Keeps the copy. Returns false only when the browser refused it (its storage is full or closed). A deleted chat keeps no copy, which is not a refusal. */
+  write(scope: DraftScope, held: BufferedDraft): boolean;
   clear(scope: DraftScope): void;
   /** The draft that text typed before the scope loaded replaced, kept for this tab's session, or null. */
   readReplaced(scope: DraftScope): DraftInput | null;
@@ -37,7 +38,17 @@ export interface DraftBufferStorage {
   removeItem(key: string): void;
 }
 
+/** The storage the cleanup of deleted chats reads: the keys the browser holds, as well as the buffer's part of it. */
+export interface KeyedDraftStorage extends DraftBufferStorage {
+  keys(): string[];
+}
+
 const KEY_PREFIX = "omp-app:u2:draft:";
+const THREAD_COPY_PREFIX = `${KEY_PREFIX}thread:`;
+const REPLACED_THREAD_COPY_PREFIX = `${KEY_PREFIX}replaced:thread:`;
+const SENT_THREAD_COPY_PREFIX = `${KEY_PREFIX}sent:thread:`;
+/** The key this browser keeps the ids of the chats it deleted under. */
+const DELETED_CHATS_KEY = `${KEY_PREFIX}deleted-chats`;
 
 const StoredDraft = z.strictObject({
   version: z.literal(1),
@@ -55,6 +66,8 @@ const StoredSent = z.strictObject({
   version: z.literal(1),
   text: z.string(),
 });
+
+const StoredDeletedChats = z.array(z.string().min(1));
 
 function replacedKeyFor(scope: DraftScope): string {
   return `${KEY_PREFIX}replaced:${draftScopeStream(scope)}`;
@@ -117,12 +130,24 @@ function parseStored(raw: string): BufferedDraft | null {
     : null;
 }
 
-function attempt(onError: (error: unknown) => void, action: () => void): void {
+/** Runs one storage action. Returns false, after reporting the failure, when the storage refuses it. */
+function attempt(onError: (error: unknown) => void, action: () => void): boolean {
   try {
     action();
+    return true;
   } catch (error) {
     onError(error);
+    return false;
   }
+}
+
+/** Whether the scope is a chat deleted in this browser: such a chat keeps no copy, and a copy left from before is not read. */
+function isDeletedChat(
+  storage: DraftBufferStorage,
+  scope: DraftScope,
+  onError: (error: unknown) => void,
+): boolean {
+  return scope.kind === "thread" && deletedChatIds(storage, onError).has(scope.threadId);
 }
 
 /**
@@ -136,6 +161,7 @@ export function createDraftBuffer(
 ): DraftBuffer {
   return {
     read(scope) {
+      if (isDeletedChat(storage, scope, onError)) return null;
       const key = keyFor(scope);
       const raw = storage.getItem(key);
       if (raw === null) return null;
@@ -152,7 +178,9 @@ export function createDraftBuffer(
       return null;
     },
     write(scope, held) {
-      attempt(onError, () =>
+      // A deleted chat keeps no copy: nothing is written, and nothing is refused.
+      if (isDeletedChat(storage, scope, onError)) return true;
+      return attempt(onError, () =>
         storage.setItem(
           keyFor(scope),
           JSON.stringify({
@@ -168,6 +196,7 @@ export function createDraftBuffer(
       attempt(onError, () => storage.removeItem(keyFor(scope)));
     },
     readReplaced(scope) {
+      if (isDeletedChat(storage, scope, onError)) return null;
       const key = replacedKeyFor(scope);
       const raw = storage.getItem(key);
       if (raw === null) return null;
@@ -184,6 +213,7 @@ export function createDraftBuffer(
       return null;
     },
     writeReplaced(scope, input) {
+      if (isDeletedChat(storage, scope, onError)) return;
       attempt(onError, () =>
         storage.setItem(replacedKeyFor(scope), JSON.stringify({ version: 1, input })),
       );
@@ -192,6 +222,7 @@ export function createDraftBuffer(
       attempt(onError, () => storage.removeItem(replacedKeyFor(scope)));
     },
     readSent(scope) {
+      if (isDeletedChat(storage, scope, onError)) return null;
       const key = sentKeyFor(scope);
       const raw = storage.getItem(key);
       if (raw === null) return null;
@@ -208,6 +239,7 @@ export function createDraftBuffer(
       return null;
     },
     writeSent(scope, text) {
+      if (isDeletedChat(storage, scope, onError)) return;
       attempt(onError, () =>
         storage.setItem(sentKeyFor(scope), JSON.stringify({ version: 1, text })),
       );
@@ -215,6 +247,120 @@ export function createDraftBuffer(
     clearSent(scope) {
       attempt(onError, () => storage.removeItem(sentKeyFor(scope)));
     },
+  };
+}
+
+/** The chat a local copy key belongs to, or undefined for a key that is no chat's copy (the New chat's copy, or any other key). */
+function threadIdOfCopyKey(key: string): string | undefined {
+  if (key.startsWith(THREAD_COPY_PREFIX)) return key.slice(THREAD_COPY_PREFIX.length);
+  if (key.startsWith(REPLACED_THREAD_COPY_PREFIX)) {
+    return key.slice(REPLACED_THREAD_COPY_PREFIX.length);
+  }
+  if (key.startsWith(SENT_THREAD_COPY_PREFIX)) return key.slice(SENT_THREAD_COPY_PREFIX.length);
+  return undefined;
+}
+
+/**
+ * Removes the local copies of chats that no longer exist. A chat that cannot be checked keeps its copies: text this
+ * browser holds is removed only once its chat is known to be gone. A failed check or removal is reported.
+ */
+export async function removeDeletedChatCopies(
+  storage: KeyedDraftStorage,
+  chatExists: (threadId: string) => Promise<boolean>,
+  onError: (error: unknown) => void,
+): Promise<void> {
+  for (const key of storage.keys()) {
+    const threadId = threadIdOfCopyKey(key);
+    if (threadId === undefined) continue;
+    let exists: boolean;
+    try {
+      exists = await chatExists(threadId);
+    } catch (error) {
+      onError(error);
+      continue;
+    }
+    if (!exists) attempt(onError, () => storage.removeItem(key));
+  }
+}
+
+/** Removes this browser's local copies of one chat at once, when the chat is deleted in this tab. */
+export function removeChatCopies(
+  storage: DraftBufferStorage,
+  threadId: string,
+  onError: (error: unknown) => void,
+): void {
+  attempt(onError, () => storage.removeItem(`${THREAD_COPY_PREFIX}${threadId}`));
+  attempt(onError, () => storage.removeItem(`${REPLACED_THREAD_COPY_PREFIX}${threadId}`));
+  attempt(onError, () => storage.removeItem(`${SENT_THREAD_COPY_PREFIX}${threadId}`));
+}
+
+/** The chats this browser deleted: a copy of one of them that is still here is removed on the next load. */
+export function deletedChatIds(
+  storage: DraftBufferStorage,
+  onError: (error: unknown) => void,
+): ReadonlySet<string> {
+  const raw = readDeletedChats(storage, onError);
+  if (raw === null) return new Set();
+  const ids = parseDeletedChats(raw);
+  if (ids === null) {
+    onError(
+      new AppFailure({
+        code: "internal",
+        message: "The list of deleted chats in this tab could not be read",
+        retryable: false,
+      }),
+    );
+    return new Set();
+  }
+  return new Set(ids);
+}
+
+function readDeletedChats(
+  storage: DraftBufferStorage,
+  onError: (error: unknown) => void,
+): string | null {
+  try {
+    return storage.getItem(DELETED_CHATS_KEY);
+  } catch (error) {
+    onError(error);
+    return null;
+  }
+}
+
+/** The ids in the stored list, or null when the stored text is not such a list. */
+function parseDeletedChats(raw: string): string[] | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const parsed = StoredDeletedChats.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+/** Records a chat this browser deleted, and removes its local copies now. */
+export function recordDeletedChat(
+  storage: KeyedDraftStorage,
+  threadId: string,
+  onError: (error: unknown) => void,
+): void {
+  const ids = deletedChatIds(storage, onError);
+  if (!ids.has(threadId)) {
+    attempt(onError, () => storage.setItem(DELETED_CHATS_KEY, JSON.stringify([...ids, threadId])));
+  }
+  removeChatCopies(storage, threadId, onError);
+}
+
+/** This browser's local storage with its keys listed, for the cleanup of deleted chats. Undefined when no window exists. */
+export function localDraftStorage(): KeyedDraftStorage | undefined {
+  if (typeof window === "undefined") return undefined;
+  const storage = window.localStorage;
+  return {
+    getItem: (key) => storage.getItem(key),
+    setItem: (key, value) => storage.setItem(key, value),
+    removeItem: (key) => storage.removeItem(key),
+    keys: () => Object.keys(storage),
   };
 }
 

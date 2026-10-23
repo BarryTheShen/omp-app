@@ -26,6 +26,7 @@ function snapshot(overrides: Partial<DraftSnapshot>): DraftSnapshot {
     conflict: null,
     error: null,
     replaced: null,
+    localCopyRefused: false,
     ...overrides,
   };
 }
