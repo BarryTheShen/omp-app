@@ -194,7 +194,7 @@ function renderItems(
               className="data-[highlighted]:bg-muted data-[highlighted]:text-foreground flex w-full cursor-pointer flex-col items-start rounded-sm px-2 py-1.5 text-start text-sm outline-none select-none"
             >
               <span className="flex w-full min-w-0 items-center justify-between gap-2">
-                <span className="min-w-0 truncate font-medium">{item.label}</span>
+                <span className="min-w-[12ch] max-w-[32ch] truncate font-medium">{item.label}</span>
                 {sourceText !== "" && (
                   <span className="border-border bg-muted text-muted-foreground shrink-0 rounded-full border px-2 py-0.5 text-xs">
                     {sourceText}
@@ -202,7 +202,12 @@ function renderItems(
                 )}
               </span>
               {item.description && (
-                <span className="text-muted-foreground w-full text-xs">{item.description}</span>
+                <span
+                  className="text-muted-foreground line-clamp-2 w-full break-words text-xs"
+                  title={item.description}
+                >
+                  {item.description}
+                </span>
               )}
               {hint !== undefined && (
                 <span className="text-muted-foreground w-full text-xs">

@@ -51,32 +51,34 @@ export function rankSlashEntries(
   const commandQuery = head.toLocaleLowerCase();
   const subquery = body.slice(head.length).trim().toLocaleLowerCase();
   if (spaced && commandQuery === "") return [];
-  const ranked: Array<{ readonly score: number; readonly candidate: TriggerCandidate }> = [];
+  const ranked: Array<{
+    readonly score: number;
+    readonly index: number;
+    readonly candidate: TriggerCandidate;
+  }> = [];
   const seen = new Set<string>();
 
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     const names = [entry.name, ...(entry.aliases ?? [])];
     if (spaced) {
       // As in omp, only the command whose name or alias is exactly the word before the space lists its subcommands.
       if (!names.some((name) => name.toLocaleLowerCase() === commandQuery)) continue;
       for (const subcommand of entry.subcommands ?? []) {
-        const subScore = fuzzyScore(subcommand.name, subquery);
+        const subScore = commandTextScore(subcommand.name, subquery);
         if (subScore === null) continue;
         const candidate = subcommandCandidate(entry, subcommand, seen);
-        if (candidate) ranked.push({ score: subScore, candidate });
+        if (candidate) ranked.push({ score: subScore, index, candidate });
       }
       continue;
     }
     const commandScore = bestScore(names, commandQuery);
     if (commandScore === null) continue;
     const candidate = commandCandidate(entry, seen);
-    if (candidate) ranked.push({ score: commandScore, candidate });
+    if (candidate) ranked.push({ score: commandScore, index, candidate });
   }
 
-  ranked.sort((left, right) => {
-    if (right.score !== left.score) return right.score - left.score;
-    return left.candidate.label.localeCompare(right.candidate.label);
-  });
+  // The browser catalog has no command-usage counts; with omp's default usage of zero, ties keep catalog order.
+  ranked.sort((left, right) => right.score - left.score || left.index - right.index);
   return ranked.slice(0, MAX_CANDIDATES).map(({ candidate }) => candidate);
 }
 
@@ -127,24 +129,37 @@ function subcommandCandidate(
 function bestScore(values: readonly string[], query: string): number | null {
   let best: number | null = null;
   for (const value of values) {
-    const score = fuzzyScore(value, query);
+    const score = commandTextScore(value, query);
     if (score !== null && (best === null || score > best)) best = score;
   }
   return best;
 }
 
-/** Exact, then prefix, then substring, then in-order letters. An empty query matches everything. */
-function fuzzyScore(value: string, query: string): number | null {
-  const normalizedValue = value.toLocaleLowerCase();
-  if (query.length === 0) return 0;
-  if (normalizedValue === query) return 1_000;
-  if (normalizedValue.startsWith(query)) return 800 - normalizedValue.length;
-  const index = normalizedValue.indexOf(query);
-  if (index >= 0) return 600 - index - normalizedValue.length / 100;
+/**
+ * Mirrors omp's name/alias ranking: exact, prefix, then subsequence. Description matching is intentionally omitted:
+ * command descriptions are display text and must not be parsed or searched by the browser (AP4).
+ */
+function commandTextScore(value: string, query: string): number | null {
+  const normalized = value.toLocaleLowerCase();
+  if (query.length === 0) return 1;
+  if (normalized === query) return 1_000;
+  if (normalized.startsWith(query)) return 900;
+  return subsequenceScore(query, normalized);
+}
+
+/** omp's subsequence tiers: substring, tight subsequence, and gaps penalized by five points. */
+function subsequenceScore(query: string, target: string): number | null {
+  if (query.length > target.length) return null;
+  if (target.startsWith(query)) return 80;
+  if (target.includes(query)) return 60;
   let queryIndex = 0;
-  for (const char of normalizedValue) {
-    if (char === query[queryIndex]) queryIndex += 1;
-    if (queryIndex === query.length) return 300 - normalizedValue.length / 100;
+  let gaps = 0;
+  let lastMatchIndex = -1;
+  for (let index = 0; index < target.length && queryIndex < query.length; index += 1) {
+    if (target[index] !== query[queryIndex]) continue;
+    if (lastMatchIndex >= 0 && index - lastMatchIndex > 1) gaps += 1;
+    lastMatchIndex = index;
+    queryIndex += 1;
   }
-  return null;
+  return queryIndex === query.length ? Math.max(1, 40 - gaps * 5) : null;
 }

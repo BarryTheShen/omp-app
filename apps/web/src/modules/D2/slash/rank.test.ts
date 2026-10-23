@@ -27,9 +27,9 @@ describe("D2.3 slash ranking on omp's real list", () => {
     });
   });
 
-  test("a space with nothing after it lists every subcommand of that command, and no other command", () => {
+  test("a space with nothing after it lists subcommands in omp catalog order", () => {
     const labels = rankSlashEntries(realEntries, "/usage ").map((candidate) => candidate.label);
-    expect(labels).toEqual(["/usage reset", "/usage show"]);
+    expect(labels).toEqual(["/usage show", "/usage reset"]);
   });
 
   test("a space after a command with no subcommands lists nothing, though another command's name contains the word", () => {
@@ -91,5 +91,61 @@ describe("D2.3 slash ranking on omp's real list", () => {
 
   test("a query that matches nothing ranks nothing", () => {
     expect(rankSlashEntries(realEntries, "zzqx")).toEqual([]);
+  });
+  test("exact names outrank prefix matches and prefix ties keep omp catalog order", () => {
+    const entries: SlashListEntry[] = [
+      { name: "setup", source: "builtin" },
+      { name: "settings", source: "builtin" },
+      { name: "set", source: "builtin" },
+    ];
+
+    expect(rankSlashEntries(entries, "set").map((candidate) => candidate.label)).toEqual([
+      "/set",
+      "/setup",
+      "/settings",
+    ]);
+    expect(rankSlashEntries(entries, "s").map((candidate) => candidate.label)).toEqual([
+      "/setup",
+      "/settings",
+      "/set",
+    ]);
+  });
+
+  test("fuzzy name matches use omp's subsequence tiers, without searching descriptions", () => {
+    const entries: SlashListEntry[] = [
+      { name: "muse", source: "builtin", description: "Restart the worker" },
+      { name: "model", source: "builtin", description: "Show the current model" },
+      { name: "memory", source: "builtin" },
+    ];
+
+    expect(rankSlashEntries(entries, "mem").map((candidate) => candidate.label)).toEqual([
+      "/memory",
+    ]);
+    expect(rankSlashEntries(entries, "restart")).toEqual([]);
+    expect(rankSlashEntries(entries, "mse").map((candidate) => candidate.label)).toEqual(["/muse"]);
+  });
+
+  test("equal subsequence scores keep omp catalog order when usage counts are unavailable", () => {
+    const entries: SlashListEntry[] = [
+      { name: "advisor", source: "builtin" },
+      { name: "move", source: "builtin" },
+    ];
+
+    expect(rankSlashEntries(entries, "v").map((candidate) => candidate.label)).toEqual([
+      "/advisor",
+      "/move",
+    ]);
+  });
+
+  test("the bare slash keeps the source catalog order", () => {
+    const entries: SlashListEntry[] = [
+      { name: "zeta", source: "builtin" },
+      { name: "alpha", source: "client" },
+    ];
+
+    expect(rankSlashEntries(entries, "/").map((candidate) => candidate.label)).toEqual([
+      "/zeta",
+      "/alpha",
+    ]);
   });
 });

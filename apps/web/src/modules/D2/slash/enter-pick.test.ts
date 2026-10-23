@@ -12,6 +12,16 @@ import { fakeSlashClient } from "./test-support";
 // Enter runs the first row of the `/` list. This pins that row for every prefix of every single-word name omp lists
 // (names and aliases) and of every app command name, with omp's real 18.12.2 list and main's real provider. A change
 // that moves a pick fails here; `ENTER_PICK_UPDATE=1` (run from apps/web) rewrites the golden file, and the diff goes in the PR body.
+// #2175 replaces the app's older length-weighted prefix scores with omp v18.12.6's exact/prefix/subsequence scores.
+// Source: packages/tui/src/autocomplete.ts:374-382,395,475-478. No command-usage counts reach this app catalog, so
+// usage defaults to zero and equal scores keep catalog order.
+// v18.12.2 has the same scorer/default at packages/tui/src/autocomplete.ts:368-376,389,464-467.
+// This corrects old app picks, not an upstream ranking change between releases.
+// Prefix picks changed: a/ad add-dir→advisor; b/br branch→browser; c/co/com/comp copy/compact→computer,
+// e/ex effort/export→extended-context; fo/for fork→force; g goal→green; h hub→handoff; m mcp→model,
+// mo move→model; p pin→prewalk; r retry→ratchet; s ssh→security; se session→security,
+// t todo→trace; tr tree→trace; x export→extended-context.
+// Subsequence ties changed: v move→advisor and y copy→security, per packages/tui/src/autocomplete.ts:191-217,475-478.
 
 const threadId = ThreadId.parse("thread-enter-pick");
 const available: CapabilityMap = {
@@ -158,11 +168,11 @@ describe("#2263 Enter's first row for every typed prefix, with omp's 18.12.2 lis
   test("the picks for the examples the plan names", async () => {
     const picks = await picksForEveryPrefix();
     expect(picks).toMatchObject({
-      s: "/ssh",
+      s: "/security",
       set: "/settings",
       lo: "/login",
-      ex: "/export",
-      m: "/mcp",
+      ex: "/extended-context",
+      m: "/model",
     });
   });
 
