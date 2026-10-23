@@ -401,3 +401,115 @@ describe("ChatDraft: a failed step is retried, a conflict waits for a choice", (
     expect(store.text(newChatDraft)).toBeUndefined();
   });
 });
+
+describe("ChatDraft: text typed while a chat's first answer moves its draft (#2306)", () => {
+  test("text typed while the chat's saved draft is read goes to the chat, not to the New-chat draft", async () => {
+    const read = Promise.withResolvers<void>();
+    class HeldChatRead extends ScopedDraftStore {
+      override async get(args: { readonly scope: DraftScope }) {
+        if (args.scope.kind === "thread") await read.promise;
+        return super.get(args);
+      }
+    }
+    const store = new HeldChatRead();
+    const chat = new ChatDraft({
+      store,
+      folder,
+      threadId: ThreadId.parse("chat-answered"),
+      startsUnsent: true,
+      timers: noTimers,
+    });
+    await chat.controller.load();
+
+    chat.observe({ loaded: true, hasMessages: true });
+    await vi.waitFor(() =>
+      expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-answered")),
+    );
+    chat.controller.setDraft("typed after the answer", []);
+    read.resolve();
+
+    expect(chat.controller.getSnapshot()).toMatchObject({
+      scope: threadScope("chat-answered"),
+      text: "typed after the answer",
+    });
+    expect((await store.get({ scope: newChatDraft })).draft).toBeNull();
+  });
+
+  test("a chat whose saved draft cannot be read keeps the text, shows the error there, and retries the read", async () => {
+    const read = Promise.withResolvers<void>();
+    class FlakyChatRead extends ScopedDraftStore {
+      private failures = 1;
+      override async get(args: { readonly scope: DraftScope }) {
+        if (args.scope.kind !== "thread" || this.failures === 0) return super.get(args);
+        this.failures -= 1;
+        await read.promise;
+        throw new AppFailure({
+          code: "unavailable",
+          message: "The store is down",
+          retryable: true,
+        });
+      }
+    }
+    const chat = new ChatDraft({
+      store: new FlakyChatRead(),
+      folder,
+      threadId: ThreadId.parse("chat-unreadable"),
+      startsUnsent: true,
+      timers: noTimers,
+    });
+    await chat.controller.load();
+
+    chat.observe({ loaded: true, hasMessages: true });
+    await vi.waitFor(() =>
+      expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-unreadable")),
+    );
+    chat.controller.setDraft("typed while the chat is read", []);
+    read.resolve();
+
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().status).toBe("error"));
+    expect(chat.controller.getSnapshot()).toMatchObject({
+      scope: threadScope("chat-unreadable"),
+      text: "typed while the chat is read",
+    });
+
+    chat.retry();
+
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().status).toBe("ready"));
+    expect(chat.controller.getSnapshot()).toMatchObject({
+      scope: threadScope("chat-unreadable"),
+      text: "typed while the chat is read",
+    });
+  });
+
+  test("text written in the New chat before the answer comes first, ahead of text typed while the chat's read is held", async () => {
+    const read = Promise.withResolvers<void>();
+    class HeldChatRead extends ScopedDraftStore {
+      override async get(args: { readonly scope: DraftScope }) {
+        if (args.scope.kind === "thread") await read.promise;
+        return super.get(args);
+      }
+    }
+    const chat = new ChatDraft({
+      store: new HeldChatRead(),
+      folder,
+      threadId: ThreadId.parse("chat-ordered"),
+      startsUnsent: true,
+      timers: noTimers,
+    });
+    await chat.controller.load();
+    chat.controller.setDraft("written before the answer", []);
+
+    chat.observe({ loaded: true, hasMessages: true });
+    await vi.waitFor(() =>
+      expect(chat.controller.getSnapshot().scope).toEqual(threadScope("chat-ordered")),
+    );
+    chat.controller.setDraft(`${chat.controller.getSnapshot().text} and after`, []);
+    read.resolve();
+
+    await vi.waitFor(() => expect(chat.controller.getSnapshot().status).toBe("ready"));
+    expect(chat.controller.getSnapshot()).toMatchObject({
+      scope: threadScope("chat-ordered"),
+      text: "written before the answer and after",
+    });
+  });
+});

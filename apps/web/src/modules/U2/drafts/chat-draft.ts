@@ -210,6 +210,10 @@ export class ChatDraft {
 
   /** Loads the target scope, then takes what the previous controller held. Moves never overlap. */
   private async move(scope: DraftScope): Promise<void> {
+    if (scope.kind === "thread") {
+      await this.moveIntoChat(scope);
+      return;
+    }
     const previous = this.current;
     const next = this.create(scope);
     try {
@@ -227,6 +231,26 @@ export class ChatDraft {
     this.current = next;
     if (this.pendingMove === scope) this.pendingMove = null;
     for (const listener of this.listeners) listener();
+  }
+
+  /**
+   * Moves the New-chat draft into a chat. The held text goes into the chat's draft before the composer shows it, so text
+   * typed while the chat's saved draft is read comes after it. A read that fails is shown on the chat's draft, which
+   * keeps the text: Retry reads it again, so a failed read is not a failed move.
+   */
+  private async moveIntoChat(scope: DraftScope): Promise<void> {
+    const held = await this.current.handOff();
+    const next = this.create(scope);
+    next.adopt(held);
+    if (this.disposed) {
+      await next.flush();
+      next.dispose();
+      return;
+    }
+    this.current = next;
+    this.pendingMove = null;
+    for (const listener of this.listeners) listener();
+    await next.load().catch(() => undefined);
   }
 
   private create(scope: DraftScope): DraftController {
