@@ -8,6 +8,7 @@ import {
   OverlayHost,
   type OverlayHostApi,
   type OverlayOpenResult,
+  useCoveredByModal,
   useOverlayHost,
   useStableOverlayHost,
 } from "./overlay-host";
@@ -63,6 +64,52 @@ describe("overlay grammar", () => {
     });
     expect(OVERLAY_Z_INDEX.modal).toBeGreaterThan(0);
     expect(OVERLAY_Z_INDEX.toast).toBeGreaterThan(OVERLAY_Z_INDEX.modal);
+  });
+});
+
+function CoverageReader() {
+  const covered = useCoveredByModal();
+  return <p>Dialog: {covered ? "covered" : "free"}</p>;
+}
+
+function CoverageFixture() {
+  const host = useOverlayHost();
+  const covered = useCoveredByModal();
+  return (
+    <>
+      <p>Page: {covered ? "covered" : "free"}</p>
+      <button
+        type="button"
+        onClick={() =>
+          host.open({
+            kind: "modal",
+            label: "Covering dialog",
+            content: ({ close }) => (
+              <>
+                <CoverageReader />
+                <button type="button" onClick={() => close()}>
+                  Close covering dialog
+                </button>
+              </>
+            ),
+          })
+        }
+      >
+        Open covering dialog
+      </button>
+    </>
+  );
+}
+
+describe("the page behind an open modal", () => {
+  test("reads as covered while the modal is open, and the modal's own content does not", async () => {
+    renderHost(<CoverageFixture />);
+    expect(screen.getByText("Page: free")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open covering dialog" }));
+    expect(await screen.findByText("Dialog: free")).toBeTruthy();
+    expect(screen.getByText("Page: covered")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close covering dialog" }));
+    await waitFor(() => expect(screen.getByText("Page: free")).toBeTruthy());
   });
 });
 

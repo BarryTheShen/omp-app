@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ENTER_FADE, LEAVE_FADE, LEAVE_MS } from "@/lib/motion";
 import { type Presence, useEnteringItems, usePresentItems } from "@/lib/presence";
+import { useCoveredByModal } from "@/overlay";
 import { useCapabilityStatus } from "@/registry-core";
 import { useLeftSidebar } from "@/shell";
 import { Icons } from "@/tokens";
@@ -277,6 +278,8 @@ export function SessionCatalogSidebar({
   const pendingNewChat = pendingNewChatOf(catalog);
   // The shell's left sidebar, when this list is in one: a refused pick reopens its narrow drawer (see `openSession`).
   const leftSidebar = useLeftSidebar();
+  // A list behind an open modal repeats no refusal line: the list in the modal shows it, once.
+  const coveredByModal = useCoveredByModal();
   const attachList = useCallback(
     (element: HTMLDivElement | null) => {
       listRef.current = element;
@@ -809,7 +812,7 @@ export function SessionCatalogSidebar({
           {renameError}
         </p>
       )}
-      {snapshot.actionError && (
+      {snapshot.actionError && !coveredByModal && (
         <p className="text-destructive px-3 py-1 text-xs leading-snug text-balance" role="alert">
           {snapshot.actionError}
         </p>

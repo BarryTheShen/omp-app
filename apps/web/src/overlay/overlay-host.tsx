@@ -96,6 +96,8 @@ interface OverlayRecord extends OverlaySnapshot {
 
 const OverlayHostContext = createContext<OverlayHostApi | null>(null);
 const OverlayHostStableContext = createContext<OverlayHostApi | null>(null);
+/** True for the page behind an open modal: the content the host makes inert while that modal is open. */
+const CoveredByModalContext = createContext(false);
 let nextOverlayId = 0;
 
 function createOverlayId(): string {
@@ -675,7 +677,9 @@ export function OverlayHost({ children }: { readonly children: ReactNode }) {
     <OverlayHostContext.Provider value={api}>
       <OverlayHostStableContext.Provider value={stableApi}>
         <div ref={backgroundRef} data-overlay-background="true">
-          {children}
+          <CoveredByModalContext.Provider value={hasOpenModal}>
+            {children}
+          </CoveredByModalContext.Provider>
         </div>
         {portal
           ? createPortal(
@@ -719,6 +723,14 @@ export function useStableOverlayHost(): OverlayHostApi {
   const context = useContext(OverlayHostStableContext);
   if (!context) throw new Error("useStableOverlayHost must be used inside OverlayHost");
   return context;
+}
+
+/**
+ * Whether the content asking sits behind an open modal: the page the host makes inert while that modal is open. The
+ * modal's own content, and anything rendered outside that page, reads false.
+ */
+export function useCoveredByModal(): boolean {
+  return useContext(CoveredByModalContext);
 }
 
 export { OVERLAY_KINDS };
