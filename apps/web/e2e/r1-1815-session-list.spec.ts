@@ -5,6 +5,25 @@ function answerTo(page: Page, tag: string): Locator {
   return page.getByText(new RegExp(`^count-\\d+ ${tag}$`));
 }
 
+/**
+ * The source row's update time once it has stopped moving. The row takes its time from the session file, and omp writes
+ * the last answer to that file a moment after the answer shows, so a read taken as the answer appears can be overtaken.
+ */
+async function settledUpdatedAt(page: Page, source: Locator): Promise<string> {
+  const time = source.locator("time");
+  let updatedAt = await time.getAttribute("datetime");
+  let unchangedReads = 0;
+  for (let read = 0; unchangedReads < 2; read++) {
+    if (read === 40) throw new Error("The source session's update time keeps moving.");
+    await page.waitForTimeout(500);
+    const current = await time.getAttribute("datetime");
+    unchangedReads = current === updatedAt ? unchangedReads + 1 : 0;
+    updatedAt = current;
+  }
+  if (updatedAt === null) throw new Error("The source session has no update time.");
+  return updatedAt;
+}
+
 realTest.setTimeout(300_000);
 
 realTest(
@@ -26,8 +45,7 @@ realTest(
     const sessions = page.getByRole("listbox", { name: "Session list" });
     const source = sessions.getByRole("option", { name: /count_reply first/ });
     await expect(source).toBeVisible();
-    const sourceUpdatedAt = await source.locator("time").getAttribute("datetime");
-    if (sourceUpdatedAt === null) throw new Error("The source session has no update time.");
+    const sourceUpdatedAt = await settledUpdatedAt(page, source);
 
     await composer.focus();
     await page.keyboard.press("Control+k");
