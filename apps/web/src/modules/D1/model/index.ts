@@ -22,6 +22,13 @@ export { createModelCommandSource, modelCommand } from "./commands";
 export type { RecentModelsPort, RecentModelsRead, RecentModelsSnapshot } from "./recents";
 export { createConfigRecentModelsPort, RecentModels } from "./recents";
 export type {
+  RoleCycleDeps,
+  RoleCycleDirection,
+  RoleCycleOutcome,
+  RoleCycleSettings,
+} from "./role-cycle";
+export { cycleRoleModel } from "./role-cycle";
+export type {
   RoleStoreListener,
   RoleStoreSnapshot,
   RoleStoreStatus,

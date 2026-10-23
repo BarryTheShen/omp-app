@@ -1,5 +1,6 @@
 import type { AppClient } from "@omp-app/client";
-import type { FolderPath } from "@omp-app/contracts";
+import { AppFailure, type FolderPath } from "@omp-app/contracts";
+import type { RoleCycleSettings } from "../model/role-cycle";
 import { createConfigModelSettingsPort, ModelRoleStore } from "../model/roles";
 import type { HubRoles } from "./model-hub-controller";
 
@@ -23,4 +24,34 @@ export async function openHubRoles(
   );
   await shown.read();
   return { saved, shown };
+}
+
+/**
+ * The roles a role cycle steps through, read the way the Model Hub reads them: the roles the dialog lists
+ * (`shown`) and the cycle order the saved layer holds. The stores are released before this returns. A read that
+ * failed throws omp's words, so a cycle never runs on settings it could not read.
+ */
+export async function readRoleCycleSettings(
+  client: AppClient,
+  folder: FolderPath | null,
+): Promise<RoleCycleSettings> {
+  const roles = await openHubRoles(client, folder);
+  try {
+    const failed = [roles.saved, roles.shown]
+      .map((store) => store.getSnapshot().error)
+      .find((error) => error !== null);
+    if (failed) throw new AppFailure(failed);
+    return {
+      modelRoles: roles.shown.getSnapshot().settings.modelRoles,
+      cycleOrder: roles.saved.getSnapshot().settings.cycleOrder,
+    };
+  } finally {
+    disposeHubRoles(roles);
+  }
+}
+
+/** Releases the role stores' subscriptions to omp's config. A layer shown is released once, even when it is the saved one. */
+export function disposeHubRoles(roles: HubRoles): void {
+  roles.saved.dispose();
+  if (roles.shown !== roles.saved) roles.shown.dispose();
 }

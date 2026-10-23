@@ -3,6 +3,7 @@ import { D1_SHORTCUT_DESCRIPTORS } from "./descriptors";
 
 export type D1ShortcutActions = {
   readonly cycleModelForward: ShortcutAction;
+  readonly cycleModelBackward: ShortcutAction;
   readonly selectModel: ShortcutAction;
   readonly selectTemporaryModel: ShortcutAction;
   readonly cycleThinking: ShortcutAction;
@@ -10,6 +11,7 @@ export type D1ShortcutActions = {
 
 const ACTIONS: Readonly<Record<string, keyof D1ShortcutActions>> = {
   "D1.appModelCycleForward": "cycleModelForward",
+  "D1.appModelCycleBackward": "cycleModelBackward",
   "D1.appModelSelect": "selectModel",
   "D1.appModelSelectTemporary": "selectTemporaryModel",
   "D1.appThinkingCycle": "cycleThinking",

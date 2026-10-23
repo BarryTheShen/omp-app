@@ -1,4 +1,3 @@
-import { normalizeChord } from "@omp-app/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { ShortcutRegistry } from "../../../shortcuts/registry";
 import { D1_SHORTCUT_DESCRIPTORS } from "./descriptors";
@@ -18,6 +17,7 @@ function press(
 function actions() {
   return {
     cycleModelForward: vi.fn(),
+    cycleModelBackward: vi.fn(),
     selectModel: vi.fn(),
     selectTemporaryModel: vi.fn(),
     cycleThinking: vi.fn(),
@@ -28,11 +28,11 @@ describe("D1 model/thinking shortcuts", () => {
   test("declares omp's chords the browser does not take, with the thinking cycle moved off Shift+Tab", () => {
     expect(D1_SHORTCUT_DESCRIPTORS.map((descriptor) => [descriptor.id, descriptor.chord])).toEqual([
       ["D1.appModelCycleForward", "Mod+P"],
+      ["D1.appModelCycleBackward", "Mod+Shift+P"],
       ["D1.appModelSelect", "Alt+M"],
       ["D1.appModelSelectTemporary", "Alt+P"],
       ["D1.appThinkingCycle", "Alt+K"],
     ]);
-    expect(normalizeChord("Shift+Ctrl+P")).toBe("ctrl+shift+p");
   });
 
   test("runs each action from its chord through the real registry", () => {
@@ -43,6 +43,10 @@ describe("D1 model/thinking shortcuts", () => {
     expect(press(registry, { key: "p", ctrlKey: true })).toMatchObject({
       handled: true,
       binding: { id: "D1.appModelCycleForward" },
+    });
+    expect(press(registry, { key: "P", ctrlKey: true, shiftKey: true })).toMatchObject({
+      handled: true,
+      binding: { id: "D1.appModelCycleBackward" },
     });
     expect(press(registry, { key: "m", altKey: true })).toMatchObject({
       handled: true,
@@ -58,6 +62,7 @@ describe("D1 model/thinking shortcuts", () => {
     });
 
     expect(run.cycleModelForward).toHaveBeenCalledOnce();
+    expect(run.cycleModelBackward).toHaveBeenCalledOnce();
     expect(run.selectModel).toHaveBeenCalledOnce();
     expect(run.selectTemporaryModel).toHaveBeenCalledOnce();
     expect(run.cycleThinking).toHaveBeenCalledOnce();

@@ -68,7 +68,6 @@ function capabilities() {
   return {
     "omp.cmd.get_available_models": available(),
     "omp.cmd.set_model": available(),
-    "omp.cmd.cycle_model": available(),
     "omp.cmd.get_available_thinking_levels": available(),
     "omp.cmd.set_thinking_level": available(),
     "omp.cmd.cycle_thinking_level": available(),

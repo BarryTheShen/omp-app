@@ -42,7 +42,6 @@ function capabilities() {
   return {
     "omp.cmd.get_available_models": CapabilityStatus.parse({ state: "available", via: "rpc" }),
     "omp.cmd.set_model": CapabilityStatus.parse({ state: "available", via: "rpc" }),
-    "omp.cmd.cycle_model": CapabilityStatus.parse({ state: "available", via: "rpc" }),
   };
 }
 
@@ -50,7 +49,6 @@ function source(overrides: Partial<ModelCatalogSource> = {}): ModelCatalogSource
   return {
     getAvailableModels: async () => [rawModel("alpha", "one"), rawModel("beta", "two")],
     setModel: async (model) => rawModel(model.provider, model.modelId),
-    cycleModel: async () => ({ model: rawModel("beta", "two"), isScoped: false }),
     ...overrides,
   };
 }
@@ -159,15 +157,14 @@ describe("D1 model catalog projection", () => {
 });
 
 describe("D1 A0.8 RPC model source", () => {
-  test("routes catalog, session selection and cycle through the typed port", async () => {
+  test("routes catalog and session selection through the typed port", async () => {
     const calls: unknown[] = [];
     const session = {
       send: async (args: unknown) => {
         calls.push(args);
         const command = (args as { readonly command: { readonly type: string } }).command.type;
         if (command === "get_available_models") return { models: [rawModel("alpha", "one")] };
-        if (command === "set_model") return rawModel("alpha", "one");
-        return { model: rawModel("alpha", "one"), isScoped: false };
+        return rawModel("alpha", "one");
       },
     } as unknown as RpcSessionClient;
     const client = {
@@ -176,10 +173,9 @@ describe("D1 A0.8 RPC model source", () => {
     const source = createRpcModelCatalogSource(client, threadId);
     await source.getAvailableModels();
     await source.setModel({ provider: "alpha", modelId: "one" });
-    await source.cycleModel?.();
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(2);
     expect(
       calls.map((call) => (call as { readonly command: { readonly type: string } }).command.type),
-    ).toEqual(["get_available_models", "set_model", "cycle_model"]);
+    ).toEqual(["get_available_models", "set_model"]);
   });
 });

@@ -107,7 +107,6 @@ export type ModelCatalogLoadState = z.infer<typeof ModelCatalogLoadState>;
 export const D1_CAPABILITIES = [
   "omp.cmd.get_available_models",
   "omp.cmd.set_model",
-  "omp.cmd.cycle_model",
   "omp.cmd.get_available_thinking_levels",
   "omp.cmd.set_thinking_level",
   "omp.cmd.cycle_thinking_level",
@@ -118,7 +117,6 @@ export const D1_CAPABILITIES = [
 export type D1ModelRpcCommand =
   | "get_available_models"
   | "set_model"
-  | "cycle_model"
   | "get_available_thinking_levels"
   | "set_thinking_level"
   | "cycle_thinking_level";

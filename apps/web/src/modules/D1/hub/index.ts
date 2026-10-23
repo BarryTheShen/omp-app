@@ -14,4 +14,4 @@ export type {
 } from "./model-hub-controller";
 export { ModelHubController } from "./model-hub-controller";
 export { ModelHubPanel } from "./model-hub-panel";
-export { openHubRoles } from "./open-roles";
+export { openHubRoles, readRoleCycleSettings } from "./open-roles";

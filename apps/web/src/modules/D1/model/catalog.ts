@@ -45,9 +45,6 @@ export interface ModelCatalogSource {
     model: ModelRef,
     options?: Pick<PortCallOptions, "signal">,
   ) => Promise<OmpWire.ModelInfo>;
-  readonly cycleModel?: (
-    options?: Pick<PortCallOptions, "signal">,
-  ) => Promise<OmpWire.ModelCycleResult | null>;
 }
 
 /** R0.1's live snapshot seam; D1 subscribes to it rather than polling get_state itself. */
@@ -293,26 +290,6 @@ export class ModelCatalogModel implements ModelCatalogPort {
     }
   }
 
-  public async cycle(options?: Pick<PortCallOptions, "signal">): Promise<ModelRef | null> {
-    const availability = modelScopeAvailability("session", this.snapshot.capabilities);
-    if (availability.state === "unavailable") {
-      throw unavailable(availability.capability, availability.reason);
-    }
-    if (!this.source.cycleModel) {
-      throw unavailable("omp.cmd.cycle_model", "Model cycling is unavailable.");
-    }
-    try {
-      const result = await this.source.cycleModel(options);
-      const current = currentFrom(result?.model);
-      this.commit({ current, error: null });
-      return current;
-    } catch (error) {
-      const appFailure = failure(error, "Cycling the session model failed.");
-      this.commit({ error: appFailure.appError });
-      throw appFailure;
-    }
-  }
-
   public dispose(): void {
     this.liveUnsubscribe?.();
     this.liveUnsubscribe = undefined;
@@ -348,10 +325,5 @@ export function createRpcModelCatalogSource(
         },
         options,
       )) as OmpWire.ModelInfo,
-    cycleModel: async (options) =>
-      (await session.send(
-        { threadId, command: { type: "cycle_model" } },
-        options,
-      )) as OmpWire.ModelCycleResult | null,
   };
 }

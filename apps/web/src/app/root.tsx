@@ -1383,6 +1383,7 @@ function ActiveThreadReady({
     store,
     threadId,
     capabilities,
+    folder,
     openDialog: (restoreFocus) =>
       openSessionModelDialog({
         overlay,
@@ -1393,6 +1394,7 @@ function ActiveThreadReady({
         folder,
         restoreFocus,
       }),
+    notify: setCommandStatus,
     fail: setCommandError,
   });
   // Stop hands back what omp withdrew. The chat on screen takes it through its draft; any other chat keeps it in its

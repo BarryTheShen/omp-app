@@ -6,12 +6,11 @@ type EditableShortcutDescriptor = ShortcutDescriptor & { readonly allowInEditabl
  * Model and thinking chords from omp v18.9.1 (`packages/tui/src/app-keybindings.ts:109-131`). omp runs
  * them while the editor has focus, so each one is `allowInEditable`.
  *
- * Not offered:
- * - `app.model.cycleBackward` (Shift+Ctrl+P): omp's `cycle_model` RPC takes no direction
- *   (`packages/coding-agent/src/modes/rpc/rpc-mode.ts:2275-2280` at v18.9.1), so the app cannot run it.
- *   Its inventory row is recorded as `not-offered` in `fixtures/index.ts`.
- *
  * Changed:
+ * - `app.model.cycleForward` and `app.model.cycleBackward` (Ctrl+P and Shift+Ctrl+P; Cmd on macOS) step through
+ *   the role models in the cycle order, as omp's input controller does (`cycleRoleModel`,
+ *   `modes/controllers/input-controller.ts:2694-2716` at v18.12.5). They do not use the `cycle_model` RPC: it
+ *   takes no direction and steps through every model.
  * - `app.thinking.cycle` defaults to Shift+Tab, which the browser uses to move focus
  *   (`FOCUS_NAVIGATION_CHORDS`). Its replacement is Alt+K: Alt+T is U1's transcript "Toggle thinking",
  *   Shift+Alt+T is Chrome's "focus the first toolbar item" (Chrome help page, Windows and Linux table), and
@@ -21,13 +20,24 @@ export const D1_SHORTCUT_DESCRIPTORS = [
   {
     id: "D1.appModelCycleForward",
     owner: "D1",
-    title: "Cycle model forward",
+    title: "Cycle role models forward",
     kind: "shortcut",
     scope: "global",
     chord: "Mod+P",
     allowInEditable: true,
     covers: ["D1.app-model-cycleforward"],
-    requires: ["omp.cmd.cycle_model"],
+    requires: ["omp.cmd.get_available_models", "omp.cmd.set_model"],
+  },
+  {
+    id: "D1.appModelCycleBackward",
+    owner: "D1",
+    title: "Cycle role models backward",
+    kind: "shortcut",
+    scope: "global",
+    chord: "Mod+Shift+P",
+    allowInEditable: true,
+    covers: ["D1.app-model-cyclebackward"],
+    requires: ["omp.cmd.get_available_models", "omp.cmd.set_model"],
   },
   {
     id: "D1.appModelSelect",

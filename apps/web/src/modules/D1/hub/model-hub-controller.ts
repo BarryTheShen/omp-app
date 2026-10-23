@@ -18,6 +18,7 @@ import { RECENT_MODELS_LIMIT, type RecentModels } from "../model/recents";
 import { type ModelRoleDefinition, roleDefinitions, splitRoleSelector } from "../model/role-list";
 import { type ModelRoleStore, PRESET_NAME_RULE, type RoleStoreSnapshot } from "../model/roles";
 import { groupByProvider, orderBySignIn } from "../model/sign-in-order";
+import { disposeHubRoles } from "./open-roles";
 
 /** Which list the dialog shows: the Roles view, every model (Recent first), or one provider's models. */
 export type HubScope =
@@ -284,7 +285,7 @@ export class ModelHubController {
   /** Hands the dialog its roles once they are read. Roles that arrive after the dialog closed are disposed. */
   public attachRoles(roles: HubRoles): void {
     if (this.disposed) {
-      disposeRoles(roles);
+      disposeHubRoles(roles);
       return;
     }
     this.roles = roles;
@@ -459,7 +460,7 @@ export class ModelHubController {
     this.listeners.clear();
     this.catalog.dispose();
     this.recents.dispose();
-    if (this.roles) disposeRoles(this.roles);
+    if (this.roles) disposeHubRoles(this.roles);
   }
 
   private async switchSession(model: ModelDescriptor): Promise<void> {
@@ -703,9 +704,4 @@ export class ModelHubController {
       modelName: listed.get(assignment.id)?.name ?? assignment.id,
     };
   }
-}
-
-function disposeRoles(roles: HubRoles): void {
-  roles.saved.dispose();
-  if (roles.shown !== roles.saved) roles.shown.dispose();
 }

@@ -73,9 +73,21 @@ export function refreshSessionState(
   store: OmpRuntimeStore,
   threadId: ThreadId,
 ): void {
+  void readSessionState(client, store, threadId);
+}
+
+/**
+ * The read behind refreshSessionState, for a caller that needs the new state before it goes on. It never rejects:
+ * a failed read is reported, and the store keeps what it had.
+ */
+export function readSessionState(
+  client: AppClient,
+  store: OmpRuntimeStore,
+  threadId: ThreadId,
+): Promise<void> {
   const rpc = client.port(RpcSessionPort) as RpcSessionClient;
   const asOfSeq = store.getSnapshot().lastSeq;
-  void rpc
+  return rpc
     .send({ threadId, command: { type: "get_state" } })
     .then((state) => store.applySessionState(state, { asOfSeq }))
     .catch((error: unknown) => {
